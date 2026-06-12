@@ -1,0 +1,500 @@
+{
+  "meta": {
+    "version": "1.0",
+    "description": "Offline fixture data for JST tool responses in simulation mode",
+    "provider": "fixture",
+    "generated_for": "英禾旗舰店 simulation customers"
+  },
+  "orders": {
+    "SIM_ORDER_001": {
+      "found": true,
+      "o_id": "SIM_ORDER_001",
+      "shop_name": "英禾旗舰店",
+      "status": "待发货",
+      "shop_status": "待发货",
+      "buyer_id": "SIM_BUYER_001",
+      "amount": 299.00,
+      "pay_amount": 269.00,
+      "freight": 0,
+      "receiver_name": "郑女士",
+      "receiver_state": "浙江省",
+      "receiver_city": "杭州市",
+      "receiver_address": "西湖区xx小区3栋",
+      "buyer_message": "急用请尽快发货",
+      "remark": "",
+      "created": "2026-05-30 10:00:00",
+      "pay_date": "2026-05-30 10:01:00",
+      "send_date": null,
+      "sign_time": null,
+      "logistics_company": "",
+      "l_id": "",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_2CM_BEIGE_200x150",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 米色 200x150cm 2cm",
+          "qty": 1,
+          "price": 269.00,
+          "category": "爬行垫"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "SIM_ORDER_002": {
+      "found": true,
+      "o_id": "SIM_ORDER_002",
+      "shop_name": "英禾旗舰店",
+      "status": "已发货",
+      "shop_status": "已发货",
+      "buyer_id": "SIM_BUYER_002",
+      "amount": 599.00,
+      "pay_amount": 569.00,
+      "freight": 0,
+      "receiver_name": "杨先生",
+      "receiver_state": "上海市",
+      "receiver_city": "上海市",
+      "receiver_address": "浦东新区xx路xx号",
+      "buyer_message": "",
+      "remark": "",
+      "created": "2026-05-28 14:30:00",
+      "pay_date": "2026-05-28 14:31:00",
+      "send_date": "2026-05-29 09:00:00",
+      "sign_time": null,
+      "logistics_company": "中通快递",
+      "l_id": "SIM_TRACK_001",
+      "items": [
+        {
+          "sku_id": "SIM_PLAYPANEL_GRAY_8PANEL",
+          "i_id": "SIM_PLAYPANEL",
+          "name": "宝宝游戏围栏 灰色 8片装",
+          "qty": 1,
+          "price": 369.00,
+          "category": "游戏围栏"
+        },
+        {
+          "sku_id": "SIM_STORAGE_WHITE_LARGE",
+          "i_id": "SIM_STORAGE",
+          "name": "儿童收纳柜 白色 大号",
+          "qty": 1,
+          "price": 200.00,
+          "category": "收纳"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "SIM_ORDER_003": {
+      "found": true,
+      "o_id": "SIM_ORDER_003",
+      "shop_name": "英禾旗舰店",
+      "status": "已签收",
+      "shop_status": "已签收",
+      "buyer_id": "SIM_BUYER_003",
+      "amount": 329.00,
+      "pay_amount": 299.00,
+      "freight": 0,
+      "receiver_name": "朱先生",
+      "receiver_state": "江苏省",
+      "receiver_city": "南京市",
+      "receiver_address": "鼓楼区xx大厦xx室",
+      "buyer_message": "",
+      "remark": "",
+      "created": "2026-05-25 08:00:00",
+      "pay_date": "2026-05-25 08:01:00",
+      "send_date": "2026-05-26 10:00:00",
+      "sign_time": "2026-05-28 14:30:00",
+      "logistics_company": "韵达快递",
+      "l_id": "SIM_TRACK_002",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_4CM_GRAY_180x150",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 灰色 180x150cm 4cm",
+          "qty": 1,
+          "price": 299.00,
+          "category": "爬行垫"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "SIM_ORDER_004": {
+      "found": true,
+      "o_id": "SIM_ORDER_004",
+      "shop_name": "英禾旗舰店",
+      "status": "退款中",
+      "shop_status": "退款中",
+      "buyer_id": "SIM_BUYER_004",
+      "amount": 369.00,
+      "pay_amount": 369.00,
+      "freight": 0,
+      "receiver_name": "黄女士",
+      "receiver_state": "广东省",
+      "receiver_city": "深圳市",
+      "receiver_address": "南山区xx花园",
+      "buyer_message": "有异味",
+      "remark": "客户反馈异味问题",
+      "created": "2026-06-01 09:00:00",
+      "pay_date": "2026-06-01 09:01:00",
+      "send_date": "2026-06-02 08:00:00",
+      "sign_time": "2026-06-04 11:00:00",
+      "logistics_company": "中通快递",
+      "l_id": "SIM_TRACK_003",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_2CM_PINK_200x180",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 粉色 200x180cm 2cm",
+          "qty": 1,
+          "price": 369.00,
+          "category": "爬行垫"
+        }
+      ],
+      "refund": {
+        "as_id": "SIM_RF_004_01",
+        "type": "退货退款",
+        "status": "处理中",
+        "refund": 369.00,
+        "reason": "商品有异味，不敢给宝宝使用",
+        "created": "2026-06-05 10:00:00"
+      },
+      "provider": "fixture"
+    },
+    "SIM_ORDER_005": {
+      "found": true,
+      "o_id": "SIM_ORDER_005",
+      "shop_name": "英禾旗舰店",
+      "status": "已发货",
+      "shop_status": "已发货",
+      "buyer_id": "SIM_BUYER_005",
+      "amount": 799.00,
+      "pay_amount": 749.00,
+      "freight": 0,
+      "receiver_name": "孙女士",
+      "receiver_state": "浙江省",
+      "receiver_city": "温州市",
+      "receiver_address": "鹿城区xx街道",
+      "buyer_message": "",
+      "remark": "",
+      "created": "2026-06-01 11:00:00",
+      "pay_date": "2026-06-01 11:01:00",
+      "send_date": "2026-06-02 15:00:00",
+      "sign_time": null,
+      "logistics_company": "德邦物流",
+      "l_id": "SIM_TRACK_004",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_2CM_BEIGE_200x150",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 米色 200x150cm 2cm",
+          "qty": 1,
+          "price": 269.00,
+          "category": "爬行垫"
+        },
+        {
+          "sku_id": "SIM_PLAYPANEL_GRAY_8PANEL",
+          "i_id": "SIM_PLAYPANEL",
+          "name": "宝宝游戏围栏 灰色 8片装",
+          "qty": 1,
+          "price": 369.00,
+          "category": "游戏围栏"
+        },
+        {
+          "sku_id": "SIM_STORAGE_WHITE_LARGE",
+          "i_id": "SIM_STORAGE",
+          "name": "儿童收纳柜 白色 大号",
+          "qty": 1,
+          "price": 161.00,
+          "category": "收纳"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "SIM_ORDER_NOTFOUND": {
+      "found": false
+    },
+    "20260530001": {
+      "found": true,
+      "o_id": "20260530001",
+      "shop_name": "英禾旗舰店",
+      "status": "待发货",
+      "shop_status": "待发货",
+      "buyer_id": "SIM_BUYER_C013",
+      "amount": 299.00,
+      "pay_amount": 269.00,
+      "freight": 0,
+      "receiver_name": "郑女士",
+      "receiver_state": "浙江省",
+      "receiver_city": "杭州市",
+      "receiver_address": "西湖区xx小区3栋",
+      "buyer_message": "急用请尽快发货",
+      "remark": "",
+      "created": "2026-05-30 10:00:00",
+      "pay_date": "2026-05-30 10:01:00",
+      "send_date": null,
+      "sign_time": null,
+      "logistics_company": "",
+      "l_id": "",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_2CM_BEIGE_200x150",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 米色 200x150cm 2cm",
+          "qty": 1,
+          "price": 269.00,
+          "category": "爬行垫"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "20260528003": {
+      "found": true,
+      "o_id": "20260528003",
+      "shop_name": "英禾旗舰店",
+      "status": "已发货",
+      "shop_status": "已发货",
+      "buyer_id": "SIM_BUYER_C014",
+      "amount": 569.00,
+      "pay_amount": 539.00,
+      "freight": 0,
+      "receiver_name": "杨先生",
+      "receiver_state": "上海市",
+      "receiver_city": "上海市",
+      "receiver_address": "浦东新区xx路xx号",
+      "buyer_message": "",
+      "remark": "",
+      "created": "2026-05-28 14:30:00",
+      "pay_date": "2026-05-28 14:31:00",
+      "send_date": "2026-05-29 09:00:00",
+      "sign_time": null,
+      "logistics_company": "中通快递",
+      "l_id": "SIM_TRACK_001",
+      "items": [
+        {
+          "sku_id": "SIM_PLAYPANEL_GRAY_8PANEL",
+          "i_id": "SIM_PLAYPANEL",
+          "name": "宝宝游戏围栏 灰色 8片装",
+          "qty": 1,
+          "price": 369.00,
+          "category": "游戏围栏"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "20260601005": {
+      "found": true,
+      "o_id": "20260601005",
+      "shop_name": "英禾旗舰店",
+      "status": "部分发货",
+      "shop_status": "部分发货",
+      "buyer_id": "SIM_BUYER_C018",
+      "amount": 749.00,
+      "pay_amount": 699.00,
+      "freight": 0,
+      "receiver_name": "孙女士",
+      "receiver_state": "浙江省",
+      "receiver_city": "温州市",
+      "receiver_address": "鹿城区xx街道",
+      "buyer_message": "",
+      "remark": "分批发货",
+      "created": "2026-06-01 11:00:00",
+      "pay_date": "2026-06-01 11:01:00",
+      "send_date": "2026-06-02 15:00:00",
+      "sign_time": null,
+      "logistics_company": "德邦物流",
+      "l_id": "SIM_TRACK_004",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_2CM_BEIGE_200x150",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 米色 200x150cm 2cm",
+          "qty": 1,
+          "price": 269.00,
+          "category": "爬行垫"
+        },
+        {
+          "sku_id": "SIM_PLAYPANEL_GRAY_8PANEL",
+          "i_id": "SIM_PLAYPANEL",
+          "name": "宝宝游戏围栏 灰色 8片装",
+          "qty": 1,
+          "price": 369.00,
+          "category": "游戏围栏"
+        },
+        {
+          "sku_id": "SIM_STORAGE_WHITE_LARGE",
+          "i_id": "SIM_STORAGE",
+          "name": "儿童收纳柜 白色 大号",
+          "qty": 1,
+          "price": 161.00,
+          "category": "收纳"
+        }
+      ],
+      "partial_shipments": [
+        {
+          "package": 1,
+          "l_id": "SIM_TRACK_004",
+          "status": "已发货",
+          "items": [
+            {"name": "加厚XPE爬行垫 米色 200x150cm 2cm", "qty": 1},
+            {"name": "宝宝游戏围栏 灰色 8片装", "qty": 1}
+          ]
+        },
+        {
+          "package": 2,
+          "l_id": "SIM_TRACK_005",
+          "status": "待发货",
+          "items": [
+            {"name": "儿童收纳柜 白色 大号", "qty": 1}
+          ]
+        }
+      ],
+      "provider": "fixture"
+    },
+    "20260602008": {
+      "found": true,
+      "o_id": "20260602008",
+      "shop_name": "英禾旗舰店",
+      "status": "已签收",
+      "shop_status": "已签收",
+      "buyer_id": "SIM_BUYER_C027",
+      "amount": 538.00,
+      "pay_amount": 538.00,
+      "freight": 0,
+      "receiver_name": "梁先生",
+      "receiver_state": "北京市",
+      "receiver_city": "北京市",
+      "receiver_address": "朝阳区xx路xx号",
+      "buyer_message": "",
+      "remark": "",
+      "created": "2026-06-02 09:00:00",
+      "pay_date": "2026-06-02 09:01:00",
+      "send_date": "2026-06-03 10:00:00",
+      "sign_time": "2026-06-05 16:00:00",
+      "logistics_company": "中通快递",
+      "l_id": "SIM_TRACK_006",
+      "items": [
+        {
+          "sku_id": "SIM_CRAWLMAT_2CM_BEIGE_200x150",
+          "i_id": "SIM_CRAWLMAT",
+          "name": "加厚XPE爬行垫 米色 200x150cm 2cm",
+          "qty": 2,
+          "price": 269.00,
+          "category": "爬行垫"
+        }
+      ],
+      "provider": "fixture"
+    },
+    "20269999000": {
+      "found": false
+    }
+  },
+  "logistics": {
+    "SIM_TRACK_001": {
+      "found": true,
+      "l_id": "SIM_TRACK_001",
+      "logistics_company": "中通快递",
+      "courier_name": "中通快递",
+      "send_date": "2026-05-29 09:00:00",
+      "state_text": "运输中",
+      "data": [
+        {"time": "2026-05-29 09:00", "context": "快件已从杭州仓库发出"},
+        {"time": "2026-05-29 18:30", "context": "快件到达上海转运中心"},
+        {"time": "2026-05-30 06:00", "context": "快件已到达上海浦东派送网点"}
+      ],
+      "provider": "fixture"
+    },
+    "SIM_TRACK_002": {
+      "found": true,
+      "l_id": "SIM_TRACK_002",
+      "logistics_company": "韵达快递",
+      "courier_name": "韵达快递",
+      "send_date": "2026-05-26 10:00:00",
+      "state_text": "已签收",
+      "data": [
+        {"time": "2026-05-26 10:00", "context": "快件已从杭州仓库发出"},
+        {"time": "2026-05-27 08:00", "context": "快件到达南京转运中心"},
+        {"time": "2026-05-28 14:30", "context": "已签收，本人签收"}
+      ],
+      "provider": "fixture"
+    },
+    "SIM_TRACK_003": {
+      "found": true,
+      "l_id": "SIM_TRACK_003",
+      "logistics_company": "中通快递",
+      "courier_name": "中通快递",
+      "send_date": "2026-06-02 08:00:00",
+      "state_text": "已签收",
+      "data": [
+        {"time": "2026-06-02 08:00", "context": "快件已从杭州仓库发出"},
+        {"time": "2026-06-03 12:00", "context": "快件到达深圳转运中心"},
+        {"time": "2026-06-04 11:00", "context": "已签收，代收点代收"}
+      ],
+      "provider": "fixture"
+    },
+    "SIM_TRACK_004": {
+      "found": true,
+      "l_id": "SIM_TRACK_004",
+      "logistics_company": "德邦物流",
+      "courier_name": "德邦物流",
+      "send_date": "2026-06-02 15:00:00",
+      "state_text": "运输中",
+      "data": [
+        {"time": "2026-06-02 15:00", "context": "快件已从杭州仓库发出"},
+        {"time": "2026-06-03 10:00", "context": "快件到达温州转运中心"},
+        {"time": "2026-06-04 08:00", "context": "快件正在派送中"}
+      ],
+      "provider": "fixture"
+    },
+    "SIM_TRACK_005": {
+      "found": true,
+      "l_id": "SIM_TRACK_005",
+      "logistics_company": "中通快递",
+      "courier_name": "中通快递",
+      "send_date": null,
+      "state_text": "待发货",
+      "data": [],
+      "provider": "fixture"
+    },
+    "SIM_TRACK_006": {
+      "found": true,
+      "l_id": "SIM_TRACK_006",
+      "logistics_company": "中通快递",
+      "courier_name": "中通快递",
+      "send_date": "2026-06-03 10:00:00",
+      "state_text": "已签收",
+      "data": [
+        {"time": "2026-06-03 10:00", "context": "快件已从杭州仓库发出"},
+        {"time": "2026-06-04 14:00", "context": "快件到达北京转运中心"},
+        {"time": "2026-06-05 16:00", "context": "已签收，本人签收"}
+      ],
+      "provider": "fixture"
+    },
+    "SF1234567890": {
+      "found": true,
+      "l_id": "SF1234567890",
+      "logistics_company": "顺丰速运",
+      "courier_name": "顺丰速运",
+      "send_date": "2026-06-01 09:00:00",
+      "state_text": "运输中",
+      "data": [
+        {"time": "2026-06-01 09:00", "context": "快件已从杭州仓库发出"},
+        {"time": "2026-06-01 18:00", "context": "快件到达杭州转运中心"},
+        {"time": "2026-06-02 06:00", "context": "快件到达北京转运中心"}
+      ],
+      "provider": "fixture"
+    }
+  },
+  "refunds": {
+    "SIM_ORDER_004": {
+      "found": true,
+      "as_id": "SIM_RF_004_01",
+      "type": "退货退款",
+      "status": "处理中",
+      "refund": 369.00,
+      "reason": "商品有异味，不敢给宝宝使用",
+      "created": "2026-06-05 10:00:00",
+      "items": [
+        {"sku_id": "SIM_CRAWLMAT_2CM_PINK_200x180", "qty": 1}
+      ],
+      "provider": "fixture"
+    }
+  }
+}

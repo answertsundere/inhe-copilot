@@ -1,0 +1,95 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C010_t1_intent_error",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C010",
+  "turn_num": 1,
+  "failure_type": "intent_error",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:12:42.592694+00:00",
+  "turn_scores": {
+    "customer_id": "C010",
+    "turn_num": 1,
+    "timestamp": "2026-06-07T15:12:42",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "pre_sale_purchase_guidance",
+      "actual": "general",
+      "detail": "Expected 'pre_sale_purchase_guidance', got 'general'"
+    },
+    "tool_routing": {
+      "score": 0.0,
+      "found_expected": [],
+      "missing": [
+        "rag_search_tool"
+      ],
+      "actual_tools": [],
+      "detail": "Missing tools: rag_search_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 1.0,
+      "issues": [],
+      "detail": "First turn, no context memory needed"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 40,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.111,
+      "detail": "Fast response (0.1s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 34,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.75,
+    "blocking_reasons": [
+      "required_tool_missing"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "pre_sale_purchase_guidance",
+      "actual_intent": "general",
+      "scenario": "pre_sale_product",
+      "duration_s": 0.111,
+      "pass_criteria": "推荐合适价位产品 + 客观说明差异 + 保持专业态度",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing"
+    ]
+  }
+}

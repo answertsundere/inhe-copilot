@@ -1,0 +1,253 @@
+rules:
+- id: er_001
+  scenario: 投诉/高风险
+  trigger: 请在当前项目中，为“客服 Agent / 客服质检 Agent”新增一套可落地的知识库、规则、SOP、风险升级、话术生成和质检评估能力
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_002
+  scenario: 投诉/高风险
+  trigger: '- 遇到高风险场景时，不直接承诺赔偿/退款，而是提示升级主管'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_003
+  scenario: 投诉/高风险
+  trigger: '- 判断是否少了安抚、核实、挽留、升级等动作'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_004
+  scenario: 投诉/高风险
+  trigger: '- 检测是否需要升级主管'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_005
+  scenario: 投诉/高风险
+  trigger: 'description: "用于质检客服聊天记录，识别违规、响应超时、未安抚、未挽留、未升级等问题'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_006
+  scenario: 投诉/高风险
+  trigger: '- "投诉315"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_007
+  scenario: 投诉/高风险
+  trigger: '- "若引发大量投诉或重复违规，处罚会逐级加码"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_008
+  scenario: 投诉/高风险
+  trigger: '- "被买家投诉辱骂并提供截图，通常会直接罚款"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_009
+  scenario: 投诉/高风险
+  trigger: '- "投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_010
+  scenario: 投诉/高风险
+  trigger: '- "官方投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_011
+  scenario: 投诉/高风险
+  trigger: '- "曝光"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_012
+  scenario: 投诉/高风险
+  trigger: '- "起诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_013
+  scenario: 投诉/高风险
+  trigger: '- "面对情绪激动或投诉意向客户，要先表达理解和歉意'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_014
+  scenario: 投诉/高风险
+  trigger: '- "不得承诺未经系统、仓库、运营、财务或主管确认的信息'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_015
+  scenario: 投诉/高风险
+  trigger: '- "如需承诺，必须有系统记录或主管确认'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_016
+  scenario: 投诉/高风险
+  trigger: '- "遇到315、官方投诉、平台介入、受伤、坍塌、高额赔偿、客户情绪失控等情况，必须升级主管'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_017
+  scenario: 投诉/高风险
+  trigger: '- "客户威胁投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_018
+  scenario: 投诉/高风险
+  trigger: '- "客户不同意时协商补偿或升级主管"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_019
+  scenario: 投诉/高风险
+  trigger: '- "超出客服权限时上报主管'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_020
+  scenario: 投诉/高风险
+  trigger: '- "客户投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_021
+  scenario: 投诉/高风险
+  trigger: '- "客户提到315、官方投诉、孩子健康等，必须上报主管'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_022
+  scenario: 投诉/高风险
+  trigger: 'action: "可协商承担部分退回运费，必要时申请主管'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_023
+  scenario: 投诉/高风险
+  trigger: 'action: "立即上报主管，可考虑承担退回运费'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_024
+  scenario: 投诉/高风险
+  trigger: '- "客户提到官方投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_025
+  scenario: 投诉/高风险
+  trigger: '- "拦截失败客户投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_026
+  scenario: 投诉/高风险
+  trigger: '- "客户威胁差评或投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_027
+  scenario: 投诉/高风险
+  trigger: '- "上报主管"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_028
+  scenario: 投诉/高风险
+  trigger: '- "客户投诉拒开发票"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_029
+  scenario: 投诉/高风险
+  trigger: '- "必要时向领导申请是否补差价'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_030
+  scenario: 投诉/高风险
+  trigger: '- "立即上报主管或老板'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_031
+  scenario: 投诉/高风险
+  trigger: '- "上报"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_032
+  scenario: 投诉/高风险
+  trigger: '- "根据主管意见处理"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_033
+  scenario: 投诉/高风险
+  trigger: 也请您把相关照片、视频和订单信息发给我们，我这边会立即反馈给主管优先处理
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_034
+  scenario: 投诉/高风险
+  trigger: '- "客户不同意时向领导申请'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_035
+  scenario: 投诉/高风险
+  trigger: '- "情绪不稳定时向领导申请'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_036
+  scenario: 投诉/高风险
+  trigger: 'condition: "客户提到官方投诉、消协、市场监管、平台介入"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_037
+  scenario: 投诉/高风险
+  trigger: 'condition: "客户威胁差评、曝光、投诉"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_038
+  scenario: 投诉/高风险
+  trigger: 我会马上反馈给主管/专员确认，请您放心，我们会尽快给您明确方案
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_039
+  scenario: 投诉/高风险
+  trigger: '- "命中 must_escalate 时，Agent 只能生成安抚、收集信息、升级主管类话术'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_040
+  scenario: 投诉/高风险
+  trigger: 'name: "升级处理"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_041
+  scenario: 投诉/高风险
+  trigger: 'description: "客户提到315是否未升级主管"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_042
+  scenario: 投诉/高风险
+  trigger: 'description: "客户提到受伤是否未升级主管"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_043
+  scenario: 投诉/高风险
+  trigger: 'description: "客户要求高额赔偿是否未升级主管"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_044
+  scenario: 投诉/高风险
+  trigger: 'description: "客户提到平台介入或官方投诉是否未升级主管"'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_045
+  scenario: 投诉/高风险
+  trigger: 'escalation: "这个问题我已经帮您记录，会马上反馈给主管/专员确认，请您放心'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_046
+  scenario: 投诉/高风险
+  trigger: '* 如果命中“受伤、315、投诉、平台介入、坍塌”等高危词，要提升风险等级'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_047
+  scenario: 投诉/高风险
+  trigger: '* 客户说“有味道，甲醛超标吧，我要投诉315” -> `product_smell` + escalation_required=true'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_048
+  scenario: 投诉/高风险
+  trigger: '* 检测客户消息、聊天记录是否触发升级'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_049
+  scenario: 投诉/高风险
+  trigger: '* 触发升级时返回：'
+  action: 立即转交主管处理
+  source: 基础培训.txt
+- id: er_050
+  scenario: 投诉/高风险
+  trigger: 必须触发升级的词：
+  action: 立即转交主管处理
+  source: 基础培训.txt
+meta:
+  count: 50

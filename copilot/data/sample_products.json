@@ -1,0 +1,98 @@
+[
+  {
+    "i_id": "YH66K02",
+    "name": "北欧实木书桌",
+    "brand": "INHE",
+    "c_name": "书桌",
+    "skus": [
+      {
+        "sku_id": "YH66K02B02S23",
+        "i_id": "YH66K02",
+        "name": "北欧实木书桌 原木色 120cm",
+        "brand": "INHE",
+        "sale_price": 579.00,
+        "cost_price": 280.00,
+        "weight": 25.5,
+        "properties_value": "颜色:原木色 尺寸:120x60cm",
+        "category": "书桌",
+        "labels": ["热销", "北欧风"]
+      },
+      {
+        "sku_id": "YH66K02B02S24",
+        "i_id": "YH66K02",
+        "name": "北欧实木书桌 胡桃色 120cm",
+        "brand": "INHE",
+        "sale_price": 599.00,
+        "cost_price": 290.00,
+        "weight": 25.5,
+        "properties_value": "颜色:胡桃色 尺寸:120x60cm",
+        "category": "书桌",
+        "labels": ["北欧风"]
+      },
+      {
+        "sku_id": "YH66K02B02S25",
+        "i_id": "YH66K02",
+        "name": "北欧实木书桌 原木色 140cm",
+        "brand": "INHE",
+        "sale_price": 679.00,
+        "cost_price": 330.00,
+        "weight": 30.0,
+        "properties_value": "颜色:原木色 尺寸:140x70cm",
+        "category": "书桌",
+        "labels": ["大尺寸", "北欧风"]
+      }
+    ]
+  },
+  {
+    "i_id": "YH88C01",
+    "name": "现代简约餐椅",
+    "brand": "INHE",
+    "c_name": "餐椅",
+    "skus": [
+      {
+        "sku_id": "YH88C01W01M60",
+        "i_id": "YH88C01",
+        "name": "现代简约餐椅 白色 中号",
+        "brand": "INHE",
+        "sale_price": 314.75,
+        "cost_price": 145.00,
+        "weight": 6.5,
+        "properties_value": "颜色:白色 规格:中号",
+        "category": "餐椅",
+        "labels": ["热销"]
+      },
+      {
+        "sku_id": "YH88C01B01M60",
+        "i_id": "YH88C01",
+        "name": "现代简约餐椅 黑色 中号",
+        "brand": "INHE",
+        "sale_price": 314.75,
+        "cost_price": 145.00,
+        "weight": 6.5,
+        "properties_value": "颜色:黑色 规格:中号",
+        "category": "餐椅",
+        "labels": []
+      }
+    ]
+  },
+  {
+    "i_id": "YH55S03",
+    "name": "多功能置物架",
+    "brand": "INHE",
+    "c_name": "置物架",
+    "skus": [
+      {
+        "sku_id": "YH55S03B03S30",
+        "i_id": "YH55S03",
+        "name": "多功能置物架 黑色 3层",
+        "brand": "INHE",
+        "sale_price": 439.00,
+        "cost_price": 195.00,
+        "weight": 12.0,
+        "properties_value": "颜色:黑色 层数:3层",
+        "category": "置物架",
+        "labels": ["新品"]
+      }
+    ]
+  }
+]

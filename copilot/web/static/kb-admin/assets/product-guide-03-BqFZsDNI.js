@@ -1,0 +1,1 @@
+var e=``+new URL(`product-guide-03-gStaIRpS.webp`,import.meta.url).href;export{e as default};

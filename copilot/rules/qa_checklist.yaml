@@ -1,0 +1,191 @@
+checklist:
+- id: qa_001
+  category: 安抚情绪
+  check: 回复是否安抚了客户情绪
+  weight: 10
+  auto_checkable: false
+- id: qa_002
+  category: 信息核实
+  check: 是否核实了订单/物流/售后信息
+  weight: 15
+  auto_checkable: false
+- id: qa_003
+  category: 禁止承诺
+  check: 是否承诺了具体发货/到货时间
+  weight: 20
+  auto_checkable: true
+  keywords:
+  - 今天一定发
+  - 明天一定到
+  - 马上
+  - 立刻
+  - 保证
+  - 肯定
+- id: qa_004
+  category: 禁止承诺
+  check: 是否承诺了赔偿/退款金额
+  weight: 20
+  auto_checkable: true
+  keywords:
+  - 一定赔
+  - 一定退
+  - 全额退
+  - 免费补
+  - 赔偿
+  - 退款
+- id: qa_005
+  category: 平台合规
+  check: 是否引导客户线下交易
+  weight: 25
+  auto_checkable: true
+  keywords:
+  - 微信
+  - 支付宝
+  - 私下
+  - 线下
+  - 转账
+  - 扫码
+  - 加QQ
+  - 加V
+  - 电话
+  - 私下联系
+- id: qa_006
+  category: 礼貌用语
+  check: 是否使用了不礼貌或攻击性语言
+  weight: 20
+  auto_checkable: true
+  keywords:
+  - 傻
+  - 蠢
+  - 笨
+  - 滚
+  - 神经病
+  - 脑子
+  - 有病
+  - 他妈
+  - 去死
+  - 垃圾
+  - 骗子
+  - 不要脸
+- id: qa_007
+  category: 升级动作
+  check: 高风险场景是否遗漏升级/上报动作
+  weight: 15
+  auto_checkable: false
+- id: qa_008
+  category: 产品参数
+  check: L0/L1 产品是否做了确定性参数承诺
+  weight: 10
+  auto_checkable: false
+- id: qa_009
+  category: 文本提取
+  check: 你现在是资深 AI Agent 架构师 + 电商客服系统工程师。请在当前项目中，为“客服 Agent / 客服质检 Agent”新增一套可落地的知识库、规则、SOP、风险升级、话术生成和质检评估能力。
+  weight: 5
+  auto_checkable: false
+- id: qa_010
+  category: 文本提取
+  check: '`customer_service_agent/knowledge/qa_checklist.yaml`'
+  weight: 5
+  auto_checkable: false
+- id: qa_011
+  category: 文本提取
+  check: 'qa_checklist:'
+  weight: 5
+  auto_checkable: false
+- id: qa_012
+  category: 文本提取
+  check: 'response_speed:'
+  weight: 5
+  auto_checkable: false
+- id: qa_013
+  category: 文本提取
+  check: 'name: "响应时效"'
+  weight: 5
+  auto_checkable: false
+- id: qa_014
+  category: 文本提取
+  check: '- code: "FIRST_RESPONSE_DELAY"'
+  weight: 5
+  auto_checkable: false
+- id: qa_015
+  category: 文本提取
+  check: 'description: "首次响应是否过慢"'
+  weight: 5
+  auto_checkable: false
+- id: qa_016
+  category: 文本提取
+  check: '- code: "NO_REPLY_AFTER_CUSTOMER"'
+  weight: 5
+  auto_checkable: false
+- id: qa_017
+  category: 文本提取
+  check: 'description: "客户提问后是否长时间无人回复"'
+  weight: 5
+  auto_checkable: false
+- id: qa_018
+  category: 文本提取
+  check: '- code: "NO_ACK_BEFORE_QUERY"'
+  weight: 5
+  auto_checkable: false
+- id: qa_019
+  category: 文本提取
+  check: 'description: "复杂问题是否没有先回复就长时间查询"'
+  weight: 5
+  auto_checkable: false
+- id: qa_020
+  category: 文本提取
+  check: 'attitude:'
+  weight: 5
+  auto_checkable: false
+- id: qa_021
+  category: 文本提取
+  check: 'name: "服务态度"'
+  weight: 5
+  auto_checkable: false
+- id: qa_022
+  category: 文本提取
+  check: '- code: "NO_APOLOGY"'
+  weight: 5
+  auto_checkable: false
+- id: qa_023
+  category: 文本提取
+  check: 'description: "客户遇到问题时是否没有表达歉意"'
+  weight: 5
+  auto_checkable: false
+- id: qa_024
+  category: 文本提取
+  check: '- code: "NO_EMPATHY"'
+  weight: 5
+  auto_checkable: false
+- id: qa_025
+  category: 文本提取
+  check: 'description: "客户情绪明显时是否没有共情安抚"'
+  weight: 5
+  auto_checkable: false
+- id: qa_026
+  category: 文本提取
+  check: '- code: "COLD_OR_PERFUNCTORY"'
+  weight: 5
+  auto_checkable: false
+- id: qa_027
+  category: 文本提取
+  check: 'description: "是否存在冷漠、敷衍、命令式话术"'
+  weight: 5
+  auto_checkable: false
+- id: qa_028
+  category: 文本提取
+  check: '- code: "ARGUE_WITH_CUSTOMER"'
+  weight: 5
+  auto_checkable: false
+- id: qa_029
+  category: 文本提取
+  check: 'description: "是否与客户争辩或反驳客户"'
+  weight: 5
+  auto_checkable: false
+- id: qa_030
+  category: 文本提取
+  check: 'compliance:'
+  weight: 5
+  auto_checkable: false
+meta:
+  count: 30

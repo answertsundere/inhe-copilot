@@ -1,0 +1,11 @@
+{
+  "total_customers": 1,
+  "customers_passed": 1,
+  "pass_rate": 1.0,
+  "avg_score": 0.889,
+  "min_score": 0.889,
+  "max_score": 0.889,
+  "scenario_scores": {
+    "pre_sale_product": 0.889
+  }
+}

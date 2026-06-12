@@ -1,0 +1,40 @@
+# INHE 客服 Copilot - .gitignore
+
+# 环境配置 (包含密钥，绝对不能提交)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 测试和缓存
+.pytest_cache/
+htmlcov/
+.coverage
+
+# 反馈数据 (运行时产生)
+data/feedback.jsonl
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 聚水潭原始数据 (不应提交到仓库)
+raw_data/

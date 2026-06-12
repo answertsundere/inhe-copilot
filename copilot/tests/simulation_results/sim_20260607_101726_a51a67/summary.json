@@ -1,0 +1,16 @@
+{
+  "total_customers": 50,
+  "customers_passed": 50,
+  "pass_rate": 1.0,
+  "avg_score": 0.798,
+  "min_score": 0.731,
+  "max_score": 0.963,
+  "scenario_scores": {
+    "pre_sale_product": 0.856,
+    "logistics": 0.797,
+    "after_sales_return": 0.752,
+    "installation": 0.787,
+    "complaint_high_risk": 0.777,
+    "edge_composite": 0.807
+  }
+}

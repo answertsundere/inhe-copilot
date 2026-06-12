@@ -1,0 +1,97 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C007_t1_required_tool_missing",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C007",
+  "turn_num": 1,
+  "failure_type": "required_tool_missing",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:12:19.559761+00:00",
+  "turn_scores": {
+    "customer_id": "C007",
+    "turn_num": 1,
+    "timestamp": "2026-06-07T15:12:19",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "pre_sale_purchase_guidance",
+      "actual": "logistics_eta",
+      "detail": "Expected 'pre_sale_purchase_guidance', got 'logistics_eta'"
+    },
+    "tool_routing": {
+      "score": 0.0,
+      "found_expected": [],
+      "missing": [
+        "rag_search_tool"
+      ],
+      "actual_tools": [],
+      "detail": "Missing tools: rag_search_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 1.0,
+      "issues": [],
+      "detail": "First turn, no context memory needed"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 130,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.086,
+      "detail": "Fast response (0.1s)"
+    },
+    "trace_completeness": {
+      "score": 0.5,
+      "step_count": 39,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input"
+      ],
+      "missing_stages": [
+        "build_context",
+        "reply"
+      ],
+      "detail": "Missing stages: build_context, reply"
+    },
+    "overall_score": 0.722,
+    "blocking_reasons": [
+      "required_tool_missing",
+      "guard_failure"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "pre_sale_purchase_guidance",
+      "actual_intent": "logistics_eta",
+      "scenario": "pre_sale_product",
+      "duration_s": 0.086,
+      "pass_criteria": "说明正常时效 + 说明顺丰选项（如有） + 未承诺具体到达时间",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing",
+      "guard_failure"
+    ]
+  }
+}

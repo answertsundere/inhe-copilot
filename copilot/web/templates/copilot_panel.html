@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INHE 客服 Copilot</title>
+  <style>
+    :root {
+      --bg: #f5f6f8; --card: #fff; --border: #e5e7eb;
+      --blue: #2563eb; --blue-light: #eff6ff; --blue-border: #bfdbfe;
+      --green: #16a34a; --green-bg: #f0fdf4; --green-border: #bbf7d0;
+      --orange: #d97706; --orange-bg: #fffbeb; --orange-border: #fde68a;
+      --red: #dc2626; --red-bg: #fef2f2; --red-border: #fecaca;
+      --gray: #6b7280; --text: #111827; --text2: #374151;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+    /* === Status Bar === */
+    .status-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--card); border-bottom: 2px solid var(--border); }
+    .status-bar .title { font-weight: 700; font-size: 15px; }
+    .status-bar .badges { display: flex; gap: 6px; align-items: center; }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .badge.source { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-border); }
+    .badge.risk-low { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .badge.risk-medium { background: var(--orange-bg); color: var(--orange); border: 1px solid var(--orange-border); }
+    .badge.risk-high { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+    .badge.review { background: var(--red); color: #fff; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.7; } }
+
+    /* === Banner === */
+    .banner { padding: 8px 12px; border-radius: var(--radius); margin: 8px 12px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .banner.warning { background: var(--orange-bg); border: 1px solid var(--orange-border); color: #92400e; }
+    .banner.danger { background: var(--red-bg); border: 1px solid var(--red-border); color: #991b1b; }
+    .banner.info { background: var(--blue-light); border: 1px solid var(--blue-border); color: #1e40af; }
+    .banner.success { background: var(--green-bg); border: 1px solid var(--green-border); color: #166534; }
+
+    /* === Sections === */
+    .section { margin: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .section-header { padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--text2); background: #f9fafb; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+    .section-header .arrow { transition: transform .2s; font-size: 10px; }
+    .section-header.collapsed .arrow { transform: rotate(-90deg); }
+    .section-body { padding: 10px 12px; }
+    .section-body.collapsed { display: none; }
+
+    /* === Form Elements === */
+    textarea { width: 100%; min-height: 72px; resize: vertical; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; line-height: 1.5; }
+    textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+    .btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .btn { height: 32px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; padding: 0 12px; cursor: pointer; font-size: 13px; font-family: inherit; display: inline-flex; align-items: center; gap: 4px; }
+    .btn:hover { background: #f3f4f6; }
+    .btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .btn.primary:hover { background: #1d4ed8; }
+    .btn.primary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn.green { background: var(--green); color: #fff; border-color: var(--green); }
+    .btn.green:hover { background: #15803d; }
+    .btn.red { background: var(--red); color: #fff; border-color: var(--red); }
+    .btn.red:hover { background: #b91c1c; }
+    .btn.orange { background: var(--orange); color: #fff; border-color: var(--orange); }
+    .btn.orange:hover { background: #b45309; }
+
+    /* === Candidates === */
+    .cand-list { font-size: 12px; }
+    .cand-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f3f4f6; }
+    .cand-item:last-child { border-bottom: none; }
+    .cand-type { font-weight: 600; min-width: 56px; color: var(--gray); }
+    .cand-value { flex: 1; word-break: break-all; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+    .tag.unverified { background: var(--orange-bg); color: var(--orange); }
+    .tag.verified { background: var(--green-bg); color: var(--green); }
+    .tag.source-uia { background: var(--blue-light); color: var(--blue); }
+    .tag.source-vision { background: #faf5ff; color: #7c3aed; }
+
+    /* === Reply === */
+    .ai-reply { white-space: pre-wrap; line-height: 1.6; background: var(--blue-light); border: 1px solid var(--blue-border); border-radius: 6px; padding: 10px; font-size: 13px; min-height: 40px; }
+    .ai-meta { font-size: 11px; color: var(--gray); margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* === Reject Reasons === */
+    .reject-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .reject-opt { padding: 3px 8px; border-radius: 4px; font-size: 11px; border: 1px solid var(--border); cursor: pointer; background: var(--card); }
+    .reject-opt.selected { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+
+    /* === Debug === */
+    .debug-box { margin-top: 8px; font-size: 11px; white-space: pre-wrap; background: #1e1e2e; color: #cdd6f4; border-radius: 6px; padding: 10px; max-height: 300px; overflow: auto; font-family: "Cascadia Code", "Fira Code", monospace; }
+
+    /* === Safety footer === */
+    .safety-footer { margin: 8px 12px; padding: 6px 10px; font-size: 11px; color: var(--gray); text-align: center; border-top: 1px solid var(--border); }
+
+    /* === Compact mode === */
+    body.compact { font-size: 13px; }
+    body.compact .section { margin: 6px 8px; }
+    body.compact .banner { margin: 6px 8px; }
+    body.compact .safety-footer { margin: 6px 8px; }
+    body.compact .status-bar { padding: 6px 10px; }
+    body.compact textarea { min-height: 60px; }
+    body.compact .ai-reply { padding: 8px; }
+  </style>
+</head>
+<body>
+  <!-- === 1. Status Bar === -->
+  <div class="status-bar">
+    <span class="title">INHE 客服 Copilot</span>
+    <div class="badges">
+      <span class="badge source" id="sourceBadge">manual</span>
+      <span class="badge risk-low" id="riskBadge" style="display:none">-</span>
+      <span class="badge review" id="reviewBadge" style="display:none">需人工复核</span>
+    </div>
+  </div>
+
+  <!-- === Banners === -->
+  <div id="visionBanner" class="banner warning" style="display:none">
+    &#9888; 该内容来自视觉识别，请客服确认后再分析。
+  </div>
+  <div id="unverifiedBanner" class="banner warning" style="display:none">
+    &#9888; 订单/快递/商品信息为候选，未校验前不可作为最终事实。
+  </div>
+  <div id="evidenceBlockedBanner" class="banner danger" style="display:none">
+    &#9888; 命中知识未审核，建议核实后回复。
+  </div>
+  <div id="humanReviewBanner" class="banner danger" style="display:none">
+    &#9888; 高风险消息，需人工复核。
+  </div>
+
+  <!-- === 2. Customer Message === -->
+  <div class="section">
+    <div class="section-header" data-toggle="messageSection">
+      客户消息
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="messageSection">
+      <textarea id="customerMessage" placeholder="粘贴或输入客户消息，点击"分析"后开始"></textarea>
+      <div class="btn-row">
+        <button class="btn primary" id="analyzeBtn">分析</button>
+        <button class="btn" id="clearBtn">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === 3. Candidates === -->
+  <div class="section" id="candidatesSection" style="display:none">
+    <div class="section-header" data-toggle="candidatesBody">
+      候选信息 <span style="font-weight:400;color:var(--orange)" id="candWarn">&#9888; 未校验</span>
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="candidatesBody">
+      <div class="cand-list" id="candList"></div>
+    </div>
+  </div>
+
+  <!-- === 4. AI Reply === -->
+  <div class="section">
+    <div class="section-header" data-toggle="aiSection">
+      AI 建议回复
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="aiSection">
+      <div class="ai-reply" id="aiReply">暂无建议回复，请先输入客户消息并点击分析。</div>
+      <div class="ai-meta" id="aiMeta"></div>
+    </div>
+  </div>
+
+  <!-- === 5. Final Reply Editor === -->
+  <div class="section">
+    <div class="section-header" data-toggle="finalSection">
+      最终回复（可编辑）
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="finalSection">
+      <textarea id="finalReply" placeholder="分析后自动填入，可编辑"></textarea>
+    </div>
+  </div>
+
+  <!-- === 6. Action Buttons === -->
+  <div class="section">
+    <div class="section-header" data-toggle="actionsBody">
+      操作
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="actionsBody">
+      <div class="btn-row">
+        <button class="btn green" id="copyBtn">复制回复</button>
+        <button class="btn green" id="acceptBtn">采纳</button>
+        <button class="btn" id="editAcceptBtn">修改后采纳</button>
+        <button class="btn red" id="rejectBtn">拒绝</button>
+        <button class="btn orange" id="escalateBtn">转人工/主管</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === 7. Reject Reasons === -->
+  <div class="section" id="rejectSection" style="display:none">
+    <div class="section-header" data-toggle="rejectBody">
+      拒绝原因（必选）
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="rejectBody">
+      <div class="reject-row" id="rejectReasons">
+        <span class="reject-opt" data-reason="事实错误">事实错误</span>
+        <span class="reject-opt" data-reason="话术不自然">话术不自然</span>
+        <span class="reject-opt" data-reason="没有回答问题">没有回答问题</span>
+        <span class="reject-opt" data-reason="知识缺失">知识缺失</span>
+        <span class="reject-opt" data-reason="风险太高">风险太高</span>
+        <span class="reject-opt" data-reason="识别客户消息错误">识别错误</span>
+        <span class="reject-opt" data-reason="订单/物流信息不准">订单不准</span>
+        <span class="reject-opt" data-reason="其他">其他</span>
+      </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn red" id="confirmRejectBtn" disabled>确认拒绝</button>
+        <button class="btn" id="cancelRejectBtn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === 8. Evidence Debug (collapsed) === -->
+  <div class="section">
+    <div class="section-header collapsed" data-toggle="debugBody">
+      证据链（调试，默认折叠）
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body collapsed" id="debugBody">
+      <div class="debug-box" id="debugBox">{}</div>
+    </div>
+  </div>
+
+  <!-- === Safety Footer === -->
+  <div class="safety-footer">
+    AI 建议仅供客服确认后发送，当前版本不会自动发送到千牛。
+  </div>
+
+<script>
+(function() {
+  "use strict";
+
+  // --- State ---
+  let lastResult = null;
+  let currentSource = "manual";
+  let candidates = { order_candidates: [], tracking_candidates: [], product_candidates: [] };
+  let selectedRejectReason = "";
+  let analyzed = false;
+
+  const $ = (id) => document.getElementById(id);
+
+  // --- URL Params ---
+  function initParams() {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get("mode") || "";
+    if (mode === "compact") document.body.classList.add("compact");
+
+    currentSource = params.get("source") || "manual";
+    $("sourceBadge").textContent = currentSource;
+
+    if (currentSource === "vision" || currentSource === "sidecar_mixed") {
+      $("visionBanner").style.display = "";
+    }
+
+    // Sidecar prefill
+    try {
+      const prefill = localStorage.getItem("sidecar_prefill");
+      if (prefill) {
+        const data = JSON.parse(prefill);
+        if (data.customer_message) $("customerMessage").value = data.customer_message;
+        if (data.order_candidates || data.tracking_candidates || data.product_candidates) {
+          candidates = {
+            order_candidates: data.order_candidates || [],
+            tracking_candidates: data.tracking_candidates || [],
+            product_candidates: data.product_candidates || [],
+          };
+          renderCandidates();
+        }
+        localStorage.removeItem("sidecar_prefill");
+      }
+    } catch(e) {}
+  }
+
+  // --- Section Toggle ---
+  document.querySelectorAll(".section-header[data-toggle]").forEach(function(hdr) {
+    hdr.addEventListener("click", function() {
+      var targetId = this.getAttribute("data-toggle");
+      var body = $(targetId);
+      if (!body) return;
+      this.classList.toggle("collapsed");
+      body.classList.toggle("collapsed");
+    });
+  });
+
+  // --- Candidates ---
+  function renderCandidates() {
+    var all = []
+      .concat(candidates.order_candidates.map(function(c) { return Object.assign({}, c, {type:"订单号"}); }))
+      .concat(candidates.tracking_candidates.map(function(c) { return Object.assign({}, c, {type:"快递单号"}); }))
+      .concat(candidates.product_candidates.map(function(c) { return Object.assign({}, c, {type:"商品"}); }));
+
+    if (all.length === 0) {
+      $("candidatesSection").style.display = "none";
+      $("unverifiedBanner").style.display = "none";
+      return;
+    }
+
+    $("candidatesSection").style.display = "";
+    var hasUnverified = all.some(function(c) { return !c.verified; });
+    $("unverifiedBanner").style.display = hasUnverified ? "" : "none";
+    $("candWarn").style.display = hasUnverified ? "" : "none";
+
+    $("candList").innerHTML = all.map(function(c) {
+      var src = c.source || "unknown";
+      var srcCls = src.indexOf("vision") >= 0 ? "source-vision" : "source-uia";
+      var vTag = c.verified
+        ? '<span class="tag verified">已校验</span>'
+        : '<span class="tag unverified">未校验</span>';
+      var carrier = c.carrier ? " (" + c.carrier + ")" : "";
+      var conf = c.confidence ? (c.confidence * 100).toFixed(0) + "%" : "-";
+      return '<div class="cand-item">'
+        + '<span class="cand-type">' + c.type + '</span>'
+        + '<span class="cand-value">' + c.value + carrier + '</span>'
+        + '<span class="tag ' + srcCls + '">' + src + '</span>'
+        + '<span>' + conf + '</span>'
+        + vTag
+        + '</div>';
+    }).join("");
+  }
+
+  // --- Analyze ---
+  $("analyzeBtn").addEventListener("click", doAnalyze);
+  $("clearBtn").addEventListener("click", function() {
+    $("customerMessage").value = "";
+    $("aiReply").textContent = "暂无建议回复，请先输入客户消息并点击分析。";
+    $("finalReply").value = "";
+    $("aiMeta").innerHTML = "";
+    $("riskBadge").style.display = "none";
+    $("reviewBadge").style.display = "none";
+    $("humanReviewBanner").style.display = "none";
+    $("evidenceBlockedBanner").style.display = "none";
+    lastResult = null;
+    analyzed = false;
+  });
+
+  async function doAnalyze() {
+    var message = $("customerMessage").value.trim();
+    if (!message) return;
+    $("analyzeBtn").disabled = true;
+    $("analyzeBtn").textContent = "分析中...";
+
+    var payload = {
+      source: currentSource === "manual" ? "copilot_panel_manual" : currentSource,
+      customer_message: message,
+      conversation_history: [],
+      order_candidates: candidates.order_candidates,
+      tracking_candidates: candidates.tracking_candidates,
+      product_candidates: candidates.product_candidates,
+    };
+
+    try {
+      var resp = await fetch("/api/copilot/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      var data = await resp.json();
+      lastResult = data;
+      analyzed = true;
+      renderResult(data);
+    } catch(e) {
+      $("aiReply").textContent = "分析失败: " + e.message;
+    } finally {
+      $("analyzeBtn").disabled = false;
+      $("analyzeBtn").textContent = "分析";
+    }
+  }
+
+  function renderResult(data) {
+    // AI Reply
+    $("aiReply").textContent = data.suggested_reply || data.error || "无建议";
+    $("finalReply").value = data.suggested_reply || "";
+
+    // Risk badge
+    var risk = data.risk_level || "low";
+    $("riskBadge").className = "badge risk-" + risk;
+    $("riskBadge").textContent = risk;
+    $("riskBadge").style.display = "";
+
+    // Human review
+    if (data.requires_human_review) {
+      $("reviewBadge").style.display = "";
+      $("humanReviewBanner").style.display = "";
+    } else {
+      $("reviewBadge").style.display = "none";
+      $("humanReviewBanner").style.display = "none";
+    }
+
+    // Evidence quality gate
+    var eq = (data.evidence_debug || {}).evidence_quality || {};
+    if (eq.evidence_allowed_for_direct_answer === false) {
+      $("evidenceBlockedBanner").style.display = "";
+    } else {
+      $("evidenceBlockedBanner").style.display = "none";
+    }
+
+    // AI meta
+    var metaParts = [];
+    if (data.intent) metaParts.push("intent=" + data.intent);
+    if (data.customer_emotion) metaParts.push("emotion=" + data.customer_emotion);
+    var ed = data.evidence_debug || {};
+    if (ed.answer_mode) metaParts.push("mode=" + ed.answer_mode);
+    if (ed.used_fact_tool) metaParts.push("tool=" + ed.used_fact_tool);
+    var titles = ed.used_knowledge_titles || [];
+    if (titles.length) metaParts.push("knowledge=[" + titles.join(", ") + "]");
+    $("aiMeta").innerHTML = metaParts.map(function(p) {
+      return '<span>' + p + '</span>';
+    }).join("");
+
+    // Debug
+    $("debugBox").textContent = JSON.stringify(data, null, 2);
+  }
+
+  // --- Copy ---
+  $("copyBtn").addEventListener("click", function() {
+    var text = $("finalReply").value || $("aiReply").textContent;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  });
+
+  // --- Feedback helpers ---
+  function sendFeedback(action, extra) {
+    if (!lastResult) return;
+    var payload = {
+      action: action,
+      source: "copilot_panel",
+      customer_message: (lastResult.context_echo || {}).customer_message || $("customerMessage").value,
+      suggested_reply: lastResult.suggested_reply || "",
+      final_reply: $("finalReply").value,
+      risk_level: lastResult.risk_level || "",
+      need_human_review: lastResult.requires_human_review || false,
+      used_knowledge_entry_ids: ((lastResult.evidence_debug || {}).used_knowledge_entry_ids || []),
+      used_fact_tools: ((lastResult.evidence_debug || {}).used_fact_tool || ""),
+    };
+    if (extra) Object.assign(payload, extra);
+
+    fetch("/api/copilot/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function() {
+      $("aiReply").textContent = action === "rejected" ? "[已拒绝] " + $("aiReply").textContent :
+                                  action === "escalated" ? "[已转人工] " : "[已" + action + "] " + $("aiReply").textContent;
+    });
+  }
+
+  // --- Accept ---
+  $("acceptBtn").addEventListener("click", function() { sendFeedback("accepted"); });
+
+  // --- Edit + Accept ---
+  $("editAcceptBtn").addEventListener("click", function() { sendFeedback("edited"); });
+
+  // --- Reject flow ---
+  $("rejectBtn").addEventListener("click", function() {
+    $("rejectSection").style.display = "";
+    selectedRejectReason = "";
+    document.querySelectorAll(".reject-opt").forEach(function(el) { el.classList.remove("selected"); });
+    $("confirmRejectBtn").disabled = true;
+  });
+
+  $("cancelRejectBtn").addEventListener("click", function() {
+    $("rejectSection").style.display = "none";
+  });
+
+  document.querySelectorAll(".reject-opt").forEach(function(el) {
+    el.addEventListener("click", function() {
+      document.querySelectorAll(".reject-opt").forEach(function(o) { o.classList.remove("selected"); });
+      this.classList.add("selected");
+      selectedRejectReason = this.getAttribute("data-reason");
+      $("confirmRejectBtn").disabled = false;
+    });
+  });
+
+  $("confirmRejectBtn").addEventListener("click", function() {
+    if (!selectedRejectReason) return;
+    sendFeedback("rejected", { reject_reason: selectedRejectReason });
+    $("rejectSection").style.display = "none";
+  });
+
+  // --- Escalate ---
+  $("escalateBtn").addEventListener("click", function() { sendFeedback("escalated"); });
+
+  // --- Init ---
+  initParams();
+  renderCandidates();
+})();
+</script>
+<!-- Global Navigation Bar -->
+<style>
+.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
+.gnav-bar a.gnav-active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight{background:#007aff;color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight:hover{background:#0066d6}
+.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
+body{margin-top:40px!important;height:calc(100vh - 40px)!important}
+</style>
+<nav class="gnav-bar">
+  <span class="gnav-brand">INHE</span>
+  <a href="/ask/" data-path="/">客服助手</a>
+  <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
+  <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
+  <a href="/ask/settings" data-path="/settings">设置</a>
+  <a href="/ask/graph" data-path="/graph">流程图</a>
+  <a href="/ask/api-test" data-path="/api-test">API</a>
+</nav>
+<script>
+(function(){
+  var p=location.pathname.replace(/\/$/,'')||'/';
+  document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a){
+    var h=a.getAttribute('data-path');
+    if(h===p){a.classList.add('gnav-active')}
+  });
+  if(p==='/copilot-panel'){var a=document.querySelector('.gnav-bar a[data-path="/copilot-panel"]');if(a)a.classList.add('gnav-highlight')}
+})()
+</script>
+</body>
+</html>

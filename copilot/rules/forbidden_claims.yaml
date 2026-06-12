@@ -1,0 +1,45 @@
+# 禁止承诺清单 - 客服回复中绝对不允许出现的承诺性表述
+# AI 回复生成后，output_guard 会逐条检查
+
+forbidden_claims:
+  # 发货时间承诺
+  - phrase: "今天一定发"
+    category: "发货承诺"
+    reason: "无法保证当天一定发出"
+  - phrase: "明天一定到"
+    category: "到货承诺"
+    reason: "物流时效不可控"
+  - phrase: "立刻就发"
+    category: "发货承诺"
+    reason: "过于绝对的时效承诺"
+  - phrase: "马上就好"
+    category: "处理时效"
+    reason: "无法保证立刻完成"
+
+  # 退换货承诺
+  - phrase: "一定免费补发"
+    category: "补发承诺"
+    reason: "需走审批流程"
+  - phrase: "一定可以退"
+    category: "退货承诺"
+    reason: "需根据退货政策判断"
+  - phrase: "保证没问题"
+    category: "万能保证"
+    reason: "过度承诺"
+
+  # 产品质量承诺
+  - phrase: "绝对没有味道"
+    category: "质量承诺"
+    reason: "新家具可能有正常气味"
+  - phrase: "百分百安全"
+    category: "安全承诺"
+    reason: "不应对安全性做绝对承诺"
+  - phrase: "不会坏"
+    category: "质量承诺"
+    reason: "产品寿命不能做绝对承诺"
+  - phrase: "不会塌"
+    category: "质量承诺"
+    reason: "承重需依规格判断"
+  - phrase: "肯定能到"
+    category: "物流承诺"
+    reason: "物流时效不可控"

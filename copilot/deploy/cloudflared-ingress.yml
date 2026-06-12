@@ -1,0 +1,8 @@
+# INHE Copilot Cloudflare Tunnel 配置
+# 复制到 cloudflared-config.yml 的 ingress 部分
+# 访问地址: https://www.inhe.ccwu.cc/ask/
+
+# 客服 Copilot 知识库系统
+- hostname: www.inhe.ccwu.cc
+  path: /ask/*
+  service: http://127.0.0.1:5011

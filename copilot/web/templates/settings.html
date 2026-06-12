@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统设置 - INHE Copilot</title>
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--primary:#2563eb;--primary-d:#1d4ed8;--green:#10b981;--red:#ef4444;--orange:#f59e0b;--gray:#6b7280;--border:#e5e7eb;--radius:8px}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);margin:0;padding:16px;color:#1f2937;font-size:14px;line-height:1.5}
+h1{margin:0 0 16px;font-size:20px}
+h2{margin:0 0 12px;font-size:16px;border-bottom:1px solid var(--border);padding-bottom:6px}
+a{color:var(--primary);text-decoration:none}
+a:hover{text-decoration:underline}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.col{flex:1;min-width:280px}
+label{display:block;margin-bottom:4px;font-weight:500;color:var(--gray);font-size:12px}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}
+.status-ok{background:#dcfce7;color:#166534}
+.status-warn{background:#fef3c7;color:#92400e}
+.status-err{background:#fef2f2;color:#991b1b}
+.status-info{background:#dbeafe;color:#1e40af}
+.btn{padding:8px 16px;border:none;border-radius:6px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer}
+.btn:hover{background:var(--primary-d)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.result{margin-top:12px;padding:12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;font-family:monospace;font-size:12px;max-height:300px;overflow:auto}
+.result.ok{border-color:var(--green);background:#f0fdf4;color:#14532d}
+.result.err{border-color:var(--red);background:#fef2f2;color:var(--red)}
+.kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--gray);font-size:13px}
+.kv .v{font-weight:500;font-size:13px}
+nav{background:var(--card);padding:10px 16px;border-radius:var(--radius);margin-bottom:16px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.info-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px}
+.warn-box{background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px}
+.ok-box{background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/ask/">← 返回主界面</a>
+  <span style="flex:1"></span>
+  <strong>系统设置</strong>
+  <span style="flex:1"></span>
+</nav>
+
+<!-- LLM 配置状态 -->
+<div class="card">
+  <h2>🤖 LLM / AI 配置状态</h2>
+  <div id="llmStatusArea">
+    <div class="loading" style="color:var(--gray)">加载中...</div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px;">
+    <button class="btn" id="testBtn" onclick="testLlmConnection()">测试 LLM 连接</button>
+    <button class="btn" style="background:var(--gray)" onclick="loadLlmConfig()">刷新状态</button>
+  </div>
+  <div class="result" id="testResult" style="display:none"></div>
+</div>
+
+<!-- 零配置模式说明 -->
+<div class="card" id="zeroConfigHelp" style="display:none">
+  <h2>📖 零配置模式说明</h2>
+  <div class="warn-box">
+    <strong>当前运行在无 AI 模式（规则引擎）</strong> — 系统未配置 LLM API Key，所有回复由规则引擎生成。
+  </div>
+  <p style="font-size:13px;color:var(--gray);line-height:1.8">
+    <strong>什么是零配置模式？</strong><br>
+    当未配置 <code>COPILOT_LLM_API_KEY</code> 时，系统会自动降级到规则引擎模式。此模式下：<br>
+    • 消息分析通过关键词匹配识别意图（ shipping / 退款 / 质量 / 投诉 等）<br>
+    • 建议回复从 840 条话术模板中匹配最佳回复<br>
+    • 安全策略通过规则引擎检查（禁止承诺、线下交易、粗鲁用语）<br>
+    • <strong>提供订单号时，系统会根据订单真实状态生成针对性回复</strong>（如"您的订单已发货，单号是 xxx"）<br>
+    • 高风险消息自动进入人工复核队列<br><br>
+    <strong>如何启用 AI 模式？</strong><br>
+    在 <code>copilot/.env</code> 文件中添加：<br>
+    <code>COPILOT_LLM_API_KEY=your_api_key_here</code><br>
+    然后重启服务器即可。
+  </p>
+</div>
+
+<!-- 系统统计 -->
+<div class="card">
+  <h2>📊 系统数据概览</h2>
+  <div id="statsArea">
+    <div class="loading" style="color:var(--gray)">加载中...</div>
+  </div>
+</div>
+
+<!-- 订单查询测试 -->
+<div class="card">
+  <h2>📦 订单查询测试（无需 AI）</h2>
+  <div class="info-box">
+    此功能<strong>不需要 LLM API Key</strong>，直接查询数据库返回订单真实状态。
+  </div>
+  <div class="row">
+    <div class="col">
+      <label>订单号</label>
+      <input type="text" id="testOrderId" placeholder="例如: 202501010001" value="202501010001">
+    </div>
+  </div>
+  <div style="margin-top:8px;display:flex;gap:8px;">
+    <button class="btn" onclick="testOrderQuery()">查询订单</button>
+    <button class="btn" style="background:var(--gray)" onclick="testAnalyzeWithOrder()">测试消息分析（带订单号）</button>
+  </div>
+  <div class="result" id="orderResult" style="display:none"></div>
+</div>
+
+<script>
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+async function loadLlmConfig(){
+  const area=document.getElementById('llmStatusArea');
+  area.innerHTML='<div style="color:var(--gray)">加载中...</div>';
+  try{
+    const r=await fetch('/api/config/llm');
+    const d=await r.json();
+    let html='';
+    const modeBadge=d.configured
+      ? '<span class="status-badge status-ok">● AI 模式</span>'
+      : '<span class="status-badge status-warn">● 零配置模式</span>';
+    html+='<div style="margin-bottom:12px">'+modeBadge+'</div>';
+    html+='<div class="kv"><span class="k">API Key</span><span class="v">'+(d.api_key_masked||'未配置')+'</span></div>';
+    html+='<div class="kv"><span class="k">模型</span><span class="v">'+esc(d.model)+'</span></div>';
+    html+='<div class="kv"><span class="k">API Base</span><span class="v">'+esc(d.api_base)+'</span></div>';
+    html+='<div class="kv"><span class="k">运行模式</span><span class="v">'+esc(d.mode)+'</span></div>';
+    area.innerHTML=html;
+    document.getElementById('zeroConfigHelp').style.display=d.configured?'none':'block';
+  }catch(e){
+    area.innerHTML='<div style="color:var(--red)">加载失败: '+esc(e.message)+'</div>';
+  }
+}
+
+async function testLlmConnection(){
+  const btn=document.getElementById('testBtn');
+  const el=document.getElementById('testResult');
+  btn.disabled=true;el.style.display='block';el.className='result';el.textContent='测试中...';
+  try{
+    const t0=performance.now();
+    const r=await fetch('/api/config/llm-test');
+    const d=await r.json();
+    const ms=(performance.now()-t0).toFixed(0);
+    if(d.ok){
+      el.className='result ok';
+      el.textContent='✅ LLM 连接正常 ('+ms+'ms)\n模型: '+esc(d.model)+'\n响应: '+esc(d.test_response||'-');
+    }else{
+      el.className='result err';
+      el.textContent='❌ '+esc(d.message)+'\n延迟: '+ms+'ms\n模型: '+esc(d.model||'-');
+    }
+  }catch(e){
+    el.className='result err';
+    el.textContent='❌ 请求失败: '+esc(e.message);
+  }
+  btn.disabled=false;
+}
+
+async function loadStats(){
+  const area=document.getElementById('statsArea');
+  try{
+    const r=await fetch('/api/health');
+    const d=await r.json();
+    let html='';
+    if(d.data){
+      html+='<div class="kv"><span class="k">订单</span><span class="v">'+d.data.orders.toLocaleString()+'</span></div>';
+      html+='<div class="kv"><span class="k">SKU</span><span class="v">'+d.data.skus.toLocaleString()+'</span></div>';
+      html+='<div class="kv"><span class="k">商品</span><span class="v">'+d.data.products.toLocaleString()+'</span></div>';
+      html+='<div class="kv"><span class="k">物流记录</span><span class="v">'+d.data.logistics.toLocaleString()+'</span></div>';
+      html+='<div class="kv"><span class="k">退款记录</span><span class="v">'+d.data.refunds.toLocaleString()+'</span></div>';
+      html+='<div class="kv"><span class="k">产品知识卡</span><span class="v">'+d.data.product_knowledge_cards.toLocaleString()+'</span></div>';
+    }
+    if(d.llm){
+      html+='<div class="kv"><span class="k">话术模板</span><span class="v">'+((d.data&&d.data.reply_templates)||840)+'</span></div>';
+      html+='<div class="kv"><span class="k">SOP 场景</span><span class="v">'+((d.data&&d.data.sop_scenarios)||29)+'</span></div>';
+    }
+    area.innerHTML=html;
+  }catch(e){
+    area.innerHTML='<div style="color:var(--red)">加载失败</div>';
+  }
+}
+
+async function testOrderQuery(){
+  const oid=document.getElementById('testOrderId').value.trim();
+  if(!oid){alert('请输入订单号');return;}
+  const el=document.getElementById('orderResult');
+  el.style.display='block';el.className='result';el.textContent='查询中...';
+  try{
+    const r=await fetch('/api/order/'+encodeURIComponent(oid));
+    const d=await r.json();
+    el.className=r.ok?'result ok':'result err';
+    el.textContent='HTTP '+r.status+'\n'+JSON.stringify(d,null,2);
+  }catch(e){
+    el.className='result err';el.textContent='请求失败: '+esc(e.message);
+  }
+}
+
+async function testAnalyzeWithOrder(){
+  const oid=document.getElementById('testOrderId').value.trim();
+  if(!oid){alert('请输入订单号');return;}
+  const el=document.getElementById('orderResult');
+  el.style.display='block';el.className='result';el.textContent='分析中...';
+  try{
+    const r=await fetch('/api/analyze',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:'我的订单到哪了',order_id:oid})
+    });
+    const d=await r.json();
+    el.className=r.ok?'result ok':'result err';
+    el.textContent='HTTP '+r.status+'\n'+JSON.stringify(d,null,2);
+  }catch(e){
+    el.className='result err';el.textContent='请求失败: '+esc(e.message);
+  }
+}
+
+loadLlmConfig();
+loadStats();
+</script>
+<!-- Global Navigation Bar -->
+<style>
+.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
+.gnav-bar a.gnav-active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight{background:#007aff;color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight:hover{background:#0066d6}
+.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
+body{padding-top:48px!important}
+</style>
+<nav class="gnav-bar">
+  <span class="gnav-brand">INHE</span>
+  <a href="/ask/" data-path="/">客服助手</a>
+  <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
+  <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
+  <a href="/ask/settings" data-path="/settings">设置</a>
+  <a href="/ask/graph" data-path="/graph">流程图</a>
+  <a href="/ask/api-test" data-path="/api-test">API</a>
+</nav>
+<script>
+(function(){
+  var p=location.pathname.replace(/\/$/,'')||'/';
+  document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a){
+    var h=a.getAttribute('data-path');
+    if(h===p){a.classList.add('gnav-active')}
+  });
+  if(p==='/copilot-panel'){var a=document.querySelector('.gnav-bar a[data-path="/copilot-panel"]');if(a)a.classList.add('gnav-highlight')}
+})()
+</script>
+</body>
+</html>

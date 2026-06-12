@@ -1,0 +1,1 @@
+var e=``+new URL(`service-knowledge-guide-01-CcJh48I9.webp`,import.meta.url).href;export{e as default};

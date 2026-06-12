@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulation Runs - INHE Copilot</title>
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--border:#e2e8f0;--text:#1a202c;--muted:#718096;--accent:#4299e1;--green:#48bb78;--red:#fc8181;--orange:#f6ad55}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+.header{background:#2d3748;color:#fff;padding:12px 24px;display:flex;align-items:center;gap:16px}
+.header h1{font-size:18px;font-weight:600}
+.header a{color:#a0aec0;text-decoration:none;font-size:14px}
+.header a:hover{color:#fff}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.card{background:var(--card);border-radius:8px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.stats{display:flex;gap:12px;flex-wrap:wrap}
+.stat{flex:1;min-width:120px;padding:12px;background:#f7fafc;border-radius:6px;text-align:center}
+.stat .val{font-size:24px;font-weight:700}
+.stat .lbl{font-size:12px;color:var(--muted)}
+.pass{color:var(--green)}.fail{color:var(--red)}.warn{color:var(--orange)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#edf2f7;padding:8px 10px;text-align:left;font-weight:600;white-space:nowrap}
+td{padding:8px 10px;border-top:1px solid var(--border)}
+tr:hover td{background:#f7fafc}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-pass{background:#c6f6d5;color:#22543d}
+.badge-fail{background:#fed7d7;color:#742a2a}
+.badge-warn{background:#fefcbf;color:#744210}
+.back{display:inline-block;margin-bottom:12px;padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:4px;cursor:pointer;text-decoration:none;color:var(--text);font-size:13px}
+.back:hover{background:#edf2f7}
+.expandable{cursor:pointer;user-select:none}
+.expandable::before{content:'▶ ';font-size:10px}
+.expandable.open::before{content:'▼ '}
+.hidden{display:none}
+.json-view{background:#1a202c;color:#a0aec0;padding:12px;border-radius:6px;font-family:Consolas,monospace;font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Simulation Runs</h1>
+<a href="/ask/">Home</a><a href="/ask/copilot-panel">Copilot</a><a href="/ask/traces">Traces</a><a href="/ask/bad-cases">Bad Cases</a>
+</div>
+<div id="app" class="container"></div>
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+async function api(path){const r=await fetch(path);return r.json()}
+function badge(cls,text){return `<span class="badge badge-${cls}">${text}</span>`}
+function pct(n,total){return total?((n/total)*100).toFixed(1)+'%':'-'}
+
+// Router
+let view='list',runId=null;
+function show(viewName,id){
+  view=viewName;runId=id;
+  window.location.hash=id?'#'+id:'';
+  render();
+}
+window.onhashchange=()=>{
+  const h=window.location.hash.slice(1);
+  if(h){show('detail',h)}else{show('list')}
+};
+
+async function render(){
+  const el=$('#app');
+  if(view==='list'){
+    el.innerHTML='<div class="card">Loading...</div>';
+    const data=await api('/api/simulation/runs');
+    let html='<div class="card"><h2 style="margin-bottom:12px">Simulation Runs ('+data.total+')</h2>';
+    if(!data.runs.length){html+='<p>No runs yet. Run: <code>python tests/simulated_customer_runner.py --offline</code></p>'}
+    else{
+      html+='<table><thead><tr><th>Run ID</th><th>Time</th><th>Mode</th><th>Customers</th><th>Turns</th><th>Pass</th><th>P0 Fail</th><th>Intent%</th></tr></thead><tbody>';
+      for(const r of data.runs){
+        const s=r.summary||{};
+        const c=r.config||{};
+        const passRate=s.total_turns?pct(s.passed_turns,s.total_turns):'-';
+        html+=`<tr>
+          <td><a href="#" onclick="show('detail','${r.run_id}');return false" style="color:var(--accent)">${r.run_id}</a></td>
+          <td>${c.timestamp||'-'}</td>
+          <td>${c.mode||'-'}${c.offline?' (offline)':''}</td>
+          <td>${s.total_customers||0}</td>
+          <td>${s.total_turns||0}</td>
+          <td>${passRate}</td>
+          <td class="${(s.p0_failures||0)>0?'fail':''}">${s.p0_failures||0}</td>
+          <td>${s.intent_accuracy?s.intent_accuracy.toFixed(1)+'%':'-'}</td>
+        </tr>`;
+      }
+      html+='</tbody></table>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+  } else if(view==='detail'){
+    el.innerHTML='<a class="back" onclick="show(\'list\')">← All Runs</a><div class="card">Loading...</div>';
+    const data=await api('/api/simulation/runs/'+runId);
+    const s=data.summary||{};
+    const p=data.performance||{};
+    let html=`<a class="back" onclick="show('list')">← All Runs</a>`;
+    html+=`<div class="card"><h2>Run: ${runId}</h2>`;
+    html+=`<div class="stats">
+      <div class="stat"><div class="val">${s.total_customers||0}</div><div class="lbl">Customers</div></div>
+      <div class="stat"><div class="val">${s.total_turns||0}</div><div class="lbl">Turns</div></div>
+      <div class="stat"><div class="val ${s.blocking_failures?'fail':'pass'}">${s.blocking_failures||0}</div><div class="lbl">Blocking</div></div>
+      <div class="stat"><div class="val">${s.intent_accuracy?s.intent_accuracy.toFixed(1)+'%':'-'}</div><div class="lbl">Intent</div></div>
+      <div class="stat"><div class="val">${s.tool_accuracy?s.tool_accuracy.toFixed(1)+'%':'-'}</div><div class="lbl">Tools</div></div>
+      <div class="stat"><div class="val">${s.risk_recall!=null?s.risk_recall.toFixed(0)+'%':'-'}</div><div class="lbl">Risk</div></div>
+      <div class="stat"><div class="val">${s.grounding_rate?s.grounding_rate.toFixed(1)+'%':'-'}</div><div class="lbl">Grounding</div></div>
+      <div class="stat"><div class="val">${s.context_memory_rate?s.context_memory_rate.toFixed(1)+'%':'-'}</div><div class="lbl">Ctx Mem</div></div>
+    </div></div>`;
+
+    // Performance
+    if(p.p50||p.p95){
+      html+=`<div class="card"><h3>Performance</h3>
+        <div class="stats">
+          <div class="stat"><div class="val">${p.p50||'-'}ms</div><div class="lbl">p50</div></div>
+          <div class="stat"><div class="val">${p.p95||'-'}ms</div><div class="lbl">p95</div></div>
+          <div class="stat"><div class="val">${p.max||'-'}ms</div><div class="lbl">max</div></div>
+        </div></div>`;
+    }
+
+    // Failures
+    const failures=data.failures||[];
+    if(failures.length){
+      html+=`<div class="card"><h3 class="fail">Failures (${failures.length})</h3><table>
+        <thead><tr><th>Customer</th><th>Turn</th><th>Type</th><th>Message</th></tr></thead><tbody>`;
+      for(const f of failures.slice(0,50)){
+        html+=`<tr><td>${f.customer_id||''}</td><td>${f.turn||''}</td><td>${badge('fail',f.failure_type||'')}</td><td>${(f.message||'').substring(0,150)}</td></tr>`;
+      }
+      html+='</tbody></table></div>';
+    }
+
+    // Turns table (paginated)
+    const turns=data.turns||[];
+    if(turns.length){
+      html+=`<div class="card"><h3>Turns</h3><table>
+        <thead><tr><th>Customer</th><th>Turn</th><th>Intent</th><th>Risk</th><th>Pass</th><th>Duration</th></tr></thead><tbody>`;
+      for(const t of turns.slice(0,100)){
+        const passed=t.passed!==false;
+        html+=`<tr><td>${t.customer_id||''}</td><td>${t.turn||''}</td><td>${t.actual_intent||t.intent||''}</td><td>${t.risk||''}</td>
+          <td>${passed?badge('pass','OK'):badge('fail','FAIL')}</td><td>${t.duration_ms?t.duration_ms+'ms':'-'}</td></tr>`;
+      }
+      html+='</tbody></table></div>';
+    }
+
+    el.innerHTML=html;
+  }
+}
+render();
+</script>
+</body>
+</html>

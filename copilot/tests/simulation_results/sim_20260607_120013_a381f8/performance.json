@@ -1,0 +1,9 @@
+{
+  "total_turns": 166,
+  "avg_duration_s": 0.711,
+  "max_duration_s": 15.709,
+  "min_duration_s": 0.051,
+  "total_duration_s": 118.046,
+  "p50_duration_s": 0.098,
+  "p95_duration_s": 2.085
+}

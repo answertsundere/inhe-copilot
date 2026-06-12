@@ -1,0 +1,134 @@
+{"customer_id": "C001", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "slow_response"], "overall_score": 0.694, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C001", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C001", "turn_num": 3, "blocking_reasons": ["guard_failure"], "overall_score": 0.944, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C002", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C002", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C003", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C003", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C003", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C004", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.806, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "product_question"}
+{"customer_id": "C004", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.778, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "product_question"}
+{"customer_id": "C004", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C005", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "product_question", "actual_intent": "installation"}
+{"customer_id": "C006", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C007", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.722, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "logistics_eta"}
+{"customer_id": "C007", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.861, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "product_question"}
+{"customer_id": "C007", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C008", "turn_num": 2, "blocking_reasons": ["slow_response"], "overall_score": 0.889, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C009", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C010", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C010", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.861, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "product_question"}
+{"customer_id": "C011", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C011", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "pre_sale_purchase_guidance", "actual_intent": "general"}
+{"customer_id": "C012", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C013", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C013", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.889, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C013", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "product_question"}
+{"customer_id": "C014", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C014", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.889, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C014", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "product_question"}
+{"customer_id": "C015", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C015", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.889, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C015", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "aftersales"}
+{"customer_id": "C016", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "delivery_not_received"}
+{"customer_id": "C016", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C016", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.806, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C017", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.694, "expected_intent": "logistics_eta", "actual_intent": "aftersales"}
+{"customer_id": "C017", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C017", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "aftersales"}
+{"customer_id": "C018", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "product_question"}
+{"customer_id": "C018", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "slow_response", "guard_failure"], "overall_score": 0.694, "expected_intent": "logistics_eta", "actual_intent": "aftersales"}
+{"customer_id": "C018", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.889, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C019", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "aftersales"}
+{"customer_id": "C019", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "logistics_eta", "actual_intent": "aftersales"}
+{"customer_id": "C019", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.833, "expected_intent": "logistics_eta", "actual_intent": "logistics_eta"}
+{"customer_id": "C020", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "general"}
+{"customer_id": "C020", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "logistics_eta", "actual_intent": "general"}
+{"customer_id": "C020", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "complaint"}
+{"customer_id": "C021", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "general"}
+{"customer_id": "C021", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.806, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C021", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C022", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C022", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.806, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C022", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C023", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_missing_part", "actual_intent": "installation"}
+{"customer_id": "C023", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "after_sale_missing_part", "actual_intent": "product_question"}
+{"customer_id": "C023", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_missing_part", "actual_intent": "aftersales"}
+{"customer_id": "C024", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_damage", "actual_intent": "general"}
+{"customer_id": "C024", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_damage", "actual_intent": "general"}
+{"customer_id": "C024", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "after_sale_damage", "actual_intent": "aftersales"}
+{"customer_id": "C025", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C025", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.806, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C025", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C026", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.694, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C026", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C026", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C027", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_missing_part", "actual_intent": "product_question"}
+{"customer_id": "C027", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "slow_response", "guard_failure"], "overall_score": 0.694, "expected_intent": "after_sale_missing_part", "actual_intent": "product_question"}
+{"customer_id": "C027", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_missing_part", "actual_intent": "general"}
+{"customer_id": "C028", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C028", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C028", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "general"}
+{"customer_id": "C029", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "general"}
+{"customer_id": "C029", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C029", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "after_sale_return_refund", "actual_intent": "general"}
+{"customer_id": "C030", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C030", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C030", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C031", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C031", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C031", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C032", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "general"}
+{"customer_id": "C032", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C032", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "general"}
+{"customer_id": "C033", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "slow_response"], "overall_score": 0.694, "expected_intent": "after_sale_installation", "actual_intent": "installation"}
+{"customer_id": "C033", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.806, "expected_intent": "after_sale_installation", "actual_intent": "product_question"}
+{"customer_id": "C033", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_installation", "actual_intent": "general"}
+{"customer_id": "C034", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_installation", "actual_intent": "product_question"}
+{"customer_id": "C034", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.728, "expected_intent": "after_sale_installation", "actual_intent": "installation"}
+{"customer_id": "C034", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_installation", "actual_intent": "aftersales"}
+{"customer_id": "C036", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_installation", "actual_intent": "installation"}
+{"customer_id": "C036", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_installation", "actual_intent": "aftersales"}
+{"customer_id": "C036", "turn_num": 3, "blocking_reasons": ["guard_failure"], "overall_score": 0.861, "expected_intent": "after_sale_installation", "actual_intent": "product_question"}
+{"customer_id": "C037", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "safety_risk", "actual_intent": "general"}
+{"customer_id": "C037", "turn_num": 2, "blocking_reasons": ["high_risk_missed", "required_tool_missing"], "overall_score": 0.611, "expected_intent": "safety_risk", "actual_intent": "general"}
+{"customer_id": "C038", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C039", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "product_question"}
+{"customer_id": "C039", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.861, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C039", "turn_num": 3, "blocking_reasons": ["guard_failure"], "overall_score": 0.833, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C040", "turn_num": 1, "blocking_reasons": ["high_risk_missed", "required_tool_missing"], "overall_score": 0.639, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C040", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "product_question"}
+{"customer_id": "C041", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_damage", "actual_intent": "general"}
+{"customer_id": "C041", "turn_num": 2, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "after_sale_damage", "actual_intent": "product_question"}
+{"customer_id": "C042", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "aftersales"}
+{"customer_id": "C042", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "slow_response"], "overall_score": 0.667, "expected_intent": "complaint_risk", "actual_intent": "aftersales"}
+{"customer_id": "C043", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C043", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C043", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C044", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C045", "turn_num": 1, "blocking_reasons": ["slow_response", "guard_failure"], "overall_score": 0.806, "expected_intent": "unknown", "actual_intent": "product_question"}
+{"customer_id": "C045", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.833, "expected_intent": "unknown", "actual_intent": "product_question"}
+{"customer_id": "C046", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "product_question"}
+{"customer_id": "C046", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "general"}
+{"customer_id": "C046", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "complaint_risk", "actual_intent": "product_question"}
+{"customer_id": "C047", "turn_num": 1, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "product_question"}
+{"customer_id": "C047", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.667, "expected_intent": "logistics_eta", "actual_intent": "product_question"}
+{"customer_id": "C047", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "logistics_eta", "actual_intent": "general"}
+{"customer_id": "C048", "turn_num": 1, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C048", "turn_num": 3, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.722, "expected_intent": "product_question", "actual_intent": "logistics_eta"}
+{"customer_id": "C049", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "aftersales"}
+{"customer_id": "C049", "turn_num": 2, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C049", "turn_num": 3, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "after_sale_return_refund", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 1, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C050", "turn_num": 2, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 4, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 5, "blocking_reasons": ["guard_failure"], "overall_score": 0.944, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 6, "blocking_reasons": ["guard_failure"], "overall_score": 0.889, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 7, "blocking_reasons": ["guard_failure"], "overall_score": 0.944, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 11, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.722, "expected_intent": "product_question", "actual_intent": "logistics_eta"}
+{"customer_id": "C050", "turn_num": 12, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.694, "expected_intent": "product_question", "actual_intent": "logistics_eta"}
+{"customer_id": "C050", "turn_num": 13, "blocking_reasons": ["guard_failure"], "overall_score": 0.972, "expected_intent": "product_question", "actual_intent": "product_question"}
+{"customer_id": "C050", "turn_num": 14, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.75, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C050", "turn_num": 15, "blocking_reasons": ["required_tool_missing", "guard_failure"], "overall_score": 0.694, "expected_intent": "product_question", "actual_intent": "logistics_eta"}
+{"customer_id": "C050", "turn_num": 16, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "product_question", "actual_intent": "general"}
+{"customer_id": "C050", "turn_num": 17, "blocking_reasons": ["required_tool_missing"], "overall_score": 0.722, "expected_intent": "product_question", "actual_intent": "general"}

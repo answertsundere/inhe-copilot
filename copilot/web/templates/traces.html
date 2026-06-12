@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trace V2 - INHE Copilot</title>
+<style>
+:root { --bg: #f5f7fa; --card: #fff; --border: #e2e8f0; --text: #1a202c; --muted: #718096; --accent: #4299e1; --green: #48bb78; --red: #fc8181; --orange: #f6ad55; --purple: #9f7aea; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+.header { background: #2d3748; color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header a { color: #a0aec0; text-decoration: none; font-size: 14px; }
+.header a:hover { color: #fff; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.filters { background: var(--card); border-radius: 8px; padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: end; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.filters label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.filters input, .filters select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; min-width: 120px; }
+.filters button { padding: 7px 16px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.filters button:hover { background: #3182ce; }
+.table-wrap { background: var(--card); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #edf2f7; padding: 10px 12px; text-align: left; font-weight: 600; white-space: nowrap; }
+td { padding: 8px 12px; border-top: 1px solid var(--border); }
+tr:hover td { background: #f7fafc; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-success { background: #c6f6d5; color: #22543d; }
+.badge-error { background: #fed7d7; color: #742a2a; }
+.badge-running { background: #bee3f8; color: #2a4365; }
+.badge-timeout { background: #fefcbf; color: #744210; }
+.badge-low { background: #c6f6d5; color: #22543d; }
+.badge-medium { background: #fefcbf; color: #744210; }
+.badge-high { background: #fed7d7; color: #742a2a; }
+.pagination { display: flex; justify-content: center; gap: 8px; padding: 16px; }
+.pagination button { padding: 6px 12px; border: 1px solid var(--border); background: var(--card); border-radius: 4px; cursor: pointer; font-size: 13px; }
+.pagination button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.pagination button:disabled { opacity: .5; cursor: default; }
+.stats { display: flex; gap: 12px; margin-bottom: 16px; }
+.stat-card { background: var(--card); border-radius: 8px; padding: 12px 16px; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.stat-card .label { font-size: 12px; color: var(--muted); }
+.stat-card .value { font-size: 20px; font-weight: 700; }
+/* Detail panel */
+.detail { background: var(--card); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.detail h2 { font-size: 16px; margin-bottom: 12px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.detail-item { padding: 8px; background: #f7fafc; border-radius: 4px; }
+.detail-item .key { font-size: 11px; color: var(--muted); }
+.detail-item .val { font-size: 13px; font-weight: 500; word-break: break-all; }
+.section-title { font-size: 14px; font-weight: 600; margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--accent); }
+/* Waterfall */
+.waterfall { position: relative; margin: 12px 0; }
+.waterfall-row { display: flex; align-items: center; padding: 4px 0; font-size: 12px; }
+.waterfall-row .name { width: 200px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.waterfall-row .bar-wrap { flex: 1; position: relative; height: 20px; background: #edf2f7; border-radius: 3px; }
+.waterfall-row .bar { position: absolute; height: 100%; border-radius: 3px; min-width: 2px; }
+.waterfall-row .dur { width: 60px; text-align: right; flex-shrink: 0; }
+.bar-api { background: var(--accent); }
+.bar-graph_node { background: var(--purple); }
+.bar-tool { background: var(--green); }
+.bar-llm { background: var(--orange); }
+.bar-rag { background: #ed8936; }
+.bar-guard { background: var(--red); }
+.json-block { background: #1a202c; color: #a0aec0; padding: 12px; border-radius: 6px; font-family: 'Consolas', monospace; font-size: 12px; overflow-x: auto; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+.back-btn { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; text-decoration: none; color: var(--text); font-size: 13px; cursor: pointer; }
+.back-btn:hover { background: #edf2f7; }
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+.actions button { padding: 6px 14px; border: 1px solid var(--border); background: var(--card); border-radius: 4px; cursor: pointer; font-size: 13px; }
+.actions button:hover { background: #edf2f7; }
+.actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Trace V2</h1>
+  <a href="/ask/">Home</a>
+  <a href="/ask/copilot-panel">Copilot</a>
+  <a href="/ask/bad-cases">Bad Cases</a>
+  <a href="/ask/api-test">API Test</a>
+</div>
+
+<div id="app">
+  <!-- List View -->
+  <div id="list-view" class="container">
+    <div class="stats" id="stats"></div>
+    <div class="filters">
+      <label>Status <select id="f-status"><option value="">All</option><option>success</option><option>error</option><option>running</option><option>timeout</option></select></label>
+      <label>Intent <input id="f-intent" placeholder="e.g. product_question"></label>
+      <label>Risk <select id="f-risk"><option value="">All</option><option>low</option><option>medium</option><option>high</option></select></label>
+      <label>Min Duration (ms) <input id="f-dur" type="number" placeholder="1000"></label>
+      <label>Errors Only <select id="f-err"><option value="">No</option><option value="true">Yes</option></select></label>
+      <label><br><button onclick="loadTraces()">Search</button></label>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Trace ID</th><th>Time</th><th>Message</th><th>Intent</th><th>Risk</th><th>Status</th><th>Duration</th><th>RAG</th><th>Actions</th></tr></thead>
+        <tbody id="trace-list"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- Detail View -->
+  <div id="detail-view" class="container" style="display:none">
+    <a class="back-btn" onclick="showList()">&larr; Back to list</a>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<script>
+let currentPage = 1;
+const PAGE_SIZE = 20;
+
+async function api(path) {
+  const r = await fetch(path);
+  return r.json();
+}
+
+async function loadTraces(page = 1) {
+  currentPage = page;
+  const params = new URLSearchParams({page, page_size: PAGE_SIZE});
+  ['status','intent','risk_level','min_duration_ms','has_error'].forEach(k => {
+    const el = document.getElementById('f-' + k.replace('risk_level','risk').replace('min_duration_ms','dur').replace('has_error','err'));
+    if (el && el.value) params.set(k, el.value);
+  });
+
+  const data = await api('/api/traces?' + params);
+  const items = data.items || [];
+  const total = data.total || 0;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="label">Total</div><div class="value">${total}</div></div>
+    <div class="stat-card"><div class="label">Page</div><div class="value">${data.page}/${Math.ceil(total/PAGE_SIZE)||1}</div></div>
+  `;
+
+  const tbody = document.getElementById('trace-list');
+  tbody.innerHTML = items.map(t => {
+    const outcome = t.outcome || {};
+    const st = (t.status||'').toLowerCase();
+    const risk = (outcome.risk_level||'low').toLowerCase();
+    const msg = (outcome.intent||'').substring(0,30);
+    return `<tr>
+      <td><a href="#" onclick="showDetail('${t.trace_id}');return false" style="color:var(--accent)">${t.trace_id.substring(0,16)}...</a></td>
+      <td>${(t.started_at||'').substring(11,19)}</td>
+      <td>${msg}</td>
+      <td>${outcome.intent||''}</td>
+      <td><span class="badge badge-${risk}">${risk}</span></td>
+      <td><span class="badge badge-${st}">${st}</span></td>
+      <td>${t.duration_ms ? t.duration_ms+'ms' : '-'}</td>
+      <td>-</td>
+      <td><button onclick="showDetail('${t.trace_id}')">Detail</button></td>
+    </tr>`;
+  }).join('');
+
+  // Pagination
+  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+  let phtml = '';
+  for (let i = 1; i <= Math.min(totalPages, 10); i++) {
+    phtml += `<button class="${i===page?'active':''}" onclick="loadTraces(${i})">${i}</button>`;
+  }
+  document.getElementById('pagination').innerHTML = phtml;
+}
+
+async function showDetail(traceId) {
+  document.getElementById('list-view').style.display = 'none';
+  document.getElementById('detail-view').style.display = '';
+
+  const data = await api('/api/traces/' + traceId);
+  const trace = data.trace || {};
+  const spans = data.spans || [];
+  const snapshot = data.snapshot || {};
+  const outcome = trace.outcome || {};
+
+  let html = `<div class="detail">
+    <h2>Trace: ${traceId}</h2>
+    <div class="detail-grid">
+      <div class="detail-item"><div class="key">Status</div><div class="val"><span class="badge badge-${(trace.status||'').toLowerCase()}">${trace.status}</span></div></div>
+      <div class="detail-item"><div class="key">Duration</div><div class="val">${trace.duration_ms ? trace.duration_ms + 'ms' : '-'}</div></div>
+      <div class="detail-item"><div class="key">Source</div><div class="val">${trace.source||'-'}</div></div>
+      <div class="detail-item"><div class="key">Request ID</div><div class="val">${trace.request_id||'-'}</div></div>
+      <div class="detail-item"><div class="key">Message ID</div><div class="val">${trace.message_id||'-'}</div></div>
+      <div class="detail-item"><div class="key">Intent</div><div class="val">${outcome.intent||'-'}</div></div>
+      <div class="detail-item"><div class="key">Risk Level</div><div class="val"><span class="badge badge-${(outcome.risk_level||'low').toLowerCase()}">${outcome.risk_level||'low'}</span></div></div>
+      <div class="detail-item"><div class="key">Started</div><div class="val">${trace.started_at||'-'}</div></div>
+    </div>`;
+
+  // Snapshot section
+  if (snapshot && snapshot.snapshot_id) {
+    html += `<div class="section-title">Analysis Snapshot</div>
+    <div class="detail-grid">
+      <div class="detail-item"><div class="key">Customer Message</div><div class="val">${(snapshot.customer_message||'').substring(0,200)}</div></div>
+      <div class="detail-item"><div class="key">Suggested Reply</div><div class="val">${(snapshot.suggested_reply||'').substring(0,300)}</div></div>
+      <div class="detail-item"><div class="key">Need Human Review</div><div class="val">${snapshot.need_human_review ? 'Yes' : 'No'}</div></div>
+    </div>`;
+  }
+
+  // Waterfall
+  if (spans.length) {
+    const maxDur = Math.max(...spans.map(s => s.duration_ms || 1), 1);
+    html += `<div class="section-title">Span Waterfall (${spans.length} spans)</div><div class="waterfall">`;
+    for (const s of spans) {
+      const dur = s.duration_ms || 0;
+      const w = Math.max(2, (dur / maxDur) * 100);
+      html += `<div class="waterfall-row" title="${s.name}: ${dur}ms [${s.status}]">
+        <div class="name">${s.name}</div>
+        <div class="bar-wrap"><div class="bar bar-${s.span_type||'api'}" style="width:${w}%"></div></div>
+        <div class="dur">${dur}ms</div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Actions
+  html += `<div class="actions">
+    <button class="primary" onclick="createBadCase('${traceId}')">Create Bad Case</button>
+    <button onclick="copyId('${traceId}')">Copy Trace ID</button>
+    <button onclick="showJson('${traceId}')">View JSON</button>
+  </div>`;
+
+  html += '</div>';
+  document.getElementById('detail-content').innerHTML = html;
+}
+
+function showList() {
+  document.getElementById('list-view').style.display = '';
+  document.getElementById('detail-view').style.display = 'none';
+}
+
+async function createBadCase(traceId) {
+  const reason = prompt('Reason for bad case:');
+  if (!reason) return;
+  const r = await fetch('/api/traces/'+traceId+'/create-bad-case', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason}),
+  });
+  const data = await r.json();
+  if (r.ok) alert('Bad case created: ' + (data.id || 'OK'));
+  else alert('Failed: ' + (data.error || 'unknown'));
+}
+
+function copyId(id) {
+  navigator.clipboard.writeText(id).then(() => alert('Copied!'));
+}
+
+async function showJson(traceId) {
+  const data = await api('/api/traces/' + traceId);
+  const w = window.open('', '_blank');
+  w.document.write('<pre style="background:#1a202c;color:#a0aec0;padding:20px;font-size:12px;font-family:Consolas,monospace">' + JSON.stringify(data, null, 2) + '</pre>');
+}
+
+// Initial load
+loadTraces();
+</script>
+</body>
+</html>

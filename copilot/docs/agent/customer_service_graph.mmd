@@ -1,0 +1,42 @@
+---
+title: 客服 Copilot - customer_service_graph
+---
+flowchart TD
+    classDef startEnd fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef decision fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef query fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef guard fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef action fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    normalize_input["输入清洗"]:::action
+    detect_intent["意图识别"]:::action
+    risk_check["风险检测"]:::guard
+    build_base_context["构建上下文"]:::action
+    route_by_intent(["意图路由"]):::decision
+    query_jst_order["查聚水潭订单"]:::query
+    query_local_order_fallback["本地订单降级"]:::query
+    check_shipment_status["检查发货状态"]:::query
+    match_order_products(["匹配订单商品"]):::decision
+    match_product_from_message["消息匹配商品"]:::query
+    match_shipping_policy["匹配物流政策"]:::query
+    generate_reply["生成回复"]:::action
+    quality_guard["质量守卫"]:::guard
+    human_review_gate(["人工复核门"]):::decision
+    START(["开始<br/>__start__"]):::startEnd
+    END(["结束<br/>__end__"]):::startEnd
+    START -->|"开始"| normalize_input
+    build_base_context -->|"上下文已构建"| route_by_intent
+    check_shipment_status -->|"发货状态已确定"| match_order_products
+    detect_intent -->|"意图已识别"| risk_check
+    generate_reply -->|"回复已生成"| quality_guard
+    match_order_products -.->|"无订单 或 订单无商品"| match_product_from_message
+    match_order_products -.->|"已匹配订单商品"| match_shipping_policy
+    match_product_from_message -->|"已匹配/未匹配商品"| match_shipping_policy
+    match_shipping_policy -->|"物流政策已匹配"| generate_reply
+    normalize_input -->|"输入已清洗"| detect_intent
+    quality_guard -->|"守卫检查通过"| human_review_gate
+    query_jst_order -->|"JST 查询后降级本地"| query_local_order_fallback
+    query_local_order_fallback -->|"检查发货状态"| check_shipment_status
+    risk_check -->|"风险已评估"| build_base_context
+    route_by_intent -.->|"非物流 或 无订单号"| match_product_from_message
+    route_by_intent -.->|"物流意图 & 有订单号"| query_jst_order
+    human_review_gate -->|"流程结束"| END

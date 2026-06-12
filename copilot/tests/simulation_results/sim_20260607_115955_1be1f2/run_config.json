@@ -1,0 +1,23 @@
+{
+  "run_id": "sim_20260607_115955_1be1f2",
+  "mode": "service",
+  "offline": true,
+  "live_jst": false,
+  "base_url": "http://localhost:5000",
+  "customer_count": 2,
+  "started_at": "2026-06-07T03:59:55.615433+00:00",
+  "args": {
+    "customer": "C037,C040",
+    "scenario": null,
+    "priority": null,
+    "limit": null,
+    "resume": null,
+    "run_id": null,
+    "mode": "service",
+    "offline": true,
+    "live_jst": false,
+    "base_url": "http://localhost:5000",
+    "verbose": false
+  },
+  "completed_at": "2026-06-07T03:59:58.711996+00:00"
+}

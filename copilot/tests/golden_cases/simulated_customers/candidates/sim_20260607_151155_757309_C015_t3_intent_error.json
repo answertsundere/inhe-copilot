@@ -1,0 +1,98 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C015_t3_intent_error",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C015",
+  "turn_num": 3,
+  "failure_type": "intent_error",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:12:55.226742+00:00",
+  "turn_scores": {
+    "customer_id": "C015",
+    "turn_num": 3,
+    "timestamp": "2026-06-07T15:12:55",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "logistics_eta",
+      "actual": "aftersales",
+      "detail": "Expected 'logistics_eta', got 'aftersales'"
+    },
+    "tool_routing": {
+      "score": 0.0,
+      "found_expected": [],
+      "missing": [
+        "jst_lookup_order_tool",
+        "jst_lookup_tracking_tool"
+      ],
+      "actual_tools": [],
+      "detail": "Missing tools: jst_lookup_order_tool, jst_lookup_tracking_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [
+        "退款"
+      ],
+      "detected_risk": "medium",
+      "detected_review": false,
+      "detail": "Medium-risk keywords: 退款. risk_level=medium"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 1.0,
+      "issues": [],
+      "detail": "Context memory OK"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 27,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.065,
+      "detail": "Fast response (0.1s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 38,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.75,
+    "blocking_reasons": [
+      "required_tool_missing"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "logistics_eta",
+      "actual_intent": "aftersales",
+      "scenario": "logistics",
+      "duration_s": 0.065,
+      "pass_criteria": "查询物流详情 + 说明可能原因 + 承诺跟进 + 说明丢件处理政策",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing"
+    ]
+  }
+}

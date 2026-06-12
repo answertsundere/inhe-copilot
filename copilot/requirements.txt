@@ -1,0 +1,31 @@
+# INHE 客服 Copilot - Python 依赖
+# 安装: pip install -r requirements.txt
+
+# Web 框架
+flask>=3.0
+
+# LLM 客户端 (OpenAI 兼容接口)
+openai>=1.0
+
+# 数据校验
+pydantic>=2.0
+
+# YAML 解析 (规则文件)
+pyyaml>=6.0
+
+# 环境变量加载 (可选)
+python-dotenv>=1.0
+
+# 测试
+pytest>=8.0
+
+# 产品知识数据处理
+openpyxl>=3.1
+python-docx>=1.1
+
+# 生产 WSGI 服务器
+waitress>=2.1
+
+# Windows desktop sidecar (optional at runtime; script degrades if missing)
+pywinauto>=0.6.8; platform_system == "Windows"
+Pillow>=10.0.0; platform_system == "Windows"

@@ -1,0 +1,103 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C015_t2_required_tool_missing",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C015",
+  "turn_num": 2,
+  "failure_type": "required_tool_missing",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:12:55.160535+00:00",
+  "turn_scores": {
+    "customer_id": "C015",
+    "turn_num": 2,
+    "timestamp": "2026-06-07T15:12:55",
+    "intent_match": {
+      "score": 1.0,
+      "match": true,
+      "expected": "logistics_eta",
+      "actual": "logistics_eta",
+      "detail": "Intent matched"
+    },
+    "tool_routing": {
+      "score": 0.5,
+      "found_expected": [
+        "jst_lookup_tracking_tool"
+      ],
+      "missing": [
+        "jst_lookup_order_tool"
+      ],
+      "actual_tools": [
+        "jst_lookup_tracking_tool",
+        "tool_executor",
+        "tool_planner"
+      ],
+      "detail": "Missing tools: jst_lookup_order_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 1.0,
+      "issues": [],
+      "detail": "Context memory OK"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 55,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 1.78,
+      "detail": "Fast response (1.8s)"
+    },
+    "trace_completeness": {
+      "score": 0.5,
+      "step_count": 45,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input"
+      ],
+      "missing_stages": [
+        "build_context",
+        "reply"
+      ],
+      "detail": "Missing stages: build_context, reply"
+    },
+    "overall_score": 0.889,
+    "blocking_reasons": [
+      "required_tool_missing",
+      "guard_failure"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "logistics_eta",
+      "actual_intent": "logistics_eta",
+      "scenario": "logistics",
+      "duration_s": 1.78,
+      "pass_criteria": "查询物流详情 + 说明可能原因 + 承诺跟进 + 说明丢件处理政策",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing",
+      "guard_failure"
+    ]
+  }
+}

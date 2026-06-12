@@ -1,0 +1,96 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C006_t3_intent_error",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C006",
+  "turn_num": 3,
+  "failure_type": "intent_error",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:12:19.471031+00:00",
+  "turn_scores": {
+    "customer_id": "C006",
+    "turn_num": 3,
+    "timestamp": "2026-06-07T15:12:19",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "product_question",
+      "actual": "general",
+      "detail": "Expected 'product_question', got 'general'"
+    },
+    "tool_routing": {
+      "score": 0.0,
+      "found_expected": [],
+      "missing": [
+        "product_resolver_tool",
+        "rag_search_tool"
+      ],
+      "actual_tools": [],
+      "detail": "Missing tools: product_resolver_tool, rag_search_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 1.0,
+      "issues": [],
+      "detail": "Context memory OK"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 42,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.053,
+      "detail": "Fast response (0.1s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 34,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.75,
+    "blocking_reasons": [
+      "required_tool_missing"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "product_question",
+      "actual_intent": "general",
+      "scenario": "pre_sale_product",
+      "duration_s": 0.053,
+      "pass_criteria": "说明材质成分 + 提供检测信息 + 未做医疗/赔偿承诺",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing"
+    ]
+  }
+}

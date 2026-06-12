@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inhe客服助手</title>
+<style>
+:root{
+  --bg:#f1f5f9;
+  --panel:#fff;
+  --ink:#172033;
+  --muted:#64748b;
+  --line:#e2e8f0;
+  --line-strong:#cbd5e1;
+  --blue:#2563eb;
+  --blue-soft:#eff6ff;
+  --green:#059669;
+  --red:#dc2626;
+  --amber:#d97706;
+  --radius:8px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif;font-size:14px;overflow:hidden}
+
+.top{height:56px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 20px;flex-shrink:0}
+.top a{color:var(--blue);text-decoration:none;font-weight:650;font-size:13px}
+.top strong{font-size:16px;font-weight:700}
+.top .hint{margin-left:auto;color:var(--muted);font-size:12px}
+
+.badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 9px;font-size:12px;background:#e2e8f0;color:#334155}
+.badge.ok{background:#dcfce7;color:#166534}.badge.warn{background:#fef3c7;color:#92400e}.badge.danger{background:#fee2e2;color:#991b1b}
+
+.wrap{display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px;height:calc(100vh - 56px);padding:12px;max-width:1740px;margin:0 auto}
+.wrap.cases-open{grid-template-columns:280px minmax(0,1fr);max-width:1900px}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.side{height:100%;overflow:hidden;display:flex;flex-direction:column}
+.side-collapsed{display:flex;flex-direction:column;height:100%}.side-expanded{display:none;height:100%}.wrap.cases-open .side-collapsed{display:none}.wrap.cases-open .side-expanded{display:flex;flex-direction:column;height:100%}
+.case-toggle{width:100%;flex:1;min-height:0;padding:14px 6px;background:#fff;color:#475569;border:1px solid var(--line);border-radius:var(--radius);writing-mode:vertical-rl;letter-spacing:3px;font-size:13px;cursor:pointer}
+.case-toggle:hover{background:var(--blue-soft);color:var(--blue);border-color:#bfdbfe}
+.side-head{padding:12px;border-bottom:1px solid var(--line);flex-shrink:0}
+.side-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.side-title-row h2{margin:0;font-size:15px}
+.side-collapse-btn{background:#f1f5f9;color:#334155;padding:5px 9px;font-size:12px;border:1px solid var(--line)}
+#caseList{overflow:auto;flex:1}
+
+.case{padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}.case:hover{background:#f8fafc}.case.active{background:#f1f5f9;border-left:3px solid var(--blue);padding-left:9px}
+.case-title{font-weight:700;margin-bottom:5px;font-size:13px}.case-msg{color:var(--muted);line-height:1.45;font-size:12px}.case-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+
+.workspace{display:grid;grid-template-columns:minmax(360px,420px) minmax(0,1fr);gap:12px;height:100%;min-height:0}
+.section{padding:14px;display:flex;flex-direction:column;height:100%;overflow:hidden}
+.section h2{font-size:16px;margin:0 0 12px;flex-shrink:0}
+
+label{display:block;font-weight:650;color:#475569;margin:10px 0 5px;font-size:12px}
+textarea,input,select{width:100%;border:1px solid var(--line-strong);border-radius:6px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink)}
+textarea{min-height:76px;resize:vertical;line-height:1.6}
+input{min-height:36px}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.08)}
+.compact-textarea{min-height:46px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{color:var(--muted);font-size:12px;line-height:1.5}
+
+.form-block{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.form-block:last-of-type{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.block-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px}
+.block-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:var(--blue);color:#fff;font-size:11px;font-weight:700}
+
+.context-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.context-id{font-family:Consolas,monospace;font-size:12px;color:#334155;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+.main-message{min-height:70px;font-size:14px}
+
+.entry-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.image-entry,.chat-entry{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;background:#f8fafc;border:1px dashed #94a3b8;border-radius:6px;color:#475569;font-size:13px;font-weight:650;cursor:pointer}
+.image-entry:hover,.chat-entry:hover{background:var(--blue-soft);border-color:var(--blue);color:var(--blue)}
+.image-entry.has-image{background:#dcfce7;border-color:var(--green);color:#166534}
+
+.action-block{display:flex;flex-direction:column;gap:10px}
+.secondary-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{border:0;border-radius:6px;padding:8px 13px;background:var(--blue);color:#fff;font-weight:650;cursor:pointer;font-size:13px}
+button:hover{filter:brightness(.96)}button.secondary{background:#475569}button.ghost{background:#f1f5f9;color:#334155;border:1px solid var(--line)}button.ok{background:var(--green)}button.danger{background:var(--red)}button.warn{background:var(--amber)}
+.btn-primary{background:var(--blue)}
+.btn-large{padding:12px 18px;font-size:15px;border-radius:8px}
+
+.result-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px;flex-shrink:0}.metric{border:1px solid var(--line);border-radius:var(--radius);padding:10px;background:#f8fafc}.metric .k{font-size:12px;color:var(--muted)}.metric .v{font-weight:700;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+
+.reply-section{flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:12px}
+.reply-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-shrink:0}
+.reply-header h3{margin:0;font-size:15px}
+.reply{white-space:pre-wrap;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius);padding:14px;line-height:1.75;font-size:14px;min-height:180px;overflow:auto;flex:1}
+.reply.empty{color:var(--muted);background:#f8fafc}
+
+.result-actions{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.result-actions button{font-size:12px;padding:7px 11px}
+
+/* Modals */
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.36);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-backdrop.open{display:flex}
+.modal-backdrop.drawer{align-items:stretch;justify-content:flex-end;padding:0}
+.modal-panel{width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 80px);background:#fff;border-radius:var(--radius);border:1px solid var(--line);box-shadow:0 20px 60px rgba(15,23,42,.18);display:flex;flex-direction:column}
+.modal-backdrop.drawer .modal-panel{width:min(720px,92vw);max-height:100vh;height:100vh;border-radius:0;margin-left:auto}
+.modal-panel.wide{width:min(980px,calc(100vw - 40px))}
+.modal-header{height:52px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-header h2{margin:0;font-size:15px}
+.modal-body{padding:16px;overflow:auto}
+
+.paste-zone{border:1px dashed #94a3b8;border-radius:var(--radius);background:#fff;padding:10px;min-height:54px;display:flex;gap:10px;align-items:center;cursor:text;outline:none}
+.paste-zone:focus,.paste-zone.dragover{border-color:var(--blue);background:var(--blue-soft)}.paste-text{color:#475569;line-height:1.5;font-size:12px}.paste-text strong{color:var(--ink)}
+.image-preview{max-width:72px;max-height:54px;border-radius:6px;border:1px solid var(--line);object-fit:cover;background:#fff;display:none}
+.image-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}.image-card{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:6px;font-size:12px;color:#475569}.image-card img{width:100%;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-bottom:4px}.image-card button{padding:3px 7px;font-size:11px;margin-top:5px}
+
+.accordion{border:1px solid var(--line);border-radius:var(--radius);margin-top:10px;background:#fff;overflow:hidden}
+.accordion summary{list-style:none;display:flex;justify-content:space-between;gap:10px;padding:10px 12px;cursor:pointer;font-weight:650;font-size:13px;background:#f8fafc;color:#334155}
+.accordion summary::-webkit-details-marker{display:none}.accordion summary:after{content:"展开";color:var(--blue);font-size:12px;font-weight:650}.accordion[open] summary:after{content:"收起"}
+.accordion-body{padding:12px;border-top:1px solid var(--line)}
+
+.review-panel label{margin-top:8px}
+.review-panel label:first-child{margin-top:0}
+.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.json{white-space:pre-wrap;background:#0f172a;color:#dbeafe;border-radius:var(--radius);padding:12px;max-height:360px;overflow:auto;font-family:Consolas,monospace;font-size:12px}
+.tabs{display:flex;gap:8px;margin:12px 0}.tab{background:#e2e8f0;color:#1e293b}.tab.active{background:var(--blue);color:#fff}
+.small-table{width:100%;border-collapse:collapse;font-size:12px}.small-table th,.small-table td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}.small-table th{color:#64748b;background:#f8fafc;width:136px}
+.gate-list{display:grid;gap:8px;margin-top:12px}.gate-card{border:1px solid var(--line);border-radius:var(--radius);background:#fbfdff;padding:10px}.gate-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.gate-title{font-weight:700}.gate-preview{color:#475569;line-height:1.55;font-size:12px}.gate-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.gate-pill{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:12px;background:#e2e8f0;color:#334155}.gate-pill.allowed{background:#dcfce7;color:#166534}.gate-pill.blocked{background:#fee2e2;color:#991b1b}.gate-pill.reference_only{background:#fef3c7;color:#92400e}
+
+.parsed-context{display:grid;gap:8px;margin-top:10px}.context-chip{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;color:#334155;font-size:12px;line-height:1.5}
+
+@media(max-width:1180px){.workspace{grid-template-columns:1fr}.section{height:auto;max-height:50vh}.result-top{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="/ask/">返回</a>
+  <a href="/ask/copilot-panel">千牛监控</a>
+  <a href="/ask/api-test">API</a>
+  <strong>Inhe客服助手</strong>
+  <span id="summaryBadge" class="badge">加载中</span>
+  <span class="hint">填买家问题 → 生成建议回复 → 复制给客服参考</span>
+</div>
+
+<div class="wrap" id="pageWrap">
+  <aside class="card side">
+    <div class="side-collapsed">
+      <button class="case-toggle" onclick="openCases()">参考例子</button>
+    </div>
+    <div class="side-expanded">
+      <div class="side-head">
+        <div class="side-title-row">
+          <h2>参考测试例子</h2>
+          <button class="side-collapse-btn" onclick="closeCases()">收起</button>
+        </div>
+        <div class="hint">客服也可以不选例子，直接在右侧输入真实买家问题。</div>
+        <input id="search" placeholder="搜索例子 / 买家问题 / 商品" oninput="renderCases()">
+        <select id="sceneFilter" onchange="renderCases()"><option value="">全部场景</option></select>
+        <div class="btns">
+          <button class="ok" onclick="runAll()">批量测试全部</button>
+          <button class="ghost" onclick="resetResults()">清空结果</button>
+          <button class="ghost" onclick="exportReviews()">导出检查记录</button>
+        </div>
+      </div>
+      <div id="caseList"></div>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <section class="card section input-section">
+      <h2>填写买家问题</h2>
+      <div class="main-form">
+        <div class="form-block">
+          <div class="block-title"><span class="block-num">1</span>当前对话</div>
+          <div class="context-row">
+            <span id="contextId" class="context-id"></span>
+            <button type="button" class="ghost" onclick="copyContextId()">复制</button>
+            <button type="button" class="secondary" onclick="newConversation()">换新买家</button>
+          </div>
+          <div class="hint" id="contextHint">连续追问会默认接着上一次聊；换买家或重新开始时点“换新买家”。</div>
+        </div>
+
+        <div class="form-block">
+          <div class="block-title"><span class="block-num">2</span>买家发来的文字和图片</div>
+          <label for="message">买家现在问的文字</label>
+          <textarea id="message" class="main-message" placeholder="例如：这个材质安全吗？会不会容易受潮？"></textarea>
+          <div class="entry-row">
+            <button type="button" id="imageEntry" class="image-entry" onclick="openImageModal()">添加图片</button>
+            <button type="button" class="chat-entry" onclick="openRawContextModal()">粘贴之前对话</button>
+          </div>
+        </div>
+
+        <div class="form-block">
+          <div class="block-title"><span class="block-num">3</span>商品/订单信息</div>
+          <label for="frontTitle">千牛侧边栏商品名称</label>
+          <textarea id="frontTitle" class="compact-textarea" placeholder="把千牛右侧显示的商品标题粘到这里，AI 会先对商品再回答"></textarea>
+          <div class="grid2">
+            <div>
+              <label for="sku">SKU 编码（售后有就填）</label>
+              <input id="sku" placeholder="售后有 SKU 时直接填">
+            </div>
+            <div>
+              <label for="orderId">订单号（查物流/售后时填）</label>
+              <input id="orderId" placeholder="售后、物流、发货问题优先填">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-block action-block">
+          <button class="btn-primary btn-large" onclick="runCurrent()">生成客服回复</button>
+          <div class="secondary-actions">
+            <button type="button" class="ghost" onclick="openAdvancedModal()">高级字段</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card section result-section">
+      <h2>AI 建议回复</h2>
+      <div class="result-top">
+        <div class="metric"><div class="k">生成状态</div><div id="mStatus" class="v">还没生成</div></div>
+        <div class="metric"><div class="k">问题类型</div><div id="mIntent" class="v">-</div></div>
+        <div class="metric"><div class="k">是否要人工确认</div><div id="mRisk" class="v">-</div></div>
+        <div class="metric"><div class="k">识别商品</div><div id="mIdentity" class="v">-</div></div>
+      </div>
+
+      <div class="reply-section">
+        <div class="reply-header">
+          <h3>建议客服回复</h3>
+          <button type="button" class="ghost" onclick="copyReply()">复制回复</button>
+        </div>
+        <div id="reply" class="reply empty">填写左侧信息后，点击生成客服回复。</div>
+      </div>
+
+      <div class="result-actions">
+        <button type="button" class="warn" onclick="openReviewModal()">人工反馈</button>
+        <button type="button" class="ghost" onclick="openMemoryModal()">查看 AI 记住的信息</button>
+        <button type="button" class="ghost" onclick="openTechModal()">查看技术信息</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 聊天记录弹窗 -->
+<div id="rawContextModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>粘贴之前的聊天记录</h2>
+      <button type="button" class="ghost" onclick="closeModal('rawContextModal')">关闭</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint">可以直接粘贴千牛聊天记录，系统会识别最近买家问题。</div>
+      <textarea id="rawContext" class="raw-context" placeholder="例如：&#10;买家：这个怎么安装？&#10;客服：亲，可以参考安装视频。&#10;买家：那这个材质安全吗？&#10;&#10;也支持千牛格式：&#10;买家昵称 --> 英禾旗舰店:客服名&#10;2026-6-9 12:05:57&#10;我刚才发照片 这个是那个"></textarea>
+      <div class="btns">
+        <button type="button" onclick="parseRawContext(true)">识别并填入买家问题</button>
+        <button type="button" class="ghost" onclick="clearRawContext()">清空</button>
+      </div>
+      <div id="parsedContextPreview" class="parsed-context"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 图片弹窗 -->
+<div id="imageModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>买家发来的图片</h2>
+      <button type="button" class="ghost" onclick="closeModal('imageModal')">关闭</button>
+    </div>
+    <div class="modal-body">
+      <div id="imagePasteZone" class="paste-zone" tabindex="0" onpaste="handleImagePaste(event)" ondragover="handleImageDragOver(event)" ondragleave="handleImageDragLeave(event)" ondrop="handleImageDrop(event)">
+        <img id="imagePreview" class="image-preview" alt="图片预览">
+        <div id="imagePasteText" class="paste-text"><strong>点击后按 Ctrl+V 粘贴截图</strong><br>或直接把图片拖到这里</div>
+      </div>
+      <div id="imageList" class="image-list"></div>
+      <div class="grid2">
+        <div><label>图片类型（可选）</label><input id="imageKind" placeholder="破损图 / 安装图 / 活动截图"></div>
+        <div><label>图片数量</label><input id="imageCount" type="number" min="0" step="1" value="0"></div>
+      </div>
+      <label>图片说明（可选）</label>
+      <textarea id="imageDescription" class="compact-textarea" placeholder="例如：客户发来的破损位置，或活动页截图显示赠品"></textarea>
+      <div class="btns"><button type="button" class="ghost" onclick="clearImages()">清空图片</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- 高级字段弹窗 -->
+<div id="advancedModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>高级字段（技术人员用）</h2>
+      <button type="button" class="ghost" onclick="closeModal('advancedModal')">关闭</button>
+    </div>
+    <div class="modal-body">
+      <label>商品候选 JSON（技术人员排查时用）</label>
+      <textarea id="candidates" class="compact-textarea"></textarea>
+      <details class="accordion">
+        <summary>请求内容预览</summary>
+        <div class="accordion-body">
+          <div id="payloadPreview" class="json"></div>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<!-- 检查回复弹窗 -->
+<div id="reviewModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>人工反馈</h2>
+      <button type="button" class="ghost" onclick="closeModal('reviewModal')">关闭</button>
+    </div>
+    <div class="modal-body review-panel">
+      <div class="review-grid">
+        <div>
+          <label>这条回复好不好</label>
+          <select id="reviewStatus">
+            <option value="">未检查</option>
+            <option value="pass">通过</option>
+            <option value="partial">部分通过</option>
+            <option value="fail">不通过</option>
+            <option value="knowledge_gap">待补知识</option>
+            <option value="needs_review">需客服复核</option>
+          </select>
+        </div>
+        <div>
+          <label>哪里有问题</label>
+          <select id="failureType">
+            <option value="">无</option>
+            <option value="product_mapping_error">商品映射错误</option>
+            <option value="rag_miss">知识未命中</option>
+            <option value="rag_wrong_scope">知识范围错误</option>
+            <option value="grounding_error">有证据但回复错误</option>
+            <option value="reply_quality_error">话术体验问题</option>
+            <option value="risk_error">风控/转人工问题</option>
+            <option value="tool_error">工具/聚水潭问题</option>
+            <option value="unknown">其他</option>
+          </select>
+        </div>
+      </div>
+      <label>客服改好的回复</label>
+      <textarea id="finalReply" placeholder="如果 AI 回复不合适，把客服最终想发的话写在这里"></textarea>
+      <label>问题说明 / 需要补充的资料</label>
+      <textarea id="reviewNote" placeholder="例如：需要客服确认适用年龄；材质答案需要补充检测标准"></textarea>
+      <div class="btns">
+        <button class="ok" onclick="submitFeedback()">提交给 AI 优化</button>
+      </div>
+      <div id="reviewSaved" class="hint"></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI 记住的信息弹窗 -->
+<div id="memoryModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>AI 本次记住了什么</h2>
+      <button type="button" class="ghost" onclick="closeModal('memoryModal')">关闭</button>
+    </div>
+    <div class="modal-body" id="contextMemoryPreview"></div>
+  </div>
+</div>
+
+<!-- 技术信息弹窗 -->
+<div id="techModal" class="modal-backdrop wide" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>技术信息（一般不用看）</h2>
+      <button type="button" class="ghost" onclick="closeModal('techModal')">关闭</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <button id="tabDebug" class="tab active" onclick="showTab('debug')">关键排查信息</button>
+        <button id="tabRaw" class="tab" onclick="showTab('raw')">完整返回内容</button>
+      </div>
+      <div id="debugBox"></div>
+      <div id="rawBox" class="json" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CASES = {{ cases_json|safe }};
+const SUMMARY = {{ summary_json|safe }};
+let currentIndex = 0;
+const runResults = new Map();
+let lastResponse = null;
+const REVIEW_KEY = 'inhe_real_test_reviews_v1';
+const CONTEXT_KEY = 'inhe_real_test_conversation_id_v1';
+const CASE_PANEL_KEY = 'inhe_real_test_case_panel_v2';
+const reviewRecords = loadReviews();
+let currentConversationId = loadConversationId();
+let currentImages = [];
+let parsedConversation = {history: [], latest_customer_message: '', latest_agent_message: '', raw_text: ''};
+let payloadPreviewTimer = null;
+let lastSubmittedPayload = null;
+
+function $(id){return document.getElementById(id)}
+function safe(v){return v == null ? '' : String(v)}
+function pretty(v){return JSON.stringify(v || {}, null, 2)}
+function caseId(c){return c.case_id || c.id || `case_${currentIndex}`}
+function escapeHtml(s){return safe(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function loadReviews(){try{return JSON.parse(localStorage.getItem(REVIEW_KEY)||'{}')}catch(e){return {}}}
+function persistReviews(){localStorage.setItem(REVIEW_KEY, JSON.stringify(reviewRecords))}
+function makeConversationId(){return `front_real_test_${Date.now()}`}
+function loadConversationId(){const existing=localStorage.getItem(CONTEXT_KEY);if(existing)return existing;const created=makeConversationId();localStorage.setItem(CONTEXT_KEY,created);return created}
+function setConversationId(id){currentConversationId=id||makeConversationId();localStorage.setItem(CONTEXT_KEY,currentConversationId);if($('contextId'))$('contextId').textContent=currentConversationId;fillPayloadPreview()}
+function openCases(){const wrap=$('pageWrap');if(!wrap)return;wrap.classList.add('cases-open');localStorage.setItem(CASE_PANEL_KEY,'open')}
+function closeCases(){const wrap=$('pageWrap');if(!wrap)return;wrap.classList.remove('cases-open');localStorage.setItem(CASE_PANEL_KEY,'closed')}
+function toggleCases(){if($('pageWrap').classList.contains('cases-open'))closeCases();else openCases()}
+async function copyContextId(){await navigator.clipboard.writeText(currentConversationId);$('contextHint').textContent='已复制当前对话 ID。'}
+function newConversation(){setConversationId(makeConversationId());lastResponse=null;lastSubmittedPayload=null;clearImages();$('contextHint').textContent='已切换到新买家，后续会从这条开始重新记。'}
+
+/* Modals */
+function openModal(id){
+  const el=$(id);
+  if(!el)return;
+  el.classList.add('open');
+  document.body.style.overflow='hidden';
+  if(id==='imageModal'){const zone=$('imagePasteZone');if(zone)zone.focus();}
+  if(id==='rawContextModal'){const ta=$('rawContext');if(ta)ta.focus();}
+}
+function closeModal(id){
+  const el=$(id);
+  if(!el)return;
+  el.classList.remove('open');
+  if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';
+}
+function closeAllModals(){document.querySelectorAll('.modal-backdrop.open').forEach(el=>el.classList.remove('open'));document.body.style.overflow='';}
+function closeModalByBackdrop(event){if(event.target===event.currentTarget)closeModal(event.currentTarget.id);}
+document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeAllModals();});
+function openRawContextModal(){openModal('rawContextModal');}
+function openImageModal(){openModal('imageModal');}
+function openAdvancedModal(){openModal('advancedModal');fillPayloadPreview();}
+function openReviewModal(){openModal('reviewModal');}
+function openMemoryModal(){openModal('memoryModal');fillPayloadPreview();}
+function openTechModal(){openModal('techModal');}
+
+function updateImageEntry(){
+  const btn=$('imageEntry');
+  if(!btn)return;
+  if(currentImages.length){
+    btn.textContent=`已添加 ${currentImages.length} 张图片`;
+    btn.classList.add('has-image');
+  } else {
+    btn.textContent='添加图片';
+    btn.classList.remove('has-image');
+  }
+}
+async function copyReply(){
+  const text=$('reply').textContent||'';
+  if(!text.trim()||text.trim()==='填写左侧信息后，点击生成客服回复。')return;
+  await navigator.clipboard.writeText(text);
+  const btn=event&&event.target;
+  const original=btn?btn.textContent:'复制回复';
+  if(btn){btn.textContent='已复制';setTimeout(()=>btn.textContent=original,1200);}
+}
+
+function normalizeSpeaker(raw){
+  const s = safe(raw).trim();
+  if(/^(买家|客户|用户|顾客|buyer|customer)$/i.test(s)) return 'customer';
+  if(/^(客服|卖家|商家|店铺|agent|assistant)$/i.test(s)) return 'agent';
+  return '';
+}
+function isTimeLine(line){return /^\s*\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?\s*$/.test(line)}
+function isQianniuCustomerMarker(line){return /^.+-->\s*英禾旗舰店/.test(line)}
+function isQianniuAgentMarker(line){return /^英禾旗舰店[:：\-]/.test(line)}
+function parseChatText(text){
+  const lines = safe(text).split(/\r?\n/).map(x => x.trim());
+  const messages = [];
+  let currentSpeaker = '';
+  let currentText = '';
+  function flush(){
+    if(currentSpeaker && currentText.trim()){
+      messages.push({speaker: currentSpeaker, text: currentText.trim()});
+      currentText = '';
+    }
+  }
+  for(const line of lines){
+    if(!line || isTimeLine(line)) continue;
+    const stdMatch = line.match(/^(买家|客户|用户|顾客|客服|卖家|商家|店铺|buyer|customer|agent|assistant)\s*[:：]\s*(.*)$/i);
+    if(stdMatch){
+      flush();
+      currentSpeaker = normalizeSpeaker(stdMatch[1]);
+      currentText = stdMatch[2] || '';
+      continue;
+    }
+    if(isQianniuCustomerMarker(line)){
+      flush();
+      currentSpeaker = 'customer';
+      continue;
+    }
+    if(isQianniuAgentMarker(line)){
+      flush();
+      currentSpeaker = 'agent';
+      continue;
+    }
+    if(currentSpeaker){
+      currentText += (currentText ? '\n' : '') + line;
+    } else if(line){
+      messages.push({speaker: 'unknown', text: line});
+    }
+  }
+  flush();
+  const latestCustomer = [...messages].reverse().find(m => m.speaker === 'customer') || null;
+  const latestAgent = [...messages].reverse().find(m => m.speaker === 'agent') || null;
+  return {
+    raw_text: text,
+    history: messages.slice(-20),
+    latest_customer_message: latestCustomer ? latestCustomer.text : '',
+    latest_agent_message: latestAgent ? latestAgent.text : '',
+  };
+}
+function parseRawContext(fillLatest, syncPreview=true){
+  parsedConversation = parseChatText($('rawContext').value || '');
+  if(fillLatest && parsedConversation.latest_customer_message) $('message').value = parsedConversation.latest_customer_message;
+  renderParsedContext();
+  if(syncPreview) fillPayloadPreview();
+}
+function clearRawContext(){
+  $('rawContext').value = '';
+  parsedConversation = {history: [], latest_customer_message: '', latest_agent_message: '', raw_text: ''};
+  renderParsedContext();
+  fillPayloadPreview();
+}
+function renderParsedContext(){
+  const box = $('parsedContextPreview');
+  if(!box) return;
+  if(!parsedConversation.raw_text){box.innerHTML='';return}
+  box.innerHTML = [
+    `<div class="context-chip"><strong>最近买家问题：</strong>${escapeHtml(parsedConversation.latest_customer_message || '未识别，请手动填写买家当前问题')}</div>`,
+    `<div class="context-chip"><strong>最近客服回复：</strong>${escapeHtml(parsedConversation.latest_agent_message || '未识别')}</div>`,
+    `<div class="context-chip"><strong>已识别对话条数：</strong>${parsedConversation.history.length}</div>`
+  ].join('');
+}
+
+function setImageFromFile(file, source){
+  if(!file){currentImages=[];updateImagePreview();fillPayloadPreview();return}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    currentImages.push({
+      data_url:String(reader.result||""),
+      filename:file.name||`${source||'pasted'}_image_${currentImages.length+1}.png`,
+      mime_type:file.type||'image/png',
+      size:file.size,
+      source:source||'pasted',
+    });
+    $('imageCount').value=String(currentImages.length);
+    updateImagePreview();
+    fillPayloadPreview();
+  };
+  reader.readAsDataURL(file);
+}
+function imageFileFromClipboardEvent(event){const items=event.clipboardData&&event.clipboardData.items?[...event.clipboardData.items]:[];const imageItem=items.find(item=>item.type&&item.type.startsWith('image/'));return imageItem?imageItem.getAsFile():null}
+function handleImagePaste(event){const file=imageFileFromClipboardEvent(event);if(!file)return;event.preventDefault();setImageFromFile(file,'pasted')}
+function installGlobalImagePaste(){document.addEventListener('paste',(event)=>{const target=event.target;if(target&&['TEXTAREA','INPUT'].includes(target.tagName))return;const file=imageFileFromClipboardEvent(event);if(!file)return;event.preventDefault();setImageFromFile(file,'pasted');const zone=$('imagePasteZone');if(zone){zone.classList.add('dragover');setTimeout(()=>zone.classList.remove('dragover'),350)}})}
+function handleImageDragOver(event){event.preventDefault();$('imagePasteZone').classList.add('dragover')}
+function handleImageDragLeave(event){$('imagePasteZone').classList.remove('dragover')}
+function handleImageDrop(event){event.preventDefault();$('imagePasteZone').classList.remove('dragover');const files=event.dataTransfer&&event.dataTransfer.files?[...event.dataTransfer.files]:[];const file=files.find(f=>f.type&&f.type.startsWith('image/'));if(file)setImageFromFile(file,'dropped')}
+function updateImagePreview(){
+  const img=$('imagePreview'), text=$('imagePasteText');
+  const first=currentImages[0]||null;
+  if(first){img.src=first.data_url;img.style.display='block';text.innerHTML=`<strong>已添加 ${currentImages.length} 张图片</strong><br>继续 Ctrl+V 可追加，或拖入新图片。`}
+  else{img.removeAttribute('src');img.style.display='none';text.innerHTML='<strong>点击后按 Ctrl+V 粘贴截图</strong><br>或直接把图片拖到这里'}
+  const list=$('imageList');
+  if(list){
+    list.innerHTML=currentImages.map((im,idx)=>`<div class="image-card"><img src="${im.data_url}" alt="图片${idx+1}"><div>${escapeHtml(im.filename||`截图${idx+1}`)}</div><div>${Math.round((im.size||0)/1024)} KB</div><button type="button" class="ghost" onclick="removeImage(${idx})">删除</button></div>`).join('');
+  }
+  updateImageEntry();
+}
+function removeImage(idx){currentImages.splice(idx,1);$('imageCount').value=String(currentImages.length);updateImagePreview();fillPayloadPreview()}
+function clearImages(){currentImages=[];$('imageCount').value='0';updateImagePreview();fillPayloadPreview()}
+function candidateFromFields(){try{const parsed=JSON.parse($('candidates').value||'[]');return Array.isArray(parsed)?parsed:[]}catch(e){lastResponse={error:e.message};return []}}
+function schedulePayloadPreview(){clearTimeout(payloadPreviewTimer);payloadPreviewTimer=setTimeout(fillPayloadPreview,180)}
+function installAutoPayloadPreview(){
+  ['message','frontTitle','sku','orderId','candidates','imageCount','imageKind','imageDescription'].forEach(id=>{
+    const el=$(id);
+    if(el) el.addEventListener('input', schedulePayloadPreview);
+  });
+  const raw=$('rawContext');
+  if(raw) raw.addEventListener('input', ()=>{
+    parsedConversation = parseChatText(raw.value || '');
+    renderParsedContext();
+    schedulePayloadPreview();
+  });
+}
+function scenes(){return [...new Set(CASES.map(c=>c.scene).filter(Boolean))]}
+function init(){
+  $('summaryBadge').textContent=`${SUMMARY.passed||0}/${SUMMARY.total||CASES.length} 通过`;
+  $('summaryBadge').className='badge ok';
+  if(localStorage.getItem(CASE_PANEL_KEY)==='open')openCases();
+  $('sceneFilter').innerHTML='<option value="">全部场景</option>'+scenes().map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  $('contextId').textContent=currentConversationId;
+  installGlobalImagePaste();
+  installAutoPayloadPreview();
+  if($('imagePasteZone'))$('imagePasteZone').addEventListener('click',()=>$('imagePasteZone').focus());
+  updateImageEntry();
+  renderCases();
+  if(CASES.length)selectCase(0);
+}
+function renderCases(){
+  const q=$('search').value.trim().toLowerCase(), scene=$('sceneFilter').value, list=$('caseList');
+  list.innerHTML='';
+  CASES.forEach((c,i)=>{
+    const text=[c.case_id,c.scene,c.message,c.sidecar_front_title,c.matched_product_name].join(' ').toLowerCase();
+    if(scene&&c.scene!==scene)return;if(q&&!text.includes(q))return;
+    const status=runResults.get(i), review=reviewRecords[caseId(c)];
+    const reviewBadge=review?.status?`<span class="badge ${review.status==='pass'?'ok':(review.status==='fail'||review.status==='knowledge_gap'?'danger':'warn')}">${escapeHtml(review.status)}</span>`:'';
+    const div=document.createElement('div');
+    div.className='case'+(i===currentIndex?' active':'');
+    div.onclick=()=>selectCase(i);
+    div.innerHTML=`<div class="case-title">${escapeHtml(c.case_id)} · ${escapeHtml(c.scene)} ${status?`<span class="badge ${status.ok?'ok':'danger'}">${status.ok?'通过':'失败'}</span>`:''}</div><div class="case-msg">${escapeHtml(c.message||'')}</div>`;
+    if(reviewBadge)div.insertAdjacentHTML('beforeend',`<div class="case-meta">${reviewBadge}</div>`);
+    list.appendChild(div);
+  });
+}
+function selectCase(i){
+  currentIndex=i;lastResponse=null;
+  const c=CASES[i]||{}, payload=c.payload||{};
+  $('message').value=payload.message||c.message||'';
+  $('frontTitle').value=c.sidecar_front_title||'';
+  $('orderId').value=payload.order_id||payload.platform_order_id||'';
+  const candidates=payload.product_candidates||payload.copilot_context?.product_candidates||[];
+  $('candidates').value=pretty(candidates);
+  const skuCand=candidates.find(x=>String(x.type||'').includes('sku'));
+  $('sku').value=skuCand?skuCand.value:'';
+  const images=payload.image_attachments||payload.attachments||payload.images||[];
+  $('imageCount').value=images.length?String(images.length):'0';
+  const firstImage=images[0]||{};
+  $('imageKind').value=firstImage.kind||firstImage.type||'';
+  $('imageDescription').value=firstImage.description||firstImage.ocr_text||firstImage.note||'';
+  currentImages=images.filter(x=>x&&x.data_url).map((x,idx)=>({data_url:x.data_url,filename:x.filename||`case_image_${idx+1}.png`,mime_type:x.mime_type||'image/png',size:x.size||0,source:x.source||'case'}));
+  updateImagePreview();
+  parsedConversation = {history: [], latest_customer_message: '', latest_agent_message: '', raw_text: ''};
+  $('rawContext').value = '';
+  renderParsedContext();
+  const review=reviewRecords[caseId(c)]||{};
+  $('reviewStatus').value=review.status||'';$('failureType').value=review.failure_type||'';$('finalReply').value=review.final_reply||'';$('reviewNote').value=review.note||'';$('reviewSaved').textContent=review.updated_at?`已保存：${review.updated_at}`:'';
+  fillPayloadPreview();renderCases();
+}
+function buildPayload(){
+  if(($('rawContext').value||'').trim()){
+    parsedConversation = parseChatText($('rawContext').value || '');
+    renderParsedContext();
+  }
+  let candidates=candidateFromFields();
+  const frontTitle=$('frontTitle').value.trim(), sku=$('sku').value.trim();
+  if(frontTitle){candidates=candidates.filter(c=>!String(c.type||'').includes('product'));candidates.unshift({value:frontTitle,type:'product_candidate',source:'manual_front_test',verified:true})}
+  if(sku){candidates=candidates.filter(c=>!String(c.type||'').includes('sku'));candidates.push({value:sku,type:'sku_id_candidate',source:'manual_front_test',verified:true})}
+  const payload={message:$('message').value.trim(),conversation_id:currentConversationId};
+  const imageCount=Math.max(0,parseInt($('imageCount').value||'0',10)||0), imageKind=$('imageKind').value.trim(), imageDescription=$('imageDescription').value.trim();
+  if(currentImages.length||imageCount>0||imageKind||imageDescription){
+    const baseImages=currentImages.length?currentImages:[{}];
+    payload.image_attachments=baseImages.map((image,idx)=>({
+      kind:imageKind||'customer_image',
+      description:imageDescription,
+      count:currentImages.length||imageCount||1,
+      source:'real_test_panel',
+      verified:false,
+      data_url:image.data_url||'',
+      filename:image.filename||`image_${idx+1}.png`,
+      mime_type:image.mime_type||'image/png',
+      size:image.size||0,
+    }));
+  }
+  if($('orderId').value.trim())payload.order_id=$('orderId').value.trim();
+  payload.copilot_context={source:'real_test_panel'};
+  if(candidates.length){payload.product_candidates=candidates;payload.copilot_context.product_candidates=candidates}
+  if(payload.image_attachments){payload.copilot_context.image_attachments=payload.image_attachments;payload.copilot_context.has_image_attachment=true}
+  if(parsedConversation.raw_text){
+    payload.copilot_context.raw_chat_context=parsedConversation.raw_text;
+    payload.copilot_context.conversation_history=parsedConversation.history;
+    payload.copilot_context.latest_customer_message=parsedConversation.latest_customer_message;
+    payload.copilot_context.previous_agent_message=parsedConversation.latest_agent_message;
+  }
+  return payload;
+}
+function syncCandidatesFromFields(){const payload=buildPayload();$('candidates').value=pretty(payload.product_candidates||[]);return payload}
+function fillPayloadPreview(){
+  const payload=syncCandidatesFromFields();
+  const pre=$('payloadPreview');
+  if(pre)pre.textContent=pretty(payload);
+  renderContextMemoryPreview(payload);
+}
+function renderContextMemoryPreview(payload){
+  const box=$('contextMemoryPreview');
+  if(!box)return;
+  const history=payload?.copilot_context?.conversation_history||[];
+  const candidates=payload?.product_candidates||[];
+  const images=payload?.image_attachments||[];
+  const rows=[
+    ['上下文ID', payload?.conversation_id||''],
+    ['当前买家问题', payload?.message||''],
+    ['历史对话条数', String(history.length)],
+    ['最近历史买家问题', payload?.copilot_context?.latest_customer_message||''],
+    ['最近历史客服回复', payload?.copilot_context?.previous_agent_message||''],
+    ['商品候选', candidates.map(c=>typeof c==='string'?c:c.value||c.product_name||c.name||'').filter(Boolean).slice(0,4).join(' / ')],
+    ['订单号', payload?.order_id||''],
+    ['图片数量', String(images.length)],
+    ['图片说明', $('imageDescription').value.trim()],
+  ];
+  box.innerHTML=`<table class="small-table"><tbody>${rows.map(r=>`<tr><th>${escapeHtml(r[0])}</th><td>${escapeHtml(r[1]||'-')}</td></tr>`).join('')}</tbody></table><div class="hint" style="margin-top:8px">想确认 AI 有没有接上前文：看这里的对话 ID 是否没变、历史对话条数是否大于 0、图片数量是否包含刚粘贴的图片。换买家或重新开始时点“换新买家”。</div>`;
+}
+function identityFrom(data){return data.order_product_identity||data.evidence_debug?.order_product_identity||{}}
+async function runCurrent(){
+  const idx=currentIndex, payload=buildPayload();fillPayloadPreview();
+  lastSubmittedPayload = payload;
+  $('mStatus').textContent='生成中...';$('reply').textContent='正在生成建议回复...';$('reply').classList.remove('empty');
+  const t0=performance.now();
+  try{
+    const r=await fetch('/ask/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const ms=Math.round(performance.now()-t0), data=await r.json();
+    lastResponse=data;showResult(data,r.status,ms);runResults.set(idx,{ok:r.ok&&!data.error});
+    if(payload.image_attachments && payload.image_attachments.length){
+      clearImages();
+      if($('contextHint'))$('contextHint').textContent='本轮图片已随消息发送，已自动清空，避免影响下一次测试。客户后续再发图时重新粘贴即可。';
+    }
+  }catch(e){$('mStatus').textContent='生成失败';$('reply').textContent=e.message;runResults.set(idx,{ok:false})}
+  renderCases();
+}
+async function runAll(){for(let i=0;i<CASES.length;i++){selectCase(i);setConversationId(makeConversationId());await runCurrent()}}
+function resetResults(){runResults.clear();renderCases()}
+function currentCase(){return CASES[currentIndex]||{}}
+function currentReviewPayload(){
+  const c=currentCase();
+  return {
+    case_id:caseId(c),scene:c.scene||'',priority:c.priority||'',message:$('message').value.trim(),sidecar_front_title:$('frontTitle').value.trim(),sku:$('sku').value.trim(),order_id:$('orderId').value.trim(),
+    image_count:$('imageCount').value.trim(),image_kind:$('imageKind').value.trim(),image_description:$('imageDescription').value.trim(),status:$('reviewStatus').value,failure_type:$('failureType').value,note:$('reviewNote').value.trim(),final_reply:$('finalReply').value.trim(),
+    suggested_reply:$('reply').textContent||'',intent:lastResponse?.intent||'',risk_level:lastResponse?.risk_level||'',requires_human_review:!!lastResponse?.requires_human_review,answer_mode:lastResponse?.context_used?.answer_mode||lastResponse?.evidence_debug?.answer_mode||'',
+    used_knowledge_entry_ids:lastResponse?.context_used?.used_knowledge_entry_ids||lastResponse?.evidence_debug?.used_knowledge_entry_ids||[],evidence_gate:summarizeEvidenceGate(lastResponse),payload:lastSubmittedPayload||buildPayload(),updated_at:new Date().toLocaleString(),
+  };
+}
+function saveReview(){const record=currentReviewPayload();if(!record.status)record.status='partial';reviewRecords[record.case_id]=record;persistReviews();$('reviewSaved').textContent=`检查结果已保存：${record.updated_at}`;renderCases()}
+function csvCell(v){if(Array.isArray(v))v=v.join('|');if(v&&typeof v==='object')v=JSON.stringify(v);return `"${safe(v).replace(/"/g,'""')}"`}
+function exportReviews(){
+  const rows=Object.values(reviewRecords);
+  const headers=['case_id','status','failure_type','scene','message','sidecar_front_title','sku','order_id','image_count','image_kind','image_description','intent','risk_level','requires_human_review','answer_mode','used_knowledge_entry_ids','evidence_gate','suggested_reply','final_reply','note','updated_at'];
+  const lines=[headers.map(csvCell).join(',')].concat(rows.map(r=>headers.map(h=>csvCell(r[h])).join(',')));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`客服检查记录_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
+}
+async function submitFeedback(){
+  const record=currentReviewPayload();if(!record.status){$('reviewSaved').textContent='请先选择“这条回复好不好”';return}
+  saveReview();const actionMap={pass:'accepted',partial:'edited',fail:'rejected',knowledge_gap:'edited',needs_review:'escalated'};
+  const res=await fetch('/ask/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_message:record.message,suggested_reply:record.suggested_reply,action:actionMap[record.status]||'edited',order_id:record.order_id,final_reply:record.final_reply,risk_level:record.risk_level,source:'real_test_panel'})});
+  if(!res.ok){$('reviewSaved').textContent='提交失败';return}
+  if(record.failure_type && record.status !== 'pass'){
+    const badCaseRes=await createBadCase(false);
+    $('reviewSaved').textContent=badCaseRes?'已提交给 AI 优化，并记录为待优化问题':'已提交给 AI 优化，记录问题失败';
+    return;
+  }
+  $('reviewSaved').textContent='已提交给 AI 优化';
+}
+async function createBadCase(showMessage=true){
+  const record=currentReviewPayload();if(!record.failure_type){$('reviewSaved').textContent='请先选择“哪里有问题”';return}
+  saveReview();
+  const res=await fetch('/ask/api/bad-cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_message:record.message,conversation_history_json:JSON.stringify(parsedConversation.history||[]),ai_suggested_reply:record.suggested_reply,csr_final_reply:record.final_reply,failure_type:record.failure_type,severity:record.priority?.startsWith('P0')?'P0':'P2',scenario:record.scene,source:'real_test_panel',actual_intent:record.intent,actual_tools_json:JSON.stringify(lastResponse?.evidence_debug?.tool_plan||[]),used_evidence_json:JSON.stringify(record.used_knowledge_entry_ids||[]),sidecar_context_json:JSON.stringify({product_name:record.sidecar_front_title,sku:record.sku,order_id:record.order_id,image_count:record.image_count,image_kind:record.image_kind,image_description:record.image_description,raw_chat_context:parsedConversation.raw_text||''}),root_cause:record.note})});
+  const data=await res.json().catch(()=>({}));
+  if(showMessage)$('reviewSaved').textContent=res.ok?`问题已记录，编号：${data.id||data.case_id||''}`:'问题记录失败';
+  return res.ok;
+}
+function showResult(data,status,ms){
+  const id=identityFrom(data);$('mStatus').textContent=`${status < 400 ? '生成成功' : '生成异常'} / ${ms}ms`;$('mIntent').textContent=data.intent||'-';$('mRisk').textContent=data.requires_human_review?'需要人工确认':'暂不需要人工确认';$('mIdentity').textContent=id.status?`${id.matched_product_name||id.i_id||id.sku_id||id.status}`:'-';$('reply').textContent=data.suggested_reply||data.error||'';$('reply').classList.toggle('empty',!data.suggested_reply&&!data.error);
+  const dbg=data.evidence_debug||{}, evidenceSummary=dbg.knowledge_evidence_summary||dbg.filtered_evidence_summary||dbg.retrieved_chunks_summary||[], firstEvidence=evidenceSummary[0]||{}, gateSummary=dbg.evidence_gate_summary||{};
+  const serverCtx=dbg.conversation_context_summary||data.context_used?.conversation_context_summary||{};
+  const debugRows=[
+    ['问题字段',`${dbg.query_fact_type||''}${dbg.query_fact_type_label?' / '+dbg.query_fact_type_label:''}`],['字段置信度',`${dbg.query_fact_type_confidence??''} ${dbg.query_fact_type_source?'('+dbg.query_fact_type_source+')':''}`],['字段命中词',(dbg.query_fact_type_terms||[]).join('，')],['商品来源',id.source||''],['匹配商品',id.matched_product_name||''],['SKU',id.sku_id||''],['i_id',id.i_id||''],['查询接口',id.lookup_endpoint||data.evidence_debug?.used_endpoint||data.used_endpoint||''],['事实工具',data.evidence_debug?.used_fact_tool||data.used_fact_tool||''],['工具计划',(data.evidence_debug?.tool_plan||[]).join('，')],['证据门控',gateSummary.total==null?'':`total ${gateSummary.total} / allowed ${gateSummary.allowed||0} / blocked ${gateSummary.blocked||0} / reference ${gateSummary.reference_only||0}`],['首条证据字段',firstEvidence.evidence_fact_type||firstEvidence.fact_type||''],['首条证据拦截',firstEvidence.mismatch_reason||''],['首条门控状态',firstEvidence.gate_status||''],['首条门控原因',(firstEvidence.gate_reasons||[]).join('，')],
+    ['服务端上下文ID',serverCtx.conversation_id||data.conversation_id||''],['服务端已记住商品',serverCtx.confirmed_product||''],['服务端当前意图',serverCtx.current_intent||''],['服务端客户关注点',serverCtx.customer_concern||''],
+  ];
+  const imageAnalysis=data.context_used?.image_analysis||data.evidence_debug?.image_analysis||[];
+  if(imageAnalysis.length){const img=imageAnalysis[0]||{};debugRows.push(['图片识别',`${img.image_type||''} / ${img.issue_type||''} / 置信度 ${img.confidence??''}`]);debugRows.push(['图片摘要',img.summary||''])}
+  $('debugBox').innerHTML=`<table class="small-table"><tbody>${debugRows.map(r=>`<tr><th>${escapeHtml(r[0])}</th><td>${escapeHtml(r[1])}</td></tr>`).join('')}</tbody></table>${renderEvidenceGate(evidenceSummary)}`;
+  $('rawBox').textContent=pretty(data);
+}
+function summarizeEvidenceGate(data){
+  const dbg=data?.evidence_debug||{}, rows=dbg.knowledge_evidence_summary||dbg.filtered_evidence_summary||[];
+  return rows.slice(0,5).map(e=>`${e.gate_status||'unknown'}:${e.evidence_fact_type||e.fact_type||''}:${e.entry_id||e.chunk_id||''}:${(e.gate_reasons||[]).join('|')||'none'}`).join(' / ');
+}
+function renderEvidenceGate(rows){
+  rows=rows||[];if(!rows.length)return '<div class="gate-list"><div class="hint">暂无证据门控结果。</div></div>';
+  return `<div class="gate-list"><h2>证据门控</h2>${rows.slice(0,6).map((e,idx)=>{const status=e.gate_status||'unknown', reasons=(e.gate_reasons||[]).join('，')||'无', title=e.entry_id||e.chunk_id||`证据${idx+1}`, fact=e.evidence_fact_type||e.fact_type||'-', score=e.rerank_score||e.score||0, direct=e.direct_answer_allowed===false?'不可直接回答':'可直接回答';return `<div class="gate-card"><div class="gate-head"><span class="gate-pill ${escapeHtml(status)}">${escapeHtml(status)}</span><span class="gate-title">${escapeHtml(title)}</span></div><div class="gate-preview">${escapeHtml(e.chunk_preview||'')}</div><div class="gate-meta"><span class="gate-pill">字段：${escapeHtml(fact)}</span><span class="gate-pill">分数：${escapeHtml(String(score))}</span><span class="gate-pill">${escapeHtml(direct)}</span><span class="gate-pill">原因：${escapeHtml(reasons)}</span></div></div>`}).join('')}</div>`;
+}
+function showTab(name){$('debugBox').style.display=name==='debug'?'':'none';$('rawBox').style.display=name==='raw'?'':'none';$('tabDebug').classList.toggle('active',name==='debug');$('tabRaw').classList.toggle('active',name==='raw')}
+init();
+</script>
+</body>
+</html>

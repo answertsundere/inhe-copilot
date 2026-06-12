@@ -1,0 +1,1032 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INHE 客服 Copilot</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--border:#e5e7eb;--blue:#2563eb;--bluel:#eff6ff;--blueb:#bfdbfe;--green:#16a34a;--greenl:#f0fdf4;--greenb:#bbf7d0;--orange:#d97706;--orangel:#fffbeb;--orangeb:#fde68a;--red:#dc2626;--redl:#fef2f2;--redb:#fecaca;--gray:#6b7280;--text:#111827;--text2:#374151;--radius:6px}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+.sbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--border);font-size:11px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}.dot.on{background:var(--green)}.dot.off{background:var(--red)}.dot.warn{background:var(--orange)}
+.item{display:flex;align-items:center;gap:3px}
+.bdg{display:inline-flex;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;border:1px solid var(--border);background:#f3f4f6;color:var(--gray)}
+.bdg.green{background:var(--greenl);color:var(--green);border-color:var(--greenb)}.bdg.orange{background:var(--orangel);color:var(--orange);border-color:var(--orangeb)}.bdg.red{background:var(--redl);color:var(--red);border-color:var(--redb)}
+.scenario-tabs{display:flex;background:var(--card);border-bottom:2px solid var(--border);padding:0 10px}
+.scenario-tab{padding:10px 20px;cursor:pointer;font-weight:600;color:var(--gray);border-bottom:2px solid transparent;margin-bottom:-2px;font-size:13px;transition:all .15s}
+.scenario-tab:hover{color:var(--blue)}.scenario-tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.scenario-page{display:none}.scenario-page.active{display:block}
+.main-wrap{display:flex;height:calc(100vh - 130px);overflow:hidden}
+.left-panel{flex:1;overflow-y:auto;padding:12px;min-width:0}
+.right-panel{width:480px;border-left:1px solid var(--border);overflow-y:auto;background:var(--card);flex-shrink:0}
+@media(max-width:900px){.main-wrap{flex-direction:column}.right-panel{width:100%;border-left:none;border-top:1px solid var(--border);max-height:50vh}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+.card-h{padding:8px 12px;font-weight:600;font-size:13px;background:#f9fafb;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.card-h .arr{transition:transform .15s;font-size:11px}.card-h.shut .arr{transform:rotate(-90deg)}
+.card-b{padding:10px 12px}.card-b.shut{display:none}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.form-grid .full{grid-column:1/-1}
+@media(max-width:600px){.form-grid{grid-template-columns:1fr}}
+label{display:block;font-size:11px;color:var(--gray);font-weight:600;margin-bottom:3px}
+label .req{color:var(--red)}
+input,textarea,select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.1)}
+textarea{resize:vertical;min-height:60px}
+.hint{font-size:11px;color:var(--gray);margin-top:2px}
+.session-bar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f9fafb;border-bottom:1px solid var(--border);font-size:11px;color:var(--gray)}
+.session-bar code{font-size:11px;color:var(--text2);background:#e5e7eb;padding:1px 6px;border-radius:4px}
+.session-bar button{padding:3px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);font-size:11px;cursor:pointer;color:var(--text2)}
+.session-bar button:hover{border-color:var(--blue);color:var(--blue)}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.btn{padding:7px 16px;border:none;border-radius:var(--radius);font-size:13px;cursor:pointer;font-weight:500}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.pri{background:var(--blue);color:#fff}.btn.pri:hover:not(:disabled){background:#1d4ed8}
+.btn.grn{background:var(--green);color:#fff}.btn.grn:hover:not(:disabled){background:#15803d}
+.btn.red{background:var(--red);color:#fff}.btn.red:hover:not(:disabled){background:#b91c1c}
+.btn.org{background:var(--orange);color:#fff}.btn.org:hover:not(:disabled){background:#b45309}
+.btn.sec{background:#e5e7eb;color:var(--text)}.btn.sec:hover:not(:disabled){background:#d1d5db}
+.reply-box{padding:12px;background:var(--bluel);border:1px solid var(--blueb);border-radius:var(--radius);white-space:pre-wrap;font-size:13px;line-height:1.6;min-height:60px}
+.reply-box.empty{color:var(--gray);font-style:italic;background:#f9fafb;border-color:var(--border)}
+.final-textarea{min-height:80px}
+.rej-row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.rej{padding:4px 12px;border:1px solid var(--border);border-radius:16px;font-size:12px;cursor:pointer;background:var(--card);color:var(--text2)}
+.rej:hover{border-color:var(--red);color:var(--red)}.rej.sel{background:var(--redl);color:var(--red);border-color:var(--redb);font-weight:600}
+.rej-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.4);justify-content:center;align-items:center}
+.rej-modal.open{display:flex}
+.rej-modal-inner{background:var(--card);border-radius:12px;padding:20px;width:400px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.msg-list{padding:8px}
+.msg-item{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;background:var(--card)}
+.msg-header{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f9fafb;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px}
+.msg-header .msg-q{flex:1;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-summary{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.msg-summary .ms-tag{display:inline-flex;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:500}
+.ms-tag.t-intent{background:var(--bluel);color:var(--blue)}
+.ms-tag.t-green{background:var(--greenl);color:var(--green)}.ms-tag.t-orange{background:var(--orangel);color:var(--orange)}.ms-tag.t-red{background:var(--redl);color:var(--red)}
+.ms-tag.t-gray{background:#f3f4f6;color:var(--gray)}
+.msg-body{display:none;padding:10px 12px}
+.msg-body.open{display:block}
+.msg-reply{padding:10px;background:var(--bluel);border:1px solid var(--blueb);border-radius:var(--radius);white-space:pre-wrap;font-size:13px;line-height:1.6;margin:6px 0}
+.msg-edit-area{width:100%;min-height:60px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;resize:vertical;margin:4px 0}
+.msg-feedback-row{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.msg-feedback-row .fb-btn{padding:3px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;background:var(--card);color:var(--text2)}
+.msg-feedback-row .fb-btn:hover{border-color:var(--blue);color:var(--blue)}
+.msg-feedback-row .fb-btn.fb-done{opacity:.5;cursor:default}
+.edbg-section{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;overflow:hidden}
+.edbg-h{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f9fafb;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:600}
+.edbg-h .arr{transition:transform .15s;font-size:10px}.edbg-h.shut .arr{transform:rotate(-90deg)}
+.edbg-b{padding:8px 10px;font-size:12px;line-height:1.6}.edbg-b.shut{display:none}
+.kv-grid{display:grid;grid-template-columns:130px 1fr;gap:2px 8px;font-size:12px}
+.kv-grid .k{color:var(--gray);font-weight:500;text-align:right;padding:2px 0}.kv-grid .v{padding:2px 0;word-break:break-all}
+.tool-row{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:12px}
+.tool-row:last-child{border-bottom:none}
+.tool-status{display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600}
+.tool-status.s-success{background:var(--greenl);color:var(--green)}
+.tool-status.s-miss{background:#f3f4f6;color:var(--gray)}
+.tool-status.s-error,.tool-status.s-timeout{background:var(--redl);color:var(--red)}
+.tool-status.s-fallback{background:var(--orangel);color:var(--orange)}
+.tool-status.s-skipped,.tool-status.s-planned{background:#f9fafb;color:var(--gray)}
+.rag-group{margin-bottom:6px}
+.rag-group-title{font-weight:600;font-size:11px;color:var(--gray);margin-bottom:2px;text-transform:uppercase}
+.rag-item{padding:4px 8px;background:#f9fafb;border-radius:4px;margin-bottom:2px;font-size:11px;line-height:1.4}
+.rag-item .ri-title{font-weight:500;color:var(--text)}
+.rag-item .ri-meta{color:var(--gray)}
+.cite-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px}
+.cite-id{display:inline-flex;padding:1px 6px;border-radius:4px;background:var(--bluel);color:var(--blue);font-weight:600;font-size:10px;flex-shrink:0}
+.dbg-json{padding:10px;background:#f8fafc;border:1px solid var(--border);border-radius:var(--radius);white-space:pre-wrap;font-family:"SF Mono",Monaco,Consolas,monospace;font-size:11px;max-height:400px;overflow:auto;line-height:1.4}
+.safety{text-align:center;padding:8px;font-size:11px;color:var(--gray);border-top:1px solid var(--border);background:var(--card)}
+.empty-state{padding:40px 20px;text-align:center;color:var(--gray);font-size:13px}
+.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap}
+.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
+.gnav-bar a.gnav-active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
+body{margin-top:40px!important}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:4px}
+.tab-bar{display:flex;background:var(--card);border-bottom:2px solid var(--border);padding:0 10px}
+.tab-btn{padding:8px 18px;cursor:pointer;font-weight:600;color:var(--gray);border-bottom:2px solid transparent;margin-bottom:-2px;font-size:13px;transition:all .15s}
+.tab-btn:hover{color:var(--blue)}.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-page{display:none}.tab-page.active{display:block}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:8px 0}
+.metric-card{background:#f9fafb;border:1px solid var(--border);border-radius:var(--radius);padding:10px;text-align:center}
+.metric-card .mc-val{font-size:20px;font-weight:700;color:var(--text)}
+.metric-card .mc-label{font-size:10px;color:var(--gray);margin-top:2px}
+.vision-banner{padding:4px 10px;background:var(--bluel);border-bottom:1px solid var(--blueb);font-size:11px;color:var(--blue);display:flex;align-items:center;gap:4px}
+.hist-list{max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;background:#f9fafb}
+.hist-item{padding:4px 8px;border-bottom:1px solid var(--border);display:flex;gap:6px}
+.hist-item:last-child{border-bottom:none}
+.hist-role{font-weight:600;min-width:30px;color:var(--gray)}
+.hist-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.compact .left-panel{display:none}body.compact .right-panel{width:100%}
+</style>
+</head>
+<body>
+
+<!-- Nav Bar -->
+<nav class="gnav-bar">
+  <span class="gnav-brand">INHE</span>
+  <a href="/" data-path="/">客服助手</a>
+  <a href="/copilot-panel" data-path="/copilot-panel" class="gnav-active">千牛监控</a>
+  <a href="/knowledge-admin" data-path="/knowledge-admin">知识库</a>
+  <a href="/bad-cases" data-path="/bad-cases">Bad Cases</a>
+  <a href="/settings" data-path="/settings">设置</a>
+</nav>
+
+<!-- Status Bar -->
+<div class="sbar">
+  <span class="item"><span class="dot off" id="dotBackend"></span><span id="txtBackend">后端 离线</span></span>
+  <span class="item"><span class="dot off" id="dotSidecar"></span><span id="txtSidecar">Sidecar 未启动</span></span>
+  <span class="item"><span class="dot off" id="dotQianniu"></span><span id="txtQianniu">千牛 未连接</span></span>
+  <span style="flex:1"></span>
+  <span class="bdg" id="srcBadge">manual</span>
+  <span class="bdg green" id="riskBadge" style="display:none"></span>
+  <span class="bdg red" id="reviewBadge" style="display:none">需人工复核</span>
+  <span class="bdg" id="pidBadge" style="display:none"></span>
+</div>
+
+<!-- Vision banner -->
+<div class="vision-banner" id="visionBanner" style="display:none">
+  <span>&#128065; 视觉识别已启用</span>
+  <span id="visionProvider"></span>
+</div>
+
+<!-- Desktop Tabs -->
+<div class="tab-bar" id="desktopTabs">
+  <div class="tab-btn active" data-tab="main">主页</div>
+  <div class="tab-btn" data-tab="settings">设置</div>
+  <div class="tab-btn" data-tab="diagnostic">诊断</div>
+  <div class="tab-btn" data-tab="metrics">指标</div>
+</div>
+
+<!-- Tab: Main -->
+<div class="tab-page active" id="tp-main">
+<div class="main-wrap">
+
+<!-- Left: Input -->
+<div class="left-panel">
+
+  <!-- Scenario Tabs -->
+  <div class="scenario-tabs">
+    <div class="scenario-tab active" data-scenario="pre_sale">售前咨询</div>
+    <div class="scenario-tab" data-scenario="after_sale">售后订单</div>
+    <div class="scenario-tab" data-scenario="chat_only">纯对话</div>
+  </div>
+
+  <!-- Shared: Sidecar controls -->
+  <div class="session-bar">
+    会话ID: <code id="sessionId">-</code>
+    <button id="reloadBtn" onclick="reloadQianniu()">重新读取千牛</button>
+    <button onclick="SC.newSession()">新建会话</button>
+  </div>
+
+  <!-- Conversation History -->
+  <div class="card" id="histCard" style="display:none">
+    <div class="card-h" onclick="toggle(this)"><span>最近会话上下文</span><span class="arr">&#9660;</span></div>
+    <div class="card-b"><div class="hist-list" id="histList"></div></div>
+  </div>
+
+  <!-- 售前咨询 -->
+  <div class="scenario-page active" id="pg-pre_sale">
+    <div class="card">
+      <div class="card-h" onclick="toggle(this)"><span>输入信息</span><span class="arr">&#9660;</span></div>
+      <div class="card-b">
+        <div class="form-grid">
+          <div class="full"><label>客户消息 <span class="req">*</span></label><textarea id="pre_sale-msg" rows="3" placeholder="这个刺猬桌面书架能放多少本书？结实吗？"></textarea></div>
+          <div class="full"><label>商品完整标题 <span class="req">*</span></label><input id="pre_sale-product" placeholder="英禾刺猬桌面书架..."></div>
+          <div><label>SKU</label><input id="pre_sale-sku" placeholder="YHXXXK01B01S01"></div>
+          <div><label>平台商品ID</label><input id="pre_sale-platform_id" placeholder="985017262291"></div>
+          <div class="full"><label>最近对话</label><textarea id="pre_sale-history" rows="2" placeholder="客户：这个书架多大？"></textarea></div>
+        </div>
+        <div class="btn-row"><button class="btn pri" id="analyzeBtn" onclick="SC.analyze('pre_sale')">分析</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 售后订单 -->
+  <div class="scenario-page" id="pg-after_sale">
+    <div class="card">
+      <div class="card-h" onclick="toggle(this)"><span>输入信息</span><span class="arr">&#9660;</span></div>
+      <div class="card-b">
+        <div class="form-grid">
+          <div class="full"><label>客户消息 <span class="req">*</span></label><textarea id="after_sale-msg" rows="3" placeholder="我的快递什么时候能到？"></textarea></div>
+          <div><label>订单号 <span class="req">*</span></label><input id="after_sale-order" placeholder="5116887975001001001"></div>
+          <div><label>订单号类型</label><select id="after_sale-order_type"><option value="platform_trade_id_candidate" selected>平台交易号</option><option value="internal_order_id_candidate">聚水潭内部订单号</option></select></div>
+          <div><label>SKU</label><input id="after_sale-sku" placeholder="YHXXXK01B01S01"></div>
+          <div><label>商品名称</label><input id="after_sale-product" placeholder="英禾刺猬桌面书架..."></div>
+          <div><label>快递单号</label><input id="after_sale-tracking" placeholder="SF5196840812297"></div>
+          <div class="full"><label>最近对话</label><textarea id="after_sale-history" rows="2"></textarea></div>
+        </div>
+        <div class="btn-row"><button class="btn pri" id="after_sale-analyzeBtn" onclick="SC.analyze('after_sale')">分析</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 纯对话 -->
+  <div class="scenario-page" id="pg-chat_only">
+    <div class="card">
+      <div class="card-h" onclick="toggle(this)"><span>输入信息</span><span class="arr">&#9660;</span></div>
+      <div class="card-b">
+        <div class="form-grid">
+          <div class="full"><label>客户消息 <span class="req">*</span></label><textarea id="chat_only-msg" rows="3" placeholder="再不处理我就投诉平台"></textarea></div>
+          <div class="full"><label>最近对话</label><textarea id="chat_only-history" rows="2"></textarea></div>
+        </div>
+        <div class="btn-row"><button class="btn pri" id="chat_only-analyzeBtn" onclick="SC.analyze('chat_only')">分析</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Right: Message List -->
+<div class="right-panel">
+  <div class="msg-list" id="msgList">
+    <div class="empty-state" id="emptyState">暂无消息记录，请先输入客户消息并点击分析。</div>
+  </div>
+  <div class="safety">AI 建议，仅供客服确认后发送。当前版本不会自动发送到千牛。禁止自动发送。forbid_auto_send。</div>
+</div>
+
+</div>
+</div><!-- /tp-main -->
+
+<!-- Tab: Settings -->
+<div class="tab-page" id="tp-settings">
+  <div style="padding:12px">
+    <div class="card">
+      <div class="card-h"><span>VLM 视觉识别配置</span></div>
+      <div class="card-b">
+        <div class="form-grid">
+          <div><label>Provider</label><select id="set-vlm-provider"><option value="">关闭</option><option value="dashscope">DashScope</option><option value="mimo">MiMo</option></select></div>
+          <div><label>模型</label><input id="set-vlm-model" placeholder="qwen-vl-plus"></div>
+          <div><label>API Base URL</label><input id="set-vlm-base" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"></div>
+          <div><label>API Key</label><input id="set-vlm-key" type="password" placeholder="sk-..."></div>
+        </div>
+        <div class="btn-row"><button class="btn pri" onclick="saveSettings()">保存</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab: Diagnostic -->
+<div class="tab-page" id="tp-diagnostic">
+  <div style="padding:12px">
+    <div class="card">
+      <div class="card-h"><span>系统诊断</span></div>
+      <div class="card-b">
+        <div class="kv-grid">
+          <span class="k">后端 PID</span><span class="v" id="diag-pid">-</span>
+          <span class="k">APP_VERSION</span><span class="v" id="diag-ver">-</span>
+          <span class="k">启动时间</span><span class="v" id="diag-boot">-</span>
+          <span class="k">连接地址</span><span class="v" id="diag-addr">-</span>
+          <span class="k">Sidecar PID</span><span class="v" id="diag-sidecar">0</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn sec" onclick="refreshDiagnostic()">刷新</button>
+          <button class="btn sec" onclick="openLogs()">打开日志目录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab: Metrics -->
+<div class="tab-page" id="tp-metrics">
+  <div style="padding:12px">
+    <div class="metrics-grid" id="metricsGrid">
+      <div class="metric-card"><div class="mc-val" id="m-total">0</div><div class="mc-label">今日建议</div></div>
+      <div class="metric-card"><div class="mc-val" id="m-accepted">0</div><div class="mc-label">采纳数</div></div>
+      <div class="metric-card"><div class="mc-val" id="m-edited">0</div><div class="mc-label">修改后采纳</div></div>
+      <div class="metric-card"><div class="mc-val" id="m-rejected">0</div><div class="mc-label">拒绝数</div></div>
+      <div class="metric-card"><div class="mc-val" id="m-highrisk">0</div><div class="mc-label">高风险</div></div>
+      <div class="metric-card"><div class="mc-val" id="m-rate">0%</div><div class="mc-label">采纳率</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="rej-modal" id="rejModal">
+  <div class="rej-modal-inner">
+    <div style="font-weight:600;margin-bottom:10px">请选择拒绝原因</div>
+    <div class="rej-row" id="rejChips"></div>
+    <div class="btn-row">
+      <button class="btn red" onclick="confirmReject()">确认拒绝</button>
+      <button class="btn sec" onclick="hideReject()">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+var BASE = '';
+var IS_DESKTOP = !!(window.pywebview && window.pywebview.api);
+var REJECT_REASONS = ['事实错误','话术不自然','没有回答问题','知识缺失','风险太高','客户消息识别错误','订单/物流信息不准','商品信息不准','AI 回复太保守','AI 回复太冒进','其他'];
+var selRej = '';
+var rejTargetMsgId = '';
+var latestConversationHistory = [];
+var lastSidecarHash = '';
+
+window.SC = {
+  sessions: {
+    pre_sale: { id: genId('manual-pre-sale'), messages: [] },
+    after_sale: { id: genId('manual-after-sale'), messages: [] },
+    chat_only: { id: genId('manual-chat'), messages: [] }
+  },
+  activeScenario: 'pre_sale',
+
+  newSession: function(scenario) {
+    scenario = scenario || this.activeScenario;
+    var prefix = scenario === 'pre_sale' ? 'manual-pre-sale' : scenario === 'after_sale' ? 'manual-after-sale' : 'manual-chat';
+    this.sessions[scenario].id = genId(prefix);
+    this.sessions[scenario].messages = [];
+    document.getElementById('sessionId').textContent = this.sessions[scenario].id;
+    if (scenario === this.activeScenario) renderMessageList();
+  },
+
+  getPayload: function(scenario) {
+    var s = this.sessions[scenario];
+    var msg = val(scenario + '-msg');
+    if (!msg) { alert('请填写客户消息'); return null; }
+
+    var payload = {
+      source: IS_DESKTOP ? 'sidecar_mixed' : 'manual_simulation',
+      scenario: scenario,
+      conversation_id: s.id,
+      customer_message: msg,
+      conversation_history:latestConversationHistory.length ? latestConversationHistory : parseHistory(val(scenario + '-history')),
+    };
+
+    if (scenario === 'pre_sale') {
+      var product = val('pre_sale-product');
+      if (!product) { alert('请填写商品完整标题'); return null; }
+      payload.product_candidates = [{ value: product, type: 'product_candidate', source: 'manual_simulation', confidence: 1.0, verified: false }];
+      var sku = val('pre_sale-sku');
+      if (sku) payload.product_candidates.push({ value: sku, type: 'sku_id_candidate', source: 'manual_simulation', confidence: 1.0, verified: true });
+    }
+
+    if (scenario === 'after_sale') {
+      var order = val('after_sale-order');
+      if (!order) { alert('请填写订单号'); return null; }
+      payload.order_candidates = [{ value: order, type: val('after_sale-order_type'), source: 'manual_simulation', confidence: 1.0, verified: true }];
+      var tracking = val('after_sale-tracking');
+      if (tracking) payload.tracking_candidates = [{ value: tracking, type: 'tracking_no_candidate', source: 'manual_simulation', confidence: 1.0, verified: true }];
+      payload.product_candidates = [];
+      var sku2 = val('after_sale-sku');
+      if (sku2) payload.product_candidates.push({ value: sku2, type: 'sku_id_candidate', source: 'manual_simulation', confidence: 1.0, verified: true });
+      var prod2 = val('after_sale-product');
+      if (prod2) payload.product_candidates.push({ value: prod2, type: 'product_candidate', source: 'manual_simulation', confidence: 1.0, verified: false });
+    }
+    return payload;
+  },
+
+  analyze: function(scenario) {
+    var payload = this.getPayload(scenario);
+    if (!payload) return;
+    this.activeScenario = scenario;
+    var btn = document.getElementById(scenario + '-analyzeBtn') || document.getElementById('analyzeBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>分析中...';
+
+    var url = BASE + '/api/copilot/context';
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) })
+    .then(function(r){ return r.json(); }).then(function(data) {
+      var msgObj = {
+        message_id: data.message_id || genId('msg'),
+        conversation_id: SC.sessions[scenario].id,
+        scenario: scenario,
+        customer_message: payload.customer_message,
+        suggested_reply: data.suggested_reply || '',
+        final_reply: data.suggested_reply || '',
+        intent: data.intent || '',
+        risk_level: data.risk_level || '',
+        execution_debug: data.execution_debug || {},
+        evidence_debug: data.evidence_debug || {},
+        trace_steps: data.trace_steps || [],
+        feedback_status: '',
+        requires_human_review: data.requires_human_review || false,
+        customer_emotion: data.customer_emotion || '',
+      };
+      SC.sessions[scenario].messages.push(msgObj);
+      renderMessageList();
+    }).catch(function(e) {
+      SC.sessions[scenario].messages.push({
+        message_id: genId('msg'), conversation_id: SC.sessions[scenario].id,
+        scenario: scenario, customer_message: payload.customer_message,
+        suggested_reply: '请求失败: ' + e.message, final_reply: '',
+        intent: '', risk_level: '', execution_debug: {},
+        evidence_debug: {}, trace_steps: [], feedback_status: '',
+        requires_human_review: false, customer_emotion: '',
+      });
+      renderMessageList();
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = '分析';
+    });
+  },
+
+  feedback: function(msgId, action) {
+    var scenario = this.activeScenario;
+    var msgs = this.sessions[scenario].messages;
+    var msg = null;
+    for (var i = 0; i < msgs.length; i++) { if (msgs[i].message_id === msgId) { msg = msgs[i]; break; } }
+    if (!msg) return;
+    if (action === 'rejected') { rejTargetMsgId = msgId; showReject(); return; }
+    var editEl = document.getElementById('edit-' + msgId);
+    var finalReply = editEl ? editEl.value : msg.suggested_reply;
+    var payload = {
+      action: action, source: 'copilot_panel', scenario: scenario,
+      conversation_id: this.sessions[scenario].id,
+      message_id: msgId,
+      customer_message: msg.customer_message,
+      suggested_reply: msg.suggested_reply,
+      final_reply: finalReply, risk_level: msg.risk_level,
+      need_human_review: msg.requires_human_review
+    };
+    fetch(BASE + '/api/copilot/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); }).then(function(d) {
+      if (d.ok) { msg.feedback_status = action; msg.final_reply = finalReply; renderMessageList(); showToast('反馈已提交: ' + action); }
+      else { alert('反馈失败: ' + (d.error || '未知错误')); }
+    }).catch(function(e) { alert('反馈请求失败: ' + e.message); });
+  }
+};
+
+/* ===== Message rendering ===== */
+function renderMessageList() {
+  var scenario = SC.activeScenario;
+  var msgs = SC.sessions[scenario].messages;
+  var container = document.getElementById('msgList');
+  if (!msgs.length) { container.innerHTML = '<div class="empty-state">暂无消息记录，请先输入客户消息并点击分析。</div>'; return; }
+  var html = '';
+  for (var i = 0; i < msgs.length; i++) html += buildMessageHTML(msgs[i]);
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+function buildMessageHTML(m) {
+  var ed = m.execution_debug || {};
+  var routing = ed.routing || {};
+  var timing = ed.timing || {};
+  var intent = routing.final_intent || m.intent || '-';
+  var riskCls = m.risk_level === 'high' ? 't-red' : m.risk_level === 'medium' ? 't-orange' : 't-green';
+  var toolCount = (ed.tool_calls || []).filter(function(t){ return t.status !== 'skipped' && t.status !== 'planned'; }).length;
+  var ragUsed = (ed.rag && ed.rag.metrics) ? ed.rag.metrics.used_count : 0;
+  var totalMs = timing.total_ms || 0;
+
+  var h = '<div class="msg-item">';
+  h += '<div class="msg-header" onclick="toggleMsg(\'' + m.message_id + '\')">';
+  h += '<span class="msg-q">' + esc(m.customer_message) + '</span>';
+  h += '<span class="msg-summary">';
+  h += '<span class="ms-tag t-intent">' + esc(intent) + '</span>';
+  h += '<span class="ms-tag ' + riskCls + '">' + esc(m.risk_level || 'low') + '</span>';
+  h += '<span class="ms-tag t-gray">JST' + toolCount + '</span>';
+  h += '<span class="ms-tag t-gray">RAG' + ragUsed + '</span>';
+  h += '<span class="ms-tag t-gray">' + totalMs + 'ms</span>';
+  h += '</span></div>';
+  h += '<div class="msg-body" id="mb-' + m.message_id + '">';
+  h += '<div class="msg-reply' + (!m.suggested_reply ? ' empty' : '') + '">' + esc(m.suggested_reply || '无建议') + '</div>';
+  h += '<textarea class="msg-edit-area" id="edit-' + m.message_id + '">' + esc(m.suggested_reply || '') + '</textarea>';
+  h += '<div class="msg-feedback-row">';
+  if (m.feedback_status) {
+    h += '<span class="fb-btn fb-done">' + esc(m.feedback_status) + '</span>';
+  } else {
+    h += '<button class="fb-btn" onclick="event.stopPropagation();copyMsgReply(\'' + m.message_id + '\')">复制回复</button>';
+    h += '<button class="fb-btn" style="color:var(--green)" onclick="event.stopPropagation();SC.feedback(\'' + m.message_id + '\',\'accepted\')">采纳</button>';
+    h += '<button class="fb-btn" style="color:var(--blue)" onclick="event.stopPropagation();SC.feedback(\'' + m.message_id + '\',\'edited\')">修改后采纳</button>';
+    h += '<button class="fb-btn" style="color:var(--red)" onclick="event.stopPropagation();SC.feedback(\'' + m.message_id + '\',\'rejected\')">拒绝</button>';
+    h += '<button class="fb-btn" style="color:var(--orange)" onclick="event.stopPropagation();SC.feedback(\'' + m.message_id + '\',\'escalated\')">转人工/主管</button>';
+  }
+  h += '</div>';
+  h += buildDebugPanels(m);
+  h += '</div></div>';
+  return h;
+}
+
+/* ===== Execution Debug Panels (incremental addition) ===== */
+function buildDebugPanels(m) {
+  var ed = m.execution_debug || {};
+  if (!ed || !ed.request) return buildFallbackDebug(m);
+  var h = '<div style="margin-top:8px">';
+  h += buildRoutingPanel(ed);
+  h += buildToolCallsPanel(ed);
+  h += buildRAGPanel(ed);
+  h += buildCitationsPanel(ed);
+  h += buildGenerationPanel(ed);
+  h += buildTimingPanel(ed);
+  h += buildRawJSONPanel(m);
+  h += '</div>';
+  return h;
+}
+
+function buildFallbackDebug(m) {
+  var ed = m.evidence_debug || {};
+  var traces = m.trace_steps || [];
+  var h = '<div style="margin-top:8px">';
+  h += '<div class="edbg-section"><div class="edbg-h" onclick="toggle(this)"><span>基础结果</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut"><div class="kv-grid">';
+  h += kv('intent', m.intent); h += kv('risk_level', m.risk_level);
+  h += kv('answer_mode', ed.answer_mode); h += kv('generation_mode', ed.generation_mode);
+  h += kv('llm_used', boolStr(ed.llm_used));
+  h += '</div></div></div>';
+  h += '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>完整调试 JSON</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut"><pre class="dbg-json">' + esc(JSON.stringify({evidence_debug:ed,trace_steps:traces},null,2)) + '</pre></div></div>';
+  h += '</div>';
+  return h;
+}
+
+function buildRoutingPanel(ed) {
+  var r = ed.routing || {};
+  var h = '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>理解与路由</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut"><div class="kv-grid">';
+  h += kv('初始意图', r.old_intent || '-'); h += kv('LLM意图', r.llm_intent || '-');
+  h += kv('Fusion意图', r.fusion_final_intent || '-'); h += kv('最终意图', r.final_intent || '-');
+  h += kv('路由来源', r.router_source || '-'); h += kv('策略', r.selected_route || '-');
+  h += kv('回答模式', r.answer_mode || '-'); h += kv('风险', r.risk_level || '-');
+  h += kv('需人工', boolStr(r.need_human_review));
+  if (r.overrides && r.overrides.length) r.overrides.forEach(function(o){ h += kv('修正', o.from + ' → ' + o.to + ' (' + o.reason + ')'); });
+  h += '</div></div></div>';
+  return h;
+}
+
+function buildToolCallsPanel(ed) {
+  var calls = ed.tool_calls || [];
+  var h = '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>Function Calling</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut">';
+  if (!calls.length) { h += '<div style="color:var(--gray);font-size:11px">无工具调用</div>'; }
+  else calls.forEach(function(tc) {
+    var sc = tc.status === 'success' ? 's-success' : tc.status === 'miss' ? 's-miss' : (tc.status === 'error' || tc.status === 'timeout') ? 's-error' : tc.status === 'fallback' ? 's-fallback' : 's-skipped';
+    h += '<div class="tool-row"><span class="tool-status ' + sc + '">' + esc(tc.status) + '</span><span style="flex:1;font-weight:500">' + esc(tc.tool_name) + '</span><span style="color:var(--gray)">' + (tc.duration_ms||0) + 'ms</span></div>';
+    var inp = tc.input_summary || {};
+    var is = Object.keys(inp).map(function(k){ return k + '=' + truncate(String(inp[k]),30); }).join(', ');
+    if (is) h += '<div style="padding:0 0 4px 20px;font-size:11px;color:var(--gray)">输入: ' + esc(is) + '</div>';
+    if (tc.found) h += '<div style="padding:0 0 4px 20px;font-size:11px;color:var(--green)">结果: 找到</div>';
+    else if (tc.error_message) h += '<div style="padding:0 0 4px 20px;font-size:11px;color:var(--red)">错误: ' + esc(tc.error_message) + '</div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function buildRAGPanel(ed) {
+  var rag = ed.rag || {}; var retrieved = rag.retrieved || []; var used = rag.used || []; var rejected = rag.rejected || []; var metrics = rag.metrics || {};
+  var h = '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>RAG召回</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut">';
+  h += '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">检索:' + (metrics.retrieved_count||0) + ' | 采用:' + (metrics.used_count||0) + ' | 拒绝:' + (metrics.rejected_count||0) + ' | ' + esc(rag.retrieval_mode||'-') + '</div>';
+  if (used.length) { h += '<div class="rag-group"><div class="rag-group-title" style="color:var(--green)">已采用(' + used.length + ')</div>'; used.forEach(function(i){ h += ri(i); }); h += '</div>'; }
+  if (rejected.length) { h += '<div class="rag-group"><div class="rag-group-title" style="color:var(--red)">已拒绝(' + rejected.length + ')</div>'; rejected.forEach(function(i){ h += ri(i); }); h += '</div>'; }
+  h += '</div></div>';
+  return h;
+}
+function ri(item) {
+  var h = '<div class="rag-item"><div class="ri-title">[' + (item.entry_id||'-') + '] ' + esc(item.title||'-') + '</div>';
+  h += '<div class="ri-meta">' + esc(item.source_type||'') + ' | score:' + (item.score||0).toFixed(2);
+  if (item.rejection_reasons && item.rejection_reasons.length) h += ' | 拒绝: ' + item.rejection_reasons.join(', ');
+  h += '</div></div>';
+  return h;
+}
+
+function buildCitationsPanel(ed) {
+  var citations = ed.citations || [];
+  var h = '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>最终引用资料</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut">';
+  if (!citations.length) h += '<div style="color:var(--gray);font-size:11px">无引用</div>';
+  else citations.forEach(function(c) {
+    h += '<div class="cite-row"><span class="cite-id">' + esc(c.citation_id) + '</span><span style="flex:1">' + esc(c.citation_type === 'knowledge' ? (c.source_type||'') + ' ' + (c.title||'') : (c.tool_name||'') + ' ' + (c.fact_types||[]).join(', ')) + '</span></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function buildGenerationPanel(ed) {
+  var gen = ed.generation || {}; var guards = ed.guards || [];
+  var h = '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>生成模式</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut"><div class="kv-grid">';
+  h += kv('生成模式', gen.generation_mode || '-'); h += kv('LLM', boolStr(gen.llm_used));
+  h += kv('模型', gen.model_name || '-'); h += kv('回答模式', gen.answer_mode || '-');
+  h += kv('证据数', gen.evidence_count != null ? gen.evidence_count : '-');
+  if (gen.fallback_reason) h += kv('fallback', gen.fallback_reason);
+  h += '</div>';
+  if (guards.length) {
+    h += '<div style="margin-top:6px;font-weight:600;font-size:11px;color:var(--gray)">Guards</div>';
+    guards.forEach(function(g) {
+      var c = g.passed ? 'var(--green)' : 'var(--red)'; var icon = g.passed ? '✓' : '✗';
+      h += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px"><span style="color:' + c + ';font-weight:600">' + icon + '</span><span style="flex:1">' + esc(g.guard_name) + '</span><span style="color:var(--gray)">' + (g.duration_ms||0) + 'ms</span></div>';
+    });
+  }
+  h += '</div></div>';
+  return h;
+}
+
+function buildTimingPanel(ed) {
+  var t = ed.timing || {}; var nd = t.node_durations || {};
+  var h = '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>时间轴</span><span class="arr">&#9660;</span></div>';
+  h += '<div class="edbg-b shut"><div class="kv-grid">';
+  h += kv('总耗时', (t.total_ms||0) + 'ms'); h += kv('理解', (t.understanding_ms||0) + 'ms');
+  h += kv('路由', (t.routing_ms||0) + 'ms'); h += kv('JST', (t.jst_ms||0) + 'ms');
+  h += kv('RAG', (t.rag_ms||0) + 'ms'); h += kv('LLM', (t.llm_ms||0) + 'ms');
+  h += kv('生成', (t.generation_ms||0) + 'ms'); h += kv('守卫', (t.guard_ms||0) + 'ms');
+  Object.keys(nd).sort(function(a,b){ return (nd[b]||0)-(nd[a]||0); }).forEach(function(k){ h += kv(k, nd[k]+'ms'); });
+  h += '</div></div></div>';
+  return h;
+}
+
+function buildRawJSONPanel(m) {
+  return '<div class="edbg-section"><div class="edbg-h shut" onclick="toggle(this)"><span>完整 JSON</span><span class="arr">&#9660;</span></div>'
+    + '<div class="edbg-b shut"><pre class="dbg-json">' + esc(JSON.stringify({execution_debug:m.execution_debug,evidence_debug:m.evidence_debug,trace_steps:m.trace_steps},null,2)) + '</pre></div></div>';
+}
+
+/* ===== Sidecar polling ===== */
+function pollStatus() {
+  if (IS_DESKTOP) {
+    try { window.pywebview.api.get_sidecar_status().then(function(d) { updateSidecarStatus(d); }); } catch(e) {}
+  } else {
+    fetch(BASE + '/api/sidecar/status').then(function(r){ return r.json(); }).then(function(d) { updateSidecarStatus(d); }).catch(function() {
+      document.getElementById('dotBackend').className = 'dot off';
+      document.getElementById('txtBackend').textContent = '后端 离线';
+    });
+    fetch(BASE + '/api/health').then(function(r){ return r.json(); }).then(function(d) {
+      document.getElementById('dotBackend').className = 'dot on';
+      document.getElementById('txtBackend').textContent = '后端 在线';
+      if (d.pid) { document.getElementById('pidBadge').textContent = 'PID:' + d.pid; document.getElementById('pidBadge').style.display = ''; }
+    }).catch(function() {
+      document.getElementById('dotBackend').className = 'dot off';
+      document.getElementById('txtBackend').textContent = '后端 离线';
+    });
+  }
+}
+
+function pollLatest() {
+  if (IS_DESKTOP) {
+    try {
+      window.pywebview.api.get_sidecar_latest().then(function(data) {
+        if (!data || !data.latest_message_hash) return;
+        if (data.latest_analysis) {
+          setConversationHistory(data.latest_messages || data);
+        }
+        autoFillFromSidecar(data);
+      });
+    } catch(e) {}
+  } else {
+    fetch(BASE + '/api/sidecar/latest').then(function(r){ return r.json(); }).then(function(data) {
+      if (data && data.ok) {
+        setConversationHistory(data.latest_messages || data);
+        autoFillFromSidecar(data);
+      }
+    }).catch(function(){});
+  }
+}
+
+/* ===== Auto-fill form fields from sidecar candidates ===== */
+function autoFillFromSidecar(data) {
+  var hash = data.latest_message_hash || '';
+  var hashChanged = hash && hash !== lastSidecarHash;
+  if (hashChanged) lastSidecarHash = hash;
+
+  // Auto-switch scenario based on detected candidates
+  var hasOrder = data.order_candidates && data.order_candidates.length > 0;
+  var hasProduct = data.product_candidates && data.product_candidates.length > 0;
+  var targetScenario = null;
+  if (hasOrder) targetScenario = 'after_sale';
+  else if (hasProduct) targetScenario = 'pre_sale';
+  if (targetScenario && targetScenario !== SC.activeScenario && hashChanged) {
+    switchScenario(targetScenario);
+  }
+
+  var scenario = SC.activeScenario;
+
+  // Customer message
+  var msg = data.latest_customer_message || '';
+  if (msg && hashChanged) {
+    var msgField = document.getElementById(scenario + '-msg');
+    if (msgField && (!msgField.value.trim() || hashChanged)) {
+      msgField.value = msg;
+      flashField(msgField);
+    }
+  }
+
+  // Conversation history from latest_messages
+  if (data.latest_messages && data.latest_messages.length && hashChanged) {
+    var histText = data.latest_messages.map(function(m) {
+      var role = m.role === 'agent' ? '客服' : (m.role === 'system' ? '系统' : '客户');
+      return role + '：' + (m.text || '');
+    }).join('\n');
+    var histField = document.getElementById(scenario + '-history');
+    if (histField && histText) {
+      histField.value = histText;
+      flashField(histField);
+    }
+  }
+
+  // Product candidates → product title & SKU
+  var products = data.product_candidates || [];
+  var productTitle = findCandidate(products, 'product_candidate');
+  var skuId = findCandidate(products, 'sku_id_candidate');
+  if (!productTitle) productTitle = findCandidate(products, ''); // fallback: any non-sku
+  if (!skuId) skuId = findCandidate(products, 'i_id_candidate');
+
+  if (scenario === 'pre_sale') {
+    if (productTitle) fillIfEmpty('pre_sale-product', productTitle, hashChanged);
+    if (skuId) fillIfEmpty('pre_sale-sku', skuId, hashChanged);
+  } else if (scenario === 'after_sale') {
+    if (skuId) fillIfEmpty('after_sale-sku', skuId, hashChanged);
+    if (productTitle) fillIfEmpty('after_sale-product', productTitle, hashChanged);
+  }
+
+  // Order candidates → order number
+  if (scenario === 'after_sale' && hasOrder) {
+    var order = data.order_candidates[0];
+    fillIfEmpty('after_sale-order', order.value || '', hashChanged);
+    // Set order type dropdown
+    if (order.type) {
+      var typeSelect = document.getElementById('after_sale-order_type');
+      if (typeSelect) {
+        for (var i = 0; i < typeSelect.options.length; i++) {
+          if (typeSelect.options[i].value === order.type) { typeSelect.selectedIndex = i; break; }
+        }
+      }
+    }
+  }
+
+  // Tracking candidates → tracking number
+  if (scenario === 'after_sale' && data.tracking_candidates && data.tracking_candidates.length) {
+    fillIfEmpty('after_sale-tracking', data.tracking_candidates[0].value || '', hashChanged);
+  }
+}
+
+function findCandidate(candidates, type) {
+  for (var i = 0; i < candidates.length; i++) {
+    var c = candidates[i];
+    if (!type || c.type === type) return c.value || '';
+  }
+  return '';
+}
+
+function fillIfEmpty(fieldId, value, force) {
+  if (!value) return;
+  var el = document.getElementById(fieldId);
+  if (!el) return;
+  if (el.value.trim() && !force) return;
+  el.value = value;
+  flashField(el);
+}
+
+function flashField(el) {
+  el.style.transition = 'background 0.1s';
+  el.style.background = '#e8f5e9';
+  setTimeout(function() { el.style.background = ''; }, 1500);
+}
+
+function switchScenario(scenario) {
+  document.querySelectorAll('.scenario-tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.scenario-page').forEach(function(p){ p.classList.remove('active'); });
+  var tab = document.querySelector('.scenario-tab[data-scenario="' + scenario + '"]');
+  if (tab) tab.classList.add('active');
+  var page = document.getElementById('pg-' + scenario);
+  if (page) page.classList.add('active');
+  SC.activeScenario = scenario;
+  document.getElementById('sessionId').textContent = SC.sessions[scenario].id;
+  document.getElementById('srcBadge').textContent = scenario === 'pre_sale' ? '售前' : scenario === 'after_sale' ? '售后' : '纯对话';
+}
+
+function updateSidecarStatus(d) {
+  if (d.sidecar_connected) {
+    document.getElementById('dotSidecar').className = 'dot on';
+    document.getElementById('txtSidecar').textContent = 'Sidecar 运行中';
+    if (d.window_matched) {
+      document.getElementById('dotQianniu').className = 'dot on';
+      document.getElementById('txtQianniu').textContent = '千牛 已匹配';
+    } else {
+      document.getElementById('dotQianniu').className = 'dot warn';
+      document.getElementById('txtQianniu').textContent = '千牛 未匹配';
+    }
+    if (d.vision_provider) {
+      document.getElementById('visionBanner').style.display = '';
+      document.getElementById('visionProvider').textContent = d.vision_provider;
+    }
+  } else {
+    document.getElementById('dotSidecar').className = 'dot off';
+    document.getElementById('txtSidecar').textContent = 'Sidecar 未启动';
+    document.getElementById('dotQianniu').className = 'dot off';
+    document.getElementById('txtQianniu').textContent = '千牛 未连接';
+  }
+}
+
+function setConversationHistory(data) {
+  var msgs = data.latest_analysis && data.latest_analysis.context_echo ? data.latest_analysis.context_echo.conversation_history : [];
+  if (msgs && msgs.length) {
+    latestConversationHistory = msgs;
+    var histList = document.getElementById('histList');
+    histList.innerHTML = '';
+    msgs.forEach(function(m) {
+      var div = document.createElement('div');
+      div.className = 'hist-item';
+      div.innerHTML = '<span class="hist-role">' + esc(m.role === 'agent' ? '客服' : '客户') + '</span><span class="hist-text">' + esc(m.text || '') + '</span>';
+      histList.appendChild(div);
+    });
+    document.getElementById('histCard').style.display = '';
+  }
+}
+
+window.reloadQianniu = function() {
+  var btn = document.getElementById('reloadBtn');
+  btn.textContent = '读取中...';
+  btn.disabled = true;
+  var done = function() { btn.textContent = '重新读取千牛'; btn.disabled = false; };
+  if (IS_DESKTOP) {
+    try {
+      window.pywebview.api.capture_qianniu_once().then(function(data) {
+        if (data && data.latest_analysis) setConversationHistory(data);
+        done();
+      }).catch(done);
+    } catch(e) { done(); }
+  } else {
+    fetch(BASE + '/api/sidecar/latest').then(function(r){ return r.json(); }).then(function(data) {
+      if (data && data.ok) setConversationHistory(data);
+      done();
+    }).catch(done);
+  }
+};
+
+/* ===== Tab switching ===== */
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+    document.querySelectorAll('.tab-page').forEach(function(p){ p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tp-' + btn.getAttribute('data-tab')).classList.add('active');
+  });
+});
+
+document.querySelectorAll('.scenario-tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.scenario-tab').forEach(function(t){ t.classList.remove('active'); });
+    document.querySelectorAll('.scenario-page').forEach(function(p){ p.classList.remove('active'); });
+    tab.classList.add('active');
+    var scenario = tab.getAttribute('data-scenario');
+    document.getElementById('pg-' + scenario).classList.add('active');
+    SC.activeScenario = scenario;
+    document.getElementById('sessionId').textContent = SC.sessions[scenario].id;
+    document.getElementById('srcBadge').textContent = scenario === 'pre_sale' ? '售前' : scenario === 'after_sale' ? '售后' : '纯对话';
+    renderMessageList();
+  });
+});
+
+/* ===== Settings ===== */
+function saveSettings() {
+  var cfg = {
+    vlm_provider: val('set-vlm-provider'),
+    vlm_model: val('set-vlm-model'),
+    vlm_base_url: val('set-vlm-base'),
+    vlm_api_key: val('set-vlm-key'),
+  };
+  if (IS_DESKTOP) {
+    try { window.pywebview.api.save_config(JSON.stringify(cfg)).then(function(){ showToast('设置已保存'); }); } catch(e) { showToast('保存失败'); }
+  } else { showToast('桌面端才能保存设置'); }
+}
+
+/* ===== Diagnostic ===== */
+function refreshDiagnostic() {
+  if (IS_DESKTOP) {
+    try {
+      window.pywebview.api.get_diagnostic_info().then(function(info) {
+        document.getElementById('diag-sidecar').textContent = info.sidecar_pid || '0';
+        if (info.backend_info) {
+          document.getElementById('diag-pid').textContent = info.backend_info.pid || '-';
+        }
+      });
+    } catch(e) {}
+  }
+  fetch(BASE + '/api/health').then(function(r){ return r.json(); }).then(function(d) {
+    document.getElementById('diag-pid').textContent = d.pid || '-';
+    document.getElementById('diag-ver').textContent = d.version || '-';
+    document.getElementById('diag-boot').textContent = d.boot_time || '-';
+    document.getElementById('diag-addr').textContent = location.host;
+  }).catch(function(){});
+}
+
+function openLogs() {
+  if (IS_DESKTOP) { try { window.pywebview.api.open_logs_folder(); } catch(e) {} }
+}
+
+/* ===== Metrics ===== */
+function refreshMetrics() {
+  fetch(BASE + '/api/copilot/metrics').then(function(r){ return r.json(); }).then(function(d) {
+    document.getElementById('m-total').textContent = d.total_suggestions || 0;
+    document.getElementById('m-accepted').textContent = d.accepted_count || 0;
+    document.getElementById('m-edited').textContent = d.edited_count || 0;
+    document.getElementById('m-rejected').textContent = d.rejected_count || 0;
+    document.getElementById('m-highrisk').textContent = d.high_risk_count || 0;
+    document.getElementById('m-rate').textContent = (d.acceptance_rate || 0) + '%';
+  }).catch(function(){});
+}
+
+/* ===== Helpers ===== */
+function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+function genId(prefix) { return prefix + '-' + Math.random().toString(36).substr(2, 8); }
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function boolStr(v) { return v === true || v === 'true' ? '是' : v === false || v === 'false' ? '否' : (v || '-'); }
+function kv(k, v) { return '<span class="k">' + esc(k) + '</span><span class="v">' + esc(v != null && v !== '' ? String(v) : '-') + '</span>'; }
+function truncate(s, n) { return s.length > n ? s.substring(0, n) + '...' : s; }
+function parseHistory(text) {
+  if (!text) return [];
+  return text.split('\n').filter(function(l){ return l.trim(); }).map(function(line) {
+    var m = line.match(/^(客户|客服|买家|卖家|顾客)\s*[：:]\s*(.+)/);
+    return m ? { role: (m[1] === '客服' || m[1] === '卖家') ? 'agent' : 'customer', text: m[2].trim() } : null;
+  }).filter(Boolean).slice(-8);
+}
+
+/* ===== UI helpers ===== */
+window.toggle = function(el) { el.classList.toggle('shut'); var b = el.nextElementSibling; if (b) b.classList.toggle('shut'); };
+window.toggleMsg = function(id) { var b = document.getElementById('mb-' + id); if (b) b.classList.toggle('open'); };
+window.copyMsgReply = function(id) {
+  var el = document.getElementById('edit-' + id); var text = el ? el.value : '';
+  if (!text) return;
+  if (IS_DESKTOP) { try { window.pywebview.api.copy_to_clipboard(text); showToast('已复制回复'); return; } catch(e) {} }
+  navigator.clipboard.writeText(text).then(function(){ showToast('已复制回复'); });
+};
+
+/* ===== Reject ===== */
+window.showReject = function() {
+  selRej = '';
+  document.getElementById('rejModal').classList.add('open');
+  var row = document.getElementById('rejChips');
+  row.innerHTML = '';
+  REJECT_REASONS.forEach(function(r) {
+    var chip = document.createElement('span');
+    chip.className = 'rej'; chip.textContent = r;
+    chip.onclick = function() { row.querySelectorAll('.rej').forEach(function(c){ c.classList.remove('sel'); }); chip.classList.add('sel'); selRej = r; };
+    row.appendChild(chip);
+  });
+};
+window.hideReject = function() { document.getElementById('rejModal').classList.remove('open'); };
+window.confirmReject = function() {
+  if (!selRej) { alert('请选择拒绝原因'); return; }
+  var msgId = rejTargetMsgId;
+  var scenario = SC.activeScenario;
+  var msgs = SC.sessions[scenario].messages;
+  var msg = null;
+  for (var i = 0; i < msgs.length; i++) { if (msgs[i].message_id === msgId) { msg = msgs[i]; break; } }
+  if (!msg) return;
+  var editEl = document.getElementById('edit-' + msgId);
+  var finalReply = editEl ? editEl.value : '';
+  fetch(BASE + '/api/copilot/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    action: 'rejected', source: 'copilot_panel', scenario: scenario, conversation_id: SC.sessions[scenario].id,
+    message_id: msgId, customer_message: msg.customer_message, suggested_reply: msg.suggested_reply,
+    final_reply: finalReply, risk_level: msg.risk_level, reject_reason: selRej
+  }) }).then(function(r){ return r.json(); }).then(function(d) {
+    if (d.ok) { msg.feedback_status = 'rejected'; msg.final_reply = finalReply; renderMessageList(); showToast('已拒绝: ' + selRej); hideReject(); }
+    else { alert('反馈失败'); }
+  }).catch(function(e) { alert('请求失败: ' + e.message); });
+};
+
+function showToast(msg) {
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:60px;right:20px;z-index:999999;background:#1f2937;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.2)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2000);
+}
+
+/* ===== Keyboard shortcuts ===== */
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.shiftKey && e.key === 'Enter') {
+    var btn = document.getElementById(SC.activeScenario + '-analyzeBtn') || document.getElementById('analyzeBtn');
+    if (btn && !btn.disabled) btn.click();
+  }
+  if (e.ctrlKey && e.shiftKey && e.key === 'r') {
+    e.preventDefault();
+    reloadQianniu();
+  }
+  if (e.ctrlKey && e.shiftKey && e.key === 'n') {
+    e.preventDefault();
+    SC.newSession();
+  }
+  if (e.key === 'Escape') { hideReject(); }
+});
+
+/* ===== Compact mode ===== */
+if (location.search.indexOf('mode=compact') !== -1 || location.hash === '#compact') {
+  document.body.classList.add('compact');
+  document.documentElement.setAttribute('mode', 'compact');
+}
+
+/* ===== Init ===== */
+function init() {
+  Object.keys(SC.sessions).forEach(function(s) {
+    if (s === SC.activeScenario) document.getElementById('sessionId').textContent = SC.sessions[s].id;
+  });
+  setInterval(pollStatus, 10000);
+  setInterval(pollLatest, 2000);
+  setInterval(refreshMetrics, 30000);
+  pollStatus();
+  refreshMetrics();
+  refreshDiagnostic();
+  var p = location.pathname.replace(/\/$/, '') || '/';
+  document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a) {
+    if (a.getAttribute('data-path') === p) a.classList.add('gnav-active');
+  });
+}
+
+init();
+})();
+</script>
+</body>
+</html>

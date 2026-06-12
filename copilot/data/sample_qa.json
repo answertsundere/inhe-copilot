@@ -1,0 +1,26 @@
+[
+  {
+    "scenario_category": "售前咨询",
+    "category_l1": "存储收纳",
+    "category_l2": "书架",
+    "category_l3": "多功能书架",
+    "issue_type": "材质",
+    "intent": "产品咨询"
+  },
+  {
+    "scenario_category": "售前咨询",
+    "category_l1": "存储收纳",
+    "category_l2": "书架",
+    "category_l3": "多功能书架",
+    "issue_type": "适用年龄",
+    "intent": "产品咨询"
+  },
+  {
+    "scenario_category": "售前咨询",
+    "category_l1": "存储收纳",
+    "category_l2": "书架",
+    "category_l3": "多功能书架",
+    "issue_type": "安装",
+    "intent": "安装指导"
+  }
+]

@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INHE 客服知识库后台</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg: #f5f5f7; --card: #fff; --border: #e5e5ea;
+    --text: #1d1d1f; --text2: #6e6e73; --text3: #aeaeb2;
+    --blue: #007aff; --green: #34c759; --orange: #ff9500;
+    --red: #ff3b30; --purple: #af52de;
+    --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  body { font-family: -apple-system, "SF Pro SC", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 20px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin: 20px 0 10px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .tab { padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 14px; color: var(--text2); }
+  .tab.active { background: var(--blue); color: #fff; }
+  .tab:hover:not(.active) { background: #f0f7ff; color: var(--blue); }
+
+  /* Filters */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .filters input, .filters select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; }
+  .filters input:focus, .filters select:focus { border-color: var(--blue); }
+  .btn { padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-success { background: var(--green); color: #fff; }
+  .btn-warning { background: var(--orange); color: #fff; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); font-size: 13px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #fafafa; font-weight: 500; color: var(--text2); }
+  tr:hover { background: #f8f9fa; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+  .badge-draft { background: #e5e5ea; color: var(--text2); }
+  .badge-pending { background: #fff3e0; color: #e65100; }
+  .badge-published { background: #e8f5e9; color: #2e7d32; }
+  .badge-archived { background: #fce4ec; color: #c2185b; }
+  .badge-rejected { background: #ffebee; color: #b71c1c; }
+  .badge-risk-high { background: #ffebee; color: #c62828; }
+  .badge-risk-low { background: #e8f5e9; color: #2e7d32; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: var(--card); border-radius: var(--radius); width: 90%; max-width: 700px; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+  .modal h3 { margin-bottom: 16px; font-size: 16px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; }
+  .form-group textarea { min-height: 80px; resize: vertical; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--blue); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+  /* Preview table */
+  .preview-table { max-height: 400px; overflow-y: auto; }
+  .warning { color: var(--red); font-size: 12px; }
+
+  /* Pagination */
+  .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+  .pagination button { padding: 6px 12px; border: 1px solid var(--border); background: var(--card); border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📚 客服知识库后台</h1>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="list" onclick="switchTab('list')">知识列表</div>
+    <div class="tab" data-tab="review" onclick="switchTab('review')">待审核</div>
+    <div class="tab" data-tab="import" onclick="switchTab('import')">批量导入</div>
+    <div class="tab" data-tab="quality" onclick="switchTab('quality')">质量检查</div>
+  </div>
+
+  <!-- 知识列表 -->
+  <div id="panel-list">
+    <div class="filters">
+      <select id="filter-source_type"><option value="">全部类型</option></select>
+      <select id="filter-intent"><option value="">全部意图</option></select>
+      <select id="filter-status">
+        <option value="">全部状态</option>
+        <option value="draft">草稿</option>
+        <option value="pending_review">待审核</option>
+        <option value="published">已发布</option>
+        <option value="archived">已归档</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <select id="filter-risk_level">
+        <option value="">全部风险</option>
+        <option value="low">低</option>
+        <option value="medium">中</option>
+        <option value="high">高</option>
+        <option value="critical">极高</option>
+      </select>
+      <input type="text" id="filter-search" placeholder="搜索标题/内容">
+      <button class="btn btn-primary" onclick="loadEntries()">查询</button>
+      <button class="btn btn-success" onclick="openModal()">+ 新增知识</button>
+    </div>
+    <div id="entries-table"></div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- 待审核 -->
+  <div id="panel-review" class="hidden">
+    <div id="review-table"></div>
+  </div>
+
+  <!-- 批量导入 -->
+  <div id="panel-import" class="hidden">
+    <div class="filters">
+      <input type="file" id="import-file" accept=".xlsx,.xls,.csv">
+      <button class="btn btn-primary" onclick="previewImport()">预览</button>
+    </div>
+    <div id="import-preview" class="hidden">
+      <h2>导入预览</h2>
+      <div class="preview-table">
+        <table id="preview-table"><thead></thead><tbody></tbody></table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="cancelImport()">取消</button>
+        <button class="btn btn-success" onclick="executeImport()">确认导入</button>
+      </div>
+    </div>
+    <div id="import-result"></div>
+  </div>
+
+  <!-- 质量检查 -->
+  <div id="panel-quality" class="hidden">
+    <div id="quality-summary" style="margin-bottom:16px"></div>
+
+    <!-- 二级 Tab -->
+    <div class="tabs" style="margin-bottom:12px">
+      <div class="tab active" data-subtab="issues" onclick="switchQualitySubtab('issues')">质量问题</div>
+      <div class="tab" data-subtab="product-facts" onclick="switchQualitySubtab('product-facts')">商品事实清洗</div>
+      <div class="tab" data-subtab="risky-claims" onclick="switchQualitySubtab('risky-claims')">风险话术</div>
+      <div class="tab" data-subtab="duplicates" onclick="switchQualitySubtab('duplicates')">重复/变体审核</div>
+      <div class="tab" data-subtab="candidates" onclick="switchQualitySubtab('candidates')">发布候选</div>
+    </div>
+
+    <!-- 质量问题 -->
+    <div id="quality-sub-issues">
+      <div class="filters">
+        <select id="quality-filter-severity">
+          <option value="">全部严重度</option>
+          <option value="high">高风险</option>
+          <option value="medium">中风险</option>
+          <option value="low">低风险</option>
+        </select>
+        <select id="quality-filter-source_type">
+          <option value="">全部类型</option>
+          <option value="product_facts">product_facts</option>
+          <option value="shipping_policy">shipping_policy</option>
+          <option value="aftersales_policy">aftersales_policy</option>
+          <option value="installation_guide">installation_guide</option>
+          <option value="high_risk_sop">high_risk_sop</option>
+          <option value="forbidden_rules">forbidden_rules</option>
+          <option value="faq">faq</option>
+          <option value="response_templates">response_templates</option>
+        </select>
+        <select id="quality-filter-issue_type">
+          <option value="">全部问题类型</option>
+          <option value="missing_source_type">缺 source_type</option>
+          <option value="missing_title">缺标题</option>
+          <option value="missing_intent">缺意图</option>
+          <option value="content_too_short">内容过短</option>
+          <option value="content_too_long">内容过长</option>
+          <option value="product_facts_incomplete">商品事实缺字段</option>
+          <option value="shipping_policy_incomplete">物流政策不完整</option>
+          <option value="aftersales_policy_incomplete">售后政策不完整</option>
+          <option value="high_risk_missing_review">高风险缺复核</option>
+          <option value="high_risk_auto_reply_enabled">高风险允许自动回复</option>
+          <option value="forbidden_rules_empty">禁用规则为空</option>
+          <option value="published_no_chunks">已发布无分片</option>
+          <option value="draft_stale">草稿滞留</option>
+          <option value="pending_review_stale">待审核滞留</option>
+          <option value="possible_variant">可能变体</option>
+          <option value="duplicate_candidate">可能重复</option>
+          <option value="published_never_hit">从未命中</option>
+          <option value="frequently_edited">频繁被修改</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadQualityReport()">刷新</button>
+      </div>
+      <div id="quality-issues"></div>
+    </div>
+
+    <!-- 商品事实清洗 -->
+    <div id="quality-sub-product-facts" class="hidden">
+      <div class="filters">
+        <button class="btn btn-primary" onclick="loadProductFactsIncomplete()">加载列表</button>
+        <button class="btn btn-success" onclick="exportProductFacts()">导出 Excel</button>
+      </div>
+      <div id="product-facts-incomplete"></div>
+    </div>
+
+    <div id="quality-sub-risky-claims" class="hidden">
+      <div class="filters">
+        <button class="btn btn-primary" onclick="loadRiskyClaims()">加载列表</button>
+        <button class="btn btn-success" onclick="exportRiskyClaims()">导出 Excel</button>
+      </div>
+      <div id="risky-claims"></div>
+    </div>
+
+    <!-- 重复/变体审核 -->
+    <div id="quality-sub-duplicates" class="hidden">
+      <div class="filters">
+        <button class="btn btn-primary" onclick="loadDuplicateReview()">加载列表</button>
+      </div>
+      <div id="duplicate-review"></div>
+    </div>
+
+    <!-- 发布候选 -->
+    <div id="quality-sub-candidates" class="hidden">
+      <div class="filters">
+        <button class="btn btn-primary" onclick="loadPublishCandidates()">加载候选</button>
+        <button class="btn btn-success" onclick="batchSubmitReview()">批量提交审核</button>
+      </div>
+      <div id="publish-candidates"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增/编辑 Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">新增知识</h3>
+    <form id="entry-form">
+      <input type="hidden" id="entry-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>source_type</label>
+          <select id="form-source_type" required>
+            <option value="product_facts">product_facts</option>
+            <option value="product_mapping">product_mapping</option>
+            <option value="faq">faq</option>
+            <option value="shipping_policy">shipping_policy</option>
+            <option value="aftersales_policy">aftersales_policy</option>
+            <option value="installation_guide">installation_guide</option>
+            <option value="high_risk_sop">high_risk_sop</option>
+            <option value="forbidden_rules">forbidden_rules</option>
+            <option value="response_templates">response_templates</option>
+            <option value="real_cases">real_cases</option>
+            <option value="feedback_records">feedback_records</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>intent</label>
+          <select id="form-intent">
+            <option value="general">general</option>
+            <option value="product_question">product_question</option>
+            <option value="logistics_eta">logistics_eta</option>
+            <option value="installation">installation</option>
+            <option value="aftersales">aftersales</option>
+            <option value="complaint">complaint</option>
+            <option value="high_risk">high_risk</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>标题</label>
+        <input type="text" id="form-title" required>
+      </div>
+      <div class="form-group">
+        <label>内容</label>
+        <textarea id="form-content" required></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>风险等级</label>
+          <select id="form-risk_level">
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="critical">critical</option>
+          </select>
+        </div>
+        <div class="form-group"><label>分类</label><input type="text" id="form-category"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>商品范围 (JSON数组)</label><input type="text" id="form-product_scope" placeholder='["书架", "书桌"]'></div>
+        <div class="form-group"><label>SKU范围 (JSON数组)</label><input type="text" id="form-sku_scope" placeholder='["SKU001"]'></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>平台范围 (JSON数组)</label><input type="text" id="form-platform_scope" placeholder='["tmall", "jd"]'></div>
+        <div class="form-group"><label>子意图</label><input type="text" id="form-sub_intent"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>适用条件</label><input type="text" id="form-condition_text"></div>
+        <div class="form-group"><label>禁用场景</label><input type="text" id="form-forbidden_usage"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label><input type="checkbox" id="form-auto_reply_allowed" checked> 允许自动回复</label></div>
+        <div class="form-group"><label><input type="checkbox" id="form-human_review_required"> 需人工复核</label></div>
+      </div>
+    </form>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEntry(false)">保存草稿</button>
+      <button class="btn btn-success" onclick="saveEntry(true)">提交审核</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+let currentOffset = 0;
+let currentLimit = 20;
+let importPreviewData = null;
+
+// Tab 切换
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+  document.querySelectorAll('[id^="panel-"]').forEach(p => p.classList.add('hidden'));
+  document.getElementById('panel-' + name).classList.remove('hidden');
+  if (name === 'list') loadEntries();
+  if (name === 'review') loadReview();
+  if (name === 'quality') loadQualityReport();
+}
+
+// 加载知识列表
+async function loadEntries() {
+  console.log('[DEBUG] loadEntries called');
+  try {
+    const params = new URLSearchParams();
+    const st = document.getElementById('filter-source_type').value;
+    const intent = document.getElementById('filter-intent').value;
+    const status = document.getElementById('filter-status').value;
+    const risk = document.getElementById('filter-risk_level').value;
+    const q = document.getElementById('filter-search').value;
+    if (st) params.set('source_type', st);
+    if (intent) params.set('intent', intent);
+    if (status) params.set('status', status);
+    if (risk) params.set('risk_level', risk);
+    if (q) params.set('q', q);
+    params.set('limit', currentLimit);
+    params.set('offset', currentOffset);
+
+    console.log('[DEBUG] fetching', `${API_BASE}/api/knowledge/entries?${params}`);
+    const res = await fetch(`${API_BASE}/api/knowledge/entries?${params}`);
+    console.log('[DEBUG] response status', res.status);
+    const data = await res.json();
+    console.log('[DEBUG] data', data);
+    renderEntries(data.items || [], data.total || 0);
+  } catch (err) {
+    console.error('[DEBUG] loadEntries error', err);
+    document.getElementById('entries-table').innerHTML = '<p style="color:red">加载失败: ' + err.message + '</p>';
+  }
+}
+
+function renderEntries(items, total) {
+  const html = `<table>
+    <thead><tr>
+      <th>ID</th><th>标题</th><th>类型</th><th>意图</th><th>状态</th><th>风险</th><th>版本</th><th>更新人</th><th>操作</th>
+    </tr></thead>
+    <tbody>` + items.map(e => {
+      const statusClass = 'badge-' + e.status;
+      const riskClass = e.risk_level === 'high' || e.risk_level === 'critical' ? 'badge-risk-high' : 'badge-risk-low';
+      let ops = '';
+      if (e.status === 'draft' || e.status === 'rejected') {
+        ops += `<button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${e.id})">编辑</button> `;
+        ops += `<button class="btn btn-warning" style="padding:4px 8px;font-size:11px" onclick="submitReview(${e.id})">提交审核</button> `;
+      }
+      if (e.status === 'pending_review') {
+        ops += `<button class="btn btn-success" style="padding:4px 8px;font-size:11px" onclick="publishEntry(${e.id})">发布</button> `;
+        ops += `<button class="btn btn-danger" style="padding:4px 8px;font-size:11px" onclick="rejectEntry(${e.id})">驳回</button> `;
+      }
+      if (e.status !== 'archived') {
+        ops += `<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px" onclick="archiveEntry(${e.id})">归档</button>`;
+      }
+      return `<tr>
+        <td>${e.id}</td>
+        <td>${e.title}</td>
+        <td>${e.source_type}</td>
+        <td>${e.intent}</td>
+        <td><span class="badge ${statusClass}">${e.status}</span></td>
+        <td><span class="badge ${riskClass}">${e.risk_level}</span></td>
+        <td>v${e.version}</td>
+        <td>${e.updated_by || '-'}</td>
+        <td>${ops}</td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+  document.getElementById('entries-table').innerHTML = html;
+
+  const pages = Math.ceil(total / currentLimit);
+  const currentPage = Math.floor(currentOffset / currentLimit) + 1;
+  let pag = '';
+  if (currentOffset > 0) pag += `<button onclick="changePage(-1)">上一页</button>`;
+  pag += `<span style="padding:6px 12px;font-size:12px">${currentPage} / ${pages || 1}</span>`;
+  if (currentOffset + currentLimit < total) pag += `<button onclick="changePage(1)">下一页</button>`;
+  document.getElementById('pagination').innerHTML = pag;
+}
+
+function changePage(dir) {
+  currentOffset += dir * currentLimit;
+  if (currentOffset < 0) currentOffset = 0;
+  loadEntries();
+}
+
+// 待审核列表
+async function loadReview() {
+  const res = await fetch(`${API_BASE}/api/knowledge/entries?status=pending_review&limit=100`);
+  const data = await res.json();
+  const items = data.items || [];
+  if (!items.length) {
+    document.getElementById('review-table').innerHTML = '<p style="color:var(--text2);font-size:14px">暂无待审核知识</p>';
+    return;
+  }
+  const html = `<table>
+    <thead><tr><th>ID</th><th>标题</th><th>类型</th><th>风险</th><th>创建人</th><th>操作</th></tr></thead>
+    <tbody>` + items.map(e => {
+      const riskClass = e.risk_level === 'high' || e.risk_level === 'critical' ? 'badge-risk-high' : 'badge-risk-low';
+      const warn = (e.source_type === 'high_risk_sop' || e.source_type === 'forbidden_rules') ? '<span class="warning"> [高风险]</span>' : '';
+      return `<tr>
+        <td>${e.id}</td><td>${e.title}${warn}</td><td>${e.source_type}</td>
+        <td><span class="badge ${riskClass}">${e.risk_level}</span></td>
+        <td>${e.created_by || '-'}</td>
+        <td>
+          <button class="btn btn-success" style="padding:4px 8px;font-size:11px" onclick="publishEntry(${e.id})">通过并发布</button>
+          <button class="btn btn-danger" style="padding:4px 8px;font-size:11px" onclick="rejectEntry(${e.id})">驳回</button>
+        </td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+  document.getElementById('review-table').innerHTML = html;
+}
+
+// Modal
+function openModal() {
+  document.getElementById('modal-overlay').classList.add('show');
+  document.getElementById('modal-title').innerText = '新增知识';
+  document.getElementById('entry-form').reset();
+  document.getElementById('entry-id').value = '';
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+}
+
+function getFormData() {
+  const parseJson = (s) => { try { return JSON.parse(s || '[]'); } catch(e) { return []; } };
+  return {
+    source_type: document.getElementById('form-source_type').value,
+    title: document.getElementById('form-title').value,
+    content: document.getElementById('form-content').value,
+    intent: document.getElementById('form-intent').value,
+    sub_intent: document.getElementById('form-sub_intent').value,
+    category: document.getElementById('form-category').value,
+    product_scope: parseJson(document.getElementById('form-product_scope').value),
+    sku_scope: parseJson(document.getElementById('form-sku_scope').value),
+    platform_scope: parseJson(document.getElementById('form-platform_scope').value),
+    risk_level: document.getElementById('form-risk_level').value,
+    auto_reply_allowed: document.getElementById('form-auto_reply_allowed').checked,
+    human_review_required: document.getElementById('form-human_review_required').checked,
+    condition_text: document.getElementById('form-condition_text').value,
+    forbidden_usage: document.getElementById('form-forbidden_usage').value,
+  };
+}
+
+async function saveEntry(submitReview) {
+  const id = document.getElementById('entry-id').value;
+  const data = getFormData();
+  const url = id ? `${API_BASE}/api/knowledge/entries/${id}` : `${API_BASE}/api/knowledge/entries`;
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  const result = await res.json();
+  if (result.error) { alert(result.error); return; }
+
+  if (submitReview) {
+    await fetch(`${API_BASE}/api/knowledge/entries/${result.id}/submit-review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+  }
+  closeModal();
+  loadEntries();
+}
+
+async function editEntry(id) {
+  const res = await fetch(`${API_BASE}/api/knowledge/entries/${id}`);
+  const e = await res.json();
+  if (e.error) { alert(e.error); return; }
+  document.getElementById('modal-overlay').classList.add('show');
+  document.getElementById('modal-title').innerText = '编辑知识';
+  document.getElementById('entry-id').value = e.id;
+  document.getElementById('form-source_type').value = e.source_type;
+  document.getElementById('form-title').value = e.title;
+  document.getElementById('form-content').value = e.content;
+  document.getElementById('form-intent').value = e.intent;
+  document.getElementById('form-sub_intent').value = e.sub_intent || '';
+  document.getElementById('form-category').value = e.category || '';
+  document.getElementById('form-product_scope').value = JSON.stringify(e.product_scope || []);
+  document.getElementById('form-sku_scope').value = JSON.stringify(e.sku_scope || []);
+  document.getElementById('form-platform_scope').value = JSON.stringify(e.platform_scope || []);
+  document.getElementById('form-risk_level').value = e.risk_level;
+  document.getElementById('form-auto_reply_allowed').checked = e.auto_reply_allowed;
+  document.getElementById('form-human_review_required').checked = e.human_review_required;
+  document.getElementById('form-condition_text').value = e.condition_text || '';
+  document.getElementById('form-forbidden_usage').value = e.forbidden_usage || '';
+}
+
+async function submitReview(id) {
+  const res = await fetch(`${API_BASE}/api/knowledge/entries/${id}/submit-review`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) alert(data.error);
+  else loadEntries();
+}
+async function publishEntry(id) {
+  if (!confirm('确认发布？')) return;
+  const res = await fetch(`${API_BASE}/api/knowledge/entries/${id}/publish`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) alert(data.error);
+  else { loadEntries(); if (!document.getElementById('panel-review').classList.contains('hidden')) loadReview(); }
+}
+async function rejectEntry(id) {
+  const reason = prompt('驳回原因：') || '';
+  const res = await fetch(`${API_BASE}/api/knowledge/entries/${id}/review`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({approved:false, reason})
+  });
+  const data = await res.json();
+  if (data.error) alert(data.error);
+  else { loadEntries(); if (!document.getElementById('panel-review').classList.contains('hidden')) loadReview(); }
+}
+async function archiveEntry(id) {
+  if (!confirm('确认归档？')) return;
+  const res = await fetch(`${API_BASE}/api/knowledge/entries/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.error) alert(data.error);
+  else loadEntries();
+}
+
+// 导入
+async function previewImport() {
+  const fileInput = document.getElementById('import-file');
+  if (!fileInput.files.length) { alert('请选择文件'); return; }
+  const form = new FormData();
+  form.append('file', fileInput.files[0]);
+  const res = await fetch(`${API_BASE}/api/knowledge/import-preview`, { method: 'POST', body: form });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+
+  importPreviewData = data;
+  const tbody = data.preview.map(p => {
+    const warn = p.warnings.map(w => `<span class="warning">${w}</span>`).join(' ');
+    return `<tr><td>${p.row_number}</td><td>${p.sheet}</td><td>${p.source_type}</td><td>${p.title}</td><td>${p.risk_level}</td><td>${warn}</td></tr>`;
+  }).join('');
+  document.querySelector('#preview-table thead').innerHTML = '<tr><th>行号</th><th>Sheet</th><th>类型</th><th>标题</th><th>风险</th><th>警告</th></tr>';
+  document.querySelector('#preview-table tbody').innerHTML = tbody;
+  document.getElementById('import-preview').classList.remove('hidden');
+}
+
+function cancelImport() {
+  document.getElementById('import-preview').classList.add('hidden');
+  importPreviewData = null;
+}
+
+async function executeImport() {
+  if (!importPreviewData) return;
+  const res = await fetch(`${API_BASE}/api/knowledge/import`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ preview: importPreviewData.preview, batch_id: importPreviewData.batch_id })
+  });
+  const data = await res.json();
+  document.getElementById('import-result').innerHTML = `
+    <h2>导入结果</h2>
+    <p>批次: ${data.batch_id}</p>
+    <p>成功: ${data.success}, 失败: ${data.failed}</p>
+    ${data.errors.length ? '<ul>' + data.errors.map(e => `<li>行${e.row}: ${e.reason}</li>`).join('') + '</ul>' : ''}
+  `;
+  document.getElementById('import-preview').classList.add('hidden');
+}
+
+// ============ 质量检查 ============
+let qualityData = null;
+
+async function loadQualityReport() {
+  const res = await fetch(`${API_BASE}/api/knowledge/quality/report`);
+  const data = await res.json();
+  qualityData = data;
+  renderQualitySummary(data.summary || {});
+  renderQualityIssues(data.issues || []);
+}
+
+function renderQualitySummary(s) {
+  const colors = { high: 'var(--red)', medium: 'var(--orange)', low: 'var(--blue)' };
+  document.getElementById('quality-summary').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">总条目</div><div style="font-size:20px;font-weight:600">${s.total_entries || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">已发布</div><div style="font-size:20px;font-weight:600;color:var(--green)">${s.published || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">草稿</div><div style="font-size:20px;font-weight:600">${s.draft || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">待审核</div><div style="font-size:20px;font-weight:600;color:var(--orange)">${s.pending_review || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow);border:2px solid ${colors['high']}">
+        <div style="font-size:12px;color:var(--text2)">高风险问题</div><div style="font-size:20px;font-weight:600;color:${colors['high']}">${s.high_issues || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow);border:2px solid ${colors['medium']}">
+        <div style="font-size:12px;color:var(--text2)">中风险问题</div><div style="font-size:20px;font-weight:600;color:${colors['medium']}">${s.medium_issues || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">缺分片</div><div style="font-size:20px;font-weight:600">${s.chunks_missing || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">可能变体</div><div style="font-size:20px;font-weight:600">${s.possible_variants || 0}</div>
+      </div>
+      <div style="background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:var(--shadow)">
+        <div style="font-size:12px;color:var(--text2)">可能重复</div><div style="font-size:20px;font-weight:600">${s.duplicates || 0}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderQualityIssues(issues) {
+  const severityFilter = document.getElementById('quality-filter-severity').value;
+  const sourceFilter = document.getElementById('quality-filter-source_type').value;
+  const issueFilter = document.getElementById('quality-filter-issue_type').value;
+
+  let filtered = issues;
+  if (severityFilter) filtered = filtered.filter(i => i.severity === severityFilter);
+  if (sourceFilter) filtered = filtered.filter(i => i.source_type === sourceFilter);
+  if (issueFilter) filtered = filtered.filter(i => i.issue_type === issueFilter);
+
+  if (!filtered.length) {
+    document.getElementById('quality-issues').innerHTML = '<p style="color:var(--text2);font-size:14px">没有问题</p>';
+    return;
+  }
+
+  const severityBadge = { high: 'badge-risk-high', medium: 'badge-warning', low: 'badge-draft' };
+  const html = `<table>
+    <thead><tr>
+      <th>严重度</th><th>ID</th><th>标题</th><th>类型</th><th>状态</th><th>问题</th><th>建议修复</th><th>操作</th>
+    </tr></thead>
+    <tbody>` + filtered.map(i => {
+      const badge = severityBadge[i.severity] || 'badge-draft';
+      return `<tr>
+        <td><span class="badge ${badge}">${i.severity}</span></td>
+        <td>${i.entry_id}</td>
+        <td>${i.title}</td>
+        <td>${i.source_type}</td>
+        <td><span class="badge badge-${i.status}">${i.status}</span></td>
+        <td>${i.message}</td>
+        <td>${i.suggested_fix}</td>
+        <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${i.entry_id})">编辑</button></td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+  document.getElementById('quality-issues').innerHTML = html;
+}
+
+function switchQualitySubtab(name) {
+  document.querySelectorAll('#panel-quality .tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`#panel-quality .tab[data-subtab="${name}"]`).classList.add('active');
+  document.querySelectorAll('[id^="quality-sub-"]').forEach(p => p.classList.add('hidden'));
+  document.getElementById('quality-sub-' + name).classList.remove('hidden');
+  if (name === 'issues') loadQualityReport();
+  if (name === 'product-facts') loadProductFactsIncomplete();
+  if (name === 'risky-claims') loadRiskyClaims();
+  if (name === 'duplicates') loadDuplicateReview();
+  if (name === 'candidates') loadPublishCandidates();
+}
+
+async function loadProductFactsIncomplete() {
+  const res = await fetch(`${API_BASE}/api/knowledge/quality/product-facts-incomplete`);
+  const data = await res.json();
+  const items = data.items || [];
+  if (!items.length) {
+    document.getElementById('product-facts-incomplete').innerHTML = '<p style="color:var(--text2);font-size:14px">没有需要补全的商品事实</p>';
+    return;
+  }
+  const html = `<table>
+    <thead><tr><th>ID</th><th>标题</th><th>缺失字段</th><th>缺范围</th><th>状态</th><th>建议模板</th><th>操作</th></tr></thead>
+    <tbody>` + items.map(i => {
+      return `<tr>
+        <td>${i.entry_id}</td>
+        <td>${i.title}</td>
+        <td>${i.missing_fields.join(', ')}</td>
+        <td>${i.missing_scope ? '是' : '否'}</td>
+        <td><span class="badge badge-${i.status}">${i.status}</span></td>
+        <td style="max-width:300px;white-space:pre-wrap;font-size:11px">${i.suggested_fix_template}</td>
+        <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${i.entry_id})">编辑</button></td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+  document.getElementById('product-facts-incomplete').innerHTML = html;
+}
+
+function exportProductFacts() {
+  window.open(`${API_BASE}/api/knowledge/quality/product-facts-export`, '_blank');
+}
+
+async function loadRiskyClaims() {
+  const res = await fetch(`${API_BASE}/api/knowledge/quality/risky-claims`);
+  const data = await res.json();
+  const items = data.items || [];
+  const summary = data.summary || {};
+  if (!items.length) {
+    document.getElementById('risky-claims').innerHTML = '<p style="color:var(--text2);font-size:14px">没有发现风险话术</p>';
+    return;
+  }
+  let html = `<div class="hint" style="margin-bottom:10px">共 ${summary.total || items.length} 条。建议把“安装方便/简单/无需工具/固定时长”等承诺改成说明书或安装视频引导。</div>`;
+  html += `<table>
+    <thead><tr><th>来源表</th><th>ID</th><th>类型</th><th>标题</th><th>状态</th><th>命中短语</th><th>建议处理</th><th>操作</th></tr></thead>
+    <tbody>` + items.map(i => {
+      const editButton = i.entry_id ? `<button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${i.entry_id})">编辑</button>` : '<span style="color:var(--text2)">legacy QA</span>';
+      return `<tr>
+        <td>${i.table}</td>
+        <td>${i.id}</td>
+        <td>${i.source_type}</td>
+        <td>${i.title}</td>
+        <td><span class="badge badge-${i.status}">${i.status}</span></td>
+        <td>${(i.matched_phrases || []).join(', ')}</td>
+        <td style="max-width:320px;white-space:pre-wrap;font-size:11px">${i.suggested_action || ''}</td>
+        <td>${editButton}</td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+  document.getElementById('risky-claims').innerHTML = html;
+}
+
+function exportRiskyClaims() {
+  window.open(`${API_BASE}/api/knowledge/quality/risky-claims-export`, '_blank');
+}
+
+async function loadDuplicateReview() {
+  const res = await fetch(`${API_BASE}/api/knowledge/quality/duplicate-review`);
+  const data = await res.json();
+  const dups = data.duplicate_candidates || [];
+  const vars = data.possible_variants || [];
+
+  let html = '';
+  if (dups.length) {
+    html += '<h3>可能重复 (content_hash 相同)</h3>';
+    html += `<table><thead><tr><th>ID</th><th>标题</th><th>类型</th><th>SKU</th><th>content_hash</th><th>source_sheet</th><th>行号</th><th>操作</th></tr></thead><tbody>`;
+    html += dups.map(i => `<tr>
+      <td>${i.entry_id}</td><td>${i.title}</td><td>${i.source_type}</td><td>${i.sku_scope.join(', ')}</td>
+      <td style="font-size:10px">${i.content_hash}</td><td>${i.source_sheet}</td><td>${i.row_number}</td>
+      <td>
+        <button class="btn btn-warning" style="padding:4px 8px;font-size:11px" onclick="dupAction('archive',[${i.entry_id}])">归档</button>
+        <button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${i.entry_id})">编辑</button>
+      </td>
+    </tr>`).join('');
+    html += '</tbody></table>';
+  }
+  if (vars.length) {
+    html += '<h3 style="margin-top:16px">可能变体 (title 相同内容不同)</h3>';
+    html += `<table><thead><tr><th>ID</th><th>标题</th><th>类型</th><th>SKU</th><th>source_sheet</th><th>行号</th><th>操作</th></tr></thead><tbody>`;
+    html += vars.map(i => `<tr>
+      <td>${i.entry_id}</td><td>${i.title}</td><td>${i.source_type}</td><td>${i.sku_scope.join(', ')}</td>
+      <td>${i.source_sheet}</td><td>${i.row_number}</td>
+      <td>
+        <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px" onclick="dupAction('keep_separate',[${i.entry_id}])">保留</button>
+        <button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${i.entry_id})">编辑</button>
+      </td>
+    </tr>`).join('');
+    html += '</tbody></table>';
+  }
+  if (!dups.length && !vars.length) {
+    html = '<p style="color:var(--text2);font-size:14px">没有重复或变体</p>';
+  }
+  document.getElementById('duplicate-review').innerHTML = html;
+}
+
+async function dupAction(action, entry_ids) {
+  const res = await fetch(`${API_BASE}/api/knowledge/quality/duplicate-action`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action, entry_ids})
+  });
+  const data = await res.json();
+  alert(JSON.stringify(data.results));
+  loadDuplicateReview();
+}
+
+let candidateData = [];
+
+async function loadPublishCandidates() {
+  const res = await fetch(`${API_BASE}/api/knowledge/quality/publish-candidates`);
+  const data = await res.json();
+  candidateData = [];
+  let html = '';
+  for (const [st, items] of Object.entries(data.by_source_type || {})) {
+    if (!items.length) continue;
+    html += `<h3>${st} (${items.length} 条)</h3>`;
+    html += `<table><thead><tr><th><input type="checkbox" onchange="toggleCandidateGroup('${st}',this.checked)"></th><th>ID</th><th>标题</th><th>风险</th><th>意图</th><th>内容长度</th><th>score</th><th>操作</th></tr></thead><tbody>`;
+    html += items.map(i => {
+      candidateData.push(i);
+      return `<tr>
+        <td><input type="checkbox" class="cb-candidate" data-id="${i.entry_id}" data-st="${st}"></td>
+        <td>${i.entry_id}</td><td>${i.title}</td><td>${i.risk_level}</td><td>${i.intent}</td>
+        <td>${i.content_length}</td><td>${i.score}</td>
+        <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="editEntry(${i.entry_id})">编辑</button></td>
+      </tr>`;
+    }).join('');
+    html += '</tbody></table>';
+  }
+  if (!html) html = '<p style="color:var(--text2);font-size:14px">暂无候选</p>';
+  document.getElementById('publish-candidates').innerHTML = html;
+}
+
+function toggleCandidateGroup(st, checked) {
+  document.querySelectorAll('.cb-candidate').forEach(cb => {
+    if (cb.dataset.st === st) cb.checked = checked;
+  });
+}
+
+async function batchSubmitReview() {
+  const ids = Array.from(document.querySelectorAll('.cb-candidate:checked')).map(cb => parseInt(cb.dataset.id));
+  if (!ids.length) { alert('请先勾选要提交的条目'); return; }
+  if (!confirm(`确认批量提交 ${ids.length} 条审核？`)) return;
+  const res = await fetch(`${API_BASE}/api/knowledge/entries/batch-submit-review`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({entry_ids: ids})
+  });
+  const data = await res.json();
+  alert(`成功提交 ${data.success} 条`);
+  loadPublishCandidates();
+}
+
+// 筛选器事件
+document.addEventListener('DOMContentLoaded', () => {
+  ['quality-filter-severity', 'quality-filter-source_type', 'quality-filter-issue_type'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => { if (qualityData) renderQualityIssues(qualityData.issues); });
+  });
+});
+
+// 初始化
+loadEntries();
+</script>
+<!-- Global Navigation Bar -->
+<style>
+.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
+.gnav-bar a.gnav-active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight{background:#007aff;color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight:hover{background:#0066d6}
+.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
+body{padding-top:48px!important}
+</style>
+<nav class="gnav-bar">
+  <span class="gnav-brand">INHE</span>
+  <a href="/ask/" data-path="/">客服助手</a>
+  <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
+  <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
+  <a href="/ask/settings" data-path="/settings">设置</a>
+  <a href="/ask/graph" data-path="/graph">流程图</a>
+  <a href="/ask/api-test" data-path="/api-test">API</a>
+</nav>
+<script>
+(function(){
+  var p=location.pathname.replace(/\/$/,'')||'/';
+  document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a){
+    var h=a.getAttribute('data-path');
+    if(h===p){a.classList.add('gnav-active')}
+  });
+  if(p==='/copilot-panel'){var a=document.querySelector('.gnav-bar a[data-path="/copilot-panel"]');if(a)a.classList.add('gnav-highlight')}
+})()
+</script>
+</body>
+</html>

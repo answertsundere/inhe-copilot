@@ -1,0 +1,65 @@
+{
+  "total_customers": 2,
+  "customers_passed": 2,
+  "pass_rate": 1.0,
+  "avg_score": 0.736,
+  "min_score": 0.732,
+  "max_score": 0.741,
+  "scenario_scores": {
+    "complaint_high_risk": 0.736
+  },
+  "dimension_averages": {
+    "intent_match": 0.0,
+    "tool_routing": 0.333,
+    "risk_recall": 0.584,
+    "grounding": 1.0,
+    "trap_detection": 1.0,
+    "context_memory": 0.959,
+    "reply_quality": 1.0,
+    "performance": 1.0,
+    "trace_completeness": 0.75
+  },
+  "intent_confusion": {
+    "matrix": {
+      "safety_risk": {
+        "general": 2,
+        "complaint": 1
+      },
+      "complaint_risk": {
+        "general": 1,
+        "product_question": 1,
+        "complaint": 1
+      }
+    },
+    "total": 6,
+    "correct": 0,
+    "accuracy": 0.0,
+    "misclassifications": [
+      {
+        "expected": "safety_risk",
+        "actual": "general",
+        "count": 2
+      },
+      {
+        "expected": "safety_risk",
+        "actual": "complaint",
+        "count": 1
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "general",
+        "count": 1
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "product_question",
+        "count": 1
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "complaint",
+        "count": 1
+      }
+    ]
+  }
+}

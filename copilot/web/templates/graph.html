@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>客服 Copilot - 状态流转图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg: #f5f5f7; --card: #fff; --border: #e5e5ea;
+    --text: #1d1d1f; --text2: #6e6e73; --text3: #aeaeb2;
+    --blue: #007aff; --green: #34c759; --orange: #ff9500;
+    --red: #ff3b30; --purple: #af52de;
+    --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  body { font-family: -apple-system, "SF Pro SC", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+
+  .app { display: flex; height: calc(100vh - 40px); }
+
+  /* 左侧控制面板 */
+  .control-panel { width: 360px; background: var(--card); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .control-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 16px; font-weight: 600; }
+  .control-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .control-group { margin-bottom: 16px; }
+  .control-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; font-weight: 500; }
+  .control-group textarea { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px; outline: none; }
+  .control-group textarea:focus { border-color: var(--blue); }
+  .control-group input[type="text"] { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; outline: none; }
+  .control-group input[type="text"]:focus { border-color: var(--blue); }
+  .run-btn { width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--blue); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .run-btn:hover { background: #0066d6; }
+  .run-btn:disabled { background: var(--text3); cursor: not-allowed; }
+
+  .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .quick-btn { padding: 5px 10px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); font-size: 12px; color: var(--text2); cursor: pointer; }
+  .quick-btn:hover { border-color: var(--blue); color: var(--blue); background: #f0f7ff; }
+
+  /* 运行轨迹 */
+  .trace-panel { margin-top: 20px; }
+  .trace-panel h3 { font-size: 13px; color: var(--text2); margin-bottom: 10px; }
+  .trace-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+  .trace-item.active { background: #e8f5e9; border: 1px solid #34c759; }
+  .trace-item.inactive { background: #f5f5f7; color: var(--text3); }
+  .trace-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .trace-dot.green { background: var(--green); }
+  .trace-dot.gray { background: var(--text3); }
+  .trace-name { flex: 1; }
+  .trace-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+  .trace-status.success { background: #e8f5e9; color: #2e7d32; }
+  .trace-status.skip { background: #fff3e0; color: #e65100; }
+
+  /* 右侧图区域 */
+  .graph-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .graph-header { padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .graph-header h1 { font-size: 16px; font-weight: 600; }
+  .graph-header .subtitle { font-size: 12px; color: var(--text2); }
+  .graph-body { flex: 1; overflow: auto; padding: 20px; background: var(--card); }
+  .mermaid { display: flex; justify-content: center; min-height: 600px; }
+
+  /* 节点高亮样式 - 通过 Mermaid 的 classDef 实现 */
+
+  /* 底部信息栏 */
+  .graph-footer { padding: 10px 20px; background: var(--card); border-top: 1px solid var(--border); font-size: 12px; color: var(--text2); display: flex; gap: 16px; flex-shrink: 0; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* 响应式 */
+  @media (max-width: 900px) {
+    .control-panel { width: 280px; }
+  }
+</style>
+</head>
+<body>
+<!-- Global Navigation Bar -->
+<style>
+.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap}
+.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
+.gnav-bar a.gnav-active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.gnav-bar a.gnav-highlight{background:#007aff;color:#fff;font-weight:600}
+.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
+</style>
+<nav class="gnav-bar">
+  <span class="gnav-brand">INHE</span>
+  <a href="/ask/" data-path="/">客服助手</a>
+  <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
+  <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
+  <a href="/ask/settings" data-path="/settings">设置</a>
+  <a href="/ask/graph" data-path="/graph">流程图</a>
+  <a href="/ask/api-test" data-path="/api-test">API</a>
+</nav>
+<script>
+(function(){
+  var p=location.pathname.replace(/\/$/,'')||'/';
+  document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a){
+    var h=a.getAttribute('data-path');
+    if(h===p){a.classList.add('gnav-active')}
+  });
+})()
+</script>
+<div class="app">
+  <!-- 左侧控制面板 -->
+  <div class="control-panel">
+    <div class="control-header">🧪 运行调试面板</div>
+    <div class="control-body">
+      <div class="control-group">
+        <label>客户消息</label>
+        <textarea id="msgInput" placeholder="输入客户消息...">我快递大概几天会到？</textarea>
+      </div>
+      <div class="control-group" id="extractedIdGroup" style="display:none">
+        <label>自动提取单号</label>
+        <input type="text" id="orderIdInput" readonly style="background:#f5f5f7;color:var(--text2)">
+      </div>
+      <button class="run-btn" id="runBtn" onclick="runAnalysis()">▶ 运行并高亮路径</button>
+
+      <div class="quick-btns">
+        <button class="quick-btn" onclick="setQuick('我快递大概几天会到？')">无单-物流</button>
+        <button class="quick-btn" onclick="setQuick('JT3164846725758这个快递什么时候可以送到')">快递单号查询</button>
+        <button class="quick-btn" onclick="setQuick('我快递大概几天会到？','202501010001')">有单-已发</button>
+        <button class="quick-btn" onclick="setQuick('快递大概几天会到？','202501010003')">有单-未发</button>
+        <button class="quick-btn" onclick="setQuick('这个书架什么时候发货？')">无单-商品</button>
+        <button class="quick-btn" onclick="setQuick('再不处理我就去12315投诉')">高风险</button>
+      </div>
+
+      <div class="trace-panel" id="tracePanel" style="display:none">
+        <h3>📍 本次运行轨迹</h3>
+        <div id="traceList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧图区域 -->
+  <div class="graph-panel">
+    <div class="graph-header">
+      <div>
+        <h1>LangGraph 状态流转图</h1>
+        <div class="subtitle">customer_service_graph · 物流/到货时间链路（第一阶段）</div>
+      </div>
+      <div style="font-size:12px;color:var(--text3)">
+        实线=顺序执行 · 虚线=条件分支 · 圆角=决策节点
+      </div>
+    </div>
+    <div class="graph-body">
+      <!-- 原始 mermaid 文本，用于高亮时重置 -->
+      <script type="text/template" id="originalDiagram">{{ diagram | safe }}</script>
+      <div class="mermaid" id="mermaidGraph">
+{{ diagram | safe }}
+      </div>
+    </div>
+    <div class="graph-footer">
+      <div class="legend-item"><div class="legend-dot" style="background:#e1f5fe;border:2px solid #01579b"></div>开始/结束</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fff3e0;border:2px solid #e65100"></div>决策节点</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#e8f5e9;border:2px solid #2e7d32"></div>查询节点</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fce4ec;border:2px solid #c2185b"></div>守卫节点</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f3e5f5;border:2px solid #6a1b9a"></div>普通节点</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffeb3b;border:2px solid #f57f17"></div>本次运行路径</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== Mermaid 初始化 ==========
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'default',
+  flowchart: {
+    curve: 'basis',
+    padding: 16,
+    nodeSpacing: 40,
+    rankSpacing: 60,
+    useMaxWidth: true,
+    htmlLabels: true,
+  }
+});
+
+// ========== 运行分析并高亮路径 ==========
+async function runAnalysis() {
+  const msg = document.getElementById('msgInput').value.trim();
+  let oid = document.getElementById('orderIdInput').value.trim();
+  const btn = document.getElementById('runBtn');
+  if (!msg) return;
+
+  // 每次运行都重新从消息中提取单号，覆盖旧值
+  oid = extractTrackingNo(msg);
+
+  // 显示/隐藏自动提取的单号
+  const extractedGroup = document.getElementById('extractedIdGroup');
+  document.getElementById('orderIdInput').value = oid;
+  if (oid) {
+    extractedGroup.style.display = 'block';
+  } else {
+    extractedGroup.style.display = 'none';
+  }
+
+  btn.disabled = true; btn.textContent = '运行中...';
+
+  try {
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg, order_id: oid})
+    });
+    const data = await resp.json();
+    renderTrace(data.trace_steps || []);
+    highlightPath(data.trace_steps || []);
+  } catch(e) {
+    alert('请求失败: ' + e.message);
+  }
+
+  btn.disabled = false; btn.textContent = '▶ 运行并高亮路径';
+}
+
+function extractTrackingNo(text) {
+  const patterns = [
+    /\b(SF\d{12,16})\b/i,
+    /\b(JT\d{10,})\b/i,
+    /\b(JD\d{10,})\b/i,
+    /\b(YT\d{10,})\b/i,
+    /\b([A-Z]{2}\d{9,}[A-Z]{2})\b/i,
+    /\b(\d{12,20})\b/,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[1];
+  }
+  return '';
+}
+
+function setQuick(msg, oid) {
+  document.getElementById('msgInput').value = msg;
+  const extracted = extractTrackingNo(msg);
+  document.getElementById('orderIdInput').value = oid || extracted || '';
+}
+
+// ========== 渲染轨迹列表 ==========
+function renderTrace(traceSteps) {
+  const panel = document.getElementById('tracePanel');
+  const list = document.getElementById('traceList');
+  panel.style.display = 'block';
+
+  const NODE_LABELS = {
+    'normalize_input': '输入清洗',
+    'detect_intent': '意图识别',
+    'risk_check': '风险检测',
+    'build_base_context': '构建上下文',
+    'route_by_intent': '意图路由',
+    'query_jst_order': '查聚水潭订单',
+    'query_local_order_fallback': '本地订单降级',
+    'check_shipment_status': '检查发货状态',
+    'match_order_products': '匹配订单商品',
+    'match_product_from_message': '消息匹配商品',
+    'match_shipping_policy': '匹配物流政策',
+    'generate_reply': '生成回复',
+    'quality_guard': '质量守卫',
+    'human_review_gate': '人工复核门',
+  };
+
+  let html = '';
+  traceSteps.forEach((step, i) => {
+    const node = step.node || step.step || 'unknown';
+    const label = NODE_LABELS[node] || node;
+    const isActive = true;
+    const status = step.status || (step.matched !== undefined ? (step.matched ? 'matched' : 'unmatched') : 'success');
+    const statusClass = status === 'success' || status === 'matched' ? 'success' : (status === 'skipped' ? 'skip' : 'success');
+    const statusText = status === 'success' ? '成功' : (status === 'skipped' ? '跳过' : status);
+
+    html += '<div class="trace-item ' + (isActive ? 'active' : 'inactive') + '">';
+    html += '<div class="trace-dot ' + (isActive ? 'green' : 'gray') + '"></div>';
+    html += '<div class="trace-name">' + (i+1) + '. ' + label + '</div>';
+    html += '<div class="trace-status ' + statusClass + '">' + statusText + '</div>';
+    html += '</div>';
+
+    if (step.summary) {
+      html += '<div style="font-size:11px;color:var(--text2);padding-left:24px;margin-bottom:8px">' + esc(step.summary) + '</div>';
+    }
+  });
+  list.innerHTML = html;
+}
+
+// ========== 高亮 Mermaid 路径 ==========
+// step 名称到 mermaid 节点 ID 的映射（解决兼容 trace_steps 中的旧 step 名）
+const STEP_TO_NODE = {
+  'intent_detected': 'detect_intent',
+  'order_lookup': 'query_local_order_fallback',
+  'live_order_lookup': 'query_jst_order',
+  'shipment_status': 'check_shipment_status',
+  'product_match': 'match_order_products',
+  'knowledge_match': 'build_base_context',
+  'sop_match': 'build_base_context',
+  'template_match': 'build_base_context',
+  'reply_generated': 'generate_reply',
+  'build_base_context': 'build_base_context',
+  'route_by_intent': 'route_by_intent',
+  'risk_check': 'risk_check',
+  'match_shipping_policy': 'match_shipping_policy',
+  'quality_guard': 'quality_guard',
+  'human_review_gate': 'human_review_gate',
+};
+
+function highlightPath(traceSteps) {
+  // 收集本次运行经过的有效节点 ID
+  const visited = new Set();
+  // normalize_input 是所有请求的必经节点
+  visited.add('normalize_input');
+
+  traceSteps.forEach(s => {
+    const nodeId = s.node || STEP_TO_NODE[s.step] || s.step;
+    if (nodeId && !nodeId.startsWith('__')) {
+      visited.add(nodeId);
+    }
+  });
+
+  // 从隐藏的 script 标签读取原始 mermaid 文本
+  const template = document.getElementById('originalDiagram');
+  if (!template) return;
+  let diagram = template.textContent.trim();
+
+  // 确保 classDef highlight 存在
+  const highlightDef = '    classDef highlight fill:#ffeb3b,stroke:#f57f17,stroke-width:3px,color:#000;';
+  if (!diagram.includes('classDef highlight')) {
+    diagram = diagram.replace('flowchart TD', 'flowchart TD\n' + highlightDef);
+  }
+
+  // 移除所有旧的 highlight class 行
+  diagram = diagram.replace(/\n    class [A-Za-z0-9_,]+ highlight;/g, '');
+
+  // 添加新的 highlight class 行
+  const validNodes = Array.from(visited).filter(n => diagram.includes(n + '[') || diagram.includes(n + '(['));
+  if (validNodes.length > 0) {
+    diagram += '\n    class ' + validNodes.join(',') + ' highlight;';
+  }
+
+  // 清空旧 SVG，重新插入文本，再渲染
+  const container = document.getElementById('mermaidGraph');
+  container.innerHTML = diagram;
+  container.removeAttribute('data-processed');
+  mermaid.run({ nodes: [container] });
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>

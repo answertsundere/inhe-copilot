@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "version": "1.0",
+    "description": "Product context fixtures for simulation customers",
+    "provider": "fixture",
+    "generated_for": "英禾旗舰店 simulation - 母婴/儿童用品（爬行垫、游戏围栏、收纳等）"
+  },
+  "products": {
+    "爬行垫": {
+      "i_id": "SIM_CRAWLMAT",
+      "name": "XPE加厚环保爬行垫",
+      "brand": "英禾",
+      "category": "爬行垫",
+      "price_range": "169-499元",
+      "material": "XPE环保材质，无异味，不含甲醛、乳胶",
+      "age_range": "0-6岁",
+      "thickness_options": ["1cm", "2cm", "4cm"],
+      "size_options": [
+        "150x100cm",
+        "200x150cm",
+        "200x180cm",
+        "300x200cm"
+      ],
+      "color_options": ["米色", "灰色", "粉色", "蓝色"],
+      "features": [
+        "XPE环保材质，通过SGS检测",
+        "双面防滑设计",
+        "防水易清洁",
+        "可折叠收纳",
+        "拼接式设计可自由组合大小"
+      ],
+      "safety_certifications": ["SGS甲醛检测合格", "RoHS认证"],
+      "stock_available": true,
+      "shipping_note": "现货48小时内发货，大件使用德邦/安能物流",
+      "provider": "fixture"
+    },
+    "游戏围栏": {
+      "i_id": "SIM_PLAYPANEL",
+      "name": "宝宝游戏围栏",
+      "brand": "英禾",
+      "category": "游戏围栏",
+      "price_range": "269-599元",
+      "material": "HDPE环保材质，食品级",
+      "age_range": "6个月-3岁",
+      "panel_options": ["6片装", "8片装", "10片装", "12片装"],
+      "color_options": ["灰色", "白色", "粉色", "蓝粉混色"],
+      "features": [
+        "HDPE食品级材质，安全无毒",
+        "吸盘底座防滑设计",
+        "可自由组合形状",
+        "高度60cm防止翻越",
+        "无尖锐边角设计"
+      ],
+      "safety_certifications": ["3C认证", "SGS检测合格"],
+      "stock_available": true,
+      "shipping_note": "现货48小时内发货",
+      "installation": "无需工具，插拔式安装",
+      "provider": "fixture"
+    },
+    "收纳柜": {
+      "i_id": "SIM_STORAGE",
+      "name": "儿童收纳柜",
+      "brand": "英禾",
+      "category": "收纳",
+      "price_range": "99-299元",
+      "material": "PP环保材质",
+      "age_range": "全年龄段",
+      "size_options": ["小号(3层)", "中号(4层)", "大号(5层)"],
+      "color_options": ["白色", "粉色", "蓝色"],
+      "features": [
+        "PP环保材质，安全无毒",
+        "圆角设计防磕碰",
+        "可叠加组合",
+        "轻便可移动"
+      ],
+      "stock_available": true,
+      "shipping_note": "现货48小时内发货",
+      "provider": "fixture"
+    },
+    "爬行垫+围栏套装": {
+      "i_id": "SIM_COMBO_SET",
+      "name": "爬行垫+游戏围栏组合套装",
+      "brand": "英禾",
+      "category": "套装",
+      "price_range": "499-899元",
+      "material": "XPE爬行垫 + HDPE围栏",
+      "age_range": "0-3岁",
+      "features": [
+        "同品牌配套设计，颜色搭配统一",
+        "围栏+垫子组合更安全",
+        "套装价比单品更优惠"
+      ],
+      "stock_available": true,
+      "shipping_note": "可能分两个包裹发货",
+      "provider": "fixture"
+    }
+  },
+  "policies": {
+    "shipping": {
+      "standard": "现货商品付款后48小时内发货（工作日）",
+      "express": "默认中通/韵达，大件使用德邦/安能",
+      "remote_areas": "新疆/西藏/青海等偏远地区可发货，运费另计，时效7-15天",
+      "sf_option": "可加发顺丰，需补差价（约15-30元，视重量和距离）"
+    },
+    "returns": {
+      "seven_day": "签收后7天内可无理由退货，商品需完好未使用，不影响二次销售",
+      "quality_return": "质量问题7天内可退货/换货，运费卖家承担",
+      "damage": "运输破损提供照片后可补发或换货",
+      "missing_parts": "配件缺失可免费补发，需提供订单号和缺失配件信息",
+      "wrong_item": "发错货卖家承担全部运费退换"
+    },
+    "refund": {
+      "general": "退货商品验收通过后3个工作日内退款",
+      "shipping_fee": "非质量问题退货运费由买家承担",
+      "quality_shipping_fee": "质量问题退货运费由卖家承担"
+    },
+    "installation": {
+      "video": "提供安装视频教程，可在商品详情页或联系客服获取",
+      "phone_support": "可提供电话安装指导",
+      "tools": "围栏安装无需工具，爬行垫展开即可使用"
+    },
+    "promotions": {
+      "current": "以实际页面活动为准，如有疑问请联系客服确认",
+      "price_protection": "暂无保价政策",
+      "note": "不得承诺未确认的活动规则或优惠"
+    }
+  }
+}

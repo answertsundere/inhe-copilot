@@ -1,0 +1,11 @@
+{
+  "total_customers": 1,
+  "customers_passed": 1,
+  "pass_rate": 1.0,
+  "avg_score": 0.875,
+  "min_score": 0.875,
+  "max_score": 0.875,
+  "scenario_scores": {
+    "edge_composite": 0.875
+  }
+}

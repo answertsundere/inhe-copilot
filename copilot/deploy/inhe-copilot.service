@@ -1,0 +1,19 @@
+[Unit]
+Description=INHE Customer Service Copilot
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/inhe-copilot/copilot
+Environment="PATH=/opt/inhe-copilot/copilot/venv/bin:/usr/bin"
+EnvironmentFile=/opt/inhe-copilot/copilot/.env
+ExecStart=/opt/inhe-copilot/copilot/venv/bin/python run_prod.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

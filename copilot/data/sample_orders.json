@@ -1,0 +1,95 @@
+[
+  {
+    "o_id": "202501010001",
+    "shop_name": "INHE旗舰店",
+    "status": "已发货",
+    "shop_status": "已发货",
+    "buyer_id": "B10001",
+    "amount": 599.00,
+    "pay_amount": 579.00,
+    "freight": 0,
+    "receiver_name": "张先生",
+    "receiver_state": "浙江省",
+    "receiver_city": "杭州市",
+    "receiver_address": "西湖区文三路xx号",
+    "buyer_message": "",
+    "remark": "",
+    "created": "2025-05-20 10:30:00",
+    "pay_date": "2025-05-20 10:31:00",
+    "send_date": "2025-05-21 14:00:00",
+    "sign_time": null,
+    "logistics_company": "中通快递",
+    "l_id": "ZT2025052101",
+    "items": [
+      {
+        "sku_id": "YH66K02B02S23",
+        "i_id": "YH66K02",
+        "name": "北欧实木书桌",
+        "qty": 1,
+        "price": 579.00
+      }
+    ]
+  },
+  {
+    "o_id": "202501010002",
+    "shop_name": "INHE旗舰店",
+    "status": "已完成",
+    "shop_status": "已签收",
+    "buyer_id": "B10002",
+    "amount": 1299.00,
+    "pay_amount": 1259.00,
+    "freight": 0,
+    "receiver_name": "李女士",
+    "receiver_state": "广东省",
+    "receiver_city": "深圳市",
+    "receiver_address": "南山区科技园xx栋",
+    "buyer_message": "请尽快发货",
+    "remark": "",
+    "created": "2025-05-15 09:00:00",
+    "pay_date": "2025-05-15 09:01:00",
+    "send_date": "2025-05-16 11:00:00",
+    "sign_time": "2025-05-18 15:30:00",
+    "logistics_company": "德邦物流",
+    "l_id": "DB2025051601",
+    "items": [
+      {
+        "sku_id": "YH88C01W01M60",
+        "i_id": "YH88C01",
+        "name": "现代简约餐椅（白色）",
+        "qty": 4,
+        "price": 314.75
+      }
+    ]
+  },
+  {
+    "o_id": "202501010003",
+    "shop_name": "INHE旗舰店",
+    "status": "待发货",
+    "shop_status": "待发货",
+    "buyer_id": "B10003",
+    "amount": 459.00,
+    "pay_amount": 439.00,
+    "freight": 0,
+    "receiver_name": "王先生",
+    "receiver_state": "北京市",
+    "receiver_city": "北京市",
+    "receiver_address": "朝阳区xx路xx号",
+    "buyer_message": "",
+    "remark": "客户要求加急",
+    "created": "2025-05-28 16:00:00",
+    "pay_date": "2025-05-28 16:01:00",
+    "send_date": null,
+    "sign_time": null,
+    "logistics_company": "",
+    "l_id": "",
+    "items": [
+      {
+        "sku_id": "YH55S03B03S30",
+        "i_id": "YH55S03",
+        "name": "多功能置物架",
+        "qty": 1,
+        "price": 439.00
+      }
+    ]
+  }
+]

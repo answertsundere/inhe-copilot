@@ -1,0 +1,251 @@
+{
+  "total_customers": 50,
+  "customers_passed": 50,
+  "pass_rate": 1.0,
+  "avg_score": 0.796,
+  "min_score": 0.731,
+  "max_score": 0.963,
+  "scenario_scores": {
+    "pre_sale_product": 0.854,
+    "logistics": 0.795,
+    "after_sales_return": 0.749,
+    "installation": 0.787,
+    "complaint_high_risk": 0.776,
+    "edge_composite": 0.807
+  },
+  "dimension_averages": {
+    "intent_match": 0.213,
+    "tool_routing": 0.306,
+    "risk_recall": 0.983,
+    "grounding": 1.0,
+    "trap_detection": 1.0,
+    "context_memory": 0.95,
+    "reply_quality": 1.0,
+    "performance": 0.986,
+    "trace_completeness": 0.726
+  },
+  "intent_confusion": {
+    "matrix": {
+      "product_question": {
+        "general": 8,
+        "product_question": 31,
+        "installation": 1,
+        "logistics_eta": 4
+      },
+      "pre_sale_purchase_guidance": {
+        "general": 8,
+        "product_question": 6,
+        "logistics_eta": 1
+      },
+      "logistics_eta": {
+        "logistics_eta": 11,
+        "product_question": 5,
+        "aftersales": 6,
+        "delivery_not_received": 1,
+        "general": 3,
+        "complaint": 1
+      },
+      "after_sale_return_refund": {
+        "general": 6,
+        "product_question": 11,
+        "aftersales": 13
+      },
+      "after_sale_missing_part": {
+        "installation": 1,
+        "product_question": 3,
+        "aftersales": 1,
+        "general": 1
+      },
+      "after_sale_damage": {
+        "general": 3,
+        "aftersales": 1,
+        "product_question": 1,
+        "complaint": 1
+      },
+      "after_sale_installation": {
+        "installation": 3,
+        "product_question": 6,
+        "general": 1,
+        "aftersales": 2
+      },
+      "safety_risk": {
+        "general": 2,
+        "complaint": 1
+      },
+      "complaint_risk": {
+        "complaint": 6,
+        "general": 9,
+        "product_question": 4,
+        "aftersales": 2
+      },
+      "unknown": {
+        "product_question": 2
+      }
+    },
+    "total": 166,
+    "correct": 43,
+    "accuracy": 0.259,
+    "misclassifications": [
+      {
+        "expected": "after_sale_return_refund",
+        "actual": "aftersales",
+        "count": 13
+      },
+      {
+        "expected": "after_sale_return_refund",
+        "actual": "product_question",
+        "count": 11
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "general",
+        "count": 9
+      },
+      {
+        "expected": "product_question",
+        "actual": "general",
+        "count": 8
+      },
+      {
+        "expected": "pre_sale_purchase_guidance",
+        "actual": "general",
+        "count": 8
+      },
+      {
+        "expected": "pre_sale_purchase_guidance",
+        "actual": "product_question",
+        "count": 6
+      },
+      {
+        "expected": "logistics_eta",
+        "actual": "aftersales",
+        "count": 6
+      },
+      {
+        "expected": "after_sale_return_refund",
+        "actual": "general",
+        "count": 6
+      },
+      {
+        "expected": "after_sale_installation",
+        "actual": "product_question",
+        "count": 6
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "complaint",
+        "count": 6
+      },
+      {
+        "expected": "logistics_eta",
+        "actual": "product_question",
+        "count": 5
+      },
+      {
+        "expected": "product_question",
+        "actual": "logistics_eta",
+        "count": 4
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "product_question",
+        "count": 4
+      },
+      {
+        "expected": "logistics_eta",
+        "actual": "general",
+        "count": 3
+      },
+      {
+        "expected": "after_sale_missing_part",
+        "actual": "product_question",
+        "count": 3
+      },
+      {
+        "expected": "after_sale_damage",
+        "actual": "general",
+        "count": 3
+      },
+      {
+        "expected": "after_sale_installation",
+        "actual": "installation",
+        "count": 3
+      },
+      {
+        "expected": "after_sale_installation",
+        "actual": "aftersales",
+        "count": 2
+      },
+      {
+        "expected": "safety_risk",
+        "actual": "general",
+        "count": 2
+      },
+      {
+        "expected": "complaint_risk",
+        "actual": "aftersales",
+        "count": 2
+      },
+      {
+        "expected": "unknown",
+        "actual": "product_question",
+        "count": 2
+      },
+      {
+        "expected": "product_question",
+        "actual": "installation",
+        "count": 1
+      },
+      {
+        "expected": "pre_sale_purchase_guidance",
+        "actual": "logistics_eta",
+        "count": 1
+      },
+      {
+        "expected": "logistics_eta",
+        "actual": "complaint",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_missing_part",
+        "actual": "installation",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_missing_part",
+        "actual": "aftersales",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_missing_part",
+        "actual": "general",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_damage",
+        "actual": "aftersales",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_damage",
+        "actual": "product_question",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_damage",
+        "actual": "complaint",
+        "count": 1
+      },
+      {
+        "expected": "after_sale_installation",
+        "actual": "general",
+        "count": 1
+      },
+      {
+        "expected": "safety_risk",
+        "actual": "complaint",
+        "count": 1
+      }
+    ]
+  }
+}

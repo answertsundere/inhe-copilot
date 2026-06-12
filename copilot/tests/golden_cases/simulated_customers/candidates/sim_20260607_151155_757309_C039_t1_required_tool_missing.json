@@ -1,0 +1,100 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C039_t1_required_tool_missing",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C039",
+  "turn_num": 1,
+  "failure_type": "required_tool_missing",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:14:40.699246+00:00",
+  "turn_scores": {
+    "customer_id": "C039",
+    "turn_num": 1,
+    "timestamp": "2026-06-07T15:14:40",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "complaint_risk",
+      "actual": "product_question",
+      "detail": "Expected 'complaint_risk', got 'product_question'"
+    },
+    "tool_routing": {
+      "score": 0.0,
+      "found_expected": [],
+      "missing": [
+        "sop_lookup_tool"
+      ],
+      "actual_tools": [
+        "product_resolver_tool",
+        "rag_search_tool",
+        "tool_executor",
+        "tool_planner"
+      ],
+      "detail": "Missing tools: sop_lookup_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 4,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 1.0,
+      "issues": [],
+      "detail": "First turn, no context memory needed"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 91,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.085,
+      "detail": "Fast response (0.1s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 40,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.75,
+    "blocking_reasons": [
+      "required_tool_missing"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "complaint_risk",
+      "actual_intent": "product_question",
+      "scenario": "complaint_high_risk",
+      "duration_s": 0.085,
+      "pass_criteria": "按政策处理 + 升级主管 + 未做特殊让步",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing"
+    ]
+  }
+}

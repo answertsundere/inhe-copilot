@@ -1,0 +1,860 @@
+"""
+evidence_builder 节点 - 收集所有来源的证据并分层
+输出分层证据 + 兼容字段
+
+fact_review_status 设计:
+- knowledge_chunks.metadata_json 中的 fact_review_status: pending/verified/rejected/needs_update
+- entry_status == "draft" 的知识条目，其 product_facts/faq 中包含高风险字段时，
+  标记为 unverified_fact，在 evidence_debug 中体现。
+- 高风险字段: 材质/承重/尺寸/适用年龄/洗涤/填充/防水/机洗/实木/食品级/无毒/重量
+
+Knowledge Evidence Quality Gate (Phase 2.5):
+- 新增 metadata: fact_source, fact_confidence, evidence_allowed_for_direct_answer
+- unverified 高风险商品事实 → evidence_allowed_for_direct_answer=False
+- real_cases/feedback_records → 不作为强事实依据
+"""
+
+import time
+
+from app.agent.nodes.evidence_filter_node import SOURCE_TYPE_CONFIDENCE
+from app.services.evidence_quality_gate import (
+    HIGH_RISK_FACT_FIELDS as GATE_RISK_FIELDS,
+    VERIFIED_STATUSES as GATE_VERIFIED,
+    WEAK_SOURCE_TYPES as GATE_WEAK_SOURCES,
+)
+from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
+
+# 高风险商品事实字段 — 包含这些字段的知识条目需要 fact review
+HIGH_RISK_FACT_FIELDS = (
+    "材质", "承重", "尺寸", "适用年龄", "洗涤", "填充", "防水", "机洗",
+    "实木", "食品级", "无毒", "重量", "承重", "材质说明", "填充物",
+    "洗涤方式", "是否食品级", "是否3C", "是否无毒无味", "是否实木",
+    "是否绝对安全", "是否可机洗",
+)
+
+PRODUCT_PROFILE_FACT_TYPES = {
+    "",
+    "material",
+    "certification_report",
+    "load_capacity",
+    "stability",
+    "dimensions",
+    "age_range",
+    "cleaning_care",
+    "odor",
+    "installation",
+    "variant_compare",
+    "stock_shipping",
+    "safety_small_parts",
+}
+
+CONTEXT_CATEGORY_COMPATIBILITY = (
+    (("绘本", "书本", "书籍", "图书"), ("书架", "绘本架", "书柜", "收纳架", "收纳柜", "置物架", "储物", "架", "柜")),
+    (("水龙头", "洗手", "洗脸", "洗漱"), ("水龙头", "延长器", "洗手", "洗漱")),
+)
+
+
+def _compact_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple, set)):
+        return "、".join(str(v).strip() for v in value if str(v).strip())
+    if isinstance(value, dict):
+        parts = []
+        for k, v in value.items():
+            text = _compact_value(v)
+            if text:
+                parts.append(f"{k}: {text}")
+        return "；".join(parts)
+    return str(value).strip()
+
+
+def _context_product_category_mismatch(message: str, product_name: str) -> str:
+    msg = message or ""
+    name = product_name or ""
+    if not msg or not name:
+        return ""
+    for cues, compatible_terms in CONTEXT_CATEGORY_COMPATIBILITY:
+        if any(cue in msg for cue in cues) and not any(term in name for term in compatible_terms):
+            return next(cue for cue in cues if cue in msg)
+    return ""
+
+
+def _identity_values(state: dict) -> dict:
+    identity = state.get("order_product_identity") or {}
+    slots = state.get("slots") or {}
+    sku = (
+        slots.get("sku_code")
+        or identity.get("sku_id")
+        or identity.get("internal_sku_code")
+        or state.get("sku_code")
+        or ""
+    )
+    i_id = (
+        identity.get("i_id")
+        or identity.get("product_id")
+        or identity.get("internal_product_code")
+        or state.get("i_id")
+        or ""
+    )
+    product_name = (
+        state.get("matched_product_name")
+        or identity.get("matched_product_name")
+        or identity.get("internal_product_name")
+        or state.get("product_name")
+        or ""
+    )
+    return {"sku": str(sku or "").strip(), "i_id": str(i_id or "").strip(), "product_name": str(product_name or "").strip()}
+
+
+def _find_kb_product(state: dict):
+    values = _identity_values(state)
+    sku = values["sku"]
+    i_id = values["i_id"]
+    product_name = values["product_name"]
+    if not (sku or i_id or product_name):
+        return None
+
+    try:
+        from app.db import SessionLocal
+        from app.models.kb_tables import KBProduct
+    except Exception:
+        return None
+
+    db = SessionLocal()
+    try:
+        if i_id:
+            product = db.query(KBProduct).filter(KBProduct.i_id == i_id).first()
+            if product:
+                return product.to_dict(detail=True)
+
+        products = db.query(KBProduct).all()
+        for product in products:
+            if sku and (sku == product.i_id or sku.startswith(product.i_id) or product.i_id.startswith(sku)):
+                return product.to_dict(detail=True)
+            if sku and sku in str(product.get_sku_list()):
+                return product.to_dict(detail=True)
+
+        if product_name:
+            for product in products:
+                name = product.product_name or ""
+                if name and (name in product_name or product_name in name):
+                    return product.to_dict(detail=True)
+    finally:
+        db.close()
+    return None
+
+
+def _find_product_card(state: dict) -> dict | None:
+    values = _identity_values(state)
+    sku = values["sku"]
+    i_id = values["i_id"]
+    product_name = values["product_name"]
+    if not (sku or i_id or product_name):
+        return None
+    try:
+        from app.main import _init_repos, get_product_knowledge_repo
+        _init_repos()
+        repo = get_product_knowledge_repo()
+    except Exception:
+        return None
+
+    card = None
+    if sku:
+        card = repo.get_by_sku_id(sku)
+    if not card and i_id:
+        card = repo.get_by_i_id(i_id)
+    if not card and sku:
+        # Many platform SKU codes start with the internal product code, e.g. YH06K53B05S13 -> YH06K53.
+        for n in (7, 8, 6):
+            if len(sku) > n:
+                card = repo.get_by_i_id(sku[:n])
+                if card:
+                    break
+    if not card and product_name:
+        results = repo.search(product_name, limit=1)
+        if results:
+            card = results[0]
+    if not card:
+        return None
+    summary = repo.get_summary(card)
+    summary["source_card_name"] = card.get("product_name", "")
+    return summary
+
+
+def _profile_fact_text(profile: dict, query_fact_type: str, msg: str) -> tuple[str, list[str]]:
+    specs = profile.get("specs") or {}
+    missing = []
+    parts = []
+
+    def add(label: str, *keys: str):
+        for key in keys:
+            value = profile.get(key)
+            if value in (None, "", [], {}):
+                value = specs.get(key)
+            text = _compact_value(value)
+            if text:
+                parts.append(f"{label}: {text}")
+                return
+        missing.append(label)
+
+    if query_fact_type == "installation":
+        add("安装方式", "install_method", "安装方式", "installation", "组装方式")
+        add("配件清单", "accessories", "配件清单", "parts", "配件")
+    elif query_fact_type == "load_capacity":
+        add("承重/容量", "weight", "load_capacity", "承重/容量", "承重")
+    elif query_fact_type == "dimensions":
+        add("尺寸", "size", "尺寸")
+    elif query_fact_type == "age_range":
+        add("适用年龄", "age_range", "适用年龄")
+    elif query_fact_type in ("variant_compare",):
+        add("款式差异", "variant_compare", "款式差异", "difference", "差异")
+    else:
+        material_query = query_fact_type in ("material", "safety", "moisture") or any(
+        word in (msg or "") for word in ("材质", "材料", "安全", "受潮", "防潮", "有毒", "味道")
+        )
+        if material_query:
+            add("材质", "material", "材质", "材料", "材质说明")
+            add("防潮/存放", "moisture", "防潮", "是否防潮", "storage", "保养", "物流属性")
+        else:
+            add("材质", "material", "材质", "材料", "材质说明")
+            add("尺寸", "size", "尺寸")
+            add("承重/容量", "weight", "load_capacity", "承重/容量", "承重")
+            add("适用年龄", "age_range", "适用年龄")
+            add("配件清单", "accessories", "配件清单")
+            add("安装方式", "install_method", "安装方式")
+
+    parts = [p for p in parts if not p.endswith(": -")]
+    if not parts:
+        return "", missing
+    name = profile.get("product_name") or profile.get("name") or profile.get("source_card_name") or ""
+    status = profile.get("status") or ""
+    prefix = f"商品资料库查询到「{name}」" if name else "商品资料库查询到当前商品"
+    if status:
+        prefix += f"（状态: {status}）"
+    return f"{prefix}: " + "；".join(parts), missing
+
+
+def _append_product_profile_evidence(state: dict, product_facts: list, verified_facts: list, unknowns: list, sources: list) -> None:
+    values = _identity_values(state)
+    if not (values["sku"] or values["i_id"] or values["product_name"]):
+        return
+
+    query_fact_type = state.get("query_fact_type", "")
+    if query_fact_type not in PRODUCT_PROFILE_FACT_TYPES:
+        unknowns.append({
+            "fact": f"当前问题类型为 {query_fact_type}，商品资料库仅作为商品身份背景，不用于直接回答",
+            "source": values["sku"] or values["i_id"] or values["product_name"],
+            "source_type": "product_profile_lookup",
+            "confidence": "medium",
+            "scope": "product",
+            "reference_only": True,
+        })
+        return
+
+    msg = state.get("normalized_message", state.get("customer_message", "")) or ""
+    mismatch_cue = _context_product_category_mismatch(msg, values["product_name"])
+    if mismatch_cue:
+        unknowns.append({
+            "fact": f"客户问题提到「{mismatch_cue}」，但当前商品「{values['product_name']}」品类不一致，商品资料库仅作为背景，不能直接回答参数",
+            "source": values["sku"] or values["i_id"] or values["product_name"],
+            "source_type": "product_profile_lookup",
+            "confidence": "medium",
+            "scope": "product",
+            "reference_only": True,
+            "product_category_mismatch": True,
+        })
+        return
+    found_sources = []
+
+    kb_product = _find_kb_product(state)
+    if kb_product:
+        fact_text, missing = _profile_fact_text(kb_product, query_fact_type, msg)
+        found_sources.append("kb_product")
+        if fact_text:
+            fact = {
+                "fact": fact_text,
+                "source": kb_product.get("i_id", "") or values["sku"] or values["product_name"],
+                "source_type": "product_facts",
+                "confidence": "high" if kb_product.get("status") == "published" else "medium",
+                "scope": "product",
+                "entry_status": kb_product.get("status", "unknown"),
+                "fact_review_status": "published" if kb_product.get("status") == "published" else "draft_unverified",
+                "evidence_fact_type": query_fact_type,
+                "product_profile_source": "kb_product",
+                "evidence_allowed_for_direct_answer": kb_product.get("status") == "published",
+            }
+            product_facts.append(fact)
+            verified_facts.append(fact)
+            sources.append("product_facts")
+        elif missing:
+            unknowns.append({
+                "fact": f"已按当前商品查询商品资料库，但缺少字段: {'、'.join(missing)}",
+                "source": kb_product.get("i_id", "") or values["sku"] or values["product_name"],
+                "source_type": "product_profile_lookup",
+                "confidence": "high",
+                "scope": "product",
+                "product_profile_source": "kb_product",
+            })
+
+    card = _find_product_card(state)
+    if card:
+        found_sources.append("product_cards")
+        fact_text, missing = _profile_fact_text(card, query_fact_type, msg)
+        if fact_text and not any(f.get("product_profile_source") == "kb_product" for f in product_facts):
+            fact = {
+                "fact": fact_text,
+                "source": card.get("i_id", "") or values["sku"] or values["product_name"],
+                "source_type": "product_facts",
+                "confidence": "medium",
+                "scope": "product",
+                "entry_status": "published",
+                "fact_review_status": "published",
+                "evidence_fact_type": query_fact_type,
+                "product_profile_source": "product_cards",
+                "evidence_allowed_for_direct_answer": True,
+            }
+            product_facts.append(fact)
+            verified_facts.append(fact)
+            sources.append("product_facts")
+        elif missing and not kb_product:
+            unknowns.append({
+                "fact": f"已按当前商品查询商品卡片，但缺少字段: {'、'.join(missing)}",
+                "source": card.get("i_id", "") or values["sku"] or values["product_name"],
+                "source_type": "product_profile_lookup",
+                "confidence": "medium",
+                "scope": "product",
+                "product_profile_source": "product_cards",
+            })
+
+    if not found_sources:
+        unknowns.append({
+            "fact": "已按当前商品名称/SKU查询商品资料库，但没有找到对应商品主资料",
+            "source": values["sku"] or values["i_id"] or values["product_name"],
+            "source_type": "product_profile_lookup",
+            "confidence": "low",
+            "scope": "product",
+        })
+
+
+def _detect_high_risk_fields(text: str) -> list:
+    """检测文本中包含的高风险商品事实字段"""
+    found = []
+    for field in HIGH_RISK_FACT_FIELDS:
+        if field in text:
+            found.append(field)
+    return found
+
+
+def _enrich_evidence_item(base: dict, text: str, entry_status: str,
+                           fact_review_status: str, source_type: str) -> dict:
+    """
+    Phase 2.5: 为证据项添加 Knowledge Evidence Quality Gate 字段。
+    - fact_source: 从 chunk metadata 推断
+    - fact_confidence: 使用已有的 confidence
+    - evidence_allowed_for_direct_answer: 根据审核状态判定
+    """
+    risk_fields = _detect_high_risk_fields(text)
+    is_weak = source_type in GATE_WEAK_SOURCES
+    is_unverified = (
+        entry_status == "draft"
+        or (entry_status != "published" and fact_review_status in ("pending", "needs_update", "rejected"))
+        or (not fact_review_status and entry_status != "published")
+    )
+
+    if risk_fields:
+        base["high_risk_fields"] = risk_fields
+        base["high_risk_fact_fields"] = risk_fields
+
+    if is_unverified and risk_fields:
+        base["unverified_fact"] = True
+        base["evidence_allowed_for_direct_answer"] = False
+    elif is_weak:
+        base["evidence_allowed_for_direct_answer"] = False
+    else:
+        base["evidence_allowed_for_direct_answer"] = True
+
+    return base
+
+
+def evidence_builder(state: dict) -> dict:
+    """构建证据链（分层版）"""
+    t0 = time.time()
+
+    # 分层证据
+    order_facts = []
+    logistics_facts = []
+    product_facts = []
+    policy_facts = []
+    sop_evidence = []
+    template_evidence = []
+    faq_evidence = []
+
+    # 兼容字段
+    verified_facts = []
+    estimated_facts = []
+    unknowns = []
+    conflicts = []
+    sources = []
+
+    # 1. 订单事实（聚水潭 - 区分普通订单 vs 销售出库）
+    live_order = state.get("live_order")
+    if live_order:
+        used_endpoint = state.get("used_endpoint", "")
+        is_outbound = "out/simple" in used_endpoint or "outbound" in used_endpoint
+        source_label = "jst_sales_out" if is_outbound else "jst_order"
+        fact = {
+            "fact": f"聚水潭查到订单 {live_order.get('o_id', '')}, 状态 {live_order.get('status', '')}",
+            "source": live_order.get("o_id", ""),
+            "source_type": source_label,
+            "confidence": "high",
+            "scope": "order",
+            "endpoint": used_endpoint,
+        }
+        order_facts.append(fact)
+        verified_facts.append(fact)
+        sources.append(source_label)
+
+    # 2. 订单事实（本地）
+    local_order = state.get("order")
+    if local_order and not live_order:
+        fact = {
+            "fact": f"本地查到订单 {local_order.get('o_id', '')}, 状态 {local_order.get('status', '')}",
+            "source": local_order.get("o_id", ""),
+            "source_type": "local_order",
+            "confidence": "medium",
+            "scope": "order",
+        }
+        order_facts.append(fact)
+        verified_facts.append(fact)
+        sources.append("local_order")
+
+    # 3. 物流事实（聚水潭 - 区分订单来源 vs 销售出库来源）
+    logistics_trace = state.get("logistics_trace")
+    if logistics_trace and logistics_trace.get("status") not in ("no_trace", "api_failed", ""):
+        carrier = logistics_trace.get("carrier", "") or logistics_trace.get("logistics_company", "")
+        tracking_no = logistics_trace.get("tracking_no", "")
+        send_date = logistics_trace.get("send_date", "")
+        order_status = logistics_trace.get("order_status", "")
+        status = logistics_trace.get("status", "")
+        is_outbound = "out/simple" in state.get("used_endpoint", "")
+        source_label = "jst_sales_out_logistics" if is_outbound else "jst_logistics"
+        fact_parts = [f"聚水潭物流信息: {carrier} {tracking_no}"]
+        if send_date:
+            fact_parts.append(f"发货时间 {send_date}")
+        if order_status:
+            fact_parts.append(f"订单状态 {order_status}")
+        elif status:
+            fact_parts.append(f"物流状态 {status}")
+        latest = logistics_trace.get("latest", {})
+        if latest:
+            fact_parts.append(f"最新 {latest.get('time', '')} {latest.get('context', '')}")
+        fact = {
+            "fact": ", ".join(fact_parts),
+            "source": tracking_no,
+            "source_type": source_label,
+            "confidence": "medium" if logistics_trace.get("low_confidence") else "high",
+            "scope": "logistics",
+            "evidence_boundary": "已发出" if send_date and not logistics_trace.get("sign_time") else ("已签收" if logistics_trace.get("is_delivered") else "状态未知"),
+        }
+        logistics_facts.append(fact)
+        verified_facts.append(fact)
+        sources.append(source_label)
+    elif logistics_trace and logistics_trace.get("status") == "no_trace":
+        tracking_no = logistics_trace.get("tracking_no", "")
+        unknowns.append({
+            "fact": f"聚水潭暂未返回完整物流信息: {tracking_no}",
+            "source": tracking_no,
+            "source_type": "jst_logistics",
+            "confidence": "low",
+            "scope": "logistics",
+        })
+        sources.append("jst_logistics")
+
+    # 4. 商品事实（商品映射）
+    product_name = state.get("matched_product_name", "")
+    if product_name:
+        fact = {
+            "fact": f"匹配到商品: {product_name}",
+            "source": product_name,
+            "source_type": "product_mapping",
+            "confidence": "medium",
+            "scope": "product",
+        }
+        product_facts.append(fact)
+        estimated_facts.append(fact)
+        sources.append("product_mapping")
+
+    _append_product_profile_evidence(state, product_facts, verified_facts, unknowns, sources)
+
+    # 5. 物流政策（旧字段兼容）
+    policy = state.get("shipping_policy", {})
+    if policy:
+        fact = {
+            "fact": f"物流政策: 默认{policy.get('default_courier', '')}, 时效{policy.get('eta_days_min', '')}-{policy.get('eta_days_max', '')}天",
+            "source": "shipping_policy",
+            "source_type": "shipping_policy",
+            "confidence": "medium",
+            "scope": "policy",
+        }
+        policy_facts.append(fact)
+        estimated_facts.append(fact)
+        sources.append("shipping_policy")
+
+    # 6. 冲突检测
+    order_status = state.get("order_status", "")
+    if order_status in ("unpaid", "canceled", "refunded") and logistics_trace:
+        conflicts.append({
+            "fact": f"订单状态为{order_status}但存在物流轨迹",
+            "source": "order_vs_logistics",
+            "source_type": "conflict",
+            "confidence": "high",
+            "scope": "conflict",
+        })
+
+    # 7. 无订单时的未知
+    slots = state.get("slots", {})
+    if not live_order and not local_order and not logistics_trace:
+        if slots.get("order_id"):
+            unknowns.append({
+                "fact": f"提供订单号 {slots['order_id']} 但未查到订单",
+                "source": slots["order_id"],
+                "source_type": "unknown",
+                "confidence": "low",
+                "scope": "order",
+            })
+
+    # 8. 知识库 RAG 证据（分层处理 + fact_review_status）
+    knowledge_evidence = state.get("knowledge_evidence", [])
+    has_product_fact_from_rag = False
+    unverified_fact_fields = []  # 未审核的高风险字段列表
+    query_fact_type = state.get("query_fact_type", "")
+
+    for ke in knowledge_evidence:
+        st = ke.get("source_type", "")
+        text = ke.get("chunk_text", "")
+        confidence = ke.get("confidence", "low")
+        ref_only = ke.get("reference_only", False)
+        entry_status = ke.get("entry_status", "unknown")
+        fact_review_status = ke.get("fact_review_status", "")
+        source_sheet = ke.get("source_sheet", "")
+        row_number = ke.get("row_number", 0)
+        evidence_fact_type = ke.get("evidence_fact_type") or infer_evidence_fact_type(ke)
+        wrong_fact_type = bool(query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type))
+
+        # 检测高风险字段
+        risk_fields = _detect_high_risk_fields(text)
+        # 只有明确 draft 或明确未审核状态才算 unverified；published entry 不受空 fact_review_status 影响
+        is_unverified = (
+            entry_status == "draft"
+            or (entry_status != "published" and fact_review_status in ("pending", "needs_update", "rejected"))
+        )
+
+        # 如果是高风险字段 + 未审核，标记为 unverified
+        if risk_fields and is_unverified and st in ("product_facts", "faq"):
+            for f in risk_fields:
+                if f not in unverified_fact_fields:
+                    unverified_fact_fields.append(f)
+
+        base = {
+            "fact": text,
+            "source": "knowledge_base",
+            "source_type": st,
+            "confidence": confidence,
+            "reference_only": ref_only,
+            "entry_status": entry_status,
+            "fact_review_status": fact_review_status if fact_review_status else ("draft_unverified" if is_unverified else "published"),
+            "source_sheet": source_sheet,
+            "row_number": row_number,
+            "matched_entry_id": ke.get("entry_id"),
+            "matched_title": ke.get("title", ""),
+            "query_fact_type": query_fact_type,
+            "evidence_fact_type": evidence_fact_type,
+            "evidence_allowed_for_exact_answer": ke.get("evidence_allowed_for_exact_answer", True),
+        }
+        base = _enrich_evidence_item(base, text, entry_status, fact_review_status, st)
+        if ke.get("evidence_allowed_for_direct_answer") is False:
+            base["evidence_allowed_for_direct_answer"] = False
+        if st == "faq" and ke.get("evidence_allowed_for_exact_answer") is False:
+            base["evidence_allowed_for_direct_answer"] = False
+        if wrong_fact_type:
+            base["evidence_allowed_for_direct_answer"] = False
+            base["evidence_allowed_for_exact_answer"] = False
+            base["mismatch_reason"] = base.get("mismatch_reason") or "wrong_fact_type"
+            if is_strict_fact_type(query_fact_type):
+                base["reference_only"] = True
+
+        if st == "product_facts":
+            has_product_fact_from_rag = True
+            pf = {**base, "scope": "product"}
+            product_facts.append(pf)
+            verified_facts.append(pf)
+            sources.append("product_facts")
+        elif st == "shipping_policy":
+            pf = {**base, "scope": "policy"}
+            policy_facts.append(pf)
+            estimated_facts.append(pf)
+            sources.append("shipping_policy")
+        elif st == "aftersales_policy":
+            pf = {**base, "scope": "policy"}
+            policy_facts.append(pf)
+            estimated_facts.append(pf)
+            sources.append("aftersales_policy")
+        elif st == "installation_guide":
+            pf = {**base, "scope": "installation"}
+            product_facts.append(pf)  # 安装指南也归入 product 辅助
+            estimated_facts.append(pf)
+            sources.append("installation_guide")
+        elif st == "faq":
+            pf = {**base, "scope": "knowledge", "confidence": "low"}
+            faq_evidence.append(pf)
+            estimated_facts.append(pf)
+            sources.append("faq")
+        elif st == "response_templates":
+            pf = {**base, "scope": "template", "confidence": "low"}
+            template_evidence.append(pf)
+            estimated_facts.append(pf)
+            sources.append("response_templates")
+        elif st == "high_risk_sop":
+            pf = {**base, "scope": "sop", "reference_only": True}
+            sop_evidence.append(pf)
+            estimated_facts.append(pf)
+            sources.append("high_risk_sop")
+        elif st == "forbidden_rules":
+            conflicts.append({
+                "fact": text,
+                "source": "knowledge_base",
+                "source_type": "forbidden_rules",
+                "confidence": "high",
+                "scope": "guard",
+            })
+            sources.append("forbidden_rules")
+
+    # 9. RAG 未知检测
+    intent = state.get("intent", "general")
+    if intent in ("product_question", "product_consult") and not has_product_fact_from_rag and not faq_evidence and not product_name:
+        unknowns.append({
+            "fact": "咨询商品参数但未匹配到 product_facts",
+            "source": "rag",
+            "source_type": "unknown",
+            "confidence": "low",
+            "scope": "product",
+        })
+
+    # 10. 从 tool_results 补充证据（工具注册层产出的结果）
+    tool_results = state.get("tool_results", {})
+    for tool_name, tool_output in tool_results.items():
+        if not isinstance(tool_output, dict) or tool_output.get("error"):
+            continue
+
+        if tool_name == "jst_lookup_outbound_tool" and tool_output.get("found"):
+            # outbound 工具结果 → 订单事实 + 物流事实
+            if not any(f.get("source_type") == "jst_sales_out" for f in order_facts):
+                fact = {
+                    "fact": f"销售出库查到订单 {tool_output.get('o_id', '')}, 状态 {tool_output.get('status', '')}",
+                    "source": tool_output.get("o_id", ""),
+                    "source_type": "jst_sales_out",
+                    "confidence": "high",
+                    "scope": "order",
+                    "endpoint": tool_output.get("endpoint", ""),
+                }
+                order_facts.append(fact)
+                verified_facts.append(fact)
+                sources.append("jst_sales_out")
+
+        elif tool_name == "sop_lookup_tool" and tool_output.get("sops"):
+            for sop in tool_output["sops"]:
+                sop_evidence.append({
+                    "fact": f"SOP: {sop.get('scenario', '')}",
+                    "source": "sop_lookup_tool",
+                    "source_type": "high_risk_sop",
+                    "confidence": "high",
+                    "scope": "sop",
+                    "reference_only": True,
+                })
+                sources.append("high_risk_sop")
+
+        elif tool_name == "template_select_tool" and tool_output.get("templates"):
+            for tmpl in tool_output["templates"]:
+                template_evidence.append({
+                    "fact": tmpl.get("template", ""),
+                    "source": "template_select_tool",
+                    "source_type": "response_templates",
+                    "confidence": "medium",
+                    "scope": "template",
+                })
+                sources.append("response_templates")
+
+        elif tool_name == "rag_search_tool" and tool_output.get("chunks"):
+            # RAG 工具结果 → 按 source_type 分层，等价于 evidence_filter_node 逻辑
+            for chunk in tool_output["chunks"]:
+                st = chunk.get("source_type", "")
+                text = chunk.get("chunk_text", "")
+                if not text:
+                    continue
+                entry_status = chunk.get("entry_status", "unknown")
+                score = chunk.get("score", 0)
+                risk_fields = _detect_high_risk_fields(text)
+                is_unverified = (
+                    entry_status == "draft"
+                    or (entry_status != "published" and chunk.get("fact_review_status", "") in ("pending", "needs_update", "rejected"))
+                )
+
+                # Phase 2.5: 追踪未审核高风险字段
+                if risk_fields and is_unverified and st in ("product_facts", "faq"):
+                    for f in risk_fields:
+                        if f not in unverified_fact_fields:
+                            unverified_fact_fields.append(f)
+
+                confidence = SOURCE_TYPE_CONFIDENCE.get(st, "low") if st in SOURCE_TYPE_CONFIDENCE else "low"
+                meta = chunk.get("metadata", {})
+                evidence_fact_type = chunk.get("evidence_fact_type") or chunk.get("fact_type") or infer_evidence_fact_type(chunk)
+                wrong_fact_type = bool(query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type))
+                ref_only = not meta.get("auto_reply_allowed", True)
+                if chunk.get("evidence_allowed_for_direct_answer") is False:
+                    ref_only = True
+                if wrong_fact_type and is_strict_fact_type(query_fact_type):
+                    ref_only = True
+
+                base = {
+                    "fact": text,
+                    "source": "knowledge_base",
+                    "source_type": st,
+                    "confidence": confidence,
+                    "reference_only": ref_only,
+                    "entry_status": entry_status,
+                    "fact_review_status": chunk.get("fact_review_status", ""),
+                    "source_sheet": chunk.get("source_sheet", ""),
+                    "row_number": chunk.get("row_number", 0),
+                    "score": score,
+                    "text_score": chunk.get("text_score", 0),
+                    "vector_score": chunk.get("vector_score", 0),
+                    "scope_score": chunk.get("scope_score", 0),
+                    "source_confidence": chunk.get("source_confidence", confidence),
+                    "rerank_score": chunk.get("rerank_score", score),
+                    "mismatch_reason": chunk.get("mismatch_reason", ""),
+                    "scope_match": chunk.get("scope_score", 0) >= 0,
+                    "query_fact_type": query_fact_type,
+                    "evidence_fact_type": evidence_fact_type,
+                    "evidence_allowed_for_exact_answer": chunk.get(
+                        "evidence_allowed_for_exact_answer",
+                        not chunk.get("mismatch_reason", ""),
+                    ),
+                    "entry_id": chunk.get("entry_id"),
+                    "matched_entry_id": chunk.get("entry_id"),
+                    "matched_title": chunk.get("title", ""),
+                    "title": chunk.get("title", ""),
+                    "chunk_id": chunk.get("chunk_id", ""),
+                }
+                base = _enrich_evidence_item(
+                    base, text, entry_status,
+                    chunk.get("fact_review_status", ""), st,
+                )
+                if chunk.get("evidence_allowed_for_direct_answer") is False:
+                    base["evidence_allowed_for_direct_answer"] = False
+                if st == "faq" and chunk.get("evidence_allowed_for_exact_answer") is False:
+                    base["evidence_allowed_for_direct_answer"] = False
+                if wrong_fact_type:
+                    base["evidence_allowed_for_direct_answer"] = False
+                    base["evidence_allowed_for_exact_answer"] = False
+                    base["mismatch_reason"] = base.get("mismatch_reason") or "wrong_fact_type"
+
+                if st == "product_facts":
+                    has_product_fact_from_rag = True
+                    pf = {**base, "scope": "product"}
+                    product_facts.append(pf)
+                    verified_facts.append(pf)
+                    sources.append("product_facts")
+                elif st == "shipping_policy":
+                    pf = {**base, "scope": "policy"}
+                    policy_facts.append(pf)
+                    estimated_facts.append(pf)
+                    sources.append("shipping_policy")
+                elif st == "aftersales_policy":
+                    pf = {**base, "scope": "policy"}
+                    policy_facts.append(pf)
+                    estimated_facts.append(pf)
+                    sources.append("aftersales_policy")
+                elif st == "installation_guide":
+                    pf = {**base, "scope": "installation"}
+                    product_facts.append(pf)
+                    estimated_facts.append(pf)
+                    sources.append("installation_guide")
+                elif st == "faq":
+                    pf = {**base, "scope": "knowledge"}
+                    faq_evidence.append(pf)
+                    estimated_facts.append(pf)
+                    sources.append("faq")
+                elif st == "high_risk_sop":
+                    pf = {**base, "scope": "sop", "reference_only": True}
+                    sop_evidence.append(pf)
+                    estimated_facts.append(pf)
+                    sources.append("high_risk_sop")
+                elif st == "forbidden_rules":
+                    conflicts.append({
+                        "fact": text,
+                        "source": "knowledge_base",
+                        "source_type": "forbidden_rules",
+                        "confidence": "high",
+                        "scope": "guard",
+                    })
+                    sources.append("forbidden_rules")
+
+        elif tool_name == "product_resolver_tool":
+            if tool_output.get("matched_product_name") and not product_name:
+                pname = tool_output["matched_product_name"]
+                product_facts.append({
+                    "fact": f"匹配到商品: {pname}",
+                    "source": pname,
+                    "source_type": "product_mapping",
+                    "confidence": "medium",
+                    "scope": "product",
+                })
+                sources.append("product_mapping")
+
+    evidence = {
+        # 分层证据
+        "order_facts": order_facts,
+        "logistics_facts": logistics_facts,
+        "product_facts": product_facts,
+        "policy_facts": policy_facts,
+        "sop_evidence": sop_evidence,
+        "template_evidence": template_evidence,
+        "faq_evidence": faq_evidence,
+        # 兼容字段
+        "verified_facts": verified_facts,
+        "estimated_facts": estimated_facts,
+        "unknowns": unknowns,
+        "conflicts": conflicts,
+        "evidence_sources": list(set(sources)),
+        "unverified_fact_fields": unverified_fact_fields,
+    }
+
+    # 兼容：将 RAG 检索到的 FAQ 和产品事实同步到 knowledge 列表，供 generate_reply 使用
+    knowledge = []
+    for pf in product_facts:
+        if pf.get("source_type") == "product_facts" and pf.get("fact"):
+            knowledge.append({"title": "产品信息", "content": pf["fact"]})
+    for faq in faq_evidence:
+        if faq.get("fact"):
+            knowledge.append({"title": "常见问题", "content": faq["fact"]})
+    for tmpl in template_evidence:
+        if tmpl.get("fact"):
+            knowledge.append({"title": "话术模板", "content": tmpl["fact"]})
+
+    duration_ms = int((time.time() - t0) * 1000)
+    trace = {
+        "node": "evidence_builder",
+        "status": "success",
+        "duration_ms": duration_ms,
+        "cache_hit": False,
+        "summary": f"证据分层: 订单{len(order_facts)} 物流{len(logistics_facts)} 商品{len(product_facts)} 政策{len(policy_facts)} SOP{len(sop_evidence)} 模板{len(template_evidence)} FAQ{len(faq_evidence)} 未知{len(unknowns)} 冲突{len(conflicts)}",
+    }
+
+    return {
+        "evidence": evidence,
+        "knowledge": knowledge,
+        "trace_steps": state.get("trace_steps", []) + [trace],
+    }

@@ -1,0 +1,94 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C045_t2_context_memory_error",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C045",
+  "turn_num": 2,
+  "failure_type": "context_memory_error",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:15:20.535945+00:00",
+  "turn_scores": {
+    "customer_id": "C045",
+    "turn_num": 2,
+    "timestamp": "2026-06-07T15:15:20",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "unknown",
+      "actual": "product_question",
+      "detail": "Expected 'unknown', got 'product_question'"
+    },
+    "tool_routing": {
+      "score": 1.0,
+      "found_expected": [],
+      "missing": [],
+      "detail": "No expected tools defined"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 0.75,
+      "issues": [
+        "repeated_reply"
+      ],
+      "detail": "Issues: repeated_reply"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 51,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.602,
+      "detail": "Fast response (0.6s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 40,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.833,
+    "blocking_reasons": [
+      "guard_failure"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "unknown",
+      "actual_intent": "product_question",
+      "scenario": "edge_composite",
+      "duration_s": 0.602,
+      "pass_criteria": "简洁回应 + 引导说出需求 + 未做过度推测",
+      "error": ""
+    },
+    "failure_types": [
+      "guard_failure"
+    ]
+  }
+}

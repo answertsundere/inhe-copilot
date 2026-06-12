@@ -1,0 +1,1 @@
+var e=``+new URL(`product-guide-04-DjudbV7x.webp`,import.meta.url).href;export{e as default};

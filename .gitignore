@@ -1,0 +1,81 @@
+# INHE 客服 Copilot - .gitignore
+
+# ============ 密钥与环境 (绝对不能提交) ============
+.env
+sidecar.env
+copilot/sidecar.env
+copilot/deploy/.env.production
+*.env.local
+.env.*.local
+
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ============ 虚拟环境 ============
+venv/
+.venv/
+env/
+
+# ============ IDE ============
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============ 测试和缓存 ============
+.pytest_cache/
+htmlcov/
+.coverage
+
+# ============ 运行时产生的数据 ============
+copilot/data/feedback.jsonl
+copilot/data/review_queue.jsonl
+copilot/data/*.db
+copilot/data/*.db-shm
+copilot/data/*.db-wal
+copilot/data/bad_cases.jsonl
+copilot/data/traces.db*
+copilot/*.log
+copilot/*_log.txt
+copilot/_*.txt
+copilot/_*.json
+copilot/_*.py
+copilot/analyze_result*.json
+copilot/eval_result.json
+copilot/snapshot*.json
+copilot/*screenshot*.png
+copilot/web_*.png
+copilot/qianniu_screenshot.png
+copilot/fetched_index.html
+copilot/_served_real_test.html
+1.txt
+2.txt
+3.txt
+
+# ============ OS ============
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============ 聚水潭原始数据 (不应提交) ============
+raw_data/
+
+# ============ product_knowledge 导出文件 (含真实业务数据) ============
+product_knowledge/full_*.json
+product_knowledge/product_cards.json
+product_knowledge/product_cards.csv
+product_knowledge/sku_cards.csv
+product_knowledge/missing_info_tasks.csv
+product_knowledge/data_quality_report.md
+product_knowledge/dingtalk_*.json
+product_knowledge/_dingtalk*.json
+product_knowledge/*.xlsx
+product_knowledge/*.docx
+product_knowledge/*培训*.txt
+product_knowledge/*规则*.txt

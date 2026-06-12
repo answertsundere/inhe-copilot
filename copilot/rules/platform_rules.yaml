@@ -1,0 +1,403 @@
+rules:
+- id: pr_001
+  category: 平台规则
+  rule: 下面这份可以直接复制给 Codex
+  severity: medium
+  source: 基础培训.txt
+- id: pr_002
+  category: 平台规则
+  rule: 内容已按你上传的《客服基础培训.pdf》提取并整理，核心来源包括平台规则、通用红线、客服要求和售前售后场景 SOP
+  severity: high
+  source: 基础培训.txt
+- id: pr_003
+  category: 平台规则
+  rule: '- 检测违规承诺'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_004
+  category: 平台规则
+  rule: 'description: "用于质检客服聊天记录，识别违规、响应超时、未安抚、未挽留、未升级等问题'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_005
+  category: 平台规则
+  rule: '- "不得服务态度差"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_006
+  category: 平台规则
+  rule: '- "不得不耐烦"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_007
+  category: 平台规则
+  rule: '- "不得冷漠傲慢"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_008
+  category: 平台规则
+  rule: '- "不得辱骂消费者"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_009
+  category: 平台规则
+  rule: '- "服务态度差、不耐烦、冷漠傲慢等可能被处罚"'
+  severity: high
+  source: 基础培训.txt
+- id: pr_010
+  category: 平台规则
+  rule: '- "若引发大量投诉或重复违规，处罚会逐级加码"'
+  severity: high
+  source: 基础培训.txt
+- id: pr_011
+  category: 平台规则
+  rule: '- "不得引导客户添加微信"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_012
+  category: 平台规则
+  rule: '- "不得引导客户添加QQ"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_013
+  category: 平台规则
+  rule: '- "不得进行线下交易"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_014
+  category: 平台规则
+  rule: '- "不得发送第三方联系方式"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_015
+  category: 平台规则
+  rule: '- "不得以任何理由拒开发票"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_016
+  category: 平台规则
+  rule: '- "不得要求客户补税点"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_017
+  category: 平台规则
+  rule: '- "不得承诺无法确认的事项"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_018
+  category: 平台规则
+  rule: '- "不得向买家提供银行卡号进行转账"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_019
+  category: 平台规则
+  rule: '- "不得主动要求买家使用银行卡支付"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_020
+  category: 平台规则
+  rule: '- "不得要求买家承担信用卡手续费"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_021
+  category: 平台规则
+  rule: '- "线下交易或银行卡转账可能导致店铺扣分和重罚"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_022
+  category: 平台规则
+  rule: '- "不得虚开"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_023
+  category: 平台规则
+  rule: '- "不得拒开"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_024
+  category: 平台规则
+  rule: '- "京东聊天中不得出现“好评返现”四个字"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_025
+  category: 平台规则
+  rule: '- "不得承认有好评返现活动"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_026
+  category: 平台规则
+  rule: '- "京东场景下严禁出现淘宝、天猫、好评返现等敏感词'
+  severity: high
+  source: 基础培训.txt
+- id: pr_027
+  category: 平台规则
+  rule: '- "不得发送淘宝链接"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_028
+  category: 平台规则
+  rule: '- "不得发送京东链接"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_029
+  category: 平台规则
+  rule: '- "不得发送第三方平台链接"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_030
+  category: 平台规则
+  rule: '- "不得引导客户加微信"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_031
+  category: 平台规则
+  rule: '- "不得提供地址上门提货"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_032
+  category: 平台规则
+  rule: '- "导流可能面临高额罚款"'
+  severity: high
+  source: 基础培训.txt
+- id: pr_033
+  category: 平台规则
+  rule: '- "不得辱骂客户"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_034
+  category: 平台规则
+  rule: '- "被买家投诉辱骂并提供截图，通常会直接罚款"'
+  severity: high
+  source: 基础培训.txt
+- id: pr_035
+  category: 平台规则
+  rule: '- "不得诱导好评"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_036
+  category: 平台规则
+  rule: '- "不得出现好评返现相关表达"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_037
+  category: 平台规则
+  rule: '- "不得索要支付宝账号"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_038
+  category: 平台规则
+  rule: '- "不得索要微信账号"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_039
+  category: 平台规则
+  rule: '- "不得发送支付宝或微信进行私下转账"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_040
+  category: 平台规则
+  rule: '- "拼多多补偿必须走平台或公司流程，不得私下转账'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_041
+  category: 平台规则
+  rule: 'name: "禁止辱骂客户"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_042
+  category: 平台规则
+  rule: 'rule: "不得辱骂、讽刺、阴阳、威胁、攻击客户'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_043
+  category: 平台规则
+  rule: 'name: "禁止冷漠敷衍"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_044
+  category: 平台规则
+  rule: 'rule: "不得使用冷漠、不耐烦、命令式、敷衍式话术'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_045
+  category: 平台规则
+  rule: 'name: "禁止导流"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_046
+  category: 平台规则
+  rule: 'rule: "不得引导客户添加微信、QQ、支付宝或其他第三方联系方式，不得引导线下交易'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_047
+  category: 平台规则
+  rule: 'name: "禁止私下收款或转账"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_048
+  category: 平台规则
+  rule: 'rule: "不得发送银行卡号、微信、支付宝，不得要求客户私下付款，不得私下转账补偿'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_049
+  category: 平台规则
+  rule: 'name: "禁止泄露买家信息"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_050
+  category: 平台规则
+  rule: 'rule: "不得泄露客户姓名、电话、地址、订单信息、聊天记录等隐私'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_051
+  category: 平台规则
+  rule: 'name: "禁止违背承诺"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_052
+  category: 平台规则
+  rule: 'rule: "不得承诺无法确认的发货时间、赠品、补发、赔偿、退款、价保等事项'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_053
+  category: 平台规则
+  rule: 'name: "禁止拒开发票"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_054
+  category: 平台规则
+  rule: 'rule: "客户在店铺购买产品且未退款时，不得以任何理由拒开发票'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_055
+  category: 平台规则
+  rule: 'name: "禁止虚开发票"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_056
+  category: 平台规则
+  rule: 'name: "禁止违规好评返现"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_057
+  category: 平台规则
+  rule: 'rule: "不得诱导好评，不得违规承诺好评返现'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_058
+  category: 平台规则
+  rule: 京东场景不得出现“好评返现”四个字
+  severity: medium
+  source: 基础培训.txt
+- id: pr_059
+  category: 平台规则
+  rule: 'name: "禁止无故拒绝发货"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_060
+  category: 平台规则
+  rule: 'rule: "不得无正当理由拒绝发货'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_061
+  category: 平台规则
+  rule: '- "不得与客户正面冲突，不得反驳、讽刺、阴阳客户'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_062
+  category: 平台规则
+  rule: '- "不得承诺未经系统、仓库、运营、财务或主管确认的信息'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_063
+  category: 平台规则
+  rule: '- "不得承诺无法确认的补发、赔偿、退款、赠品、发货时间'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_064
+  category: 平台规则
+  rule: '- "不得泄露、外传或用于非工作用途'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_065
+  category: 平台规则
+  rule: '- "违规返现"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_066
+  category: 平台规则
+  rule: '- "不得主动提好评返现'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_067
+  category: 平台规则
+  rule: '- "京东场景不得出现“好评返现”四个字'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_068
+  category: 平台规则
+  rule: '- "不得承认违规返现活动'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_069
+  category: 平台规则
+  rule: '- "客户要求违规返现"'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_070
+  category: 平台规则
+  rule: '- "店铺购买且未退款，不得以任何理由拒开发票'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_071
+  category: 平台规则
+  rule: '- "命中 must_escalate 时，Agent 不得直接承诺赔偿金额、退款结果、承担责任'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_072
+  category: 平台规则
+  rule: '* 出现导流、私下转账、好评返现等违规'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_073
+  category: 平台规则
+  rule: '"message": "不得出现好评返现或诱导好评'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_074
+  category: 平台规则
+  rule: '"message": "不得引导客户添加微信或进行线下交易'
+  severity: medium
+  source: 基础培训.txt
+- id: pr_075
+  category: 平台规则
+  rule: 5. 受伤问题，应 escalation_required=true，且不得承诺赔偿金额
+  severity: medium
+  source: 基础培训.txt
+- id: pr_076
+  category: 平台规则
+  rule: 1. 客户说退货，客服直接说“自己承担运费”，应扣分：未挽留、未安抚
+  severity: medium
+  source: 基础培训.txt
+- id: pr_077
+  category: 平台规则
+  rule: 2. 客户说破损，客服未要求图片/视频，应扣分
+  severity: medium
+  source: 基础培训.txt
+- id: pr_078
+  category: 平台规则
+  rule: 4. 不得辱骂、阴阳、冷漠、敷衍客户
+  severity: medium
+  source: 基础培训.txt
+- id: pr_079
+  category: 平台规则
+  rule: 5. 不得引导客户添加微信、QQ、支付宝，不得线下交易，不得私下收款或转账
+  severity: medium
+  source: 基础培训.txt
+- id: pr_080
+  category: 平台规则
+  rule: 6. 不得拒开发票
+  severity: medium
+  source: 基础培训.txt
+meta:
+  count: 80

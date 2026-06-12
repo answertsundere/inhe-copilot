@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bad Cases 管理 - INHE 客服 Copilot</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--border:#e5e7eb;--blue:#2563eb;--bluel:#eff6ff;--blueb:#bfdbfe;--green:#16a34a;--greenl:#f0fdf4;--greenb:#bbf7d0;--orange:#d97706;--orangel:#fffbeb;--orangeb:#fde68a;--red:#dc2626;--redl:#fef2f2;--redb:#fecaca;--gray:#6b7280;--text:#111827;--text2:#374151;--radius:6px}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;margin-top:40px!important}
+.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap}
+.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
+.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
+
+.container{max-width:1200px;margin:20px auto;padding:0 16px}
+h1{font-size:20px;margin:0 0 16px;font-weight:700}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.card-h{padding:10px 14px;font-weight:600;font-size:14px;background:#f9fafb;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.card-h .arr{transition:transform .15s;font-size:11px}.card-h.shut .arr{transform:rotate(-90deg)}
+.card-b{padding:12px 14px}.card-b.shut{display:none}
+
+/* Filters */
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.filters select,.filters input{padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px}
+.filters button{padding:6px 14px;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;background:var(--blue);color:#fff;font-weight:500}
+.filters button:hover{background:#1d4ed8}
+
+/* Table */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;background:#f9fafb;border-bottom:2px solid var(--border);font-weight:600;color:var(--gray);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:hover{background:#f9fafb}
+.tag{display:inline-flex;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600}
+.tag-P0{background:var(--redl);color:var(--red)}.tag-P1{background:var(--orangel);color:var(--orange)}
+.tag-P2{background:#f3f4f6;color:var(--gray)}.tag-P3{background:#f3f4f6;color:var(--gray)}
+.tag-open{background:var(--orangel);color:var(--orange)}.tag-triaged{background:var(--bluel);color:var(--blue)}
+.tag-fixing{background:#fef3c7;color:#92400e}.tag-fixed{background:var(--greenl);color:var(--green)}
+.tag-verified{background:var(--greenl);color:var(--green)}.tag-wont_fix{background:#f3f4f6;color:var(--gray)}
+
+/* Pagination */
+.pager{display:flex;gap:6px;justify-content:center;align-items:center;margin-top:12px;font-size:12px;color:var(--gray)}
+.pager button{padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);cursor:pointer;font-size:12px}
+.pager button:hover{border-color:var(--blue);color:var(--blue)}
+.pager button:disabled{opacity:.3;cursor:default}
+
+/* Detail modal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;background:rgba(0,0,0,.4);justify-content:center;align-items:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--card);border-radius:12px;width:900px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:1}
+.modal-header h2{margin:0;font-size:16px}
+.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray)}
+.modal-body{padding:20px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.form-row .full{grid-column:1/-1}
+.form-row label{display:block;font-size:11px;color:var(--gray);font-weight:600;margin-bottom:2px}
+.form-row input,.form-row select,.form-row textarea{width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:inherit}
+.form-row textarea{min-height:60px;resize:vertical}
+.btn-row{display:flex;gap:6px;margin-top:12px}
+.btn{padding:7px 16px;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;font-weight:500}
+.btn-pri{background:var(--blue);color:#fff}.btn-pri:hover{background:#1d4ed8}
+.btn-grn{background:var(--green);color:#fff}.btn-grn:hover{background:#15803d}
+.btn-red{background:var(--red);color:#fff}.btn-red:hover{background:#b91c1c}
+.btn-sec{background:#e5e7eb;color:var(--text)}
+
+.dbg-json{padding:10px;background:#f8fafc;border:1px solid var(--border);border-radius:var(--radius);white-space:pre-wrap;font-family:"SF Mono",Consolas,monospace;font-size:11px;max-height:300px;overflow:auto;line-height:1.4}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:12px}
+.metric-card{background:#f9fafb;border:1px solid var(--border);border-radius:var(--radius);padding:10px;text-align:center}
+.metric-card .mc-val{font-size:24px;font-weight:700;color:var(--text)}
+.metric-card .mc-label{font-size:11px;color:var(--gray);margin-top:2px}
+</style>
+</head>
+<body>
+<nav class="gnav-bar">
+  <span class="gnav-brand">INHE</span>
+  <a href="/ask/">客服助手</a>
+  <a href="/ask/copilot-panel">千牛监控</a>
+  <a href="/ask/bad-cases" style="background:rgba(255,255,255,.18);color:#fff;font-weight:600">Bad Cases</a>
+  <a href="/ask/kb-admin/">知识库</a>
+  <a href="/ask/settings">设置</a>
+</nav>
+
+<div class="container">
+  <h1>Bad Cases 管理</h1>
+
+  <!-- Metrics -->
+  <div id="metricsArea"></div>
+
+  <!-- Filters -->
+  <div class="card">
+    <div class="card-h" onclick="toggle(this)"><span>筛选条件</span><span class="arr">&#9660;</span></div>
+    <div class="card-b">
+      <div class="filters">
+        <select id="f-status"><option value="">全部状态</option><option value="open">open</option><option value="triaged">triaged</option><option value="fixing">fixing</option><option value="fixed">fixed</option><option value="verified">verified</option><option value="wont_fix">wont_fix</option></select>
+        <select id="f-severity"><option value="">全部严重度</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option></select>
+        <select id="f-type"><option value="">全部类型</option><option value="intent_error">intent_error</option><option value="tool_error">tool_error</option><option value="rag_miss">rag_miss</option><option value="grounding_error">grounding_error</option><option value="reply_quality_error">reply_quality_error</option><option value="risk_error">risk_error</option><option value="unknown">unknown</option></select>
+        <select id="f-scenario"><option value="">全部场景</option><option value="pre_sale">售前</option><option value="after_sale">售后</option><option value="chat_only">纯对话</option></select>
+        <input type="date" id="f-from" placeholder="开始日期">
+        <input type="date" id="f-to" placeholder="结束日期">
+        <button onclick="loadCases()">查询</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card">
+    <table>
+      <thead><tr><th>ID</th><th>时间</th><th>客户问题</th><th>场景</th><th>实际意图</th><th>类型</th><th>严重度</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody id="caseTable"><tr><td colspan="9" style="text-align:center;color:var(--gray);padding:20px">加载中...</td></tr></tbody>
+    </table>
+    <div class="pager" id="pager"></div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Bad Case 详情</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+var currentPage = 1;
+
+function loadMetrics() {
+  fetch('/api/bad-cases/metrics').then(function(r){ return r.json(); }).then(function(d) {
+    var h = '<div class="metrics-grid">';
+    h += mc(d.total, '总数');
+    h += mc(d.by_status && d.by_status.open || 0, 'Open');
+    h += mc(d.by_status && d.by_status.verified || 0, 'Verified');
+    var ft = d.by_failure_type || {};
+    Object.keys(ft).forEach(function(k) { h += mc(ft[k], k); });
+    h += '</div>';
+    document.getElementById('metricsArea').innerHTML = h;
+  }).catch(function(){});
+}
+
+function mc(val, label) { return '<div class="metric-card"><div class="mc-val">' + val + '</div><div class="mc-label">' + label + '</div></div>'; }
+
+function loadCases() {
+  var params = new URLSearchParams();
+  params.set('page', currentPage);
+  params.set('page_size', 20);
+  var s = document.getElementById('f-status').value; if (s) params.set('status', s);
+  var sv = document.getElementById('f-severity').value; if (sv) params.set('severity', sv);
+  var ft = document.getElementById('f-type').value; if (ft) params.set('failure_type', ft);
+  var sc = document.getElementById('f-scenario').value; if (sc) params.set('scenario', sc);
+  var df = document.getElementById('f-from').value; if (df) params.set('date_from', df);
+  var dt = document.getElementById('f-to').value; if (dt) params.set('date_to', dt);
+
+  fetch('/api/bad-cases?' + params.toString()).then(function(r){ return r.json(); }).then(function(d) {
+    renderTable(d);
+    renderPager(d);
+  }).catch(function(e) {
+    document.getElementById('caseTable').innerHTML = '<tr><td colspan="9" style="color:var(--red)">加载失败: ' + e.message + '</td></tr>';
+  });
+}
+
+function renderTable(d) {
+  var items = d.items || [];
+  if (!items.length) {
+    document.getElementById('caseTable').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray)">暂无 Bad Case</td></tr>';
+    return;
+  }
+  var h = '';
+  items.forEach(function(c) {
+    h += '<tr>';
+    h += '<td><a href="#" onclick="openDetail(\'' + c.id + '\');return false" style="color:var(--blue);font-weight:600">' + esc(c.id) + '</a></td>';
+    h += '<td>' + esc((c.created_at || '').substring(0, 16)) + '</td>';
+    h += '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.customer_message || '') + '</td>';
+    h += '<td>' + esc(c.scenario || '-') + '</td>';
+    h += '<td>' + esc(c.actual_intent || '-') + '</td>';
+    h += '<td><span class="tag">' + esc(c.failure_type || '-') + '</span></td>';
+    h += '<td><span class="tag tag-' + (c.severity || 'P2') + '">' + esc(c.severity || 'P2') + '</span></td>';
+    h += '<td><span class="tag tag-' + (c.status || 'open') + '">' + esc(c.status || 'open') + '</span></td>';
+    h += '<td><button onclick="openDetail(\'' + c.id + '\')" style="font-size:11px;padding:3px 8px;cursor:pointer;border:1px solid var(--border);border-radius:4px;background:var(--card)">详情</button></td>';
+    h += '</tr>';
+  });
+  document.getElementById('caseTable').innerHTML = h;
+}
+
+function renderPager(d) {
+  var h = '';
+  h += '<button ' + (d.page <= 1 ? 'disabled' : '') + ' onclick="currentPage=' + (d.page - 1) + ';loadCases()">上一页</button>';
+  h += '<span>第 ' + d.page + ' / ' + (d.total_pages || 1) + ' 页 (共 ' + d.total + ' 条)</span>';
+  h += '<button ' + (d.page >= d.total_pages ? 'disabled' : '') + ' onclick="currentPage=' + (d.page + 1) + ';loadCases()">下一页</button>';
+  document.getElementById('pager').innerHTML = h;
+}
+
+function openDetail(id) {
+  fetch('/api/bad-cases/' + id).then(function(r){ return r.json(); }).then(function(c) {
+    document.getElementById('modalTitle').textContent = 'Bad Case: ' + c.id;
+    var h = '';
+
+    // Basic info
+    h += '<div class="form-row">';
+    h += '<div><label>客户消息</label><div style="padding:6px;background:#f9fafb;border-radius:4px;min-height:30px">' + esc(c.customer_message || '-') + '</div></div>';
+    h += '<div><label>AI 回复</label><div style="padding:6px;background:var(--bluel);border-radius:4px;min-height:30px">' + esc(c.ai_suggested_reply || '-') + '</div></div>';
+    h += '</div>';
+
+    h += '<div class="form-row">';
+    h += '<div><label>客服最终回复</label><div style="padding:6px;background:var(--greenl);border-radius:4px;min-height:30px">' + esc(c.csr_final_reply || '-') + '</div></div>';
+    h += '<div><label>客服操作</label><div style="padding:6px">' + esc(c.csr_action || '-') + '</div></div>';
+    h += '</div>';
+
+    // Annotation form
+    h += '<h3 style="font-size:14px;margin:16px 0 8px">标注</h3>';
+    h += '<div class="form-row">';
+    h += '<div><label>Failure Type</label><select id="d-ft">';
+    ['capture_error','intent_error','identifier_error','routing_error','tool_error','product_mapping_error','rag_miss','rag_wrong_scope','evidence_filter_error','grounding_error','reply_quality_error','context_memory_error','risk_error','performance_error','unknown'].forEach(function(t) {
+      h += '<option value="' + t + '"' + (c.failure_type === t ? ' selected' : '') + '>' + t + '</option>';
+    });
+    h += '</select></div>';
+    h += '<div><label>Severity</label><select id="d-sev">';
+    ['P0','P1','P2','P3'].forEach(function(s) {
+      h += '<option value="' + s + '"' + (c.severity === s ? ' selected' : '') + '>' + s + '</option>';
+    });
+    h += '</select></div>';
+    h += '</div>';
+
+    h += '<div class="form-row">';
+    h += '<div><label>Expected Intent</label><input id="d-ei" value="' + esc(c.expected_intent || '') + '"></div>';
+    h += '<div><label>Failure Layer</label><input id="d-fl" value="' + esc(c.failure_layer || '') + '"></div>';
+    h += '</div>';
+    h += '<div class="form-row">';
+    h += '<div class="full"><label>Root Cause</label><textarea id="d-rc">' + esc(c.root_cause || '') + '</textarea></div>';
+    h += '</div>';
+    h += '<div class="form-row">';
+    h += '<div class="full"><label>Fix Note</label><textarea id="d-fn">' + esc(c.fix_note || '') + '</textarea></div>';
+    h += '</div>';
+
+    // Actions
+    h += '<div class="btn-row">';
+    h += '<button class="btn btn-pri" onclick="saveDetail(\'' + c.id + '\')">保存标注</button>';
+    h += '<button class="btn btn-grn" onclick="markFixed(\'' + c.id + '\')">标记已修复</button>';
+    h += '<button class="btn btn-grn" onclick="markVerified(\'' + c.id + '\')">验证通过</button>';
+    h += '<button class="btn btn-sec" onclick="exportRegression(\'' + c.id + '\')">导出回归测试</button>';
+    h += '</div>';
+
+    // Execution debug
+    var edJson = c.execution_debug_json || '{}';
+    try { edJson = JSON.stringify(JSON.parse(edJson), null, 2); } catch(e) {}
+    h += '<h3 style="font-size:14px;margin:16px 0 8px">完整 Execution Debug</h3>';
+    h += '<pre class="dbg-json">' + esc(edJson) + '</pre>';
+
+    document.getElementById('modalBody').innerHTML = h;
+    document.getElementById('detailModal').classList.add('open');
+  });
+}
+
+function closeModal() {
+  document.getElementById('detailModal').classList.remove('open');
+}
+
+function saveDetail(id) {
+  var data = {
+    failure_type: document.getElementById('d-ft').value,
+    severity: document.getElementById('d-sev').value,
+    expected_intent: document.getElementById('d-ei').value,
+    failure_layer: document.getElementById('d-fl').value,
+    root_cause: document.getElementById('d-rc').value,
+    fix_note: document.getElementById('d-fn').value,
+  };
+  fetch('/api/bad-cases/' + id, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
+    .then(function(r){ return r.json(); })
+    .then(function() { showToast('已保存'); loadCases(); loadMetrics(); })
+    .catch(function(e) { alert('保存失败: ' + e.message); });
+}
+
+function markFixed(id) {
+  fetch('/api/bad-cases/' + id + '/mark-fixed', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function() { showToast('已标记修复'); openDetail(id); loadCases(); loadMetrics(); })
+    .catch(function(e) { alert('操作失败: ' + e.message); });
+}
+
+function markVerified(id) {
+  fetch('/api/bad-cases/' + id + '/verify', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function() { showToast('已验证'); openDetail(id); loadCases(); loadMetrics(); })
+    .catch(function(e) { alert('操作失败: ' + e.message); });
+}
+
+function exportRegression(id) {
+  fetch('/api/bad-cases/' + id + '/export-regression', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        showToast('已导出: ' + d.filepath);
+      } else {
+        alert('导出失败');
+      }
+    })
+    .catch(function(e) { alert('导出失败: ' + e.message); });
+}
+
+/* Helpers */
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function toggle(el) { el.classList.toggle('shut'); var b = el.nextElementSibling; if (b) b.classList.toggle('shut'); }
+function showToast(msg) {
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:60px;right:20px;z-index:999999;background:#1f2937;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.2)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2000);
+}
+
+loadMetrics();
+loadCases();
+</script>
+</body>
+</html>

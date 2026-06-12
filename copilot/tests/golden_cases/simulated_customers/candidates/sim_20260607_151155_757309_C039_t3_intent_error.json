@@ -1,0 +1,103 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C039_t3_intent_error",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C039",
+  "turn_num": 3,
+  "failure_type": "intent_error",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:14:40.828930+00:00",
+  "turn_scores": {
+    "customer_id": "C039",
+    "turn_num": 3,
+    "timestamp": "2026-06-07T15:14:40",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "complaint_risk",
+      "actual": "general",
+      "detail": "Expected 'complaint_risk', got 'general'"
+    },
+    "tool_routing": {
+      "score": 1.0,
+      "found_expected": [
+        "sop_lookup_tool"
+      ],
+      "missing": [],
+      "actual_tools": [
+        "sop_lookup_tool",
+        "tool_executor",
+        "tool_planner"
+      ],
+      "detail": "All 1 expected tools executed"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [
+        "差评"
+      ],
+      "triggered_medium": [],
+      "detected_risk": "high",
+      "detected_review": true,
+      "detail": "High-risk keywords: 差评. risk_level=high, review=True"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 4,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 0.75,
+      "issues": [
+        "repeated_reply"
+      ],
+      "detail": "Issues: repeated_reply"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 42,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.061,
+      "detail": "Fast response (0.1s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 39,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.833,
+    "blocking_reasons": [
+      "guard_failure"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "complaint_risk",
+      "actual_intent": "general",
+      "scenario": "complaint_high_risk",
+      "duration_s": 0.061,
+      "pass_criteria": "按政策处理 + 升级主管 + 未做特殊让步",
+      "error": ""
+    },
+    "failure_types": [
+      "guard_failure"
+    ]
+  }
+}

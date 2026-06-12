@@ -1,0 +1,11 @@
+{
+  "total_customers": 8,
+  "customers_passed": 8,
+  "pass_rate": 1.0,
+  "avg_score": 0.777,
+  "min_score": 0.731,
+  "max_score": 0.815,
+  "scenario_scores": {
+    "complaint_high_risk": 0.777
+  }
+}

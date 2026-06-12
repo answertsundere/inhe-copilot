@@ -1,0 +1,40 @@
+{
+  "total_customers": 1,
+  "customers_passed": 0,
+  "pass_rate": 0.0,
+  "avg_score": 0.881,
+  "min_score": 0.881,
+  "max_score": 0.881,
+  "scenario_scores": {
+    "pre_sale_product": 0.881
+  },
+  "dimension_averages": {
+    "intent_match": 0.667,
+    "tool_routing": 0.667,
+    "risk_recall": 1.0,
+    "grounding": 1.0,
+    "trap_detection": 1.0,
+    "context_memory": 0.917,
+    "reply_quality": 1.0,
+    "performance": 0.933,
+    "trace_completeness": 0.75
+  },
+  "intent_confusion": {
+    "matrix": {
+      "product_question": {
+        "general": 1,
+        "product_question": 2
+      }
+    },
+    "total": 3,
+    "correct": 2,
+    "accuracy": 0.667,
+    "misclassifications": [
+      {
+        "expected": "product_question",
+        "actual": "general",
+        "count": 1
+      }
+    ]
+  }
+}

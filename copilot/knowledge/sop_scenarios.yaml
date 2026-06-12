@@ -1,0 +1,697 @@
+scenarios:
+- id: sop_refund_001
+  intent: refund
+  scenario: ''
+  risk_level: medium
+  steps:
+  - 下面这份可以直接复制给 Codex。内容已按你上传的《客服基础培训.pdf》提取并整理，核心来源包括平台规则、通用红线、客服要求和售前售后场景 SOP。
+  - '````markdown'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础培训.txt
+- id: sop_refund_002
+  intent: refund
+  scenario: 一、总体目标
+  risk_level: high
+  steps:
+  - 客服回复 Agent
+  - '- 根据客户问题识别售前/售后场景'
+  - '- 自动检索对应 SOP'
+  - '- 生成合规、礼貌、可执行的客服回复草稿'
+  - '- 遇到高风险场景时，不直接承诺赔偿/退款，而是提示升级主管'
+  - 客服质检 Agent
+  - '- 分析客服与客户的聊天记录'
+  - '- 判断是否违反平台规则'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - '- 遇到高风险场景时，不直接承诺赔偿/退款，而是提示升级主管'
+  - '- 判断是否少了安抚、核实、挽留、升级等动作'
+  - '- 检测是否需要升级主管'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_general_003
+  intent: general
+  scenario: 二、重要实现原则
+  risk_level: low
+  steps:
+  - '- agent'
+  - '- customer_service'
+  - '- cs_agent'
+  - '- qa'
+  - '- rag'
+  - '- knowledge_base'
+  - '- rules'
+  - '- tools'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 请先完整阅读当前项目结构，不要盲目新建重复模块
+  - 如果项目已有统一 gateway 或 router，请接入现有路由体系，不要另起孤立服务
+  escalation_triggers: []
+  suggested_reply_style: 温和专业
+  source_file: 基础培训.txt
+- id: sop_refund_004
+  intent: refund
+  scenario: 三、公司基础信息知识库
+  risk_level: high
+  steps:
+  - '- "天猫"'
+  - '- "京东"'
+  - '- "拼多多"'
+  - '- "抖店"'
+  - '- "小红书"'
+  - '- "游戏围栏"'
+  - '- "篮球架"'
+  - '- "画板"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - 'description: "用于质检客服聊天记录，识别违规、响应超时、未安抚、未挽留、未升级等问题'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_005
+  intent: shipping
+  scenario: 四、平台规则知识库
+  risk_level: high
+  steps:
+  - '- "不得服务态度差"'
+  - '- "不得不耐烦"'
+  - '- "不得冷漠傲慢"'
+  - '- "不得辱骂消费者"'
+  - '- "服务态度差、不耐烦、冷漠傲慢等可能被处罚"'
+  - '- "若引发大量投诉或重复违规，处罚会逐级加码"'
+  - '- "不得引导客户添加微信"'
+  - '- "不得引导客户添加QQ"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - '- "不得服务态度差"'
+  - '- "不得不耐烦"'
+  - '- "不得冷漠傲慢"'
+  - '- "不得辱骂消费者"'
+  - '- "不得引导客户添加微信"'
+  - '- "不得引导客户添加QQ"'
+  - '- "不得进行线下交易"'
+  - '- "不得发送第三方联系方式"'
+  - '- "不得以任何理由拒开发票"'
+  - '- "不得要求客户补税点"'
+  escalation_triggers: []
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_006
+  intent: shipping
+  scenario: 五、通用红线规则库
+  risk_level: high
+  steps:
+  - '- code: "NO_ABUSE"'
+  - '- code: "NO_NEGATIVE_ATTITUDE"'
+  - '- code: "NO_DIVERSION"'
+  - '- code: "NO_PRIVATE_PAYMENT"'
+  - '- code: "NO_PRIVACY_LEAK"'
+  - '- code: "NO_FALSE_PROMISE"'
+  - '- code: "NO_REFUSE_INVOICE"'
+  - '- code: "NO_FAKE_INVOICE"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 'name: "禁止辱骂客户"'
+  - 'rule: "不得辱骂、讽刺、阴阳、威胁、攻击客户'
+  - 'name: "禁止冷漠敷衍"'
+  - 'rule: "不得使用冷漠、不耐烦、命令式、敷衍式话术'
+  - 'name: "禁止导流"'
+  - 'rule: "不得引导客户添加微信、QQ、支付宝或其他第三方联系方式，不得引导线下交易'
+  - 'name: "禁止私下收款或转账"'
+  - 'rule: "不得发送银行卡号、微信、支付宝，不得要求客户私下付款，不得私下转账补偿'
+  - 'name: "禁止泄露买家信息"'
+  - 'rule: "不得泄露客户姓名、电话、地址、订单信息、聊天记录等隐私'
+  escalation_triggers: []
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_007
+  intent: shipping
+  scenario: 六、客服服务原则
+  risk_level: high
+  steps:
+  - '- "先回复，再查询，不让客户长时间等待。"'
+  - '- "复杂问题无法立即解决时，先安抚客户，并说明会继续跟进。"'
+  - '- "不能让客户长时间处于无人理睬状态。"'
+  - '- "先安抚情绪，再核实问题，再给解决方案。"'
+  - '- "全程使用礼貌用语，例如：您好、请、感谢您的理解。"'
+  - '- "面对情绪激动或投诉意向客户，要先表达理解和歉意。"'
+  - '- "不得与客户正面冲突，不得反驳、讽刺、阴阳客户。"'
+  - '- "破损、少件、晃动、质量问题、受伤、安全事故等售后问题，优先要求客户提供图片或视频。"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - '- "不能让客户长时间处于无人理睬状态'
+  - '- "不得与客户正面冲突，不得反驳、讽刺、阴阳客户'
+  - '- "不得承诺未经系统、仓库、运营、财务或主管确认的信息'
+  - '- "不得承诺无法确认的补发、赔偿、退款、赠品、发货时间'
+  - '- "不得泄露、外传或用于非工作用途'
+  escalation_triggers:
+  - '- "不得承诺未经系统、仓库、运营、财务或主管确认的信息'
+  - '- "如需承诺，必须有系统记录或主管确认'
+  - '- "遇到315、官方投诉、平台介入、受伤、坍塌、高额赔偿、客户情绪失控等情况，必须升级主管'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_008
+  intent: shipping
+  scenario: 七、意图分类体系
+  risk_level: medium
+  steps:
+  - '- "安装视频"'
+  - '- "不会安装"'
+  - '- "怎么装"'
+  - '- "安装教程"'
+  - '- "图纸看不懂"'
+  - '- "少件"'
+  - '- "缺件"'
+  - '- "少配件"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - '- "不要了"'
+  - '- "先不要发"'
+  escalation_triggers: []
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础培训.txt
+- id: sop_shipping_009
+  intent: shipping
+  scenario: 八、售前售后 SOP 场景库
+  risk_level: high
+  steps:
+  - '- "商品编号"'
+  - '- "订单商品"'
+  - '- "客户具体不会安装的位置"'
+  - '- "install_video_search"'
+  - '- "product_query"'
+  - '- "先回复客户，避免客户等待。"'
+  - '- "根据商品编号查询钉钉安装视频数据库。"'
+  - '- "找到视频后发送安装视频链接。"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - '- "不得主动提好评返现'
+  - '- "京东场景不得出现“好评返现”四个字'
+  - '- "不得承认违规返现活动'
+  - '- "如果拦截失败，提醒客户拒收，不要签收'
+  - 如果拦截失败并继续派送，麻烦您到时不要签收，直接拒收即可
+  - '- "如果快递不能上门取件，可协商客户垫付并保留支付截图，后续登记退回'
+  - '- "店铺购买且未退款，不得以任何理由拒开发票'
+  - '- "不能多开'
+  - '- "不能少开'
+  - 发票金额会按照订单平台实付金额开具，不能多开或少开
+  escalation_triggers:
+  - '- "客户不同意时协商补偿或升级主管"'
+  - '- "超出客服权限时上报主管'
+  - '- "客户提到315、官方投诉、孩子健康等，必须上报主管'
+  - 'action: "可协商承担部分退回运费，必要时申请主管'
+  - 'action: "立即上报主管，可考虑承担退回运费'
+  - '- "上报主管"'
+  - '- "必要时向领导申请是否补差价'
+  - '- "立即上报主管或老板'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_010
+  intent: refund
+  scenario: 九、升级主管规则
+  risk_level: high
+  steps:
+  - '- code: "MENTION_315"'
+  - '- code: "OFFICIAL_COMPLAINT"'
+  - '- code: "INJURY"'
+  - '- code: "PRODUCT_COLLAPSE"'
+  - '- code: "HIGH_COMPENSATION"'
+  - '- code: "RETURN_AND_COMPENSATION"'
+  - '- code: "CUSTOMER_OUT_OF_CONTROL"'
+  - '- code: "BAD_REVIEW_THREAT"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - '- "命中 must_escalate 时，Agent 不得直接承诺赔偿金额、退款结果、承担责任'
+  escalation_triggers:
+  - 我会马上反馈给主管/专员确认，请您放心，我们会尽快给您明确方案
+  - '- "命中 must_escalate 时，Agent 只能生成安抚、收集信息、升级主管类话术'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_011
+  intent: refund
+  scenario: 十、质检标准
+  risk_level: high
+  steps:
+  - '- code: "FIRST_RESPONSE_DELAY"'
+  - '- code: "NO_REPLY_AFTER_CUSTOMER"'
+  - '- code: "NO_ACK_BEFORE_QUERY"'
+  - '- code: "NO_APOLOGY"'
+  - '- code: "NO_EMPATHY"'
+  - '- code: "COLD_OR_PERFUNCTORY"'
+  - '- code: "ARGUE_WITH_CUSTOMER"'
+  - '- code: "DIVERSION_RISK"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - 'name: "升级处理"'
+  - 'description: "客户提到315是否未升级主管"'
+  - 'description: "客户提到受伤是否未升级主管"'
+  - 'description: "客户要求高额赔偿是否未升级主管"'
+  - 'description: "客户提到平台介入或官方投诉是否未升级主管"'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_012
+  intent: refund
+  scenario: 十一、回复模板库
+  risk_level: high
+  steps:
+  - '- "我先帮您核实一下"'
+  - '- "这边会根据订单情况为您确认"'
+  - '- "需要以平台规则和实际订单情况为准"'
+  - '- "我会帮您记录并反馈"'
+  - '- "请您放心，我们会认真处理"'
+  - '- "一定给您退"'
+  - '- "一定赔"'
+  - '- "全额赔偿"'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - 'escalation: "这个问题我已经帮您记录，会马上反馈给主管/专员确认，请您放心'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_general_013
+  intent: general
+  scenario: 1. schemas.py
+  risk_level: low
+  steps:
+  - from typing import List, Optional, Dict, Any, Literal
+  - from pydantic import BaseModel, Field
+  - Platform = Literal["tmall", "jd", "pdd", "douyin", "xiaohongshu", "unknown"]
+  - 'class CustomerMessage(BaseModel):'
+  - 'sender: Literal["customer", "service", "bot", "system"]'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 温和专业
+  source_file: 基础培训.txt
+- id: sop_refund_014
+  intent: refund
+  scenario: 2. intent_classifier.py
+  risk_level: high
+  steps:
+  - '* 基于 `intents.yaml` 的 triggers 做规则分类'
+  - '* 支持多意图匹配'
+  - '* 返回最高置信度 intent'
+  - '* 如果命中“受伤、315、投诉、平台介入、坍塌”等高危词，要提升风险等级'
+  - '* 客户说“孩子被夹伤了” -> `injury_accident`'
+  - '* 客户说“我要退货” -> `return_request`'
+  - '* 客户说“少了螺丝” -> `missing_parts`'
+  - '* 客户说“有味道，甲醛超标吧，我要投诉315” -> `product_smell` + escalation_required=true'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_pre_sales_015
+  intent: pre_sales
+  scenario: 4. compliance_checker.py
+  risk_level: low
+  steps:
+  - '* 加载 `red_lines.yaml` 和 `platform_rules.yaml`'
+  - '* 检测文本中是否包含敏感词'
+  - '* 根据平台做差异化检测'
+  - '* 京东：检测“亲”“淘宝”“天猫”“好评返现”“全网最低”“一定”'
+  - '* 拼多多：检测“宝贝”“微信”“支付宝”“私下转账”“淘宝”“京东”'
+  - '* 通用：检测辱骂、导流、私下转账、拒开发票、好评返现、极限词、隐私泄露风险'
+  - '* `passed`'
+  - '* `issues`'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 温和专业
+  source_file: 基础培训.txt
+- id: sop_refund_016
+  intent: refund
+  scenario: 5. escalation.py
+  risk_level: high
+  steps:
+  - '* 加载 `escalation_rules.yaml`'
+  - '* 检测客户消息、聊天记录是否触发升级'
+  - '* 触发升级时返回：'
+  - '* escalation_required=true'
+  - '* risk_level'
+  - '* matched_rules'
+  - '* default_escalation_reply'
+  - '* 315'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - '* 检测客户消息、聊天记录是否触发升级'
+  - '* 触发升级时返回：'
+  - 必须触发升级的词：
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_017
+  intent: refund
+  scenario: 6. response_generator.py
+  risk_level: high
+  steps:
+  - '* 不需要一开始就接真实大模型，可以先做 rule-based 草稿生成'
+  - '* 输入 platform + customer_message + context'
+  - '* 调用 intent_classifier'
+  - '* 调用 sop_retriever'
+  - '* 调用 escalation'
+  - '* 调用 compliance_checker'
+  - '* 生成 `DraftReplyResponse`'
+  - '* 如果 escalation_required=true：'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - '* 只生成安抚、收集信息、升级主管的话术'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_018
+  intent: refund
+  scenario: 7. qa_evaluator.py
+  risk_level: high
+  steps:
+  - '* 输入一段聊天记录'
+  - '* 分析客服是否存在以下问题：'
+  - '* 没有及时响应'
+  - '* 客户投诉/受伤/315但未升级'
+  - '* 退货场景未挽留或挽留少于两次'
+  - '* 破损/少件/晃动未要求图片或视频'
+  - '* 发票场景拒开发票'
+  - '* 京东场景使用违禁词'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - '* 客户投诉/受伤/315但未升级'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_019
+  intent: refund
+  scenario: 1. 生成客服回复草稿
+  risk_level: high
+  steps:
+  - '`POST /api/customer-service/agent/draft-reply`'
+  - '"platform": "jd",'
+  - '"customer_message": "这个有味道，我要投诉315",'
+  - '"order_context": {'
+  - '"order_id": "123",'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - 我先帮您记录并反馈给主管确认，麻烦您提供一下订单信息以及商品具体气味情况，我们会尽快给您明确处理方案
+  - '"next_actions": ["收集订单信息", "询问气味程度", "上报主管"]'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_020
+  intent: refund
+  scenario: 2. 合规检测
+  risk_level: low
+  steps:
+  - '`POST /api/customer-service/agent/check-compliance`'
+  - '"platform": "jd",'
+  - '"text": "亲，给您好评返现，您加微信我转您"'
+  - '"passed": false,'
+  - '"issues": ['
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - '"message": "不得出现好评返现或诱导好评'
+  - '"message": "不得引导客户添加微信或进行线下交易'
+  escalation_triggers: []
+  suggested_reply_style: 温和专业
+  source_file: 基础培训.txt
+- id: sop_refund_021
+  intent: refund
+  scenario: 3. 质检聊天记录
+  risk_level: high
+  steps:
+  - '`POST /api/customer-service/agent/evaluate-chat`'
+  - '"platform": "pdd",'
+  - '"messages": ['
+  - '"sender": "customer",'
+  - '"content": "我要退货，这个柜子味道太大了",'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - '"summary": "该会话存在拼多多平台用语不规范、退货未挽留、缺少安抚等问题，存在投诉和退货升级风险'
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_022
+  intent: shipping
+  scenario: intent_classifier 测试
+  risk_level: medium
+  steps:
+  - “有安装视频吗” -> install_video_request
+  - “少了几个螺丝” -> missing_parts
+  - “收到的时候板子裂了” -> damaged_product
+  - “安装好了但是一直晃” -> product_shaking
+  - “味道很大，是不是甲醛超标” -> product_smell
+  - “没有收到赠品” -> missing_gift
+  - “好评返现怎么弄” -> review_activity_or_cashback
+  - “帮我拦截快递，我不要了” -> reject_or_intercept_delivery
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 8. “帮我拦截快递，我不要了” -> reject_or_intercept_delivery
+  escalation_triggers: []
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础培训.txt
+- id: sop_pre_sales_023
+  intent: pre_sales
+  scenario: compliance_checker 测试
+  risk_level: low
+  steps:
+  - 京东文本包含“亲” -> high issue
+  - 京东文本包含“好评返现” -> critical issue
+  - 京东文本包含“淘宝/天猫” -> high issue
+  - 拼多多文本包含“宝贝” -> medium issue
+  - 任意平台文本包含“加微信” -> critical issue
+  - 任意平台文本包含“支付宝转您” -> critical issue
+  - 任意平台文本包含“全网最低” -> high issue
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 温和专业
+  source_file: 基础培训.txt
+- id: sop_refund_024
+  intent: refund
+  scenario: escalation 测试
+  risk_level: high
+  steps:
+  - “我要投诉315”
+  - “我要平台介入”
+  - “孩子受伤了”
+  - “柜子坍塌了”
+  - “我要曝光你们”
+  - “我要高额赔偿”
+  - “我要起诉”
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_025
+  intent: refund
+  scenario: response_generator 测试
+  risk_level: high
+  steps:
+  - 普通安装视频问题，应返回安装视频 SOP 回复
+  - 少件问题，应要求图片/视频和包装检查
+  - 破损问题，应要求破损照片/视频
+  - 退货问题，应包含挽留逻辑
+  - 受伤问题，应 escalation_required=true，且不得承诺赔偿金额
+  - 京东好评返现问题，应避免“好评返现”原词出现在建议回复中
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 5. 受伤问题，应 escalation_required=true，且不得承诺赔偿金额
+  escalation_triggers: []
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_refund_026
+  intent: refund
+  scenario: qa_evaluator 测试
+  risk_level: medium
+  steps:
+  - 客户说退货，客服直接说“自己承担运费”，应扣分：未挽留、未安抚
+  - 客户说破损，客服未要求图片/视频，应扣分
+  - 客户提到315，客服未升级，应 critical
+  - 京东客服说“亲，好评返现”，应 critical
+  - 拼多多客服说“宝贝”，应 medium
+  - 客户说孩子受伤，客服普通话术敷衍，应 critical
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - 3. 客户提到315，客服未升级，应 critical
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础培训.txt
+- id: sop_shipping_027
+  intent: shipping
+  scenario: 十五、Agent System Prompt
+  risk_level: high
+  steps:
+  - 先安抚客户，再核实订单、商品、物流和问题证据，最后给解决方案。
+  - 客户提出破损、少件、晃动、质量问题、受伤、安全事故时，优先要求图片或视频证据。
+  - 所有退货场景必须先了解原因，并至少进行两次挽留，给出可解决方案。
+  - 不得辱骂、阴阳、冷漠、敷衍客户。
+  - 不得引导客户添加微信、QQ、支付宝，不得线下交易，不得私下收款或转账。
+  - 不得拒开发票。发票按平台实付金额开具，不能多开或少开。
+  - 不得承诺未经系统或主管确认的发货时间、赠品、赔偿、退款、补发。
+  - 京东场景避免使用单字“亲”，不得出现“好评返现”“淘宝”“天猫”“全网最低”“一定”等敏感词。
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 4. 不得辱骂、阴阳、冷漠、敷衍客户
+  - 5. 不得引导客户添加微信、QQ、支付宝，不得线下交易，不得私下收款或转账
+  - 6. 不得拒开发票
+  - 发票按平台实付金额开具，不能多开或少开
+  - 7. 不得承诺未经系统或主管确认的发货时间、赠品、赔偿、退款、补发
+  - 8. 京东场景避免使用单字“亲”，不得出现“好评返现”“淘宝”“天猫”“全网最低”“一定”等敏感词
+  - 9. 拼多多场景不得称商品为“宝贝”，应称为“商品”或“产品”
+  - 10. 客户提到315、官方投诉、平台介入、孩子受伤、人身伤害、柜子坍塌、高额赔偿、情绪失控时，必须升级主管，不得自行承诺赔偿
+  - 11. 客户信息仅用于订单和售后服务，不得泄露、外传或用于非工作用途
+  - 12. 如果需要升级主管，你只能生成安抚、收集信息、升级处理的话术，不能承诺赔偿金额、退款结果或责任归属
+  escalation_triggers:
+  - 7. 不得承诺未经系统或主管确认的发货时间、赠品、赔偿、退款、补发
+  - 10. 客户提到315、官方投诉、平台介入、孩子受伤、人身伤害、柜子坍塌、高额赔偿、情绪失控时，必须升级主管，不得自行承诺赔偿
+  - 12. 如果需要升级主管，你只能生成安抚、收集信息、升级处理的话术，不能承诺赔偿金额、退款结果或责任归属
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_028
+  intent: shipping
+  scenario: 十六、工程质量要求
+  risk_level: high
+  steps:
+  - 所有 YAML 文件能被正常加载。
+  - 所有核心函数需要有类型注解。
+  - 不要把规则硬编码散落在代码里，优先读取 knowledge 文件。
+  - 不要引入大型复杂依赖，除非项目已有。
+  - 单元测试必须覆盖主要规则。
+  - 如果现有项目有日志系统，请记录：
+  - '* intent'
+  - '* risk_level'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 3. 不要把规则硬编码散落在代码里，优先读取 knowledge 文件
+  - 4. 不要引入大型复杂依赖，除非项目已有
+  - 7. 如果现有项目有前端，请只做最小可用接口，不要大规模重构前端
+  - 8. 高风险动作只生成草稿和建议，不得直接执行退款、赔偿、发货、补发
+  - 9. 所有涉及客户隐私的数据不得写入普通日志
+  escalation_triggers: []
+  suggested_reply_style: 谨慎处理
+  source_file: 基础培训.txt
+- id: sop_shipping_029
+  intent: shipping
+  scenario: 十七、验收标准
+  risk_level: medium
+  steps:
+  - 新增/修改的文件列表
+  - 每个模块的功能说明
+  - API 调用示例
+  - 测试运行结果
+  - 还缺哪些外部工具才能闭环，例如：
+  - '* 订单查询工具'
+  - '* 物流查询工具'
+  - '* 钉钉安装视频数据库'
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers:
+  - '* 主管审批流'
+  - 最终目标不是做一个只会聊天的机器人，而是做一个可被客服 Agent、客服质检 Agent、售后风控 Agent 共同复用的“客服 SOP + 平台合规 +
+    风险升级”基础能力
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础培训.txt
+- id: sop_pre_sales_030
+  intent: pre_sales
+  scenario: 售前客服
+  risk_level: low
+  steps:
+  - 核心目标： 以“专业育儿顾问”的形象接待客户，通过精准的需求挖掘和温情的沟通，消除新手爸妈的选购顾虑，提升店铺转化率与客单价。
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 温和专业
+  source_file: 基础规则.docx
+- id: sop_shipping_031
+  intent: shipping
+  scenario: 主要职责
+  risk_level: medium
+  steps:
+  - 专业咨询与需求挖掘： 通过千牛、咚咚等在线工具热情接待客户。不局限于回答“发什么快递”，更要主动挖掘宝宝的月龄、体质（如是否过敏）及家庭场景，精准推荐合适的家具或者玩具等能用到的产品。
+  - 关联销售与活动引导： 熟练掌握店铺满减、赠品及会员权益活动。在解答客户疑问时，巧妙进行关联推荐（如小型玩具推荐摇摇车等），提升客单价。
+  - 订单核对与风险规避： 在客户下单后，第一时间核对收货地址、宝宝适用规格等关键信息。如遇客户要求修改地址或规格，需在后台准确备注并同步打单人员，避免发错货。
+  - 竞品分析与话术优化： 收集客户对产品价格、功能的常见异议，提炼自家产品的差异化卖点（如收纳柜的材质等），并参与优化售前催单、破冰话术。
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础规则.docx
+- id: sop_shipping_032
+  intent: shipping
+  scenario: 售后客服
+  risk_level: medium
+  steps:
+  - 核心目标： 快速、温情地解决客户在物流、产品质量及使用上的问题，化解售后危机，维护店铺DSR评分，将售后危机转化为品牌信任。
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims: []
+  escalation_triggers: []
+  suggested_reply_style: 诚恳安抚
+  source_file: 基础规则.docx
+- id: sop_shipping_033
+  intent: shipping
+  scenario: '售后规则 '
+  risk_level: high
+  steps:
+  - 货物途中运输客户反映不需要 应该及时告知快递拦截 并且告知客户快递可能拦截失败 避免担责
+  - 快递在路上出现丢件 问题件 需要立即与物流核对并给到客户解决方案
+  - 快递送货上门服务 货物属于大件货物 客户不送货上门可以和相对应的快递反馈 协商一下帮助客户送货上门 要是快递不送货上们 客户情绪也是比较激动 可以给到5-10元的协商补偿
+    让客户自己拿一下 避免差评投诉 （小件货物可以让客户自己拿一下 不提补偿）
+  - 简单咨询类：询问安装视频 安装图纸 货物没有问题的情况下在发送安装视频之后可以顺带发一下邀评话术
+  - 安装类：客户不会安装 教安装 客户情绪稳定并且货物没有问题可以顺带发一下邀评话术
+  required_checks: []
+  required_customer_info: []
+  forbidden_claims:
+  - 货物问题类：轻微磕碰可以先提出给到客户一定补偿方案，不要上去就提到补发，客户不同意补偿方案在提到补发，补发不要也是可以给到小额补偿+补发方案
+  - 货物问题破损严重类：客户收到货物看见损坏严重 一眼看出不能使用 进线咨询 客户情绪稳定可以直接提出补发 客户提出退货可以给出一定的补偿 客户进线情绪比较激动
+    需要先安抚客户情绪在提出解决方案 补发+补偿 客户提出诉求尽量满足 要是客户要求比较高可以向上级反映看下能不能给到  涉及投诉差评问题尽量都满足客户
+  - 客单价在十几元的 损坏严重的 不能使用的 退回也没有必要的 可以给到客户仅退款方案 顺带让客户给一个好评 这个可以走小额打款进行 订单备注清楚避免客户申请售后（仅退款需要给领导反馈
+    也要和客户说好）
+  - 超出七天无理由 看客户具体货物问题 确实有问题可以进行挽留 挽留不下来可以申请退货退款 货物没有问题就不要让客户退了但是客户情绪激动 提到差评投诉也是可以退的（需要客服进行挽留）
+  - 在质保期货物出现问题要先核实客户使用情况 看下是否使用方法不对导致货物出现问题  没有的情况下配件问题 可以给客户补发  让客户更换使用  客户提出退货可以给到补发+补偿
+    （滑梯质保一年 但是客户使用一个月后就要收补件配件邮费 配件不要钱 ）
+  - 禁止承诺清单
+  - 禁止一切非常肯定回复客户的要求或者问题 也不能肯定的回答客户提出的诉求
+  escalation_triggers:
+  - 客单价在十几元的 损坏严重的 不能使用的 退回也没有必要的 可以给到客户仅退款方案 顺带让客户给一个好评 这个可以走小额打款进行 订单备注清楚避免客户申请售后（仅退款需要给领导反馈
+    也要和客户说好）
+  - 货物超出质保期 需要客户提供商品损坏照片或者视频 客户要求补发的需要收客户配件费用+邮费 退货不支持 （客户情绪激动涉及投诉 工商投诉等可以和领导协商免费补发）
+  suggested_reply_style: 谨慎处理
+  source_file: 基础规则.docx
+meta:
+  count: 33
+  source: 基础培训.txt+基础规则.docx

@@ -1,0 +1,97 @@
+{
+  "unique_key": "sim_20260607_151155_757309_C019_t2_intent_error",
+  "run_id": "sim_20260607_151155_757309",
+  "customer_id": "C019",
+  "turn_num": 2,
+  "failure_type": "intent_error",
+  "status": "candidate",
+  "created_at": "2026-06-07T07:13:25.599334+00:00",
+  "turn_scores": {
+    "customer_id": "C019",
+    "turn_num": 2,
+    "timestamp": "2026-06-07T15:13:25",
+    "intent_match": {
+      "score": 0.0,
+      "match": false,
+      "expected": "logistics_eta",
+      "actual": "aftersales",
+      "detail": "Expected 'logistics_eta', got 'aftersales'"
+    },
+    "tool_routing": {
+      "score": 0.0,
+      "found_expected": [],
+      "missing": [
+        "rag_search_tool"
+      ],
+      "actual_tools": [],
+      "detail": "Missing tools: rag_search_tool"
+    },
+    "risk_recall": {
+      "score": 1.0,
+      "triggered_high": [],
+      "triggered_medium": [],
+      "detected_risk": "low",
+      "detected_review": false,
+      "detail": "No risk keywords in message"
+    },
+    "grounding": {
+      "score": 1.0,
+      "has_evidence_sources": true,
+      "issues": [],
+      "detail": "Grounding OK"
+    },
+    "trap_detection": {
+      "score": 1.0,
+      "triggered": [],
+      "total_traps": 3,
+      "detail": "No traps triggered"
+    },
+    "context_memory": {
+      "score": 0.75,
+      "issues": [
+        "repeated_reply"
+      ],
+      "detail": "Issues: repeated_reply"
+    },
+    "reply_quality": {
+      "score": 1.0,
+      "reply_length": 40,
+      "issues": [],
+      "detail": "Reply quality OK"
+    },
+    "performance": {
+      "score": 1.0,
+      "duration_s": 0.378,
+      "detail": "Fast response (0.4s)"
+    },
+    "trace_completeness": {
+      "score": 0.75,
+      "step_count": 38,
+      "covered_stages": [
+        "detect_intent",
+        "normalize_input",
+        "reply"
+      ],
+      "missing_stages": [
+        "build_context"
+      ],
+      "detail": "Missing stages: build_context"
+    },
+    "overall_score": 0.722,
+    "blocking_reasons": [
+      "required_tool_missing"
+    ],
+    "passed": false,
+    "metadata": {
+      "expected_intent": "logistics_eta",
+      "actual_intent": "aftersales",
+      "scenario": "logistics",
+      "duration_s": 0.378,
+      "pass_criteria": "说明偏远地区政策 + 运费说明 + 配送范围 + 时效范围",
+      "error": ""
+    },
+    "failure_types": [
+      "required_tool_missing"
+    ]
+  }
+}
