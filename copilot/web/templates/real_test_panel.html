@@ -70,10 +70,12 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--blue);bo
 
 .main-message{min-height:70px;font-size:14px}
 
-.entry-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.entry-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
 .image-entry,.chat-entry{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;background:#f8fafc;border:1px dashed #94a3b8;border-radius:6px;color:#475569;font-size:13px;font-weight:650;cursor:pointer}
 .image-entry:hover,.chat-entry:hover{background:var(--blue-soft);border-color:var(--blue);color:var(--blue)}
 .image-entry.has-image{background:#dcfce7;border-color:var(--green);color:#166534}
+.entry-status{color:var(--muted);font-size:13px}
+.entry-status.has-image{color:var(--green);font-weight:650}
 
 .action-block{display:flex;flex-direction:column;gap:10px}
 .secondary-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -175,7 +177,7 @@ button:hover{filter:brightness(.96)}button.secondary{background:#475569}button.g
             <button type="button" class="ghost" onclick="copyContextId()">复制</button>
             <button type="button" class="secondary" onclick="newConversation()">换新买家</button>
           </div>
-          <div class="hint" id="contextHint">连续追问会默认接着上一次聊；换买家或重新开始时点“换新买家”。</div>
+          <div class="hint" id="contextHint">连续追问会接着上一次聊；换买家时点“换新买家/新对话”。</div>
         </div>
 
         <div class="form-block">
@@ -183,8 +185,9 @@ button:hover{filter:brightness(.96)}button.secondary{background:#475569}button.g
           <label for="message">买家现在问的文字</label>
           <textarea id="message" class="main-message" placeholder="例如：这个材质安全吗？会不会容易受潮？"></textarea>
           <div class="entry-row">
-            <button type="button" id="imageEntry" class="image-entry" onclick="openImageModal()">添加图片</button>
-            <button type="button" class="chat-entry" onclick="openRawContextModal()">粘贴之前对话</button>
+            <button type="button" id="imageEntry" class="image-entry" onclick="openImageModal()">添加图片/粘贴截图</button>
+            <span id="imageEntryText" class="entry-status">未添加图片</span>
+            <button type="button" class="chat-entry" onclick="openRawContextModal()">粘贴聊天记录</button>
           </div>
         </div>
 
@@ -206,6 +209,7 @@ button:hover{filter:brightness(.96)}button.secondary{background:#475569}button.g
 
         <div class="form-block action-block">
           <button class="btn-primary btn-large" onclick="runCurrent()">生成客服回复</button>
+          <div class="hint">商品名、SKU、订单号填得越准，AI 越容易对准当前买家问题。</div>
           <div class="secondary-actions">
             <button type="button" class="ghost" onclick="openAdvancedModal()">高级字段</button>
           </div>
@@ -231,7 +235,7 @@ button:hover{filter:brightness(.96)}button.secondary{background:#475569}button.g
       </div>
 
       <div class="result-actions">
-        <button type="button" class="warn" onclick="openReviewModal()">人工反馈</button>
+        <button type="button" class="warn" onclick="openReviewModal()">检查这条回复</button>
         <button type="button" class="ghost" onclick="openMemoryModal()">查看 AI 记住的信息</button>
         <button type="button" class="ghost" onclick="openTechModal()">查看技术信息</button>
       </div>
@@ -306,7 +310,7 @@ button:hover{filter:brightness(.96)}button.secondary{background:#475569}button.g
 <div id="reviewModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
   <div class="modal-panel" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <h2>人工反馈</h2>
+      <h2>这条回复哪里不合适？</h2>
       <button type="button" class="ghost" onclick="closeModal('reviewModal')">关闭</button>
     </div>
     <div class="modal-body review-panel">
@@ -436,14 +440,15 @@ function openMemoryModal(){openModal('memoryModal');fillPayloadPreview();}
 function openTechModal(){openModal('techModal');}
 
 function updateImageEntry(){
-  const btn=$('imageEntry');
-  if(!btn)return;
-  if(currentImages.length){
-    btn.textContent=`已添加 ${currentImages.length} 张图片`;
-    btn.classList.add('has-image');
-  } else {
-    btn.textContent='添加图片';
-    btn.classList.remove('has-image');
+  const btn=$('imageEntry'), text=$('imageEntryText');
+  if(btn){
+    btn.textContent='添加图片/粘贴截图';
+    if(currentImages.length)btn.classList.add('has-image');
+    else btn.classList.remove('has-image');
+  }
+  if(text){
+    text.textContent=currentImages.length?`已添加 ${currentImages.length} 张图片`:'未添加图片';
+    text.classList.toggle('has-image',!!currentImages.length);
   }
 }
 async function copyReply(){
@@ -698,7 +703,7 @@ function renderContextMemoryPreview(payload){
     ['图片数量', String(images.length)],
     ['图片说明', $('imageDescription').value.trim()],
   ];
-  box.innerHTML=`<table class="small-table"><tbody>${rows.map(r=>`<tr><th>${escapeHtml(r[0])}</th><td>${escapeHtml(r[1]||'-')}</td></tr>`).join('')}</tbody></table><div class="hint" style="margin-top:8px">想确认 AI 有没有接上前文：看这里的对话 ID 是否没变、历史对话条数是否大于 0、图片数量是否包含刚粘贴的图片。换买家或重新开始时点“换新买家”。</div>`;
+  box.innerHTML=`<table class="small-table"><tbody>${rows.map(r=>`<tr><th>${escapeHtml(r[0])}</th><td>${escapeHtml(r[1]||'-')}</td></tr>`).join('')}</tbody></table><div class="hint" style="margin-top:8px">想确认 AI 有没有接上前文：看这里的对话 ID 是否没变、历史对话条数是否大于 0、图片数量是否包含刚粘贴的图片。换买家时点“换新买家/新对话”。</div>`;
 }
 function identityFrom(data){return data.order_product_identity||data.evidence_debug?.order_product_identity||{}}
 async function runCurrent(){
