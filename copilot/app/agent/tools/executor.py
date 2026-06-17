@@ -24,6 +24,36 @@ def _looks_like_sku(value: str) -> bool:
     return bool(re.search(r"[A-Z]{2}\d{2}K\d{2}", value, re.IGNORECASE) or re.search(r"[A-Z0-9]+B\d+S\d+", value, re.IGNORECASE))
 
 
+def _merge_ranked_results(primary: list[dict], supplemental: list[dict], limit: int = 8) -> list[dict]:
+    merged: list[dict] = []
+    seen = set()
+    for item in [*(primary or []), *(supplemental or [])]:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("chunk_id") or item.get("entry_id") or item.get("title")
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        merged.append(item)
+    merged.sort(key=lambda r: float(r.get("rerank_score", r.get("score", 0)) or 0), reverse=True)
+    return merged[:limit]
+
+
+def _prefer_matching_fact_type(results: list[dict], query_fact_type: str) -> list[dict]:
+    if not query_fact_type or not results:
+        return results
+    try:
+        from app.services.fact_type_service import fact_type_matches
+    except Exception:
+        return results
+    matched = [
+        item for item in results
+        if fact_type_matches(query_fact_type, str(item.get("fact_type") or item.get("evidence_fact_type") or ""))
+    ]
+    return matched if matched else results
+
+
 class ToolExecutor:
     """工具执行器"""
 
@@ -246,10 +276,27 @@ def plan_tools(state: dict) -> dict:
     # 构建每个工具的默认 inputs
     default_inputs = _build_default_inputs(state)
 
-    # 尝试用 LLM 选择工具
-    llm_plan = _try_llm_tool_selection(state, allowed_tools, forbidden_tools, registry)
+    try:
+        from app.services.logistics_fast_path import get_explicit_logistics_identifier
+        explicit_identifier = get_explicit_logistics_identifier(state)
+    except Exception:
+        explicit_identifier = None
 
-    if llm_plan is not None:
+    if explicit_identifier and required_tools:
+        plan = [
+            {"tool_name": rt, "inputs": default_inputs.get(rt, {})}
+            for rt in required_tools if rt in allowed_tools
+        ]
+        source = "explicit_logistics_identifier_fast_path"
+    else:
+        plan = None
+
+    # 尝试用 LLM 选择工具
+    llm_plan = None if plan is not None else _try_llm_tool_selection(state, allowed_tools, forbidden_tools, registry)
+
+    if plan is not None:
+        pass
+    elif llm_plan is not None:
         # LLM 选择了工具
         selected_names = [c["tool_name"] for c in llm_plan]
         # 补上遗漏的 required_tools
@@ -323,6 +370,27 @@ def _build_default_inputs(state: dict) -> dict:
     )
     slot_sku = slots.get("sku_name") or slots.get("sku_code") or ""
     sku_name = slot_sku if _looks_like_sku(slot_sku) else (identity.get("sku_id") or identity.get("i_id") or slot_sku)
+    try:
+        from app.services.logistics_fast_path import get_explicit_logistics_identifier
+        explicit_identifier = get_explicit_logistics_identifier(state) or {}
+    except Exception:
+        explicit_identifier = {}
+    explicit_type = explicit_identifier.get("identifier_type", "")
+    explicit_value = explicit_identifier.get("identifier_value", "")
+    order_identifier = slots.get("order_id") or state.get("order_id") or ""
+    order_identifier_type = slots.get("identifier_type") or "internal_order_id"
+    if explicit_value and explicit_type in ("internal_order_id", "order_id", "platform_order_id"):
+        order_identifier = explicit_value
+        order_identifier_type = explicit_type
+    elif not order_identifier and slots.get("possible_numeric_id"):
+        order_identifier = slots.get("possible_numeric_id")
+        order_identifier_type = "internal_order_id"
+    platform_trade_id = slots.get("platform_trade_id") or state.get("platform_trade_id") or ""
+    if explicit_value and explicit_type == "platform_trade_id":
+        platform_trade_id = explicit_value
+    tracking_no = slots.get("tracking_no") or state.get("tracking_no") or ""
+    if explicit_value and explicit_type == "tracking_no":
+        tracking_no = explicit_value
 
     product_scope = [product_name] if product_name else []
     for value in identity.get("candidates", []) or []:
@@ -344,14 +412,14 @@ def _build_default_inputs(state: dict) -> dict:
 
     return {
         "jst_lookup_order_tool": {
-            "identifier": slots.get("order_id", ""),
-            "identifier_type": slots.get("identifier_type", "internal_order_id"),
+            "identifier": order_identifier,
+            "identifier_type": order_identifier_type,
         },
         "jst_lookup_outbound_tool": {
-            "outer_so_id": slots.get("platform_trade_id", ""),
+            "outer_so_id": platform_trade_id,
         },
         "jst_lookup_tracking_tool": {
-            "tracking_no": slots.get("tracking_no", ""),
+            "tracking_no": tracking_no,
         },
         "rag_search_tool": {
             "query": msg,
@@ -463,6 +531,51 @@ _JST_TOOLS = {
 }
 
 
+def _normalize_order_status(status: str) -> str:
+    status = str(status or "").strip()
+    mapping = {
+        "已发货": "shipped",
+        "发货中": "shipped",
+        "待发货": "pending_shipment",
+        "待出库": "pending_shipment",
+        "备货中": "pending_shipment",
+        "已签收": "signed",
+        "已完成": "finished",
+        "已取消": "canceled",
+    }
+    return mapping.get(status, status)
+
+
+def _lookup_local_order_from_state(state: dict | None) -> dict:
+    if not state:
+        return {}
+    slots = state.get("slots") or {}
+    order_id = (
+        state.get("order_id")
+        or slots.get("order_id")
+        or slots.get("possible_numeric_id")
+        or ""
+    )
+    tracking_no = state.get("tracking_no") or slots.get("tracking_no") or ""
+    if not order_id and not tracking_no:
+        return {}
+    try:
+        from app.repositories.json_order_repository import JsonOrderRepository
+        repo = JsonOrderRepository()
+        repo.load()
+        if order_id:
+            order = repo.get_order(order_id)
+            if order:
+                return order
+        if tracking_no:
+            order = repo.get_order_by_tracking_no(tracking_no)
+            if order:
+                return order
+    except Exception:
+        return {}
+    return {}
+
+
 def tool_executor_node(state: dict) -> dict:
     """LangGraph 节点：执行 tool_plan 中的工具"""
     t0 = time.time()
@@ -502,14 +615,14 @@ def tool_executor_node(state: dict) -> dict:
     }
 
     # 从 JST 工具结果中提取 legacy 字段，供 generate_logistics_reply 等节点使用
-    legacy = _extract_legacy_fields(exec_result["tool_results"])
+    legacy = _extract_legacy_fields(exec_result["tool_results"], state)
     result.update(legacy)
     result.update(_extract_rag_and_product_fields(exec_result["tool_results"], state))
 
     return result
 
 
-def _extract_legacy_fields(tool_results: dict) -> dict:
+def _extract_legacy_fields(tool_results: dict, state: dict | None = None) -> dict:
     """从 tool_results 提取 live_order, logistics_trace, order_status 等字段。
 
     这些字段是 generate_logistics_reply 等旧节点依赖的，
@@ -539,9 +652,11 @@ def _extract_legacy_fields(tool_results: dict) -> dict:
         }
 
         fields["live_order"] = live_order
+        fields["order"] = live_order
         fields["order_found"] = True
         fields["order_source"] = "jst_tool_registry"
-        fields["order_status"] = _map_status(tr.get("status", ""))
+        fields["order_status"] = _normalize_order_status(_map_status(tr.get("status", "")))
+        fields["shipment_status"] = "shipped" if live_order.get("l_id") else "pending"
         logistics_trace = _build_logistics_trace(live_order)
         if tool_name == "jst_lookup_outbound_tool":
             logistics_trace["source"] = "jst_sales_out"
@@ -553,6 +668,30 @@ def _extract_legacy_fields(tool_results: dict) -> dict:
 
         # 只取第一个成功结果
         break
+
+    if not fields and state:
+        local_order = state.get("order") or state.get("live_order") or _lookup_local_order_from_state(state)
+        if isinstance(local_order, dict) and local_order:
+            live_order = {
+                "o_id": local_order.get("o_id", ""),
+                "so_id": local_order.get("so_id", ""),
+                "outer_so_id": local_order.get("outer_so_id", ""),
+                "status": local_order.get("status", ""),
+                "logistics_company": local_order.get("logistics_company", ""),
+                "l_id": local_order.get("l_id", ""),
+                "send_date": local_order.get("send_date", ""),
+                "sign_time": local_order.get("sign_time", ""),
+                "items": local_order.get("items", []),
+            }
+            fields["live_order"] = live_order
+            fields["order"] = live_order
+            fields["order_found"] = True
+            fields["order_source"] = "local_order_fallback"
+            mapped_status = _normalize_order_status(_map_status(live_order.get("status", "")))
+            fields["order_status"] = mapped_status
+            fields["shipment_status"] = "shipped" if live_order.get("l_id") else "pending"
+            fields["logistics_trace"] = _build_logistics_trace(live_order)
+            fields["local_order_fallback_used"] = True
 
     return fields
 
@@ -573,11 +712,31 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
             fields["need_clarification"] = bool(resolver.get("need_clarification", False))
 
     rag = tool_results.get("rag_search_tool")
+    if isinstance(rag, dict) and not (rag.get("chunks") or []):
+        retry_rag = _retry_rag_after_product_resolver(state, resolver)
+        if retry_rag.get("chunks"):
+            rag = retry_rag
     if isinstance(rag, dict):
         chunks = rag.get("chunks", []) or []
+        product_context_pack = {"facts": [], "stats": {}}
+        try:
+            from app.services.product_context_pack_service import build_product_context_pack
+            pack_state = {**state, **fields}
+            query = pack_state.get("normalized_message") or pack_state.get("customer_message", "")
+            product_context_pack = build_product_context_pack(
+                pack_state,
+                query=query,
+                allowed_source_types=pack_state.get("allowed_source_types", []),
+                query_fact_type=pack_state.get("query_fact_type", ""),
+                top_k=8,
+            )
+            chunks = _merge_ranked_results(chunks, product_context_pack.get("facts", []), limit=8)
+            chunks = _prefer_matching_fact_type(chunks, pack_state.get("query_fact_type", ""))
+        except Exception as exc:
+            logger.warning("Product context pack failed in tool executor: %s", exc)
         try:
             from app.agent.nodes.evidence_filter_node import _has_compare_evidence, _is_compare_query
-            from app.services.evidence_fact_gate_service import evaluate_evidence_item
+            from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
             from app.services.fact_type_service import infer_evidence_fact_type
             query = state.get("normalized_message") or state.get("customer_message", "")
             query_fact_type = state.get("query_fact_type", "")
@@ -599,6 +758,11 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
             for chunk in chunks:
                 chunk["query_fact_type"] = query_fact_type
                 chunk["evidence_fact_type"] = chunk.get("evidence_fact_type") or infer_evidence_fact_type(chunk)
+                if query_fact_type == "installation" and chunk["evidence_fact_type"] == "installation":
+                    new_text, sanitized = sanitize_risky_convenience_claim(chunk.get("chunk_text", ""))
+                    if sanitized:
+                        chunk["chunk_text"] = new_text
+                        chunk["sanitized_risky_convenience_claim"] = True
                 if "evidence_allowed_for_exact_answer" not in chunk:
                     score = chunk.get("rerank_score", chunk.get("score", 0)) or 0
                     chunk["evidence_allowed_for_exact_answer"] = float(score) >= 0.3
@@ -607,6 +771,8 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
             pass
         fields["retrieved_chunks"] = chunks
         fields["rag_retrieval_mode"] = rag.get("retrieval_mode", "")
+        fields["product_context_pack"] = product_context_pack
+        fields["product_context_pack_stats"] = product_context_pack.get("stats", {})
         if chunks:
             # Tool Registry path skips evidence_filter_node, so expose equivalent
             # state fields for debug and used_knowledge_* extraction.
@@ -614,6 +780,86 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
             fields["filtered_evidence"] = chunks
 
     return fields
+
+
+def _retry_rag_after_product_resolver(state: dict, resolver: dict | None) -> dict:
+    if not isinstance(resolver, dict):
+        return {}
+    matched = str(resolver.get("matched_product_name") or "").strip()
+    if not matched:
+        return {}
+
+    source_types = state.get("allowed_source_types", []) or []
+    if not source_types:
+        return {}
+
+    product_scope = []
+    for value in [matched, *(resolver.get("candidates") or [])]:
+        if isinstance(value, dict):
+            values = [
+                str(value.get(k) or "").strip()
+                for k in ("matched_product_name", "value", "name", "product_name", "title", "i_id")
+            ]
+        else:
+            values = [str(value or "").strip()]
+        for item in values:
+            if item and item not in product_scope:
+                product_scope.append(item)
+
+    sku_scope = []
+    for value in (
+        resolver.get("sku_id", ""),
+        resolver.get("i_id", ""),
+        (state.get("slots") or {}).get("sku_code", ""),
+    ):
+        value = str(value or "").strip()
+        if value and value not in sku_scope:
+            sku_scope.append(value)
+    for candidate in resolver.get("candidates") or []:
+        if isinstance(candidate, dict):
+            values = [
+                str(candidate.get(k) or "").strip()
+                for k in ("sku_code", "sku_id", "i_id")
+            ]
+        else:
+            values = [str(candidate or "").strip()]
+        for value in values:
+            if value and value.upper().startswith("YH") and value not in sku_scope:
+                sku_scope.append(value)
+
+    try:
+        from app.retrieval.retriever_factory import get_retriever
+
+        query = state.get("normalized_message") or state.get("customer_message", "")
+        retriever = get_retriever()
+        chunks = retriever.retrieve(
+            query=" ".join([query, matched, *sku_scope])[:500],
+            source_types=source_types,
+            product_scope=product_scope if product_scope else None,
+            sku_scope=sku_scope if sku_scope else None,
+            fact_type=state.get("query_fact_type", ""),
+            top_k=5,
+            min_score=0.1,
+            sku_name=sku_scope[0] if sku_scope else "",
+            product_name=matched,
+        )
+    except Exception:
+        chunks = []
+
+    return {
+        "chunks": chunks,
+        "count": len(chunks),
+        "retrieval_mode": "retriever_hybrid_after_product_resolver",
+        "debug": {
+            "query": state.get("normalized_message") or state.get("customer_message", ""),
+            "source_types": source_types,
+            "product_scope": product_scope,
+            "sku_scope": sku_scope,
+            "product_name": matched,
+            "sku_name": sku_scope[0] if sku_scope else "",
+            "fact_type": state.get("query_fact_type", ""),
+        },
+    }
 
 
 def _metrics_increment(key: str, amount: int = 1) -> None:

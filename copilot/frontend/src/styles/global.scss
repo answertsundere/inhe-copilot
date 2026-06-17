@@ -1,9 +1,71 @@
+// INHE 客服知识库 Copilot — 设计令牌
+// 基于 OpenDesign 设计系统规范，适配中文阅读与后台信息密度
+
+:root {
+  // 背景
+  --kb-bg-page: #fafafa;
+  --kb-bg-card: #ffffff;
+  --kb-bg-hover: #f3f4f6;
+  --kb-bg-sidebar: #12131a;
+  --kb-bg-sidebar-elevated: #1a1c26;
+
+  // 文字
+  --kb-text-primary: rgba(0, 0, 0, 0.9);
+  --kb-text-secondary: rgba(0, 0, 0, 0.55);
+  --kb-text-tertiary: rgba(0, 0, 0, 0.35);
+  --kb-text-sidebar: rgba(255, 255, 255, 0.85);
+  --kb-text-sidebar-muted: rgba(255, 255, 255, 0.5);
+
+  // 品牌
+  --kb-accent: #4f6af6;
+  --kb-accent-hover: #3d56d6;
+  --kb-accent-subtle: #eef1ff;
+
+  // 边框
+  --kb-border: rgba(0, 0, 0, 0.08);
+  --kb-border-strong: rgba(0, 0, 0, 0.12);
+  --kb-border-sidebar: rgba(255, 255, 255, 0.08);
+
+  // 阴影
+  --kb-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --kb-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --kb-shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  // 状态（浅底深字徽章风格）
+  --kb-success-bg: #dcfce7;
+  --kb-success-text: #166534;
+  --kb-warning-bg: #fef3c7;
+  --kb-warning-text: #92400e;
+  --kb-danger-bg: #fee2e2;
+  --kb-danger-text: #991b1b;
+  --kb-info-bg: #e0f2fe;
+  --kb-info-text: #075985;
+
+  // 间距
+  --kb-space-1: 4px;
+  --kb-space-2: 8px;
+  --kb-space-3: 12px;
+  --kb-space-4: 16px;
+  --kb-space-5: 20px;
+  --kb-space-6: 24px;
+  --kb-space-8: 32px;
+
+  // 圆角
+  --kb-radius-sm: 4px;
+  --kb-radius-md: 6px;
+  --kb-radius-lg: 8px;
+  --kb-radius-xl: 12px;
+  --kb-radius-pill: 9999px;
+}
+
 // 全局样式覆盖
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  background: #f5f7fa;
+  background: var(--kb-bg-page);
+  color: var(--kb-text-primary);
+  -webkit-font-smoothing: antialiased;
 }
 
 // Element Plus 覆盖
@@ -11,63 +73,111 @@ body {
   padding: 20px;
 }
 
-// 风险等级颜色
-.risk-low { color: #67c23a; }
-.risk-medium { color: #e6a23c; }
-.risk-high { color: #f56c6c; }
-.risk-critical { color: #c62828; font-weight: bold; }
+// Element Plus 主色调覆盖为品牌靛蓝
+.el-button--primary {
+  --el-button-bg-color: var(--kb-accent);
+  --el-button-border-color: var(--kb-accent);
+  --el-button-hover-bg-color: var(--kb-accent-hover);
+  --el-button-hover-border-color: var(--kb-accent-hover);
+  --el-button-active-bg-color: var(--kb-accent-hover);
+  --el-button-active-border-color: var(--kb-accent-hover);
+}
+
+.el-button--primary.is-plain {
+  --el-button-bg-color: var(--kb-accent-subtle);
+  --el-button-border-color: var(--kb-accent);
+  --el-button-text-color: var(--kb-accent);
+  --el-button-hover-bg-color: var(--kb-accent);
+  --el-button-hover-border-color: var(--kb-accent);
+  --el-button-hover-text-color: #ffffff;
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus {
+  --el-input-focus-border-color: var(--kb-accent);
+  box-shadow: 0 0 0 1px var(--kb-accent) inset;
+}
+
+.el-pagination.is-background .el-pager li.is-active {
+  background-color: var(--kb-accent);
+}
+
+.el-tabs__item.is-active,
+.el-tabs__item:hover {
+  color: var(--kb-accent);
+}
+
+.el-tabs__active-bar {
+  background-color: var(--kb-accent);
+}
+
+.el-menu--vertical .el-menu-item.is-active {
+  color: var(--kb-accent);
+}
+
+// 风险等级颜色（使用语义化浅底深字）
+.risk-low { color: var(--kb-success-text); }
+.risk-medium { color: var(--kb-warning-text); }
+.risk-high { color: var(--kb-danger-text); }
+.risk-critical { color: var(--kb-danger-text); font-weight: 600; }
 
 // 状态标签
-.status-draft { color: #909399; }
-.status-pending_review { color: #e6a23c; }
-.status-published { color: #67c23a; }
-.status-rejected { color: #f56c6c; }
-.status-archived { color: #909399; text-decoration: line-through; }
+.status-draft { color: var(--kb-text-tertiary); }
+.status-pending_review { color: var(--kb-warning-text); }
+.status-published { color: var(--kb-success-text); }
+.status-rejected { color: var(--kb-danger-text); }
+.status-archived { color: var(--kb-text-tertiary); text-decoration: line-through; }
 
 // 卡片通用样式
 .kb-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.2s;
+  background: var(--kb-bg-card);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius-lg);
+  padding: var(--kb-space-4);
+  box-shadow: var(--kb-shadow-card);
+  transition: box-shadow 0.2s ease;
   &:hover {
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--kb-shadow-card-hover);
   }
 }
 
 // 统计卡片
 .stat-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
+  background: var(--kb-bg-card);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius-lg);
+  padding: var(--kb-space-5);
   text-align: center;
+  box-shadow: var(--kb-shadow-card);
   .stat-value {
     font-size: 28px;
-    font-weight: 700;
-    color: #303133;
+    font-weight: 600;
+    color: var(--kb-text-primary);
+    line-height: 1.3;
   }
   .stat-label {
     font-size: 13px;
-    color: #909399;
-    margin-top: 4px;
+    color: var(--kb-text-secondary);
+    margin-top: var(--kb-space-1);
   }
 }
 
 // 页面容器
 .page-container {
-  padding: 20px;
+  padding: var(--kb-space-6);
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: var(--kb-space-5);
   h2 {
     margin: 0;
-    font-size: 20px;
-    color: #303133;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--kb-text-primary);
+    line-height: 1.35;
   }
 }
 
@@ -88,13 +198,34 @@ body {
 
 // 对比视图
 .diff-before {
-  background: #fef0f0;
+  background: var(--kb-danger-bg);
+  color: var(--kb-danger-text);
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--kb-radius-md);
   margin-bottom: 8px;
 }
 .diff-after {
-  background: #f0f9eb;
+  background: var(--kb-success-bg);
+  color: var(--kb-success-text);
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--kb-radius-md);
 }
+
+// 通用状态徽章
+.kb-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--kb-radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.kb-badge--success { background: var(--kb-success-bg); color: var(--kb-success-text); }
+.kb-badge--warning { background: var(--kb-warning-bg); color: var(--kb-warning-text); }
+.kb-badge--danger { background: var(--kb-danger-bg); color: var(--kb-danger-text); }
+.kb-badge--info { background: var(--kb-info-bg); color: var(--kb-info-text); }
+
+// 工具类
+.text-secondary { color: var(--kb-text-secondary); }
+.text-tertiary { color: var(--kb-text-tertiary); }

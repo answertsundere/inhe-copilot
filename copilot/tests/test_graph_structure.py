@@ -70,15 +70,20 @@ class TestCoreNodesExist:
             f"实际出边: {factual_outgoing}"
         )
 
-    def test_post_generation_grounding_guard_before_build_response(self):
-        """post_generation_grounding_guard 之后必经 build_response"""
+    def test_post_generation_grounding_guard_before_reply_relevance_guard(self):
+        """post_generation_grounding_guard 之后先经过 reply_relevance_guard"""
         from app.agent.graph import customer_service_graph
         graph = customer_service_graph.get_graph()
         edges = list(graph.edges)
         grounding_outgoing = [e.target for e in edges if e.source == "post_generation_grounding_guard"]
-        assert "build_response" in grounding_outgoing, (
-            f"post_generation_grounding_guard 的出边缺少 build_response，"
+        relevance_outgoing = [e.target for e in edges if e.source == "reply_relevance_guard"]
+        assert "reply_relevance_guard" in grounding_outgoing, (
+            f"post_generation_grounding_guard 的出边缺少 reply_relevance_guard，"
             f"实际出边: {grounding_outgoing}"
+        )
+        assert "build_response" in relevance_outgoing, (
+            f"reply_relevance_guard 的出边缺少 build_response，"
+            f"实际出边: {relevance_outgoing}"
         )
 
     def test_gold_csr_before_factual_guard(self):
@@ -126,6 +131,7 @@ class TestLogisticsTraceSteps:
             s in steps for s in (
                 "jst_live_query",
                 "order_lookup", "live_order_lookup",
+                "tool_executor", "tool_executor_node",
             )
         )
         assert has_order_query, f"物流场景缺少订单查询节点，实际节点: {steps}"
@@ -183,7 +189,12 @@ class TestHighRiskPath:
             "trace_steps": [],
         })
         steps = [s.get("node") for s in result.get("trace_steps", [])]
-        assert "jst_live_query" in steps
+        assert any(
+            s in steps for s in (
+                "jst_live_query",
+                "tool_executor", "tool_executor_node",
+            )
+        )
 
 
 class TestPrivacy:

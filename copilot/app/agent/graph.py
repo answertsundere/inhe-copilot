@@ -45,6 +45,7 @@ from app.agent.nodes.hallucination_guard import hallucination_guard
 from app.agent.nodes.factual_guard import factual_guard
 from app.agent.nodes.post_generation_grounding_guard import post_generation_grounding_guard
 from app.agent.nodes.build_response import build_response
+from app.agent.nodes.reply_relevance_guard import reply_relevance_guard
 
 from app.agent.nodes.rag_retrieve import rag_retrieve
 from app.agent.nodes.evidence_filter_node import evidence_filter_node
@@ -60,6 +61,18 @@ from app.agent.tools.executor import plan_tools, tool_executor_node
 
 # ========== JST 工具名集合 ==========
 _JST_TOOLS = {"jst_lookup_order_tool", "jst_lookup_outbound_tool", "jst_lookup_tracking_tool"}
+_PRODUCT_KNOWLEDGE_INTENTS = {
+    "product_question",
+    "product_consult",
+    "material_question",
+    "size_question",
+    "installation_question",
+    "material_safety",
+    "child_safety",
+    "odor_question",
+    "cleaning_care",
+    "competitor_compare",
+}
 
 
 # ========== 条件路由函数 ==========
@@ -72,6 +85,7 @@ def _route_after_risk_check(state: dict) -> str:
 def _route_after_strategy(state: dict) -> str:
     """response_strategy_router 之后的条件路由"""
     strategy = state.get("response_strategy", "clarification")
+    intent = state.get("intent", "")
 
     if strategy == "high_risk":
         return "high_risk_chain"
@@ -88,7 +102,7 @@ def _route_after_strategy(state: dict) -> str:
     if strategy == "logistics_policy_without_order":
         return "logistics_policy_chain"
 
-    if strategy == "product_question":
+    if strategy == "product_question" or intent in _PRODUCT_KNOWLEDGE_INTENTS:
         return "product_chain"
 
     return "clarification_chain"
@@ -122,7 +136,8 @@ def _route_after_resolve_product(state: dict) -> str:
 
     # 商品咨询和安装策略 → Tool Registry 链路（product_resolver + RAG）
     strategy = state.get("response_strategy", "")
-    if strategy in ("product_question", "installation"):
+    intent = state.get("intent", "")
+    if strategy in ("product_question", "installation") or intent in _PRODUCT_KNOWLEDGE_INTENTS:
         return "tool_planner"
 
     return "match_shipping_policy"
@@ -160,6 +175,9 @@ def _route_after_tool_executor(state: dict) -> str:
         if isinstance(tr, dict) and tr.get("found"):
             return "tool_success"
 
+    if state.get("tool_planner_source") == "explicit_logistics_identifier_fast_path":
+        return "tool_success"
+
     # JST 工具未成功 → fallback 到旧 jst_live_query 链路
     return "jst_fallback"
 
@@ -172,6 +190,11 @@ def _route_after_knowledge_scope(state: dict) -> str:
         for step in state.get("trace_steps", []) or []
         if isinstance(step, dict)
     )
+    # 若 required_tools 已在 tool_results 中（即使 found=False，也算已尝试过），不重复调用
+    required_tools = state.get("required_tools") or []
+    tool_results = state.get("tool_results") or {}
+    if required_tools and all(t in tool_results for t in required_tools):
+        tool_already_attempted = True
     if state.get("required_tools") and not tool_already_attempted:
         return "tool_planner"
     if strategy in ("high_risk",):
@@ -229,6 +252,7 @@ def build_graph():
     builder.add_node("hallucination_guard", hallucination_guard)
     builder.add_node("post_generation_grounding_guard", post_generation_grounding_guard)
     builder.add_node("factual_guard", factual_guard)
+    builder.add_node("reply_relevance_guard", reply_relevance_guard)
     builder.add_node("build_response", build_response)
 
     # RAG 链节点
@@ -393,14 +417,17 @@ def build_graph():
     builder.add_edge("generate_logistics_reply", "gold_csr_reply_builder")
     builder.add_edge("gold_csr_reply_builder", "factual_guard")
     builder.add_edge("factual_guard", "post_generation_grounding_guard")
-    builder.add_edge("post_generation_grounding_guard", "build_response")
+    builder.add_edge("post_generation_grounding_guard", "reply_relevance_guard")
 
     # 通用链
     builder.add_edge("generate_reply", "hallucination_guard")
     builder.add_edge("hallucination_guard", "gold_csr_reply_builder")
     builder.add_edge("gold_csr_reply_builder", "factual_guard")
     builder.add_edge("factual_guard", "post_generation_grounding_guard")
-    builder.add_edge("post_generation_grounding_guard", "build_response")
+    builder.add_edge("post_generation_grounding_guard", "reply_relevance_guard")
+
+    # reply_relevance_guard 作为最终答非所问闸门，在 build_response 之前执行
+    builder.add_edge("reply_relevance_guard", "build_response")
 
     _add_tail(builder)
 

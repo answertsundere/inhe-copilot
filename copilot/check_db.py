@@ -1,0 +1,11 @@
+import sqlite3, os
+db_path = os.path.join("data", "knowledge_base.db")
+conn = sqlite3.connect(db_path)
+c = conn.cursor()
+c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+print("Tables:", [r[0] for r in c.fetchall()])
+c.execute("SELECT COUNT(*) FROM knowledge_entries")
+print("knowledge_entries:", c.fetchone()[0])
+c.execute("SELECT COUNT(*) FROM knowledge_chunks")
+print("knowledge_chunks:", c.fetchone()[0])
+conn.close()

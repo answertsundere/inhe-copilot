@@ -178,8 +178,8 @@ class TestKnowledgeChunkEnrichment:
 class TestEntry812Audit:
     """Entry 812 专项审核"""
 
-    def test_entry_812_exists_and_is_draft(self):
-        """Entry 812 存在且为 draft"""
+    def test_entry_812_exists_and_is_published_ready(self):
+        """Entry 812 已发布并完成索引"""
         import sqlite3
         conn = sqlite3.connect('data/knowledge_base.db')
         conn.row_factory = sqlite3.Row
@@ -187,7 +187,8 @@ class TestEntry812Audit:
         conn.close()
 
         assert row is not None
-        assert row['status'] == 'draft'
+        assert row['status'] == 'published'
+        assert row['index_status'] == 'ready'
         assert row['source_type'] == 'faq'
         assert '填充' in row['content'] or '记忆棉' in row['content']
         assert row['source_sheet'] == '金牌客服问答（增强版）'

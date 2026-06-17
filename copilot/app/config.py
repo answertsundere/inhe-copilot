@@ -69,11 +69,18 @@ KNOWLEDGE_DB_PATH = os.environ.get(
     os.path.join(BASE_DIR, "data", "knowledge_base.db"),
 )
 
+# 客服训练样本附件上传目录
+TRAINING_SAMPLE_UPLOAD_DIR = os.environ.get(
+    "COPILOT_TRAINING_SAMPLE_UPLOAD_DIR",
+    os.path.join(BASE_DIR, "data", "training_sample_uploads"),
+)
+
 # ============ 聚水潭 OpenAPI 配置 (必须通过环境变量设置) ============
-JST_APP_KEY = os.environ.get("JUSHUITAN_APP_KEY", "")
-JST_APP_SECRET = os.environ.get("JUSHUITAN_APP_SECRET", "")
-JST_ACCESS_TOKEN = os.environ.get("JUSHUITAN_ACCESS_TOKEN", "")
-JST_BASE_URL = os.environ.get("JUSHUITAN_BASE_URL", "https://openapi.jushuitan.com/open")
+# 兼容历史 JUSHUITAN_* 与生产 COPILOT_JST_* 环境变量名
+JST_APP_KEY = os.environ.get("JUSHUITAN_APP_KEY") or os.environ.get("COPILOT_JST_APP_KEY", "")
+JST_APP_SECRET = os.environ.get("JUSHUITAN_APP_SECRET") or os.environ.get("COPILOT_JST_APP_SECRET", "")
+JST_ACCESS_TOKEN = os.environ.get("JUSHUITAN_ACCESS_TOKEN") or os.environ.get("COPILOT_JST_ACCESS_TOKEN", "")
+JST_BASE_URL = os.environ.get("JUSHUITAN_BASE_URL") or os.environ.get("COPILOT_JST_BASE_URL", "https://openapi.jushuitan.com/open")
 
 # ============ 钉钉多维表配置 (必须通过环境变量设置) ============
 DT_CLIENT_ID = os.environ.get("COPILOT_DT_CLIENT_ID", "")
@@ -133,6 +140,14 @@ COPILOT_RETRIEVER_BACKEND = os.environ.get("COPILOT_RETRIEVER_BACKEND", "current
 
 # ============ RAG Judge 配置 ============
 COPILOT_RAG_LLM_JUDGE_ENABLED = _env_bool("COPILOT_RAG_LLM_JUDGE_ENABLED", False)
+COPILOT_FINAL_AUDIT_LLM_ENABLED = _env_bool("COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+COPILOT_FINAL_POLISH_LLM_ENABLED = _env_bool("COPILOT_FINAL_POLISH_LLM_ENABLED", False)
 
 # ============ Fact Type 语义分类 ============
 COPILOT_FACT_TYPE_LLM_ENABLED = _env_bool("COPILOT_FACT_TYPE_LLM_ENABLED", True)
+
+# ============ Logistics fast path ============
+COPILOT_EXPLICIT_LOGISTICS_FAST_PATH_ENABLED = _env_bool(
+    "COPILOT_EXPLICIT_LOGISTICS_FAST_PATH_ENABLED",
+    True,
+)

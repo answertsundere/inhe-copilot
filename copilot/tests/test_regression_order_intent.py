@@ -408,6 +408,47 @@ class TestConversationIsolation:
         assert ctx.get("current_intent", "") == ""
         assert ctx.get("active_issue", "") == ""
 
+    def test_context_resets_on_explicit_user_correction(self):
+        from app.agent.context.conversation_context import apply_conversation_context
+
+        result = apply_conversation_context({
+            "normalized_message": "\u4e0d\u662f\u8fd9\u4e2a\uff0c\u6211\u95ee\u53e6\u4e00\u4e2a",
+            "intent": "product_question",
+            "slots": {},
+            "conversation_context": {
+                "active_issue": "installation",
+                "confirmed_product": "\u65e7\u5546\u54c1",
+                "last_requested_slots": ["sku"],
+                "unresolved_slots": ["sku"],
+                "order_product_identity": {"sku_id": "OLD001"},
+            },
+            "trace_steps": [],
+        })
+
+        assert result["context_reset_reason"] == "explicit_user_correction"
+        ctx = result["conversation_context"]
+        assert ctx["active_issue"] == ""
+        assert ctx["confirmed_product"] == ""
+        assert ctx["order_product_identity"] == {}
+
+    def test_context_resets_when_product_entity_changes(self):
+        from app.agent.context.conversation_context import apply_conversation_context
+
+        result = apply_conversation_context({
+            "normalized_message": "\u8fd9\u4e2a\u5c3a\u5bf8\u591a\u5927",
+            "intent": "product_question",
+            "slots": {"sku_code": "NEW001B01S01", "product_name": "\u65b0\u5546\u54c1"},
+            "conversation_context": {
+                "active_issue": "installation",
+                "confirmed_product": "\u65e7\u5546\u54c1",
+                "order_product_identity": {"sku_id": "OLD001B01S01", "matched_product_name": "\u65e7\u5546\u54c1"},
+            },
+            "trace_steps": [],
+        })
+
+        assert result["context_reset_reason"] == "product_entity_changed"
+        assert result["conversation_context_summary"]["confirmed_product"] == ""
+
 
 # ===========================================================================
 # Test 8: Order status routing (pending, shipped, signed)

@@ -609,4 +609,7 @@ class TestRepositoryCompleteness:
             updated_by="test",
         )
 
-        assert product.completeness_score == 90.0
+        # 新算法按关键子字段检查：基础信息+SKU+质保期已填，规格/物流子字段缺失
+        assert product.completeness_score == round(7 / 18 * 100, 1)
+        assert "材质" in product.get_missing_fields()
+        assert "物流属性" in product.get_missing_fields()

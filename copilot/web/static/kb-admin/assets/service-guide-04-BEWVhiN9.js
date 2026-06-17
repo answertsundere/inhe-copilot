@@ -1,1 +1,0 @@
-var e=``+new URL(`service-guide-04-CmopjC_G.webp`,import.meta.url).href;export{e as default};

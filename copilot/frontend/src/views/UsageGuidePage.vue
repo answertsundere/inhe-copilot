@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 
 type DepartmentKey = 'serviceTest' | 'serviceKnowledge' | 'product' | 'operation' | 'agent'
 type DepartmentNavCard = {
@@ -20,10 +20,7 @@ const imageLoaders = import.meta.glob<{ default: string }>(
   { eager: false },
 )
 
-// Track which departments have already been loaded (avoid re-fetching)
-const loadedDepartments = ref<Set<DepartmentKey>>(new Set())
-
-// Resolved image URLs per department (populated on demand)
+// Resolved image URLs per department (loaded on-demand via IntersectionObserver)
 const imageUrls = ref<Record<DepartmentKey, Record<string, string>>>({
   serviceTest: {},
   serviceKnowledge: {},
@@ -32,72 +29,45 @@ const imageUrls = ref<Record<DepartmentKey, Record<string, string>>>({
   agent: {},
 })
 
-// Map department → image file names
-const departmentFiles: Record<DepartmentKey, string[]> = {
-  serviceTest: [
-    'service-guide-01.webp',
-    'service-guide-02.webp',
-    'service-guide-03.webp',
-    'service-guide-04.webp',
-    'service-guide-05.png',
-  ],
-  serviceKnowledge: [
-    'service-knowledge-guide-01.webp',
-    'service-knowledge-guide-02.webp',
-    'service-knowledge-guide-03.webp',
-    'service-knowledge-guide-04.webp',
-  ],
-  product: [
-    'product-guide-01.webp',
-    'product-guide-02.webp',
-    'product-guide-03.webp',
-    'product-guide-04.webp',
-    'product-guide-05.webp',
-    'product-guide-06.webp',
-  ],
-  operation: [
-    'operation-guide-01.webp',
-    'operation-guide-02.webp',
-    'operation-guide-03.webp',
-  ],
-  agent: [
-    'agent-guide-01.webp',
-    'agent-guide-02.webp',
-    'agent-guide-03.webp',
-  ],
-}
-
-async function loadDepartmentImages(dept: DepartmentKey) {
-  if (loadedDepartments.value.has(dept)) return
-  loadedDepartments.value = new Set(loadedDepartments.value).add(dept)
-
-  const files = departmentFiles[dept]
-  const entries = await Promise.all(
-    files.map(async (file) => {
-      const key = `../assets/guide/${file}`
-      const loader = imageLoaders[key]
-      if (!loader) return null
-      const mod = await loader()
-      return [file, mod.default] as const
-    }),
-  )
-  const map: Record<string, string> = {}
-  for (const entry of entries) {
-    if (entry) map[entry[0]] = entry[1]
-  }
-  imageUrls.value = { ...imageUrls.value, [dept]: map }
+async function loadImage(dept: DepartmentKey, file: string) {
+  if (imageUrls.value[dept]?.[file]) return
+  const key = `../assets/guide/${file}`
+  const loader = imageLoaders[key]
+  if (!loader) return
+  const mod = await loader()
+  imageUrls.value[dept] = { ...imageUrls.value[dept], [file]: mod.default }
 }
 
 function getImageUrl(dept: DepartmentKey, file: string): string {
-  return imageUrls.value[dept][file] || ''
+  return imageUrls.value[dept]?.[file] || ''
 }
 
-// Pre-load service test images on mount, then react to department switches
-onMounted(() => loadDepartmentImages('serviceTest'))
-watch(activeDepartment, (dept) => loadDepartmentImages(dept))
+// Lazy-load each screenshot only when it approaches the viewport
+const vLazy = {
+  mounted(el: HTMLElement, binding: any) {
+    const { dept, file } = binding.value as { dept: DepartmentKey; file: string }
+    if (imageUrls.value[dept]?.[file]) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            loadImage(dept, file)
+            observer.unobserve(el)
+          }
+        })
+      },
+      { rootMargin: '120px' },
+    )
+    observer.observe(el)
+    ;(el as any)._lazyObserver = observer
+  },
+  unmounted(el: HTMLElement) {
+    ;(el as any)._lazyObserver?.disconnect()
+  },
+}
 
 const guideActions: Record<DepartmentKey, { actionText: string; actionPath: string }> = {
-  serviceTest: { actionText: '进入真实测试', actionPath: '/ask/real-test' },
+  serviceTest: { actionText: '进入智能回复建议区', actionPath: '/ask/real-test' },
   serviceKnowledge: { actionText: '进入问答资料', actionPath: '/ask/kb-admin/qa' },
   product: { actionText: '进入商品资料', actionPath: '/ask/kb-admin/products' },
   operation: { actionText: '进入活动规则中心', actionPath: '/ask/kb-admin/shop-rules' },
@@ -108,10 +78,10 @@ const departmentCards: DepartmentNavCard[] = [
   {
     key: 'service',
     title: '使用说明：客服部',
-    desc: '测试页面、资料/SOP',
+    desc: '回复工作台、资料/SOP',
     tone: 'blue',
     children: [
-      { key: 'serviceTest', title: '测试页面', desc: '真实测试、验收反馈' },
+      { key: 'serviceTest', title: '智能回复建议区', desc: '生成回复建议、检查风险、提交错误反馈' },
       { key: 'serviceKnowledge', title: '资料/SOP', desc: '问答资料、售后步骤' },
     ],
   },
@@ -140,17 +110,17 @@ const departmentCards: DepartmentNavCard[] = [
 
 const guideConfig = {
   serviceTest: {
-    title: '客服部：测试页面怎么操作',
-    desc: '客服测试时按真实千牛场景填写，发现回复不对就沉淀问题，后续才能越改越准。',
+    title: '客服部：智能回复建议区怎么操作',
+    desc: '客服按真实千牛场景填写买家问题、商品或订单信息，生成可发送回复并检查风险。',
     shots: [
-      { title: '1. 打开真实测试面板，选择要测的用例', file: 'service-guide-01.webp' },
+      { title: '1. 打开智能回复建议区，选择要处理或测试的场景', file: 'service-guide-01.webp' },
       { title: '2. 按千牛侧边栏信息填写客户消息、商品或订单', file: 'service-guide-02.webp' },
       { title: '3. 运行后检查建议回复是否能直接发给客户', file: 'service-guide-03.webp' },
       { title: '4. 不合格就保存验收或提交反馈，方便后续优化', file: 'service-guide-04.webp' },
       { title: '5. 查看上下文和图片区域，按真实聊天继续测试', file: 'service-guide-05.png' },
     ],
     steps: [
-      '打开真实测试面板，先选一个测试用例，或直接输入真实客户消息。',
+      '打开智能回复建议区，先选一个测试用例，或直接输入真实客户消息。',
       '售前按千牛侧边栏商品名称测试；售后按订单号、商品名称、SKU 等真实字段测试。',
       '重点看回复是否像真人客服、是否回答了客户问题、有没有乱承诺。',
       '如果不通过，选择问题类型，写下客服认为正确的回复或备注，再提交反馈。',
@@ -228,6 +198,28 @@ const guideConfig = {
 const activeGuide = computed(() => guideConfig[activeDepartment.value])
 const activeAction = computed(() => guideActions[activeDepartment.value])
 
+const searchQuery = ref('')
+const normalizedQuery = computed(() => searchQuery.value.trim().toLowerCase())
+
+const filteredShots = computed(() => {
+  const q = normalizedQuery.value
+  if (!q) return activeGuide.value.shots
+  return activeGuide.value.shots.filter((shot) =>
+    (shot.title + ' ' + activeGuide.value.title + ' ' + activeGuide.value.desc).toLowerCase().includes(q),
+  )
+})
+
+const filteredSteps = computed(() => {
+  const q = normalizedQuery.value
+  if (!q) return activeGuide.value.steps
+  return activeGuide.value.steps.filter((step) => step.toLowerCase().includes(q))
+})
+
+function scrollToShot(index: number) {
+  const el = document.getElementById('shot-' + index)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 function openPath(path: string) {
   window.open(path, '_blank')
 }
@@ -240,7 +232,10 @@ function openPath(path: string) {
         <h2>使用说明</h2>
         <p>先点部门入口，下面只显示当前部门的操作说明；后续继续加部门也不会变成长页面。</p>
       </div>
-      <el-button type="primary" @click="openPath(activeAction.actionPath)">{{ activeAction.actionText }}</el-button>
+      <div style="display:flex;align-items:center;gap:12px">
+        <el-input v-model="searchQuery" placeholder="搜索步骤/截图说明" clearable size="small" style="width:200px" />
+        <el-button type="primary" @click="openPath(activeAction.actionPath)">{{ activeAction.actionText }}</el-button>
+      </div>
     </section>
 
     <section class="department-page-nav">
@@ -290,10 +285,14 @@ function openPath(path: string) {
         <el-button type="primary" @click="openPath(activeAction.actionPath)">{{ activeAction.actionText }}</el-button>
       </div>
 
-      <div v-if="activeGuide.shots.length" class="shot-list">
-        <div v-for="shot in activeGuide.shots" :key="shot.title" class="screenshot-card">
+      <div v-if="filteredShots.length" class="toc">
+        <span class="toc-label">目录：</span>
+        <a v-for="(shot, idx) in filteredShots" :key="shot.title" href="#" @click.prevent="scrollToShot(idx)">{{ shot.title }}</a>
+      </div>
+      <div v-if="filteredShots.length" class="shot-list">
+        <div v-for="(shot, idx) in filteredShots" :id="'shot-' + idx" :key="shot.title" class="screenshot-card">
           <div class="shot-caption">{{ shot.title }}</div>
-          <div class="screenshot-wrap">
+          <div v-lazy="{ dept: activeDepartment, file: shot.file }" class="screenshot-wrap">
             <img
               v-if="getImageUrl(activeDepartment, shot.file)"
               :src="getImageUrl(activeDepartment, shot.file)"
@@ -301,16 +300,16 @@ function openPath(path: string) {
               loading="lazy"
               decoding="async"
             />
-            <div v-else class="shot-placeholder">加载中…</div>
+            <div v-else class="shot-placeholder">滚动到此处加载图片…</div>
           </div>
         </div>
       </div>
-      <div v-else class="empty-shot-note">这一部分先按文字步骤操作，后续补充截图后会显示在这里。</div>
+      <div v-else-if="!normalizedQuery" class="empty-shot-note">这一部分先按文字步骤操作，后续补充截图后会显示在这里。</div>
 
       <div class="step-box">
         <h4>操作顺序</h4>
         <ol>
-          <li v-for="step in activeGuide.steps" :key="step">{{ step }}</li>
+          <li v-for="step in filteredSteps" :key="step">{{ step }}</li>
         </ol>
       </div>
     </section>
@@ -355,6 +354,10 @@ function openPath(path: string) {
 .step-box h4 { margin: 0 0 8px; font-size: 15px; color: #303133; }
 .step-box ol { margin: 0; padding-left: 18px; }
 .step-box li { margin: 7px 0; font-size: 13px; line-height: 1.55; color: #303133; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; padding: 10px 12px; background: #f5f7fa; border-radius: 6px; }
+.toc-label { font-size: 12px; color: #909399; }
+.toc a { font-size: 12px; color: #409eff; text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
 @media (max-width: 1180px) {
   .department-page-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

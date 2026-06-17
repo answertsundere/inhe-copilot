@@ -8,10 +8,12 @@ import json
 import time
 import requests
 from typing import Optional
+
+from app.config import JST_APP_KEY, JST_APP_SECRET, JST_ACCESS_TOKEN, JST_BASE_URL
 from app.repositories.base import BaseRepository
 
 # 凭证必须通过环境变量设置，不硬编码
-# JUSHUITAN_APP_KEY / JUSHUITAN_APP_SECRET / JUSHUITAN_ACCESS_TOKEN / JUSHUITAN_BASE_URL
+# 支持 JUSHUITAN_* 与 COPILOT_JST_* 两套变量名
 
 _CACHE_TTL = 300  # 5 分钟缓存
 
@@ -37,22 +39,21 @@ class LiveJSTRepository(BaseRepository):
     """聚水潭实时查询仓库"""
 
     def __init__(self):
-        import os
-        self._app_key = os.environ.get("JUSHUITAN_APP_KEY", "")
-        self._app_secret = os.environ.get("JUSHUITAN_APP_SECRET", "")
-        self._access_token = os.environ.get("JUSHUITAN_ACCESS_TOKEN", "")
-        self._base_url = os.environ.get("JUSHUITAN_BASE_URL", "https://openapi.jushuitan.com/open")
+        self._app_key = JST_APP_KEY
+        self._app_secret = JST_APP_SECRET
+        self._access_token = JST_ACCESS_TOKEN
+        self._base_url = JST_BASE_URL
         self._cache = _SimpleCache(_CACHE_TTL)
 
     def _check_config(self):
         """检查凭证是否已配置，未配置时抛出异常"""
         missing = []
         if not self._app_key:
-            missing.append("JUSHUITAN_APP_KEY")
+            missing.append("JUSHUITAN_APP_KEY 或 COPILOT_JST_APP_KEY")
         if not self._app_secret:
-            missing.append("JUSHUITAN_APP_SECRET")
+            missing.append("JUSHUITAN_APP_SECRET 或 COPILOT_JST_APP_SECRET")
         if not self._access_token:
-            missing.append("JUSHUITAN_ACCESS_TOKEN")
+            missing.append("JUSHUITAN_ACCESS_TOKEN 或 COPILOT_JST_ACCESS_TOKEN")
         if missing:
             raise RuntimeError(
                 f"缺少聚水潭 API 必需环境变量: {', '.join(missing)}\n"

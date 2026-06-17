@@ -13,6 +13,7 @@ _boot_time = time.time()
 
 
 @health_bp.route("/api/health")
+@health_bp.route("/health")
 def api_health():
     """系统健康检查"""
     from app.main import (

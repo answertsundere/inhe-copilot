@@ -9,7 +9,7 @@ def _post(message: str) -> dict:
     client = app.test_client()
     return client.post("/ask/api/analyze", json={
         "message": message,
-        "conversation_id": "test_material_report_guard",
+        "conversation_id": f"test_material_report_guard_{hash(message) & 0xFFFFFFFF}",
         "sku_code": SKU,
         "product_candidates": [
             {"value": SKU, "type": "sku_id_candidate", "verified": True},

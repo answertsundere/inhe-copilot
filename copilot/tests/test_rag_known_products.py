@@ -117,12 +117,11 @@ class TestRAGKnownProducts:
         entries = self._find_entries("狮子围兜")
         assert len(entries) > 0, "狮子围兜: 知识库中无任何相关条目"
 
-    def test_case1_draft_has_waterproof_info(self):
-        """Case 1: draft 中有防水信息。"""
-        entries = self._find_entries("狮子围兜", status="draft")
-        # Check that at least one draft entry mentions waterproof
+    def test_case1_published_has_waterproof_info(self):
+        """Case 1: published 中有防水信息。"""
+        entries = self._find_entries("狮子围兜", status="published")
         has_waterproof = any("防水" in (e.content or "") for e in entries)
-        assert has_waterproof, "狮子围兜: draft 中无防水信息"
+        assert has_waterproof, "狮子围兜: published 中无防水信息"
 
     def test_case1_published_scope_check(self):
         """Case 1: published 条目的 product_scope 是否正确。"""
@@ -142,16 +141,16 @@ class TestRAGKnownProducts:
         entries = self._find_entries("防摔枕")
         assert len(entries) > 0, "防摔枕: 知识库中无相关条目"
 
-    def test_case2_draft_has_material_info(self):
-        """Case 2: draft 中有材质信息。"""
-        entries = self._find_entries("防摔枕", status="draft")
+    def test_case2_published_has_material_info(self):
+        """Case 2: published 中有材质信息。"""
+        entries = self._find_entries("防摔枕", status="published")
         # Content may mention material indirectly: 记忆棉, 布料, 网眼, etc.
         has_material = any(
             any(kw in (e.content or "")
                 for kw in ("材质", "材料", "记忆棉", "布料", "网眼", "面料", "填充"))
             for e in entries
         )
-        assert has_material, "防摔枕: draft 中无材质信息"
+        assert has_material, "防摔枕: published 中无材质信息"
 
     # --- Case 3: 刺猬桌面书架 ---
 
@@ -175,11 +174,11 @@ class TestRAGKnownProducts:
             entries = self._find_entries("防摔枕")
         assert len(entries) > 0, "十一号防摔枕: 知识库中无相关条目"
 
-    def test_case4_draft_has_age_info(self):
-        """Case 4: draft 中有适用年龄信息。"""
-        entries = self._find_entries("防摔枕", status="draft")
+    def test_case4_published_has_age_info(self):
+        """Case 4: published 中有适用年龄信息。"""
+        entries = self._find_entries("防摔枕", status="published")
         has_age = any("适合" in (e.content or "") or "年龄" in (e.content or "") for e in entries)
-        assert has_age, "防摔枕: draft 中无适用年龄信息"
+        assert has_age, "防摔枕: published 中无适用年龄信息"
 
     # --- Case 5: 儿童书架实木 ---
 

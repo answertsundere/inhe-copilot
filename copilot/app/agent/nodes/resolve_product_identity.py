@@ -85,21 +85,22 @@ def resolve_product_identity(state: dict) -> dict:
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
-    # 优先使用 slot_extract 已提取的商品名
-    if slot_product:
+    # 优先使用已识别商品名（slot_extract 提取 或 上游 matched_product_name），避免被清空导致 RAG scope 丢失
+    resolved_from_name = slot_product or matched_name
+    if resolved_from_name:
         duration_ms = int((time.time() - t0) * 1000)
         trace = {
             "node": "resolve_product_identity",
             "status": "success",
             "duration_ms": duration_ms,
             "cache_hit": False,
-            "summary": f"唯一匹配商品: {slot_product}",
+            "summary": f"唯一匹配商品: {resolved_from_name}",
         }
         if not has_order_id:
             trace["no_order_skip_order_lookup"] = True
         return {
-            "matched_product_name": slot_product,
-            "product_candidates": [slot_product],
+            "matched_product_name": resolved_from_name,
+            "product_candidates": [resolved_from_name],
             "need_clarification": False,
             "trace_steps": state.get("trace_steps", []) + [trace],
         }

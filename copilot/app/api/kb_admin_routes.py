@@ -125,6 +125,10 @@ def api_list_products():
         category_l3 = request.args.get("category_l3", "")
         search = request.args.get("search", "")
         status = request.args.get("status", "")
+        agent_usable = request.args.get("agent_usable", "")
+        has_qa = request.args.get("has_qa", "")
+        missing_field = request.args.get("missing_field", "")
+        high_risk = request.args.get("high_risk", "")
         limit = request.args.get("limit", 20, type=int)
         offset = request.args.get("offset", 0, type=int)
 
@@ -134,6 +138,10 @@ def api_list_products():
             category_l3=category_l3,
             search=search,
             status=status,
+            agent_usable=agent_usable,
+            has_qa=has_qa,
+            missing_field=missing_field,
+            high_risk=high_risk,
             limit=limit,
             offset=offset,
         )
@@ -439,19 +447,250 @@ def api_update_product(product_id):
 
 @kb_admin_bp.route("/products/<int:product_id>/qa", methods=["GET"])
 def api_product_qa(product_id):
-    """获取商品关联的 QA 条目"""
+    """获取商品关联的 QA 条目（含同类目通用问答）"""
     from app.db import SessionLocal
-    from app.models.kb_tables import KBQA
+    from app.models.kb_tables import KBProduct, KBQA
+    from sqlalchemy import or_, and_
     db = SessionLocal()
     try:
+        product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
+        conds = [KBQA.product_id == product_id]
+        if product and (product.category_l1 or product.category_l2 or product.category_l3):
+            cat_conds = [KBQA.product_id.is_(None)]
+            if product.category_l1:
+                cat_conds.append(KBQA.category_l1 == product.category_l1)
+            if product.category_l2:
+                cat_conds.append(KBQA.category_l2 == product.category_l2)
+            if product.category_l3:
+                cat_conds.append(KBQA.category_l3 == product.category_l3)
+            conds.append(and_(*cat_conds))
         items = (
             db.query(KBQA)
-            .filter(KBQA.product_id == product_id)
+            .filter(or_(*conds))
             .order_by(KBQA.updated_at.desc())
             .all()
         )
         return jsonify({"items": [q.to_dict() for q in items], "total": len(items)})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@kb_admin_bp.route("/products/<int:product_id>/qa", methods=["POST"])
+def api_create_product_qa(product_id):
+    """在当前商品下新建 QA"""
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBProduct, KBQA, KBQuestionVariant
+    db = SessionLocal()
+    try:
+        data = request.get_json(force=True) or {}
+        _, name = _get_user_info()
+
+        product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
+        if not product:
+            return jsonify({"error": "商品不存在"}), 404
+        if not data.get("question") or not data.get("answer"):
+            return jsonify({"error": "question 和 answer 必填"}), 400
+
+        content_hash = hashlib.md5(
+            (data.get("question", "") + data.get("answer", "")).encode("utf-8")
+        ).hexdigest()
+
+        kwargs = _extract_qa_kwargs(data)
+        kwargs["content_hash"] = content_hash
+        kwargs["product_id"] = product_id
+        kwargs["created_by"] = name
+
+        source_type = data.get("source_type", "faq")
+        risk_level = data.get("risk_level", "low")
+        if source_type == "high_risk" or risk_level in ("high", "critical"):
+            kwargs["human_review"] = True
+            kwargs["auto_reply"] = False
+
+        qa = KBQA(**kwargs)
+        db.add(qa)
+        db.flush()
+
+        for v in data.get("variants", []):
+            variant = KBQuestionVariant(
+                qa_id=qa.id,
+                variant_text=v.get("variant_text", ""),
+                source=v.get("source", "manual"),
+                created_by=name,
+            )
+            db.add(variant)
+
+        db.commit()
+        db.refresh(qa)
+
+        _log_change_inline(
+            db, target_type="kb_qa", target_id=qa.id,
+            target_title=qa.question[:200], action="create",
+            after_status=qa.status, performed_by=name,
+            snapshot=qa.to_dict(include_variants=True),
+            reason=f"从商品 {product.product_name} 新建关联问答",
+        )
+
+        return jsonify(qa.to_dict(include_variants=True)), 201
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@kb_admin_bp.route("/products/<int:product_id>/qa/link", methods=["POST"])
+def api_link_product_qa(product_id):
+    """把已有 QA 关联到当前商品"""
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBProduct, KBQA
+    db = SessionLocal()
+    try:
+        data = request.get_json(force=True) or {}
+        qa_id = data.get("qa_id")
+        if not qa_id:
+            return jsonify({"error": "qa_id 必填"}), 400
+
+        product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
+        if not product:
+            return jsonify({"error": "商品不存在"}), 404
+
+        qa = db.query(KBQA).filter(KBQA.id == qa_id).first()
+        if not qa:
+            return jsonify({"error": "QA 不存在"}), 404
+
+        before_status = qa.status
+        qa.product_id = product_id
+        _, name = _get_user_info()
+        qa.updated_by = name
+        qa.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(qa)
+
+        _log_change_inline(
+            db, target_type="kb_qa", target_id=qa.id,
+            target_title=qa.question[:200], action="update",
+            before_status=before_status, after_status=qa.status, performed_by=name,
+            changed_fields=["product_id"],
+            snapshot=qa.to_dict(include_variants=True),
+            reason=f"关联到商品 {product.product_name}",
+        )
+
+        return jsonify(qa.to_dict(include_variants=True))
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@kb_admin_bp.route("/products/<int:product_id>/qa/<int:qa_id>", methods=["DELETE"])
+def api_unlink_product_qa(product_id, qa_id):
+    """取消 QA 与当前商品的关联"""
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBProduct, KBQA
+    db = SessionLocal()
+    try:
+        product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
+        if not product:
+            return jsonify({"error": "商品不存在"}), 404
+
+        qa = db.query(KBQA).filter(KBQA.id == qa_id, KBQA.product_id == product_id).first()
+        if not qa:
+            return jsonify({"error": "未找到关联的 QA"}), 404
+
+        before_status = qa.status
+        qa.product_id = None
+        _, name = _get_user_info()
+        qa.updated_by = name
+        qa.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(qa)
+
+        _log_change_inline(
+            db, target_type="kb_qa", target_id=qa.id,
+            target_title=qa.question[:200], action="update",
+            before_status=before_status, after_status=qa.status, performed_by=name,
+            changed_fields=["product_id"],
+            snapshot=qa.to_dict(include_variants=True),
+            reason=f"取消与商品 {product.product_name} 的关联",
+        )
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@kb_admin_bp.route("/products/<int:product_id>/media/link", methods=["POST"])
+def api_link_product_media(product_id):
+    """把已有素材关联到当前商品"""
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBProduct, KBMediaAsset
+    db = SessionLocal()
+    try:
+        data = request.get_json(force=True) or {}
+        asset_id = data.get("asset_id")
+        if not asset_id:
+            return jsonify({"error": "asset_id 必填"}), 400
+
+        product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
+        if not product:
+            return jsonify({"error": "商品不存在"}), 404
+
+        asset = db.query(KBMediaAsset).filter(KBMediaAsset.id == asset_id).first()
+        if not asset:
+            return jsonify({"error": "素材不存在"}), 404
+
+        _, name = _get_user_info()
+        asset.product_id = product_id
+        if product.i_id and not asset.i_id:
+            asset.i_id = product.i_id
+        if product.product_name and not asset.product_name:
+            asset.product_name = product.product_name
+        asset.updated_by = name
+        asset.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(asset)
+
+        return jsonify({"ok": True, "asset": asset.to_dict()})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@kb_admin_bp.route("/products/<int:product_id>/media/<int:asset_id>", methods=["DELETE"])
+def api_unlink_product_media(product_id, asset_id):
+    """取消素材与当前商品的关联"""
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBProduct, KBMediaAsset
+    db = SessionLocal()
+    try:
+        product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
+        if not product:
+            return jsonify({"error": "商品不存在"}), 404
+
+        asset = db.query(KBMediaAsset).filter(
+            KBMediaAsset.id == asset_id, KBMediaAsset.product_id == product_id
+        ).first()
+        if not asset:
+            return jsonify({"error": "未找到关联的素材"}), 404
+
+        _, name = _get_user_info()
+        asset.product_id = None
+        asset.updated_by = name
+        asset.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(asset)
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()
@@ -493,11 +732,6 @@ def api_product_health(product_id):
         if high_risk_qa:
             issues.append({"type": "high_risk_qa", "severity": "critical",
                            "message": f"关联 {len(high_risk_qa)} 条高/极高风险问答"})
-
-        unreviewed_medium = [q for q in qa_list if q.risk_level == "medium" and not q.human_review]
-        if unreviewed_medium:
-            issues.append({"type": "medium_no_review", "severity": "warning",
-                           "message": f"{len(unreviewed_medium)} 条中风险问答未开启人工审核"})
 
         auto_high = [q for q in qa_list if q.risk_level in ("high", "critical") and q.auto_reply]
         if auto_high:
@@ -677,7 +911,7 @@ def _extract_product_kwargs(data):
 
 @kb_admin_bp.route("/qa/risk-control", methods=["GET"])
 def api_qa_risk_control():
-    """风控专项列表：高风险缺SOP、高风险允许自动回复、中风险未审核等"""
+    """风控专项列表：高风险缺SOP、高风险允许自动回复等"""
     from app.db import SessionLocal
     from app.models.kb_tables import KBQA
     db = SessionLocal()
@@ -686,9 +920,6 @@ def api_qa_risk_control():
         issues = {
             "high_no_sop": [],
             "high_auto_reply": [],
-            "medium_no_review": [],
-            "compensation_no_review": [],
-            "complaint_no_review": [],
         }
 
         for qa in all_qa:
@@ -696,20 +927,10 @@ def api_qa_risk_control():
                 issues["high_no_sop"].append(qa.to_dict())
             if qa.risk_level in ("high", "critical") and qa.auto_reply:
                 issues["high_auto_reply"].append(qa.to_dict())
-            if qa.risk_level == "medium" and not qa.human_review:
-                issues["medium_no_review"].append(qa.to_dict())
-            answer = qa.answer or ""
-            if ("赔" in answer or "退款" in answer or "补偿" in answer) and not qa.human_review:
-                issues["compensation_no_review"].append(qa.to_dict())
-            if ("投诉" in qa.question or "差评" in qa.question or "12315" in qa.question) and not qa.human_review:
-                issues["complaint_no_review"].append(qa.to_dict())
 
         return jsonify({
             "high_no_sop": {"count": len(issues["high_no_sop"]), "items": issues["high_no_sop"][:50]},
             "high_auto_reply": {"count": len(issues["high_auto_reply"]), "items": issues["high_auto_reply"][:50]},
-            "medium_no_review": {"count": len(issues["medium_no_review"]), "items": issues["medium_no_review"][:50]},
-            "compensation_no_review": {"count": len(issues["compensation_no_review"]), "items": issues["compensation_no_review"][:50]},
-            "complaint_no_review": {"count": len(issues["complaint_no_review"]), "items": issues["complaint_no_review"][:50]},
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -979,7 +1200,6 @@ def _qa_agent_ok(qa):
     """Check if QA is usable by agent."""
     if qa.status != "published": return False
     if not qa.auto_reply: return False
-    if qa.risk_level == "medium" and not qa.human_review: return False
     if qa.risk_level in ("high", "critical"): return False
     return True
 
@@ -1006,14 +1226,11 @@ def api_qa_summary():
         no_product = db.query(func.count(KBQA.id)).filter(KBQA.product_id.is_(None)).scalar()
         variants = db.query(func.count(KBQuestionVariant.id)).scalar()
 
-        # Agent usable: published + (low or medium+reviewed) + auto_reply=True
+        # Agent usable: published + low/medium risk + auto_reply=True
         agent_ok = db.query(func.count(KBQA.id)).filter(
             KBQA.status == "published",
             KBQA.auto_reply == True,
-            or_(
-                KBQA.risk_level == "low",
-                and_(KBQA.risk_level == "medium", KBQA.human_review == True),
-            ),
+            KBQA.risk_level.in_(["low", "medium"]),
         ).scalar()
 
         return jsonify({
@@ -1070,10 +1287,6 @@ def api_qa_health(qa_id):
         if len(answer) < 20:
             issues.append({"type": "answer_short", "severity": "warning", "message": f"答案过短({len(answer)}字)"})
 
-        # 5. 中风险未审核
-        if qa.risk_level == "medium" and not qa.human_review:
-            issues.append({"type": "medium_no_review", "severity": "warning", "message": "中风险但未开启人工审核"})
-
         # 6. 高风险允许自动回复
         if qa.risk_level in ("high", "critical") and qa.auto_reply:
             issues.append({"type": "high_auto_reply", "severity": "critical", "message": "高风险但允许自动回复"})
@@ -1100,13 +1313,11 @@ def api_qa_health(qa_id):
         can_agent = (
             qa.status == "published"
             and qa.auto_reply == True
-            and (qa.risk_level == "low" or (qa.risk_level == "medium" and qa.human_review))
-            and qa.risk_level not in ("high", "critical")
+            and qa.risk_level in ("low", "medium")
         )
         block_reasons = []
         if qa.status != "published": block_reasons.append("未发布")
         if not qa.auto_reply: block_reasons.append("未开启自动回复")
-        if qa.risk_level == "medium" and not qa.human_review: block_reasons.append("中风险未审核")
         if qa.risk_level in ("high", "critical"): block_reasons.append("高风险禁止自动回复")
 
         return jsonify({
@@ -1289,13 +1500,19 @@ def api_list_qa():
         scenario_category = request.args.get("scenario_category", "")
         issue_type = request.args.get("issue_type", "")
         sop_status = request.args.get("sop_status", "")
+        content_contains = request.args.get("content_contains", "")
         limit = request.args.get("limit", 20, type=int)
         offset = request.args.get("offset", 0, type=int)
 
         if intent:
             q = q.filter(KBQA.intent == intent)
         if risk_level:
-            q = q.filter(KBQA.risk_level == risk_level)
+            # 支持单值或逗号分隔多值，如 high,critical
+            levels = [lvl.strip() for lvl in risk_level.split(",") if lvl.strip()]
+            if len(levels) > 1:
+                q = q.filter(KBQA.risk_level.in_(levels))
+            else:
+                q = q.filter(KBQA.risk_level == levels[0])
         if status:
             q = q.filter(KBQA.status == status)
         if product_id:
@@ -1320,6 +1537,15 @@ def api_list_qa():
             q = q.filter(KBQA.sop_id.isnot(None))
         elif sop_status == "no_sop":
             q = q.filter(KBQA.sop_id.is_(None))
+        if content_contains:
+            # 逗号分隔关键词，命中问题或答案任一即保留
+            keywords = [kw.strip() for kw in content_contains.split(",") if kw.strip()]
+            if keywords:
+                content_conds = []
+                for kw in keywords:
+                    like = f"%{kw}%"
+                    content_conds.append(or_(KBQA.question.ilike(like), KBQA.answer.ilike(like)))
+                q = q.filter(or_(*content_conds))
         if search:
             like = f"%{search}%"
             q = q.filter(or_(
@@ -1363,7 +1589,7 @@ def api_get_qa(qa_id):
 
 @kb_admin_bp.route("/qa", methods=["POST"])
 def api_create_qa():
-    """创建 QA，高风险自动强制人工审核"""
+    """创建 QA，高风险自动关闭自动回复"""
     from app.db import SessionLocal
     from app.models.kb_tables import KBQA, KBQuestionVariant, KBChangeLog
     try:
@@ -1380,7 +1606,7 @@ def api_create_qa():
             kwargs["content_hash"] = content_hash
             kwargs["created_by"] = name
 
-            # High risk: force human_review and disable auto_reply
+            # High risk: keep it out of automatic replies.
             source_type = data.get("source_type", "faq")
             risk_level = data.get("risk_level", "low")
             if source_type == "high_risk" or risk_level in ("high", "critical"):
@@ -1450,6 +1676,7 @@ def api_update_qa(qa_id):
             simple_fields = [
                 "question", "answer", "intent", "sub_intent",
                 "category_l1", "category_l2", "category_l3",
+                "scenario_category", "issue_type", "sop_id",
                 "risk_level", "auto_reply", "human_review",
                 "source_type", "status",
             ]
@@ -1475,13 +1702,10 @@ def api_update_qa(qa_id):
             risk_errors = []
             new_risk = data.get("risk_level", qa.risk_level)
             new_auto = data.get("auto_reply", qa.auto_reply)
-            new_review = data.get("human_review", qa.human_review)
             new_sop = data.get("sop_id", qa.sop_id) if "sop_id" in data else qa.sop_id
 
             if new_risk in ("high", "critical") and new_auto:
                 risk_errors.append({"field": "auto_reply", "reason": "高/极高风险问答禁止自动回复"})
-            if new_risk == "medium" and not new_review:
-                risk_errors.append({"field": "human_review", "reason": "中风险问答必须开启人工审核"})
 
             if risk_errors:
                 db.rollback()
@@ -1679,8 +1903,6 @@ def api_qa_publish(qa_id):
         errors = []
         if qa.risk_level in ("high", "critical") and qa.auto_reply:
             errors.append({"field": "auto_reply", "reason": "高/极高风险问答禁止自动回复"})
-        if qa.risk_level == "medium" and not qa.human_review:
-            errors.append({"field": "human_review", "reason": "中风险问答必须开启人工审核"})
         if qa.risk_level in ("high", "critical") and not qa.sop_id:
             errors.append({"field": "sop_id", "reason": "高/极高风险问答必须关联 SOP"})
         if errors:
@@ -1776,6 +1998,7 @@ def _extract_qa_kwargs(data):
     simple_fields = [
         "question", "answer", "intent", "sub_intent",
         "category_l1", "category_l2", "category_l3",
+        "scenario_category", "issue_type", "sop_id",
         "risk_level", "auto_reply", "human_review",
         "source_type", "status", "product_id",
     ]
@@ -2672,22 +2895,6 @@ def api_health_report():
                 "suggestion": "添加口语化变体以提高意图匹配率",
             })
 
-        # 5. QA: medium risk but human_review=False
-        rows = db.execute(
-            text("SELECT id, question FROM kb_qa WHERE risk_level = 'medium' AND human_review = 0 AND status != 'archived'")
-        ).fetchall()
-        for r in rows:
-            issue_id += 1
-            issues.append({
-                "id": issue_id,
-                "type": "medium_risk_no_review",
-                "severity": "warning",
-                "message": f"QA #{r[0]} 中风险但未要求人工审核",
-                "target_type": "kb_qa",
-                "target_id": r[0],
-                "suggestion": "建议开启人工审核",
-            })
-
         # 6. QA: high/critical risk but auto_reply=True
         rows = db.execute(
             text("SELECT id, question, risk_level FROM kb_qa WHERE risk_level IN ('high', 'critical') AND auto_reply = 1 AND status != 'archived'")
@@ -2701,7 +2908,7 @@ def api_health_report():
                 "message": f"QA #{r[0]} 为 {r[2]} 风险但开启了自动回复",
                 "target_type": "kb_qa",
                 "target_id": r[0],
-                "suggestion": "高风险QA应关闭自动回复并启用人工审核",
+                "suggestion": "高风险QA应关闭自动回复并关联SOP",
             })
 
         # 7. QA: answer shorter than 20 chars

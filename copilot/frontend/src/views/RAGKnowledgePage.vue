@@ -120,14 +120,11 @@ async function openDetail(id: number) {
   try {
     const { data } = await getRAGEntry(id)
     currentEntry.value = data
-    try {
-      const r = await getRAGEntryVersions(id)
-      versions.value = r.data.items || []
-    } catch { versions.value = [] }
-    try {
-      const r = await getRAGEntryAuditLog(id)
-      auditLog.value = r.data.items || []
-    } catch { auditLog.value = [] }
+    const [versionsRes, auditRes] = await Promise.allSettled([
+      getRAGEntryVersions(id), getRAGEntryAuditLog(id),
+    ])
+    versions.value = versionsRes.status === 'fulfilled' ? versionsRes.value.data.items || [] : []
+    auditLog.value = auditRes.status === 'fulfilled' ? auditRes.value.data.items || [] : []
   } catch {
     ElMessage.error('加载详情失败')
   } finally {

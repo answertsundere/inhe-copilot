@@ -155,7 +155,7 @@ class TestNoDuplicateKD100:
         """YT123456789 到哪里了 → 走聚水潭查订单"""
         result = _invoke("YT1234567890 到哪里了？")
         steps = _steps(result)
-        assert "jst_live_query" in steps
+        assert any(s in steps for s in ("jst_live_query", "tool_executor", "tool_executor_node"))
 
     def test_already_has_trace_skip(self):
         """已有 logistics_trace 时不再 query_logistics_trace"""

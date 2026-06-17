@@ -45,7 +45,8 @@ tr:hover td{background:#f7fafc}
 <script>
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
-async function api(path){const r=await fetch(path);return r.json()}
+const API_PREFIX = (location.pathname.startsWith('/ask/') || location.pathname === '/ask') ? '/ask' : '';
+async function api(path){const r=await fetch(API_PREFIX + path);return r.json()}
 function badge(cls,text){return `<span class="badge badge-${cls}">${text}</span>`}
 function pct(n,total){return total?((n/total)*100).toFixed(1)+'%':'-'}
 

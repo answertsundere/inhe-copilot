@@ -33,6 +33,7 @@ class ConversationContext:
     has_already_asked_product_info: bool = False
     has_already_apologized: bool = False
     needs_human_review: bool = False
+    context_reset_reason: str = ""
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
 
     @classmethod
@@ -77,4 +78,5 @@ def summarize_context(ctx: dict) -> dict:
         "has_already_asked_order_id": bool(ctx.get("has_already_asked_order_id")),
         "has_already_asked_product_info": bool(ctx.get("has_already_asked_product_info")),
         "needs_human_review": bool(ctx.get("needs_human_review")),
+        "context_reset_reason": ctx.get("context_reset_reason", ""),
     }

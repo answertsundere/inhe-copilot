@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.services.fact_type_service import fact_type_matches, is_strict_fact_type
@@ -31,6 +32,7 @@ HIGH_RISK_FACT_TYPES = {
     "dimensions",
     "age_range",
     "odor",
+    "pinch_safety",
     "safety_small_parts",
 }
 
@@ -42,6 +44,41 @@ UNREVIEWED_STATUSES = {
     "needs_update",
     "rejected",
 }
+
+# 安装/使用类证据里“免工具、几分钟装好”等可能误导买家的便利性表述。
+# 这类表述不应让整条证据变成 reference_only，而是先清洗表述、再放行。
+RISKY_CONVENIENCE_PHRASES = (
+    "安装很方便",
+    "安装非常方便",
+    "安装很简单",
+    "安装简单",
+    "操作很简单",
+    "操作简单",
+    "很容易安装",
+    "轻松安装",
+    "不需要额外工具",
+    "无需额外工具",
+    "不需要额外准备工具",
+    "无需额外准备工具",
+    "免工具安装",
+    "一般15-20分钟就能完成安装",
+    "15-20分钟就能完成安装",
+)
+
+
+def sanitize_risky_convenience_claim(text: str) -> tuple[str, bool]:
+    """移除安装便利性/免工具类表述，返回 (清洗后文本, 是否发生清洗)。"""
+    sanitized = text or ""
+    applied = False
+    for phrase in RISKY_CONVENIENCE_PHRASES:
+        if phrase in sanitized:
+            sanitized = sanitized.replace(phrase, "")
+            applied = True
+    if applied:
+        sanitized = re.sub(r"^[\s，,。\.；;！？!?:：、~～]+", "", sanitized)
+        sanitized = re.sub(r"[，,。\.；;！？!?:：、~～]{2,}", "。", sanitized)
+        sanitized = re.sub(r"\s+", " ", sanitized).strip(" ，,。.；;！？!?:：、~～")
+    return sanitized, applied
 
 
 def evaluate_evidence_item(item: dict[str, Any], state: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -107,9 +144,13 @@ def evaluate_evidence_item(item: dict[str, Any], state: dict[str, Any] | None = 
 
     risky_convenience = _contains_risky_convenience_claim(item)
     if risky_convenience:
+        # 便利性表述只作为 warning 记录；installation_guide 等结构化证据会被
+        # evidence_builder 清洗后再用，这里不阻断。但 faq 可能被直接渲染给买家，
+        # 若未经清洗则保守阻断，避免“免工具/几分钟装好”这类表述直接外露。
         reasons.append("risky_convenience_claim")
-        reference_only = True
-        exact_allowed = False
+        if source_type == "faq":
+            reference_only = True
+            exact_allowed = False
 
     if _is_absolute_stability_request(state, query_fact_type):
         reasons.append("absolute_stability_request")
@@ -194,30 +235,15 @@ def _contains_risky_convenience_claim(item: dict[str, Any]) -> bool:
     """Detect convenience promises that should be rewritten before customers see them."""
 
     text = " ".join(str(value or "") for value in (
-        item.get("title"),
         item.get("chunk_text"),
         item.get("fact"),
         item.get("content"),
-        (item.get("metadata") or {}).get("question"),
         (item.get("metadata") or {}).get("answer"),
     ))
     if not text:
         return False
 
-    risky_phrases = (
-        "\u5b89\u88c5\u5f88\u65b9\u4fbf",
-        "\u5b89\u88c5\u975e\u5e38\u65b9\u4fbf",
-        "\u5b89\u88c5\u5f88\u7b80\u5355",
-        "\u5b89\u88c5\u7b80\u5355",
-        "\u64cd\u4f5c\u5f88\u7b80\u5355",
-        "\u5f88\u5bb9\u6613\u5b89\u88c5",
-        "\u8f7b\u677e\u5b89\u88c5",
-        "\u4e0d\u9700\u8981\u989d\u5916\u5de5\u5177",
-        "\u65e0\u9700\u989d\u5916\u5de5\u5177",
-        "\u4e00\u822c15-20\u5206\u949f\u5c31\u80fd\u5b8c\u6210\u5b89\u88c5",
-        "15-20\u5206\u949f\u5c31\u80fd\u5b8c\u6210\u5b89\u88c5",
-    )
-    return any(phrase in text for phrase in risky_phrases)
+    return any(phrase in text for phrase in RISKY_CONVENIENCE_PHRASES)
 
 
 def _is_absolute_stability_request(state: dict[str, Any], query_fact_type: str) -> bool:

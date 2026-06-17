@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 
 from app.llm.client import get_llm_client
+from app.services.logistics_fast_path import get_explicit_logistics_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ ALLOWED_INTENTS = {
     "installation",
     "complaint",
     "delivery_not_received",
+    "needs_clarification",
     "general",
 }
 ALLOWED_IDENTIFIER_TYPES = {
@@ -38,6 +41,38 @@ ALLOWED_IDENTIFIER_TYPES = {
     "order_id", "possible_numeric_id",
 }
 ALLOWED_TOOLS = {"jst_live_query", "rag_retrieve", "none"}
+
+IMAGE_MARKER_RE = re.compile(r"\[\s*\u56fe\u7247\s*\d*\s*\]")
+TEXT_PRODUCT_QUESTION_TERMS = (
+    "\u5417", "\u5462", "\u600e\u4e48", "\u5982\u4f55", "\u53ef\u4ee5",
+    "\u80fd\u4e0d\u80fd", "\u662f\u4e0d\u662f", "\u6709\u6ca1\u6709",
+    "\u4f1a\u4e0d\u4f1a", "\u53ef\u62c6", "\u62c6\u5378", "\u5b89\u88c5",
+    "\u7ec4\u88c5", "\u6750\u8d28", "\u627f\u91cd", "\u5c3a\u5bf8",
+    "\u6e05\u6d17", "\u9632\u6f6e",
+)
+
+
+def _has_product_context(state: dict) -> bool:
+    ctx = state.get("copilot_context", {}) or {}
+    identity = state.get("order_product_identity") or {}
+    slots = state.get("slots", {}) or {}
+    return bool(
+        state.get("matched_product_name")
+        or state.get("product_candidates")
+        or ctx.get("product_name")
+        or ctx.get("product_candidates")
+        or slots.get("sku_code")
+        or slots.get("product_name")
+        or identity.get("status") == "resolved"
+        or identity.get("matched_product_name")
+        or identity.get("sku_id")
+    )
+
+
+def _has_text_product_question(state: dict) -> bool:
+    msg = state.get("normalized_message", state.get("customer_message", "")) or ""
+    text = IMAGE_MARKER_RE.sub("", msg).strip()
+    return bool(text and any(term in text for term in TEXT_PRODUCT_QUESTION_TERMS))
 
 
 SYSTEM_PROMPT = """你是客服 Agent 的语义路由器，只输出 JSON，不要输出客服回复。
@@ -77,6 +112,36 @@ def llm_intent_router(state: dict) -> dict:
     fallback_intent = state.get("intent", "general")
     slots = state.get("slots", {}) or {}
     msg = state.get("normalized_message", state.get("customer_message", ""))
+
+    # 规则已判定为需要澄清的模糊问题，LLM 不再覆盖
+    if fallback_intent == "needs_clarification":
+        return _result(
+            state,
+            _fallback_decision(state, "rule_needs_clarification_sticky"),
+            t0,
+            "rule_sticky",
+            "规则判定问题描述过于模糊，保持 needs_clarification",
+        )
+
+    explicit_identifier = get_explicit_logistics_identifier(state)
+    if explicit_identifier:
+        decision = _fallback_decision(state, "explicit_logistics_identifier_fast_path")
+        decision.update({
+            "intent": _canonical_intent(fallback_intent),
+            "confidence": 1.0,
+            "identifier_type": explicit_identifier["identifier_type"],
+            "identifier_value": explicit_identifier["identifier_value"],
+            "need_tool": True,
+            "tool_name": "jst_live_query",
+            "reason": "explicit_logistics_identifier_fast_path",
+        })
+        return _result(
+            state,
+            decision,
+            t0,
+            "explicit_logistics_identifier_fast_path",
+            "explicit logistics identifier; skip intent LLM",
+        )
 
     llm_client = get_llm_client()
     if not llm_client.api_key:
@@ -167,6 +232,9 @@ def _sanitize_decision(decision: dict, state: dict) -> dict:
     slots = state.get("slots", {}) or {}
     rule_intent = state.get("intent", "general")
     llm_intent = _canonical_intent(str(decision.get("intent", "") or rule_intent))
+    has_product_text_question = _has_product_context(state) and _has_text_product_question(state)
+    if llm_intent == "image_attachment" and has_product_text_question:
+        llm_intent = "product_question"
 
     # Protect high-confidence rule-detected intents from LLM override
     # When slots have order identifier and message has logistics semantics,
@@ -184,9 +252,14 @@ def _sanitize_decision(decision: dict, state: dict) -> dict:
         "stock_query", "child_safety", "competitor_compare", "odor_question",
         "cleaning_care", "material_safety", "image_attachment",
     ) and llm_intent in ("aftersales", "product_question", "product_consult", "general"):
-        llm_intent = rule_intent
+        if not (rule_intent == "image_attachment" and has_product_text_question):
+            llm_intent = rule_intent
 
-    if rule_intent in _PROTECTED_INTENTS and llm_intent in _DOWNGRADE_TARGETS:
+    if (
+        rule_intent in _PROTECTED_INTENTS
+        and llm_intent in _DOWNGRADE_TARGETS
+        and not (rule_intent == "image_attachment" and has_product_text_question)
+    ):
         # Check if there's an order identifier supporting the rule intent
         has_identifier = bool(
             slots.get("order_id") or state.get("order_id", "")
@@ -241,6 +314,10 @@ def _sanitize_decision(decision: dict, state: dict) -> dict:
     tool_name = str(decision.get("tool_name", "") or "none")
     if tool_name not in ALLOWED_TOOLS:
         tool_name = "none"
+    if intent == "product_question" and tool_name == "none":
+        tool_name = "rag_retrieve"
+    elif intent == "installation" and tool_name == "none":
+        tool_name = "rag_retrieve"
 
     need_tool = bool(decision.get("need_tool", False))
     if tool_name != "none":

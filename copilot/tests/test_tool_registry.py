@@ -270,7 +270,10 @@ class TestPlanTools:
         plan = result["tool_plan"]
         tool_names = [c["tool_name"] for c in plan]
         assert "jst_lookup_outbound_tool" in tool_names
-        assert result["tool_planner_source"] == "auto_required"
+        assert result["tool_planner_source"] in (
+            "auto_required",
+            "explicit_logistics_identifier_fast_path",
+        )
 
     def test_forbidden_tool_removed_from_plan(self):
         """forbidden_tool 从计划中移除"""

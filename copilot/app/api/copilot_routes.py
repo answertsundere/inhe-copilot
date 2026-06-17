@@ -19,6 +19,35 @@ def get_feedback_service():
     return _get()
 
 
+def _extract_media_identifiers(context: dict):
+    """从 sidecar context 提取 i_id / sku_code / product_name / product_id。"""
+    i_id = sku_code = product_name = None
+    product_id = None
+    for cand in context.get("product_candidates", []) or []:
+        if not isinstance(cand, dict):
+            continue
+        value = str(cand.get("value") or "").strip()
+        if not value:
+            continue
+        ctype = str(cand.get("type") or "").lower()
+        if "product_id" in ctype:
+            try:
+                product_id = int(value)
+            except Exception:
+                pass
+        elif "sku" in ctype or "i_id" in ctype:
+            if i_id is None:
+                i_id = value
+            if sku_code is None:
+                sku_code = value
+        elif "product_name" in ctype or "name" in ctype:
+            if product_name is None:
+                product_name = value
+    if not product_name:
+        product_name = context.get("product_name") or ""
+    return i_id, sku_code, product_name, product_id
+
+
 def _resolve_identifiers(context: dict) -> tuple[str, str, str, str]:
     """Resolve order_id, tracking_no, platform_trade_id, product_name from context candidates."""
     order_id = context.get("order_id", "")
@@ -52,7 +81,14 @@ def _resolve_identifiers(context: dict) -> tuple[str, str, str, str]:
     return order_id, tracking_no, platform_trade_id, product_name
 
 
-def _to_copilot_response(response: dict, context: dict, duration_ms: int) -> dict:
+def _to_copilot_response(
+    response: dict,
+    context: dict,
+    duration_ms: int,
+    recommended_assets: list | None = None,
+    reply_blocks: list | None = None,
+    reply_delivery: dict | None = None,
+) -> dict:
     """Transform execute_analysis response to copilot panel format."""
     if response.get("error"):
         return {
@@ -104,6 +140,9 @@ def _to_copilot_response(response: dict, context: dict, duration_ms: int) -> dic
         "trace_id": response.get("trace_id", ""),
         "conversation_id": context.get("conversation_id", ""),
         "suggested_reply": response.get("suggested_reply", ""),
+        "recommended_assets": recommended_assets or [],
+        "reply_blocks": reply_blocks or [],
+        "reply_delivery": reply_delivery or {"mode": "blocks", "auto_send_ready": False, "reason": "not_built"},
         "intent": response.get("intent", ""),
         "risk_level": response.get("risk_level", ""),
         "customer_emotion": response.get("customer_emotion", ""),
@@ -114,6 +153,9 @@ def _to_copilot_response(response: dict, context: dict, duration_ms: int) -> dic
         "used_fact_tools": used_fact_tools,
         "evidence_debug": evidence_debug,
         "execution_debug": execution_debug,
+        "final_response_pipeline": response.get("final_response_pipeline", {}),
+        "final_answer_audit": response.get("final_answer_audit", {}),
+        "customer_reply_polish": response.get("customer_reply_polish", {}),
         "trace_steps": response.get("trace_steps", []),
         "context_echo": {
             "source": context.get("source", ""),
@@ -179,11 +221,60 @@ def api_copilot_context():
         copilot_context=context,
         source=source,
         scenario=scenario,
+        final_orchestration=False,
     )
 
-    # 6. Transform to copilot panel response format
+    # 6. 推荐已审核素材（不自动发送，仅作客服参考）
+    recommended_assets = []
+    reply_blocks = []
+    reply_delivery = {"mode": "blocks", "auto_send_ready": False, "reason": "not_built"}
+    try:
+        from app.services.media_asset_service import build_reply_blocks, recommend_for_analyze_response, select_delivery_assets
+        reco_i_id, reco_sku, reco_product_name, reco_product_id = _extract_media_identifiers(context)
+        reco = recommend_for_analyze_response(
+            response,
+            customer_message=message,
+            product_name=reco_product_name or None,
+            i_id=reco_i_id,
+            sku_code=reco_sku,
+            product_id=reco_product_id,
+        )
+        recommended_assets = select_delivery_assets(reco.get("recommended_assets") or [], max_assets=1)
+        block_result = build_reply_blocks(
+            response.get("suggested_reply", ""),
+            recommended_assets,
+            requires_human_review=bool(response.get("requires_human_review")),
+        )
+        reply_blocks = block_result["reply_blocks"]
+        reply_delivery = block_result["reply_delivery"]
+    except Exception:
+        pass
+
+    try:
+        from app.services.final_response_orchestrator import orchestrate_final_response
+        response["recommended_assets"] = recommended_assets
+        response["reply_blocks"] = reply_blocks
+        response["reply_delivery"] = reply_delivery
+        response = orchestrate_final_response(
+            response,
+            customer_message=message,
+            copilot_context=context,
+        )
+        reply_blocks = response.get("reply_blocks", reply_blocks)
+        reply_delivery = response.get("reply_delivery", reply_delivery)
+    except Exception:
+        pass
+
+    # 7. Transform to copilot panel response format
     duration_ms = int((time.time() - t0) * 1000)
-    response = _to_copilot_response(response, context, duration_ms)
+    response = _to_copilot_response(
+        response,
+        context,
+        duration_ms,
+        recommended_assets=recommended_assets,
+        reply_blocks=reply_blocks,
+        reply_delivery=reply_delivery,
+    )
 
     return jsonify(response)
 

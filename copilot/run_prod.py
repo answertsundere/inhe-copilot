@@ -64,7 +64,8 @@ def main():
     wrapped = StripPathPrefix(app, "/ask")
 
     print(f"Starting production server on {WEB_HOST}:{WEB_PORT}")
-    print(f"Access: https://www.inhe.ccwu.cc/ask/")
+    print(f"Access: https://www.inhe.ccwu.cc/ask/real-test")
+    print(f"  or:   https://www.inhe.ccwu.cc/ask/training-samples")
     print(f"  or:   https://www.inhe.ccwu.cc/ask/kb-admin/")
     try:
         from waitress import serve

@@ -73,10 +73,13 @@ def test_fact_type_falls_back_when_llm_unavailable(monkeypatch):
     monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
     monkeypatch.setattr(service, "get_llm_client", lambda: type("NoKey", (), {"api_key": ""})())
 
+    # A keyword-free question cannot be classified deterministically (rule_precheck
+    # only fires when a rule matches), so the LLM-first path is taken. With the LLM
+    # client reporting no api_key it must fall back to the deterministic result.
     result = service.classify_query_fact_type_llm_first({
-        "customer_message": "可以开发票吗？",
+        "customer_message": "想了解一下这款",
         "intent": "product_question",
     })
 
-    assert result["query_fact_type"] == "invoice_policy"
+    assert result["query_fact_type"] == ""
     assert result["source"] == "rule_fallback"

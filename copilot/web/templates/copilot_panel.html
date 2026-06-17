@@ -77,6 +77,23 @@
     .ai-reply { white-space: pre-wrap; line-height: 1.6; background: var(--blue-light); border: 1px solid var(--blue-border); border-radius: 6px; padding: 10px; font-size: 13px; min-height: 40px; }
     .ai-meta { font-size: 11px; color: var(--gray); margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
 
+    /* === Recommended Assets === */
+    .media-section { margin-top: 10px; }
+    .media-section-title { font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .media-list { display: flex; flex-direction: column; gap: 8px; }
+    .media-card { border: 1px solid var(--border); border-radius: 6px; padding: 10px; background: #fff; }
+    .media-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .media-type-badge { display: inline-block; padding: 1px 7px; border-radius: 4px; background: #fff7e6; color: #b45309; border: 1px solid #fde68a; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .media-card-title { font-weight: 700; font-size: 13px; color: var(--text); word-break: break-all; }
+    .media-card-sub { font-size: 11px; color: var(--gray); margin-bottom: 6px; }
+    .media-card-reason { font-size: 11px; color: var(--gray); margin-bottom: 6px; line-height: 1.45; }
+    .media-thumb { width: 100%; max-height: 160px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #f3f4f6; margin-bottom: 8px; cursor: pointer; }
+    .media-video-icon { display: inline-flex; align-items: center; gap: 4px; color: var(--gray); font-size: 12px; }
+    .media-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .media-actions .btn { font-size: 12px; padding: 0 10px; height: 28px; }
+    .media-actions .btn.selected { background: var(--green); color: #fff; border-color: var(--green); }
+    .media-hint { font-size: 11px; color: var(--gray); margin-top: 6px; }
+
     /* === Reject Reasons === */
     .reject-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .reject-opt { padding: 3px 8px; border-radius: 4px; font-size: 11px; border: 1px solid var(--border); cursor: pointer; background: var(--card); }
@@ -120,7 +137,7 @@
     &#9888; 命中知识未审核，建议核实后回复。
   </div>
   <div id="humanReviewBanner" class="banner danger" style="display:none">
-    &#9888; 高风险消息，需人工复核。
+    &#9888; <span id="humanReviewText">需人工复核</span>
   </div>
 
   <!-- === 2. Customer Message === -->
@@ -133,7 +150,23 @@
       <textarea id="customerMessage" placeholder="粘贴或输入客户消息，点击"分析"后开始"></textarea>
       <div class="btn-row">
         <button class="btn primary" id="analyzeBtn">分析</button>
+        <button class="btn" id="reloadBtn">刷新会话</button>
+        <button class="btn" id="captureQianniuBtn">捕获千牛</button>
         <button class="btn" id="clearBtn">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === 2.5 Latest Conversation History === -->
+  <div class="section" id="historySection">
+    <div class="section-header" data-toggle="historyBody">
+      最近会话上下文
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="section-body" id="historyBody">
+      <div class="cand-list" id="histList"></div>
+      <div class="btn-row">
+        <button class="btn" id="pollLatestBtn">获取最新</button>
       </div>
     </div>
   </div>
@@ -158,6 +191,12 @@
     <div class="section-body" id="aiSection">
       <div class="ai-reply" id="aiReply">暂无建议回复，请先输入客户消息并点击分析。</div>
       <div class="ai-meta" id="aiMeta"></div>
+      <!-- 建议发送素材：AI 推荐已审核素材，客服人工确认后手动发送，不自动发送 -->
+      <div class="media-section" id="mediaSection" style="display:none">
+        <div class="media-section-title">建议发送素材</div>
+        <div class="media-list" id="mediaList"></div>
+        <div class="media-hint">选中素材后，其链接会自动追加到下方「最终回复」中，客服确认后可复制发送。</div>
+      </div>
     </div>
   </div>
 
@@ -185,6 +224,7 @@
         <button class="btn" id="editAcceptBtn">修改后采纳</button>
         <button class="btn red" id="rejectBtn">拒绝</button>
         <button class="btn orange" id="escalateBtn">转人工/主管</button>
+        <button class="btn" id="trainingSampleBtn">加入训练样本</button>
       </div>
     </div>
   </div>
@@ -233,12 +273,24 @@
 (function() {
   "use strict";
 
+  // --- API prefix helper: works both under /ask tunnel and direct access ---
+  const API_PREFIX = (location.pathname.startsWith('/ask/') || location.pathname === '/ask') ? '/ask' : '';
+  const _origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string' && input.startsWith('/api/')) {
+      input = API_PREFIX + input;
+    }
+    return _origFetch(input, init);
+  };
+
   // --- State ---
   let lastResult = null;
   let currentSource = "manual";
   let candidates = { order_candidates: [], tracking_candidates: [], product_candidates: [] };
   let selectedRejectReason = "";
   let analyzed = false;
+  let latestConversationHistory = [];
+  let latestMessageHash = "";
 
   const $ = (id) => document.getElementById(id);
 
@@ -272,6 +324,59 @@
         localStorage.removeItem("sidecar_prefill");
       }
     } catch(e) {}
+  }
+
+  // --- Sidecar latest context ---
+  async function get_sidecar_latest() {
+    return await pollLatest();
+  }
+
+  async function pollLatest() {
+    try {
+      var resp = await fetch("/api/sidecar/latest", { method: "GET" });
+      var data = await resp.json();
+      if (!data || !data.ok) return;
+      latestConversationHistory = data.latest_messages || [];
+      latestMessageHash = data.latest_message_hash || "";
+      if (data.latest_customer_message && $("customerMessage").value.trim() === "") {
+        $("customerMessage").value = data.latest_customer_message;
+      }
+      if (data.order_candidates || data.tracking_candidates || data.product_candidates) {
+        candidates = {
+          order_candidates: data.order_candidates || [],
+          tracking_candidates: data.tracking_candidates || [],
+          product_candidates: data.product_candidates || [],
+        };
+        renderCandidates();
+      }
+      setConversationHistory(data.latest_messages);
+      return data;
+    } catch(e) {
+      console.warn("pollLatest failed", e);
+    }
+  }
+
+  async function capture_qianniu_once() {
+    return await pollLatest();
+  }
+
+  function setConversationHistory(messages) {
+    latestConversationHistory = messages || [];
+    renderHistory();
+  }
+
+  function renderHistory() {
+    var list = $("histList");
+    if (!list) return;
+    if (!latestConversationHistory.length) {
+      list.innerHTML = "<div class='cand-item'>暂无最近会话上下文</div>";
+      return;
+    }
+    list.innerHTML = latestConversationHistory.map(function(m) {
+      var role = m.role || "unknown";
+      var text = m.text || "";
+      return '<div class="cand-item"><span class="cand-type">' + role + '</span><span class="cand-value">' + text + '</span></div>';
+    }).join("");
   }
 
   // --- Section Toggle ---
@@ -323,6 +428,9 @@
 
   // --- Analyze ---
   $("analyzeBtn").addEventListener("click", doAnalyze);
+  $("reloadBtn").addEventListener("click", pollLatest);
+  $("captureQianniuBtn").addEventListener("click", capture_qianniu_once);
+  $("pollLatestBtn").addEventListener("click", pollLatest);
   $("clearBtn").addEventListener("click", function() {
     $("customerMessage").value = "";
     $("aiReply").textContent = "暂无建议回复，请先输入客户消息并点击分析。";
@@ -332,6 +440,10 @@
     $("reviewBadge").style.display = "none";
     $("humanReviewBanner").style.display = "none";
     $("evidenceBlockedBanner").style.display = "none";
+    $("mediaSection").style.display = "none";
+    $("mediaList").innerHTML = "";
+    latestConversationHistory = [];
+    renderHistory();
     lastResult = null;
     analyzed = false;
   });
@@ -345,7 +457,7 @@
     var payload = {
       source: currentSource === "manual" ? "copilot_panel_manual" : currentSource,
       customer_message: message,
-      conversation_history: [],
+      conversation_history:latestConversationHistory,
       order_candidates: candidates.order_candidates,
       tracking_candidates: candidates.tracking_candidates,
       product_candidates: candidates.product_candidates,
@@ -383,6 +495,10 @@
     // Human review
     if (data.requires_human_review) {
       $("reviewBadge").style.display = "";
+      var humanReviewText = $("humanReviewText");
+      if (humanReviewText) {
+        humanReviewText.textContent = data.reason_for_review || data.review_reason || "需人工复核";
+      }
       $("humanReviewBanner").style.display = "";
     } else {
       $("reviewBadge").style.display = "none";
@@ -412,6 +528,64 @@
 
     // Debug
     $("debugBox").textContent = JSON.stringify(data, null, 2);
+
+    // Recommended assets are only shown when they were not already embedded
+    // into the reply send plan.
+    var blocks = Array.isArray(data.reply_blocks) ? data.reply_blocks : [];
+    var hasMediaBlock = blocks.some(function(block) {
+      return block && (block.type === "image" || block.type === "video");
+    });
+    renderMediaSuggest(hasMediaBlock ? [] : (data.recommended_assets || []));
+  }
+
+  const MEDIA_TYPE_LABELS = {install_video:'安装视频',install_image:'安装图',sku_image:'商品图',pack_guide_image:'打包/安装指导图',accessory_image:'配件图',size_image:'尺寸图',other:'素材'};
+  function renderMediaSuggest(assets) {
+    const section = $("mediaSection"), list = $("mediaList");
+    if (!section || !list) return;
+    if (!assets || !assets.length) { section.style.display = "none"; list.innerHTML = ""; return; }
+    section.style.display = "";
+    list.innerHTML = assets.map(function(a, idx) {
+      const label = MEDIA_TYPE_LABELS[a.asset_type] || a.asset_type || '素材';
+      const title = a.asset_title || label;
+      const prod = a.product_name || a.i_id || a.sku_code || '';
+      const isVideo = a.asset_type === 'install_video';
+      const thumb = isVideo
+        ? '<div class="media-video-icon">&#9658; 视频素材</div>'
+        : '<img class="media-thumb" src="' + escapeHtml(a.asset_url) + '" alt="' + escapeHtml(title) + '" onclick="window.open(this.src,\'_blank\')">';
+      const reason = a.match_reason ? '<div class="media-card-reason">' + escapeHtml(a.match_reason) + '</div>' : '';
+      return '<div class="media-card" data-idx="' + idx + '" data-url="' + escapeHtml(a.asset_url) + '">'
+        + '<div class="media-card-head"><span class="media-type-badge">' + label + '</span><span class="media-card-title">' + escapeHtml(title) + '</span></div>'
+        + (prod ? '<div class="media-card-sub">商品：' + escapeHtml(prod) + '</div>' : '')
+        + reason
+        + thumb
+        + '<div class="media-actions">'
+        + '<button type="button" class="btn" onclick="toggleMediaSelect(' + idx + ')">选择发送</button>'
+        + '<button type="button" class="btn" onclick="copyMediaUrl(' + idx + ')">复制链接</button>'
+        + '<button type="button" class="btn" onclick="openMedia(' + idx + ')">查看素材</button>'
+        + '</div></div>';
+    }).join("");
+  }
+  function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function _mediaCard(idx) { return document.querySelector('.media-card[data-idx="' + idx + '"]'); }
+  function _mediaUrl(idx) { const card = _mediaCard(idx); return card ? card.getAttribute('data-url') : ''; }
+  function toggleMediaSelect(idx) {
+    const url = _mediaUrl(idx); if (!url) return;
+    const final = $("finalReply");
+    const current = final.value || "";
+    if (current.indexOf(url) >= 0) {
+      final.value = current.replace(new RegExp("\\n?" + url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "\\n?"), "").trim();
+      const btn = _mediaCard(idx).querySelector('button'); if (btn) { btn.textContent = "选择发送"; btn.classList.remove("selected"); }
+    } else {
+      final.value = (current ? current + "\n" : "") + url;
+      const btn = _mediaCard(idx).querySelector('button'); if (btn) { btn.textContent = "已选择"; btn.classList.add("selected"); }
+    }
+  }
+  function copyMediaUrl(idx) {
+    const url = _mediaUrl(idx); if (!url) return;
+    navigator.clipboard.writeText(url);
+  }
+  function openMedia(idx) {
+    const url = _mediaUrl(idx); if (url) window.open(url, "_blank");
   }
 
   // --- Copy ---
@@ -491,11 +665,58 @@
   // --- Escalate ---
   $("escalateBtn").addEventListener("click", function() { sendFeedback("escalated"); });
 
+  // --- Training Sample ---
+  $("trainingSampleBtn").addEventListener("click", async function() {
+    var customerMessage = $("customerMessage").value.trim();
+    if (!customerMessage) { alert("当前没有客户问题，无法加入训练样本"); return; }
+    var id = lastResult ? (lastResult.order_product_identity || (lastResult.evidence_debug || {}).order_product_identity || {}) : {};
+    var data = lastResult || {};
+    var payload = {
+      customer_quote: customerMessage,
+      full_context: customerMessage,
+      product_title: id.matched_product_name || '',
+      sku: id.sku_id || '',
+      order_no: (candidates.order_candidates[0] || {}).order_no || '',
+      csr_actual_reply: data.suggested_reply || '',
+      shop_platform: '',
+      question_type: '',
+      risk_level: '中',
+      auto_reply_type: '需人工确认',
+      review_status: '待处理',
+    };
+    var btn = $("trainingSampleBtn");
+    btn.disabled = true;
+    btn.textContent = "保存中...";
+    try {
+      var res = await fetch("/ask/api/kb/training-samples", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      var result = await res.json().catch(function() { return {}; });
+      if (res.ok && result.id) {
+        if (confirm("已加入训练样本 #" + result.id + "，是否前往完善图文详情？")) {
+          window.open("/ask/kb-admin/#/training-samples?id=" + result.id, "_blank");
+        }
+      } else {
+        alert(result.error || "加入失败");
+      }
+    } catch (e) {
+      alert("网络错误：" + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "加入训练样本";
+    }
+  });
+
   // --- Init ---
   initParams();
   renderCandidates();
+  renderHistory();
+  pollLatest();
 })();
 </script>
+
 <!-- Global Navigation Bar -->
 <style>
 .gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
@@ -509,21 +730,19 @@ body{margin-top:40px!important;height:calc(100vh - 40px)!important}
 </style>
 <nav class="gnav-bar">
   <span class="gnav-brand">INHE</span>
-  <a href="/ask/" data-path="/">客服助手</a>
-  <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
-  <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
-  <a href="/ask/settings" data-path="/settings">设置</a>
-  <a href="/ask/graph" data-path="/graph">流程图</a>
-  <a href="/ask/api-test" data-path="/api-test">API</a>
+  <a href="/ask/" data-path="/ask/">客服助手</a>
+  <a href="/ask/copilot-panel" data-path="/ask/copilot-panel">千牛监控</a>
+  <a href="/ask/kb-admin/" data-path="/ask/kb-admin/">知识库</a>
+  <a href="/ask/settings" data-path="/ask/settings">设置</a>
 </nav>
 <script>
 (function(){
   var p=location.pathname.replace(/\/$/,'')||'/';
   document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a){
-    var h=a.getAttribute('data-path');
+    var h=a.getAttribute('data-path').replace(/\/$/,'')||'/';
     if(h===p){a.classList.add('gnav-active')}
   });
-  if(p==='/copilot-panel'){var a=document.querySelector('.gnav-bar a[data-path="/copilot-panel"]');if(a)a.classList.add('gnav-highlight')}
+  if(p.endsWith('/copilot-panel')){var a=document.querySelector('.gnav-bar a[data-path="/ask/copilot-panel"]');if(a)a.classList.add('gnav-highlight')}
 })()
 </script>
 </body>

@@ -6,6 +6,7 @@ import re
 import time
 
 from app.services.skill_router import SkillRouter
+from app.services.aftersales_intent_service import classify_colloquial_aftersales
 from app.services.tracking_service import extract_tracking_no
 
 _skill_router = SkillRouter()
@@ -36,6 +37,7 @@ _AFTERSALES_KEYWORDS = [
     "瑕疵", " defective", "售后", "退换", "退",
     "缺件", "错发", "漏发", "划痕", "卡住", "松动", "变形", "开裂",
     "异味", "味道很大",
+    "能补吗", "补一个", "补一件", "能补发", "给补一个",
 ]
 
 # 安装关键词
@@ -153,6 +155,14 @@ _STOCK_QUERY_KEYWORDS = [
     "\u73b0\u8d27",
 ]
 
+_STOCK_FOLLOWUP_KEYWORDS = [
+    "\u8fd8\u80fd\u53d1",
+    "\u80fd\u53d1\u4e0d",
+    "\u8fd8\u53d1\u5417",
+    "\u8fd8\u6709\u5417",
+    "\u53ef\u4ee5\u53d1\u5417",
+]
+
 _CHILD_SAFETY_QUERY_KEYWORDS = [
     "\u653e\u5634\u91cc",
     "\u54ac",
@@ -218,11 +228,54 @@ _IMAGE_ATTACHMENT_KEYWORDS = [
     "\u5982\u56fe",
 ]
 
+# 模糊/需要补充信息的问题（无明确事实类型，不能拿任意商品字段回答）
+_VAGUE_QUESTION_PATTERNS = [
+    "帮我看下是什么情况",
+    "这个怎么回事",
+    "这个是哪里的问题",
+    "这个怎么办",
+    "帮我看一下",
+    "你看这个",
+    "帮我看看",
+    "看一下这个",
+    "这是怎么了",
+    "这是什么东西",
+]
+
+
+def _is_vague_question(msg: str) -> bool:
+    """买家问题过于模糊，没有明确问题类型/图片/上下文，需要补充信息。"""
+    msg = (msg or "").strip()
+    if not msg:
+        return False
+    for pattern in _VAGUE_QUESTION_PATTERNS:
+        if pattern in msg:
+            return True
+    # 极短问句 + 疑问词，且没有具体事实关键词，也视为模糊
+    if len(msg) <= 12 and any(k in msg for k in ("怎么回事", "怎么办", "是什么", "看一下", "看看")):
+        return True
+    return False
+
 
 def _has_image_attachment(state: dict, msg: str) -> bool:
     ctx = state.get("copilot_context", {}) or {}
     attachments = state.get("image_attachments") or ctx.get("image_attachments") or []
     return bool(attachments or ctx.get("has_image_attachment") or _keyword_match(msg, _IMAGE_ATTACHMENT_KEYWORDS))
+
+
+def _has_text_product_question(msg: str) -> bool:
+    text = re.sub(r"\[\s*\u56fe\u7247\s*\d*\s*\]", "", msg or "")
+    text = text.strip()
+    if not text:
+        return False
+    question_terms = (
+        "\u5417", "\u5462", "\u600e\u4e48", "\u5982\u4f55", "\u53ef\u4ee5", "\u80fd\u4e0d\u80fd",
+        "\u662f\u4e0d\u662f", "\u6709\u6ca1\u6709", "\u4f1a\u4e0d\u4f1a", "\u53ef\u62c6",
+        "\u62c6\u5378", "\u5b89\u88c5", "\u7ec4\u88c5", "\u6750\u8d28", "\u627f\u91cd",
+        "\u5c3a\u5bf8", "\u6e05\u6d17", "\u9632\u6f6e",
+    )
+    image_only_terms = ("\u56fe\u7247", "\u7167\u7247", "\u622a\u56fe", "\u770b\u56fe", "\u5982\u56fe")
+    return any(term in text for term in question_terms) and not all(term in text for term in image_only_terms)
 
 
 def _is_logistics_time_query(msg: str) -> bool:
@@ -239,6 +292,10 @@ def _has_numeric_logistics_query(msg: str) -> bool:
     logistics_terms = [
         "快递", "物流", "运单", "单号", "发货", "到货", "配送", "签收",
         "什么时候到", "大概什么时候到", "几天到", "多久到", "到哪",
+        "\u5feb\u9012", "\u7269\u6d41", "\u8fd0\u5355", "\u5355\u53f7",
+        "\u53d1\u8d27", "\u5230\u8d27", "\u914d\u9001", "\u7b7e\u6536",
+        "\u4ec0\u4e48\u65f6\u5019\u5230", "\u51e0\u5929\u5230",
+        "\u591a\u4e45\u5230", "\u5230\u54ea",
     ]
     return any(term in msg for term in logistics_terms)
 
@@ -249,13 +306,32 @@ def _has_order_identifier_in_state(state: dict) -> bool:
     return has_order_identifier(state)
 
 
+def _history_text(state: dict) -> str:
+    ctx = state.get("copilot_context", {}) or {}
+    history = ctx.get("conversation_history") or state.get("conversation_history") or []
+    parts = []
+    for item in history:
+        if isinstance(item, dict):
+            parts.append(str(item.get("text") or item.get("content") or ""))
+        else:
+            parts.append(str(item or ""))
+    return "\n".join(parts)
+
+
+def _is_stock_followup(msg: str, state: dict) -> bool:
+    if not any(term in msg for term in _STOCK_FOLLOWUP_KEYWORDS):
+        return False
+    history = _history_text(state)
+    return any(term in history for term in _STOCK_QUERY_KEYWORDS + ["\u6709\u8d27\u5417", "\u8fd8\u6709"])
+
+
 def detect_intent(state: dict) -> dict:
     """识别客户意图（优先级：high_risk > delivery_not_received > aftersales > installation > logistics > product_question > unknown）"""
     t0 = time.time()
     msg = state.get("normalized_message", state.get("customer_message", ""))
 
     # 0.5 图片/截图附件：作为证据入口处理，不能仅凭图片直接下事实结论
-    if _has_image_attachment(state, msg) and not _keyword_match(msg, _HIGH_RISK_KEYWORDS):
+    if _has_image_attachment(state, msg) and not _has_text_product_question(msg) and not _keyword_match(msg, _HIGH_RISK_KEYWORDS):
         intent = "image_attachment"
         duration_ms = int((time.time() - t0) * 1000)
         trace = {
@@ -291,6 +367,25 @@ def detect_intent(state: dict) -> dict:
         }
 
     # 2. 签收未收到场景
+    colloquial_aftersales = classify_colloquial_aftersales(msg)
+    if colloquial_aftersales.get("matched"):
+        intent = "aftersales"
+        duration_ms = int((time.time() - t0) * 1000)
+        trace = {
+            "node": "detect_intent",
+            "status": "success",
+            "duration_ms": duration_ms,
+            "cache_hit": False,
+            "summary": f"colloquial_aftersales -> {colloquial_aftersales.get('subtype')}",
+        }
+        return {
+            "intent": intent,
+            "skill": "aftersales",
+            "final_intent": colloquial_aftersales.get("subtype"),
+            "matched_keywords": [colloquial_aftersales.get("subtype")],
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
     signed_not_received = any(kw in msg for kw in _SIGNED_NOT_RECEIVED)
     if signed_not_received:
         intent = "delivery_not_received"
@@ -396,6 +491,24 @@ def detect_intent(state: dict) -> dict:
             "skill": "shipping",
             "matched_keywords": [k for k in _STOCK_QUERY_KEYWORDS if k in msg][:3],
             "is_logistics_time_commitment": "\u9a6c\u4e0a\u53d1" in msg or "\u4eca\u5929\u53d1" in msg,
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
+    if _is_stock_followup(msg, state):
+        intent = "stock_query"
+        duration_ms = int((time.time() - t0) * 1000)
+        trace = {
+            "node": "detect_intent",
+            "status": "success",
+            "duration_ms": duration_ms,
+            "cache_hit": False,
+            "summary": f"stock_followup -> {intent}",
+        }
+        return {
+            "intent": intent,
+            "skill": "shipping",
+            "matched_keywords": [k for k in _STOCK_FOLLOWUP_KEYWORDS if k in msg][:3],
+            "is_logistics_time_commitment": True,
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
@@ -515,6 +628,24 @@ def detect_intent(state: dict) -> dict:
             "intent": intent,
             "skill": "aftersales",
             "matched_keywords": [k for k in _AFTERSALES_KEYWORDS if k in msg][:3],
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
+    # 3.5 模糊问题：没有明确事实类型，不能拿任意商品字段回答
+    if _is_vague_question(msg) and not _has_text_product_question(msg):
+        intent = "needs_clarification"
+        duration_ms = int((time.time() - t0) * 1000)
+        trace = {
+            "node": "detect_intent",
+            "status": "success",
+            "duration_ms": duration_ms,
+            "cache_hit": False,
+            "summary": f"识别为 {intent}（问题描述过于模糊）",
+        }
+        return {
+            "intent": intent,
+            "skill": "clarification",
+            "matched_keywords": ["needs_clarification"],
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 

@@ -2,9 +2,10 @@
 evidence_filter 节点 - 过滤 RAG 检索结果
 """
 
+import re
 import time
 
-from app.services.evidence_fact_gate_service import evaluate_evidence_item
+from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
 
 
 # source_type 可信度映射
@@ -61,6 +62,52 @@ def _scope_matches_any(chunk_products: list, product_names: list[str]) -> bool:
     return any(name in cp or cp in name for cp in chunk_products for name in product_names)
 
 
+def _sku_family(sku: str) -> str:
+    match = re.match(r"^([A-Z]{2}\d{2}K\d{2})", str(sku or "").strip(), re.IGNORECASE)
+    return match.group(1).upper() if match else str(sku or "").strip().upper()
+
+
+def _resolved_sku_codes(state: dict) -> set[str]:
+    slots = state.get("slots") or {}
+    identity = state.get("order_product_identity") or {}
+    values = [
+        slots.get("sku_code", ""),
+        slots.get("sku_id", ""),
+        slots.get("i_id", ""),
+        identity.get("sku_id", ""),
+        identity.get("i_id", ""),
+    ]
+    codes = {str(v).strip().upper() for v in values if str(v or "").strip()}
+    codes.update({_sku_family(v) for v in list(codes)})
+    return {v for v in codes if v}
+
+
+def _has_odor_signal(item: dict) -> bool:
+    text = " ".join(str(item.get(key) or "") for key in (
+        "title",
+        "matched_title",
+        "chunk_text",
+        "fact",
+        "content",
+        "category",
+        "category_l3",
+    ))
+    metadata = item.get("metadata") or {}
+    if isinstance(metadata, dict):
+        text += " " + " ".join(str(v or "") for v in metadata.values())
+    return any(term in text for term in (
+        "\u6c14\u5473",
+        "\u5473\u9053",
+        "\u6709\u5473",
+        "\u65e0\u5473",
+        "\u65e0\u5f02\u5473",
+        "\u5f02\u5473",
+        "\u523a\u9f3b",
+        "\u6563\u5473",
+        "\u901a\u98ce",
+    ))
+
+
 def _is_compare_query(text: str) -> bool:
     text = text or ""
     return any(word in text for word in (
@@ -103,7 +150,7 @@ def evidence_filter_node(state: dict) -> dict:
     chunks = state.get("retrieved_chunks", [])
     intent = state.get("intent", "general")
     allowed_source_types = state.get("allowed_source_types", [])
-    sku_code = state.get("slots", {}).get("sku_code", "")
+    resolved_sku_codes = _resolved_sku_codes(state)
     query = state.get("normalized_message") or state.get("customer_message", "")
     query_fact_type = state.get("query_fact_type", "")
     resolved_product_names = _resolved_product_names(state)
@@ -148,7 +195,9 @@ def evidence_filter_node(state: dict) -> dict:
 
         # 3. SKU 不匹配（从 chunk 顶层字段读取，metadata 中不存储 scope）
         chunk_skus = chunk.get("sku_scope", [])
-        if chunk_skus and sku_code and sku_code not in chunk_skus:
+        chunk_sku_set = {str(s).strip().upper() for s in chunk_skus if str(s or "").strip()}
+        chunk_sku_set.update({_sku_family(s) for s in list(chunk_sku_set)})
+        if chunk_sku_set and resolved_sku_codes and not (resolved_sku_codes & chunk_sku_set):
             reject_reasons.append("sku_mismatch")
 
         # 3b. 商品范围不匹配：chunk 有明确 product_scope 但与当前查询商品无关
@@ -185,8 +234,10 @@ def evidence_filter_node(state: dict) -> dict:
         scope_match = True
         mismatch_reason = ""
         chunk_skus = f.get("sku_scope", [])
-        if chunk_skus and sku_code:
-            if sku_code not in chunk_skus:
+        chunk_sku_set = {str(s).strip().upper() for s in chunk_skus if str(s or "").strip()}
+        chunk_sku_set.update({_sku_family(s) for s in list(chunk_sku_set)})
+        if chunk_sku_set and resolved_sku_codes:
+            if not (resolved_sku_codes & chunk_sku_set):
                 scope_match = False
                 mismatch_reason = "sku_mismatch"
 
@@ -219,8 +270,20 @@ def evidence_filter_node(state: dict) -> dict:
             mismatch_reason = mismatch_reason or "compare_evidence_mismatch"
 
         evidence_fact_type = infer_evidence_fact_type(f)
+        if (
+            query_fact_type == "odor"
+            and evidence_fact_type == "material"
+            and _has_odor_signal(f)
+        ):
+            evidence_fact_type = "odor"
+            f["evidence_fact_type_source"] = "material_contains_odor_signal"
         f["query_fact_type"] = query_fact_type
         f["evidence_fact_type"] = evidence_fact_type
+        if query_fact_type == "installation" and evidence_fact_type == "installation":
+            new_text, sanitized = sanitize_risky_convenience_claim(f.get("chunk_text", ""))
+            if sanitized:
+                f["chunk_text"] = new_text
+                f["sanitized_risky_convenience_claim"] = True
         if query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type):
             evidence_allowed_for_exact_answer = False
             f["evidence_allowed_for_direct_answer"] = False

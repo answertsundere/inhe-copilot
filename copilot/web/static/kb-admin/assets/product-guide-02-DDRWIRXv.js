@@ -1,1 +1,0 @@
-var e=``+new URL(`product-guide-02-Bz_iCHUA.webp`,import.meta.url).href;export{e as default};

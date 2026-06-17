@@ -557,7 +557,7 @@ def lookup_logistics_by_tracking_no(tracking_no: str) -> dict:
         return r
 
 
-def lookup_order_by_identifier(identifier: str, identifier_type: str) -> dict:
+def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaustive: bool = True) -> dict:
     """根据 identifier_type 分发到对应查询函数。
     order_id 类型查不到时自动尝试 so_ids（用户给的平台订单号可能被识别为 order_id）。
     """
@@ -933,7 +933,7 @@ def _attempt_debug(*results: dict) -> list:
 
 # Keep this definition after the legacy dispatcher above so imports use the
 # full identifier surface, including JST outer_so_id ("external transaction no").
-def lookup_order_by_identifier(identifier: str, identifier_type: str) -> dict:
+def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaustive: bool = True) -> dict:
     """Dispatch identifier lookup across all known JST order id surfaces.
 
     Routing:
@@ -1029,37 +1029,64 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str) -> dict:
             r_out["attempted_paths"] = _attempt_debug(r_out)
             return r_out
 
-        # In Qianniu/JST real scenes, the sidebar order number may be the same
-        # as JST o_id/so_id, not only outer_so_id. Try exact order surfaces
-        # before the slower recent outer_so_id scan.
-        r_order = lookup_order_by_order_id(identifier)
-        if r_order["found"]:
-            r_order["query_type"] = "platform_trade_id->same_order_id"
-            r_order["attempted_paths"] = _attempt_debug(r_out, r_order)
-            return r_order
+        r_oid = lookup_order_by_order_id(identifier)
+        if r_oid["found"]:
+            r_oid["query_type"] = "platform_trade_id->same_order_id"
+            r_oid["attempted_paths"] = _attempt_debug(r_out, r_oid)
+            return r_oid
+
+        if not exhaustive:
+            r_so = lookup_order_by_platform_order_id(identifier)
+            if r_so["found"]:
+                r_so["query_type"] = "platform_trade_id->so_id_fallback"
+                r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
+                return r_so
+            r = _make_result(
+                found=False,
+                query_type="platform_trade_id",
+                duration_ms=r_out.get("duration_ms", 0) + r_oid.get("duration_ms", 0) + r_so.get("duration_ms", 0),
+                safe_fallback_reason="not_found_fast_path",
+            )
+            r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
+            return r
+
+        if not exhaustive:
+            r_so = lookup_order_by_platform_order_id(identifier)
+            if r_so["found"]:
+                r_so["query_type"] = "platform_trade_id->so_id_fallback"
+                r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
+                return r_so
+            r = _make_result(
+                found=False,
+                query_type="platform_trade_id",
+                duration_ms=r_out.get("duration_ms", 0) + r_oid.get("duration_ms", 0) + r_so.get("duration_ms", 0),
+                safe_fallback_reason="not_found_fast_path",
+            )
+            r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
+            return r
 
         r_so = lookup_order_by_platform_order_id(identifier)
         if r_so["found"]:
             r_so["query_type"] = "platform_trade_id->so_id_fallback"
-            r_so["attempted_paths"] = _attempt_debug(r_out, r_order, r_so)
+            r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
             return r_so
 
         r_hist = lookup_order_by_platform_order_id_history(identifier)
         if r_hist["found"]:
             r_hist["query_type"] = "platform_trade_id->so_id_history_fallback"
-            r_hist["attempted_paths"] = _attempt_debug(r_out, r_order, r_so) + r_hist.get("attempted_paths", [])
+            r_hist["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so) + r_hist.get("attempted_paths", [])
             return r_hist
 
         # Fallback: outer_so_id scan (orders/single/query 扫描)
         r_outer = lookup_order_by_outer_so_id(identifier)
         if r_outer["found"]:
             r_outer["query_type"] = "platform_trade_id->outer_so_id_scan"
-            r_outer["attempted_paths"] = _attempt_debug(r_out, r_order, r_so, r_hist, r_outer)
+            r_outer["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so, r_hist, r_outer)
             return r_outer
 
         total_ms = (
             r_out.get("duration_ms", 0)
-            + r_order.get("duration_ms", 0)
+            + r_oid.get("duration_ms", 0)
             + r_so.get("duration_ms", 0)
             + r_hist.get("duration_ms", 0)
             + r_outer.get("duration_ms", 0)
@@ -1068,7 +1095,7 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str) -> dict:
             found=False, query_type="platform_trade_id", duration_ms=total_ms,
             safe_fallback_reason="not_found",
         )
-        r["attempted_paths"] = _attempt_debug(r_out, r_order, r_so, r_hist, r_outer)
+        r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so, r_hist, r_outer)
         return r
 
     if identifier_type == "tracking_no":

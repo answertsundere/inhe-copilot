@@ -4,8 +4,9 @@ rag_retrieve 节点 - 条件式检索 published 知识分片
 通过 RetrieverFactory 调用检索
 """
 
-import time
 import logging
+import re
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,24 @@ def _candidate_texts(candidate) -> list[str]:
         if val and val not in texts:
             texts.append(val)
     return texts
+
+
+def _candidate_sku_texts(candidate) -> list[str]:
+    if isinstance(candidate, str):
+        val = candidate.strip()
+        return [val] if _looks_like_product_code(val) else []
+    if not isinstance(candidate, dict):
+        return []
+    texts = []
+    for key in ("sku_code", "sku_id", "i_id"):
+        val = str(candidate.get(key) or "").strip()
+        if val and val not in texts:
+            texts.append(val)
+    return texts
+
+
+def _looks_like_product_code(value: str) -> bool:
+    return bool(re.match(r"^YH[A-Za-z0-9_-]{4,40}$", str(value or "").strip(), re.IGNORECASE))
 
 
 def _first_product_candidate_text(candidates: list) -> str:
@@ -60,6 +79,36 @@ def _build_search_query(message: str, product_name: str, sku_name: str, product_
     return " ".join(parts)[:500]
 
 
+def _merge_ranked_results(primary: list[dict], supplemental: list[dict], limit: int = 8) -> list[dict]:
+    merged: list[dict] = []
+    seen = set()
+    for item in [*(primary or []), *(supplemental or [])]:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("chunk_id") or item.get("entry_id") or item.get("title")
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        merged.append(item)
+    merged.sort(key=lambda r: float(r.get("rerank_score", r.get("score", 0)) or 0), reverse=True)
+    return merged[:limit]
+
+
+def _prefer_matching_fact_type(results: list[dict], query_fact_type: str) -> list[dict]:
+    if not query_fact_type or not results:
+        return results
+    try:
+        from app.services.fact_type_service import fact_type_matches
+    except Exception:
+        return results
+    matched = [
+        item for item in results
+        if fact_type_matches(query_fact_type, str(item.get("fact_type") or item.get("evidence_fact_type") or ""))
+    ]
+    return matched if matched else results
+
+
 def rag_retrieve(state: dict) -> dict:
     """检索 published 知识分片（条件执行）"""
     t0 = time.time()
@@ -93,6 +142,7 @@ def rag_retrieve(state: dict) -> dict:
     )
     sku_code = slots.get("sku_code", "")
     identity_sku = str(identity.get("sku_id") or "").strip()
+    identity_i_id = str(identity.get("i_id") or "").strip()
     sku_name = slots.get("sku_name") or sku_code or identity_sku
     query_fact_type = state.get("query_fact_type", "")
 
@@ -133,6 +183,12 @@ def rag_retrieve(state: dict) -> dict:
     # Also add sku_id from identity if different from sku_code
     if identity_sku and identity_sku not in sku_scope:
         sku_scope.append(identity_sku)
+    if identity_i_id and identity_i_id not in sku_scope:
+        sku_scope.append(identity_i_id)
+    for pc in product_candidates or []:
+        for text in _candidate_sku_texts(pc):
+            if text not in sku_scope:
+                sku_scope.append(text)
 
     # intent 兼容映射
     search_intent = intent if intent != "general" else ""
@@ -180,6 +236,21 @@ def rag_retrieve(state: dict) -> dict:
         except Exception:
             pass
 
+    product_context_pack = {"facts": [], "stats": {}}
+    try:
+        from app.services.product_context_pack_service import build_product_context_pack
+        product_context_pack = build_product_context_pack(
+            state,
+            query=locals().get("search_query", msg),
+            allowed_source_types=allowed_source_types,
+            query_fact_type=query_fact_type,
+            top_k=8,
+        )
+        results = _merge_ranked_results(results, product_context_pack.get("facts", []), limit=8)
+        results = _prefer_matching_fact_type(results, query_fact_type)
+    except Exception as exc:
+        logger.warning("Product context pack failed: %s", exc)
+
     duration_ms = int((time.time() - t0) * 1000)
     trace = {
         "node": "rag_retrieve",
@@ -188,15 +259,25 @@ def rag_retrieve(state: dict) -> dict:
         "cache_hit": False,
         "retrieval_mode": retrieval_mode,
         "original_query": msg,
+        "current_query": msg,
         "search_query": locals().get("search_query", msg),
+        "retrieval_query": locals().get("search_query", msg),
+        "history_included": False,
         "product_name": product_name,
         "sku_name": sku_name,
         "query_fact_type": query_fact_type,
+        "product_context_pack_stats": product_context_pack.get("stats", {}),
+        "product_card_evidence": product_context_pack.get("evidence_pack", {}),
         "summary": f"RAG检索: {len(results)}条结果, mode={retrieval_mode}, allowed={allowed_source_types}, intent={search_intent}",
     }
 
     return {
         "retrieved_chunks": results,
+        "product_context_pack": product_context_pack,
+        "product_context_pack_stats": product_context_pack.get("stats", {}),
+        "product_card_evidence_pack": product_context_pack.get("evidence_pack", {}),
+        "current_query": msg,
+        "retrieval_query": locals().get("search_query", msg),
         "rag_search_query": locals().get("search_query", msg),
         "rag_retrieval_mode": retrieval_mode,
         "trace_steps": state.get("trace_steps", []) + [trace],

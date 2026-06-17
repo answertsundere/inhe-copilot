@@ -52,10 +52,20 @@ class ReplySuggestion(BaseModel):
     trace_steps: list[dict] = Field(default_factory=list)
     evidence_debug: dict = Field(default_factory=dict)
     execution_debug: dict = Field(default_factory=dict)
+    needs_clarification: bool = False
     # 路由溯源字段
     used_fact_tool: str = ""
     used_endpoint: str = ""
     identifier_type: str = ""
+    # 运行时调试契约字段（前端 evidence_debug / execution_debug 依赖）
+    answer_mode: str = ""
+    generation_mode: str = ""
+    llm_used: bool = False
+    used_knowledge_entry_ids: list = Field(default_factory=list)
+    used_knowledge_titles: list = Field(default_factory=list)
+    used_fact_tools: list = Field(default_factory=list)
+    product_context_validation: dict = Field(default_factory=dict)
+    generic_service_rule_used: dict = Field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """转为字典（API 响应用）"""
@@ -82,12 +92,30 @@ class ReplySuggestion(BaseModel):
             d.pop("evidence_debug", None)
         if not self.execution_debug:
             d.pop("execution_debug", None)
+        if not self.needs_clarification:
+            d.pop("needs_clarification", None)
         if not self.used_fact_tool:
             d.pop("used_fact_tool", None)
         if not self.used_endpoint:
             d.pop("used_endpoint", None)
         if not self.identifier_type:
             d.pop("identifier_type", None)
+        if not self.answer_mode:
+            d.pop("answer_mode", None)
+        if not self.generation_mode:
+            d.pop("generation_mode", None)
+        if not self.llm_used:
+            d.pop("llm_used", None)
+        if not self.used_knowledge_entry_ids:
+            d.pop("used_knowledge_entry_ids", None)
+        if not self.used_knowledge_titles:
+            d.pop("used_knowledge_titles", None)
+        if not self.used_fact_tools:
+            d.pop("used_fact_tools", None)
+        if not self.product_context_validation:
+            d.pop("product_context_validation", None)
+        if not self.generic_service_rule_used:
+            d.pop("generic_service_rule_used", None)
         return d
 
     @classmethod
@@ -145,9 +173,18 @@ class ReplySuggestion(BaseModel):
             trace_steps=data.get("trace_steps", []),
             evidence_debug=data.get("evidence_debug", {}),
             execution_debug=data.get("execution_debug", {}),
+            needs_clarification=data.get("needs_clarification", False),
             used_fact_tool=data.get("used_fact_tool", ""),
             used_endpoint=data.get("used_endpoint", ""),
             identifier_type=data.get("identifier_type", ""),
+            answer_mode=data.get("answer_mode", ""),
+            generation_mode=data.get("generation_mode", ""),
+            llm_used=data.get("llm_used", False),
+            used_knowledge_entry_ids=data.get("used_knowledge_entry_ids", []),
+            used_knowledge_titles=data.get("used_knowledge_titles", []),
+            used_fact_tools=data.get("used_fact_tools", data.get("fact_tools", [])),
+            product_context_validation=data.get("product_context_validation", {}),
+            generic_service_rule_used=data.get("generic_service_rule_used", {}),
         )
 
 

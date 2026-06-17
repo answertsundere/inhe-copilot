@@ -7,8 +7,25 @@ import logging
 import time
 
 from app.services.reply_style_service import beautify_customer_reply
+from app.services.fact_type_service import FACT_TYPE_LABELS
 
 logger = logging.getLogger(__name__)
+
+
+_PRODUCT_CARD_REQUIRED_FACT_TYPES = {
+    "material",
+    "certification_report",
+    "pinch_safety",
+    "safety_small_parts",
+    "installation",
+    "detachable",
+    "odor",
+    "dimensions",
+    "load_capacity",
+    "stability",
+    "age_range",
+    "cleaning_care",
+}
 
 
 def build_response(state: dict) -> dict:
@@ -16,7 +33,9 @@ def build_response(state: dict) -> dict:
     t0 = time.time()
     suggested_reply = state.get("suggested_reply", "")
     suggested_reply = _append_aftersales_issue_followup(suggested_reply, state)
+    suggested_reply = _append_image_degrade_notice(suggested_reply, state)
     suggested_reply = beautify_customer_reply(suggested_reply, state)
+    suggested_reply = _ensure_tracking_reference(suggested_reply, state)
     guard_warnings = state.get("guard_warnings", [])
     requires_human_review = state.get("requires_human_review", False)
     review_reason = state.get("review_reason", "")
@@ -25,11 +44,20 @@ def build_response(state: dict) -> dict:
     if risk_level in ("high", "critical") and not requires_human_review:
         requires_human_review = True
         review_reason = review_reason or "高风险内容需人工复核"
+    if state.get("intent") == "material_safety" and not requires_human_review:
+        requires_human_review = True
+        review_reason = review_reason or "材质/安全类商品事实需复核"
 
     evidence_review_reason = _evidence_requires_human_review(state)
     if evidence_review_reason:
         requires_human_review = True
         review_reason = review_reason or evidence_review_reason
+
+    # 原则8：回复里承诺了人工核实/转人工，requires_human_review 必须与回复一致
+    reply_review_reason = _reply_promises_human_review(suggested_reply)
+    if reply_review_reason:
+        requires_human_review = True
+        review_reason = review_reason or reply_review_reason
 
     evidence = state.get("evidence", {})
     answer_type = state.get("answer_type", "")
@@ -94,6 +122,7 @@ def build_response(state: dict) -> dict:
             "source_confidence": c.get("source_confidence", ""),
             "rerank_score": c.get("rerank_score", 0),
             "mismatch_reason": c.get("mismatch_reason", ""),
+            "semantic_alignment": c.get("semantic_alignment", {}),
             "chunk_preview": c.get("chunk_text", "")[:80],
         })
 
@@ -116,6 +145,7 @@ def build_response(state: dict) -> dict:
             "mismatch_reason": c.get("mismatch_reason", ""),
             "gate_status": c.get("gate_status", ""),
             "gate_reasons": c.get("gate_reasons", []),
+            "semantic_alignment": c.get("semantic_alignment", {}),
             "direct_answer_allowed": c.get("direct_answer_allowed", c.get("evidence_allowed_for_direct_answer", True)),
             "requires_human_review": c.get("requires_human_review", c.get("needs_human_review", False)),
             "evidence_allowed_for_exact_answer": c.get("evidence_allowed_for_exact_answer", False),
@@ -135,6 +165,7 @@ def build_response(state: dict) -> dict:
             "mismatch_reason": c.get("mismatch_reason", ""),
             "gate_status": c.get("gate_status", ""),
             "gate_reasons": c.get("gate_reasons", []),
+            "semantic_alignment": c.get("semantic_alignment", {}),
             "direct_answer_allowed": c.get("direct_answer_allowed", c.get("evidence_allowed_for_direct_answer", True)),
             "requires_human_review": c.get("requires_human_review", c.get("needs_human_review", False)),
             "evidence_allowed_for_exact_answer": c.get("evidence_allowed_for_exact_answer", False),
@@ -145,6 +176,10 @@ def build_response(state: dict) -> dict:
     evidence_debug["filtered_evidence_summary"] = filtered_evidence_summary
     evidence_debug["knowledge_evidence_summary"] = knowledge_evidence_summary
     evidence_debug["evidence_gate_summary"] = _summarize_evidence_gate(knowledge_evidence_summary)
+    product_context_pack = state.get("product_context_pack") or {}
+    generic_service_rule_used = state.get("generic_service_rule_used") or _generic_rule_used_from_trace(state.get("trace_steps", []))
+    evidence_debug["product_context_pack_stats"] = state.get("product_context_pack_stats", product_context_pack.get("stats", {}))
+    evidence_debug["product_context_pack_summary"] = _summarize_product_context_pack(product_context_pack)
     evidence_debug["answer_mode"] = state.get("answer_mode", "")
     evidence_debug["query_fact_type"] = state.get("query_fact_type", "")
     evidence_debug["query_fact_type_label"] = state.get("query_fact_type_label", "")
@@ -154,6 +189,8 @@ def build_response(state: dict) -> dict:
     evidence_debug["query_fact_type_reason"] = state.get("query_fact_type_reason", "")
     evidence_debug["secondary_fact_types"] = state.get("secondary_fact_types", [])
     evidence_debug["query_fact_type_risk_hint"] = state.get("query_fact_type_risk_hint", "")
+    evidence_debug["semantic_query"] = state.get("semantic_query", {})
+    evidence_debug["needs_visual_asset"] = state.get("needs_visual_asset", False)
     evidence_debug["knowledge_gap"] = _summarize_knowledge_gap(state)
     evidence_debug["router_source"] = state.get("router_source", "")
     evidence_debug["router_confidence"] = state.get("router_confidence", 0)
@@ -163,6 +200,11 @@ def build_response(state: dict) -> dict:
     evidence_debug["identifier_type"] = state.get("identifier_type", "")
     evidence_debug["identifier_value"] = state.get("identifier_value", "")
     evidence_debug["conversation_context_summary"] = state.get("conversation_context_summary", {})
+    evidence_debug["current_query"] = state.get("current_query", state.get("normalized_message", state.get("customer_message", "")))
+    evidence_debug["retrieval_query"] = state.get("retrieval_query", state.get("rag_search_query", ""))
+    evidence_debug["history_snapshot"] = state.get("history_snapshot", {})
+    evidence_debug["generated_context"] = state.get("generated_context", {})
+    evidence_debug["context_reset_reason"] = state.get("context_reset_reason", "")
     evidence_debug["customer_emotion"] = state.get("customer_emotion", "")
     evidence_debug["customer_urgency"] = state.get("customer_urgency", "")
     evidence_debug["customer_concern"] = state.get("customer_concern", "")
@@ -172,6 +214,7 @@ def build_response(state: dict) -> dict:
     evidence_debug["context_updated"] = state.get("context_updated", False)
     evidence_debug["generation_mode"] = state.get("generation_mode", "")
     evidence_debug["llm_used"] = state.get("llm_used", False)
+    evidence_debug["generic_service_rule_used"] = generic_service_rule_used
     evidence_debug["hallucination_guard"] = state.get("hallucination_guard", {
         "passed": True,
         "unsupported_terms": [],
@@ -252,9 +295,31 @@ def build_response(state: dict) -> dict:
     evidence_debug["llm_duration_ms"] = node_durations.get("generate_reply", 0)
     evidence_debug["tool_executor_duration_ms"] = node_durations.get("tool_executor", 0)
 
+    sufficiency = _compute_evidence_sufficiency(state)
+    evidence_debug["evidence_sufficient"] = sufficiency["evidence_sufficient"]
+    evidence_debug["answer_relevance_passed"] = sufficiency["answer_relevance_passed"]
+    evidence_debug["direct_answer_supported"] = sufficiency["direct_answer_supported"]
+    evidence_debug["missing_required_fact_fields"] = sufficiency["missing_required_fact_fields"]
+    evidence_debug["needs_clarification"] = sufficiency["needs_clarification"]
+
     verified_evidence = _summarize_verified_evidence(evidence)
     tools_to_call = _summarize_tools_to_call(state)
     reply_tone = _infer_reply_tone(state, requires_human_review)
+    generated_context = state.get("generated_context") or {
+        "current_query": state.get("current_query", state.get("normalized_message", state.get("customer_message", ""))),
+        "retrieval_query": state.get("retrieval_query", state.get("rag_search_query", "")),
+        "history_in_retrieval": False,
+        "product_context_pack_stats": state.get("product_context_pack_stats", product_context_pack.get("stats", {})),
+        "evidence_counts": {
+            "product_facts": len(evidence.get("product_facts", []) or []),
+            "policy_facts": len(evidence.get("policy_facts", []) or []),
+            "faq_evidence": len(evidence.get("faq_evidence", []) or []),
+            "sop_evidence": len(evidence.get("sop_evidence", []) or []),
+            "unknowns": len(evidence.get("unknowns", []) or []),
+            "conflicts": len(evidence.get("conflicts", []) or []),
+        },
+    }
+    evidence_debug["generated_context"] = generated_context
 
     logger.debug("build_response: reply assembled, warnings=%d", len(guard_warnings))
     return {
@@ -268,6 +333,13 @@ def build_response(state: dict) -> dict:
         "guard_warnings": guard_warnings,
         "evidence": evidence,
         "evidence_debug": evidence_debug,
+        "product_context_pack": product_context_pack,
+        "product_context_pack_stats": state.get("product_context_pack_stats", product_context_pack.get("stats", {})),
+        "current_query": generated_context["current_query"],
+        "retrieval_query": generated_context["retrieval_query"],
+        "generated_context": generated_context,
+        "history_snapshot": state.get("history_snapshot", {}),
+        "context_reset_reason": state.get("context_reset_reason", ""),
         "answer_mode": state.get("answer_mode", ""),
         "router_source": state.get("router_source", ""),
         "router_confidence": state.get("router_confidence", 0),
@@ -284,12 +356,203 @@ def build_response(state: dict) -> dict:
         "context_updated": state.get("context_updated", False),
         "generation_mode": state.get("generation_mode", ""),
         "llm_used": state.get("llm_used", False),
+        "generic_service_rule_used": generic_service_rule_used,
         "hallucination_guard": state.get("hallucination_guard", {}),
         "used_knowledge_entry_ids": evidence_debug["used_knowledge_entry_ids"],
         "used_knowledge_titles": evidence_debug["used_knowledge_titles"],
         "used_fact_tool": state.get("used_fact_tool", ""),
         "used_endpoint": state.get("used_endpoint", ""),
         "trace_steps": state.get("trace_steps", []) + [trace],
+        "evidence_sufficient": sufficiency["evidence_sufficient"],
+        "answer_relevance_passed": sufficiency["answer_relevance_passed"],
+        "direct_answer_supported": sufficiency["direct_answer_supported"],
+        "missing_required_fact_fields": sufficiency["missing_required_fact_fields"],
+        "needs_clarification": sufficiency["needs_clarification"],
+    }
+
+
+def _generic_rule_used_from_trace(trace_steps: list) -> dict:
+    for step in reversed(trace_steps or []):
+        if not isinstance(step, dict):
+            continue
+        used = step.get("generic_service_rule_used")
+        if isinstance(used, dict) and used.get("rule_key"):
+            return {
+                "rule_key": used.get("rule_key", ""),
+                "title": used.get("title", ""),
+                "fact_type": used.get("fact_type", ""),
+                "score": used.get("score", 0),
+            }
+    return {}
+
+
+def _compute_evidence_sufficiency(state: dict) -> dict:
+    """计算证据是否足以直接回答当前问题（事实类型必须匹配）。"""
+    intent = state.get("intent", "")
+    answer_mode = state.get("answer_mode", "")
+    query_fact_type = state.get("query_fact_type", "")
+    product_pack = state.get("product_context_pack") or {}
+    card_evidence = (
+        state.get("product_card_evidence_pack")
+        or product_pack.get("evidence_pack")
+        or {}
+    )
+    card_answerability = str(card_evidence.get("answerability") or "")
+    needs_clarification = state.get("needs_clarification", False) or intent == "needs_clarification"
+
+    if needs_clarification or answer_mode == "no_evidence_clarification":
+        return {
+            "evidence_sufficient": False,
+            "answer_relevance_passed": False,
+            "direct_answer_supported": False,
+            "missing_required_fact_fields": ["具体问题/图片/异常位置"],
+            "needs_clarification": True,
+        }
+
+    # 纯政策类意图：政策本身就是直接回答依据
+    pure_policy_intents = {
+        "invoice", "price_protection", "price_promotion", "promotion_query",
+        "stock_query", "gift_missing", "aftersales",
+    }
+    # 事实依赖型政策/指南：必须有与 query_fact_type 匹配的证据
+    fact_dependent_modes = {
+        "exact_faq_answer", "product_fact_answer", "installation_guide",
+    }
+    fact_dependent_intents = {
+        "material_safety", "child_safety", "competitor_compare", "odor_question",
+        "cleaning_care", "image_attachment", "installation",
+    }
+
+    # 收集所有可能用于直接回答的证据
+    candidate_items = (
+        state.get("knowledge_evidence", [])
+        + state.get("filtered_evidence", [])
+        + state.get("evidence", {}).get("product_facts", [])
+        + state.get("evidence", {}).get("faq_evidence", [])
+    )
+    card_fact_items = card_evidence.get("matched_facts") or []
+    if isinstance(card_fact_items, list):
+        candidate_items += [item for item in card_fact_items if isinstance(item, dict)]
+    card_media_items = card_evidence.get("matched_media") or []
+    if isinstance(card_media_items, list):
+        candidate_items += [item for item in card_media_items if isinstance(item, dict)]
+
+    direct_answer_supported = answer_mode in (
+        {"exact_faq_answer", "product_fact_answer", "policy_grounded_answer",
+         "verified", "installation_guide", "aftersales_policy"}
+    )
+    if card_answerability in {"direct_answer", "media_supported"}:
+        direct_answer_supported = True
+
+    used_ids = set(state.get("used_knowledge_entry_ids", []) or [])
+    if not used_ids:
+        used_ids = {
+            item.get("entry_id") or item.get("matched_entry_id") or item.get("chunk_id") or item.get("asset_id")
+            for item in candidate_items
+            if isinstance(item, dict) and (
+                item.get("entry_id") or item.get("matched_entry_id") or item.get("chunk_id") or item.get("asset_id")
+            )
+        }
+    if not used_ids:
+        direct_answer_supported = False
+
+    has_matching_fact = False
+    if query_fact_type:
+        matched_fields = card_evidence.get("matched_fields") or []
+        if isinstance(matched_fields, list) and query_fact_type in matched_fields:
+            has_matching_fact = True
+        for item in candidate_items:
+            ev_ft = item.get("evidence_fact_type") or item.get("fact_type") or ""
+            if ev_ft and ev_ft == query_fact_type:
+                has_matching_fact = True
+                break
+
+    answer_relevance_passed = False
+    if direct_answer_supported:
+        if answer_mode in fact_dependent_modes or intent in fact_dependent_intents:
+            # 必须有问题事实类型与证据事实类型一致的证据
+            answer_relevance_passed = bool(query_fact_type and has_matching_fact)
+        elif intent in pure_policy_intents:
+            # 政策类：有政策证据即视为相关
+            answer_relevance_passed = True
+        elif answer_mode == "policy_grounded_answer":
+            # 其他 policy_grounded_answer（如 cleaning_care 无事实时）：需要匹配事实
+            answer_relevance_passed = bool(query_fact_type and has_matching_fact)
+        else:
+            answer_relevance_passed = True
+
+    evidence_sufficient = direct_answer_supported and answer_relevance_passed
+    if (
+        query_fact_type in _PRODUCT_CARD_REQUIRED_FACT_TYPES
+        and card_answerability in {"missing_product_fact", "no_product_profile", "no_product_identity"}
+        and not has_matching_fact
+    ):
+        evidence_sufficient = False
+        answer_relevance_passed = False
+
+    missing_required_fact_fields = []
+    if not evidence_sufficient:
+        card_missing = card_evidence.get("missing_fields") or []
+        if isinstance(card_missing, list) and card_missing:
+            missing_required_fact_fields.extend([
+                FACT_TYPE_LABELS.get(str(field), str(field))
+                for field in card_missing
+            ])
+        elif query_fact_type:
+            missing_required_fact_fields.append(FACT_TYPE_LABELS.get(query_fact_type, query_fact_type))
+        else:
+            missing_required_fact_fields.append("具体问题/图片/异常位置")
+
+    return {
+        "evidence_sufficient": evidence_sufficient,
+        "answer_relevance_passed": answer_relevance_passed,
+        "direct_answer_supported": direct_answer_supported,
+        "missing_required_fact_fields": missing_required_fact_fields,
+        "needs_clarification": needs_clarification,
+    }
+
+
+def _summarize_product_context_pack(pack: dict) -> dict:
+    if not isinstance(pack, dict) or not pack:
+        return {}
+    profile = pack.get("structured_profile") or {}
+    media_assets = pack.get("media_assets") or []
+    recommended_assets = pack.get("recommended_assets") or []
+    generic_rules = pack.get("generic_rules") or []
+    return {
+        "identity": pack.get("identity", {}),
+        "stats": pack.get("stats", {}),
+        "evidence_pack": pack.get("evidence_pack", {}),
+        "structured_profile": {
+            "product_id": profile.get("product_id"),
+            "i_id": profile.get("i_id", ""),
+            "product_name": profile.get("product_name", ""),
+            "category": profile.get("category", {}),
+            "answerable_fields": profile.get("answerable_fields", []),
+            "spec_keys": list((profile.get("specs") or {}).keys())[:20],
+            "logistics_keys": list((profile.get("logistics") or {}).keys())[:20],
+            "warranty_keys": list((profile.get("warranty") or {}).keys())[:20],
+        } if profile else {},
+        "fact_titles": [item.get("title", "") for item in (pack.get("facts") or [])[:8]],
+        "generic_rule_titles": [item.get("title", "") for item in generic_rules[:5]],
+        "media_assets": [
+            {
+                "asset_id": item.get("asset_id") or item.get("id"),
+                "asset_type": item.get("asset_type", ""),
+                "asset_title": item.get("asset_title", ""),
+                "product_name": item.get("product_name", ""),
+            }
+            for item in media_assets[:8]
+        ],
+        "recommended_assets": [
+            {
+                "asset_id": item.get("asset_id") or item.get("id"),
+                "asset_type": item.get("asset_type", ""),
+                "asset_title": item.get("asset_title", ""),
+                "product_name": item.get("product_name", ""),
+            }
+            for item in recommended_assets[:5]
+        ],
     }
 
 
@@ -423,12 +686,58 @@ def _append_aftersales_issue_followup(reply: str, state: dict) -> str:
         return reply
     if any(term in (reply or "") for term in ("\u5c11\u4ef6", "\u7f3a\u4ef6", "\u53d1\u9519", "\u9519\u53d1", "\u4e0d\u662f\u6211\u62cd\u7684")):
         return reply
-    followup = (
-        "\n\n另外，您说收到的商品和下单不一致、还少配件，这个需要先帮您核对订单商品和实物情况。"
-        "麻烦您发一下订单截图、收到的商品整体图、外箱面单和缺少配件的位置/清单，"
-        "我这边核实后再按情况给您处理补发、换货或退换方案。"
-    )
+    if final_intent == "wrong_item" or any(term in msg for term in ("\u4e0d\u662f\u6211\u62cd\u7684", "\u53d1\u9519", "\u9519\u53d1")):
+        followup = (
+            "\n\n另外，您说的是发错商品问题，这个需要先帮您核对订单商品和实物情况。"
+            "麻烦您发一下订单截图、收到的商品整体图和外箱面单，"
+            "我这边核实后再按情况给您处理换货、补发或退货方案。"
+        )
+    elif final_intent == "missing_item" or any(term in msg for term in ("\u5c11\u4e86\u914d\u4ef6", "\u5c11\u914d\u4ef6", "\u5c11\u4ef6", "\u7f3a\u4ef6", "\u6f0f\u53d1")):
+        followup = (
+            "\n\n另外，您说的是少件/缺配件问题，这个需要先帮您核对发货记录和实物情况。"
+            "麻烦您发一下订单截图、收到的商品整体图、外箱面单和缺少配件的位置或清单，"
+            "我这边核实后再按情况给您处理补发或退换方案。"
+        )
+    else:
+        followup = (
+            "\n\n另外，您反馈的售后问题需要先帮您核对订单和实物情况。"
+            "麻烦您发一下订单截图、收到的商品整体图和外箱面单，"
+            "我这边核实后再按情况给您处理。"
+        )
     return (reply or "").strip() + followup
+
+
+def _append_image_degrade_notice(reply: str, state: dict) -> str:
+    image_results = (state.get("copilot_context") or {}).get("image_analysis") or []
+    degraded = any(
+        isinstance(item, dict)
+        and (item.get("fallback_to_text") or item.get("success") is False)
+        and ("vlm_timeout_fallback" in (item.get("warnings") or []) or item.get("fallback_to_text"))
+        for item in image_results
+    )
+    if not degraded:
+        return reply
+    text = reply or ""
+    if "图片细节" in text or "未识别清楚" in text:
+        return text
+    notice = (
+        "\n\n图片细节这边可能看不清，麻烦您再补充一下想核对的位置或问题，"
+        "我不会只按未识别清楚的图片来判断，避免给您说错。"
+    )
+    return text.strip() + notice
+
+
+def _ensure_tracking_reference(reply: str, state: dict) -> str:
+    if state.get("intent") != "delivery_not_received":
+        return reply
+    trace = state.get("logistics_trace") or {}
+    order = state.get("live_order") or state.get("order") or {}
+    tracking_no = str(trace.get("tracking_no") or order.get("l_id") or "").strip()
+    carrier = str(trace.get("carrier") or trace.get("logistics_company") or order.get("logistics_company") or "").strip()
+    if not tracking_no or tracking_no in (reply or ""):
+        return reply
+    prefix = f"{carrier} " if carrier else ""
+    return (reply or "").strip() + f"\n我先按这个物流单号帮您继续核实：{prefix}{tracking_no}。"
 
 
 
@@ -447,6 +756,25 @@ def _evidence_requires_human_review(state: dict) -> str:
         if item.get("requires_human_review") or item.get("needs_human_review"):
             return "RAG 证据门控要求人工复核"
     return ""
+
+
+# 原则8：回复中承诺了人工核实/转人工的措辞时，必须与 requires_human_review 一致
+_HUMAN_REVIEW_REPLY_PHRASES = (
+    "转人工", "转给人工", "人工核实", "人工复核", "人工确认",
+    "帮您核实", "帮您继续核实", "帮您转", "核实后再回复", "核实后再给",
+    "需要客服", "客服确认", "客服核实", "货品同事", "货品核实",
+    "转货品", "升级给主管", "升级处理", "帮您升级",
+)
+
+
+def _reply_promises_human_review(reply: str) -> str:
+    """如果回复里承诺了人工核实/转人工，返回 reason，否则返回空串。"""
+    text = reply or ""
+    for phrase in _HUMAN_REVIEW_REPLY_PHRASES:
+        if phrase in text:
+            return "最终回复包含人工处理动作"
+    return ""
+
 
 def _infer_reply_tone(state: dict, requires_human_review: bool) -> str:
     if requires_human_review or state.get("risk_level") in ("high", "critical"):

@@ -276,6 +276,11 @@ def should_auto_create_bad_case(
         if g.get("guard_name") == "factual_guard" and not g.get("passed"):
             return True, "factual_guard_rewrite"
 
+    # 7b. reply_relevance_guard 改写（答非所问被闸门改写）
+    for g in ed.get("guards", []):
+        if g.get("guard_name") == "reply_relevance_guard" and not g.get("passed"):
+            return True, "reply_relevance_rewrite"
+
     # 8. intent 被 validation/fusion 修正
     routing = ed.get("routing", {})
     overrides = routing.get("overrides", [])

@@ -278,7 +278,9 @@ class TestLLMFallback:
         )
         assert result["error"].startswith("JSON_PARSE_ERROR")
         assert result["intent"] == "系统提示"
-        assert "为了更好地帮助您" in result["suggested_reply"]
+        assert result["suggested_reply"]
+        assert "LLM" not in result["suggested_reply"]
+        assert "JSON" not in result["suggested_reply"]
         assert result["requires_human_review"] is False
 
     def test_schema_validation_error_fallback(self):

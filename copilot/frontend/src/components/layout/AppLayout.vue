@@ -12,6 +12,9 @@ import {
   CircleCheck,
   Notebook,
   QuestionFilled,
+  Picture,
+  Back,
+  Collection,
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -39,14 +42,9 @@ const activeMenu = computed(() => route.path)
 const menuItems = [
   { index: '/', icon: DataAnalysis, label: '总览' },
   { index: '/products', icon: Goods, label: '商品资料' },
-  { index: '/shop-rules', icon: Notebook, label: '活动规则中心' },
-  { index: '/qa', icon: ChatDotRound, label: '问答资料' },
-  { index: '/reviews', icon: Checked, label: '审核中心' },
-  { index: '/ai-updates', icon: DataAnalysis, label: 'AI 更新中心' },
-  { index: '/sop', icon: Warning, label: '售后处理' },
-  { index: '/cases', icon: Document, label: '案例库' },
+  { index: '/service-rules', icon: Notebook, label: '服务规则' },
+  { index: '/ai-updates', icon: DataAnalysis, label: 'AI 更新' },
   { index: '/traces', icon: Connection, label: '测试记录' },
-  { index: '/health', icon: CircleCheck, label: '资料检查' },
 ]
 
 const bottomMenuItems = [
@@ -55,6 +53,14 @@ const bottomMenuItems = [
 
 function handleMenuSelect(index: string) {
   router.push(index)
+}
+
+function openWorkbench() {
+  window.location.href = '/ask/real-test'
+}
+
+function openTrainingSamples() {
+  router.push('/training-samples')
 }
 </script>
 
@@ -67,9 +73,6 @@ function handleMenuSelect(index: string) {
       <div class="sidebar-menu-wrap">
         <el-menu
           :default-active="activeMenu"
-          background-color="#1d1e2c"
-          text-color="#bfcbd9"
-          active-text-color="#409eff"
           :unique-opened="true"
           router
           @select="handleMenuSelect"
@@ -83,9 +86,7 @@ function handleMenuSelect(index: string) {
         <el-menu
           class="bottom-menu"
           :default-active="activeMenu"
-          background-color="#1d1e2c"
-          text-color="#bfcbd9"
-          active-text-color="#409eff"
+          :unique-opened="true"
           router
           @select="handleMenuSelect"
         >
@@ -101,6 +102,12 @@ function handleMenuSelect(index: string) {
       <el-header class="top-header" height="56px">
         <h3 class="page-title">{{ pageTitle }}</h3>
         <div class="header-right">
+          <el-button class="workbench-button" size="small" :icon="Back" @click="openWorkbench">
+            返回工作台
+          </el-button>
+          <el-button type="primary" size="small" :icon="Collection" @click="openTrainingSamples">
+            提交训练样本
+          </el-button>
           <span class="role-label">角色：</span>
           <el-select v-model="currentRole" size="small" style="width: 130px" @change="onRoleChange">
             <el-option
@@ -127,7 +134,7 @@ function handleMenuSelect(index: string) {
 }
 
 .sidebar {
-  background-color: #1d1e2c;
+  background-color: var(--kb-bg-sidebar);
   overflow: hidden;
   border-right: none;
   display: flex;
@@ -139,14 +146,15 @@ function handleMenuSelect(index: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--kb-border-sidebar);
+  flex-shrink: 0;
 }
 
 .logo-text {
   color: #ffffff;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 1px;
   text-decoration: none;
   cursor: pointer;
 }
@@ -155,8 +163,43 @@ function handleMenuSelect(index: string) {
   opacity: 0.85;
 }
 
-.sidebar .el-menu {
+.sidebar :deep(.el-menu) {
   border-right: none;
+  background-color: transparent;
+}
+
+.sidebar :deep(.el-menu-item) {
+  height: 44px;
+  line-height: 44px;
+  margin: 4px 10px;
+  padding: 0 12px !important;
+  border-radius: var(--kb-radius-md);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.sidebar :deep(.el-menu-item .el-icon) {
+  margin-right: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sidebar :deep(.el-menu-item:hover) {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sidebar :deep(.el-menu-item:hover .el-icon) {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.sidebar :deep(.el-menu-item.is-active) {
+  background-color: rgba(79, 106, 246, 0.15);
+  color: #7b8ffc;
+}
+
+.sidebar :deep(.el-menu-item.is-active .el-icon) {
+  color: #7b8ffc;
 }
 
 .sidebar-menu-wrap {
@@ -164,6 +207,7 @@ function handleMenuSelect(index: string) {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding-top: 8px;
 }
 
 .sidebar-menu-wrap > .el-menu:first-child {
@@ -173,43 +217,50 @@ function handleMenuSelect(index: string) {
 
 .bottom-menu {
   flex-shrink: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--kb-border-sidebar);
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 .main-container {
-  background: #f5f7fa;
+  background: var(--kb-bg-page);
 }
 
 .top-header {
-  background: #ffffff;
+  background: var(--kb-bg-card);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--kb-border);
   z-index: 10;
 }
 
 .page-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--kb-text-primary);
+  line-height: 1.4;
 }
 
 .header-right {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.workbench-button {
+  font-weight: 500;
 }
 
 .role-label {
   font-size: 13px;
-  color: #606266;
-  margin-right: 4px;
+  color: var(--kb-text-secondary);
 }
 
 .main-content {
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
 }
 </style>

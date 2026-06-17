@@ -1,0 +1,29 @@
+// Copilot runtime data. Do not sync live SQLite databases, WAL files,
+// generated reports, caches, logs, or large test outputs through Syncthing.
+copilot/.git/
+copilot/.git/**
+copilot/data/
+copilot/data/**
+copilot/logs/
+copilot/logs/**
+copilot/reports/
+copilot/reports/**
+copilot/round2_results/
+copilot/round2_results/**
+copilot/round3_results/
+copilot/round3_results/**
+copilot/.coverage
+copilot/.pytest_cache/
+copilot/.pytest_cache/**
+copilot/.pytest_tmp*/
+copilot/.pytest_tmp*/**
+copilot/__pycache__/
+copilot/__pycache__/**
+copilot/**/__pycache__/
+copilot/**/__pycache__/**
+copilot/**/*.pyc
+copilot/**/*.log
+copilot/**/*sync-conflict*
+copilot/scripts/nul
+copilot/web/static/kb-admin/assets/
+copilot/web/static/kb-admin/assets/**

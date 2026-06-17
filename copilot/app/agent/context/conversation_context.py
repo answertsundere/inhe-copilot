@@ -10,6 +10,106 @@ from app.agent.context.context_store import context_store
 
 NUMERIC_RE = re.compile(r"^\s*(\d{12,20})\s*$")
 
+RESET_CUES = (
+    "不是这个",
+    "不是这款",
+    "不是刚才",
+    "说错了",
+    "搞错了",
+    "换一个",
+    "另一个",
+    "重新问",
+    "订单号错了",
+    "商品错了",
+    "不要按上面",
+)
+
+
+def _norm(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "")).strip().lower()
+
+
+def _same_code(a: str, b: str) -> bool:
+    a_norm = _norm(a)
+    b_norm = _norm(b)
+    if not a_norm or not b_norm:
+        return True
+    if a_norm == b_norm:
+        return True
+    return a_norm.startswith(b_norm) or b_norm.startswith(a_norm)
+
+
+def _same_name(a: str, b: str) -> bool:
+    a_norm = _norm(a)
+    b_norm = _norm(b)
+    if not a_norm or not b_norm:
+        return True
+    return a_norm == b_norm or a_norm in b_norm or b_norm in a_norm
+
+
+def _context_reset_reason(ctx: dict, state: dict, msg: str, slots: dict) -> str:
+    if not ctx:
+        return ""
+    if any(cue in (msg or "") for cue in RESET_CUES):
+        return "explicit_user_correction"
+    if (
+        NUMERIC_RE.match(msg or "")
+        and (
+            "order_id" in ctx.get("last_requested_slots", [])
+            or "tracking_no" in ctx.get("last_requested_slots", [])
+            or ctx.get("active_issue") in ("delivery_not_received", "logistics_eta", "logistics_trace")
+        )
+    ):
+        return ""
+
+    identity = state.get("order_product_identity") or {}
+    old_identity = ctx.get("order_product_identity") or {}
+    new_sku = slots.get("sku_code") or identity.get("sku_id") or identity.get("i_id") or ""
+    old_sku = old_identity.get("sku_id") or old_identity.get("i_id") or ""
+    if new_sku and old_sku and not _same_code(new_sku, old_sku):
+        return "product_entity_changed"
+
+    new_product = slots.get("product_name") or state.get("matched_product_name") or identity.get("matched_product_name") or ""
+    old_product = ctx.get("confirmed_product") or old_identity.get("matched_product_name") or ""
+    if new_product and old_product and not _same_name(new_product, old_product):
+        return "product_entity_changed"
+
+    new_identifier = (
+        slots.get("platform_trade_id")
+        or slots.get("order_id")
+        or slots.get("tracking_no")
+        or slots.get("possible_numeric_id")
+        or state.get("identifier_value", "")
+    )
+    old_identifiers = {
+        ctx.get("known_platform_trade_id", ""),
+        ctx.get("known_order_id", ""),
+        ctx.get("known_tracking_no", ""),
+    }
+    if new_identifier and any(old_identifiers) and new_identifier not in old_identifiers:
+        return "order_identifier_changed"
+
+    old_issue = ctx.get("active_issue", "")
+    current_intent = state.get("intent", "")
+    if old_issue and current_intent and old_issue != current_intent and (new_product or new_sku or new_identifier):
+        return "topic_and_entity_changed"
+    return ""
+
+
+def _reset_active_context(ctx: dict, reason: str) -> dict:
+    clean = dict(ctx)
+    clean["active_issue"] = ""
+    clean["last_requested_slots"] = []
+    clean["unresolved_slots"] = []
+    clean["last_agent_question"] = ""
+    clean["confirmed_product"] = ""
+    clean["order_product_identity"] = {}
+    clean["order_product_identity_key"] = ""
+    clean["has_already_asked_order_id"] = False
+    clean["has_already_asked_product_info"] = False
+    clean["context_reset_reason"] = reason
+    return clean
+
 
 def load_conversation_context(state: dict) -> dict:
     t0 = time.time()
@@ -27,6 +127,7 @@ def load_conversation_context(state: dict) -> dict:
         "conversation_id": conversation_id,
         "conversation_context": ctx,
         "conversation_context_summary": summarize_context(ctx),
+        "history_snapshot": summarize_context(ctx),
         "trace_steps": state.get("trace_steps", []) + [trace],
     }
 
@@ -40,6 +141,14 @@ def apply_conversation_context(state: dict) -> dict:
     match = NUMERIC_RE.match(msg or "")
     updates = {}
     applied = []
+
+    reset_reason = _context_reset_reason(ctx, state, msg, slots)
+    if reset_reason:
+        ctx = _reset_active_context(ctx, reset_reason)
+        updates["conversation_context"] = ctx
+        updates["conversation_context_summary"] = summarize_context(ctx)
+        updates["context_reset_reason"] = reset_reason
+        applied.append(f"context_reset:{reset_reason}")
 
     if match and (
         "order_id" in ctx.get("last_requested_slots", [])
@@ -89,6 +198,7 @@ def update_conversation_context(state: dict) -> dict:
     ctx["risk_level"] = state.get("risk_level", ctx.get("risk_level", "low"))
     ctx["previous_agent_reply"] = reply[:500]
     ctx["needs_human_review"] = bool(state.get("requires_human_review") or state.get("needs_human_review"))
+    ctx["context_reset_reason"] = state.get("context_reset_reason", "")
 
     identifier = (
         slots.get("platform_trade_id")

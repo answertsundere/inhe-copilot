@@ -27,6 +27,26 @@ POLICY_LOCKED_INTENTS = {
 def hallucination_guard(state: dict) -> dict:
     """Block product facts that are not present in selected evidence."""
     t0 = time.time()
+    if _has_generic_service_rule_used(state):
+        trace = {
+            "node": "hallucination_guard",
+            "status": "success",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "cache_hit": False,
+            "passed": True,
+            "unsupported_terms": [],
+            "fallback_used": False,
+            "summary": "generic_service_rule_skip",
+        }
+        return {
+            "hallucination_guard": {
+                "passed": True,
+                "unsupported_terms": [],
+                "fallback_used": False,
+            },
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
     if state.get("intent") in POLICY_LOCKED_INTENTS and state.get("answer_mode") == "policy_grounded_answer":
         trace = {
             "node": "hallucination_guard",
@@ -119,6 +139,17 @@ def _evidence_text(state: dict) -> str:
     for item in state.get("knowledge", []):
         parts.append(str(item.get("content") or ""))
     return "\n".join(parts)
+
+
+def _has_generic_service_rule_used(state: dict) -> bool:
+    if state.get("generic_service_rule_used"):
+        return True
+    if (state.get("evidence_debug") or {}).get("generic_service_rule_used"):
+        return True
+    return any(
+        isinstance(step, dict) and step.get("generic_service_rule_used")
+        for step in state.get("trace_steps", [])
+    )
 
 
 def _metrics_increment(key: str) -> None:

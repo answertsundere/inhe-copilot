@@ -10,10 +10,10 @@ import requests
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-APP_KEY = "c9270ff8c41b4f1481f84f4c5669d597"
-APP_SECRET = "0ac9e66c81134d8cb961904bf8b56886"
-ACCESS_TOKEN = "450582fd13a8497db39eee4006e78c4b"
-BASE_URL = "https://openapi.jushuitan.com/open"
+APP_KEY = os.environ.get("JUSHUITAN_APP_KEY", "")
+APP_SECRET = os.environ.get("JUSHUITAN_APP_SECRET", "")
+ACCESS_TOKEN = os.environ.get("JUSHUITAN_ACCESS_TOKEN", "")
+BASE_URL = os.environ.get("JUSHUITAN_BASE_URL", "https://openapi.jushuitan.com/open")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -25,6 +25,8 @@ def generate_sign(app_secret, params):
 
 
 def call_api(endpoint, biz_params=None):
+    if not (APP_KEY and APP_SECRET and ACCESS_TOKEN):
+        raise RuntimeError("Missing JUSHUITAN_APP_KEY/JUSHUITAN_APP_SECRET/JUSHUITAN_ACCESS_TOKEN")
     ts = str(int(time.time()))
     biz_str = json.dumps(biz_params or {}, separators=(',', ':'), ensure_ascii=False)
     params = {

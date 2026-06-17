@@ -23,6 +23,7 @@ def _get_run_dir(run_id: str) -> str:
 
 
 @simulation_bp.route("/api/simulation/runs", methods=["GET"])
+@simulation_bp.route("/api/simulation/runs/", methods=["GET"])
 def list_runs():
     """List all simulation runs."""
     try:
@@ -52,6 +53,7 @@ def list_runs():
 
 
 @simulation_bp.route("/api/simulation/runs/<run_id>", methods=["GET"])
+@simulation_bp.route("/api/simulation/runs/<run_id>/", methods=["GET"])
 def get_run_detail(run_id: str):
     """Get detailed run results."""
     run_dir = _get_run_dir(run_id)

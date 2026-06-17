@@ -6,8 +6,8 @@ query_jst_order 节点 - 查询聚水潭实时订单
 
 import logging
 import time
-import os
 from app.agent.tools.order_adapter import OrderAdapter
+from app.config import JST_APP_KEY, JST_APP_SECRET, JST_ACCESS_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,7 @@ _JST_MAX_TOTAL = 5.0  # _find_order 整体最大耗时（快速响应优先）
 
 def _is_jst_configured() -> bool:
     """检查聚水潭 API 是否已配置"""
-    return bool(
-        os.environ.get("JUSHUITAN_APP_KEY", "")
-        and os.environ.get("JUSHUITAN_APP_SECRET", "")
-        and os.environ.get("JUSHUITAN_ACCESS_TOKEN", "")
-    )
+    return bool(JST_APP_KEY and JST_APP_SECRET and JST_ACCESS_TOKEN)
 
 
 def query_jst_order(state: dict) -> dict:

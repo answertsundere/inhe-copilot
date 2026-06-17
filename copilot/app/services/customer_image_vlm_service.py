@@ -3,7 +3,10 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import queue
 import re
+import threading
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -11,6 +14,10 @@ from openai import OpenAI
 from app import config
 
 logger = logging.getLogger(__name__)
+
+CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS = 8
+CUSTOMER_IMAGE_TOTAL_BUDGET_SECONDS = 8
+CUSTOMER_IMAGE_MAX_ANALYZED = 2
 
 CUSTOMER_IMAGE_SYSTEM_PROMPT = """你是 INHE 母婴儿童电商客服图片识别助手。
 你只负责识别客户发来的图片内容，不生成客服回复，不承诺售后结果。
@@ -51,17 +58,28 @@ def analyze_customer_images(attachments: list[dict[str, Any]] | None) -> list[di
     if not attachments:
         return []
     results: list[dict[str, Any]] = []
-    for attachment in attachments:
+    started = time.monotonic()
+    for idx, attachment in enumerate(attachments):
         if not isinstance(attachment, dict):
             continue
         image_payload = _extract_image_payload(attachment)
         if not image_payload:
             results.append(_metadata_only_result(attachment, "no_image_payload"))
             continue
+        remaining_budget = CUSTOMER_IMAGE_TOTAL_BUDGET_SECONDS - (time.monotonic() - started)
+        if idx >= CUSTOMER_IMAGE_MAX_ANALYZED or remaining_budget <= 0:
+            result = _metadata_only_result(attachment, "image_analysis_budget_skipped")
+            result["reason_for_review"] = "图片数量较多，已先按文字和订单信息处理，其余图片需人工核对"
+            results.append(result)
+            continue
         if not _vlm_ready():
             results.append(_metadata_only_result(attachment, "vlm_not_configured"))
             continue
-        results.append(_call_customer_image_vlm(image_payload, attachment))
+        results.append(_call_with_hard_deadline(
+            image_payload,
+            attachment,
+            max(0.01, min(CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS, remaining_budget)),
+        ))
     return results
 
 
@@ -96,9 +114,15 @@ def _extract_image_payload(attachment: dict[str, Any]) -> str:
 
 def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict[str, Any]:
     try:
+        timeout_seconds = max(
+            1,
+            min(config.COPILOT_VLM_TIMEOUT_SECONDS, CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS),
+        )
         client = OpenAI(
             api_key=config.COPILOT_VLM_API_KEY,
             base_url=config.COPILOT_VLM_API_BASE,
+            max_retries=0,
+            timeout=timeout_seconds,
         )
         response = client.chat.completions.create(
             model=config.COPILOT_VLM_MODEL,
@@ -114,7 +138,7 @@ def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict
             ],
             temperature=0,
             max_tokens=1200,
-            timeout=config.COPILOT_VLM_TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
             response_format={"type": "json_object"},
         )
         raw = response.choices[0].message.content or ""
@@ -122,8 +146,34 @@ def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict
         return _normalize_vlm_result(parsed, attachment)
     except Exception as exc:
         logger.warning("customer image VLM failed: %s", exc)
-        result = _metadata_only_result(attachment, "vlm_call_failed")
+        is_timeout = "timeout" in exc.__class__.__name__.lower() or "timed out" in str(exc).lower()
+        result = _metadata_only_result(
+            attachment,
+            "vlm_timeout_fallback" if is_timeout else "vlm_call_failed",
+        )
+        if is_timeout:
+            result["reason_for_review"] = "图片识别超时，图片细节还需人工确认"
+            result["fallback_to_text"] = True
         result["error"] = str(exc)
+        return result
+
+
+def _call_with_hard_deadline(image_url: str, attachment: dict[str, Any], timeout_seconds: float | None = None) -> dict[str, Any]:
+    """Return after the customer-facing budget even if the SDK/provider stalls."""
+    result_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=1)
+
+    def worker() -> None:
+        result_queue.put(_call_customer_image_vlm(image_url, attachment))
+
+    thread = threading.Thread(target=worker, name="customer-image-vlm", daemon=True)
+    thread.start()
+    try:
+        return result_queue.get(timeout=timeout_seconds or CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS)
+    except queue.Empty:
+        result = _metadata_only_result(attachment, "vlm_timeout_fallback")
+        result["reason_for_review"] = "图片识别超时，图片细节还需人工确认"
+        result["fallback_to_text"] = True
+        result["error"] = "customer_image_deadline_exceeded"
         return result
 
 

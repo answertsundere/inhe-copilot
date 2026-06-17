@@ -39,9 +39,28 @@ copilot/data/review_queue.jsonl
 copilot/data/*.db
 copilot/data/*.db-shm
 copilot/data/*.db-wal
+copilot/data/*.db.bak*
+copilot/data/*.db.before_*
 copilot/data/bad_cases.jsonl
 copilot/data/traces.db*
+
+# 运行时会话/诊断数据（含真实用户信息，绝不应提交）
+copilot/data/snapshots/
+copilot/data/sidecar/
+copilot/data/reports/
+copilot/data/imports/
+copilot/data/real_golden_candidates/
+copilot/data/dingtalk_media_report*.json
+copilot/data/ai_update_tasks.json
+copilot/data/premium_*.json
+copilot/data/quality_report_latest.json
+copilot/data/knowledge_cleanup_delivery_report.txt
+copilot/data/knowledge_publish_review_queue.jsonl
+copilot/data/rag_risky_claims_report.csv
+
+# 日志、截图、pytest 临时产物
 copilot/*.log
+copilot/logs/
 copilot/*_log.txt
 copilot/_*.txt
 copilot/_*.json
@@ -52,8 +71,11 @@ copilot/snapshot*.json
 copilot/*screenshot*.png
 copilot/web_*.png
 copilot/qianniu_screenshot.png
+copilot/_ui_final_*.png
+copilot/_ui_final_*.json
 copilot/fetched_index.html
 copilot/_served_real_test.html
+copilot/.pytest_tmp_*/
 1.txt
 2.txt
 3.txt
@@ -79,3 +101,15 @@ product_knowledge/*.xlsx
 product_knowledge/*.docx
 product_knowledge/*培训*.txt
 product_knowledge/*规则*.txt
+ 
+# ============ Copilot runtime outputs added during local QA ============
+copilot/reports/
+copilot/round2_results/
+copilot/round3_results/
+copilot/app/media_uploads/
+copilot/data/*_uploads/
+copilot/data/daily_media_asset_sync.lock
+copilot/scripts/manual/outputs/
+copilot/scripts/dingtalk_media_report*.json
+copilot/entry_*.json
+copilot/sheets_info.json

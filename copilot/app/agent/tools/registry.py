@@ -321,11 +321,24 @@ def _handle_rag_search(inputs: dict, state: dict) -> dict:
             or input_sku
             or slot_sku
         )
+        if _looks_like_sku(sku_name):
+            sku_name = str(sku_name).strip().upper()
         if identity.get("matched_product_name") and identity["matched_product_name"] not in product_scope:
             product_scope = [identity["matched_product_name"], *product_scope]
         for value in identity.get("candidates", []) or []:
-            if value and value not in product_scope:
-                product_scope.append(value)
+            if isinstance(value, dict):
+                candidate_text = str(
+                    value.get("matched_product_name")
+                    or value.get("product_name")
+                    or value.get("name")
+                    or value.get("title")
+                    or value.get("value")
+                    or ""
+                ).strip()
+            else:
+                candidate_text = str(value or "").strip()
+            if candidate_text and candidate_text not in product_scope:
+                product_scope.append(candidate_text)
 
         debug = {
             "query": query,

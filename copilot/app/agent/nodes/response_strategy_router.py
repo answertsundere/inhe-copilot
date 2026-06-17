@@ -7,7 +7,10 @@ response_strategy_router 节点
 4. 本轮 answer_mode
 """
 
+import re
 import time
+
+from app.services.product_context_consistency import evaluate_product_context
 
 
 # 策略映射表
@@ -17,6 +20,15 @@ STRATEGY_MAP = [
     # (条件检查函数, 策略配置)
     # 高优先级在前
 ]
+
+IMAGE_MARKER_RE = re.compile(r"\[\s*\u56fe\u7247\s*\d*\s*\]")
+TEXT_PRODUCT_QUESTION_TERMS = (
+    "\u5417", "\u5462", "\u600e\u4e48", "\u5982\u4f55", "\u53ef\u4ee5",
+    "\u80fd\u4e0d\u80fd", "\u662f\u4e0d\u662f", "\u6709\u6ca1\u6709",
+    "\u4f1a\u4e0d\u4f1a", "\u53ef\u62c6", "\u62c6\u5378", "\u5b89\u88c5",
+    "\u7ec4\u88c5", "\u6750\u8d28", "\u627f\u91cd", "\u5c3a\u5bf8",
+    "\u6e05\u6d17", "\u9632\u6f6e",
+)
 
 
 def _has_identifier(state: dict) -> bool:
@@ -66,6 +78,12 @@ def _has_sidecar_product_context(state: dict) -> bool:
     )
 
 
+def _has_text_product_question(state: dict) -> bool:
+    msg = state.get("normalized_message", state.get("customer_message", "")) or ""
+    text = IMAGE_MARKER_RE.sub("", msg).strip()
+    return bool(text and any(term in text for term in TEXT_PRODUCT_QUESTION_TERMS))
+
+
 def _has_embedded_product_question(state: dict) -> bool:
     msg = state.get("normalized_message", state.get("customer_message", "")) or ""
     product_terms = (
@@ -96,6 +114,10 @@ def _is_product_question(state: dict) -> bool:
         "product_question", "product_consult", "child_safety",
         "competitor_compare", "odor_question", "cleaning_care", "material_safety",
     )
+
+
+def _is_clarification(state: dict) -> bool:
+    return state.get("intent", "") in ("needs_clarification", "image_attachment")
 
 
 def _has_ambiguous_sidecar_product_name(state: dict) -> bool:
@@ -135,6 +157,19 @@ def response_strategy_router(state: dict) -> dict:
     has_product_followup = _looks_like_product_followup(state)
     force_product_clarification = _has_ambiguous_sidecar_product_name(state)
 
+    # 品类冲突检测：买家问的品类与当前商品不一致（如问“放多少本绘本”却是水龙头延长器）
+    _ctx_msg = state.get("normalized_message", state.get("customer_message", "")) or ""
+    _category_text = (
+        identity.get("category_l3", "")
+        or identity.get("category_l2", "")
+        or identity.get("category", "")
+    )
+    product_context_validation = evaluate_product_context(
+        _ctx_msg,
+        state.get("matched_product_name", ""),
+        _category_text,
+    )
+
     # 默认策略
     strategy = "clarification"
     should_query_facts = False
@@ -163,6 +198,25 @@ def response_strategy_router(state: dict) -> dict:
         knowledge_timing = "sop_only"
         answer_mode = "human_review"
 
+    # 1.5 模糊问题/图片依赖：不查知识，直接要求补充信息
+    elif intent == "image_attachment" and _has_sidecar_product_context(state) and _has_text_product_question(state):
+        strategy = "product_question"
+        should_query_facts = False
+        fact_tools = []
+        should_query_knowledge = True
+        allowed_source_types = ["product_facts", "product_mapping", "faq"]
+        knowledge_timing = "before_reply"
+        answer_mode = "product_answer"
+
+    elif _is_clarification(state):
+        strategy = "clarification"
+        should_query_facts = False
+        fact_tools = []
+        should_query_knowledge = False
+        allowed_source_types = []
+        knowledge_timing = "none"
+        answer_mode = "no_evidence_clarification"
+
     # 2. 售后
     elif _is_aftersales(state):
         strategy = "aftersales"
@@ -170,6 +224,17 @@ def response_strategy_router(state: dict) -> dict:
         fact_tools = []
         should_query_knowledge = intent != "image_attachment"
         allowed_source_types = ["aftersales_policy", "forbidden_rules", "response_templates"]
+        if state.get("query_fact_type") in {
+            "pinch_safety",
+            "safety_small_parts",
+            "material",
+            "certification_report",
+            "aftersales_policy",
+        }:
+            allowed_source_types = [
+                "aftersales_policy", "high_risk_sop", "product_facts",
+                "faq", "forbidden_rules", "response_templates",
+            ]
         knowledge_timing = "none" if intent == "image_attachment" else "before_reply"
         answer_mode = "aftersales_policy"
 
@@ -209,13 +274,23 @@ def response_strategy_router(state: dict) -> dict:
 
     # 5. 商品咨询
     elif _is_product_question(state) or has_product_followup:
-        strategy = "product_question"
-        should_query_facts = False
-        fact_tools = []
-        should_query_knowledge = True
-        allowed_source_types = ["product_facts", "product_mapping", "faq"]
-        knowledge_timing = "before_reply"
-        answer_mode = "product_answer"
+        if product_context_validation.get("mismatch"):
+            # 品类冲突：问的不是这款商品，强制澄清，不查知识/工具，避免拿无关字段硬答
+            strategy = "clarification"
+            should_query_facts = False
+            fact_tools = []
+            should_query_knowledge = False
+            allowed_source_types = []
+            knowledge_timing = "none"
+            answer_mode = "no_evidence_clarification"
+        else:
+            strategy = "product_question"
+            should_query_facts = False
+            fact_tools = []
+            should_query_knowledge = True
+            allowed_source_types = ["product_facts", "product_mapping", "faq"]
+            knowledge_timing = "before_reply"
+            answer_mode = "product_answer"
 
     # 6. 未知 / 通用
     else:
@@ -259,6 +334,7 @@ def response_strategy_router(state: dict) -> dict:
         "allowed_tools": allowed_tools,
         "required_tools": required_tools,
         "forbidden_tools": forbidden_tools,
+        "product_context_validation": product_context_validation,
         "trace_steps": state.get("trace_steps", []) + [trace],
     }
 
@@ -286,7 +362,7 @@ def _compute_tool_lists(state: dict, strategy: str, has_id: bool) -> tuple:
         ]
 
     elif strategy == "aftersales":
-        if intent in ("invoice", "price_protection", "price_promotion", "gift_missing") and has_id:
+        if has_id:
             if identifier_type == "platform_trade_id":
                 jst_tool = "jst_lookup_outbound_tool"
             elif identifier_type == "tracking_no":
@@ -334,7 +410,7 @@ def _compute_tool_lists(state: dict, strategy: str, has_id: bool) -> tuple:
 
     elif strategy == "logistics_with_order":
         # 根据 identifier_type 选择正确的 JST 工具
-        if identifier_type == "platform_trade_id":
+        if identifier_type in ("platform_trade_id", "platform_order_id"):
             jst_tool = "jst_lookup_outbound_tool"
         elif identifier_type == "tracking_no":
             jst_tool = "jst_lookup_tracking_tool"

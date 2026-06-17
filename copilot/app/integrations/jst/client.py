@@ -5,11 +5,11 @@
 import hashlib
 import json
 import logging
-import os
 import time
 
 import requests
 
+from app.config import JST_APP_KEY, JST_APP_SECRET, JST_ACCESS_TOKEN, JST_BASE_URL
 from app.integrations.jst.endpoint_whitelist import validate_endpoint
 from app.integrations.jst.errors import JSTAPIError, JSTConfigError, JSTTimeoutError
 
@@ -22,12 +22,10 @@ class JSTClient:
     """聚水潭只读 API 客户端"""
 
     def __init__(self):
-        self._app_key = os.environ.get("JUSHUITAN_APP_KEY", "")
-        self._app_secret = os.environ.get("JUSHUITAN_APP_SECRET", "")
-        self._access_token = os.environ.get("JUSHUITAN_ACCESS_TOKEN", "")
-        self._base_url = os.environ.get(
-            "JUSHUITAN_BASE_URL", "https://openapi.jushuitan.com/open"
-        )
+        self._app_key = JST_APP_KEY
+        self._app_secret = JST_APP_SECRET
+        self._access_token = JST_ACCESS_TOKEN
+        self._base_url = JST_BASE_URL
 
     def is_configured(self) -> bool:
         return bool(self._app_key and self._app_secret and self._access_token)

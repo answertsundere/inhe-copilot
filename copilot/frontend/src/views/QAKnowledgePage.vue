@@ -26,17 +26,14 @@ const riskControl = ref<any>(null)
 const riskControlLabels: Record<string, string> = {
   high_no_sop: '高风险缺SOP',
   high_auto_reply: '高风险允许自动回复',
-  medium_no_review: '中风险未开启审核',
-  compensation_no_review: '赔偿相关未审核',
-  complaint_no_review: '投诉相关未审核',
 }
 const navLoading = ref(false)
 const expandedNav = ref<string[]>([])
 
 const filters = reactive({
   search: '', intent: '', risk_level: '', status: '', source_type: '',
-  auto_reply: '', human_review: '', scenario_category: '', issue_type: '',
-  category_l1: '', category_l2: '', category_l3: '', sop_status: '',
+  auto_reply: '', scenario_category: '', issue_type: '',
+  category_l1: '', category_l2: '', category_l3: '', sop_status: '', content_contains: '',
   page: 1, page_size: 20,
 })
 
@@ -75,7 +72,7 @@ function filterByCard(key: string) {
   else if (key === 'pending') filters.status = 'pending_review'
   else if (key === 'auto_yes') filters.auto_reply = 'true'
   else if (key === 'auto_no') filters.auto_reply = 'false'
-  else if (key === 'high_risk') filters.risk_level = 'medium'
+  else if (key === 'high_risk') filters.risk_level = 'medium,high,critical'
   filters.page = 1; fetchQAList()
 }
 
@@ -105,7 +102,7 @@ function onNavClick(data: any, mode: string) {
   // Reset filters
   filters.category_l1 = ''; filters.category_l2 = ''; filters.category_l3 = ''
   filters.scenario_category = ''; filters.issue_type = ''
-  filters.risk_level = ''; filters.sop_status = ''; filters.human_review = ''; filters.auto_reply = ''
+  filters.risk_level = ''; filters.sop_status = ''; filters.auto_reply = ''
 
   if (mode === 'product') {
     // data.label is category name, check level by parent context
@@ -175,11 +172,38 @@ async function openDetail(id: number) {
 }
 
 async function saveEdit() {
+  if ((editForm.risk_level === 'high' || editForm.risk_level === 'critical') && editForm.auto_reply) {
+    ElMessage.warning('高/极高风险问答禁止开启“可自动回复”')
+    return
+  }
   try {
-    const { data } = await updateQA(currentQA.value.id, editForm)
+    const { data } = await updateQA(currentQA.value.id, buildQAPayload())
     currentQA.value = data; editMode.value = false; ElMessage.success('保存成功')
     fetchQAList(); fetchSummary()
-  } catch { ElMessage.error('保存失败') }
+  } catch (error: any) { ElMessage.error(`保存失败：${formatApiError(error)}`) }
+}
+
+function buildQAPayload() {
+  const fields = [
+    'question', 'answer', 'intent', 'sub_intent',
+    'category_l1', 'category_l2', 'category_l3',
+    'scenario_category', 'issue_type', 'sop_id',
+    'risk_level', 'auto_reply',
+    'source_type', 'status', 'product_id',
+    'sku_codes', 'keywords',
+  ]
+  return fields.reduce((payload: Record<string, any>, field) => {
+    if (Object.prototype.hasOwnProperty.call(editForm, field)) payload[field] = editForm[field]
+    return payload
+  }, {})
+}
+
+function formatApiError(error: any) {
+  const data = error?.response?.data
+  if (Array.isArray(data?.errors) && data.errors.length) {
+    return data.errors.map((item: any) => item.reason || item.message || item.field).filter(Boolean).join('；')
+  }
+  return data?.message || data?.error || error?.message || '请检查字段后重试'
 }
 
 async function handleSubmitReview() {
@@ -220,7 +244,6 @@ function handleSelectionChange(rows: any[]) { selectedIds.value = rows.map((r: a
 function agentStatus(qa: any) {
   if (qa.status !== 'published') return { ok: false, reason: '未发布' }
   if (!qa.auto_reply) return { ok: false, reason: '未开启自动回复' }
-  if (qa.risk_level === 'medium' && !qa.human_review) return { ok: false, reason: '中风险未审核' }
   if (qa.risk_level === 'high' || qa.risk_level === 'critical') return { ok: false, reason: '高风险禁止自动回复' }
   return { ok: true, reason: '可安全使用' }
 }
@@ -229,7 +252,6 @@ function getHealthTags(qa: any) {
   const tags: { text: string; type: string }[] = []
   if (!qa.product_id) tags.push({ text: '缺商品', type: 'warning' })
   if (!(qa.keywords || []).length) tags.push({ text: '缺关键词', type: 'warning' })
-  if (qa.risk_level === 'medium' && !qa.human_review) tags.push({ text: '中风险未审核', type: 'warning' })
   if ((qa.risk_level === 'high' || qa.risk_level === 'critical') && !qa.sop_id) tags.push({ text: '缺SOP', type: 'danger' })
   if ((qa.risk_level === 'high' || qa.risk_level === 'critical') && qa.auto_reply) tags.push({ text: '高风险自动回复', type: 'danger' })
   if (qa.status !== 'published') tags.push({ text: '未发布', type: 'info' })
@@ -237,7 +259,7 @@ function getHealthTags(qa: any) {
 }
 
 function resetFilters() {
-  Object.assign(filters, { search: '', intent: '', risk_level: '', status: '', source_type: '', auto_reply: '', human_review: '', scenario_category: '', issue_type: '', category_l1: '', category_l2: '', category_l3: '', sop_status: '', page: 1 })
+  Object.assign(filters, { search: '', intent: '', risk_level: '', status: '', source_type: '', auto_reply: '', scenario_category: '', issue_type: '', category_l1: '', category_l2: '', category_l3: '', sop_status: '', content_contains: '', page: 1 })
   fetchQAList()
 }
 
@@ -249,12 +271,17 @@ watch(() => filters, () => {
 watch(navMode, () => fetchNavTree())
 
 function onRiskControlClick(key: string) {
-  // Load items from riskControl into the QA list
-  const section = riskControl.value?.[key]
-  if (section?.items) {
-    qaList.value = section.items
-    total.value = section.count
+  // 风控面板点击后转为后端分页查询，避免一次性渲染大量数据
+  resetFilters()
+  if (key === 'high_no_sop') {
+    filters.risk_level = 'high,critical'
+    filters.sop_status = 'no_sop'
+  } else if (key === 'high_auto_reply') {
+    filters.risk_level = 'high,critical'
+    filters.auto_reply = 'true'
   }
+  filters.page = 1
+  fetchQAList()
 }
 
 onMounted(() => {
@@ -422,7 +449,6 @@ onMounted(() => {
             </div>
             <div class="qc-meta">
               <el-tag v-if="qa.auto_reply" type="success" size="small">可自动回复</el-tag>
-              <el-tag v-if="qa.human_review" type="warning" size="small">需审核</el-tag>
               <StatusTag :status="qa.status" />
             </div>
             <div class="qc-tags">
@@ -459,7 +485,6 @@ onMounted(() => {
                   <el-descriptions-item label="客服场景">{{ currentQA.scenario_category || '-' }}</el-descriptions-item>
                   <el-descriptions-item label="问题类型">{{ currentQA.issue_type || '-' }}</el-descriptions-item>
                   <el-descriptions-item label="自动回复">{{ currentQA.auto_reply ? '是' : '否' }}</el-descriptions-item>
-                  <el-descriptions-item label="人工审核">{{ currentQA.human_review ? '是' : '否' }}</el-descriptions-item>
                   <el-descriptions-item label="状态"><StatusTag :status="currentQA.status" /></el-descriptions-item>
                   <el-descriptions-item label="来源">{{ currentQA.source_type }}</el-descriptions-item>
                 </el-descriptions>
@@ -478,10 +503,7 @@ onMounted(() => {
                     <el-col :span="8"><el-form-item label="风险等级"><el-select v-model="editForm.risk_level"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="极高" value="critical" /></el-select></el-form-item></el-col>
                     <el-col :span="8"><el-form-item label="客服场景"><el-select v-model="editForm.scenario_category"><el-option v-for="s in ['售前咨询','物流发货','安装指导','售后问题','投诉风险','赔偿纠纷','平台规则','安全质保','推销推荐','特殊场景']" :key="s" :label="s" :value="s" /></el-select></el-form-item></el-col>
                   </el-row>
-                  <el-row :gutter="16">
-                    <el-col :span="12"><el-form-item label="可自动回复"><el-switch v-model="editForm.auto_reply" /></el-form-item></el-col>
-                    <el-col :span="12"><el-form-item label="需人工审核"><el-switch v-model="editForm.human_review" /></el-form-item></el-col>
-                  </el-row>
+                  <el-form-item label="可自动回复"><el-switch v-model="editForm.auto_reply" /></el-form-item>
                 </el-form>
                 <div style="text-align:right"><el-button @click="editMode=false">取消</el-button><el-button type="primary" @click="saveEdit">保存</el-button></div>
               </template>

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from app.agent.schemas.understanding import AnalyzerResult, ParallelUnderstandingResult, SafetyContract
+from app.services.aftersales_intent_service import classify_colloquial_aftersales
 
 
 TRACKING_PATTERNS = [
@@ -124,14 +125,39 @@ def _run_analyzer(name: str, fn: AnalyzerFn, state: dict) -> AnalyzerResult:
 
 
 def _text(state: dict) -> str:
-    return state.get("normalized_message") or state.get("customer_message", "")
+    msg = state.get("normalized_message") or state.get("customer_message", "")
+    # 合并 customer 会话历史（不含 agent 回复），用于跨轮次理解；当前消息只算一次
+    ctx = state.get("copilot_context", {}) or {}
+    history = ctx.get("conversation_history", []) or []
+    parts = [msg or ""]
+    for item in history:
+        if not isinstance(item, dict) or item.get("role") != "customer":
+            continue
+        t = str(item.get("text") or "")
+        if t and t != msg and t not in parts:
+            parts.append(t)
+    return " ".join(p for p in parts if p)
 
 
 def _intent_classifier(state: dict) -> dict[str, Any]:
     text = _text(state)
     identifiers = _extract_identifiers(text)
-    secondary: list[str] = []
+    colloquial_aftersales = classify_colloquial_aftersales(text)
 
+    # 各意图命中检测：用于 primary 优先级，同时用于 secondary 多意图（避免漏答）
+    _checks = {
+        "missing_item": any(w in text for w in ("少件", "少了", "漏发", "缺配件", "少了配件", "缺件")),
+        "damaged_item": any(w in text for w in ("破损", "坏了", "损坏", "掉了", "掉落", "断了", "断裂", "裂了", "开裂")),
+        "wrong_item": any(w in text for w in ("发错", "错货", "不是我拍的", "不是我买的", "收到的不是")),
+        "refund_request": any(w in text for w in ("退款", "退钱")),
+        "return_request": any(w in text for w in ("退货", "退回")),
+        "installation_question": any(w in text for w in INSTALL_WORDS),
+        "material_question": any(w in text for w in MATERIAL_WORDS),
+        "size_question": any(w in text for w in SIZE_WORDS),
+        "product_question": any(w in text for w in PRODUCT_WORDS),
+    }
+
+    secondary: list[str] = []
     if any(w in text for w in COMPLAINT_WORDS):
         secondary.append("complaint")
         if "再不" in text or "曝光" in text or "平台" in text:
@@ -145,29 +171,52 @@ def _intent_classifier(state: dict) -> dict[str, Any]:
         primary = "logistics_eta"
     elif any(w in text for w in COMPLAINT_WORDS):
         primary = "complaint"
-    elif any(w in text for w in ("少件", "少了", "漏发")):
+    elif colloquial_aftersales.get("matched"):
+        subtype = colloquial_aftersales.get("subtype")
+        if ("掉" in text or "脱落" in text) and any(w in text for w in ("零件", "配件", "部件")):
+            primary = "damaged_item"
+        elif _checks["missing_item"]:
+            primary = "missing_item"
+        else:
+            primary = {
+                "replacement_request": "missing_item",
+                "missing_item": "missing_item",
+                "damaged_item": "damaged_item",
+                "wrong_item": "wrong_item",
+            }.get(subtype, "missing_item")
+    elif _checks["missing_item"]:
         primary = "missing_item"
-    elif any(w in text for w in ("破损", "坏了", "损坏")):
+    elif _checks["damaged_item"]:
         primary = "damaged_item"
-    elif any(w in text for w in ("发错", "错货")):
+    elif _checks["wrong_item"]:
         primary = "wrong_item"
-    elif any(w in text for w in ("退款", "退钱")):
+    elif _checks["refund_request"]:
         primary = "refund_request"
-    elif any(w in text for w in ("退货", "退回")):
+    elif _checks["return_request"]:
         primary = "return_request"
-    elif any(w in text for w in INSTALL_WORDS):
+    elif _checks["installation_question"]:
         primary = "installation_question"
-    elif any(w in text for w in MATERIAL_WORDS):
+    elif _checks["material_question"]:
         primary = "material_question"
-    elif any(w in text for w in SIZE_WORDS):
+    elif _checks["size_question"]:
         primary = "size_question"
-    elif any(w in text for w in PRODUCT_WORDS):
+    elif _checks["product_question"]:
         primary = "product_question"
     else:
         primary = "general"
 
+    # 多意图：把其它命中的意图也纳入 secondary，避免只保留一个导致漏答
+    for _label in (
+        "missing_item", "damaged_item", "wrong_item", "refund_request",
+        "return_request", "installation_question", "material_question",
+        "size_question", "product_question",
+    ):
+        if _checks.get(_label) and _label != primary and _label not in secondary:
+            secondary.append(_label)
+
     if primary in ("material_question", "size_question", "installation_question"):
-        secondary.append("product_question")
+        if "product_question" not in secondary:
+            secondary.append("product_question")
     if primary.startswith("logistics") and "complaint" in secondary:
         secondary.append("logistics_eta")
 
@@ -184,7 +233,8 @@ def _risk_classifier(state: dict) -> dict[str, Any]:
     level = "low"
 
     high_words = ("投诉", "平台介入", "曝光", "12315", "孩子受伤", "安全事故", "再不处理", "告你")
-    medium_words = ("差评", "赔偿", "赔", "补发", "退款", "少件", "少了", "漏发", "破损", "坏了", "发错", "签收没收到", "没收到")
+    damaged_words = ("破损", "坏了", "损坏", "掉了", "掉落", "断了", "断裂", "裂了", "开裂")
+    medium_words = ("差评", "赔偿", "赔", "补发", "退款", "少件", "少了", "漏发", "发错", "签收没收到", "没收到") + damaged_words
     if any(w in text for w in high_words):
         level = "high"
         reasons.extend([w for w in high_words if w in text])
@@ -195,7 +245,7 @@ def _risk_classifier(state: dict) -> dict[str, Any]:
     return {
         "risk_level": level,
         "risk_reasons": reasons,
-        "need_human_review": level == "high" or any(w in text for w in ("少件", "少了", "漏发", "破损", "坏了", "发错", "赔", "签收没收到", "没收到")),
+        "need_human_review": level == "high" or any(w in text for w in ("少件", "少了", "漏发", "发错", "赔", "签收没收到", "没收到") + damaged_words),
         "confidence": 0.9,
     }
 

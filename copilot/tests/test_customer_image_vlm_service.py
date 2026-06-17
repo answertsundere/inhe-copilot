@@ -1,6 +1,8 @@
 import base64
+import time
 
 from app.services.customer_image_vlm_service import analyze_customer_images
+from app.agent.nodes.build_response import build_response
 from app.agent.nodes.generate_reply import generate_reply
 
 
@@ -18,6 +20,79 @@ def test_customer_image_vlm_disabled_returns_metadata_result(monkeypatch):
     assert "vlm_not_configured" in result[0]["warnings"]
     assert result[0]["requires_human_review"] is True
     assert result[0]["summary"] == "桌面边角开裂"
+
+
+def test_customer_image_vlm_uses_hard_budget_without_retries(monkeypatch):
+    captured = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured["request_timeout"] = kwargs["timeout"]
+            raise TimeoutError("request timed out")
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    monkeypatch.setattr("app.config.COPILOT_VLM_ENABLED", True)
+    monkeypatch.setattr("app.config.COPILOT_VLM_API_BASE", "https://example.invalid/v1")
+    monkeypatch.setattr("app.config.COPILOT_VLM_API_KEY", "test-key")
+    monkeypatch.setattr("app.config.COPILOT_VLM_MODEL", "test-vlm")
+    monkeypatch.setattr("app.config.COPILOT_VLM_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr("app.services.customer_image_vlm_service.OpenAI", FakeOpenAI)
+
+    result = analyze_customer_images([{"base64": "ZmFrZQ==", "kind": "installation_photo"}])
+
+    assert captured["timeout"] == 8
+    assert captured["request_timeout"] == 8
+    assert captured["max_retries"] == 0
+    assert result[0]["fallback_to_text"] is True
+    assert result[0]["warnings"] == ["vlm_timeout_fallback"]
+    assert "图片细节还需人工确认" in result[0]["reason_for_review"]
+
+
+def test_build_response_adds_safe_notice_when_image_analysis_degrades():
+    result = build_response({
+        "suggested_reply": "亲，我先按您说的少配件问题核实。",
+        "risk_level": "medium",
+        "copilot_context": {
+            "image_analysis": [{
+                "success": False,
+                "fallback_to_text": True,
+                "warnings": ["vlm_timeout_fallback"],
+            }],
+        },
+        "trace_steps": [],
+    })
+
+    assert "图片细节" in result["suggested_reply"]
+    assert "未识别清楚的图片" in result["suggested_reply"]
+    assert "人工确认" not in result["suggested_reply"]
+
+
+def test_customer_image_hard_deadline_does_not_wait_for_stalled_provider(monkeypatch):
+    monkeypatch.setattr("app.config.COPILOT_VLM_ENABLED", True)
+    monkeypatch.setattr("app.config.COPILOT_VLM_API_BASE", "https://example.invalid/v1")
+    monkeypatch.setattr("app.config.COPILOT_VLM_API_KEY", "test-key")
+    monkeypatch.setattr("app.config.COPILOT_VLM_MODEL", "test-vlm")
+    monkeypatch.setattr("app.services.customer_image_vlm_service.CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS", 0.02)
+
+    def stalled_call(_image_url, _attachment):
+        time.sleep(0.2)
+        return {"success": True}
+
+    monkeypatch.setattr(
+        "app.services.customer_image_vlm_service._call_customer_image_vlm",
+        stalled_call,
+    )
+    started = time.perf_counter()
+    result = analyze_customer_images([{"base64": "ZmFrZQ==", "kind": "damage_photo"}])
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.1
+    assert result[0]["fallback_to_text"] is True
+    assert result[0]["warnings"] == ["vlm_timeout_fallback"]
 
 
 def test_image_reply_uses_vlm_damage_issue_type():

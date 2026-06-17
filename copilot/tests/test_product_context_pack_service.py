@@ -1,0 +1,849 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+
+@pytest.fixture()
+def product_context_db(monkeypatch):
+    import app.db as db_module
+    from app.models.kb_tables import KBGenericServiceRule, KBMediaAsset, KBProduct, KBProductActivityRule, KBQA
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    db_module.Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            KBProduct.__table__,
+            KBQA.__table__,
+            KBMediaAsset.__table__,
+            KBProductActivityRule.__table__,
+            KnowledgeEntry.__table__,
+            KnowledgeChunk.__table__,
+            KBGenericServiceRule.__table__,
+        ],
+    )
+    return session_factory
+
+
+def _add_chunked_entry(db, *, title, content, source_type, fact_type, product_scope, sku_scope):
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+    entry = KnowledgeEntry(
+        source_type=source_type,
+        title=title,
+        content=content,
+        intent="product_question",
+        product_scope_json=json.dumps(product_scope, ensure_ascii=False),
+        sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
+        status="published",
+        index_status="ready",
+        fact_type=fact_type,
+        auto_reply_allowed=True,
+    )
+    db.add(entry)
+    db.flush()
+    chunk = KnowledgeChunk(
+        entry_id=entry.id,
+        chunk_text=content,
+        chunk_index=0,
+        source_type=source_type,
+        intent="product_question",
+        product_scope_json=json.dumps(product_scope, ensure_ascii=False),
+        sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
+        metadata_json=json.dumps({"auto_reply_allowed": True}, ensure_ascii=False),
+        category="",
+        category_l3="",
+        search_keywords="",
+        source_confidence=0.8,
+    )
+    db.add(chunk)
+    db.commit()
+    return entry
+
+
+def test_product_context_pack_collects_same_product_installation_by_sku_family(product_context_db):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc\u5b89\u88c5\u8bf4\u660e",
+            content="\u91c7\u7528\u5361\u6263\u5f0f\u7ec4\u88c5\uff0c\u5148\u88c5\u4fa7\u677f\u518d\u56fa\u5b9a\u5c42\u677f\u3002",
+            source_type="installation_guide",
+            fact_type="installation",
+            product_scope=["YH06K53", "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc"],
+            sku_scope=["YH06K53"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "YH06K53B05S13"},
+            "matched_product_name": "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+        },
+        query="\u8fd9\u4e2a\u600e\u4e48\u5b89\u88c5",
+        allowed_source_types=["installation_guide", "product_facts", "faq"],
+        query_fact_type="installation",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "installation"
+    assert pack["facts"][0]["product_context_pack"] is True
+
+
+def test_product_context_pack_reads_sku_from_product_candidates(product_context_db):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc\u5b89\u88c5\u8bf4\u660e",
+            content="\u8fd9\u6b3e\u91c7\u7528\u5361\u6263\u5f0f\u7ec4\u88c5\uff0c\u4e0d\u9700\u8981\u6253\u5b54\u3002",
+            source_type="installation_guide",
+            fact_type="installation",
+            product_scope=["YH06K53"],
+            sku_scope=["YH06K53"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "product_candidates": [
+                {"type": "product_name", "value": "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc"},
+                {"type": "sku_code", "value": "YH06K53B05S13"},
+            ],
+        },
+        query="\u9700\u8981\u6253\u5b54\u5417",
+        allowed_source_types=["installation_guide"],
+        query_fact_type="installation",
+    )
+
+    assert pack["facts"]
+    assert "\u4e0d\u9700\u8981\u6253\u5b54" in pack["facts"][0]["chunk_text"]
+
+
+def test_product_context_pack_strict_fact_type_does_not_use_installation_for_detachable(product_context_db):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="\u4e00\u53f7\u5582\u517b\u67dc\u5b89\u88c5\u8bf4\u660e",
+            content="\u5148\u62fc\u63a5\u5e95\u677f\uff0c\u518d\u5b89\u88c5\u4fa7\u677f\u3002",
+            source_type="installation_guide",
+            fact_type="installation",
+            product_scope=["YH88K01", "\u4e00\u53f7\u5582\u517b\u67dc"],
+            sku_scope=["YH88K01"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "YH88K01B09S26"},
+            "matched_product_name": "\u4e00\u53f7\u5582\u517b\u67dc",
+        },
+        query="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417",
+        allowed_source_types=["installation_guide", "product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["facts"] == []
+
+
+def test_product_context_pack_can_return_product_scoped_kbqa(product_context_db):
+    from app.models.kb_tables import KBProduct, KBQA
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH06K53",
+            product_name="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "YH06K53"}]),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        db.add(KBQA(
+            question="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc\u6750\u8d28\u662f\u4ec0\u4e48\uff1f",
+            answer="\u4e3b\u8981\u91c7\u7528\u51b7\u8f67\u94a2\u7ba1\u548c\u73af\u4fddPP\u6750\u8d28\u3002",
+            product_id=product.id,
+            sku_codes_json=json.dumps(["YH06K53"], ensure_ascii=False),
+            source_type="faq",
+            status="published",
+            auto_reply=True,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "YH06K53B05S13"},
+            "matched_product_name": "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+        },
+        query="\u6750\u8d28\u5b89\u5168\u5417",
+        allowed_source_types=["faq"],
+        query_fact_type="material",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["entry_id"] == "kbqa:1"
+    assert pack["facts"][0]["fact_type"] == "material"
+    assert "Q:" not in pack["facts"][0]["chunk_text"]
+    assert "A:" not in pack["facts"][0]["chunk_text"]
+    assert "\u4e3b\u8981\u91c7\u7528" in pack["facts"][0]["chunk_text"]
+
+
+def test_product_context_pack_uses_material_kbqa_with_no_odor_for_odor_query(product_context_db):
+    from app.models.kb_tables import KBProduct, KBQA
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH64K01",
+            product_name="\u4e00\u53f7\u5c0f\u718a\u5e8a\u62a4\u680f",
+            sku_list_json=json.dumps([{"sku_code": "YH64K01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        db.add(KBQA(
+            question="\u4e00\u53f7\u5c0f\u718a\u5e8a\u62a4\u680f\u7684\u6750\u8d28\u5b89\u5168\u73af\u4fdd\u5417\uff1f",
+            answer="\u91c7\u7528\u98df\u54c1\u7ea7HDPE/PP\u73af\u4fdd\u6750\u6599\uff0c\u65e0\u6bd2\u65e0\u5473\uff0c\u4e0d\u542bBPA\u7b49\u6709\u5bb3\u7269\u8d28\u3002",
+            product_id=product.id,
+            sku_codes_json=json.dumps(["YH64K01"], ensure_ascii=False),
+            source_type="faq",
+            status="published",
+            auto_reply=True,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "YH64K01"},
+            "matched_product_name": "\u4e00\u53f7\u5c0f\u718a\u5e8a\u62a4\u680f",
+        },
+        query="\u4ea7\u54c1\u6709\u6c14\u5473\u5417",
+        allowed_source_types=["faq"],
+        query_fact_type="odor",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["entry_id"] == "kbqa:1"
+    assert pack["facts"][0]["fact_type"] == "odor"
+    assert "\u65e0\u6bd2\u65e0\u5473" in pack["facts"][0]["chunk_text"]
+
+
+def test_product_context_pack_returns_structured_profile(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH88K01",
+            product_name="\u4e00\u53f7\u5582\u517b\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "YH88K01B09S26", "sku_name": "\u767d\u8272"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "material": "\u73af\u4fddPP",
+                "size": "80*40*90cm",
+                "install_method": "\u5361\u6263\u5f0f\u7ec4\u88c5",
+            }, ensure_ascii=False),
+            logistics_json=json.dumps({"package_weight": "8kg"}, ensure_ascii=False),
+            warranty_json=json.dumps({"warranty": "\u6309\u5e97\u94fa\u552e\u540e\u653f\u7b56"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "YH88K01B09S26"}, "matched_product_name": "\u4e00\u53f7\u5582\u517b\u67dc"},
+        query="\u8fd9\u4e2a\u600e\u4e48\u5b89\u88c5",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="installation",
+    )
+
+    profile = pack["structured_profile"]
+    assert profile["i_id"] == "YH88K01"
+    assert profile["specs"]["install_method"] == "\u5361\u6263\u5f0f\u7ec4\u88c5"
+    assert "installation" in profile["answerable_fields"]
+    assert pack["stats"]["has_structured_profile"] is True
+    assert "structured_profile" not in pack["evidence_pack"]
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+    assert pack["evidence_pack"]["matched_fields"] == ["installation"]
+
+
+def test_product_context_pack_turns_exact_profile_field_into_fact(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH88K01",
+            product_name="\u4e00\u53f7\u5582\u517b\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "YH88K01B09S26"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "install_method": "\u514d\u6253\u5b54\uff0c\u5361\u6263\u5f0f\u7ec4\u88c5",
+                "material": "\u73af\u4fddPP",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "YH88K01B09S26"}, "matched_product_name": "\u4e00\u53f7\u5582\u517b\u67dc"},
+        query="\u79df\u623f\u80fd\u7528\u5417\uff1f\u8981\u6253\u5b54\u5417\uff1f",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="installation",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["entry_id"] == "kbproduct:1"
+    assert pack["facts"][0]["fact_type"] == "installation"
+    assert "\u514d\u6253\u5b54" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["matched_facts"][0]["fact_type"] == "installation"
+
+
+def test_product_context_pack_does_not_infer_pinch_safety_from_profile(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH06K53",
+            product_name="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "YH06K53B05S13"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "material": "\u51b7\u8f67\u94a2\u7ba1+PP",
+                "install_method": "\u5361\u6263\u5f0f\u7ec4\u88c5",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "YH06K53B05S13"}, "matched_product_name": "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc"},
+        query="\u5bb6\u91cc\u6709\u5b9d\u5b9d\uff0c\u4f1a\u4e0d\u4f1a\u5939\u624b\uff1f",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="pinch_safety",
+    )
+
+    assert pack["facts"] == []
+    assert pack["evidence_pack"]["answerability"] == "missing_product_fact"
+    assert pack["evidence_pack"]["missing_fields"] == ["pinch_safety"]
+
+
+def test_product_context_pack_returns_ranked_media_assets(product_context_db):
+    from datetime import datetime, timedelta
+
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH06K53",
+            product_name="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "YH06K53B05S13"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        db.add_all([
+            KBMediaAsset(
+                product_id=product.id,
+                i_id="YH06K53",
+                sku_code="YH06K53B05S13",
+                product_name="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+                asset_type="install_video",
+                asset_title="\u5b89\u88c5\u89c6\u9891",
+                asset_url="https://example.com/install.mp4",
+                status="approved",
+                usable_for_agent=1,
+                refresh_status="ok",
+                match_confidence=0.95,
+                url_expires_at=datetime.utcnow() + timedelta(days=1),
+            ),
+            KBMediaAsset(
+                product_id=product.id,
+                i_id="YH06K53",
+                sku_code="YH06K53B05S13",
+                product_name="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+                asset_type="sku_image",
+                asset_title="\u5546\u54c1\u56fe",
+                asset_url="https://example.com/sku.jpg",
+                status="approved",
+                usable_for_agent=1,
+                refresh_status="ok",
+                match_confidence=0.8,
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "YH06K53B05S13"}, "matched_product_name": "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc"},
+        query="\u6709\u5b89\u88c5\u89c6\u9891\u5417",
+        allowed_source_types=["installation_guide", "faq"],
+        query_fact_type="installation",
+    )
+
+    assert len(pack["media_assets"]) == 2
+    assert pack["recommended_assets"]
+    assert pack["recommended_assets"][0]["asset_type"] == "install_video"
+    assert pack["stats"]["recommended_media_count"] == 1
+    assert pack["evidence_pack"]["matched_media"][0]["asset_type"] == "install_video"
+
+
+def test_product_context_pack_answers_detachable_from_product_card(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_CARD_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_CARD_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "detachable": "\u5e95\u677f\u548c\u4fa7\u677f\u652f\u6301\u62c6\u88c5",
+                "size": "80*40*90cm",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_CARD_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "detachable"
+    assert "\u652f\u6301\u62c6\u88c5" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+    assert "detachable" in pack["evidence_pack"]["matched_fields"]
+
+
+def test_product_context_pack_does_not_invent_detachable_when_product_card_missing_field(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_DETACHABLE_DEFAULT_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_DETACHABLE_DEFAULT_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"size": "80*40*90cm"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_DETACHABLE_DEFAULT_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["facts"] == []
+    assert pack["evidence_pack"]["answerability"] == "missing_product_fact"
+    assert pack["evidence_pack"]["missing_fields"] == ["detachable"]
+
+
+def test_product_context_pack_answers_odor_from_product_card(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_ODOR_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_ODOR_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "odor_note": "\u65b0\u54c1\u5bc6\u5c01\u5305\u88c5\u6253\u5f00\u540e\u53ef\u80fd\u6709\u8f7b\u5fae\u5305\u88c5\u6c14\u5473\uff0c\u901a\u98ce\u540e\u4f1a\u9010\u6b65\u6563\u53bb\u3002",
+                "material": "\u73af\u4fddPP",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_ODOR_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u4ea7\u54c1\u6709\u5473\u9053\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="odor",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "odor"
+    assert "odor_note" in pack["facts"][0]["chunk_text"]
+    assert "\u901a\u98ce" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+    assert pack["evidence_pack"]["matched_facts"][0]["fact_type"] == "odor"
+
+
+def test_product_context_pack_does_not_invent_odor_when_product_card_missing_field(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_ODOR_DEFAULT_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_ODOR_DEFAULT_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"material": "\u73af\u4fddPP"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_ODOR_DEFAULT_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u4ea7\u54c1\u6709\u5473\u9053\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="odor",
+    )
+
+    assert pack["facts"] == []
+    assert pack["generic_rules"]
+    assert pack["generic_rules"][0]["fact_type"] == "odor"
+    assert pack["evidence_pack"]["answerability"] == "generic_rule_fallback"
+    assert pack["evidence_pack"]["missing_fields"] == ["odor"]
+
+
+def test_product_context_pack_uses_tagged_media_for_detachable(product_context_db):
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_MEDIA_CARD_001",
+            product_name="\u6d4b\u8bd5\u5582\u517b\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_MEDIA_CARD_001B01S01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        size_asset = KBMediaAsset(
+            product_id=product.id,
+            i_id="TEST_MEDIA_CARD_001",
+            sku_code="TEST_MEDIA_CARD_001B01S01",
+            product_name="\u6d4b\u8bd5\u5582\u517b\u67dc",
+            asset_type="size_image",
+            asset_title="\u5c3a\u5bf8\u548c\u62c6\u5378\u8bf4\u660e\u56fe",
+            asset_url="https://example.com/size-detachable.png",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.85,
+        )
+        size_asset.set_scene_tags(["detachable", "dimensions"])
+        sku_asset = KBMediaAsset(
+            product_id=product.id,
+            i_id="TEST_MEDIA_CARD_001",
+            sku_code="TEST_MEDIA_CARD_001B01S01",
+            product_name="\u6d4b\u8bd5\u5582\u517b\u67dc",
+            asset_type="sku_image",
+            asset_title="\u5546\u54c1\u56fe",
+            asset_url="https://example.com/sku.png",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.99,
+        )
+        db.add_all([size_asset, sku_asset])
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_MEDIA_CARD_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u5582\u517b\u67dc"},
+        query="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["recommended_assets"]
+    assert pack["recommended_assets"][0]["asset_type"] == "size_image"
+    assert pack["facts"]
+    assert any(item["entry_id"].startswith("kbmedia:") for item in pack["facts"])
+    media_fact = next(item for item in pack["facts"] if item["entry_id"].startswith("kbmedia:"))
+    assert media_fact["fact_type"] == "detachable"
+    assert "\u62c6\u88c5" in media_fact["chunk_text"]
+    assert "\u7ed3\u6784" in media_fact["chunk_text"]
+    assert "\u5df2\u5339\u914d" not in media_fact["chunk_text"]
+
+
+def test_product_context_pack_does_not_use_untagged_size_image_as_detachable_fact(product_context_db):
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_MEDIA_CARD_002",
+            product_name="\u6d4b\u8bd5\u7f6e\u7269\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_MEDIA_CARD_002B01S01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        db.add(KBMediaAsset(
+            product_id=product.id,
+            i_id="TEST_MEDIA_CARD_002",
+            sku_code="TEST_MEDIA_CARD_002B01S01",
+            product_name="\u6d4b\u8bd5\u7f6e\u7269\u67dc",
+            asset_type="size_image",
+            asset_title="\u5c3a\u5bf8\u56fe",
+            asset_url="https://example.com/size.png",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.95,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_MEDIA_CARD_002B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u7f6e\u7269\u67dc"},
+        query="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["recommended_assets"]
+    assert not any(item["entry_id"].startswith("kbmedia:") for item in pack["facts"])
+
+
+def test_rag_retrieve_merges_product_context_pack_when_primary_retriever_is_empty(product_context_db, monkeypatch):
+    from app.agent.nodes.rag_retrieve import rag_retrieve
+    import app.retrieval.retriever_factory as retriever_factory
+
+    class EmptyRetriever:
+        def retrieve(self, **kwargs):
+            return []
+
+    monkeypatch.setattr(retriever_factory, "get_retriever", lambda: EmptyRetriever())
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc\u5b89\u88c5\u8bf4\u660e",
+            content="\u5b89\u88c5\u65f6\u5148\u5bf9\u9f50\u4fa7\u677f\uff0c\u518d\u88c5\u5c42\u677f\u3002",
+            source_type="installation_guide",
+            fact_type="installation",
+            product_scope=["YH06K53", "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc"],
+            sku_scope=["YH06K53"],
+        )
+    finally:
+        db.close()
+
+    result = rag_retrieve({
+        "should_query_knowledge": True,
+        "customer_message": "\u8fd9\u4e2a\u600e\u4e48\u5b89\u88c5",
+        "normalized_message": "\u8fd9\u4e2a\u600e\u4e48\u5b89\u88c5",
+        "allowed_source_types": ["installation_guide", "product_facts", "faq"],
+        "query_fact_type": "installation",
+        "slots": {"sku_code": "YH06K53B05S13"},
+        "matched_product_name": "\u4e5d\u53f7\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67dc",
+        "trace_steps": [],
+    })
+
+    assert result["retrieved_chunks"]
+    assert result["retrieved_chunks"][0]["product_context_pack"] is True
+    assert result["product_context_pack_stats"]["returned_count"] == 1
+
+
+def test_product_context_pack_does_not_recommend_wrong_variant_media(product_context_db):
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_MEDIA_SCOPE_001",
+            product_name="Test scoped product",
+            sku_list_json=json.dumps([{"sku_code": "TEST_MEDIA_SCOPE_001B05S01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        wrong = KBMediaAsset(
+            product_id=product.id,
+            i_id="TEST_MEDIA_SCOPE_001",
+            sku_code="TEST_MEDIA_SCOPE_001B07S01",
+            product_name="Test scoped product",
+            asset_type="sku_image",
+            asset_title="Wrong combo image",
+            asset_url="https://example.com/wrong.png",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.99,
+        )
+        wrong.set_source_raw({
+            "answer_scenarios": ["dimensions"],
+            "applicable_style": {
+                "scope_type": "combo",
+                "scope_values": ["combo7"],
+                "scope_note": "combo7",
+            },
+            "auto_send_level": "auto",
+        })
+        db.add(wrong)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_MEDIA_SCOPE_001B05S01"}, "matched_product_name": "Test scoped product"},
+        query="small bedroom, can it fit?",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="space_fit",
+    )
+
+    assert pack["recommended_assets"] == []
+
+
+def test_product_context_pack_space_fit_prefers_dimensions_over_load_capacity(product_context_db):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="Demo product size",
+            content="Overall size is 100cm wide, 40cm deep, and 90cm high.",
+            source_type="product_facts",
+            fact_type="dimensions",
+            product_scope=["TEST_SPACE_001", "Demo storage rack"],
+            sku_scope=["TEST_SPACE_001"],
+        )
+        _add_chunked_entry(
+            db,
+            title="Demo product load",
+            content="Each shelf can hold about 20kg when weight is evenly distributed.",
+            source_type="product_facts",
+            fact_type="load_capacity",
+            product_scope=["TEST_SPACE_001", "Demo storage rack"],
+            sku_scope=["TEST_SPACE_001"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "TEST_SPACE_001B01S01"},
+            "matched_product_name": "Demo storage rack",
+            "semantic_query": {
+                "primary_fact_type": "space_fit",
+                "secondary_fact_types": ["load_capacity"],
+            },
+        },
+        query="Can this fit in a small room?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="space_fit",
+    )
+
+    assert pack["facts"]
+    assert {item["fact_type"] for item in pack["facts"]} == {"dimensions"}
+    assert pack["evidence_pack"]["matched_facts"][0]["semantic_alignment"]["alignment"] == "primary_match"
+
+
+def test_product_context_pack_placement_scene_drops_material_evidence(product_context_db):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="Demo placement scenes",
+            content="Suitable for bedroom, living room, study, and dry storage areas.",
+            source_type="product_facts",
+            fact_type="placement_scene",
+            product_scope=["TEST_SCENE_001", "Demo storage rack"],
+            sku_scope=["TEST_SCENE_001"],
+        )
+        _add_chunked_entry(
+            db,
+            title="Demo material",
+            content="Made with coated steel pipe and PP material.",
+            source_type="product_facts",
+            fact_type="material",
+            product_scope=["TEST_SCENE_001", "Demo storage rack"],
+            sku_scope=["TEST_SCENE_001"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "TEST_SCENE_001B01S01"},
+            "matched_product_name": "Demo storage rack",
+            "semantic_query": {
+                "primary_fact_type": "placement_scene",
+                "secondary_fact_types": ["material"],
+            },
+        },
+        query="Can it be used in the bedroom?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="placement_scene",
+    )
+
+    assert pack["facts"]
+    assert {item["fact_type"] for item in pack["facts"]} == {"placement_scene"}
+    assert "bedroom" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["matched_facts"][0]["semantic_alignment"]["alignment"] == "primary_match"

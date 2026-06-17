@@ -288,15 +288,16 @@ class KnowledgeChunkRepository:
                     if c_products and not any(p in cp or cp in p for cp in c_products for p in product_scope):
                         continue
 
-                # sku_scope 过滤
+                # sku_scope 过滤（大小写统一）
                 if sku_scope:
                     c_skus = set()
                     try:
                         import json
-                        c_skus = set(json.loads(c.sku_scope_json or "[]"))
+                        c_skus = {str(s).upper() for s in json.loads(c.sku_scope_json or "[]") if s}
                     except Exception:
                         pass
-                    if c_skus and not any(s in c_skus for s in sku_scope):
+                    norm_sku_scope = {str(s).upper() for s in sku_scope if s}
+                    if c_skus and not any(s in c_skus for s in norm_sku_scope):
                         continue
 
                 if score >= min_score:
@@ -615,9 +616,11 @@ def _compute_scope_score(chunk: dict, sku_name: str = "", product_name: str = ""
     if not sku_name and not product_name:
         return score
 
-    # SKU 精确匹配 / 冲突
+    # SKU 精确匹配 / 冲突（忽略大小写）
     if sku_name and chunk_skus:
-        if sku_name in chunk_skus:
+        norm_sku = str(sku_name).upper()
+        norm_chunk_skus = {str(s).upper() for s in chunk_skus}
+        if norm_sku in norm_chunk_skus:
             score += 1.0
         else:
             score -= 1.0

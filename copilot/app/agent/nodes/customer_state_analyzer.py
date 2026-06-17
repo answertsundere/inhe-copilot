@@ -7,6 +7,7 @@ import logging
 import time
 
 from app.llm.client import get_llm_client
+from app.services.logistics_fast_path import get_explicit_logistics_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +64,18 @@ def customer_state_analyzer(state: dict) -> dict:
     msg = state.get("normalized_message", state.get("customer_message", ""))
     risk_level = state.get("risk_level", "low")
 
-    customer_state = _llm_analyze(state)
-    source = "llm"
-    if not customer_state:
+    if get_explicit_logistics_identifier(state):
         customer_state = _fallback_analyze(state)
-        source = "rule_fallback"
+        customer_state["customer_concern"] = "wants_eta_certainty"
+        customer_state["needs_reassurance"] = True
+        customer_state["needs_boundary_setting"] = True
+        source = "explicit_logistics_identifier_fast_path"
+    else:
+        customer_state = _llm_analyze(state)
+        source = "llm"
+        if not customer_state:
+            customer_state = _fallback_analyze(state)
+            source = "rule_fallback"
 
     if risk_level in ("high", "critical"):
         customer_state["urgency_level"] = "high"

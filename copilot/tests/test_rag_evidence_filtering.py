@@ -295,7 +295,43 @@ class TestEvidenceFilterNewFields:
         assert evidence[0]["direct_answer_allowed"] is True
         assert evidence[0]["requires_human_review"] is False
 
-    def test_risky_installation_claim_is_reference_only(self):
+    def test_odor_query_can_use_material_fact_when_text_mentions_no_odor(self):
+        from app.agent.nodes.evidence_filter_node import evidence_filter_node
+
+        state = {
+            "retrieved_chunks": [
+                {
+                    "score": 0.9,
+                    "chunk_id": "c-odor-material",
+                    "entry_id": "e-odor-material",
+                    "title": "material",
+                    "source_type": "product_facts",
+                    "intent": "general",
+                    "chunk_text": "\u6211\u4eec\u91c7\u7528\u73af\u4fddPP\u6750\u6599\uff0c\u65e0\u6bd2\u65e0\u5473\uff0c\u4e0d\u542bBPA\u7b49\u6709\u5bb3\u7269\u8d28\u3002",
+                    "metadata": {"auto_reply_allowed": True, "fact_type": "material"},
+                    "entry_status": "published",
+                    "entry_risk_level": "low",
+                    "source_sheet": "",
+                    "row_number": 0,
+                    "fact_type": "material",
+                },
+            ],
+            "intent": "product_question",
+            "allowed_source_types": ["product_facts"],
+            "query_fact_type": "odor",
+            "slots": {},
+        }
+
+        result = evidence_filter_node(state)
+        evidence = result["knowledge_evidence"]
+
+        assert len(evidence) == 1
+        assert evidence[0]["evidence_fact_type"] == "odor"
+        assert evidence[0]["mismatch_reason"] == ""
+        assert evidence[0]["gate_status"] == "allowed"
+        assert evidence[0]["direct_answer_allowed"] is True
+
+    def test_risky_installation_claim_is_allowed_for_installation_guide(self):
         from app.agent.nodes.evidence_filter_node import evidence_filter_node
 
         state = {
@@ -326,9 +362,9 @@ class TestEvidenceFilterNewFields:
         evidence = result["knowledge_evidence"]
 
         assert len(evidence) == 1
-        assert evidence[0]["gate_status"] == "reference_only"
-        assert evidence[0]["direct_answer_allowed"] is False
-        assert "risky_convenience_claim" in evidence[0]["gate_reasons"]
+        assert evidence[0]["gate_status"] == "allowed"
+        assert evidence[0]["direct_answer_allowed"] is True
+        assert evidence[0]["reference_only"] is False
 
     def test_scope_metadata_is_preserved_for_rag_judge(self):
         from app.agent.nodes.evidence_filter_node import evidence_filter_node

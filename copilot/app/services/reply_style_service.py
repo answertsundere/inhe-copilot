@@ -338,9 +338,9 @@ def _split_sentences(text: str) -> list[str]:
 
 def _extract_greeting(sentences: list[str]) -> tuple[str, list[str]]:
     first = sentences[0]
-    if first.startswith(("亲亲，", "亲亲,", "亲，", "亲,")):
-        first = re.sub(r"^亲亲[，,]\s*", "", first)
-        first = re.sub(r"^亲[，,]\s*", "", first)
+    if first.startswith(("亲亲～", "亲亲~", "亲亲，", "亲亲,", "亲～", "亲~", "亲，", "亲,")):
+        first = re.sub(r"^亲亲[，,～~]\s*", "", first)
+        first = re.sub(r"^亲[，,～~]\s*", "", first)
         return "亲～", ([first] if first else []) + sentences[1:]
     if first.startswith("您好"):
         first = re.sub(r"^您好[～~，,]?\s*", "", first)

@@ -2,8 +2,10 @@
 Flask 应用工厂 - 创建和配置 Flask 应用
 """
 
+import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timedelta
@@ -11,6 +13,9 @@ from datetime import datetime, timedelta
 from flask import Flask
 
 from app.config import BASE_DIR, KNOWLEDGE_DIR, KNOWLEDGE_DB_PATH
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============ 全局服务实例 ============
@@ -35,38 +40,57 @@ _live_query_service = None
 
 
 # ============ 后台每日同步钉钉媒体数据 ============
-_DAILY_SYNC_HOUR = 8
-_DAILY_SYNC_MINUTE = 57
+# 钉钉媒体 URL 签名有效期约 2 小时，因此每天按固定多个时间点同步。
+_SYNC_TIMES = [(8, 57), (10, 57), (12, 57), (14, 57), (16, 57), (18, 57), (20, 57)]
 _DAILY_SYNC_SCRIPT = os.path.join(BASE_DIR, "scripts", "sync_dingtalk_media.py")
 _DAILY_SYNC_OUTPUT = os.path.join(BASE_DIR, "data", "dingtalk_media_report_daily.json")
+_DAILY_SYNC_LOCK_DIR = os.path.join(BASE_DIR, "data", "daily_media_asset_sync.lockdir")
+_DAILY_ASSET_SYNC_SCRIPT = os.path.join(BASE_DIR, "scripts", "sync_dingtalk_media_assets.py")
+_DAILY_SYNC_THREAD_STARTED = False
+_DAILY_SYNC_THREAD_LOCK = threading.Lock()
+_DAILY_SYNC_WORKER_MUTEX_HANDLE = None
+
+# 媒体 URL 自动保鲜
+_MEDIA_REFRESH_THREAD_STARTED = False
+_MEDIA_REFRESH_THREAD_LOCK = threading.Lock()
+_MEDIA_REFRESH_INTERVAL_SECONDS = int(os.environ.get("COPILOT_MEDIA_REFRESH_INTERVAL", "1800"))
+_MEDIA_REFRESH_THRESHOLD_MINUTES = int(os.environ.get("COPILOT_MEDIA_REFRESH_THRESHOLD", "30"))
 
 
 def _daily_sync_worker():
-    """后台线程：每天固定时间同步钉钉多维表媒体数据到商品库。"""
+    """后台线程：按固定多个时间点同步钉钉多维表媒体数据到商品库。"""
     # 首次启动时先等一会儿，让服务完全初始化
     time.sleep(30)
 
+    if _env_bool("COPILOT_DAILY_MEDIA_SYNC_ON_STARTUP", True):
+        _run_media_asset_sync_once("startup")
+
     while True:
         now = datetime.now()
-        target = now.replace(
-            hour=_DAILY_SYNC_HOUR,
-            minute=_DAILY_SYNC_MINUTE,
-            second=0,
-            microsecond=0,
-        )
-        if target <= now:
-            target += timedelta(days=1)
+        next_time = None
+        for hour, minute in _SYNC_TIMES:
+            target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if target > now:
+                next_time = target
+                break
+        if next_time is None:
+            # 今天所有时间点都已过，安排到明天第一个时间点
+            hour, minute = _SYNC_TIMES[0]
+            next_time = (now + timedelta(days=1)).replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
 
-        sleep_seconds = (target - now).total_seconds()
-        print(
-            f"[DailySync] 下次钉钉媒体同步: {target.strftime('%Y-%m-%d %H:%M')}, "
-            f"等待 {sleep_seconds / 3600:.1f} 小时"
+        sleep_seconds = (next_time - now).total_seconds()
+        logger.info(
+            "[DailySync] 下次钉钉媒体同步: %s, 等待 %.1f 小时",
+            next_time.strftime('%Y-%m-%d %H:%M'),
+            sleep_seconds / 3600,
         )
         time.sleep(sleep_seconds)
 
         # 执行同步
         try:
-            print("[DailySync] 开始同步钉钉媒体数据...")
+            logger.info("[DailySync] 开始同步钉钉媒体数据...")
             result = subprocess.run(
                 [
                     "python",
@@ -81,13 +105,206 @@ def _daily_sync_worker():
                 cwd=BASE_DIR,
             )
             if result.returncode == 0:
-                print("[DailySync] 同步完成")
+                logger.info("[DailySync] 同步完成")
+                # 同步成功后，把最新报告导入正式素材库 kb_media_asset
+                # （已审核素材审核状态保持不变；新素材默认待审核）
+                try:
+                    media_import_script = os.path.join(BASE_DIR, "scripts", "sync_dingtalk_media_assets.py")
+                    if os.path.exists(_DAILY_SYNC_OUTPUT) and os.path.exists(media_import_script):
+                        imp = subprocess.run(
+                            ["python", media_import_script, "--report", _DAILY_SYNC_OUTPUT, "--apply"],
+                            capture_output=True, text=True, timeout=600, cwd=BASE_DIR,
+                        )
+                        if imp.returncode == 0:
+                            logger.info("[DailySync] 素材库导入完成")
+                        else:
+                            logger.warning("[DailySync] 素材库导入失败, returncode=%s", imp.returncode)
+                except Exception as imp_exc:
+                    logger.warning("[DailySync] 素材库导入异常: %s", imp_exc)
             else:
-                print(f"[DailySync] 同步失败, returncode={result.returncode}")
+                logger.warning("[DailySync] 同步失败, returncode=%s", result.returncode)
                 if result.stderr:
-                    print(f"[DailySync] stderr: {result.stderr[:500]}")
+                    logger.warning("[DailySync] stderr: %s", result.stderr[:500])
         except Exception as exc:
-            print(f"[DailySync] 同步异常: {exc}")
+            logger.error("[DailySync] 同步异常: %s", exc)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _acquire_daily_sync_lock(reason: str) -> bool:
+    os.makedirs(os.path.dirname(_DAILY_SYNC_LOCK_DIR), exist_ok=True)
+    try:
+        os.mkdir(_DAILY_SYNC_LOCK_DIR)
+        return True
+    except FileExistsError:
+        try:
+            age_seconds = time.time() - os.path.getmtime(_DAILY_SYNC_LOCK_DIR)
+            if age_seconds > 7200:
+                os.rmdir(_DAILY_SYNC_LOCK_DIR)
+                os.mkdir(_DAILY_SYNC_LOCK_DIR)
+                logger.warning("[DailySync] removed stale lock reason=%s age=%.0fs", reason, age_seconds)
+                return True
+        except OSError:
+            pass
+        logger.info("[DailySync] another media asset sync is running; skip reason=%s", reason)
+        return False
+
+
+def _release_daily_sync_lock() -> None:
+    try:
+        os.rmdir(_DAILY_SYNC_LOCK_DIR)
+    except OSError:
+        pass
+
+
+def _acquire_daily_sync_worker_mutex() -> bool:
+    """Allow only one run_prod.py process to start the resident worker."""
+    global _DAILY_SYNC_WORKER_MUTEX_HANDLE
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, "Global\\INHE_COPILOT_DAILY_MEDIA_SYNC_WORKER")
+        if not handle:
+            return True
+        already_exists = kernel32.GetLastError() == 183
+        if already_exists:
+            logger.info("[DailySync] worker mutex already exists; skip worker in this process")
+            return False
+        _DAILY_SYNC_WORKER_MUTEX_HANDLE = handle
+        return True
+    except Exception as exc:
+        logger.warning("[DailySync] worker mutex unavailable, using process-local guard: %s", exc)
+        return True
+
+
+def _run_media_asset_sync_once(reason: str) -> bool:
+    """Refresh DingTalk media and apply it into kb_media_asset."""
+    if not os.path.exists(_DAILY_ASSET_SYNC_SCRIPT):
+        logger.warning("[DailySync] media asset sync script not found: %s", _DAILY_ASSET_SYNC_SCRIPT)
+        return False
+    if not _acquire_daily_sync_lock(reason):
+        return False
+
+    cmd = [
+        sys.executable,
+        _DAILY_ASSET_SYNC_SCRIPT,
+        "--refresh",
+        "--apply",
+        "--auto-approve-low-risk",
+        "--daily-output",
+        _DAILY_SYNC_OUTPUT,
+    ]
+    try:
+        logger.info("[DailySync] media asset sync start reason=%s", reason)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=1200,
+            cwd=BASE_DIR,
+        )
+        if result.returncode == 0:
+            logger.info("[DailySync] media asset sync completed reason=%s", reason)
+            if result.stdout:
+                logger.info("[DailySync] stdout: %s", result.stdout[-1000:])
+            return True
+
+        logger.warning("[DailySync] media asset sync failed reason=%s returncode=%s", reason, result.returncode)
+        if result.stderr:
+            logger.warning("[DailySync] stderr: %s", result.stderr[-1000:])
+        if result.stdout:
+            logger.warning("[DailySync] stdout: %s", result.stdout[-1000:])
+        return False
+    finally:
+        _release_daily_sync_lock()
+
+
+def _start_daily_sync_thread():
+    """Start the resident DingTalk media sync worker once per process."""
+    global _DAILY_SYNC_THREAD_STARTED
+    if not _env_bool("COPILOT_DAILY_MEDIA_SYNC_ENABLED", True):
+        logger.info("[DailySync] disabled by COPILOT_DAILY_MEDIA_SYNC_ENABLED")
+        return
+    if (
+        "hermes-agent" in sys.executable.lower()
+        and _env_bool("COPILOT_DAILY_MEDIA_SYNC_SKIP_HERMES", True)
+    ):
+        logger.info("[DailySync] skipped in hermes-agent interpreter")
+        return
+    with _DAILY_SYNC_THREAD_LOCK:
+        if _DAILY_SYNC_THREAD_STARTED:
+            return
+        if not _acquire_daily_sync_worker_mutex():
+            return
+        threading.Thread(
+            target=_daily_sync_worker,
+            daemon=True,
+            name="DailyDingTalkMediaAssetSync",
+        ).start()
+        _DAILY_SYNC_THREAD_STARTED = True
+        logger.info("[DailySync] resident media asset sync worker started")
+
+
+def _media_url_auto_refresh_worker():
+    """后台线程：检测即将过期的媒体 URL 并自动刷新。"""
+    time.sleep(60)  # 等服务启动稳定后再开始检测
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBMediaAsset
+    from sqlalchemy import or_
+
+    while True:
+        try:
+            threshold = datetime.utcnow() + timedelta(minutes=_MEDIA_REFRESH_THRESHOLD_MINUTES)
+            db = SessionLocal()
+            try:
+                count = (
+                    db.query(KBMediaAsset)
+                    .filter(
+                        or_(
+                            KBMediaAsset.url_expires_at.is_(None),
+                            KBMediaAsset.url_expires_at <= threshold,
+                            KBMediaAsset.refresh_status == "needs_refresh",
+                        )
+                    )
+                    .count()
+                )
+            finally:
+                db.close()
+
+            if count > 0:
+                logger.info("[MediaRefresh] 发现 %s 条素材即将过期或已过期，触发自动刷新", count)
+                _run_media_asset_sync_once("auto-refresh")
+            else:
+                logger.debug("[MediaRefresh] 暂无即将过期的素材")
+        except Exception as exc:
+            logger.error("[MediaRefresh] 自动检测异常: %s", exc)
+
+        time.sleep(_MEDIA_REFRESH_INTERVAL_SECONDS)
+
+
+def _start_media_auto_refresh_thread():
+    """Start the resident media URL auto-refresh worker once per process."""
+    global _MEDIA_REFRESH_THREAD_STARTED
+    if not _env_bool("COPILOT_MEDIA_AUTO_REFRESH_ENABLED", True):
+        logger.info("[MediaRefresh] disabled by COPILOT_MEDIA_AUTO_REFRESH_ENABLED")
+        return
+    with _MEDIA_REFRESH_THREAD_LOCK:
+        if _MEDIA_REFRESH_THREAD_STARTED:
+            return
+        threading.Thread(
+            target=_media_url_auto_refresh_worker,
+            daemon=True,
+            name="MediaUrlAutoRefresh",
+        ).start()
+        _MEDIA_REFRESH_THREAD_STARTED = True
+        logger.info("[MediaRefresh] resident media URL auto-refresh worker started")
 
 
 def _init_repos():
@@ -111,7 +328,7 @@ def _init_repos():
     _knowledge_repo = FileKnowledgeRepository()
     _policy_repo = FilePolicyRepository()
 
-    print("正在加载数据仓库...")
+    logger.info("正在加载数据仓库...")
     _order_repo.load()
     _product_repo.load()
     _knowledge_repo.load()
@@ -126,14 +343,15 @@ def _init_repos():
     _sop_repo = SOPRepository(knowledge_dir=KNOWLEDGE_DIR)
     _sop_repo.load()
 
-    print(
-        f"数据加载完成: 订单{_order_repo.count_orders()} "
-        f"SKU{_product_repo.count_skus()} "
-        f"商品{_product_repo.count_products()} "
-        f"知识{len(_knowledge_repo.get_all())}条 "
-        f"产品知识卡{_product_knowledge_repo.count()}张 "
-        f"话术模板{_reply_template_repo.count()}条 "
-        f"SOP场景{_sop_repo.count()}个"
+    logger.info(
+        "数据加载完成: 订单%s SKU%s 商品%s 知识%s条 产品知识卡%s张 话术模板%s条 SOP场景%s个",
+        _order_repo.count_orders(),
+        _product_repo.count_skus(),
+        _product_repo.count_products(),
+        len(_knowledge_repo.get_all()),
+        _product_knowledge_repo.count(),
+        _reply_template_repo.count(),
+        _sop_repo.count(),
     )
 
 
@@ -185,7 +403,7 @@ def _init_services():
         quality_check_service=_quality_check_service,
     )
 
-    print("服务初始化完成!")
+    logger.info("服务初始化完成!")
 
 
 def _init_live_query():
@@ -203,7 +421,7 @@ def _init_live_query():
     _live_dingtalk_repo = LiveDingTalkRepository()
     _live_query_service = LiveQueryService(_live_jst_repo, _live_dingtalk_repo)
 
-    print("实时查询服务初始化完成!")
+    logger.info("实时查询服务初始化完成!")
 
 
 # ============ Getter 函数 ============
@@ -341,7 +559,7 @@ def create_app():
         from app.tracing.repository import init_trace_tables
         init_trace_tables()
     except Exception as e:
-        print(f"Trace table init failed: {e}")
+        logger.warning("Trace table init failed: %s", e)
 
     template_dir = os.path.join(BASE_DIR, "web", "templates")
     static_dir = os.path.join(BASE_DIR, "web", "static")
@@ -382,6 +600,8 @@ def create_app():
     from app.api.runtime_routes import runtime_bp
     from app.api.trace_routes import trace_api_bp
     from app.api.simulation_routes import simulation_bp
+    from app.api.media_routes import media_bp
+    from app.api.training_sample_routes import training_sample_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(analyze_bp)
@@ -400,28 +620,13 @@ def create_app():
     app.register_blueprint(runtime_bp)
     app.register_blueprint(trace_api_bp)
     app.register_blueprint(simulation_bp)
+    app.register_blueprint(media_bp)
+    app.register_blueprint(training_sample_bp)
 
     # 让 /api/kb/knowledge/* 兼容 /api/knowledge/* 路由
     _clone_routes_under_prefix(app, "/api/knowledge/", "/api/kb/knowledge/")
-
-    @app.route("/")
-    def index():
-        from flask import render_template, make_response
-        resp = make_response(render_template("index.html"))
-        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
-        return resp
-
-    @app.route("/api-test")
-    @app.route("/api-debug")
-    def api_test():
-        from flask import render_template, make_response, send_file
-        try:
-            return send_file(os.path.join(static_dir, "api_test.html"))
-        except Exception:
-            resp = make_response("API test page not found")
-            resp.headers["Content-Type"] = "text/plain"
-            return resp, 404
+    # 让 kb-admin（base=/api/kb）也能访问素材库接口
+    _clone_routes_under_prefix(app, "/api/media-assets/", "/api/kb/media-assets/")
 
     @app.route("/real-test")
     def real_test_panel():
@@ -461,13 +666,76 @@ def create_app():
         resp.headers["Pragma"] = "no-cache"
         return resp
 
+    @app.route("/")
+    @app.route("/products")
+    @app.route("/shop-rules")
+    @app.route("/qa")
+    @app.route("/reviews")
+    @app.route("/training-samples")
+    @app.route("/service-rules")
+    @app.route("/ai-updates")
+    @app.route("/sop")
+    @app.route("/cases")
+    @app.route("/traces")
+    @app.route("/rag")
+    @app.route("/health")
+    @app.route("/media")
+    @app.route("/guide")
+    def kb_admin_spa():
+        """Serve INHE knowledge library SPA at /ask/."""
+        from flask import make_response, send_file
+
+        kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")
+        index_html = os.path.join(kb_dir, "index.html")
+        if os.path.exists(index_html):
+            resp = make_response(send_file(index_html))
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp
+        return "KB Admin frontend not built", 404
+
+    @app.route("/assets/<path:subpath>")
+    def kb_admin_assets(subpath):
+        import re
+        from flask import make_response, send_from_directory
+
+        kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")
+        asset_path = f"assets/{subpath}"
+        file_path = os.path.join(kb_dir, asset_path)
+        if not os.path.isfile(file_path):
+            return "Asset not found", 404
+
+        resp = make_response(send_from_directory(kb_dir, asset_path))
+        if re.search(r"assets/[^/]+-[a-zA-Z0-9_-]{6,}\.\w+$", asset_path):
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
+    @app.route("/favicon.svg")
+    def kb_admin_favicon():
+        from flask import make_response, send_from_directory
+
+        kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")
+        if not os.path.isfile(os.path.join(kb_dir, "favicon.svg")):
+            return "Asset not found", 404
+        resp = make_response(send_from_directory(kb_dir, "favicon.svg"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
     @app.route("/kb-admin/")
     @app.route("/kb-admin/<path:subpath>")
     def kb_admin(subpath=""):
         """Serve Vue 3 knowledge base admin SPA"""
         import re
-        from flask import make_response, send_file, send_from_directory
+        from flask import make_response, redirect, send_file, send_from_directory
         kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")
+
+        legacy_static = subpath.startswith("assets/") or subpath in {"favicon.svg"}
+        if not legacy_static:
+            target = "/ask/"
+            if subpath:
+                target += subpath
+            return redirect(target, code=302)
 
         # If subpath points to a real file (js/css/images), serve it directly
         if subpath:
@@ -490,30 +758,47 @@ def create_app():
         return "KB Admin frontend not built", 404
 
     @app.route("/knowledge-admin")
-    def knowledge_admin():
-        from flask import render_template
-        return render_template("knowledge_admin.html")
+    def knowledge_admin_redirect():
+        """旧版后台入口已废弃，重定向到新版 Vue SPA"""
+        from flask import redirect
+        return redirect("/ask/", code=302)
 
     @app.route("/settings")
     def settings_page():
         from flask import render_template
         return render_template("settings.html")
 
-    @app.route("/graph")
-    def graph_page():
-        from flask import render_template
-        return render_template("graph.html")
-
     @app.route("/copilot-panel")
     def copilot_panel():
         from flask import render_template
         return render_template("copilot_panel.html")
 
+    @app.route("/simulation-runs")
+    def simulation_runs_page():
+        from flask import render_template, make_response
+        resp = make_response(render_template("simulation_runs.html"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
+    @app.route("/traces")
+    def traces_page():
+        from flask import render_template, make_response
+        resp = make_response(render_template("traces.html"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
+    @app.route("/bad-cases")
+    def bad_cases_page():
+        from flask import render_template, make_response
+        resp = make_response(render_template("bad_cases.html"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
     # 启动后台每日同步线程（daemon=True 不会阻塞服务退出）
-    threading.Thread(
-        target=_daily_sync_worker,
-        daemon=True,
-        name="DailyDingTalkSync",
-    ).start()
+    _start_daily_sync_thread()
+    _start_media_auto_refresh_thread()
 
     return app

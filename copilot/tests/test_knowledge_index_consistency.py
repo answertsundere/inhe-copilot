@@ -10,13 +10,20 @@ import pytest
 _test_db_path = None
 
 
+_orig_engine = None
+_orig_session_local = None
+
+
 def setup_module(module):
-    global _test_db_path
+    global _test_db_path, _orig_engine, _orig_session_local
     _test_db_path = os.path.join(tempfile.gettempdir(), f"test_index_consistency_{uuid.uuid4().hex}.db")
 
     import app.db as db_module
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
+    _orig_engine = db_module.engine
+    _orig_session_local = db_module.SessionLocal
 
     _test_engine = create_engine(f"sqlite:///{_test_db_path}", connect_args={"check_same_thread": False})
     db_module.engine = _test_engine
@@ -27,6 +34,12 @@ def setup_module(module):
 
 
 def teardown_module(module):
+    global _orig_engine, _orig_session_local
+    import app.db as db_module
+    if _orig_engine is not None:
+        db_module.engine = _orig_engine
+    if _orig_session_local is not None:
+        db_module.SessionLocal = _orig_session_local
     try:
         if _test_db_path and os.path.exists(_test_db_path):
             os.unlink(_test_db_path)

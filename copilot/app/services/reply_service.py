@@ -16,6 +16,54 @@ import threading
 logger = logging.getLogger(__name__)
 
 
+def _safe_product_context_pack(pack: dict) -> dict:
+    if not isinstance(pack, dict) or not pack:
+        return {}
+    profile = pack.get("structured_profile") or {}
+    return {
+        "identity": pack.get("identity", {}),
+        "stats": pack.get("stats", {}),
+        "structured_profile": {
+            "product_id": profile.get("product_id"),
+            "i_id": profile.get("i_id", ""),
+            "product_name": profile.get("product_name", ""),
+            "category": profile.get("category", {}),
+            "answerable_fields": profile.get("answerable_fields", []),
+            "specs": profile.get("specs", {}),
+            "logistics": profile.get("logistics", {}),
+            "warranty": profile.get("warranty", {}),
+            "sku_list": profile.get("sku_list", [])[:20],
+            "missing_fields": profile.get("missing_fields", []),
+        } if profile else {},
+        "facts": [
+            {
+                "entry_id": item.get("entry_id"),
+                "title": item.get("title", ""),
+                "source_type": item.get("source_type", ""),
+                "fact_type": item.get("fact_type", ""),
+                "rerank_score": item.get("rerank_score", 0),
+                "direct_answer_allowed": item.get("evidence_allowed_for_direct_answer", True),
+            }
+            for item in (pack.get("facts") or [])[:8]
+        ],
+        "media_assets": (pack.get("media_assets") or [])[:12],
+        "recommended_assets": (pack.get("recommended_assets") or [])[:5],
+        "generic_rules": [
+            {
+                "rule_key": item.get("rule_key", ""),
+                "title": item.get("title", ""),
+                "fact_type": item.get("fact_type", ""),
+                "score": item.get("score", 0),
+                "reply_template": item.get("reply_template", ""),
+                "risk_level": item.get("risk_level", "low"),
+                "auto_reply_allowed": item.get("auto_reply_allowed", True),
+            }
+            for item in (pack.get("generic_rules") or [])[:5]
+        ],
+        "evidence_pack": pack.get("evidence_pack", {}),
+    }
+
+
 class ReplyService:
     """回复建议服务 - 主编排器（LangGraph 驱动）"""
 
@@ -67,13 +115,43 @@ class ReplyService:
             "tracking_no": tracking_no,
             "trace_steps": [],
         }
+        try:
+            from app.services.fact_type_service import classify_query_fact_type
+            fact_type = classify_query_fact_type(customer_message).get("query_fact_type", "")
+            if fact_type:
+                state["query_fact_type"] = fact_type
+        except Exception:
+            pass
+        slots = {}
         if product_name:
             state["matched_product_name"] = product_name
-            state["slots"] = {"product_name": product_name}
+            slots["product_name"] = product_name
         if product_candidates:
             state["product_candidates"] = product_candidates
         if copilot_context:
             state["copilot_context"] = copilot_context
+            for key in ("sku_code", "sku_name", "i_id", "product_name"):
+                value = str(copilot_context.get(key) or "").strip()
+                if value:
+                    slots[key] = value
+                    if key == "product_name" and not state.get("matched_product_name"):
+                        state["matched_product_name"] = value
+        for candidate in product_candidates or []:
+            if not isinstance(candidate, dict):
+                continue
+            candidate_type = str(candidate.get("type") or "").lower()
+            value = str(candidate.get("value") or "").strip()
+            if ("sku" in candidate_type) and value and not slots.get("sku_code"):
+                slots["sku_code"] = value
+            if "i_id" in candidate_type and value and not slots.get("i_id"):
+                slots["i_id"] = value
+            if not slots.get("product_name"):
+                name = str(candidate.get("product_name") or candidate.get("name") or candidate.get("title") or "").strip()
+                if name:
+                    slots["product_name"] = name
+                    state.setdefault("matched_product_name", name)
+        if slots:
+            state["slots"] = slots
         if image_attachments:
             state["image_attachments"] = image_attachments
             state.setdefault("copilot_context", {})["image_attachments"] = image_attachments
@@ -89,6 +167,11 @@ class ReplyService:
 
         # 构建白名单 context_used
         context_used = self._build_context_used(result)
+
+        evidence_debug = dict(result.get("evidence_debug", {}) or {})
+        generic_service_rule_used = result.get("generic_service_rule_used") or _generic_rule_used_from_trace(result.get("trace_steps", []))
+        if generic_service_rule_used:
+            evidence_debug["generic_service_rule_used"] = generic_service_rule_used
 
         # 组装 ReplySuggestion
         data = {
@@ -117,10 +200,12 @@ class ReplyService:
             "matched_templates": result.get("reply_templates", []),
             "data_quality_warnings": result.get("data_quality_warnings", []),
             "trace_steps": self._reorder_trace_steps(result.get("trace_steps", [])),
-            "evidence_debug": result.get("evidence_debug", {}),
+            "evidence_debug": evidence_debug,
+            "needs_clarification": result.get("needs_clarification", False),
             "used_fact_tool": result.get("used_fact_tool", ""),
             "used_endpoint": result.get("used_endpoint", ""),
             "identifier_type": result.get("identifier_type", ""),
+            "generic_service_rule_used": generic_service_rule_used,
         }
 
         suggestion = ReplySuggestion.from_dict(data)
@@ -171,6 +256,7 @@ class ReplyService:
         evidence = result.get("evidence", {})
         knowledge_evidence = result.get("knowledge_evidence", [])
         retrieved_chunks = result.get("retrieved_chunks", [])
+        product_context_pack = result.get("product_context_pack") or {}
 
         # evidence 分层计数
         evidence_counts = {
@@ -229,6 +315,7 @@ class ReplyService:
             "used_knowledge_titles": result.get("used_knowledge_titles") or list(set(
                 c.get("title", "") for c in knowledge_evidence if c.get("title")
             )),
+            "product_context_pack": _safe_product_context_pack(product_context_pack),
             **evidence_counts,
         }
 
@@ -617,6 +704,21 @@ class ReplyService:
             parts.append(f"\n## 识别场景: {skill.get('skill', 'general')} | 意图: {skill.get('intent', '')}")
 
         return "\n".join(parts)
+
+
+def _generic_rule_used_from_trace(trace_steps: list) -> dict:
+    for step in reversed(trace_steps or []):
+        if not isinstance(step, dict):
+            continue
+        used = step.get("generic_service_rule_used")
+        if isinstance(used, dict) and used.get("rule_key"):
+            return {
+                "rule_key": used.get("rule_key", ""),
+                "title": used.get("title", ""),
+                "fact_type": used.get("fact_type", ""),
+                "score": used.get("score", 0),
+            }
+    return {}
 
 
 def format_suggestion(result: ReplySuggestion) -> str:

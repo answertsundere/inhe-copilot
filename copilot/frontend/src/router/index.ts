@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '../components/layout/AppLayout.vue'
 
 const router = createRouter({
-  history: createWebHistory('/ask/kb-admin/'),
+  history: createWebHistory('/ask/'),
   routes: [
     {
       path: '/',
@@ -21,40 +21,46 @@ const router = createRouter({
           meta: { title: '商品资料' },
         },
         {
+          path: 'service-rules',
+          name: 'service-rules',
+          component: () => import('../views/ServiceRulesPage.vue'),
+          meta: { title: '服务规则' },
+        },
+        {
           path: 'shop-rules',
           name: 'shop-rules',
           component: () => import('../views/ShopRulesPage.vue'),
-          meta: { title: '活动规则中心' },
+          meta: { title: '活动规则中心', hidden: true },
         },
         {
           path: 'qa',
           name: 'qa',
           component: () => import('../views/QAKnowledgePage.vue'),
-          meta: { title: '问答资料' },
+          meta: { title: '问答资料', hidden: true },
         },
         {
           path: 'reviews',
           name: 'reviews',
           component: () => import('../views/ReviewCenterPage.vue'),
-          meta: { title: '审核中心' },
+          meta: { title: '审核中心', hidden: true },
         },
         {
           path: 'ai-updates',
           name: 'ai-updates',
           component: () => import('../views/AIUpdateCenterPage.vue'),
-          meta: { title: 'AI 更新中心' },
+          meta: { title: 'AI 更新' },
         },
         {
           path: 'sop',
           name: 'sop',
           component: () => import('../views/RiskSOPPage.vue'),
-          meta: { title: '售后处理' },
+          meta: { title: '售后处理', hidden: true },
         },
         {
           path: 'cases',
           name: 'cases',
           component: () => import('../views/CaseLibraryPage.vue'),
-          meta: { title: '案例库' },
+          meta: { title: '案例库', hidden: true },
         },
         {
           path: 'traces',
@@ -66,13 +72,19 @@ const router = createRouter({
           path: 'rag',
           name: 'rag',
           component: () => import('../views/RAGKnowledgePage.vue'),
-          meta: { title: '资料整理' },
+          meta: { title: '资料整理', hidden: true },
         },
         {
           path: 'health',
           name: 'health',
           component: () => import('../views/DataHealthPage.vue'),
-          meta: { title: '资料检查' },
+          meta: { title: '资料检查', hidden: true },
+        },
+        {
+          path: 'media',
+          name: 'media',
+          component: () => import('../views/MediaLibraryPage.vue'),
+          meta: { title: '素材库', hidden: true },
         },
         {
           path: 'guide',
@@ -81,6 +93,12 @@ const router = createRouter({
           meta: { title: '使用说明' },
         },
       ],
+    },
+    {
+      path: '/training-samples',
+      name: 'training-samples',
+      component: () => import('../views/TrainingSamplePage.vue'),
+      meta: { title: '训练样本收集' },
     },
   ],
 })

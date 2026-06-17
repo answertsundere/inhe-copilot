@@ -95,6 +95,45 @@ def _migrate_add_columns():
                     conn.execute(text(f"ALTER TABLE kb_sop ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
             conn.commit()
 
+    # kb_media_asset 表迁移 - 链接保鲜 / 自动刷新 / 审核人
+    if "kb_media_asset" in inspector.get_table_names():
+        existing_cols = {c["name"] for c in inspector.get_columns("kb_media_asset")}
+        new_columns = [
+            ("url_expires_at", "DATETIME", "NULL"),
+            ("refresh_status", "VARCHAR(16)", "'ok'"),
+            ("source_updated_at", "DATETIME", "NULL"),
+            ("reviewed_by", "VARCHAR(64)", "''"),
+        ]
+        with engine.connect() as conn:
+            for col_name, col_type, default in new_columns:
+                if col_name not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE kb_media_asset ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
+            conn.commit()
+        # 新增索引
+        idx_sql = [
+            "CREATE INDEX IF NOT EXISTS idx_media_refresh_status ON kb_media_asset (refresh_status)",
+            "CREATE INDEX IF NOT EXISTS idx_media_url_expires_at ON kb_media_asset (url_expires_at)",
+        ]
+        with engine.connect() as conn:
+            for sql in idx_sql:
+                conn.execute(text(sql))
+            conn.commit()
+
+    # kb_generic_service_rule 表迁移 - 通用服务规则运营字段
+    if "kb_generic_service_rule" in inspector.get_table_names():
+        existing_cols = {c["name"] for c in inspector.get_columns("kb_generic_service_rule")}
+        new_columns = [
+            ("allowed_when_product_fact_missing", "BOOLEAN", "1"),
+            ("required_guardrails_json", "TEXT", "'[]'"),
+            ("priority", "INTEGER", "100"),
+            ("version", "VARCHAR(32)", "'v1'"),
+        ]
+        with engine.connect() as conn:
+            for col_name, col_type, default in new_columns:
+                if col_name not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE kb_generic_service_rule ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
+            conn.commit()
+
     # knowledge_entries 表迁移 - 结构化业务键字段
     if "knowledge_entries" in inspector.get_table_names():
         existing_cols = {c["name"] for c in inspector.get_columns("knowledge_entries")}

@@ -546,8 +546,8 @@ class TestBuildResponseEvidenceDebug:
 class TestEntry812Acceptance:
     """Entry 812 专项验收"""
 
-    def test_entry_812_is_draft_with_material_content(self):
-        """Entry 812 存在、为 draft、包含填充物相关高风险字段"""
+    def test_entry_812_is_published_ready_with_material_content(self):
+        """Entry 812 已完成小批量审核发布，并保留材质/清洗内容"""
         import sqlite3
         conn = sqlite3.connect('data/knowledge_base.db')
         conn.row_factory = sqlite3.Row
@@ -555,7 +555,8 @@ class TestEntry812Acceptance:
         conn.close()
 
         assert row is not None
-        assert row['status'] == 'draft'
+        assert row['status'] == 'published'
+        assert row['index_status'] == 'ready'
         assert row['source_type'] == 'faq'
         assert row['fact_review_status'] is None
         assert '填充' in row['content'] or '记忆棉' in row['content']

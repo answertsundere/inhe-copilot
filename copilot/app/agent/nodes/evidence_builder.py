@@ -22,6 +22,7 @@ from app.services.evidence_quality_gate import (
     VERIFIED_STATUSES as GATE_VERIFIED,
     WEAK_SOURCE_TYPES as GATE_WEAK_SOURCES,
 )
+from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
 
 # 高风险商品事实字段 — 包含这些字段的知识条目需要 fact review
@@ -43,8 +44,10 @@ PRODUCT_PROFILE_FACT_TYPES = {
     "cleaning_care",
     "odor",
     "installation",
+    "detachable",
     "variant_compare",
     "stock_shipping",
+    "pinch_safety",
     "safety_small_parts",
 }
 
@@ -71,6 +74,21 @@ def _compact_value(value) -> str:
     return str(value).strip()
 
 
+def _has_odor_signal(text: str) -> bool:
+    return any(term in str(text or "") for term in (
+        "\u6c14\u5473",
+        "\u5473\u9053",
+        "\u6709\u5473",
+        "\u65e0\u5473",
+        "\u65e0\u5f02\u5473",
+        "\u65e0\u6bd2\u65e0\u5473",
+        "\u5f02\u5473",
+        "\u523a\u9f3b",
+        "\u6563\u5473",
+        "\u901a\u98ce",
+    ))
+
+
 def _context_product_category_mismatch(message: str, product_name: str) -> str:
     msg = message or ""
     name = product_name or ""
@@ -94,7 +112,6 @@ def _identity_values(state: dict) -> dict:
     )
     i_id = (
         identity.get("i_id")
-        or identity.get("product_id")
         or identity.get("internal_product_code")
         or state.get("i_id")
         or ""
@@ -125,23 +142,26 @@ def _find_kb_product(state: dict):
 
     db = SessionLocal()
     try:
-        if i_id:
-            product = db.query(KBProduct).filter(KBProduct.i_id == i_id).first()
-            if product:
-                return product.to_dict(detail=True)
-
-        products = db.query(KBProduct).all()
-        for product in products:
-            if sku and (sku == product.i_id or sku.startswith(product.i_id) or product.i_id.startswith(sku)):
-                return product.to_dict(detail=True)
-            if sku and sku in str(product.get_sku_list()):
-                return product.to_dict(detail=True)
-
-        if product_name:
-            for product in products:
-                name = product.product_name or ""
-                if name and (name in product_name or product_name in name):
+        try:
+            if i_id:
+                product = db.query(KBProduct).filter(KBProduct.i_id == i_id).first()
+                if product:
                     return product.to_dict(detail=True)
+
+            products = db.query(KBProduct).all()
+            for product in products:
+                if sku and (sku == product.i_id or sku.startswith(product.i_id) or product.i_id.startswith(sku)):
+                    return product.to_dict(detail=True)
+                if sku and sku in str(product.get_sku_list()):
+                    return product.to_dict(detail=True)
+
+            if product_name:
+                for product in products:
+                    name = product.product_name or ""
+                    if name and (name in product_name or product_name in name):
+                        return product.to_dict(detail=True)
+        except Exception:
+            return None
     finally:
         db.close()
     return None
@@ -184,12 +204,12 @@ def _find_product_card(state: dict) -> dict | None:
     return summary
 
 
-def _profile_fact_text(profile: dict, query_fact_type: str, msg: str) -> tuple[str, list[str]]:
+def _profile_fact_text(profile: dict, query_fact_type: str, msg: str, source: str = "") -> tuple[str, list[str]]:
     specs = profile.get("specs") or {}
     missing = []
     parts = []
 
-    def add(label: str, *keys: str):
+    def add(label: str, *keys: str) -> bool:
         for key in keys:
             value = profile.get(key)
             if value in (None, "", [], {}):
@@ -197,14 +217,34 @@ def _profile_fact_text(profile: dict, query_fact_type: str, msg: str) -> tuple[s
             text = _compact_value(value)
             if text:
                 parts.append(f"{label}: {text}")
-                return
+                return True
         missing.append(label)
+        return False
 
     if query_fact_type == "installation":
         add("安装方式", "install_method", "安装方式", "installation", "组装方式")
         add("配件清单", "accessories", "配件清单", "parts", "配件")
+    elif query_fact_type == "detachable":
+        if add("拆卸/拆装", "detachable", "可拆", "可拆卸", "拆卸", "拆装"):
+            add("尺寸", "size", "尺寸")
+    elif query_fact_type == "odor":
+        before = len(parts)
+        add("气味说明", "odor_note", "odor", "气味", "味道", "异味", "散味")
+        has_odor_fact = len(parts) > before
+        material = ""
+        for key in ("material", "材质", "材料", "材质说明"):
+            material = _compact_value(profile.get(key) if profile.get(key) not in (None, "", [], {}) else specs.get(key))
+            if material:
+                break
+        if material and (has_odor_fact or _has_odor_signal(material)):
+            parts.append(f"材质: {material}")
     elif query_fact_type == "load_capacity":
-        add("承重/容量", "weight", "load_capacity", "承重/容量", "承重")
+        if source == "product_cards":
+            # product card / JST 主数据里的 weight 多数是商品自重，不能冒充承重。
+            add("承重/容量", "load_capacity", "承重/容量", "承重")
+        else:
+            # KBProduct 等来源：weight 是商品自重，不能冒充承重，只认 load_capacity
+            add("承重/容量", "load_capacity", "承重/容量", "承重")
     elif query_fact_type == "dimensions":
         add("尺寸", "size", "尺寸")
     elif query_fact_type == "age_range":
@@ -229,12 +269,7 @@ def _profile_fact_text(profile: dict, query_fact_type: str, msg: str) -> tuple[s
     parts = [p for p in parts if not p.endswith(": -")]
     if not parts:
         return "", missing
-    name = profile.get("product_name") or profile.get("name") or profile.get("source_card_name") or ""
-    status = profile.get("status") or ""
-    prefix = f"商品资料库查询到「{name}」" if name else "商品资料库查询到当前商品"
-    if status:
-        prefix += f"（状态: {status}）"
-    return f"{prefix}: " + "；".join(parts), missing
+    return "；".join(parts), missing
 
 
 def _append_product_profile_evidence(state: dict, product_facts: list, verified_facts: list, unknowns: list, sources: list) -> None:
@@ -302,7 +337,7 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
     card = _find_product_card(state)
     if card:
         found_sources.append("product_cards")
-        fact_text, missing = _profile_fact_text(card, query_fact_type, msg)
+        fact_text, missing = _profile_fact_text(card, query_fact_type, msg, source="product_cards")
         if fact_text and not any(f.get("product_profile_source") == "kb_product" for f in product_facts):
             fact = {
                 "fact": fact_text,
@@ -542,6 +577,13 @@ def evidence_builder(state: dict) -> dict:
         source_sheet = ke.get("source_sheet", "")
         row_number = ke.get("row_number", 0)
         evidence_fact_type = ke.get("evidence_fact_type") or infer_evidence_fact_type(ke)
+        odor_material_bridge = bool(
+            query_fact_type == "odor"
+            and evidence_fact_type == "material"
+            and _has_odor_signal(text)
+        )
+        if odor_material_bridge:
+            evidence_fact_type = "odor"
         wrong_fact_type = bool(query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type))
 
         # 检测高风险字段
@@ -575,10 +617,14 @@ def evidence_builder(state: dict) -> dict:
             "evidence_allowed_for_exact_answer": ke.get("evidence_allowed_for_exact_answer", True),
         }
         base = _enrich_evidence_item(base, text, entry_status, fact_review_status, st)
-        if ke.get("evidence_allowed_for_direct_answer") is False:
+        if ke.get("evidence_allowed_for_direct_answer") is False and not odor_material_bridge:
             base["evidence_allowed_for_direct_answer"] = False
-        if st == "faq" and ke.get("evidence_allowed_for_exact_answer") is False:
+        if st == "faq" and ke.get("evidence_allowed_for_exact_answer") is False and not odor_material_bridge:
             base["evidence_allowed_for_direct_answer"] = False
+        if odor_material_bridge:
+            base["evidence_allowed_for_direct_answer"] = True
+            base["evidence_allowed_for_exact_answer"] = True
+            base["mismatch_reason"] = ""
         if wrong_fact_type:
             base["evidence_allowed_for_direct_answer"] = False
             base["evidence_allowed_for_exact_answer"] = False
@@ -689,10 +735,25 @@ def evidence_builder(state: dict) -> dict:
 
         elif tool_name == "rag_search_tool" and tool_output.get("chunks"):
             # RAG 工具结果 → 按 source_type 分层，等价于 evidence_filter_node 逻辑
+            existing_ke_chunk_ids = {
+                ke.get("chunk_id") for ke in state.get("knowledge_evidence", [])
+                if isinstance(ke, dict) and ke.get("chunk_id")
+            }
+            existing_ke_entry_ids = {
+                ke.get("entry_id") for ke in state.get("knowledge_evidence", [])
+                if isinstance(ke, dict) and ke.get("entry_id") and not ke.get("chunk_id")
+            }
             for chunk in tool_output["chunks"]:
                 st = chunk.get("source_type", "")
                 text = chunk.get("chunk_text", "")
                 if not text:
+                    continue
+                # 与 knowledge_evidence 去重：同一条 chunk 不重复计入
+                _chunk_id = chunk.get("chunk_id", "")
+                _entry_id = chunk.get("entry_id", "")
+                if _chunk_id and _chunk_id in existing_ke_chunk_ids:
+                    continue
+                if not _chunk_id and _entry_id and _entry_id in existing_ke_entry_ids:
                     continue
                 entry_status = chunk.get("entry_status", "unknown")
                 score = chunk.get("score", 0)
@@ -711,9 +772,22 @@ def evidence_builder(state: dict) -> dict:
                 confidence = SOURCE_TYPE_CONFIDENCE.get(st, "low") if st in SOURCE_TYPE_CONFIDENCE else "low"
                 meta = chunk.get("metadata", {})
                 evidence_fact_type = chunk.get("evidence_fact_type") or chunk.get("fact_type") or infer_evidence_fact_type(chunk)
+                odor_material_bridge = bool(
+                    query_fact_type == "odor"
+                    and evidence_fact_type == "material"
+                    and _has_odor_signal(text)
+                )
+                if odor_material_bridge:
+                    evidence_fact_type = "odor"
+                _sanitized = False
+                if query_fact_type == "installation" and evidence_fact_type == "installation":
+                    _new_text, _did = sanitize_risky_convenience_claim(text)
+                    if _did:
+                        text = _new_text
+                        _sanitized = True
                 wrong_fact_type = bool(query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type))
                 ref_only = not meta.get("auto_reply_allowed", True)
-                if chunk.get("evidence_allowed_for_direct_answer") is False:
+                if chunk.get("evidence_allowed_for_direct_answer") is False and not odor_material_bridge:
                     ref_only = True
                 if wrong_fact_type and is_strict_fact_type(query_fact_type):
                     ref_only = True
@@ -752,14 +826,34 @@ def evidence_builder(state: dict) -> dict:
                     base, text, entry_status,
                     chunk.get("fact_review_status", ""), st,
                 )
-                if chunk.get("evidence_allowed_for_direct_answer") is False:
+                if chunk.get("evidence_allowed_for_direct_answer") is False and not odor_material_bridge:
                     base["evidence_allowed_for_direct_answer"] = False
-                if st == "faq" and chunk.get("evidence_allowed_for_exact_answer") is False:
+                if st == "faq" and chunk.get("evidence_allowed_for_exact_answer") is False and not odor_material_bridge:
                     base["evidence_allowed_for_direct_answer"] = False
                 if wrong_fact_type:
                     base["evidence_allowed_for_direct_answer"] = False
                     base["evidence_allowed_for_exact_answer"] = False
                     base["mismatch_reason"] = base.get("mismatch_reason") or "wrong_fact_type"
+                if odor_material_bridge:
+                    base["reference_only"] = False
+                    base["evidence_allowed_for_direct_answer"] = True
+                    base["evidence_allowed_for_exact_answer"] = True
+                    base["mismatch_reason"] = ""
+
+                # 统一证据门控：gate_status / gate_reasons / direct_answer_allowed
+                base["query_fact_type"] = query_fact_type
+                base["evidence_fact_type"] = evidence_fact_type
+                _gate = evaluate_evidence_item(base, state)
+                base["gate_status"] = _gate["gate_status"]
+                base["gate_reasons"] = _gate["gate_reasons"]
+                base["direct_answer_allowed"] = _gate["direct_answer_allowed"]
+                base["evidence_allowed_for_exact_answer"] = _gate["evidence_allowed_for_exact_answer"]
+                if not _gate["direct_answer_allowed"]:
+                    base["evidence_allowed_for_direct_answer"] = False
+                    if _gate["reference_only"]:
+                        base["reference_only"] = True
+                if _sanitized:
+                    base["sanitization_applied"] = True
 
                 if st == "product_facts":
                     has_product_fact_from_rag = True

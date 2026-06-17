@@ -5,244 +5,204 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>系统设置 - INHE Copilot</title>
 <style>
-:root{--bg:#f5f7fa;--card:#fff;--primary:#2563eb;--primary-d:#1d4ed8;--green:#10b981;--red:#ef4444;--orange:#f59e0b;--gray:#6b7280;--border:#e5e7eb;--radius:8px}
+:root{--bg:#f5f7fb;--card:#fff;--text:#111827;--muted:#6b7280;--border:#d8dee9;--primary:#2563eb;--primary2:#1d4ed8;--red:#dc2626;--green:#059669;--orange:#d97706;--radius:8px}
 *{box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);margin:0;padding:16px;color:#1f2937;font-size:14px;line-height:1.5}
-h1{margin:0 0 16px;font-size:20px}
-h2{margin:0 0 12px;font-size:16px;border-bottom:1px solid var(--border);padding-bottom:6px}
-a{color:var(--primary);text-decoration:none}
-a:hover{text-decoration:underline}
-.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.row{display:flex;gap:12px;flex-wrap:wrap}
-.col{flex:1;min-width:280px}
-label{display:block;margin-bottom:4px;font-weight:500;color:var(--gray);font-size:12px}
-.status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}
-.status-ok{background:#dcfce7;color:#166534}
-.status-warn{background:#fef3c7;color:#92400e}
-.status-err{background:#fef2f2;color:#991b1b}
-.status-info{background:#dbeafe;color:#1e40af}
-.btn{padding:8px 16px;border:none;border-radius:6px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer}
-.btn:hover{background:var(--primary-d)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.result{margin-top:12px;padding:12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;font-family:monospace;font-size:12px;max-height:300px;overflow:auto}
-.result.ok{border-color:var(--green);background:#f0fdf4;color:#14532d}
-.result.err{border-color:var(--red);background:#fef2f2;color:var(--red)}
-.kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
-.kv:last-child{border-bottom:none}
-.kv .k{color:var(--gray);font-size:13px}
-.kv .v{font-weight:500;font-size:13px}
-nav{background:var(--card);padding:10px 16px;border-radius:var(--radius);margin-bottom:16px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.info-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px}
-.warn-box{background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px}
-.ok-box{background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;padding:56px 18px 24px}
+.gnav{position:fixed;top:0;left:0;right:0;height:42px;background:#111827;color:#fff;display:flex;align-items:center;gap:6px;padding:0 14px;z-index:20;box-shadow:0 2px 10px rgba(0,0,0,.22)}
+.gnav strong{font-size:12px;letter-spacing:.5px;margin-right:8px;color:#cbd5e1}
+.gnav a{color:#d1d5db;text-decoration:none;padding:7px 12px;border-radius:6px;font-size:13px}
+.gnav a:hover,.gnav a.active{background:#263244;color:#fff}
+.wrap{max-width:980px;margin:0 auto}
+.page-title{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+h1{margin:0;font-size:22px}
+.sub{margin-top:4px;color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.card h2{font-size:16px;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:block;color:#374151;font-weight:600;font-size:13px;margin-bottom:6px}
+input{width:100%;height:38px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font-size:14px;background:#fff}
+input:focus{outline:2px solid rgba(37,99,235,.18);border-color:var(--primary)}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{height:36px;border:0;border-radius:6px;padding:0 15px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--primary2)}
+.btn.secondary{background:#475569}
+.btn.danger{background:var(--red)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:12px;border-bottom:1px solid #edf1f7;padding:9px 0}
+.kv:last-child{border-bottom:0}
+.k{color:var(--muted)}
+.v{font-weight:600;word-break:break-all}
+.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-weight:700;font-size:12px}
+.ok{background:#dcfce7;color:#166534}
+.warn{background:#fef3c7;color:#92400e}
+.result{display:none;margin-top:12px;border:1px solid var(--border);background:#f8fafc;border-radius:6px;padding:12px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:12px;max-height:260px;overflow:auto}
+.result.success{border-color:#86efac;background:#f0fdf4;color:#14532d}
+.result.error{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+.notice{border:1px solid #bfdbfe;background:#eff6ff;border-radius:6px;padding:10px 12px;color:#1e3a8a;font-size:13px;margin-bottom:14px}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}.page-title{display:block}}
 </style>
 </head>
 <body>
-<nav>
-  <a href="/ask/">← 返回主界面</a>
-  <span style="flex:1"></span>
-  <strong>系统设置</strong>
-  <span style="flex:1"></span>
+<nav class="gnav">
+  <strong>INHE</strong>
+  <a href="/ask/real-test">智能回复建议区</a>
+  <a href="/ask/kb-admin/">资料库</a>
+  <a href="/ask/settings" class="active">系统设置</a>
 </nav>
 
-<!-- LLM 配置状态 -->
-<div class="card">
-  <h2>🤖 LLM / AI 配置状态</h2>
-  <div id="llmStatusArea">
-    <div class="loading" style="color:var(--gray)">加载中...</div>
-  </div>
-  <div style="margin-top:12px;display:flex;gap:8px;">
-    <button class="btn" id="testBtn" onclick="testLlmConnection()">测试 LLM 连接</button>
-    <button class="btn" style="background:var(--gray)" onclick="loadLlmConfig()">刷新状态</button>
-  </div>
-  <div class="result" id="testResult" style="display:none"></div>
-</div>
-
-<!-- 零配置模式说明 -->
-<div class="card" id="zeroConfigHelp" style="display:none">
-  <h2>📖 零配置模式说明</h2>
-  <div class="warn-box">
-    <strong>当前运行在无 AI 模式（规则引擎）</strong> — 系统未配置 LLM API Key，所有回复由规则引擎生成。
-  </div>
-  <p style="font-size:13px;color:var(--gray);line-height:1.8">
-    <strong>什么是零配置模式？</strong><br>
-    当未配置 <code>COPILOT_LLM_API_KEY</code> 时，系统会自动降级到规则引擎模式。此模式下：<br>
-    • 消息分析通过关键词匹配识别意图（ shipping / 退款 / 质量 / 投诉 等）<br>
-    • 建议回复从 840 条话术模板中匹配最佳回复<br>
-    • 安全策略通过规则引擎检查（禁止承诺、线下交易、粗鲁用语）<br>
-    • <strong>提供订单号时，系统会根据订单真实状态生成针对性回复</strong>（如"您的订单已发货，单号是 xxx"）<br>
-    • 高风险消息自动进入人工复核队列<br><br>
-    <strong>如何启用 AI 模式？</strong><br>
-    在 <code>copilot/.env</code> 文件中添加：<br>
-    <code>COPILOT_LLM_API_KEY=your_api_key_here</code><br>
-    然后重启服务器即可。
-  </p>
-</div>
-
-<!-- 系统统计 -->
-<div class="card">
-  <h2>📊 系统数据概览</h2>
-  <div id="statsArea">
-    <div class="loading" style="color:var(--gray)">加载中...</div>
-  </div>
-</div>
-
-<!-- 订单查询测试 -->
-<div class="card">
-  <h2>📦 订单查询测试（无需 AI）</h2>
-  <div class="info-box">
-    此功能<strong>不需要 LLM API Key</strong>，直接查询数据库返回订单真实状态。
-  </div>
-  <div class="row">
-    <div class="col">
-      <label>订单号</label>
-      <input type="text" id="testOrderId" placeholder="例如: 202501010001" value="202501010001">
+<main class="wrap">
+  <div class="page-title">
+    <div>
+      <h1>系统设置</h1>
+      <div class="sub">配置智能回复使用的 LLM API。密钥只会脱敏显示，不会回传明文。</div>
     </div>
+    <button class="btn secondary" onclick="loadLlmConfig()">刷新状态</button>
   </div>
-  <div style="margin-top:8px;display:flex;gap:8px;">
-    <button class="btn" onclick="testOrderQuery()">查询订单</button>
-    <button class="btn" style="background:var(--gray)" onclick="testAnalyzeWithOrder()">测试消息分析（带订单号）</button>
-  </div>
-  <div class="result" id="orderResult" style="display:none"></div>
-</div>
+
+  <section class="card">
+    <h2>LLM 运行状态</h2>
+    <div id="llmStatusArea">加载中...</div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="testBtn" onclick="testLlmConnection()">测试连接</button>
+      <button class="btn secondary" onclick="loadLlmConfig()">刷新</button>
+    </div>
+    <div id="testResult" class="result"></div>
+  </section>
+
+  <section class="card">
+    <h2>配置 API Key</h2>
+    <div class="notice">
+      留空 API Key 时只更新模型和 API Base，不会覆盖已有 Key。需要删除 Key 时请使用“清空 API Key”。
+    </div>
+    <div class="grid">
+      <div>
+        <label for="apiBase">API Base</label>
+        <input id="apiBase" placeholder="https://api.deepseek.com">
+      </div>
+      <div>
+        <label for="model">模型名称</label>
+        <input id="model" placeholder="deepseek-chat">
+      </div>
+      <div style="grid-column:1/-1">
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" type="password" autocomplete="new-password" placeholder="粘贴新的 API Key；留空则保留当前 Key">
+        <div class="hint">保存后会写入服务器本机 .env，并尝试立即刷新运行时配置。</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="saveBtn" onclick="saveLlmConfig(false)">保存配置</button>
+      <button class="btn danger" id="clearBtn" onclick="clearApiKey()">清空 API Key</button>
+    </div>
+    <div id="saveResult" class="result"></div>
+  </section>
+
+  <section class="card">
+    <h2>说明</h2>
+    <div class="kv"><div class="k">权限</div><div class="v">只有管理员或主管角色可以保存配置。</div></div>
+    <div class="kv"><div class="k">安全</div><div class="v">接口不会返回明文 API Key；页面刷新后只能看到脱敏值。</div></div>
+    <div class="kv"><div class="k">生效方式</div><div class="v">保存后会立即更新当前进程配置；如果连接测试仍使用旧配置，再重启服务。</div></div>
+  </section>
+</main>
 
 <script>
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-
+function apiPath(path){
+  return location.pathname.startsWith('/ask/') ? '/ask' + path : path
+}
+function esc(s){
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+function roleHeaders(){
+  return {
+    'Content-Type':'application/json',
+    'X-User-Role': localStorage.getItem('kb_user_role') || 'supervisor',
+    'X-User-Name': localStorage.getItem('kb_user_name') || 'admin'
+  }
+}
+function showResult(id, ok, text){
+  const el=document.getElementById(id)
+  el.style.display='block'
+  el.className='result ' + (ok ? 'success' : 'error')
+  el.textContent=text
+}
+function renderConfig(d){
+  const badge=d.configured
+    ? '<span class="badge ok">AI 模式</span>'
+    : '<span class="badge warn">零配置模式</span>'
+  document.getElementById('llmStatusArea').innerHTML =
+    '<div style="margin-bottom:10px">'+badge+'</div>' +
+    '<div class="kv"><div class="k">API Key</div><div class="v">'+esc(d.api_key_masked || '未配置')+'</div></div>' +
+    '<div class="kv"><div class="k">模型</div><div class="v">'+esc(d.model || '')+'</div></div>' +
+    '<div class="kv"><div class="k">API Base</div><div class="v">'+esc(d.api_base || '')+'</div></div>' +
+    '<div class="kv"><div class="k">运行模式</div><div class="v">'+esc(d.mode || '')+'</div></div>'
+  document.getElementById('apiBase').value = d.api_base || ''
+  document.getElementById('model').value = d.model && d.model !== '(未配置)' ? d.model : ''
+}
 async function loadLlmConfig(){
-  const area=document.getElementById('llmStatusArea');
-  area.innerHTML='<div style="color:var(--gray)">加载中...</div>';
   try{
-    const r=await fetch('/api/config/llm');
-    const d=await r.json();
-    let html='';
-    const modeBadge=d.configured
-      ? '<span class="status-badge status-ok">● AI 模式</span>'
-      : '<span class="status-badge status-warn">● 零配置模式</span>';
-    html+='<div style="margin-bottom:12px">'+modeBadge+'</div>';
-    html+='<div class="kv"><span class="k">API Key</span><span class="v">'+(d.api_key_masked||'未配置')+'</span></div>';
-    html+='<div class="kv"><span class="k">模型</span><span class="v">'+esc(d.model)+'</span></div>';
-    html+='<div class="kv"><span class="k">API Base</span><span class="v">'+esc(d.api_base)+'</span></div>';
-    html+='<div class="kv"><span class="k">运行模式</span><span class="v">'+esc(d.mode)+'</span></div>';
-    area.innerHTML=html;
-    document.getElementById('zeroConfigHelp').style.display=d.configured?'none':'block';
+    const r=await fetch(apiPath('/api/config/llm'))
+    const d=await r.json()
+    renderConfig(d)
   }catch(e){
-    area.innerHTML='<div style="color:var(--red)">加载失败: '+esc(e.message)+'</div>';
+    document.getElementById('llmStatusArea').innerHTML='<span style="color:var(--red)">加载失败：'+esc(e.message)+'</span>'
   }
 }
-
 async function testLlmConnection(){
-  const btn=document.getElementById('testBtn');
-  const el=document.getElementById('testResult');
-  btn.disabled=true;el.style.display='block';el.className='result';el.textContent='测试中...';
+  const btn=document.getElementById('testBtn')
+  btn.disabled=true
+  showResult('testResult', true, '测试中...')
   try{
-    const t0=performance.now();
-    const r=await fetch('/api/config/llm-test');
-    const d=await r.json();
-    const ms=(performance.now()-t0).toFixed(0);
-    if(d.ok){
-      el.className='result ok';
-      el.textContent='✅ LLM 连接正常 ('+ms+'ms)\n模型: '+esc(d.model)+'\n响应: '+esc(d.test_response||'-');
+    const t0=performance.now()
+    const r=await fetch(apiPath('/api/config/llm-test'))
+    const d=await r.json()
+    const ms=Math.round(performance.now()-t0)
+    if(r.ok && d.ok){
+      showResult('testResult', true, '连接正常 ('+ms+'ms)\n模型: '+(d.model || '-')+'\n响应: '+(d.test_response || '-'))
     }else{
-      el.className='result err';
-      el.textContent='❌ '+esc(d.message)+'\n延迟: '+ms+'ms\n模型: '+esc(d.model||'-');
+      showResult('testResult', false, '连接失败 ('+ms+'ms)\n'+(d.message || JSON.stringify(d,null,2)))
     }
   }catch(e){
-    el.className='result err';
-    el.textContent='❌ 请求失败: '+esc(e.message);
+    showResult('testResult', false, '请求失败：'+e.message)
+  }finally{
+    btn.disabled=false
   }
-  btn.disabled=false;
 }
-
-async function loadStats(){
-  const area=document.getElementById('statsArea');
+async function saveLlmConfig(clearKey){
+  const btn=document.getElementById('saveBtn')
+  btn.disabled=true
+  showResult('saveResult', true, '保存中...')
   try{
-    const r=await fetch('/api/health');
-    const d=await r.json();
-    let html='';
-    if(d.data){
-      html+='<div class="kv"><span class="k">订单</span><span class="v">'+d.data.orders.toLocaleString()+'</span></div>';
-      html+='<div class="kv"><span class="k">SKU</span><span class="v">'+d.data.skus.toLocaleString()+'</span></div>';
-      html+='<div class="kv"><span class="k">商品</span><span class="v">'+d.data.products.toLocaleString()+'</span></div>';
-      html+='<div class="kv"><span class="k">物流记录</span><span class="v">'+d.data.logistics.toLocaleString()+'</span></div>';
-      html+='<div class="kv"><span class="k">退款记录</span><span class="v">'+d.data.refunds.toLocaleString()+'</span></div>';
-      html+='<div class="kv"><span class="k">产品知识卡</span><span class="v">'+d.data.product_knowledge_cards.toLocaleString()+'</span></div>';
+    const payload={
+      api_base: document.getElementById('apiBase').value.trim(),
+      model: document.getElementById('model').value.trim(),
+      api_key: document.getElementById('apiKey').value.trim(),
+      clear_api_key: !!clearKey
     }
-    if(d.llm){
-      html+='<div class="kv"><span class="k">话术模板</span><span class="v">'+((d.data&&d.data.reply_templates)||840)+'</span></div>';
-      html+='<div class="kv"><span class="k">SOP 场景</span><span class="v">'+((d.data&&d.data.sop_scenarios)||29)+'</span></div>';
+    const r=await fetch(apiPath('/api/config/llm'),{
+      method:'PUT',
+      headers: roleHeaders(),
+      body: JSON.stringify(payload)
+    })
+    const d=await r.json()
+    if(!r.ok || !d.ok){
+      showResult('saveResult', false, d.error || d.message || JSON.stringify(d,null,2))
+      return
     }
-    area.innerHTML=html;
+    document.getElementById('apiKey').value=''
+    renderConfig(d)
+    showResult('saveResult', true, d.message + '\n当前 Key: ' + (d.api_key_masked || '未配置'))
   }catch(e){
-    area.innerHTML='<div style="color:var(--red)">加载失败</div>';
+    showResult('saveResult', false, '保存失败：'+e.message)
+  }finally{
+    btn.disabled=false
   }
 }
-
-async function testOrderQuery(){
-  const oid=document.getElementById('testOrderId').value.trim();
-  if(!oid){alert('请输入订单号');return;}
-  const el=document.getElementById('orderResult');
-  el.style.display='block';el.className='result';el.textContent='查询中...';
-  try{
-    const r=await fetch('/api/order/'+encodeURIComponent(oid));
-    const d=await r.json();
-    el.className=r.ok?'result ok':'result err';
-    el.textContent='HTTP '+r.status+'\n'+JSON.stringify(d,null,2);
-  }catch(e){
-    el.className='result err';el.textContent='请求失败: '+esc(e.message);
+function clearApiKey(){
+  if(confirm('确认清空 API Key？清空后系统会降级到规则引擎。')){
+    saveLlmConfig(true)
   }
 }
-
-async function testAnalyzeWithOrder(){
-  const oid=document.getElementById('testOrderId').value.trim();
-  if(!oid){alert('请输入订单号');return;}
-  const el=document.getElementById('orderResult');
-  el.style.display='block';el.className='result';el.textContent='分析中...';
-  try{
-    const r=await fetch('/api/analyze',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:'我的订单到哪了',order_id:oid})
-    });
-    const d=await r.json();
-    el.className=r.ok?'result ok':'result err';
-    el.textContent='HTTP '+r.status+'\n'+JSON.stringify(d,null,2);
-  }catch(e){
-    el.className='result err';el.textContent='请求失败: '+esc(e.message);
-  }
-}
-
-loadLlmConfig();
-loadStats();
-</script>
-<!-- Global Navigation Bar -->
-<style>
-.gnav-bar{position:fixed;top:0;left:0;right:0;z-index:99999;height:40px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);display:flex;align-items:center;padding:0 16px;gap:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
-.gnav-bar a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:6px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
-.gnav-bar a:hover{background:rgba(255,255,255,.12);color:#fff}
-.gnav-bar a.gnav-active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
-.gnav-bar a.gnav-highlight{background:#007aff;color:#fff;font-weight:600}
-.gnav-bar a.gnav-highlight:hover{background:#0066d6}
-.gnav-bar .gnav-brand{color:rgba(255,255,255,.4);font-size:11px;margin-right:8px;font-weight:600;letter-spacing:.5px}
-body{padding-top:48px!important}
-</style>
-<nav class="gnav-bar">
-  <span class="gnav-brand">INHE</span>
-  <a href="/ask/" data-path="/">客服助手</a>
-  <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
-  <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
-  <a href="/ask/settings" data-path="/settings">设置</a>
-  <a href="/ask/graph" data-path="/graph">流程图</a>
-  <a href="/ask/api-test" data-path="/api-test">API</a>
-</nav>
-<script>
-(function(){
-  var p=location.pathname.replace(/\/$/,'')||'/';
-  document.querySelectorAll('.gnav-bar a[data-path]').forEach(function(a){
-    var h=a.getAttribute('data-path');
-    if(h===p){a.classList.add('gnav-active')}
-  });
-  if(p==='/copilot-panel'){var a=document.querySelector('.gnav-bar a[data-path="/copilot-panel"]');if(a)a.classList.add('gnav-highlight')}
-})()
+loadLlmConfig()
 </script>
 </body>
 </html>

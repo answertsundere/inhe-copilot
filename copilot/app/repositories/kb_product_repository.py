@@ -6,56 +6,83 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, exists as sa_exists
 
 from app.db import SessionLocal
-from app.models.kb_tables import KBProduct, KBChangeLog
+from app.models.kb_tables import KBProduct, KBQA, KBChangeLog
 
 
-# ─── 完整度权重表 ───
-_COMPLETENESS_WEIGHTS = {
-    "product_name": 0.10,
-    "brand": 0.05,
-    "category_l1": 0.05,
-    "category_l2": 0.05,
-    "category_l3": 0.05,
-    "sku_list": 0.15,
-    "specs": 0.20,
-    "logistics": 0.15,
-    "warranty": 0.10,
-    "image_url": 0.10,
-}
+# ─── 完整度字段定义 ───
+# 等权检查每个关键字段是否已有效填写；避免 "specs" 整组因空对象被误判为完成。
+_COMPLETENESS_FIELDS = [
+    ("product_name", "商品名", None),
+    ("brand", "品牌", None),
+    ("category_l1", "一级类目", None),
+    ("category_l2", "二级类目", None),
+    ("category_l3", "三级类目", None),
+    ("sku_list", "SKU列表", "get_sku_list"),
+    ("specs.material", "材质", "get_specs"),
+    ("specs.size", "尺寸", "get_specs"),
+    ("specs.load_capacity", "承重/容量", "get_specs"),
+    ("specs.age_range", "适用年龄", "get_specs"),
+    ("specs.accessories", "配件清单", "get_specs"),
+    ("specs.install_method", "安装方式", "get_specs"),
+    ("specs.detachable", "是否可拆卸", "get_specs"),
+    ("specs.drill_required", "是否打孔", "get_specs"),
+    ("specs.pinch_safety", "安全/防夹说明", "get_specs"),
+    ("specs.certification_report", "合格证/质检资料", "get_specs"),
+    ("warranty.period", "质保期", "get_warranty"),
+    ("logistics.attribute", "物流属性", "get_logistics"),
+]
 
-# JSON 字段与 getter 的对应关系
-_JSON_FIELD_GETTERS = {
-    "sku_list": ("sku_list_json", "get_sku_list"),
-    "specs": ("specs_json", "get_specs"),
-    "logistics": ("logistics_json", "get_logistics"),
-    "warranty": ("warranty_json", "get_warranty"),
-}
+# 视为未填写的占位符（人工习惯填写的无意义值）
+_USELESS_VALUES = {"-", "--", "无", "暂无", "详见商品详情页", "见详情页"}
+
+
+def _is_useful(value) -> bool:
+    """判断一个字段值是否算已有效填写。"""
+    if value is None:
+        return False
+    if isinstance(value, (list, tuple)):
+        return len(value) > 0
+    if isinstance(value, dict):
+        return len(value) > 0
+    text = str(value).strip()
+    if not text:
+        return False
+    return text not in _USELESS_VALUES
+
+
+def _get_field_value(product: KBProduct, key: str, getter_name: Optional[str]):
+    """根据字段定义取值。key 支持点号路径（如 specs.material）。"""
+    if getter_name is None:
+        return getattr(product, key, None)
+    container = getattr(product, getter_name)()
+    # key 本身就是 JSON 字段本身（如 sku_list），直接返回容器
+    if "." not in key:
+        return container
+    if not isinstance(container, dict):
+        return None
+    parts = key.split(".", 1)
+    return container.get(parts[1])
 
 
 def _compute_completeness(product: KBProduct) -> tuple:
     """计算商品完整度得分和缺失字段列表。返回 (score, missing_fields)"""
-    score = 0.0
+    total = len(_COMPLETENESS_FIELDS)
+    if total == 0:
+        return 1.0, []
+
+    filled = 0
     missing = []
-
-    for field, weight in _COMPLETENESS_WEIGHTS.items():
-        if field in _JSON_FIELD_GETTERS:
-            col_name, getter_name = _JSON_FIELD_GETTERS[field]
-            getter = getattr(product, getter_name)
-            value = getter()
-            if value and value != [] and value != {}:
-                score += weight
-            else:
-                missing.append(field)
+    for key, label, getter_name in _COMPLETENESS_FIELDS:
+        value = _get_field_value(product, key, getter_name)
+        if _is_useful(value):
+            filled += 1
         else:
-            value = getattr(product, field, None)
-            if value and str(value).strip():
-                score += weight
-            else:
-                missing.append(field)
+            missing.append(label)
 
+    score = filled / total
     return round(score, 4), missing
 
 
@@ -178,6 +205,10 @@ class KBProductRepository:
         category_l3: str = "",
         search: str = "",
         status: str = "",
+        agent_usable: str = "",
+        has_qa: str = "",
+        missing_field: str = "",
+        high_risk: str = "",
         limit: int = 20,
         offset: int = 0,
     ) -> tuple:
@@ -201,6 +232,53 @@ class KBProductRepository:
                         KBProduct.i_id.ilike(like),
                     )
                 )
+
+            # Agent 可用性筛选（与 api_list_products 中的 can_agent_use 逻辑一致）
+            if agent_usable:
+                high_risk_qa = (
+                    db.query(KBQA.id)
+                    .filter(KBQA.product_id == KBProduct.id)
+                    .filter(KBQA.risk_level.in_(["high", "critical"]))
+                )
+                if agent_usable == "yes":
+                    q = q.filter(
+                        KBProduct.status == "published",
+                        KBProduct.completeness_score >= 60,
+                        ~high_risk_qa.exists(),
+                    )
+                elif agent_usable == "no":
+                    q = q.filter(
+                        or_(
+                            KBProduct.status != "published",
+                            KBProduct.completeness_score < 60,
+                            high_risk_qa.exists(),
+                        )
+                    )
+
+            # 是否有关联 QA
+            if has_qa:
+                qa_any = db.query(KBQA.id).filter(KBQA.product_id == KBProduct.id)
+                if has_qa == "yes":
+                    q = q.filter(qa_any.exists())
+                elif has_qa == "no":
+                    q = q.filter(~qa_any.exists())
+
+            # 完整度筛选
+            if missing_field == "incomplete":
+                q = q.filter(KBProduct.completeness_score < 60)
+
+            # 高风险商品（关联高/极高风险 QA）
+            if high_risk:
+                high_risk_qa = (
+                    db.query(KBQA.id)
+                    .filter(KBQA.product_id == KBProduct.id)
+                    .filter(KBQA.risk_level.in_(["high", "critical"]))
+                )
+                if high_risk == "yes":
+                    q = q.filter(high_risk_qa.exists())
+                elif high_risk == "no":
+                    q = q.filter(~high_risk_qa.exists())
+
             total = q.count()
             items = (
                 q.order_by(KBProduct.updated_at.desc())

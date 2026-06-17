@@ -30,7 +30,7 @@ def apply_parallel_pre_strategy_controls(state: dict) -> dict:
             final_intent = fusion.get("final_intent", "")
             if final_intent in ("missing_item", "damaged_item", "wrong_item", "refund_request", "return_request"):
                 current = state.get("intent", "")
-                if current in ("general", "product_question", "product_consult"):
+                if current in ("general", "product_question", "product_consult", "installation"):
                     updates["intent"] = "aftersales"
                     actions.append(f"manual_review_intent={final_intent}")
             if not state.get("review_reason"):
@@ -83,6 +83,8 @@ def apply_parallel_post_strategy_controls(state: dict) -> dict:
         "summary": "parallel post controls: " + (", ".join(actions) if actions else "observation/no-op"),
     }
     return {
+        "intent": state.get("intent", ""),
+        "response_strategy": state.get("response_strategy", ""),
         "required_tools": required,
         "allowed_tools": allowed,
         "forbidden_tools": forbidden,

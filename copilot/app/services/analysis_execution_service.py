@@ -42,6 +42,7 @@ def execute_analysis(
     image_attachments: list | None = None,
     source: str = "api",
     scenario: str = "",
+    final_orchestration: bool = True,
 ) -> dict:
     """
     Execute a full analysis with trace lifecycle management.
@@ -116,6 +117,7 @@ def execute_analysis(
         scenario=scenario,
         customer_message=customer_message,
         copilot_context=copilot_context,
+        final_orchestration=final_orchestration,
     )
 
     # Save tracing snapshot
@@ -167,6 +169,7 @@ def _build_response(
     scenario: str,
     customer_message: str,
     copilot_context: dict | None,
+    final_orchestration: bool = True,
 ) -> dict:
     """Build the API response dict."""
     if error:
@@ -183,6 +186,18 @@ def _build_response(
     response["message_id"] = message_id
     response["trace_id"] = trace_id
     response["conversation_id"] = conversation_id
+
+    if final_orchestration:
+        try:
+            from app.services.final_response_orchestrator import orchestrate_final_response
+
+            response = orchestrate_final_response(
+                response,
+                customer_message=customer_message,
+                copilot_context=copilot_context,
+            )
+        except Exception as e:
+            logger.warning("final_response_orchestration failed: %s", e)
 
     # Build trace summary from execution_debug if present
     ed = response.get("execution_debug", {})

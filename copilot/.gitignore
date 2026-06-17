@@ -30,6 +30,28 @@ htmlcov/
 
 # 反馈数据 (运行时产生)
 data/feedback.jsonl
+data/review_queue.jsonl
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db.bak*
+data/*.db.before_*
+data/bad_cases.jsonl
+data/traces.db*
+
+# 运行时会话/诊断数据（含真实用户信息，绝不应提交）
+data/snapshots/
+data/sidecar/
+data/reports/
+data/imports/
+data/real_golden_candidates/
+data/dingtalk_media_report*.json
+data/ai_update_tasks.json
+data/premium_*.json
+data/quality_report_latest.json
+data/knowledge_cleanup_delivery_report.txt
+data/knowledge_publish_review_queue.jsonl
+data/rag_risky_claims_report.csv
 
 # OS
 .DS_Store
@@ -38,3 +60,44 @@ desktop.ini
 
 # 聚水潭原始数据 (不应提交到仓库)
 raw_data/
+
+# Syncthing / 临时冲突文件
+*.sync-conflict-*
+*~syncthing~*.tmp
+.stfolder/
+
+# 运行时产生的大文件
+instance/*.db
+instance/*.db-journal
+*.log
+logs/
+scripts/nul
+
+# pytest / 诊断临时产物
+.pytest_tmp_*/
+_ui_final_*.png
+_ui_final_*.json
+
+# ============================================================
+# 前端 kb-admin 构建产物策略：CI 构建，不提交 assets
+# ============================================================
+# 本目录使用 Vite 构建，asset 文件名含 hash，每次构建都会变化。
+# 部署/发布前必须在 copilot/frontend 目录执行 npm run build，
+# 生成产物到 web/static/kb-admin/。因此 assets/ 不进入版本库。
+# 如需改为“提交产物”，请删除下面这行并执行：
+#   git rm -r --cached web/static/kb-admin/assets/
+#   git add web/static/kb-admin/assets/
+# ============================================================
+web/static/kb-admin/assets/
+
+# Local runtime outputs and user uploads
+reports/
+round2_results/
+round3_results/
+app/media_uploads/
+data/*_uploads/
+data/daily_media_asset_sync.lock
+scripts/manual/outputs/
+scripts/dingtalk_media_report*.json
+entry_*.json
+sheets_info.json

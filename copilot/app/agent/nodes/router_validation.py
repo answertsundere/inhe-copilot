@@ -9,6 +9,10 @@ NUMERIC_IDENTIFIER_RE = re.compile(r"(?<![A-Za-z0-9])(\d{12,20})(?![A-Za-z0-9])"
 LOGISTICS_TERMS = (
     "快递", "物流", "运单", "单号", "发货", "到货", "配送", "签收",
     "什么时候到", "大概什么时候到", "几天到", "多久到", "到哪", "到哪里",
+    "\u5feb\u9012", "\u7269\u6d41", "\u8fd0\u5355", "\u5355\u53f7",
+    "\u53d1\u8d27", "\u5230\u8d27", "\u914d\u9001", "\u7b7e\u6536",
+    "\u4ec0\u4e48\u65f6\u5019\u5230", "\u51e0\u5929\u5230",
+    "\u591a\u4e45\u5230", "\u5230\u54ea", "\u5230\u54ea\u91cc",
 )
 PRODUCT_FACT_TERMS = (
     "材质", "尺寸", "承重", "能洗", "清洗", "机洗", "适合多大", "适合几岁",
@@ -28,6 +32,7 @@ AFTERSALES_TERMS = (
     "退货", "退款", "换货", "不想要", "七天无理由", "运费",
     "退回", "补发", "少件", "发错", "破损", "坏了", "质量问题",
     "瑕疵", "售后", "退换", "赔偿",
+    "能补吗", "补一个", "补一件", "能补发", "给补一个",
 )
 COMPLAINT_TERMS = (
     "投诉", "差评", "平台介入", "12315", "律师", "曝光", "赔偿",
@@ -58,6 +63,19 @@ PROTECTED_PRODUCT_POLICY_INTENTS = {
     "price_promotion",
 }
 
+IMAGE_MARKER_RE = re.compile(r"\[\s*\u56fe\u7247\s*\d*\s*\]")
+TEXT_PRODUCT_QUESTION_TERMS = (
+    "\u5417", "\u5462", "\u600e\u4e48", "\u5982\u4f55", "\u53ef\u4ee5",
+    "\u80fd\u4e0d\u80fd", "\u662f\u4e0d\u662f", "\u6709\u6ca1\u6709",
+    "\u4f1a\u4e0d\u4f1a", "\u53ef\u62c6", "\u62c6\u5378", "\u5b89\u88c5",
+    "\u7ec4\u88c5", "\u6750\u8d28", "\u627f\u91cd", "\u5c3a\u5bf8",
+    "\u6e05\u6d17", "\u9632\u6f6e",
+)
+TEXT_INSTALLATION_TERMS = (
+    "\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u7ec4\u88c5", "\u88c5\u4e0d\u4e0a",
+    "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b",
+)
+
 
 def _has_product_context(state: dict) -> bool:
     ctx = state.get("copilot_context", {}) or {}
@@ -74,6 +92,18 @@ def _has_product_context(state: dict) -> bool:
         or identity.get("matched_product_name")
         or identity.get("sku_id")
     )
+
+
+def _has_text_product_question(msg: str) -> bool:
+    text = IMAGE_MARKER_RE.sub("", msg or "").strip()
+    if not text:
+        return False
+    return any(term in text for term in TEXT_PRODUCT_QUESTION_TERMS)
+
+
+def _is_text_installation_question(msg: str) -> bool:
+    text = IMAGE_MARKER_RE.sub("", msg or "").strip()
+    return bool(text and any(term in text for term in TEXT_INSTALLATION_TERMS))
 
 
 def _looks_like_product_followup(msg: str) -> bool:
@@ -96,15 +126,18 @@ def router_validation(state: dict) -> dict:
     reason = state.get("router_reason", "")
     selected_tool = state.get("selected_tool", "none")
     overrides = []
+    order_operation = ""
 
     numeric_match = NUMERIC_IDENTIFIER_RE.search(msg)
     has_logistics_terms = any(term in msg for term in LOGISTICS_TERMS)
     has_product_terms = any(term in msg for term in PRODUCT_FACT_TERMS)
     has_product_context = _has_product_context(state)
+    has_text_product_question = has_product_context and _has_text_product_question(msg)
     looks_like_product_followup = has_product_context and _looks_like_product_followup(msg)
     has_installation_terms = any(term in msg for term in INSTALLATION_TERMS)
     has_aftersales_terms = any(term in msg for term in AFTERSALES_TERMS)
     has_complaint_terms = any(term in msg for term in COMPLAINT_TERMS)
+    has_intercept_operation = any(term in msg for term in ("拦截", "改地址", "收货地址", "改收货", "拒收"))
     signed_not_received = any(term in msg for term in SIGNED_NOT_RECEIVED_TERMS)
     has_gift_missing_terms = (
         any(term in msg for term in GIFT_TERMS)
@@ -141,7 +174,11 @@ def router_validation(state: dict) -> dict:
         )
     )
 
-    if looks_like_non_business_address and intent != "image_attachment":
+    # 规则已判定为需要澄清的模糊问题，不再被 product follow-up 逻辑覆盖
+    if intent == "needs_clarification":
+        pass
+
+    elif looks_like_non_business_address and intent != "image_attachment":
         if intent != "general":
             overrides.append(f"intent {intent} -> general")
         intent = "general"
@@ -174,6 +211,26 @@ def router_validation(state: dict) -> dict:
         intent = "gift_missing"
         selected_tool = "rag_retrieve"
         decision.update({"intent": intent, "need_tool": True, "tool_name": selected_tool})
+
+    elif intent == "image_attachment" and has_text_product_question:
+        intent = "installation" if _is_text_installation_question(msg) else "product_question"
+        selected_tool = "product_resolver_tool" if intent == "installation" else "rag_retrieve"
+        decision.update({"intent": intent, "need_tool": True, "tool_name": selected_tool})
+        overrides.append(f"image attachment with product text -> {intent}")
+
+    # 订单操作（拦截/改地址/拒收）且有订单标识：优先走物流查询，不降级为通用售后
+    elif has_intercept_operation and has_any_identifier:
+        order_operation = (
+            "intercept" if "拦截" in msg
+            else ("address_change" if any(t in msg for t in ("改地址", "收货地址", "改收货")) else "reject")
+        )
+        intent = "logistics_eta"
+        selected_tool = "jst_live_query"
+        decision.update({
+            "intent": intent, "need_tool": True, "tool_name": selected_tool,
+            "order_operation": order_operation,
+        })
+        overrides.append(f"order op -> logistics_eta ({order_operation})")
 
     # Numeric in message + logistics terms → logistics
     elif numeric_match and has_logistics_terms:
@@ -290,6 +347,7 @@ def router_validation(state: dict) -> dict:
         "router_source": source,
         "router_reason": reason,
         "selected_tool": selected_tool,
+        "order_operation": order_operation,
         "identifier_type": decision.get("identifier_type", slot_identifier_type or state.get("identifier_type", "")),
         "identifier_value": decision.get("identifier_value", state.get("identifier_value", "")),
         "trace_steps": state.get("trace_steps", []) + [trace],

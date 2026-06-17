@@ -27,6 +27,8 @@ TRACE_DB_PATH = os.environ.get(
 _engine = None
 _SessionLocal = None
 _lock = threading.Lock()
+TRACE_SQLITE_BUSY_TIMEOUT_SECONDS = 0.2
+TRACE_SQLITE_BUSY_TIMEOUT_MS = 200
 
 
 def _get_engine():
@@ -39,13 +41,17 @@ def _get_engine():
         os.makedirs(os.path.dirname(TRACE_DB_PATH), exist_ok=True)
         _engine = create_engine(
             f"sqlite:///{TRACE_DB_PATH}",
-            connect_args={"check_same_thread": False},
+            connect_args={
+                "check_same_thread": False,
+                "timeout": TRACE_SQLITE_BUSY_TIMEOUT_SECONDS,
+            },
             pool_pre_ping=True,
         )
         # WAL mode for better concurrent read/write
         @sa_event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(dbapi_conn, connection_record):
             cursor = dbapi_conn.cursor()
+            cursor.execute(f"PRAGMA busy_timeout={TRACE_SQLITE_BUSY_TIMEOUT_MS}")
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.close()

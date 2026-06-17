@@ -1,4 +1,4 @@
-from app.services.evidence_fact_gate_service import evaluate_evidence_item
+from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
 
 
 def test_gate_blocks_wrong_fact_type():
@@ -97,6 +97,34 @@ def test_gate_allows_installation_evidence_with_convenience_warning():
     assert result["reference_only"] is False
     assert result["gate_status"] == "allowed"
     assert "risky_convenience_claim" in result["gate_reasons"]
+
+
+def test_gate_does_not_treat_faq_question_title_as_convenience_claim():
+    item = {
+        "source_type": "faq",
+        "score": 0.9,
+        "rerank_score": 0.9,
+        "query_fact_type": "installation",
+        "evidence_fact_type": "installation",
+        "entry_status": "published",
+        "evidence_allowed_for_exact_answer": True,
+        "title": "\u4e5d\u53f7\u6536\u7eb3\u67dc\u5b89\u88c5\u65b9\u4fbf\u5417\uff1f",
+        "chunk_text": "\u91c7\u7528\u5361\u6263\u548c\u87ba\u4e1d\u56fa\u5b9a\u7ed3\u6784\uff0c\u53ef\u6309\u8bf4\u660e\u4e66\u6b65\u9aa4\u5b89\u88c5\u3002",
+    }
+
+    result = evaluate_evidence_item(item, {})
+
+    assert result["direct_answer_allowed"] is True
+    assert "risky_convenience_claim" not in result["gate_reasons"]
+
+
+def test_sanitize_risky_convenience_claim_strips_leading_punctuation():
+    text = "\u5b89\u88c5\u5f88\u65b9\u4fbf\uff01\u91c7\u7528\u5361\u6263/\u87ba\u4e1d\u56fa\u5b9a\u7ed3\u6784\u3002"
+
+    sanitized, applied = sanitize_risky_convenience_claim(text)
+
+    assert applied is True
+    assert sanitized.startswith("\u91c7\u7528\u5361\u6263")
 
 
 def test_gate_blocks_material_evidence_for_stability_question():

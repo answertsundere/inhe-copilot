@@ -139,8 +139,8 @@ def _append_secondary_product_reply(reply: str, state: dict) -> str:
     else:
         product_part = (
             f"另外关于「{product_name}」的材质安全和受潮问题，我已经先帮您对上商品，"
-            "但当前知识库没有命中已验证的材质/检测说明，我不直接凭感觉判断。"
-            "我会按这个商品继续转人工核实，确认后再给您准确答复。"
+            "这个点我先帮您再核实一下准确说法，避免不同款式信息说错。"
+            "麻烦您稍等一下，确认后我再给您准确答复。"
         )
     return f"{reply}\n{product_part}"
 
@@ -527,8 +527,8 @@ def generate_logistics_reply(state: dict) -> dict:
     # ========== 4. 无订单 + 有快递单号但查不到轨迹 ==========
     if tracking_no and not order:
         reply = (
-            f"亲，我这边暂时没有在系统中查到该物流单号对应的订单/物流信息。"
-            f"\n麻烦您发一下订单号或订单截图，我帮您继续核实～"
+            f"亲，我这边暂未查询到该物流单号对应的订单/物流信息。"
+            f"\n麻烦您核对一下物流单号是否正确，或者发一下订单截图，我帮您继续核实～"
         )
         return {
             "suggested_reply": reply,

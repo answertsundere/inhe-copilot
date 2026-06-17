@@ -1,1 +1,0 @@
-var e=``+new URL(`product-guide-05-IR30h-xO.webp`,import.meta.url).href;export{e as default};

@@ -404,6 +404,7 @@ window.SC = {
         trace_steps: data.trace_steps || [],
         feedback_status: '',
         requires_human_review: data.requires_human_review || false,
+        reason_for_review: data.reason_for_review || data.review_reason || '',
         customer_emotion: data.customer_emotion || '',
       };
       SC.sessions[scenario].messages.push(msgObj);
@@ -478,6 +479,9 @@ function buildMessageHTML(m) {
   h += '<span class="msg-summary">';
   h += '<span class="ms-tag t-intent">' + esc(intent) + '</span>';
   h += '<span class="ms-tag ' + riskCls + '">' + esc(m.risk_level || 'low') + '</span>';
+  if (m.requires_human_review) {
+    h += '<span class="ms-tag t-red" title="' + esc(m.reason_for_review || '证据或业务条件需要客服确认') + '">需人工复核</span>';
+  }
   h += '<span class="ms-tag t-gray">JST' + toolCount + '</span>';
   h += '<span class="ms-tag t-gray">RAG' + ragUsed + '</span>';
   h += '<span class="ms-tag t-gray">' + totalMs + 'ms</span>';

@@ -334,9 +334,11 @@ class TestTraceStepsComplete:
         """graph 走完后 trace 必须有 fallback 原因"""
         result = _invoke("订单号 99999，帮我查快递")
         steps = _steps(result)
-        # 至少有 jst_live_query
-        has_fallback = "jst_live_query" in steps
-        assert has_fallback, f"查不到时应走 jst_live_query, steps: {steps}"
+        # 新链路可能通过 Tool Registry 调用 JST，旧链路会出现 jst_live_query。
+        has_fallback = "jst_live_query" in steps or (
+            "tool_executor" in steps and any("jst" in str(s).lower() for s in result.get("trace_steps", []))
+        )
+        assert has_fallback, f"查不到时应走 JST 查询链路, steps: {steps}"
 
 
 # ===========================================================================
@@ -529,4 +531,3 @@ class TestP1Performance:
         _invoke("我快递大概几天到")
         elapsed_ms = int((time.time() - t0) * 1000)
         assert elapsed_ms < 2000, f"无标识符耗时 {elapsed_ms}ms, 应 < 2s"
-

@@ -15,6 +15,16 @@ def test_image_attachment_detected_from_attachment_metadata():
     assert result["skill"] == "image_attachment"
 
 
+def test_image_attachment_with_text_product_question_uses_product_intent():
+    result = detect_intent({
+        "normalized_message": "[\u56fe\u72471]\n\u8fd9\u662f\u53ef\u62c6\u5378\u7684\u5417",
+        "image_attachments": [{"kind": "product_photo", "description": "\u5ba2\u6237\u53d1\u6765\u5546\u54c1\u56fe"}],
+        "trace_steps": [],
+    })
+
+    assert result["intent"] != "image_attachment"
+
+
 def test_image_attachment_does_not_override_complaint():
     result = detect_intent({
         "normalized_message": "图片发你了，再不处理我就投诉平台",
@@ -49,8 +59,8 @@ def test_image_attachment_strategy_is_policy_only():
         "trace_steps": [],
     })
 
-    assert result["response_strategy"] == "aftersales"
-    assert result["answer_mode"] == "aftersales_policy"
+    assert result["response_strategy"] == "clarification"
+    assert result["answer_mode"] == "no_evidence_clarification"
     assert result["should_query_facts"] is False
     assert result["should_query_knowledge"] is False
 

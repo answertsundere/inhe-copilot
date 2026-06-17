@@ -1,6 +1,10 @@
 # INHE Copilot Cloudflare Tunnel 配置
 # 复制到 cloudflared-config.yml 的 ingress 部分
-# 访问地址: https://www.inhe.ccwu.cc/ask/
+# 访问地址:
+#   客服工作台: https://www.inhe.ccwu.cc/ask/real-test
+#   训练样本收集: https://www.inhe.ccwu.cc/ask/training-samples
+#   知识库后台: https://www.inhe.ccwu.cc/ask/kb-admin/
+# 注意：以下一条 ingress 已覆盖 /ask/* 下所有路径
 
 # 客服 Copilot 知识库系统
 - hostname: www.inhe.ccwu.cc

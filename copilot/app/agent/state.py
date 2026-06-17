@@ -39,6 +39,8 @@ class AgentState(TypedDict, total=False):
     query_fact_type_reason: str
     query_fact_type_risk_hint: str
     secondary_fact_types: list
+    semantic_query: dict
+    needs_visual_asset: bool
 
     # ========== 风险 ==========
     risk_level: str
@@ -74,6 +76,7 @@ class AgentState(TypedDict, total=False):
     product_candidates: list  # 多候选商品列表
     need_clarification: bool  # 是否需要追问
     clarification_question: str  # 追问内容
+    needs_clarification: bool  # 是否需要买家补充信息（模糊问题）
 
     # ========== 新增：证据与事实 ==========
     evidence: dict  # {
@@ -126,7 +129,14 @@ class AgentState(TypedDict, total=False):
     retrieved_chunks: list
     filtered_evidence: list
     knowledge_evidence: list
+    current_query: str
+    retrieval_query: str
+    generated_context: dict
+    history_snapshot: dict
+    context_reset_reason: str
     rag_retrieval_mode: str
+    product_context_pack: dict
+    product_context_pack_stats: dict
 
     # ========== LLM / 回复生成 ==========
     suggested_reply: str

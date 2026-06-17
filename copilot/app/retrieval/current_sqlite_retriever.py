@@ -117,7 +117,7 @@ def _product_sku_codes(product) -> set[str]:
         else:
             code = item
         if code:
-            codes.add(str(code).strip())
+            codes.add(str(code).strip().upper())
     return codes
 
 
@@ -136,7 +136,7 @@ def _retrieve_from_kbqa(
     from app.db import SessionLocal
     from app.models.kb_tables import KBProduct, KBQA
 
-    sku_candidates = {str(s).strip() for s in (sku_scope or []) if str(s).strip()}
+    sku_candidates = {str(s).strip().upper() for s in (sku_scope or []) if str(s).strip()}
     sku_candidates.update({_sku_family(s) for s in list(sku_candidates)})
     product_terms = [str(p).strip() for p in (product_scope or []) if str(p).strip()]
     query_tokens = _tokens(query)
@@ -158,8 +158,8 @@ def _retrieve_from_kbqa(
 
         results: list[dict] = []
         for qa, product in rows:
-            qa_skus = {str(s).strip() for s in _json_list(qa.sku_codes_json) if str(s).strip()}
-            qa_skus.update(_product_sku_codes(product))
+            qa_skus = {str(s).strip().upper() for s in _json_list(qa.sku_codes_json) if str(s).strip()}
+            qa_skus.update({s.upper() for s in _product_sku_codes(product)})
 
             sku_match = bool(sku_candidates and qa_skus and (sku_candidates & qa_skus))
             product_name = product.product_name if product else ""
@@ -372,6 +372,12 @@ class CurrentSQLiteRetriever(BaseKnowledgeRetriever):
         product_name: str = "",
     ) -> list[dict]:
         from app.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
+        if not fact_type:
+            try:
+                from app.services.fact_type_service import classify_query_fact_type
+                fact_type = classify_query_fact_type(query).get("query_fact_type", "")
+            except Exception:
+                fact_type = ""
 
         results = KnowledgeChunkRepository.search_hybrid(
             query=query,
@@ -389,15 +395,19 @@ class CurrentSQLiteRetriever(BaseKnowledgeRetriever):
         )
 
         if not results:
-            results = _retrieve_from_kbqa(
-                query=query,
-                product_scope=product_scope,
-                sku_scope=sku_scope,
-                source_types=source_types,
-                fact_type=fact_type,
-                top_k=top_k,
-                min_score=min_score,
-            )
+            try:
+                results = _retrieve_from_kbqa(
+                    query=query,
+                    product_scope=product_scope,
+                    sku_scope=sku_scope,
+                    source_types=source_types,
+                    fact_type=fact_type,
+                    top_k=top_k,
+                    min_score=min_score,
+                )
+            except Exception as exc:
+                logger.warning("KBQA fallback retrieval skipped: %s", exc)
+                results = []
 
         if not results:
             results = _retrieve_from_reply_templates(

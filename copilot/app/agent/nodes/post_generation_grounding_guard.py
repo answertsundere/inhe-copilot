@@ -26,6 +26,26 @@ POLICY_LOCKED_INTENTS = {
 }
 
 
+def _filter_order_item_name_claims(state: dict, unsupported_claims: list[dict]) -> list[dict]:
+    if state.get("intent") not in ("logistics_eta", "logistics_trace", "shipping", "logistics"):
+        return unsupported_claims
+    order = state.get("live_order") or state.get("order") or {}
+    item_names = {
+        str(item.get("name") or "").strip()
+        for item in order.get("items", []) if isinstance(item, dict)
+    }
+    item_names = {name for name in item_names if name}
+    if not item_names:
+        return unsupported_claims
+    filtered = []
+    for claim in unsupported_claims:
+        text = str(claim.get("claim") or "")
+        if claim.get("fact_type") == "product_fact" and any(name in text for name in item_names):
+            continue
+        filtered.append(claim)
+    return filtered
+
+
 def post_generation_grounding_guard(state: dict) -> dict:
     """对生成的回复进行 post-generation grounding 校验。"""
     t0 = time.time()
@@ -66,6 +86,37 @@ def post_generation_grounding_guard(state: dict) -> dict:
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
+    if (
+        state.get("generic_service_rule_used")
+        or (state.get("evidence_debug") or {}).get("generic_service_rule_used")
+        or any(
+            isinstance(step, dict) and step.get("generic_service_rule_used")
+            for step in state.get("trace_steps", [])
+        )
+    ):
+        trace = {
+            "node": "post_generation_grounding",
+            "status": "skipped",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "passed": True,
+            "unsupported_claims_count": 0,
+            "fallback_used": False,
+            "fallback_mode": "",
+            "summary": "generic_service_rule_skip",
+        }
+        return {
+            "post_generation_grounding": {
+                "checked": False,
+                "passed": True,
+                "unsupported_claims": [],
+                "supported_claims": [],
+                "fallback_used": False,
+                "fallback_mode": "",
+                "judge_mode": "generic_service_rule_skip",
+            },
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
     result = validate_reply_grounding(state)
     duration_ms = int((time.time() - t0) * 1000)
 
@@ -74,6 +125,15 @@ def post_generation_grounding_guard(state: dict) -> dict:
     generation_mode = state.get("generation_mode", "")
     guard_warnings = list(state.get("guard_warnings", []))
     trace_steps = list(state.get("trace_steps", []))
+
+    filtered_unsupported = _filter_order_item_name_claims(state, result["unsupported_claims"])
+    if len(filtered_unsupported) != len(result["unsupported_claims"]):
+        result = dict(result)
+        result["unsupported_claims"] = filtered_unsupported
+        result["passed"] = not filtered_unsupported
+        result["fallback_used"] = bool(filtered_unsupported)
+        if not filtered_unsupported:
+            result["fallback_mode"] = ""
 
     if not result["passed"]:
         logger.warning(

@@ -272,6 +272,8 @@ def _check_unsupported_facts_when_no_evidence(reply: str) -> list[dict]:
     # 检查售后承诺
     aftersales_claims = _extract_claims(reply, _AFTERSALES_PROMISE_TERMS)
     for claim in aftersales_claims:
+        if _is_aftersales_process_statement(claim["context"]):
+            continue
         unsupported.append({
             "claim": claim["context"],
             "fact_type": "aftersales_promise",
@@ -290,6 +292,44 @@ def _check_unsupported_facts_when_no_evidence(reply: str) -> list[dict]:
             })
 
     return unsupported
+
+
+def _is_aftersales_process_statement(context: str) -> bool:
+    text = context or ""
+    hard_promises = (
+        "\u5df2\u9000\u6b3e",
+        "\u5df2\u7ecf\u9000\u6b3e",
+        "\u4e00\u5b9a\u9000",
+        "\u4e00\u5b9a\u8d54",
+        "\u4e00\u5b9a\u8865\u53d1",
+        "\u4fdd\u8bc1\u9000",
+        "\u4fdd\u8bc1\u8d54",
+        "\u4fdd\u8bc1\u8865\u53d1",
+        "\u9a6c\u4e0a\u9000",
+        "\u7acb\u5373\u9000",
+        "\u76f4\u63a5\u9000\u6b3e",
+        "\u8d54\u507f",
+        "\u8d54\u4ed8",
+        "\u8865\u53d1",
+    )
+    if any(term in text for term in hard_promises):
+        return False
+
+    process_terms = (
+        "\u6838\u5bf9",
+        "\u6838\u5b9e",
+        "\u786e\u8ba4",
+        "\u8ddf\u8fdb",
+        "\u8bb0\u5f55",
+        "\u67e5\u770b",
+        "\u552e\u540e\u8bb0\u5f55",
+        "\u9000\u6b3e\u95ee\u9898",
+        "\u9000\u6b3e\u8fdb\u5ea6",
+        "\u5904\u7406\u8def\u5f84",
+        "\u5904\u7406\u65b9\u5411",
+        "\u7a0d\u7b49",
+    )
+    return any(term in text for term in process_terms)
 
 
 def _resolve_fallback_mode(intent: str, unsupported_claims: list) -> str:
@@ -453,6 +493,8 @@ def validate_reply_grounding(state: dict) -> dict:
         # 3. 售后承诺 grounding
         aftersales_claims = _extract_claims(reply, _AFTERSALES_PROMISE_TERMS)
         for claim in aftersales_claims:
+            if _is_aftersales_process_statement(claim["context"]):
+                continue
             if claim["term"] in evidence_text:
                 supported_claims.append({"claim": claim["context"], "fact_type": "aftersales_promise"})
             else:

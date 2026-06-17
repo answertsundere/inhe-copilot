@@ -8,6 +8,7 @@ generate_reply 节点 - 非物流场景回复生成。
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -41,6 +42,45 @@ CLARIFICATION_REPLY = (
     "亲亲，不同款式可能不一样，我这边需要结合具体商品或 SKU 来确认。"
     "麻烦您发一下商品链接、截图、订单号或具体款式，我帮您核实准确参数～"
 )
+
+VAGUE_CLARIFICATION_REPLY = (
+    "亲，我这边还需要看一下您说的是哪里有问题～"
+    "您可以把照片或具体情况发我一下，比如是安装、配件、破损还是使用时不稳，我帮您一起看。"
+)
+
+
+IMAGE_MARKER_RE = re.compile(r"\[\s*\u56fe\u7247\s*\d*\s*\]")
+TEXT_PRODUCT_QUESTION_TERMS = (
+    "\u5417", "\u5462", "\u600e\u4e48", "\u5982\u4f55", "\u53ef\u4ee5",
+    "\u80fd\u4e0d\u80fd", "\u662f\u4e0d\u662f", "\u6709\u6ca1\u6709",
+    "\u4f1a\u4e0d\u4f1a", "\u53ef\u62c6", "\u62c6\u5378", "\u5b89\u88c5",
+    "\u7ec4\u88c5", "\u6750\u8d28", "\u627f\u91cd", "\u5c3a\u5bf8",
+    "\u6e05\u6d17", "\u9632\u6f6e",
+)
+
+
+def _has_product_context(state: dict) -> bool:
+    ctx = state.get("copilot_context", {}) or {}
+    identity = state.get("order_product_identity") or {}
+    slots = state.get("slots", {}) or {}
+    return bool(
+        state.get("matched_product_name")
+        or state.get("product_candidates")
+        or state.get("product_name")
+        or ctx.get("product_name")
+        or ctx.get("product_candidates")
+        or slots.get("sku_code")
+        or slots.get("product_name")
+        or identity.get("status") == "resolved"
+        or identity.get("matched_product_name")
+        or identity.get("sku_id")
+    )
+
+
+def _has_text_product_question(state: dict) -> bool:
+    msg = state.get("normalized_message", state.get("customer_message", "")) or ""
+    text = IMAGE_MARKER_RE.sub("", msg).strip()
+    return bool(text and any(term in text for term in TEXT_PRODUCT_QUESTION_TERMS))
 
 
 def _is_compare_query(text: str) -> bool:
@@ -216,6 +256,10 @@ def generate_reply(state: dict) -> dict:
 
     msg = state.get("normalized_message", state.get("customer_message", ""))
     intent = state.get("intent", "general")
+    if intent == "image_attachment" and _has_product_context(state) and _has_text_product_question(state):
+        state = dict(state)
+        state["intent"] = "product_question"
+        intent = "product_question"
     risk_level = state.get("risk_level", "low")
     product_name = _product_name(state)
     policy = state.get("shipping_policy", {})
@@ -232,25 +276,50 @@ def generate_reply(state: dict) -> dict:
     llm_error = ""
     generation_mode = "rule_based"
     safety_contract = state.get("safety_contract", {}) or {}
+    generic_rule_used: dict[str, Any] | None = None
 
-    if answer_mode == "exact_faq_answer":
-        suggested_reply = _render_exact_faq(_best_faq_evidence(state), product_name)
+    if intent == "needs_clarification":
+        suggested_reply = VAGUE_CLARIFICATION_REPLY
+        generation_mode = "rule_based"
+    elif answer_mode == "exact_faq_answer":
+        suggested_reply = _render_exact_faq(_best_faq_evidence(state), product_name, state)
     elif answer_mode == "product_fact_answer":
+        if state.get("query_fact_type") == "space_fit":
+            candidate_rule = _best_generic_service_rule(state)
+            if candidate_rule and candidate_rule.get("fact_type") == "space_fit":
+                generic_rule_used = candidate_rule
         suggested_reply = _render_product_facts(state, product_name)
     elif answer_mode == "no_evidence_clarification":
-        no_evidence_reply = _no_evidence_reply(state, product_name)
-        suggested_reply = (
-            no_evidence_reply
-            if no_evidence_reply != CLARIFICATION_REPLY
-            else state.get("clarification_question") or no_evidence_reply
-        )
+        generic_rule_used = _best_generic_service_rule(state)
+        if _low_risk_generic_rule_fallback(generic_rule_used, state):
+            suggested_reply = _render_generic_service_rule(generic_rule_used, state, product_name)
+            generation_mode = "rule_based"
+        else:
+            no_evidence_reply = _no_evidence_reply(state, product_name)
+            suggested_reply = (
+                no_evidence_reply
+                if no_evidence_reply != CLARIFICATION_REPLY
+                else state.get("clarification_question") or no_evidence_reply
+            )
     else:
+        targeted_reply = _targeted_human_review_reply(state, msg, intent, answer_mode)
+        if targeted_reply:
+            suggested_reply = targeted_reply
+            generation_mode = "rule_based"
+
+        if not suggested_reply:
+            generic_rule_used = _best_generic_service_rule(state)
+            if generic_rule_used:
+                suggested_reply = _render_generic_service_rule(generic_rule_used, state, product_name)
+                generation_mode = "rule_based"
+
         can_use_llm = _can_use_llm_for_mode(answer_mode)
         llm_client = get_llm_client()
         has_llm = bool(llm_client.api_key)
 
         if (
-            can_use_llm
+            not suggested_reply
+            and can_use_llm
             and has_llm
             and intent not in ("logistics_eta", "shipping", "logistics", "delivery_not_received")
             and intent not in RULE_ONLY_INTENTS
@@ -337,8 +406,28 @@ def generate_reply(state: dict) -> dict:
         extra_state["review_reason"] = "\u5ba2\u6237\u53d1\u6765\u56fe\u7247/\u622a\u56fe\uff0c\u9700\u8981\u4eba\u5de5\u6838\u5bf9\u56fe\u7247\u5185\u5bb9\u4e0e\u8ba2\u5355/\u5546\u54c1\u4fe1\u606f"
     elif intent in ("child_safety", "competitor_compare", "odor_question", "material_safety"):
         extra_state["evidence"] = _with_builtin_policy_evidence(state, "builtin_product_safety_policy", "\u5546\u54c1\u5b89\u5168\u8fb9\u754c", _PRODUCT_SAFETY_POLICY_EVIDENCE)
+        has_direct_evidence = bool(_best_faq_evidence(state) or _real_product_facts(state))
+        low_risk_generic_fallback = _low_risk_generic_rule_fallback(generic_rule_used, state)
+        if not has_direct_evidence and not low_risk_generic_fallback:
+            extra_state["requires_human_review"] = True
+            extra_state["review_reason"] = "\u6d89\u53ca\u6750\u8d28\u3001\u5b9d\u5b9d\u5b89\u5168\u6216\u7ade\u54c1\u5b89\u5168\u5bf9\u6bd4\uff0c\u9700\u8981\u4eba\u5de5\u590d\u6838"
+    elif intent == "needs_clarification":
         extra_state["requires_human_review"] = True
-        extra_state["review_reason"] = "\u6d89\u53ca\u6750\u8d28\u3001\u5b9d\u5b9d\u5b89\u5168\u6216\u7ade\u54c1\u5b89\u5168\u5bf9\u6bd4\uff0c\u9700\u8981\u4eba\u5de5\u590d\u6838"
+        extra_state["review_reason"] = "\u95ee\u9898\u63cf\u8ff0\u8fc7\u4e8e\u6a21\u7cca\uff0c\u9700\u8981\u4e70\u5bb6\u8865\u5145\u56fe\u7247\u6216\u5177\u4f53\u60c5\u51b5"
+        extra_state["needs_clarification"] = True
+        extra_state["missing_slots"] = ["\u5177\u4f53\u95ee\u9898", "\u56fe\u7247", "\u5f02\u5e38\u4f4d\u7f6e"]
+    if generic_rule_used:
+        generic_rule_summary = {
+            "rule_key": generic_rule_used.get("rule_key", ""),
+            "title": generic_rule_used.get("title", ""),
+            "fact_type": generic_rule_used.get("fact_type", ""),
+            "score": generic_rule_used.get("score", 0),
+        }
+        extra_state["evidence"] = _with_generic_rule_evidence({**state, **extra_state}, generic_rule_used)
+        extra_state["generic_service_rule_used"] = generic_rule_summary
+        extra_state.setdefault("evidence_debug", {})["generic_service_rule_used"] = generic_rule_summary
+        trace["generic_service_rule_used"] = generic_rule_summary
+        trace["summary"] += f", generic_rule={generic_rule_summary['rule_key']}"
 
     return {
         "suggested_reply": suggested_reply,
@@ -389,6 +478,9 @@ def _resolve_answer_mode(state: dict) -> tuple[str, str]:
 
         if _real_product_facts(state) and not config.USE_LLM_FOR_PRODUCT_FACTS:
             return "product_fact_answer", "product_facts"
+
+        if _best_generic_service_rule(state):
+            return "policy_grounded_answer", "generic_service_rule"
 
         if not faq and not _real_product_facts(state):
             return "no_evidence_clarification", "missing_evidence"
@@ -483,9 +575,21 @@ def _best_faq_evidence(state: dict) -> dict | None:
 def _real_product_facts(state: dict) -> list[dict]:
     facts = []
     query_fact_type = state.get("query_fact_type", "")
-    for item in state.get("evidence", {}).get("product_facts", []):
+    query = state.get("normalized_message", state.get("customer_message", "")) or ""
+    candidate_items = (
+        list(state.get("evidence", {}).get("product_facts", []) or [])
+        + list(state.get("knowledge_evidence", []) or [])
+        + list(state.get("filtered_evidence", []) or [])
+    )
+    seen = set()
+    for item in candidate_items:
         source_type = item.get("source_type", "")
         fact = item.get("fact", "")
+        chunk_text = _fact_text(item)
+        dedupe_key = (item.get("entry_id"), item.get("chunk_id"), chunk_text)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
         evidence_fact_type = item.get("evidence_fact_type") or infer_evidence_fact_type(item)
         if (
             query_fact_type
@@ -493,15 +597,156 @@ def _real_product_facts(state: dict) -> list[dict]:
             and not fact_type_matches(query_fact_type, evidence_fact_type)
         ):
             continue
-        if source_type in ("product_facts", "installation_guide") and fact:
+        # reference_only / 被门控拦截的商品事实不能直接渲染给买家
+        if item.get("reference_only"):
+            continue
+        if source_type == "faq" and item.get("evidence_allowed_for_exact_answer") is False:
+            continue
+        if item.get("evidence_allowed_for_direct_answer") is False:
+            continue
+        if item.get("direct_answer_allowed") is False:
+            continue
+        if _is_compare_query(query) and not _has_compare_evidence(" ".join([
+            item.get("title", ""),
+            item.get("matched_title", ""),
+            chunk_text,
+            fact,
+        ])):
+            continue
+        if source_type in ("product_facts", "installation_guide", "faq") and chunk_text:
             facts.append(item)
+    if query_fact_type == "odor":
+        facts.sort(key=lambda item: (0 if _has_specific_odor_evidence(_fact_text(item)) else 1, -float(item.get("score") or 0)))
     return facts
 
 
-def _render_exact_faq(faq: dict | None, product_name: str) -> str:
+def _generic_service_rules(state: dict) -> list[dict[str, Any]]:
+    pack = state.get("product_context_pack") or {}
+    rules = pack.get("generic_rules") or []
+    if not rules:
+        evidence_pack = pack.get("evidence_pack") or state.get("product_card_evidence_pack") or {}
+        rules = evidence_pack.get("matched_generic_rules") or []
+    return [item for item in rules if isinstance(item, dict)]
+
+
+def _best_generic_service_rule(state: dict) -> dict[str, Any] | None:
+    query_fact_type = state.get("query_fact_type", "")
+    rules = _generic_service_rules(state)
+    if not rules:
+        return None
+    if query_fact_type:
+        exact = [rule for rule in rules if rule.get("fact_type") == query_fact_type]
+        if exact:
+            return max(exact, key=lambda item: float(item.get("score") or 0))
+        media = [
+            rule for rule in rules
+            if rule.get("fact_type") == "media_reference"
+            and query_fact_type in {"installation", "dimensions", "space_fit", "accessories"}
+        ]
+        if media:
+            return max(media, key=lambda item: float(item.get("score") or 0))
+    return max(rules, key=lambda item: float(item.get("score") or 0))
+
+
+def _low_risk_generic_rule_fallback(rule: dict[str, Any] | None, state: dict) -> bool:
+    if not rule:
+        return False
+    if str(rule.get("risk_level") or "low") != "low":
+        return False
+    if rule.get("auto_reply_allowed") is False:
+        return False
+    fact_type = str(rule.get("fact_type") or state.get("query_fact_type") or "")
+    if fact_type not in {"odor", "cleaning_care", "installation", "detachable", "space_fit", "placement_scene"}:
+        return False
+    message = str(state.get("normalized_message") or state.get("customer_message") or "")
+    high_risk_terms = (
+        "0甲醛", "零甲醛", "甲醛超标", "检测报告", "质检报告", "证书",
+        "绝对安全", "百分百安全", "宝宝能不能啃", "宝宝能啃", "入口",
+        "投诉", "平台介入", "赔", "赔偿", "退款", "退货",
+    )
+    return not any(term in message for term in high_risk_terms)
+
+
+def _render_generic_service_rule(rule: dict[str, Any], state: dict, product_name: str) -> str:
+    try:
+        from app.services.generic_service_rule_service import render_generic_service_reply
+    except Exception:
+        return ""
+    display_name = _customer_product_display_name(state, product_name)
+    return render_generic_service_reply(rule, product_name=display_name)
+
+
+def _customer_product_display_name(state: dict, fallback: str = "") -> str:
+    ctx = state.get("copilot_context") or {}
+    for value in (
+        ctx.get("display_product_name"),
+        ctx.get("platform_product_title"),
+        ctx.get("front_product_title"),
+        ctx.get("product_title"),
+        fallback,
+    ):
+        text = str(value or "").strip()
+        if text and text not in {"商品", "这个", "这款"}:
+            return text
+    return ""
+
+
+def _has_specific_odor_evidence(text: str) -> bool:
+    return any(term in (text or "") for term in (
+        "\u65e0\u6bd2\u65e0\u5473",
+        "\u65e0\u5f02\u5473",
+        "\u65e0\u5473",
+        "\u6ca1\u6709\u5f02\u5473",
+    ))
+
+
+def _render_odor_product_facts(state: dict, product_name: str) -> str:
+    facts = [_fact_text(item).strip() for item in _real_product_facts(state)]
+    facts = list(dict.fromkeys(f for f in facts if f))
+    if not facts:
+        return CLARIFICATION_REPLY
+
+    specific = next((fact for fact in facts if _has_specific_odor_evidence(fact)), facts[0])
+    specific = _clean_odor_fact_text(specific)
+    if not specific:
+        return CLARIFICATION_REPLY
+
+    name = f"\u8fd9\u6b3e\u300c{product_name}\u300d" if product_name else "\u8fd9\u6b3e\u5546\u54c1"
+    return (
+        "\u4eb2\uff5e\n"
+        f"\u5173\u4e8e{name}\u7684\u6c14\u5473\uff1a{specific}\n"
+        "\u65b0\u54c1\u5bc6\u5c01\u5305\u88c5\u6253\u5f00\u540e\uff0c\u5982\u679c\u6709\u8f7b\u5fae\u5305\u88c5\u6216\u8fd0\u8f93\u6c14\u5473\uff0c\u901a\u98ce\u653e\u7f6e\u540e\u4e00\u822c\u4f1a\u9010\u6b65\u51cf\u8f7b\u3002"
+        "\u5982\u679c\u60a8\u6536\u5230\u540e\u89c9\u5f97\u660e\u663e\u523a\u9f3b\u6216\u5b9d\u5b9d\u95fb\u7740\u4e0d\u8212\u670d\uff0c\u53ef\u4ee5\u628a\u60c5\u51b5\u53d1\u6211\uff0c\u6211\u7ee7\u7eed\u5e2e\u60a8\u5904\u7406\u3002"
+    )
+
+
+def _clean_odor_fact_text(text: str) -> str:
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    if not text:
+        return ""
+    text = re.sub(r"^(Q|A|FAQ)[:：]\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^[\u4eb2\u4eb2\u4eb2\u8bf7\u653e\u5fc3\uff0c,\s]+", "", text)
+    text = text.replace("\u6750\u8d28\u8bf4\u660e:", "").replace("\u6750\u8d28\u8bf4\u660e\uff1a", "")
+    text = text.replace("\u6c14\u5473\u8bf4\u660e:", "").replace("\u6c14\u5473\u8bf4\u660e\uff1a", "")
+
+    sentences = [part.strip() for part in re.split(r"(?<=[\u3002\uff01\uff1f\uff1b;])\s*", text) if part.strip()]
+    selected = next((part for part in sentences if _has_specific_odor_evidence(part)), text)
+    selected = re.split(r"(?=\u8868\u9762\u5149\u6ed1|\u4e0d\u4f1a\u5212\u4f24)", selected)[0].strip()
+    selected = selected.rstrip("\uff0c,;； ")
+    if selected and selected[-1] not in "\u3002\uff01\uff1f":
+        selected += "\u3002"
+    return selected
+
+
+def _render_exact_faq(faq: dict | None, product_name: str, state: dict | None = None) -> str:
     content = _fact_text(faq or {})
     if not content:
         return CLARIFICATION_REPLY
+    if (state or {}).get("query_fact_type") == "odor":
+        return _render_odor_product_facts(
+            {"query_fact_type": "odor", "evidence": {"product_facts": [faq or {}]}},
+            product_name,
+        )
     if product_name:
         reply = f"亲亲，关于您咨询的{product_name}：{content}"
     else:
@@ -510,24 +755,34 @@ def _render_exact_faq(faq: dict | None, product_name: str) -> str:
     # FAQ 中的高风险字段（如材质/填充物）如果来自 draft，追加保守声明
     # 这里检查 faq item 本身是否有 unverified_fact 标记
     if isinstance(faq, dict) and faq.get("unverified_fact"):
-        reply += "\n\n以上信息来自知识库参考，建议以具体商品页面或 SKU 信息为准，我可以帮您继续核实。"
+        reply += "\n\n具体细节建议以商品页面或 SKU 对应款式为准，我这边也可以继续帮您核实。"
 
     return reply
 
 
 def _render_product_facts(state: dict, product_name: str) -> str:
+    if state.get("query_fact_type") == "odor":
+        return _render_odor_product_facts(state, product_name)
+
     facts = [_fact_text(item) for item in _real_product_facts(state)]
     facts = [f.strip() for f in facts if f and f.strip()]
+    facts = list(dict.fromkeys(facts))
     if not facts:
         return CLARIFICATION_REPLY
     prefix = f"亲亲，关于您咨询的{product_name}：" if product_name else "亲亲，关于您咨询的问题："
     reply = prefix + "\n".join(facts[:3])
+    if state.get("query_fact_type") == "space_fit":
+        rule = _best_generic_service_rule(state)
+        if rule and rule.get("fact_type") == "space_fit":
+            guidance = _render_generic_service_rule(rule, state, product_name)
+            if guidance:
+                reply = f"{guidance}\n\n我这边也给您配了对应的尺寸/商品图，您可以结合图片标注一起看。"
 
     # 未审核的高风险字段 → 追加保守声明
     evidence = state.get("evidence", {})
     unverified_fields = evidence.get("unverified_fact_fields", [])
     if unverified_fields:
-        reply += "\n\n以上信息来自知识库参考，建议以具体商品页面或 SKU 信息为准，我可以帮您继续核实。"
+        reply += "\n\n具体细节建议以商品页面或 SKU 对应款式为准，我这边也可以继续帮您核实。"
 
     return reply
 
@@ -544,7 +799,8 @@ def _no_evidence_reply(state: dict, product_name: str) -> str:
         desc = resolved_name or sku
         return (
             f"亲亲，已经识别到您咨询的商品「{desc}」，"
-            f"但当前知识库没有经过审核的相关说明，我帮您转人工核实～"
+            "这个点我先帮您核实一下准确说法，避免不同款式信息说错影响您使用。"
+            "麻烦您稍等一下，我确认后再回复您～"
         )
     return CLARIFICATION_REPLY
 
@@ -619,16 +875,108 @@ def _generate_rule_reply(
     if intent in ("product_question", "product_consult"):
         faq = _best_faq_evidence(state)
         if faq:
-            return _render_exact_faq(faq, product_name)
+            return _render_exact_faq(faq, product_name, state)
         if _real_product_facts(state):
             return _render_product_facts(state, product_name)
         if knowledge:
             content = max((k.get("content", "") for k in knowledge), key=len, default="")
             if content:
-                return _render_exact_faq({"chunk_text": content}, product_name)
+                return _render_exact_faq({"chunk_text": content}, product_name, state)
         return _no_evidence_reply(state, product_name)
 
     return "我在的。您直接说遇到的问题就行，我会按订单、物流、商品或售后情况帮您判断下一步。"
+
+
+def _targeted_human_review_reply(
+    state: dict,
+    msg: str,
+    intent: str,
+    answer_mode: str,
+) -> str:
+    """Return a precise handoff reply for high-risk refund complaints."""
+    if answer_mode not in {"sop_human_review_answer", "human_review"} and intent != "complaint":
+        return ""
+
+    combined = _customer_history_text(state, msg)
+    if not _is_refund_or_complaint_text(combined):
+        return ""
+    if _mentions_physical_evidence_need(combined) or state.get("image_attachments"):
+        return ""
+
+    order_id = _order_id_from_state(state)
+    if order_id:
+        order_line = (
+            "\u6211\u8fd9\u8fb9\u5df2\u7ecf\u770b\u5230\u60a8\u7ed9\u7684\u8ba2\u5355\u4fe1\u606f\uff0c"
+            "\u4f1a\u76f4\u63a5\u6309\u8fd9\u7b14\u8ba2\u5355\u5e2e\u60a8\u6838\u5bf9\uff0c\u4e0d\u7528\u60a8\u91cd\u590d\u63d0\u4f9b\u8ba2\u5355\u53f7\u3002"
+        )
+    else:
+        order_line = (
+            "\u6211\u5148\u5e2e\u60a8\u628a\u60c5\u51b5\u8bb0\u5f55\u4e0b\u6765\uff0c"
+            "\u9700\u8981\u6838\u5bf9\u5230\u5177\u4f53\u8ba2\u5355\u540e\u518d\u7ed9\u60a8\u660e\u786e\u65b9\u6848\u3002"
+        )
+
+    return (
+        "\u4eb2\uff5e\u6211\u7406\u89e3\u60a8\u7740\u6025\u60f3\u628a\u9000\u6b3e\u95ee\u9898\u5904\u7406\u597d\uff0c"
+        "\u8fd9\u4e2a\u6211\u4f1a\u4f18\u5148\u5e2e\u60a8\u8ddf\u8fdb\u3002\n"
+        f"{order_line}\n"
+        "\u6211\u5148\u6838\u5bf9\u5f53\u524d\u8ba2\u5355\u7684\u552e\u540e\u8bb0\u5f55\u3001\u9000\u6b3e\u8fdb\u5ea6\u548c\u5e73\u53f0\u53ef\u5904\u7406\u8def\u5f84\uff0c"
+        "\u9ebb\u70e6\u60a8\u7a0d\u7b49\u4e00\u4e0b\uff0c\u6211\u786e\u8ba4\u540e\u7ed9\u60a8\u4e00\u4e2a\u660e\u786e\u5904\u7406\u65b9\u5411\u3002"
+    )
+
+
+def _order_id_from_state(state: dict) -> str:
+    slots = state.get("slots") or {}
+    identity = state.get("order_product_identity") or {}
+    for key in (
+        "order_id",
+        "platform_order_id",
+        "platform_trade_id",
+        "tid",
+        "so_id",
+    ):
+        value = state.get(key) or slots.get(key) or identity.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _is_refund_or_complaint_text(text: str) -> bool:
+    return any(
+        cue in text
+        for cue in (
+            "\u9000\u6b3e",
+            "\u9000\u94b1",
+            "\u9000\u8d27\u9000\u6b3e",
+            "\u4e0d\u7ed9\u9000",
+            "\u6295\u8bc9",
+            "\u5e73\u53f0\u4ecb\u5165",
+            "12315",
+            "\u5dee\u8bc4",
+        )
+    )
+
+
+def _mentions_physical_evidence_need(text: str) -> bool:
+    return any(
+        cue in text
+        for cue in (
+            "\u7834\u635f",
+            "\u574f\u4e86",
+            "\u88c2",
+            "\u5c11\u4ef6",
+            "\u6f0f\u53d1",
+            "\u53d1\u9519",
+            "\u5b9e\u7269",
+            "\u5916\u7bb1",
+            "\u9762\u5355",
+            "\u7167\u7247",
+            "\u56fe\u7247",
+            "\u8d28\u91cf",
+            "\u7455\u75b5",
+            "\u6c61\u6e0d",
+            "\u8272\u5dee",
+        )
+    )
 
 
 def _with_invoice_policy_evidence(state: dict) -> dict:
@@ -658,6 +1006,26 @@ def _with_builtin_policy_evidence(state: dict, entry_id: str, title: str, fact: 
             "fact": fact,
             "chunk_text": fact,
             "confidence": "high",
+        })
+    evidence["template_evidence"] = template_evidence
+    return evidence
+
+
+def _with_generic_rule_evidence(state: dict, rule: dict[str, Any]) -> dict:
+    evidence = dict(state.get("evidence") or {})
+    template_evidence = list(evidence.get("template_evidence") or [])
+    entry_id = f"generic_rule:{rule.get('rule_key', '')}"
+    if not any(item.get("entry_id") == entry_id for item in template_evidence):
+        text = str(rule.get("content") or rule.get("reply_template") or "").strip()
+        template_evidence.append({
+            "entry_id": entry_id,
+            "source_type": "generic_rules",
+            "title": rule.get("title", ""),
+            "fact": text,
+            "chunk_text": text,
+            "confidence": "high",
+            "fact_type": rule.get("fact_type", ""),
+            "forbidden_claims": rule.get("forbidden_claims", []),
         })
     evidence["template_evidence"] = template_evidence
     return evidence
@@ -697,6 +1065,16 @@ def _stock_reply(state: dict) -> str:
     )
 
 
+def _customer_history_text(state: dict, current_msg: str) -> str:
+    """合并 customer 会话历史，用于跨轮次识别售后诉求。"""
+    ctx = state.get("copilot_context", {}) or {}
+    parts = [current_msg or ""]
+    for item in ctx.get("conversation_history", []) or []:
+        if isinstance(item, dict) and item.get("role") == "customer":
+            parts.append(str(item.get("text") or ""))
+    return " ".join(p for p in parts if p)
+
+
 def _aftersales_reply(state: dict) -> str:
     msg = state.get("normalized_message", state.get("customer_message", "")) or ""
     slots = state.get("slots") or {}
@@ -707,11 +1085,39 @@ def _aftersales_reply(state: dict) -> str:
         or slots.get("platform_order_id")
         or ""
     )
+    combined = _customer_history_text(state, msg)
+    query_fact_type = state.get("query_fact_type", "")
 
-    wrong_item = any(word in msg for word in ("发错", "错货", "不是我拍", "不是我买", "发成"))
-    missing_part = any(word in msg for word in ("少件", "少了", "缺件", "漏发", "配件", "零件"))
-    refund_dispute = any(word in msg for word in ("退款", "退货", "退回", "退差", "券", "优惠券", "差价", "价格"))
-    return_request = any(word in msg for word in ("不合适", "不想要", "能退", "可以退", "退吗", "七天无理由"))
+    damaged = any(word in combined for word in ("破损", "坏了", "损坏", "掉了", "掉落", "断了", "断裂", "裂了", "开裂"))
+    wrong_item = any(word in combined for word in ("发错", "错货", "不是我拍", "不是我买", "发成"))
+    missing_part = any(word in combined for word in ("少件", "少了", "缺件", "漏发", "少了配件", "缺配件"))
+    refund_dispute = any(word in combined for word in ("退款", "退货", "退回", "退差", "券", "优惠券", "差价", "价格"))
+    return_request = any(word in combined for word in ("不合适", "不想要", "能退", "可以退", "退吗", "七天无理由"))
+    safety_issue = (
+        query_fact_type in {"pinch_safety", "safety_small_parts"}
+        or any(word in combined for word in ("被夹", "夹到", "夹到了", "夹住", "夹手", "宝宝受伤", "孩子受伤", "质量问题"))
+    )
+
+    if safety_issue:
+        product_name = _product_name(state)
+        name_part = f"「{product_name}」" if product_name else "这款商品"
+        order_text = f"我这边已经对到订单 {order_id}，会先结合订单和商品信息核实。" if order_id else "我这边先帮您结合商品信息核实。"
+        return (
+            f"亲，宝宝使用{name_part}时被夹到这个情况我先帮您重点记录，安全相关问题需要谨慎核对。\n"
+            f"{order_text}\n"
+            "您先暂停让宝宝继续这样使用，避免再次夹到；我会把使用情况、商品结构和售后处理规则一起转给同事核实。\n"
+            "麻烦您稍等一下，确认清楚后我再按准确方案回复您。"
+        )
+
+    # 零件破损/断裂优先，避免把“零件掉了/断了”误判为少件缺配件
+    if damaged:
+        product_name = _product_name(state)
+        name_part = f"「{product_name}」" if product_name else "这款"
+        return (
+            f"亲，{name_part}出现零件破损/断裂确实影响使用，我先按零件破损帮您核对补配件方案。\n"
+            "麻烦您把破损/断裂的零件位置、整体结构和外箱面单拍清楚发我，我核对后确认能不能补配件、补哪个配件。\n"
+            "在核实清楚之前，我暂时不先承诺一定能补或换，核对完再给您准确方案。"
+        )
 
     if wrong_item or missing_part:
         detail = "发错货/少件" if wrong_item and missing_part else ("发错货" if wrong_item else "少件/缺配件")
@@ -759,6 +1165,14 @@ def _gift_missing_reply(state: dict) -> str:
         if has_order_evidence
         else "\u6211\u5148\u5e2e\u60a8\u6838\u5bf9\u4e00\u4e0b\u3002"
     )
+    if has_order_evidence:
+        return (
+            "\u4eb2\uff0c\u9875\u9762\u770b\u5230\u6709\u8d60\u54c1\uff0c\u6536\u5230\u540e\u6ca1\u770b\u5230\u786e\u5b9e\u4f1a\u7591\u60d1\uff0c"
+            f"{checked_line}"
+            "\u8d60\u54c1\u9700\u8981\u6838\u5bf9\u4e0b\u5355\u65f6\u7684\u6d3b\u52a8\u6761\u4ef6\u3001\u8ba2\u5355\u662f\u5426\u6ee1\u8db3\u6761\u4ef6\uff0c\u4ee5\u53ca\u4ed3\u5e93\u53d1\u8d27\u660e\u7ec6\u91cc\u6709\u6ca1\u6709\u5305\u542b\u3002"
+            "\u6211\u5148\u6309\u8fd9\u7b14\u8ba2\u5355\u5e2e\u60a8\u5bf9\uff1b\u5982\u679c\u65b9\u4fbf\uff0c\u60a8\u4e5f\u53ef\u4ee5\u8865\u4e00\u4e0b\u6d3b\u52a8\u9875\u9762\u6216\u5305\u88f9\u5185\u7269\u54c1\u7167\u7247\uff0c\u8fd9\u6837\u6838\u5bf9\u4f1a\u66f4\u5feb\u3002"
+            "\u5982\u679c\u786e\u8ba4\u7b26\u5408\u4e14\u6f0f\u53d1\uff0c\u4f1a\u6309\u5e97\u94fa\u6d41\u7a0b\u7ee7\u7eed\u5904\u7406\u3002"
+        )
     return (
         "\u4eb2\uff0c\u9875\u9762\u770b\u5230\u6709\u8d60\u54c1\uff0c\u6536\u5230\u540e\u6ca1\u770b\u5230\u786e\u5b9e\u4f1a\u7591\u60d1\uff0c"
         f"{checked_line}"
@@ -788,9 +1202,10 @@ def _competitor_compare_reply(state: dict) -> str:
 
 def _odor_reply(state: dict) -> str:
     return (
-        "\u4eb2\u4eb2\uff0c\u5173\u4e8e\u6c14\u5473\u6211\u4e0d\u76f4\u63a5\u8bf4\u201c\u4e00\u5b9a\u6ca1\u6709\u201d\uff0c\u8fd9\u4e2a\u9700\u8981\u4ee5\u5546\u54c1\u6750\u8d28\u8bf4\u660e\u548c\u5b9e\u9645\u6536\u5230\u7684\u72b6\u6001\u4e3a\u51c6\u3002"
-        "\u5982\u679c\u521a\u6253\u5f00\u5305\u88c5\u6709\u8f7b\u5fae\u5305\u88c5\u6216\u8fd0\u8f93\u6c14\u5473\uff0c\u5efa\u8bae\u5148\u653e\u5728\u901a\u98ce\u5904\u6563\u5473\uff1b"
-        "\u5982\u679c\u662f\u660e\u663e\u523a\u9f3b\u3001\u5b9d\u5b9d\u95fb\u7740\u4e0d\u8212\u670d\uff0c\u5efa\u8bae\u5148\u6682\u505c\u4f7f\u7528\uff0c\u628a\u60c5\u51b5\u548c\u5546\u54c1\u622a\u56fe\u53d1\u6211\uff0c\u6211\u8fd9\u8fb9\u5e2e\u60a8\u8f6c\u4eba\u5de5\u6838\u5b9e\u5904\u7406\u3002"
+        "亲亲，您担心气味问题很正常，宝宝用品确实要谨慎一些。\n"
+        "这类新出库商品刚拆包装时，可能会有一点新材料或包装密封运输带来的味道，一般不是明显刺鼻异味，通风放置后会慢慢散掉。\n"
+        "建议您收到后先把外包装全部拆开，抽屉、柜门、收纳格这些位置尽量打开，放在阳台或窗边通风处晾一晾，也可以用干净湿布简单擦拭表面后自然晾干，等气味散掉后再给宝宝使用会更安心。\n"
+        "如果您收到后感觉味道明显刺鼻，或者通风后仍然很明显，建议先暂停使用，并拍照/视频联系咱们客服，我们会根据实际情况帮您处理。"
     )
 
 
@@ -807,8 +1222,21 @@ def _material_safety_reply(state: dict) -> str:
     msg = state.get("normalized_message", state.get("customer_message", "")) or ""
     product_name = _product_name(state)
     facts = _real_product_facts(state)
-    if facts:
+    is_cert_query = _is_certification_report_query(msg)
+    facts_cover_cert = is_cert_query and any(
+        kw in " ".join(_fact_text(item) for item in facts)
+        for kw in ("检测", "报告", "质检", "甲醛")
+    )
+    if facts and (not is_cert_query or facts_cover_cert):
         return _render_product_facts(state, product_name)
+        return _render_product_facts(state, product_name)
+
+    if is_cert_query:
+            return (
+                "亲亲，您问甲醛/检测报告这个点很重要，家里有宝宝的话确实需要更谨慎。"
+                "这类信息需要以对应商品 SKU 的已验证检测报告、质检说明或商品页面公示为准，我不先直接承诺无甲醛或有报告哦。"
+                "我这边建议先按当前商品帮您转人工核实；如果页面有检测报告截图，也可以发来，核对后再给您准确回复。"
+            )
 
     profile_unknowns = [
         item for item in (state.get("evidence", {}).get("unknowns", []) or [])
@@ -828,11 +1256,10 @@ def _material_safety_reply(state: dict) -> str:
             focus = "材质和防潮说明"
         else:
             focus = "材质安全说明"
-        tail = f"目前商品资料里缺少{missing}。" if missing else f"目前商品资料里还没有可直接引用的{focus}。"
         return (
-            f"亲，宝宝用的东西您关心材质和安全很正常，我这边已经先按当前商品{name_part}查过商品资料了。\n"
-            f"{tail} 这类信息不能凭感觉说安全或不会受潮，我先帮您转货品/人工核实后再给准确答复。\n"
-            "如果您手边有商品页面的材质说明截图，也可以一起发来，我这边会对照核实。"
+            f"亲，宝宝用的东西您关心材质和安全很正常，我先按当前商品{name_part}帮您核实一下准确说法。\n"
+            f"{focus}这类信息我不先凭感觉判断，避免给您说错。麻烦您稍等一下，我这边确认清楚后再回复您。\n"
+            "如果您手边有商品页面的材质说明截图，也可以一起发来，我这边会一起对照核实。"
         )
 
     if _is_certification_report_query(msg):
@@ -1045,10 +1472,42 @@ def _fact_text(item: dict[str, Any]) -> str:
 def _product_name(state: dict) -> str:
     if state.get("matched_product_name"):
         return state["matched_product_name"]
+    identity = state.get("order_product_identity") or {}
+    if identity.get("matched_product_name"):
+        return identity["matched_product_name"]
+    if identity.get("internal_product_name"):
+        return identity["internal_product_name"]
     slots = state.get("slots") or {}
     for slot_key in ("product_name", "sku_name"):
         if slots.get(slot_key):
             return slots[slot_key]
+    text = (
+        state.get("normalized_message")
+        or state.get("customer_message")
+        or ""
+    )
+    inferred = _infer_product_name_from_aftersales_text(text)
+    if inferred:
+        return inferred
+    return ""
+
+
+def _infer_product_name_from_aftersales_text(text: str) -> str:
+    """Infer simple product mentions from aftersales text when resolver is absent."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    patterns = (
+        r"(?:我的|这个|这款)(?P<name>[\u4e00-\u9fa5A-Za-z0-9]{2,12}?)(?:零件|配件|部件)",
+        r"(?P<name>[\u4e00-\u9fa5A-Za-z0-9]{2,12}?)(?:零件|配件|部件)(?:都)?(?:掉了|断了|坏了|破损)",
+    )
+    generic = {"商品", "东西", "产品", "这个", "这款"}
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            name = match.group("name").strip()
+            if name and name not in generic:
+                return name
     return ""
 
 
@@ -1062,6 +1521,10 @@ def _used_knowledge_entry_ids(state: dict) -> list:
         entry_id = item.get("entry_id")
         if entry_id and entry_id not in ids:
             ids.append(entry_id)
+    for rule in _generic_service_rules(state):
+        entry_id = f"generic_rule:{rule.get('rule_key', '')}"
+        if rule.get("rule_key") and entry_id not in ids:
+            ids.append(entry_id)
     return ids
 
 
@@ -1073,6 +1536,10 @@ def _used_knowledge_titles(state: dict) -> list[str]:
             titles.append(title)
     for item in state.get("evidence", {}).get("faq_evidence", []) + state.get("evidence", {}).get("product_facts", []):
         title = item.get("title")
+        if title and title not in titles:
+            titles.append(title)
+    for rule in _generic_service_rules(state):
+        title = rule.get("title")
         if title and title not in titles:
             titles.append(title)
     return titles

@@ -208,6 +208,25 @@ def _product_name_tokens(text: str) -> set[str]:
     return {t for t in tokens if t.strip()}
 
 
+def _chinese_text(text: str) -> str:
+    return "".join(ch for ch in (text or "") if "\u4e00" <= ch <= "\u9fff")
+
+
+def _longest_common_substring_len(a: str, b: str) -> int:
+    if not a or not b:
+        return 0
+    prev = [0] * (len(b) + 1)
+    best = 0
+    for ca in a:
+        cur = [0] * (len(b) + 1)
+        for idx, cb in enumerate(b, start=1):
+            if ca == cb:
+                cur[idx] = prev[idx - 1] + 1
+                best = max(best, cur[idx])
+        prev = cur
+    return best
+
+
 def _score_product_name_item(item: dict, query: str) -> float:
     name = str(item.get("name") or item.get("product_name") or item.get("sku_name") or "").strip()
     query = (query or "").strip()
@@ -219,7 +238,18 @@ def _score_product_name_item(item: dict, query: str) -> float:
     query_tokens = _product_name_tokens(query)
     if not name_tokens or not query_tokens:
         return 0.0
-    return len(name_tokens & query_tokens) / max(len(name_tokens), 1)
+    score = len(name_tokens & query_tokens) / max(len(name_tokens), 1)
+    name_cn = _chinese_text(name)
+    query_cn = _chinese_text(query)
+    lcs = _longest_common_substring_len(name_cn, query_cn)
+    if len(query_cn) >= 12:
+        if len(name_cn) <= 4 and lcs < 3:
+            score *= 0.65
+        if lcs >= 4:
+            score += 0.25
+        elif lcs >= 3:
+            score += 0.1
+    return min(score, 1.0)
 
 
 def _context_product_text(state: dict) -> str:
@@ -239,6 +269,10 @@ def _pick_order_item(items: list[dict], state: dict) -> tuple[dict | None, float
     if len(items) == 1:
         return items[0], 0.99, "single_order_item"
 
+    primary_items = [item for item in items if not _looks_like_gift_item(item)]
+    if len(primary_items) == 1:
+        return primary_items[0], 0.97, "single_primary_item_with_gifts"
+
     context_text = _context_product_text(state)
     scored = sorted(
         [(_score_item(item, context_text), idx, item) for idx, item in enumerate(items)],
@@ -251,6 +285,18 @@ def _pick_order_item(items: list[dict], state: dict) -> tuple[dict | None, float
     if best_score >= 0.12 and best_score >= second_score + 0.05:
         return best_item, best_score, "matched_by_context"
     return None, best_score, "ambiguous_multi_item_order"
+
+
+def _looks_like_gift_item(item: dict) -> bool:
+    name = str(item.get("name") or item.get("sku_name") or "").strip()
+    sku_id = str(item.get("sku_id") or item.get("i_id") or "").strip()
+    try:
+        price = float(item.get("price") or item.get("amount") or item.get("sale_price") or 0)
+    except (TypeError, ValueError):
+        price = 0.0
+    gift_by_name = any(word in name for word in ("\u8d60\u54c1", "\u8d60\u9001", "\u793c\u54c1"))
+    gift_by_code = sku_id.startswith("GIFT") or sku_id.endswith("-GIFT")
+    return gift_by_name or gift_by_code or price <= 0
 
 
 def _identity_from_item(item: dict, confidence: float, reason: str, order_data: dict, identifier: str, identifier_type: str) -> dict:
@@ -440,6 +486,44 @@ def _local_product_items(pk_repo: Any, product_repo: Any) -> list[dict]:
             items.append(item)
             seen.add(key)
 
+    try:
+        from app.db import SessionLocal
+        from app.models.kb_tables import KBProduct
+
+        db = SessionLocal()
+        try:
+            products = db.query(KBProduct).filter(KBProduct.status == "published").all()
+            for product in products:
+                name = str(product.product_name or "").strip()
+                i_id = str(product.i_id or "").strip()
+                sku_list = product.get_sku_list()
+                if sku_list:
+                    for sku in sku_list:
+                        if isinstance(sku, dict):
+                            sku_id = str(
+                                sku.get("sku_code")
+                                or sku.get("sku_id")
+                                or sku.get("value")
+                                or ""
+                            ).strip()
+                        else:
+                            sku_id = str(sku or "").strip()
+                        item = {"name": name, "sku_id": sku_id, "i_id": i_id}
+                        key = (item["name"], item["sku_id"], item["i_id"])
+                        if item["name"] and key not in seen:
+                            items.append(item)
+                            seen.add(key)
+                elif name:
+                    item = {"name": name, "sku_id": "", "i_id": i_id}
+                    key = (item["name"], item["sku_id"], item["i_id"])
+                    if key not in seen:
+                        items.append(item)
+                        seen.add(key)
+        finally:
+            db.close()
+    except Exception:
+        pass
+
     return items
 
 
@@ -540,6 +624,16 @@ def _resolve_product_name_from_local(state: dict) -> dict | None:
                 "candidates": [best],
                 "low_confidence": True,
             }
+        if len(names) == 1 and len(best_query) >= 12 and best_score >= 0.25:
+            identity = _identity_from_product_name_match(
+                best_item,
+                best_query,
+                best_score,
+                "low_confidence_best_sidecar_match",
+            )
+            identity["candidates"] = candidates
+            identity["low_confidence"] = True
+            return identity
         identity = _unresolved("ambiguous", names[0], "product_name", "ambiguous_sidecar_product_name", candidates)
         identity["source"] = "sidecar_product_name"
         identity["item_count"] = len(candidates)
@@ -568,6 +662,58 @@ def _resolve_direct_product_code(state: dict) -> dict | None:
             local_product = product_repo.get_sku(code) if code_type == "sku_id" else product_repo.get_product(code)
         if local_product:
             return _identity_from_jst_sku(local_product, code, code_type)
+
+        try:
+            from app.db import SessionLocal
+            from app.models.kb_tables import KBProduct
+
+            db = SessionLocal()
+            try:
+                kb_product = None
+                if code_type == "i_id":
+                    kb_product = db.query(KBProduct).filter(KBProduct.i_id == code).first()
+                else:
+                    products = db.query(KBProduct).filter(KBProduct.status == "published").all()
+                    for product in products:
+                        for sku in product.get_sku_list():
+                            if isinstance(sku, dict):
+                                sku_id = str(
+                                    sku.get("sku_code")
+                                    or sku.get("sku_id")
+                                    or sku.get("value")
+                                    or ""
+                                ).strip()
+                            else:
+                                sku_id = str(sku or "").strip()
+                            if sku_id == code:
+                                kb_product = product
+                                break
+                        if kb_product:
+                            break
+                if kb_product and kb_product.status == "published":
+                    sku_list = []
+                    for sku in kb_product.get_sku_list():
+                        if isinstance(sku, dict):
+                            sku_id = str(
+                                sku.get("sku_code")
+                                or sku.get("sku_id")
+                                or sku.get("value")
+                                or ""
+                            ).strip()
+                        else:
+                            sku_id = str(sku or "").strip()
+                        if sku_id:
+                            sku_list.append({"sku_id": sku_id})
+                    card = {
+                        "product_name": kb_product.product_name,
+                        "i_id": kb_product.i_id,
+                        "sku_summary": {"sku_list": sku_list},
+                    }
+                    return _identity_from_product_card(card, code, code_type)
+            finally:
+                db.close()
+        except Exception:
+            pass
 
         if code_type == "sku_id":
             from app.integrations.jst.live_query import lookup_product_by_sku
@@ -727,6 +873,19 @@ def order_product_resolver(state: dict) -> dict:
     identifier, identifier_type = _pick_order_identifier(state)
     current_key = f"{identifier_type}:{identifier}" if identifier else ""
 
+    # 纯物流/订单查询意图：不需要商品身份解析，交给 identifier tool router 处理
+    if identifier and state.get("intent") in (
+        "logistics_eta", "logistics_trace", "shipping", "logistics", "delivery_not_received"
+    ):
+        trace = {
+            "node": "order_product_resolver",
+            "status": "skipped",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "cache_hit": False,
+            "summary": "deferred to identifier tool router (logistics/order lookup intent)",
+        }
+        return {"trace_steps": state.get("trace_steps", []) + [trace]}
+
     if not identifier:
         name_candidates = _pick_product_name_candidates(state)
         jst_name_identity = None
@@ -738,17 +897,35 @@ def order_product_resolver(state: dict) -> dict:
             if cached:
                 return _build_updates_from_identity(state, cached, t0, cache_hit=True)
 
-        jst_name_identity = _resolve_product_name_via_jst(state)
-        if jst_name_identity and jst_name_identity.get("status") == "resolved":
-            name_key = f"product_name:{jst_name_identity.get('identifier', '')}"
-            _cache_set(f"{conversation_id}|{name_key}", jst_name_identity)
-            return _build_updates_from_identity(state, jst_name_identity, t0, cache_hit=False)
-
+        # 本地商品库优先（无外部依赖、更快）：
+        # - 高置信命中（status=resolved 且无 low_confidence）：直接采用，跳过 JST。
+        # - 低置信命中（low_confidence=True）：本地模糊匹配不可靠，继续调用 JST 名称查询做二次确认。
+        # - 未命中/歧义：按既有兜底走 JST 名称查询。
         name_identity = _resolve_product_name_from_local(state)
-        if name_identity:
+        local_resolved = bool(name_identity and name_identity.get("status") == "resolved")
+        local_confident = local_resolved and not name_identity.get("low_confidence")
+        if local_confident:
             name_key = f"product_name:{name_identity.get('identifier', '')}"
             _cache_set(f"{conversation_id}|{name_key}", name_identity)
             return _build_updates_from_identity(state, name_identity, t0, cache_hit=False)
+
+        jst_name_identity = _resolve_product_name_via_jst(state)
+        if jst_name_identity and jst_name_identity.get("status") == "resolved":
+            # JST 高置信结果覆盖本地低置信结果；保留本地候选用于调试/澄清。
+            chosen = jst_name_identity
+            if local_resolved:
+                chosen = dict(jst_name_identity)
+                chosen["local_low_confidence_candidates"] = name_identity.get("candidates", [])
+            name_key = f"product_name:{chosen.get('identifier', '')}"
+            _cache_set(f"{conversation_id}|{name_key}", chosen)
+            return _build_updates_from_identity(state, chosen, t0, cache_hit=False)
+
+        # JST 未命中：回退到本地结果（低置信 resolved 或歧义），保留既有兜底语义。
+        fallback = name_identity or jst_name_identity
+        if fallback:
+            name_key = f"product_name:{fallback.get('identifier', '')}"
+            _cache_set(f"{conversation_id}|{name_key}", fallback)
+            return _build_updates_from_identity(state, fallback, t0, cache_hit=False)
         trace = {
             "node": "order_product_resolver",
             "status": "skipped",

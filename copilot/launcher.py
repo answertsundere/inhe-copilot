@@ -8,6 +8,13 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(project_root, ".env"))
+except Exception:
+    pass
+
 # Remove ALL cached modules
 for mod_name in list(sys.modules.keys()):
     if mod_name.startswith("app") or mod_name.startswith("run_"):
@@ -67,7 +74,8 @@ def main():
     wrapped = StripAskPrefix(app)
 
     print(f"[launcher] Server: {WEB_HOST}:{WEB_PORT}")
-    print(f"[launcher] https://www.inhe.ccwu.cc/ask/")
+    print(f"[launcher] https://www.inhe.ccwu.cc/ask/real-test")
+    print(f"[launcher] https://www.inhe.ccwu.cc/ask/training-samples")
     print(f"[launcher] https://www.inhe.ccwu.cc/ask/kb-admin/")
 
     try:

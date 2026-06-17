@@ -114,7 +114,7 @@ class TestShippedOrder:
         suggestion = service.analyze("我快递大概几天会到？", order_id="202501010001")
         steps = [s for s in suggestion.trace_steps
                  if s.get("step") in ("order_lookup", "live_order_lookup")
-                 or s.get("node") in ("jst_live_query",)]
+                 or s.get("node") in ("jst_live_query", "tool_executor", "tool_executor_node")]
         assert len(steps) >= 1
 
 
@@ -313,7 +313,13 @@ class TestTraceSteps:
         steps = [s.get("step") or s.get("node") for s in suggestion.trace_steps]
         # 物流场景应包含订单查询
         has_order = any(
-            s in steps for s in ("order_lookup", "live_order_lookup", "jst_live_query")
+            s in steps for s in (
+                "order_lookup",
+                "live_order_lookup",
+                "jst_live_query",
+                "tool_executor",
+                "tool_executor_node",
+            )
         )
         assert has_order
 

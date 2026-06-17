@@ -168,6 +168,11 @@ def response_strategy_planner(state: dict) -> dict:
         if _has_clear_product_identity(state) and _has_product_evidence(state):
             reply_goal = "answer_product_fact"
             should_answer_directly = True
+        elif _has_known_product_identity(state):
+            # 涉及材质/安全但缺少审核证据：升级人工，不追问买家身份信息
+            reply_goal = "escalate_safety_no_evidence"
+            should_escalate = True
+            should_offer_next_step = True
         else:
             reply_goal = "clarify_product_identity"
             should_ask_slot = True
@@ -183,11 +188,20 @@ def response_strategy_planner(state: dict) -> dict:
         should_ask_slot = bool(missing_slots)
 
     elif intent == "product_question":
-        reply_goal = "answer_product_fact" if _has_clear_product_identity(state) and _has_product_evidence(state) else "clarify_product_identity"
-        should_answer_directly = reply_goal == "answer_product_fact"
-        should_ask_slot = not should_answer_directly
-        if should_ask_slot:
+        if _has_clear_product_identity(state) and _has_product_evidence(state):
+            reply_goal = "answer_product_fact"
+            should_answer_directly = True
+        elif _has_known_product_identity(state):
+            # 商品已识别但没有可用的审核证据：不再追问身份，直接升级人工核实
+            reply_goal = "escalate_no_evidence"
+            should_escalate = True
+            should_offer_next_step = True
+        else:
+            reply_goal = "clarify_product_identity"
+            should_ask_slot = True
             missing_slots = _compute_missing_product_slots(state)
+        should_answer_directly = reply_goal == "answer_product_fact"
+        should_ask_slot = reply_goal == "clarify_product_identity"
 
     if ctx.get("has_already_asked_order_id") and missing_slots:
         tone = "patient"

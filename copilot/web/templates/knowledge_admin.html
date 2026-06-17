@@ -313,7 +313,7 @@
 </div>
 
 <script>
-const API_BASE = '';
+const API_BASE = (location.pathname.startsWith('/ask/') || location.pathname === '/ask') ? '/ask' : '';
 let currentOffset = 0;
 let currentLimit = 20;
 let importPreviewData = null;
@@ -855,8 +855,6 @@ body{padding-top:48px!important}
   <a href="/ask/copilot-panel" data-path="/copilot-panel">千牛监控</a>
   <a href="/ask/kb-admin/" data-path="/knowledge-admin">知识库</a>
   <a href="/ask/settings" data-path="/settings">设置</a>
-  <a href="/ask/graph" data-path="/graph">流程图</a>
-  <a href="/ask/api-test" data-path="/api-test">API</a>
 </nav>
 <script>
 (function(){

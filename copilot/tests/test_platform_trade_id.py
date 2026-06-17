@@ -471,27 +471,28 @@ class TestLiveQueryPlatformTradeIdRouting:
             assert "outbound" in result["query_type"]
             assert result["endpoint"] == "orders/out/simple/query"
 
-    def test_platform_trade_id_does_not_use_o_ids(self):
-        """platform_trade_id 不应走 o_ids 链路"""
+    def test_platform_trade_id_can_fallback_to_same_o_id(self):
+        """platform_trade_id 出库未命中时允许同号 o_id 快速兜底"""
         from app.integrations.jst.live_query import lookup_order_by_identifier
         import unittest.mock as mock
 
         outbound_miss = {"found": False, "duration_ms": 400, "endpoint": "orders/out/simple/query"}
-        outer_hit = {
+        oid_hit = {
             "found": True,
             "data": {"o_id": "1636367"},
             "endpoint": "orders/single/query",
-            "query_type": "platform_trade_id->outer_so_id_scan",
+            "query_type": "order_id",
             "duration_ms": 800,
         }
 
         with mock.patch("app.integrations.jst.live_query.lookup_outbound_by_so_id", return_value=outbound_miss), \
-             mock.patch("app.integrations.jst.live_query.lookup_order_by_outer_so_id", return_value=outer_hit), \
-             mock.patch("app.integrations.jst.live_query.lookup_order_by_order_id") as mock_oid:
+             mock.patch("app.integrations.jst.live_query.lookup_order_by_outer_so_id") as mock_outer, \
+             mock.patch("app.integrations.jst.live_query.lookup_order_by_order_id", return_value=oid_hit) as mock_oid:
             result = lookup_order_by_identifier("5118207015382036103", "platform_trade_id")
-            # Should NOT call o_ids lookup
-            mock_oid.assert_not_called()
+            mock_oid.assert_called_once_with("5118207015382036103")
+            mock_outer.assert_not_called()
             assert result["found"] is True
+            assert result["query_type"] == "platform_trade_id->same_order_id"
 
 
 # ---------------------------------------------------------------------------

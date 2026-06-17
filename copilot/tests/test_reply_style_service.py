@@ -18,6 +18,21 @@ def test_beautify_customer_reply_splits_into_warm_sections():
     assert any(icon in styled for icon in ("\U0001f9fc", "\U0001f4cc", "\U0001f4a1", "\U0001f449", "\U0001f64c"))
 
 
+def test_beautify_does_not_repeat_greeting_after_emoji():
+    raw = (
+        "\u4eb2\uff5e\u6211\u7406\u89e3\u60a8\u7740\u6025\u60f3\u628a\u9000\u6b3e\u95ee\u9898\u5904\u7406\u597d\uff0c"
+        "\u8fd9\u4e2a\u6211\u4f1a\u4f18\u5148\u5e2e\u60a8\u8ddf\u8fdb\u3002"
+        "\u6211\u8fd9\u8fb9\u5df2\u7ecf\u770b\u5230\u60a8\u7ed9\u7684\u8ba2\u5355\u4fe1\u606f\u3002"
+    )
+
+    styled = beautify_customer_reply(raw, {"query_fact_type": "aftersales_policy"})
+
+    assert styled.startswith("\u4eb2\uff5e\n")
+    assert "\U0001f9f6 \u4eb2\uff5e" not in styled
+    assert "\U0001faf6 \u4eb2\uff5e" not in styled
+    assert styled.count("\u4eb2\uff5e") == 1
+
+
 def test_api_reply_style_keeps_grounded_material_facts():
     app = create_app()
     client = app.test_client()

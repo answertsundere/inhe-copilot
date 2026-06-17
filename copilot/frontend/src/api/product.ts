@@ -32,6 +32,26 @@ export function getProductQA(id: number) {
   return apiClient.get(`/products/${id}/qa`)
 }
 
+export function createProductQA(id: number, data: Record<string, any>) {
+  return apiClient.post(`/products/${id}/qa`, data)
+}
+
+export function linkProductQA(id: number, qaId: number) {
+  return apiClient.post(`/products/${id}/qa/link`, { qa_id: qaId })
+}
+
+export function unlinkProductQA(id: number, qaId: number) {
+  return apiClient.delete(`/products/${id}/qa/${qaId}`)
+}
+
+export function linkProductMedia(id: number, assetId: number) {
+  return apiClient.post(`/products/${id}/media/link`, { asset_id: assetId })
+}
+
+export function unlinkProductMedia(id: number, assetId: number) {
+  return apiClient.delete(`/products/${id}/media/${assetId}`)
+}
+
 export function getProductHealth(id: number) {
   return apiClient.get(`/products/${id}/health`)
 }
