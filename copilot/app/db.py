@@ -2,6 +2,8 @@
 客服知识库数据库配置 - SQLite + SQLAlchemy
 """
 
+from threading import RLock
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import KNOWLEDGE_DB_PATH
@@ -15,6 +17,14 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 Base = declarative_base()
+
+_INIT_DB_LOCK = RLock()
+
+
+def _register_models():
+    """Import ORM models so Base.metadata is complete before create_all()."""
+    import app.models.knowledge_base  # noqa: F401
+    import app.models.kb_tables  # noqa: F401
 
 
 def _migrate_add_columns():
@@ -165,5 +175,7 @@ def _migrate_add_columns():
 
 def init_db():
     """创建所有表（如果不存在）并执行迁移"""
-    Base.metadata.create_all(bind=engine)
-    _migrate_add_columns()
+    with _INIT_DB_LOCK:
+        _register_models()
+        Base.metadata.create_all(bind=engine)
+        _migrate_add_columns()
