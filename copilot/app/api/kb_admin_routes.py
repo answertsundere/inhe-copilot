@@ -115,6 +115,109 @@ def api_dashboard_stats():
 
 # ============ Products ============
 
+# 商品主图优先级（只读，不写数据库）
+_COVER_PRIORITY_ASSET_TYPES = (
+    ("sku_image", "appearance_image"),
+    ("detail_image", "appearance_image"),
+    ("size_image", "size_image"),
+    ("install_image", "install_image"),
+    ("install_video", "install_video"),
+)
+
+
+def _select_product_cover_media(assets):
+    """从素材列表中选择最佳封面图。
+
+    优先级：
+    1. 已审核可用外观/实物图（sku_image / detail_image）
+    2. 已审核可用尺寸图（size_image）
+    3. 已审核可用安装/场景图（install_image / install_video）
+    4. 任意已审核且 usable_for_agent 的图片
+    5. 任意状态可用的图片/视频（非 rejected）
+
+    返回 (asset_url, cover_source) 或 (None, None)
+    """
+    if not assets:
+        return None, None
+
+    def _is_approved_usable(a):
+        return a.status == "approved" and a.usable_for_agent and a.asset_url
+
+    # 优先级 1-3：按类型匹配已审核可用
+    for asset_type, source_label in _COVER_PRIORITY_ASSET_TYPES:
+        for a in assets:
+            if _is_approved_usable(a) and a.asset_type == asset_type:
+                return a.asset_url, source_label
+
+    # 优先级 4：任意已审核可用的图片（排除视频）
+    for a in assets:
+        if _is_approved_usable(a) and a.asset_type != "install_video":
+            return a.asset_url, a.asset_type
+
+    # 优先级 5：任意状态可用（非 rejected）
+    for asset_type, source_label in _COVER_PRIORITY_ASSET_TYPES:
+        for a in assets:
+            if a.status != "rejected" and a.asset_url and a.asset_type == asset_type:
+                return a.asset_url, source_label
+
+    # 兜底：任意非 rejected 且有 URL
+    for a in assets:
+        if a.status != "rejected" and a.asset_url:
+            return a.asset_url, a.asset_type
+
+    return None, None
+
+
+def _attach_product_cover_fields(products, db):
+    """批量为商品附加封面图字段。只读，不写数据库。
+
+    通过 product_id 与 i_id（非空时）批量匹配素材，避免 N+1。
+    """
+    if not products:
+        return
+
+    from app.models.kb_tables import KBMediaAsset
+    from sqlalchemy import or_
+
+    product_ids = [p["id"] for p in products]
+    i_ids = [p.get("i_id") for p in products if p.get("i_id")]
+
+    filters = []
+    if product_ids:
+        filters.append(KBMediaAsset.product_id.in_(product_ids))
+    if i_ids:
+        # 仅匹配非空 i_id，避免空字符串误匹配所有空 i_id 素材
+        non_empty_i_ids = [i for i in i_ids if str(i).strip()]
+        if non_empty_i_ids:
+            filters.append(KBMediaAsset.i_id.in_(non_empty_i_ids))
+
+    if not filters:
+        for p in products:
+            p["cover_image_url"] = None
+            p["cover_image_source"] = None
+            p["media_count"] = 0
+        return
+
+    assets = db.query(KBMediaAsset).filter(or_(*filters)).all()
+
+    # 按商品分组；同一素材可能通过 product_id 或 i_id 匹配，需去重
+    product_assets = {pid: {} for pid in product_ids}
+    i_id_to_pid = {p.get("i_id"): p["id"] for p in products if p.get("i_id")}
+
+    for a in assets:
+        if a.product_id in product_assets:
+            product_assets[a.product_id][a.id] = a
+        if a.i_id and a.i_id in i_id_to_pid:
+            product_assets[i_id_to_pid[a.i_id]][a.id] = a
+
+    for p in products:
+        pas = list(product_assets.get(p["id"], {}).values())
+        cover_url, cover_source = _select_product_cover_media(pas)
+        p["cover_image_url"] = cover_url
+        p["cover_image_source"] = cover_source
+        p["media_count"] = len(pas)
+
+
 @kb_admin_bp.route("/products", methods=["GET"])
 def api_list_products():
     """商品列表，支持过滤和分页"""
@@ -180,6 +283,9 @@ def api_list_products():
                     and high_risk_count == 0
                 )
                 result.append(d)
+
+            # 批量附加封面图字段（只读）
+            _attach_product_cover_fields(result, _db)
         finally:
             _db.close()
         return jsonify({
@@ -403,13 +509,19 @@ def api_product_category_tree():
 def api_get_product(product_id):
     """单个商品详情"""
     from app.repositories.kb_product_repository import KBProductRepository
+    from app.db import SessionLocal
+    db = SessionLocal()
     try:
         product = KBProductRepository.get_by_id(product_id)
         if not product:
             return jsonify({"error": "Not found"}), 404
-        return jsonify(product.to_dict(detail=True))
+        data = product.to_dict(detail=True)
+        _attach_product_cover_fields([data], db)
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
 
 
 @kb_admin_bp.route("/products", methods=["POST"])

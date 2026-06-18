@@ -49,4 +49,10 @@ const emit = defineEmits<{
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+@media (min-width: 1920px) {
+  .card-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
 </style>

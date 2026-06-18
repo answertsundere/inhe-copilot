@@ -21,6 +21,9 @@ export interface ProductItem {
   missing_fields?: string[]
   has_new_feedback?: boolean
   need_retest?: boolean
+  cover_image_url?: string | null
+  cover_image_source?: string | null
+  media_count?: number
 }
 
 export type ProductGrade = 'S' | 'A' | 'B' | 'C'
