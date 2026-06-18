@@ -279,6 +279,15 @@ def audit_final_answer(
     response.setdefault("evidence_debug", {})["final_answer_audit"] = audit
 
     if passed:
+        response.setdefault("trace_steps", []).append({
+            "node": "final_answer_audit",
+            "status": "passed",
+            "passed": True,
+            "issues": [],
+            "expected_topics": sorted(expected),
+            "reply_topics": sorted(actual),
+            "summary": "final answer semantic consistency passed",
+        })
         return response
 
     original_reply = reply
@@ -303,7 +312,10 @@ def audit_final_answer(
     response.setdefault("trace_steps", []).append({
         "node": "final_answer_audit",
         "status": "blocked",
+        "passed": False,
         "issues": issues,
+        "expected_topics": sorted(expected),
+        "reply_topics": sorted(actual),
         "summary": "final answer semantic consistency blocked",
     })
     return response

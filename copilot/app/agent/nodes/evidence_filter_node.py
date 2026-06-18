@@ -212,7 +212,11 @@ def evidence_filter_node(state: dict) -> dict:
         human_review = chunk_meta.get("human_review_required", False)
 
         if reject_reasons:
-            rejected.append({"chunk": chunk, "reasons": reject_reasons})
+            rejected.append({
+                **chunk,
+                "rejection_reasons": reject_reasons,
+                "reasons": reject_reasons,
+            })
             continue
 
         # 保留证据，标记可信度
@@ -350,6 +354,28 @@ def evidence_filter_node(state: dict) -> dict:
         "status": "success",
         "duration_ms": duration_ms,
         "cache_hit": False,
+        "selected_evidence": [
+            {
+                "chunk_id": item.get("chunk_id", ""),
+                "entry_id": item.get("entry_id", ""),
+                "source_type": item.get("source_type", ""),
+                "query_fact_type": item.get("query_fact_type", ""),
+                "evidence_fact_type": item.get("evidence_fact_type", ""),
+                "gate_status": item.get("gate_status", ""),
+                "gate_reasons": item.get("gate_reasons", []),
+            }
+            for item in knowledge_evidence[:8]
+        ],
+        "rejected_evidence": [
+            {
+                "chunk_id": item.get("chunk_id", ""),
+                "entry_id": item.get("entry_id", ""),
+                "source_type": item.get("source_type", ""),
+                "rejection_reasons": item.get("rejection_reasons", []),
+                "mismatch_reason": item.get("mismatch_reason", ""),
+            }
+            for item in rejected[:8]
+        ],
         "summary": f"过滤: 通过{len(filtered)}条, 拒绝{len(rejected)}条",
     }
 

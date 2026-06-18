@@ -8,6 +8,7 @@ import time
 
 from app.services.reply_style_service import beautify_customer_reply
 from app.services.fact_type_service import FACT_TYPE_LABELS
+from app.agent.query_understanding import refresh_query_understanding
 
 logger = logging.getLogger(__name__)
 
@@ -370,7 +371,26 @@ def build_response(state: dict) -> dict:
             "conflicts": len(evidence.get("conflicts", []) or []),
         },
     }
+    generation_context = state.get("generation_context") or {
+        **generated_context,
+        "history_context": state.get("history_snapshot", {}),
+        "selected_evidence": evidence_debug["selected_evidence"],
+        "rejected_evidence": evidence_debug["rejected_evidence"],
+        "risk_hints": {
+            "risk_level": risk_level,
+            "requires_human_review": requires_human_review,
+            "guard_warnings": guard_warnings,
+        },
+    }
+    query_understanding = refresh_query_understanding(
+        state,
+        retrieval_query=generated_context.get("retrieval_query", ""),
+        generation_context=generation_context,
+        context_reset_reason=state.get("context_reset_reason", ""),
+    )
     evidence_debug["generated_context"] = generated_context
+    evidence_debug["generation_context"] = generation_context
+    evidence_debug["query_understanding"] = query_understanding
 
     logger.debug("build_response: reply assembled, warnings=%d", len(guard_warnings))
     return {
@@ -389,6 +409,8 @@ def build_response(state: dict) -> dict:
         "current_query": generated_context["current_query"],
         "retrieval_query": generated_context["retrieval_query"],
         "generated_context": generated_context,
+        "generation_context": generation_context,
+        "query_understanding": query_understanding,
         "history_snapshot": state.get("history_snapshot", {}),
         "context_reset_reason": state.get("context_reset_reason", ""),
         "answer_mode": state.get("answer_mode", ""),

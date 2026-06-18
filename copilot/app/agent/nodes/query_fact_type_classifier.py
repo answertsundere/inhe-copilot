@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+from app.agent.query_understanding import build_query_understanding
 from app.services.logistics_fast_path import get_explicit_logistics_identifier
 from app.services.semantic_fact_type_service import classify_query_fact_type_llm_first
 
@@ -11,6 +12,12 @@ from app.services.semantic_fact_type_service import classify_query_fact_type_llm
 def query_fact_type_classifier(state: dict) -> dict:
     t0 = time.time()
     if get_explicit_logistics_identifier(state):
+        understanding = build_query_understanding(state, {
+            "query_fact_type": "",
+            "confidence": 1.0,
+            "source": "explicit_logistics_identifier_fast_path",
+            "secondary_fact_types": [],
+        })
         trace = {
             "node": "query_fact_type_classifier",
             "status": "success",
@@ -21,6 +28,7 @@ def query_fact_type_classifier(state: dict) -> dict:
             "matched_terms": [],
             "reason": "explicit_logistics_identifier_fast_path",
             "secondary_fact_types": [],
+            "query_understanding": understanding,
             "summary": "query_fact_type skipped for explicit logistics identifier",
         }
         return {
@@ -31,6 +39,8 @@ def query_fact_type_classifier(state: dict) -> dict:
             "query_fact_type_reason": "explicit_logistics_identifier_fast_path",
             "secondary_fact_types": [],
             "query_fact_type_risk_hint": "",
+            "query_understanding": understanding,
+            "retrieval_query": understanding.get("retrieval_query", ""),
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
@@ -45,6 +55,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         }
 
     duration_ms = int((time.time() - t0) * 1000)
+    understanding = build_query_understanding(state, result)
     trace = {
         "node": "query_fact_type_classifier",
         "status": "success",
@@ -56,6 +67,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         "reason": result.get("reason", ""),
         "secondary_fact_types": result.get("secondary_fact_types", []),
         "semantic_query": result.get("semantic_query", {}),
+        "query_understanding": understanding,
         "summary": (
             f"query_fact_type={result.get('query_fact_type', '') or 'unknown'} "
             f"source={result.get('source', '')}"
@@ -72,5 +84,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         "query_fact_type_risk_hint": result.get("risk_hint", ""),
         "semantic_query": result.get("semantic_query", {}),
         "needs_visual_asset": bool((result.get("semantic_query") or {}).get("needs_visual_asset")),
+        "query_understanding": understanding,
+        "retrieval_query": understanding.get("retrieval_query", ""),
         "trace_steps": state.get("trace_steps", []) + [trace],
     }

@@ -8,6 +8,8 @@ import logging
 import re
 import time
 
+from app.agent.query_understanding import refresh_query_understanding
+
 logger = logging.getLogger(__name__)
 
 
@@ -252,6 +254,11 @@ def rag_retrieve(state: dict) -> dict:
         logger.warning("Product context pack failed: %s", exc)
 
     duration_ms = int((time.time() - t0) * 1000)
+    final_retrieval_query = locals().get("search_query", msg)
+    query_understanding = refresh_query_understanding(
+        state,
+        retrieval_query=final_retrieval_query,
+    )
     trace = {
         "node": "rag_retrieve",
         "status": "success",
@@ -260,12 +267,14 @@ def rag_retrieve(state: dict) -> dict:
         "retrieval_mode": retrieval_mode,
         "original_query": msg,
         "current_query": msg,
-        "search_query": locals().get("search_query", msg),
-        "retrieval_query": locals().get("search_query", msg),
+        "search_query": final_retrieval_query,
+        "retrieval_query": final_retrieval_query,
         "history_included": False,
         "product_name": product_name,
         "sku_name": sku_name,
         "query_fact_type": query_fact_type,
+        "secondary_fact_types": state.get("secondary_fact_types", []),
+        "query_understanding": query_understanding,
         "product_context_pack_stats": product_context_pack.get("stats", {}),
         "product_card_evidence": product_context_pack.get("evidence_pack", {}),
         "summary": f"RAG检索: {len(results)}条结果, mode={retrieval_mode}, allowed={allowed_source_types}, intent={search_intent}",
@@ -277,8 +286,9 @@ def rag_retrieve(state: dict) -> dict:
         "product_context_pack_stats": product_context_pack.get("stats", {}),
         "product_card_evidence_pack": product_context_pack.get("evidence_pack", {}),
         "current_query": msg,
-        "retrieval_query": locals().get("search_query", msg),
-        "rag_search_query": locals().get("search_query", msg),
+        "retrieval_query": final_retrieval_query,
+        "rag_search_query": final_retrieval_query,
+        "query_understanding": query_understanding,
         "rag_retrieval_mode": retrieval_mode,
         "trace_steps": state.get("trace_steps", []) + [trace],
     }

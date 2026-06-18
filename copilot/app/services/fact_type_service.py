@@ -212,6 +212,19 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 
+def _matched_fact_types(message: str, rules: list[tuple[str, tuple[str, ...]]]) -> list[tuple[str, list[str]]]:
+    matches: list[tuple[str, list[str]]] = []
+    for fact_type, keywords in rules:
+        matched = [kw for kw in keywords if kw in message]
+        if matched:
+            matches.append((fact_type, matched[:5]))
+    return matches
+
+
+def _secondary_fact_types(matches: list[tuple[str, list[str]]], primary: str) -> list[str]:
+    return [fact_type for fact_type, _ in matches if fact_type and fact_type != primary][:5]
+
+
 def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
     """Classify the business fact field a customer is asking about."""
     msg = message or ""
@@ -231,8 +244,8 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
             "matched_terms": aftersales_hits[:5],
             "source": "unicode_rule",
         }
-    for fact_type, keywords in _UNICODE_QUERY_RULES:
-        matched = [kw for kw in keywords if kw in msg]
+    unicode_matches = _matched_fact_types(msg, _UNICODE_QUERY_RULES)
+    for fact_type, matched in unicode_matches:
         if matched:
             return {
                 "query_fact_type": fact_type,
@@ -240,9 +253,10 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
                 "confidence": 0.9 if len(matched) > 1 else 0.78,
                 "matched_terms": matched[:5],
                 "source": "unicode_rule",
+                "secondary_fact_types": _secondary_fact_types(unicode_matches, fact_type),
             }
-    for fact_type, keywords in _QUERY_RULES:
-        matched = [kw for kw in keywords if kw in msg]
+    rule_matches = _matched_fact_types(msg, _QUERY_RULES)
+    for fact_type, matched in rule_matches:
         if matched:
             return {
                 "query_fact_type": fact_type,
@@ -250,6 +264,7 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
                 "confidence": 0.9 if len(matched) > 1 else 0.78,
                 "matched_terms": matched[:5],
                 "source": "rule",
+                "secondary_fact_types": _secondary_fact_types(rule_matches, fact_type),
             }
 
     fact_type = _INTENT_DEFAULTS.get(intent, "")
@@ -260,6 +275,7 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
             "confidence": 0.58,
             "matched_terms": [],
             "source": "intent_default",
+            "secondary_fact_types": [],
         }
 
     return {
@@ -268,6 +284,7 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
         "confidence": 0.0,
         "matched_terms": [],
         "source": "none",
+        "secondary_fact_types": [],
     }
 
 
