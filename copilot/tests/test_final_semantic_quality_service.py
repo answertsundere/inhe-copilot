@@ -165,3 +165,100 @@ def test_final_semantic_fit_allows_direct_evidence_answer(monkeypatch):
     )
 
     assert result["passed"] is True
+
+
+def test_quality_gate_rejects_off_topic_answer(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲亲，这款每层承重约20kg，正常放书比较结实。",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "semantic_query": {"primary_fact_type": "dimensions"},
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "answerability": "direct_answer",
+                    "query_fact_type": "dimensions",
+                    "matched_facts": [{
+                        "fact_type": "dimensions",
+                        "preview": "尺寸为80*40*90cm。",
+                        "direct_answer_allowed": True,
+                    }],
+                }
+            },
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="可以直接告诉我你们产品的大小吗",
+    )
+
+    assert result["passed"] is False
+    assert result["off_topic"] is True
+    assert "off_topic:dimensions_answered_as_load_capacity" in result["issues"]
+
+
+def test_quality_gate_rejects_internal_language(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲亲，知识库里没有这款商品的尺寸资料，我不能凭感觉判断。",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "semantic_query": {"primary_fact_type": "dimensions"},
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "answerability": "missing_product_fact",
+                    "query_fact_type": "dimensions",
+                    "matched_facts": [],
+                }
+            },
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="这个多大",
+    )
+
+    assert result["passed"] is False
+    assert result["internal_language_leak"] is True
+    assert any(issue.startswith("internal_language_leak") for issue in result["issues"])
+
+
+def test_quality_gate_rejects_internal_product_name_when_display_name_exists(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲亲，九号防夹滑门收纳柜可以参考尺寸图。",
+        "product_name": "九号防夹滑门收纳柜",
+        "display_product_name": "英禾防夹滑门收纳架整理客厅零食桌面儿童玩具卧室可拼搭储物抽屉",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "semantic_query": {"primary_fact_type": "dimensions"},
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "answerability": "direct_answer",
+                    "query_fact_type": "dimensions",
+                    "matched_facts": [{
+                        "fact_type": "dimensions",
+                        "preview": "尺寸图可参考宽度、进深和高度。",
+                        "direct_answer_allowed": True,
+                    }],
+                }
+            },
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="有没有尺寸图",
+    )
+
+    assert result["passed"] is False
+    assert result["product_name_leak"] is True
+    assert any(issue.startswith("product_name_leak") for issue in result["issues"])

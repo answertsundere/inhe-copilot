@@ -200,6 +200,19 @@ def build_response(state: dict) -> dict:
     generic_service_rule_used = state.get("generic_service_rule_used") or _generic_rule_used_from_trace(state.get("trace_steps", []))
     evidence_debug["product_context_pack_stats"] = state.get("product_context_pack_stats", product_context_pack.get("stats", {}))
     evidence_debug["product_context_pack_summary"] = _summarize_product_context_pack(product_context_pack)
+    evidence_evaluation = (product_context_pack.get("evidence_pack") or {}).get("evidence_evaluation") or []
+    if evidence_evaluation:
+        evidence_debug["evidence_evaluation"] = evidence_evaluation
+        evidence_debug["selected_evidence"] = [
+            item for item in evidence_evaluation
+            if isinstance(item, dict) and item.get("selected") and item.get("source_type") != "product_media"
+        ][:10] or evidence_debug["selected_evidence"]
+        evaluation_rejected = [
+            item for item in evidence_evaluation
+            if isinstance(item, dict) and not item.get("selected")
+        ][:10]
+        if evaluation_rejected:
+            evidence_debug["rejected_evidence"] = evaluation_rejected
     evidence_debug["selected_assets"] = [
         {
             "asset_id": item.get("asset_id") or item.get("id"),

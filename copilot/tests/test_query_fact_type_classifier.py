@@ -24,6 +24,7 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u53ef\u4ee5\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u4eec\u4ea7\u54c1\u7684\u5927\u5c0f\u5417": "dimensions",
         "\u6709\u6ca1\u6709\u56fe\u7247\u770b\u4e00\u4e0b": "visual_asset",
         "\u5b89\u88c5\u9700\u8981\u6253\u5b54\u5417\uff0c\u79df\u623f\u53ef\u4ee5\u7528\u5417": "installation",
+        "\u653e\u4e66\u4f1a\u4e0d\u4f1a\u538b\u584c": "load_capacity",
     }
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")

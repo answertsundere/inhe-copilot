@@ -254,6 +254,7 @@ def build_product_context_pack(
                     "evidence_allowed_for_exact_answer": direct_allowed,
                 })
 
+        evaluated_candidates = list(candidates)
         if query_fact_type and any(item.get("evidence_allowed_for_direct_answer") for item in candidates):
             candidates = [item for item in candidates if item.get("evidence_allowed_for_direct_answer")]
 
@@ -263,6 +264,7 @@ def build_product_context_pack(
             identity=identity,
             structured_profile=structured_profile,
             facts=returned_facts,
+            all_candidate_facts=evaluated_candidates,
             recommended_assets=recommended_assets,
             generic_rules=generic_rules,
             query=query,
@@ -329,6 +331,7 @@ def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any
         "matched_facts": [],
         "matched_media": [],
         "matched_generic_rules": [],
+        "evidence_evaluation": [],
         "source_priority": ["product_profile", "product_media", "product_knowledge", "faq", "generic_rules"],
         "reason": reason,
     }
@@ -339,6 +342,7 @@ def _build_evidence_pack(
     identity: dict[str, str],
     structured_profile: dict[str, Any],
     facts: list[dict[str, Any]],
+    all_candidate_facts: list[dict[str, Any]] | None = None,
     recommended_assets: list[dict[str, Any]],
     generic_rules: list[dict[str, Any]],
     query: str,
@@ -349,6 +353,13 @@ def _build_evidence_pack(
     matched_facts = [_compact_fact_for_evidence(item) for item in facts[:top_k]]
     matched_media = [_compact_media_for_evidence(item) for item in recommended_assets[:3]]
     matched_generic_rules = [_compact_generic_rule_for_evidence(item) for item in generic_rules[:3]]
+    evidence_evaluation = _build_evidence_evaluation(
+        facts=facts,
+        all_candidate_facts=all_candidate_facts or facts,
+        recommended_assets=recommended_assets,
+        generic_rules=generic_rules,
+        query_fact_type=query_fact_type,
+    )
     direct_facts = [
         item for item in facts
         if item.get("evidence_allowed_for_direct_answer") is not False
@@ -361,7 +372,7 @@ def _build_evidence_pack(
 
     if direct_facts:
         answerability = "direct_answer"
-    elif matched_media and query_fact_type in {"installation", "dimensions", "space_fit", "detachable", "accessories", "packaging"}:
+    elif matched_media and query_fact_type in {"installation", "dimensions", "space_fit", "detachable", "accessories", "packaging", "visual_asset"}:
         answerability = "media_supported"
     elif matched_generic_rules:
         answerability = "generic_rule_fallback"
@@ -380,6 +391,7 @@ def _build_evidence_pack(
         "matched_facts": matched_facts,
         "matched_media": matched_media,
         "matched_generic_rules": matched_generic_rules,
+        "evidence_evaluation": evidence_evaluation,
         "source_priority": ["product_profile", "product_media", "product_knowledge", "faq", "generic_rules"],
     }
 
@@ -470,6 +482,110 @@ def _compact_generic_rule_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
         "preview": str(item.get("content") or item.get("reply_template") or "")[:240],
         "forbidden_claims": item.get("forbidden_claims", []),
     }
+
+
+def _build_evidence_evaluation(
+    *,
+    facts: list[dict[str, Any]],
+    all_candidate_facts: list[dict[str, Any]],
+    recommended_assets: list[dict[str, Any]],
+    generic_rules: list[dict[str, Any]],
+    query_fact_type: str,
+) -> list[dict[str, Any]]:
+    selected_keys = {_evidence_key(item) for item in facts}
+    rows: list[dict[str, Any]] = []
+
+    for item in all_candidate_facts:
+        key = _evidence_key(item)
+        selected = key in selected_keys
+        fact_type_match = _fact_matches_query_type(query_fact_type, item)
+        direct_allowed = item.get("evidence_allowed_for_direct_answer") is not False
+        reject_reason = ""
+        if not selected:
+            if not fact_type_match:
+                reject_reason = "fact_type_mismatch"
+            elif not direct_allowed:
+                reject_reason = "not_direct_answer_allowed"
+            else:
+                reject_reason = "lower_ranked_candidate"
+        rows.append({
+            "evidence_id": key,
+            "source_type": item.get("source_type", ""),
+            "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
+            "text": _clean_qa_answer_text(str(item.get("chunk_text") or ""))[:300],
+            "asset_id": "",
+            "relevance_score": float(item.get("rerank_score") or item.get("score") or 0),
+            "answerability_score": _answerability_score(item, query_fact_type),
+            "fact_type_match": bool(fact_type_match),
+            "risk_match": _risk_match(item),
+            "selected": bool(selected),
+            "reject_reason": reject_reason,
+        })
+
+    for item in recommended_assets:
+        key = f"asset:{item.get('asset_id') or item.get('id') or item.get('asset_url') or item.get('asset_title')}"
+        selected = bool(item.get("asset_url"))
+        rows.append({
+            "evidence_id": key,
+            "source_type": "product_media",
+            "fact_type": query_fact_type or item.get("media_purpose") or "",
+            "text": str(item.get("asset_title") or item.get("asset_type") or "")[:300],
+            "asset_id": item.get("asset_id") or item.get("id") or "",
+            "relevance_score": float(item.get("match_confidence") or item.get("score") or 0),
+            "answerability_score": 0.8 if selected else 0.0,
+            "fact_type_match": True,
+            "risk_match": True,
+            "selected": selected,
+            "reject_reason": "" if selected else "missing_asset_url",
+        })
+
+    if not any(row["selected"] for row in rows):
+        for item in generic_rules[:3]:
+            fact_type_match = not query_fact_type or item.get("fact_type") == query_fact_type
+            rows.append({
+                "evidence_id": f"generic:{item.get('rule_key') or item.get('id') or item.get('title')}",
+                "source_type": "generic_rules",
+                "fact_type": item.get("fact_type", ""),
+                "text": str(item.get("content") or item.get("reply_template") or "")[:300],
+                "asset_id": "",
+                "relevance_score": float(item.get("score") or item.get("source_confidence") or 0),
+                "answerability_score": 0.55 if fact_type_match else 0.2,
+                "fact_type_match": bool(fact_type_match),
+                "risk_match": str(item.get("risk_level") or "low") in {"low", ""},
+                "selected": bool(fact_type_match),
+                "reject_reason": "" if fact_type_match else "fact_type_mismatch",
+            })
+
+    rows.sort(key=lambda row: (
+        not row["selected"],
+        -float(row["answerability_score"]),
+        -float(row["relevance_score"]),
+    ))
+    return rows[:12]
+
+
+def _evidence_key(item: dict[str, Any]) -> str:
+    return str(item.get("entry_id") or item.get("chunk_id") or item.get("id") or "")
+
+
+def _answerability_score(item: dict[str, Any], query_fact_type: str) -> float:
+    if not _fact_matches_query_type(query_fact_type, item):
+        return 0.0
+    if item.get("evidence_allowed_for_direct_answer") is False:
+        return 0.35
+    source = str(item.get("source_type") or "")
+    if source == "product_facts":
+        return 1.0
+    if source == "faq":
+        return 0.9
+    if source == "installation_guide":
+        return 0.85
+    return 0.7
+
+
+def _risk_match(item: dict[str, Any]) -> bool:
+    risk = str(item.get("entry_risk_level") or item.get("risk_level") or "low").lower()
+    return risk in {"", "low", "medium"}
 
 
 def _find_kb_product(db, KBProduct, identity: dict[str, str]):

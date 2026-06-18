@@ -245,3 +245,34 @@ def test_final_answer_auditor_blocks_visual_question_answered_as_load_capacity()
     assert audited["final_answer_audit"]["passed"] is False
     assert any("visual_asset" in issue for issue in audited["final_answer_audit"]["issues"])
     assert audited["requires_human_review"] is True
+
+
+def test_final_answer_auditor_does_not_use_non_exact_generic_rule_as_correction():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "\u4eb2\uff0c\u6211\u5728\u7684\uff0c\u60a8\u53ef\u4ee5\u76f4\u63a5\u8bf4\u9047\u5230\u7684\u95ee\u9898\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "dimensions"},
+        "context_used": {
+            "product_context_pack": {
+                "generic_rules": [{
+                    "rule_key": "media_supported_install_size_parts_v1",
+                    "fact_type": "media_reference",
+                    "risk_level": "low",
+                    "auto_reply_allowed": True,
+                    "reply_template": "\u8fd9\u4e2a\u7ec6\u8282\u53ef\u4ee5\u53c2\u8003\u6211\u4e0b\u9762\u53d1\u60a8\u7684\u56fe\u7247\u6216\u89c6\u9891\u3002",
+                    "score": 9.0,
+                }],
+            }
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="\u53ef\u4ee5\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u4eec\u4ea7\u54c1\u7684\u5927\u5c0f\u5417",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert audited["requires_human_review"] is True
+    assert audited["final_answer_audit"].get("correction_source") != "generic_service_rule"
+    assert "\u4e0b\u9762\u53d1\u60a8\u7684\u56fe\u7247\u6216\u89c6\u9891" not in audited["suggested_reply"]

@@ -536,8 +536,9 @@ def _matched_generic_rule(response: dict[str, Any], expected: set[str]) -> dict[
         return None
     expected = set(expected or set())
     exact = [item for item in candidates if item.get("fact_type") in expected]
-    pool = exact or candidates
-    return max(pool, key=lambda item: float(item.get("score") or item.get("source_confidence") or 0))
+    if not exact:
+        return None
+    return max(exact, key=lambda item: float(item.get("score") or item.get("source_confidence") or 0))
 
 
 def _display_product_name(response: dict[str, Any]) -> str:

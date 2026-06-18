@@ -59,3 +59,34 @@ def test_polisher_redacts_internal_system_terms():
     assert "知识库" not in reply
     assert "已审核资料" not in reply
     assert "可直接引用" not in reply
+def test_polisher_preserves_facts_without_adding_product_claims():
+    response = {
+        "suggested_reply": "亲亲，这款资料里写的是尺寸80cm，材质PP；承重还需要再确认。",
+    }
+
+    polished = polish_customer_reply(response, customer_message="这个多大，结实吗")
+    reply = polished["suggested_reply"]
+
+    assert "80cm" in reply
+    assert "PP" in reply
+    assert "承重还需要再确认" in reply
+    assert "90cm" not in reply
+    assert "实木" not in reply
+    assert "20kg" not in reply
+    assert "一定没问题" not in reply
+
+
+def test_polisher_replaces_internal_product_name():
+    display_name = "英禾防夹滑门收纳架整理客厅零食桌面儿童玩具卧室可拼搭储物抽屉"
+    response = {
+        "suggested_reply": "亲亲，九号防夹滑门收纳柜可以参考尺寸图。",
+        "product_name": "九号防夹滑门收纳柜",
+        "display_product_name": display_name,
+    }
+
+    polished = polish_customer_reply(response, customer_message="有没有图片")
+    reply = polished["suggested_reply"]
+
+    assert display_name in reply
+    assert "九号防夹滑门收纳柜" not in reply
+    assert polished["customer_reply_polish"]["internal_names_rewritten"] == ["九号防夹滑门收纳柜"]

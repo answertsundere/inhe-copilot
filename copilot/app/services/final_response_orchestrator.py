@@ -107,6 +107,25 @@ def orchestrate_final_response(
         "applied": bool(llm_polish),
     })
 
+    post_issues = _post_polish_redline_issues(str(response.get("suggested_reply") or ""))
+    if post_issues:
+        original_reply = str(response.get("suggested_reply") or "")
+        response["suggested_reply"] = _safe_post_polish_fallback(response)
+        response["requires_human_review"] = True
+        response["generation_mode"] = "post_polish_redline_fallback"
+        response["reason_for_review"] = _append_reason(
+            str(response.get("reason_for_review") or ""),
+            "鏈€缁堟鼎鑹插悗鍛戒腑绾㈢嚎锛屽凡鏀逛负淇濆畧瀹㈡湇璇濇湳",
+        )
+        response.setdefault("guard_warnings", []).append(
+            "post_polish_redline: " + ",".join(post_issues)
+        )
+        response.setdefault("evidence_debug", {})["post_polish_redline"] = {
+            "passed": False,
+            "issues": post_issues,
+            "original_reply": original_reply,
+        }
+
     semantic_fit = audit_customer_reply_semantic_fit(
         response,
         customer_message=customer_message,
@@ -120,8 +139,8 @@ def orchestrate_final_response(
         "issues": semantic_fit.get("issues", []),
     })
 
-    post_issues = _post_polish_redline_issues(str(response.get("suggested_reply") or ""))
-    if post_issues:
+    final_post_issues = _post_polish_redline_issues(str(response.get("suggested_reply") or ""))
+    if final_post_issues and not post_issues:
         original_reply = str(response.get("suggested_reply") or "")
         response["suggested_reply"] = _safe_post_polish_fallback(response)
         response["requires_human_review"] = True
@@ -131,14 +150,15 @@ def orchestrate_final_response(
             "最终润色后命中红线，已改为保守客服话术",
         )
         response.setdefault("guard_warnings", []).append(
-            "post_polish_redline: " + ",".join(post_issues)
+            "post_polish_redline: " + ",".join(final_post_issues)
         )
         response.setdefault("evidence_debug", {})["post_polish_redline"] = {
             "passed": False,
-            "issues": post_issues,
+            "issues": final_post_issues,
             "original_reply": original_reply,
         }
-    else:
+        post_issues = final_post_issues
+    elif not post_issues:
         response.setdefault("evidence_debug", {})["post_polish_redline"] = {
             "passed": True,
             "issues": [],
