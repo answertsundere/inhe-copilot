@@ -45,6 +45,29 @@ _FACT_REPLY_CUES = {
     "aftersales_policy": ("抱歉", "反馈", "售后", "处理", "跟进", "核实", "投诉", "平台"),
 }
 
+_FACT_TOPIC_CONTRACTS = {
+    "space_fit": {
+        "allowed": {"space_fit", "dimensions", "visual_asset"},
+        "conflicts": {"load_capacity", "material", "installation"},
+    },
+    "placement_scene": {
+        "allowed": {"placement_scene"},
+        "conflicts": {"material", "load_capacity", "dimensions"},
+    },
+    "dimensions": {
+        "allowed": {"dimensions", "visual_asset"},
+        "conflicts": {"load_capacity", "material"},
+    },
+    "load_capacity": {
+        "allowed": {"load_capacity"},
+        "conflicts": {"dimensions", "material"},
+    },
+    "visual_asset": {
+        "allowed": {"visual_asset"},
+        "conflicts": {"material", "load_capacity"},
+    },
+}
+
 
 def audit_customer_reply_semantic_fit(
     response: dict[str, Any],
@@ -130,6 +153,7 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
 
     if query_fact_type == "dimensions" and _has_topic(reply, "load_capacity") and not _has_topic(reply, "dimensions"):
         issues.append("off_topic:dimensions_answered_as_load_capacity")
+    issues.extend(_fact_type_topic_contract_issues(query_fact_type, reply, selected_assets))
     if query_fact_type == "visual_asset":
         has_asset = bool(selected_assets)
         if not has_asset and not _has_topic(reply, "visual_asset"):
@@ -338,6 +362,38 @@ def _append_reason(existing: str, reason: str) -> str:
 def _has_topic(text: str, fact_type: str) -> bool:
     cues = _FACT_REPLY_CUES.get(fact_type, ())
     return any(cue.lower() in str(text or "").lower() for cue in cues)
+
+
+def _fact_type_topic_contract_issues(query_fact_type: str, reply: str, selected_assets: Any) -> list[str]:
+    contract = _FACT_TOPIC_CONTRACTS.get(query_fact_type)
+    if not contract:
+        return []
+    if _is_human_review_reply(reply):
+        return []
+
+    covered = _covered_reply_topics(reply)
+    if query_fact_type == "visual_asset" and selected_assets:
+        covered.add("visual_asset")
+
+    allowed = set(contract.get("allowed") or set())
+    conflicts = set(contract.get("conflicts") or set())
+    has_allowed = bool(covered & allowed)
+    conflict_hits = sorted(covered & conflicts)
+
+    issues: list[str] = []
+    if conflict_hits and not has_allowed:
+        issues.append(f"off_topic:{query_fact_type}_answered_as_{','.join(conflict_hits)}")
+    elif not has_allowed:
+        issues.append(f"missing_answer:{query_fact_type}")
+    return issues
+
+
+def _covered_reply_topics(reply: str) -> set[str]:
+    return {
+        fact_type
+        for fact_type in _FACT_REPLY_CUES
+        if _has_topic(reply, fact_type)
+    }
 
 
 def _is_human_review_reply(text: str) -> bool:

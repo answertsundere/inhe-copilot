@@ -79,8 +79,8 @@ def test_final_semantic_fit_uses_llm_judge_to_block_wrong_answer(monkeypatch):
     )
 
     assert result["passed"] is False
-    assert result["mode"] == "llm_semantic_fit"
-    assert "answered_space_fit_as_load_capacity" in result["issues"]
+    assert result["mode"] == "deterministic"
+    assert any(issue.startswith("off_topic:space_fit") for issue in result["issues"])
 
 
 def test_final_semantic_fit_blocks_missing_evidence_without_human_review(monkeypatch):
@@ -262,3 +262,103 @@ def test_quality_gate_rejects_internal_product_name_when_display_name_exists(mon
     assert result["passed"] is False
     assert result["product_name_leak"] is True
     assert any(issue.startswith("product_name_leak") for issue in result["issues"])
+
+
+def _semantic_response(fact_type: str, reply: str, *, selected_assets=None, requires_human_review=False):
+    return {
+        "suggested_reply": reply,
+        "requires_human_review": requires_human_review,
+        "selected_assets": selected_assets or [],
+        "evidence_debug": {
+            "semantic_query": {"primary_fact_type": fact_type},
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "answerability": "direct_answer",
+                    "query_fact_type": fact_type,
+                    "matched_facts": [{
+                        "fact_type": fact_type,
+                        "preview": "test evidence",
+                        "direct_answer_allowed": True,
+                    }],
+                }
+            },
+        },
+    }
+
+
+def test_deterministic_gate_rejects_space_fit_answered_as_load_capacity(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("space_fit", "亲亲，这款每层承重约15-30kg，放书和玩具都够用。"),
+        customer_message="卧室空间比较小，这个放得下吗？",
+    )
+
+    assert result["passed"] is False
+    assert result["off_topic"] is True
+    assert any(issue.startswith("off_topic:space_fit") for issue in result["issues"])
+
+
+def test_deterministic_gate_rejects_placement_scene_answered_as_material(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("placement_scene", "亲亲，这款材质是钢管和PP，表面防潮防锈，卫生间潮湿可能生锈。"),
+        customer_message="这个在卧室可以用吗？",
+    )
+
+    assert result["passed"] is False
+    assert result["off_topic"] is True
+    assert any(issue.startswith("off_topic:placement_scene") for issue in result["issues"])
+
+
+def test_deterministic_gate_allows_placement_scene_with_room_and_ventilation(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("placement_scene", "亲亲，这款放在卧室、客厅、书房这类日常收纳区域可以参考，建议放在干燥通风、平整的位置。"),
+        customer_message="这个在卧室可以用吗？",
+    )
+
+    assert result["passed"] is True
+
+
+def test_deterministic_gate_allows_dimensions_answer(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("dimensions", "亲亲，这款可以参考尺寸图，重点看长宽高、宽度、进深和高度是否适合家里预留位置。"),
+        customer_message="可以直接告诉我产品大小吗？",
+    )
+
+    assert result["passed"] is True
+
+
+def test_deterministic_gate_allows_load_capacity_answer(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("load_capacity", "亲亲，这款单层均匀承重约15-30kg，放书、玩具和日用品可以参考这个承重范围。"),
+        customer_message="放书会不会压塌？",
+    )
+
+    assert result["passed"] is True
+
+
+def test_deterministic_gate_rejects_visual_asset_without_asset_or_visual_answer(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("visual_asset", "亲亲，这款主要是钢管和PP材质，日常放书比较结实。"),
+        customer_message="有没有图片看一下？",
+    )
+
+    assert result["passed"] is False
+    assert result["missing_answer"] is True or result["off_topic"] is True
+    assert any("visual_asset" in issue for issue in result["issues"])

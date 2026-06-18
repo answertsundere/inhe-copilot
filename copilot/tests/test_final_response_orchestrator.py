@@ -93,6 +93,8 @@ def test_final_response_orchestrator_blocks_internal_language_after_polish(monke
     assert "资料库" not in result["suggested_reply"]
     assert result["evidence_debug"]["post_polish_redline"]["passed"] is False
     assert result["generation_mode"] == "post_polish_redline_fallback"
+    assert result["reason_for_review"] == "最终润色后命中红线，已改为保守客服话术"
+    assert "鏈€缁堟鼎" not in result["reason_for_review"]
 
 
 def test_final_response_orchestrator_syncs_text_reply_block(monkeypatch):

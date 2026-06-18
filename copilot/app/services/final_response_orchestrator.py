@@ -115,7 +115,7 @@ def orchestrate_final_response(
         response["generation_mode"] = "post_polish_redline_fallback"
         response["reason_for_review"] = _append_reason(
             str(response.get("reason_for_review") or ""),
-            "鏈€缁堟鼎鑹插悗鍛戒腑绾㈢嚎锛屽凡鏀逛负淇濆畧瀹㈡湇璇濇湳",
+            "最终润色后命中红线，已改为保守客服话术",
         )
         response.setdefault("guard_warnings", []).append(
             "post_polish_redline: " + ",".join(post_issues)
