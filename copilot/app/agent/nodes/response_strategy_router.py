@@ -88,7 +88,8 @@ def _has_embedded_product_question(state: dict) -> bool:
     msg = state.get("normalized_message", state.get("customer_message", "")) or ""
     product_terms = (
         "材质", "材料", "安全吗", "安全不", "受潮", "防潮", "甲醛", "检测报告",
-        "承重", "尺寸", "多大", "几岁", "适合", "清洁", "水洗", "安装", "怎么装",
+        "承重", "尺寸", "大小", "多大", "几岁", "适合", "清洁", "水洗", "安装", "怎么装",
+        "图片", "照片", "实物图", "效果图", "样子",
         "有味道", "味道", "刺鼻",
     )
     return _has_sidecar_product_context(state) and any(term in msg for term in product_terms)

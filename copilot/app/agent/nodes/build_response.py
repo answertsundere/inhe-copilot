@@ -172,14 +172,45 @@ def build_response(state: dict) -> dict:
             "chunk_preview": c.get("chunk_text", "")[:80],
         })
 
+    rejected_evidence_summary = []
+    for c in state.get("rejected_evidence", [])[:10]:
+        rejected_evidence_summary.append({
+            "chunk_id": c.get("chunk_id", ""),
+            "entry_id": c.get("entry_id", ""),
+            "source_type": c.get("source_type", ""),
+            "query_fact_type": c.get("query_fact_type", ""),
+            "evidence_fact_type": c.get("evidence_fact_type") or c.get("fact_type", ""),
+            "score": c.get("score", 0),
+            "rerank_score": c.get("rerank_score", 0),
+            "rejection_reasons": c.get("rejection_reasons") or c.get("reasons") or c.get("gate_reasons", []),
+            "semantic_alignment": c.get("semantic_alignment", {}),
+            "chunk_preview": c.get("chunk_text", "")[:80],
+        })
+
     evidence_debug["retrieved_chunks_summary"] = retrieved_chunks_summary
     evidence_debug["filtered_evidence_summary"] = filtered_evidence_summary
     evidence_debug["knowledge_evidence_summary"] = knowledge_evidence_summary
+    evidence_debug["selected_evidence"] = knowledge_evidence_summary or [
+        item for item in filtered_evidence_summary
+        if item.get("direct_answer_allowed") and item.get("gate_status") != "blocked"
+    ][:10]
+    evidence_debug["rejected_evidence"] = rejected_evidence_summary
     evidence_debug["evidence_gate_summary"] = _summarize_evidence_gate(knowledge_evidence_summary)
     product_context_pack = state.get("product_context_pack") or {}
     generic_service_rule_used = state.get("generic_service_rule_used") or _generic_rule_used_from_trace(state.get("trace_steps", []))
     evidence_debug["product_context_pack_stats"] = state.get("product_context_pack_stats", product_context_pack.get("stats", {}))
     evidence_debug["product_context_pack_summary"] = _summarize_product_context_pack(product_context_pack)
+    evidence_debug["selected_assets"] = [
+        {
+            "asset_id": item.get("asset_id") or item.get("id"),
+            "asset_type": item.get("asset_type", ""),
+            "asset_title": item.get("asset_title", ""),
+            "product_name": item.get("product_name", ""),
+            "send_mode": item.get("send_mode", "manual"),
+        }
+        for item in (product_context_pack.get("recommended_assets") or [])[:5]
+        if isinstance(item, dict)
+    ]
     evidence_debug["answer_mode"] = state.get("answer_mode", "")
     evidence_debug["query_fact_type"] = state.get("query_fact_type", "")
     evidence_debug["query_fact_type_label"] = state.get("query_fact_type_label", "")
@@ -301,6 +332,13 @@ def build_response(state: dict) -> dict:
     evidence_debug["direct_answer_supported"] = sufficiency["direct_answer_supported"]
     evidence_debug["missing_required_fact_fields"] = sufficiency["missing_required_fact_fields"]
     evidence_debug["needs_clarification"] = sufficiency["needs_clarification"]
+    evidence_debug["quality_result"] = {
+        "stage": "build_response_evidence_sufficiency",
+        "passed": bool(sufficiency["answer_relevance_passed"]),
+        "evidence_sufficient": bool(sufficiency["evidence_sufficient"]),
+        "direct_answer_supported": bool(sufficiency["direct_answer_supported"]),
+        "missing_required_fact_fields": sufficiency["missing_required_fact_fields"],
+    }
 
     verified_evidence = _summarize_verified_evidence(evidence)
     tools_to_call = _summarize_tools_to_call(state)

@@ -21,6 +21,9 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u4ea7\u54c1\u6709\u6c14\u5473\u5417": "odor",
         "\u8fd9\u4e2a\u6709\u5473\u513f\u5417": "odor",
         "\u6750\u8d28\u6709\u6c14\u5473\u5417": "odor",
+        "\u53ef\u4ee5\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u4eec\u4ea7\u54c1\u7684\u5927\u5c0f\u5417": "dimensions",
+        "\u6709\u6ca1\u6709\u56fe\u7247\u770b\u4e00\u4e0b": "visual_asset",
+        "\u5b89\u88c5\u9700\u8981\u6253\u5b54\u5417\uff0c\u79df\u623f\u53ef\u4ee5\u7528\u5417": "installation",
     }
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")

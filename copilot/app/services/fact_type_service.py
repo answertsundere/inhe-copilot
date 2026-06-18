@@ -32,6 +32,7 @@ FACT_TYPE_LABELS = {
     "pinch_safety": "夹手/结构安全",
     "safety_small_parts": "小零件/电池安全",
     "aftersales_policy": "售后政策",
+    "visual_asset": "图片/视频",
 }
 
 
@@ -147,6 +148,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("stock_shipping", ("\u6709\u8d27", "\u5e93\u5b58", "\u53d1\u8d27", "\u73b0\u8d27")),
     ("cleaning_care", ("\u6e05\u6d01", "\u6e05\u7406", "\u6c34\u6d17", "\u600e\u4e48\u6d17", "\u4fdd\u517b")),
     ("odor", ("\u6c14\u5473", "\u5473\u9053", "\u6709\u5473", "\u65e0\u5473", "\u65e0\u5f02\u5473", "\u5f02\u5473", "\u523a\u9f3b", "\u6563\u5473")),
+    ("visual_asset", ("\u56fe\u7247", "\u7167\u7247", "\u56fe\u770b", "\u770b\u56fe", "\u6709\u56fe", "\u5b9e\u7269\u56fe", "\u6548\u679c\u56fe", "\u6837\u5b50")),
     ("age_range", ("\u9002\u5408\u591a\u5927", "\u9002\u5408\u51e0\u5c81", "\u591a\u5927\u5b9d\u5b9d", "\u6708\u9f84", "\u5e74\u9f84")),
     ("stability", ("\u4f1a\u4e0d\u4f1a\u5012", "\u9632\u503e\u5012", "\u503e\u5012", "\u5012\u584c", "\u7a33\u4e0d\u7a33", "\u7a33\u56fa", "\u7a33\u5b9a")),
     ("space_fit", (
@@ -163,6 +165,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u9884\u7559",
         "\u4f4d\u7f6e\u591f",
     )),
+    ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f")),
     ("placement_scene", (
         "\u5367\u5ba4",
         "\u5ba2\u5385",
@@ -176,9 +179,8 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u9002\u5408\u653e",
     )),
     ("load_capacity", ("\u627f\u91cd", "\u80fd\u653e\u591a\u91cd", "\u653e\u591a\u91cd", "\u7ed3\u5b9e", "\u80fd\u653e\u591a\u5c11", "\u538b\u5f2f")),
-    ("dimensions", ("\u5c3a\u5bf8", "\u591a\u9ad8", "\u591a\u5bbd", "\u591a\u957f", "\u9ad8\u5ea6", "\u5bbd\u5ea6", "\u957f\u5ea6", "\u5360\u5730", "\u89c4\u683c")),
+    ("dimensions", ("\u5c3a\u5bf8", "\u5927\u5c0f", "\u591a\u5927", "\u591a\u9ad8", "\u591a\u5bbd", "\u591a\u957f", "\u9ad8\u5ea6", "\u5bbd\u5ea6", "\u957f\u5ea6", "\u5360\u5730", "\u89c4\u683c")),
     ("detachable", ("\u53ef\u62c6", "\u62c6\u5378", "\u62c6\u5f00", "\u62c6\u4e0b\u6765", "\u80fd\u62c6", "\u62c6\u88c5")),
-    ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f")),
     ("material", ("\u6750\u8d28", "\u6750\u6599", "\u4ec0\u4e48\u6599", "\u7528\u6599", "\u677f\u6750", "\u5b9e\u6728", "\u5b89\u5168\u5417", "\u53d7\u6f6e", "\u9632\u6f6e", "\u751f\u9508")),
     ("aftersales_policy", ("\u9000\u8d27", "\u9000\u6b3e", "\u6362\u8d27", "\u8865\u53d1", "\u552e\u540e", "\u7834\u635f", "\u574f\u4e86", "\u5c11\u4ef6", "\u53d1\u9519")),
 ]

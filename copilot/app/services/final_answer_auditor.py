@@ -39,6 +39,7 @@ _FACT_TOPIC = {
     "price_protection": "price_protection",
     "promotion_policy": "promotion",
     "aftersales_policy": "aftersales",
+    "visual_asset": "visual_asset",
 }
 
 _INTENT_TOPIC = {
@@ -70,6 +71,7 @@ _TOPIC_CUES = {
     "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄"),
     "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "有味", "无味", "无异味", "异味", "刺鼻", "散味", "闻着", "通风"),
+    "visual_asset": ("图片", "照片", "图看", "看图", "有图", "实物图", "效果图", "样子"),
     "gift": ("赠品", "礼品", "没送", "少送", "赠送"),
     "stock_shipping": ("库存", "有货", "现货", "发货", "今天发", "多久发"),
     "invoice": ("发票", "电子发票", "抬头", "税号"),
@@ -96,6 +98,7 @@ _UNICODE_TOPIC_CUES = {
     "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄"),
     "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "味儿", "有味", "无味", "无异味", "无毒无味", "异味", "刺鼻", "散味", "闻着", "通风"),
+    "visual_asset": ("图片", "照片", "图看", "看图", "有图", "实物图", "效果图", "样子"),
     "gift": ("赠品", "礼品", "没送", "少送", "漏发赠品"),
     "stock_shipping": ("库存", "有货", "现货", "发货", "今天发", "多久发"),
     "invoice": ("发票", "电子发票", "抬头", "税号"),
@@ -122,6 +125,7 @@ _MESSAGE_REQUIRED_TOPICS = {
     "price_protection",
     "promotion",
     "aftersales",
+    "visual_asset",
 }
 
 _PRODUCT_CARD_REQUIRED_FACT_TYPES = {
@@ -158,6 +162,7 @@ _CONFLICTS = {
     "dimensions": {"installation", "cleaning", "gift", "invoice"},
     "space_fit": {"load_capacity", "material", "cleaning", "gift", "invoice"},
     "placement_scene": {"load_capacity", "material", "gift", "invoice"},
+    "visual_asset": {"load_capacity", "material", "installation", "invoice"},
     "gift": {"installation", "material", "load_capacity", "dimensions"},
     "invoice": {"installation", "material", "load_capacity", "dimensions"},
 }

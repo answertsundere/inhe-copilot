@@ -230,3 +230,18 @@ def test_final_answer_auditor_allows_handoff_when_product_card_fact_missing():
     audited = audit_final_answer(response, customer_message="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417")
 
     assert audited["final_answer_audit"]["passed"] is True
+
+
+def test_final_answer_auditor_blocks_visual_question_answered_as_load_capacity():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "\u4eb2\uff5e\u8fd9\u6b3e\u5355\u5c42\u5747\u5300\u627f\u91cd\u7ea615-30kg\uff0c\u653e\u4e66\u7c4d\u73a9\u5177\u90fd\u591f\u7528\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "visual_asset"},
+    }
+
+    audited = audit_final_answer(response, customer_message="\u6709\u6ca1\u6709\u56fe\u7247\u770b\u4e00\u4e0b")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert any("visual_asset" in issue for issue in audited["final_answer_audit"]["issues"])
+    assert audited["requires_human_review"] is True

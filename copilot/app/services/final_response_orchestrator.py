@@ -163,6 +163,17 @@ def orchestrate_final_response(
         "stages": pipeline,
     }
     response.setdefault("evidence_debug", {})["final_response_pipeline"] = response["final_response_pipeline"]
+    response.setdefault("evidence_debug", {})["quality_result"] = {
+        "stage": "final_response_orchestrator",
+        "passed": bool(
+            (response.get("final_answer_audit") or {}).get("passed", True)
+            and (response.get("final_semantic_fit_audit") or {}).get("passed", True)
+            and not post_issues
+        ),
+        "final_answer_audit": response.get("final_answer_audit", {}),
+        "final_semantic_fit_audit": response.get("final_semantic_fit_audit", {}),
+        "post_polish_redline": response.get("evidence_debug", {}).get("post_polish_redline", {}),
+    }
     response.setdefault("trace_steps", []).append({
         "node": "final_response_orchestrator",
         "status": "completed",

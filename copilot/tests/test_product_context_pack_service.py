@@ -428,6 +428,54 @@ def test_product_context_pack_returns_ranked_media_assets(product_context_db):
     assert pack["evidence_pack"]["matched_media"][0]["asset_type"] == "install_video"
 
 
+def test_product_context_pack_uses_product_image_for_visual_asset_question(product_context_db):
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_VISUAL_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67b6",
+            sku_list_json=json.dumps([{"sku_code": "TEST_VISUAL_001B01S01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        asset = KBMediaAsset(
+            product_id=product.id,
+            i_id="TEST_VISUAL_001",
+            sku_code="TEST_VISUAL_001B01S01",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67b6",
+            asset_type="sku_image",
+            asset_title="\u5546\u54c1\u5c55\u793a\u56fe",
+            asset_url="https://example.com/sku.jpg",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.9,
+        )
+        asset.set_source_raw({"auto_send_level": "auto", "answer_scenarios": ["product_image"]})
+        db.add(asset)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_VISUAL_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67b6"},
+        query="\u6709\u6ca1\u6709\u56fe\u7247\u770b\u4e00\u4e0b",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="visual_asset",
+    )
+
+    assert pack["recommended_assets"]
+    assert pack["recommended_assets"][0]["asset_type"] == "sku_image"
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "visual_asset"
+    assert "\u5546\u54c1\u56fe\u7247" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["answerability"] in {"direct_answer", "media_supported"}
+
+
 def test_product_context_pack_answers_detachable_from_product_card(product_context_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack

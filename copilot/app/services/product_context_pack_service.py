@@ -661,6 +661,11 @@ def _media_fact_customer_text(query_fact_type: str, media_word: str) -> str:
             f"这款商品可以参考下面发送的安装说明{media_word}。"
             "按图里或视频里的步骤对照安装会更直观。"
         )
+    if query_fact_type == "visual_asset":
+        return (
+            f"这款商品可以参考下面发送的商品{media_word}。"
+            "您可以先看整体外观、颜色和页面展示效果；如果想看某个细节，也可以直接圈出来问我。"
+        )
     if query_fact_type == "accessories":
         return (
             f"这款商品可以参考下面发送的配件/包装清单{media_word}。"
@@ -963,6 +968,7 @@ def _media_scenario_from_fact_type(query_fact_type: str) -> str:
         "detachable": "detachable",
         "installation": "installation",
         "accessories": "accessories",
+        "visual_asset": "product_image",
     }.get(query_fact_type or "", "")
 
 
@@ -976,7 +982,7 @@ def _media_priority(query: str, query_fact_type: str) -> list[str]:
         return ["size_image", "sku_image"]
     if any(term in msg for term in ("配件", "少件", "零件", "漏发", "装不上")):
         return ["accessory_image", "pack_guide_image", "install_image"]
-    if any(term in msg for term in ("图片", "照片", "图", "外观", "颜色", "样子", "实物")):
+    if query_fact_type == "visual_asset" or any(term in msg for term in ("图片", "照片", "图", "外观", "颜色", "样子", "实物")):
         return ["sku_image", "size_image"]
     return []
 
@@ -988,6 +994,7 @@ def _media_tag_priority(query_fact_type: str) -> list[str]:
         "space_fit": ["dimensions", "尺寸", "size", "规格", "space_fit", "空间"],
         "installation": ["installation", "安装", "install", "video", "教程"],
         "accessories": ["accessories", "配件", "零件", "parts"],
+        "visual_asset": ["sku", "image", "商品图", "实物图", "外观", "颜色"],
     }.get(query_fact_type or "", [])
 
 
@@ -1010,7 +1017,7 @@ def _media_facts_for_query(
     query: str,
     query_fact_type: str,
 ) -> list[dict[str, Any]]:
-    if query_fact_type not in {"detachable", "dimensions", "space_fit", "installation", "accessories"}:
+    if query_fact_type not in {"detachable", "dimensions", "space_fit", "installation", "accessories", "visual_asset"}:
         return []
     if not recommended_assets:
         return []
@@ -1027,6 +1034,7 @@ def _media_facts_for_query(
         "space_fit": "尺寸/空间适配说明",
         "installation": "安装说明",
         "accessories": "配件/零件核对",
+        "visual_asset": "商品图片/视频",
     }.get(query_fact_type, "商品说明")
     asset_type = str(asset.get("asset_type") or "")
     media_word = "视频" if asset_type.endswith("_video") else "图片"

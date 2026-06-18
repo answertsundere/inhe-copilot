@@ -51,6 +51,7 @@ Allowed query_fact_type values:
 - age_range: suitable age or baby age range
 - cleaning_care: cleaning, washing, wiping, maintenance
 - odor: smell, odor, new-product smell, pungent smell, ventilation
+- visual_asset: product image, real-item photo, display picture, visual reference without a more specific dimension/install/accessory request
 - installation: installation, assembly, drilling, instruction manual, installation video
 - detachable: detachable, can be disassembled, removable
 - variant_compare: difference between versions/styles, which version is better
@@ -303,6 +304,7 @@ def _visual_need_for_fact_type(fact_type: str) -> bool:
         "installation",
         "accessories",
         "gift_policy",
+        "visual_asset",
     }
 
 
@@ -316,4 +318,5 @@ def _retrieval_focus_for_fact_type(fact_type: str) -> str:
         "odor": "new product smell and ventilation guidance",
         "material": "product material and verified material notes",
         "load_capacity": "load capacity and what items can be placed",
+        "visual_asset": "approved product images or videos for the current item",
     }.get(fact_type, fact_type)
