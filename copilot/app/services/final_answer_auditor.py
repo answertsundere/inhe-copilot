@@ -255,6 +255,7 @@ def audit_final_answer(
             copilot_context or {},
         )
 
+    multi_intent_audit = _multi_intent_coverage_audit(reply, response)
     if llm_audit:
         issues = []
         if not llm_audit.get("passed", True):
@@ -262,6 +263,7 @@ def audit_final_answer(
         issues.extend(_hard_safety_issues(reply, response, copilot_context or {}))
     else:
         issues = _audit_issues(customer_message, reply, expected, actual, response, copilot_context or {})
+    issues.extend(multi_intent_audit.get("issues", []))
     passed = not issues
 
     audit = {
@@ -270,6 +272,8 @@ def audit_final_answer(
         "issues": issues,
         "expected_topics": sorted(expected),
         "reply_topics": sorted(actual),
+        "covered_fact_types": multi_intent_audit.get("covered_fact_types", []),
+        "missing_fact_types": multi_intent_audit.get("missing_fact_types", []),
         "mode": "deterministic_semantic_consistency",
     }
     if llm_audit:
@@ -286,6 +290,9 @@ def audit_final_answer(
             "issues": [],
             "expected_topics": sorted(expected),
             "reply_topics": sorted(actual),
+            "covered_fact_types": multi_intent_audit.get("covered_fact_types", []),
+            "missing_fact_types": multi_intent_audit.get("missing_fact_types", []),
+            "fallback_used": False,
             "summary": "final answer semantic consistency passed",
         })
         return response
@@ -316,9 +323,56 @@ def audit_final_answer(
         "issues": issues,
         "expected_topics": sorted(expected),
         "reply_topics": sorted(actual),
+        "covered_fact_types": multi_intent_audit.get("covered_fact_types", []),
+        "missing_fact_types": multi_intent_audit.get("missing_fact_types", []),
+        "blocked_reason": ",".join(issues),
+        "fallback_used": True,
         "summary": "final answer semantic consistency blocked",
     })
     return response
+
+
+def _multi_intent_coverage_audit(reply: str, response: dict[str, Any]) -> dict[str, Any]:
+    debug = response.get("evidence_debug") or {}
+    grouping = debug.get("evidence_grouping") or response.get("evidence_grouping") or {}
+    coverage = grouping.get("coverage") or {}
+    required = [str(item) for item in coverage.get("required_fact_types", []) if str(item).strip()]
+    if len(required) < 2:
+        return {"covered_fact_types": [], "missing_fact_types": [], "issues": []}
+
+    plan = debug.get("multi_intent_answer_plan") or response.get("multi_intent_answer_plan") or []
+    covered = []
+    missing = []
+    for fact_type in required:
+        planned = [
+            item for item in plan
+            if isinstance(item, dict) and item.get("fact_type") == fact_type
+        ]
+        if _reply_covers_fact_type(reply, fact_type) or any(
+            item.get("covered_by_existing_reply") or item.get("reply_part") for item in planned
+        ):
+            covered.append(fact_type)
+        else:
+            missing.append(fact_type)
+    return {
+        "covered_fact_types": covered,
+        "missing_fact_types": missing,
+        "issues": [f"missing_multi_intent_fact_type:{item}" for item in missing],
+    }
+
+
+def _reply_covers_fact_type(reply: str, fact_type: str) -> bool:
+    text = reply or ""
+    cues = {
+        "material": ("材质", "材料", "安全", "宝宝", "防潮", "防水", "检测"),
+        "stock_shipping": ("发货", "库存", "现货", "仓库", "下单页", "今天"),
+        "dimensions": ("尺寸", "长", "宽", "高", "尺寸图"),
+        "visual_asset": ("图", "图片", "素材", "视频"),
+        "aftersales_policy": ("售后", "补发", "少件", "缺配件", "退货", "退款"),
+        "installation": ("安装", "组装", "教程", "说明"),
+        "age_range": ("适合", "宝宝", "年龄", "月龄", "适龄"),
+    }.get(fact_type, (_FACT_TOPIC.get(fact_type, fact_type),))
+    return any(cue and cue in text for cue in cues)
 
 
 def _expected_topics(message: str, response: dict[str, Any]) -> set[str]:

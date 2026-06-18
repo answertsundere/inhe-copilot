@@ -16,6 +16,11 @@ from app import config
 from app.llm.client import get_llm_client
 from app.llm.prompts import build_system_prompt, build_user_message
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
+from app.services.evidence_grouping_service import (
+    build_multi_intent_answer_plan,
+    group_evidence_by_fact_type,
+    merge_multi_intent_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -429,6 +434,30 @@ def generate_reply(state: dict) -> dict:
         trace["generic_service_rule_used"] = generic_rule_summary
         trace["summary"] += f", generic_rule={generic_rule_summary['rule_key']}"
 
+    grouping_state = {**state, **extra_state}
+    evidence_grouping = _build_evidence_grouping(grouping_state)
+    multi_intent_answer_plan = []
+    if len((evidence_grouping.get("coverage") or {}).get("required_fact_types", [])) >= 2:
+        multi_intent_answer_plan = build_multi_intent_answer_plan(
+            evidence_grouping,
+            current_reply=suggested_reply,
+            customer_message=msg,
+        )
+        merged_reply = merge_multi_intent_reply(suggested_reply, multi_intent_answer_plan)
+        if merged_reply != suggested_reply:
+            suggested_reply = merged_reply
+            generation_mode = "rule_based_multi_intent"
+    trace["evidence_grouping_coverage"] = evidence_grouping.get("coverage", {})
+    trace["multi_intent_answer_plan"] = [
+        {
+            "fact_type": item.get("fact_type", ""),
+            "answer_mode": item.get("answer_mode", ""),
+            "covered_by_existing_reply": item.get("covered_by_existing_reply", False),
+            "reply_part_added": bool(item.get("reply_part")),
+        }
+        for item in multi_intent_answer_plan
+    ]
+
     return {
         "suggested_reply": suggested_reply,
         "customer_emotion": customer_emotion,
@@ -437,6 +466,8 @@ def generate_reply(state: dict) -> dict:
         "action_proposal": action_proposal,
         "answer_mode": answer_mode,
         "generation_mode": generation_mode,
+        "evidence_grouping": evidence_grouping,
+        "multi_intent_answer_plan": multi_intent_answer_plan,
         "llm_used": llm_used,
         "llm_skipped": llm_skipped,
         "llm_error": llm_error,
@@ -446,6 +477,37 @@ def generate_reply(state: dict) -> dict:
         "trace_steps": state.get("trace_steps", []) + [trace],
         **extra_state,
     }
+
+
+def _build_evidence_grouping(state: dict) -> dict:
+    query_understanding = dict(state.get("query_understanding") or {})
+    rejected_fact_type = str(
+        query_understanding.get("llm_rejected_fact_type")
+        or state.get("llm_rejected_fact_type")
+        or ""
+    ).strip()
+    query_fact_type = str(query_understanding.get("query_fact_type") or state.get("query_fact_type", "") or "")
+    secondary_fact_types = list(
+        query_understanding.get("secondary_fact_types")
+        or state.get("secondary_fact_types", [])
+        or []
+    )
+    if rejected_fact_type:
+        secondary_fact_types = [item for item in secondary_fact_types if item != rejected_fact_type]
+    query_understanding.update({
+        "query_fact_type": query_fact_type,
+        "secondary_fact_types": secondary_fact_types,
+        "llm_rejected_fact_type": rejected_fact_type,
+    })
+    payload = {
+        "evidence": state.get("evidence", {}),
+        "knowledge_evidence": state.get("knowledge_evidence", []),
+        "filtered_evidence": state.get("filtered_evidence", []),
+        "rejected_evidence": state.get("rejected_evidence", []),
+        "product_context_pack": state.get("product_context_pack", {}),
+        "selected_assets": state.get("selected_assets", []),
+    }
+    return group_evidence_by_fact_type(payload, query_understanding)
 
 
 def _resolve_answer_mode(state: dict) -> tuple[str, str]:

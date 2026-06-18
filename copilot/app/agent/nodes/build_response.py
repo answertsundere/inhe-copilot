@@ -259,6 +259,8 @@ def build_response(state: dict) -> dict:
     evidence_debug["context_updated"] = state.get("context_updated", False)
     evidence_debug["generation_mode"] = state.get("generation_mode", "")
     evidence_debug["llm_used"] = state.get("llm_used", False)
+    evidence_debug["evidence_grouping"] = state.get("evidence_grouping", {})
+    evidence_debug["multi_intent_answer_plan"] = state.get("multi_intent_answer_plan", [])
     evidence_debug["generic_service_rule_used"] = generic_service_rule_used
     evidence_debug["hallucination_guard"] = state.get("hallucination_guard", {
         "passed": True,
@@ -381,6 +383,7 @@ def build_response(state: dict) -> dict:
             "requires_human_review": requires_human_review,
             "guard_warnings": guard_warnings,
         },
+        "evidence_grouping_coverage": (state.get("evidence_grouping") or {}).get("coverage", {}),
     }
     query_understanding = refresh_query_understanding(
         state,

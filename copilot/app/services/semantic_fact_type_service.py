@@ -187,9 +187,11 @@ def _semantic_consistency_guard(
     guarded["reason"] = "LLM classification conflicts with a high-confidence semantic guard"
     guarded["llm_rejected_fact_type"] = llm_type
     guarded["llm_rejected_confidence"] = llm_result.get("confidence", 0)
-    guarded["secondary_fact_types"] = list(dict.fromkeys(
-        [llm_type] + list(llm_result.get("secondary_fact_types") or [])
-    ))[:5]
+    guarded["secondary_fact_types"] = [
+        item
+        for item in list(dict.fromkeys(llm_result.get("secondary_fact_types") or []))
+        if item not in {rule_type, llm_type}
+    ][:5]
     fact_type = str(guarded.get("query_fact_type") or "")
     guarded["needs_visual_asset"] = _visual_need_for_fact_type(fact_type)
     guarded["retrieval_focus"] = _retrieval_focus_for_fact_type(fact_type)

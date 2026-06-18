@@ -30,10 +30,13 @@ def build_query_understanding(state: dict[str, Any], fact_result: dict[str, Any]
     original_message = str(state.get("customer_message") or "")
     normalized_message = str(state.get("normalized_message") or original_message)
     query_fact_type = str(fact_result.get("query_fact_type") or state.get("query_fact_type") or "")
+    rejected_fact_type = str(fact_result.get("llm_rejected_fact_type") or "").strip()
     secondary_fact_types = _unique([
         *list(fact_result.get("secondary_fact_types") or []),
         *list(state.get("secondary_fact_types") or []),
     ])
+    if rejected_fact_type:
+        secondary_fact_types = [item for item in secondary_fact_types if item != rejected_fact_type]
     intent = str(state.get("intent") or state.get("final_intent") or "general")
     sub_intents = _unique([
         *list(state.get("secondary_intents") or []),
@@ -59,6 +62,7 @@ def build_query_understanding(state: dict[str, Any], fact_result: dict[str, Any]
         "context_reset_reason": state.get("context_reset_reason", ""),
         "confidence": fact_result.get("confidence", state.get("query_fact_type_confidence", 0)),
         "source": fact_result.get("source", state.get("query_fact_type_source", "")),
+        "llm_rejected_fact_type": rejected_fact_type,
     }
 
 

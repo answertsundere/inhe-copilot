@@ -38,6 +38,7 @@ def query_fact_type_classifier(state: dict) -> dict:
             "query_fact_type_terms": [],
             "query_fact_type_reason": "explicit_logistics_identifier_fast_path",
             "secondary_fact_types": [],
+            "llm_rejected_fact_type": "",
             "query_fact_type_risk_hint": "",
             "query_understanding": understanding,
             "retrieval_query": understanding.get("retrieval_query", ""),
@@ -66,6 +67,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         "matched_terms": result.get("matched_terms", []),
         "reason": result.get("reason", ""),
         "secondary_fact_types": result.get("secondary_fact_types", []),
+        "llm_rejected_fact_type": result.get("llm_rejected_fact_type", ""),
         "semantic_query": result.get("semantic_query", {}),
         "query_understanding": understanding,
         "summary": (
@@ -81,6 +83,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         "query_fact_type_terms": result.get("matched_terms", []),
         "query_fact_type_reason": result.get("reason", ""),
         "secondary_fact_types": result.get("secondary_fact_types", []),
+        "llm_rejected_fact_type": result.get("llm_rejected_fact_type", ""),
         "query_fact_type_risk_hint": result.get("risk_hint", ""),
         "semantic_query": result.get("semantic_query", {}),
         "needs_visual_asset": bool((result.get("semantic_query") or {}).get("needs_visual_asset")),
