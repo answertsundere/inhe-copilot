@@ -43,7 +43,8 @@ const menuItems = [
   { index: '/', icon: DataAnalysis, label: '总览' },
   { index: '/products', icon: Goods, label: '商品资料' },
   { index: '/service-rules', icon: Notebook, label: '服务规则' },
-  { index: '/ai-updates', icon: DataAnalysis, label: 'AI 更新' },
+  { index: '/training-samples', icon: Collection, label: '训练样本收集' },
+  { index: '/ai-updates', icon: DataAnalysis, label: 'AI 更新中心' },
   { index: '/traces', icon: Connection, label: '测试记录' },
 ]
 

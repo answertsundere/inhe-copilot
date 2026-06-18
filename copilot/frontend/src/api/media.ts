@@ -30,6 +30,9 @@ export interface MediaAsset {
   audit_status: string
   usable_for_agent: boolean
   scene_tags: string[]
+  created_by?: string
+  updated_by?: string
+  created_at?: string | null
   updated_at: string | null
   last_seen_at: string | null
   refresh_status?: string

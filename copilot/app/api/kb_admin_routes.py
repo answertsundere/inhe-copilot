@@ -889,6 +889,32 @@ def api_product_publish(product_id):
         db.close()
 
 
+@kb_admin_bp.route("/products/<int:product_id>/activity-rules", methods=["GET"])
+def api_product_activity_rules(product_id):
+    """查询商品关联的活动规则（只读，不暴露内部价格字段）"""
+    from app.db import SessionLocal
+    from app.models.kb_tables import KBProduct, KBProductActivityRule
+    db = SessionLocal()
+    try:
+        product = db.query(KBProduct).get(product_id)
+        if not product:
+            return jsonify({"error": "Not found"}), 404
+
+        q = db.query(KBProductActivityRule).filter(
+            (KBProductActivityRule.product_id == product_id) |
+            (KBProductActivityRule.i_id == product.i_id)
+        ).order_by(KBProductActivityRule.updated_at.desc())
+
+        return jsonify({
+            "items": [r.customer_context() for r in q.all()],
+            "total": q.count(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
 def _extract_product_kwargs(data):
     """Extract and normalize product fields from request body."""
     kwargs = {}

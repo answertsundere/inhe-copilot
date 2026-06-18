@@ -71,3 +71,10 @@ export function publishProduct(id: number) {
 export function batchUpdateProducts(ids: number[], action: string, value?: string) {
   return apiClient.post('/products/batch-update', { ids, action, value })
 }
+
+export function getProductActivityRules(productId: number) {
+  return apiClient.get(`/products/${productId}/activity-rules`)
+}
+
+// 注意：本阶段不提供 /products/{id}/agent-test 接口。
+// 商品详情抽屉中的“资料命中预检”为纯前端模拟，不调用后端 Agent。
