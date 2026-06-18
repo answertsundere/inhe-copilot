@@ -150,7 +150,7 @@ function cancelEdit(fact: any) {
             <el-tag
               v-else
               size="small"
-              type="warning"
+              type="danger"
               effect="light"
             >
               待补充
@@ -228,7 +228,7 @@ function cancelEdit(fact: any) {
             <el-button
               v-else
               size="small"
-              type="warning"
+              type="danger"
               :disabled="!canEdit"
               @click="startEdit(fact)"
             >
@@ -268,7 +268,7 @@ function cancelEdit(fact: any) {
 }
 
 .summary-item.empty {
-  border-left: 4px solid var(--el-color-warning);
+  border-left: 4px solid var(--el-color-danger);
 }
 
 .summary-value {
@@ -316,12 +316,12 @@ function cancelEdit(fact: any) {
 }
 
 .fact-card.is-empty {
-  background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
-  border: 1px dashed var(--el-color-warning-light-5);
+  background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%);
+  border: 1px dashed var(--el-color-danger-light-5);
 }
 
 .fact-card.is-empty .fact-indicator {
-  background: var(--el-color-warning);
+  background: var(--el-color-danger);
 }
 
 .fact-card.is-editing {
@@ -396,7 +396,7 @@ function cancelEdit(fact: any) {
 }
 
 .empty-icon {
-  color: var(--el-color-warning);
+  color: var(--el-color-danger);
 }
 
 .empty-title {
@@ -439,7 +439,7 @@ function cancelEdit(fact: any) {
 
 .fact-card.is-empty .fact-footer {
   border-top-style: dashed;
-  border-top-color: var(--el-color-warning-light-7);
+  border-top-color: var(--el-color-danger-light-7);
 }
 
 .fact-updated {
