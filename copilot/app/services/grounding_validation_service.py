@@ -376,13 +376,17 @@ def _rewrite_fallback_reply(state: dict, fallback_mode: str) -> str:
                 return answer
 
     if intent == "delivery_not_received":
-        return (
-            "亲，非常抱歉给您带来不便，我理解您的焦急心情。"
-            "\n建议您先确认一下：家人、门卫或邻居是否已代为签收？"
-            "也可以查看一下门口、快递柜或驿站是否有包裹。"
-            "\n如果确认没有收到，麻烦您发一下订单截图，我会立即帮您联系快递核实并持续跟进。"
-            "\n我会继续协助核实并跟进处理。"
+        reply = (
+            "亲，非常抱歉给您带来不便，我理解您没收到包裹会着急。"
+            "\n显示签收但您没有收到的话，我会帮您一起核实派送和签收记录。"
+            "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
         )
+        if has_order_id:
+            reply += "\n我已收到当前订单/物流信息，会按现有号码继续核对。"
+        else:
+            reply += "\n麻烦您补充一下订单号或物流单号，我这边按号码帮您核实。"
+        reply += "\n如果确认都没有收到，我这边会联系快递核实派送情况，并继续跟进处理。"
+        return reply
 
     if intent in ("logistics_eta", "shipping", "logistics", "logistics_trace"):
         if has_order_id:

@@ -100,6 +100,12 @@ def assert_no_overpromise(reply: str, context: str = ""):
         )
 
 
+def assert_not_asking_for_order_screenshot(reply: str, context: str = ""):
+    assert "订单截图" not in reply, (
+        f"{context}Reply should not ask for order screenshot when order/logistics context exists: {reply[:200]}"
+    )
+
+
 # ===========================================================================
 # Scenario 1: Shipped order
 # ===========================================================================
@@ -195,6 +201,15 @@ class TestSignedNotReceived:
         data = _analyze(client, "显示签收了，但是我没收到", order_id="202501010002")
         assert_not_asking_for_identifier(data["suggested_reply"], "DNR: ")
 
+    def test_reply_does_not_ask_for_order_screenshot_when_order_known(self, client):
+        data = _analyze(client, "显示签收了，但是我没收到", order_id="202501010002")
+        assert_not_asking_for_order_screenshot(data["suggested_reply"], "DNR known order: ")
+
+    def test_without_order_can_ask_for_identifier(self, client):
+        data = _analyze(client, "显示签收了但是我没收到", conversation_id="dnr_no_order_v1")
+        reply = data["suggested_reply"]
+        assert "订单号" in reply or "物流单号" in reply
+
     def test_no_overpromise(self, client):
         """签收未收到回复不得包含过度承诺"""
         data = _analyze(client, "显示签收了，但是我没收到", order_id="202501010002")
@@ -226,6 +241,31 @@ class TestReturnRefund:
         reply = data["suggested_reply"]
         assert "已退款" not in reply
         assert "已经退" not in reply
+
+
+class TestWrongItemReturn:
+    """发错货 + 退货应先说明售后路径，再温和补充核对材料。"""
+
+    @pytest.mark.parametrize("message", [
+        "你们发错了，我想退，怎么弄？",
+        "发错颜色了，我想退",
+        "收到不是我拍的款，怎么退",
+        "发错了能不能直接退",
+    ])
+    def test_wrong_item_return_flow_first(self, client, message):
+        data = _analyze(client, message, order_id="202501010002")
+        reply = data["suggested_reply"]
+
+        assert data["intent"] == "aftersales"
+        assert "退货" in reply or "售后" in reply
+        assert "少件/缺配件" not in reply
+        assert_not_asking_for_identifier(reply, "Wrong item return: ")
+        assert_not_asking_for_order_screenshot(reply, "Wrong item return: ")
+        if "拍" in reply:
+            flow_pos = min(
+                pos for pos in [reply.find("退货"), reply.find("售后")] if pos >= 0
+            )
+            assert flow_pos < reply.find("拍"), f"Should explain return/aftersales flow before asking photos: {reply}"
 
 
 # ===========================================================================

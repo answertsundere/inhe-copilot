@@ -739,9 +739,9 @@ def _append_aftersales_issue_followup(reply: str, state: dict) -> str:
         return reply
     if final_intent == "wrong_item" or any(term in msg for term in ("\u4e0d\u662f\u6211\u62cd\u7684", "\u53d1\u9519", "\u9519\u53d1")):
         followup = (
-            "\n\n另外，您说的是发错商品问题，这个需要先帮您核对订单商品和实物情况。"
-            "麻烦您发一下订单截图、收到的商品整体图和外箱面单，"
-            "我这边核实后再按情况给您处理换货、补发或退货方案。"
+            "\n\n另外，您说的是发错商品问题，这个可以按售后流程核对退货、换货或补发处理。"
+            "我会先核对订单商品和实物情况；如果方便，补充收到的商品整体图、外箱面单和发错位置，"
+            "我这边核实后再给您明确处理路径。"
         )
     elif final_intent == "missing_item" or any(term in msg for term in ("\u5c11\u4e86\u914d\u4ef6", "\u5c11\u914d\u4ef6", "\u5c11\u4ef6", "\u7f3a\u4ef6", "\u6f0f\u53d1")):
         followup = (

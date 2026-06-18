@@ -16,6 +16,8 @@ Together these lock the P0-1 fixes: material/installation/dimensions never
 surface the wrong FAQ, and aftersales never drifts to installation.
 """
 
+import pytest
+
 from app.main import create_app
 from app.services import final_answer_auditor, semantic_fact_type_service
 from app.services.fact_type_service import classify_query_fact_type
@@ -122,6 +124,38 @@ def test_material_question_stays_material_under_llm_config(monkeypatch):
     assert any(token in reply for token in ("冷轧钢", "钢管", "环保PP", "无纺布"))
     assert "承重" not in reply
     assert "15-30kg" not in reply
+
+
+@pytest.mark.parametrize("message", [
+    "宝宝用安全吗，会不会受潮？",
+    "这个材质放心吗？",
+    "放潮湿一点的地方会不会有问题？",
+])
+def test_material_safety_variants_do_not_drift_to_load_capacity(message):
+    result = _post(create_app().test_client(), message)
+
+    reply = result["suggested_reply"]
+    assert any(token in reply for token in ("材质", "安全", "受潮", "防潮", "潮湿", "干燥"))
+    assert "承重" not in reply
+    assert "15-30kg" not in reply
+    assert "绝对安全" not in reply
+    assert "0甲醛" not in reply
+
+
+@pytest.mark.parametrize("message", [
+    "这个安全吗，今天拍能发吗？",
+    "宝宝能用吗，什么时候发？",
+    "材质安全吗，有现货吗？",
+])
+def test_multi_intent_safety_and_shipping_covers_both_parts(message):
+    result = _post(create_app().test_client(), message)
+
+    reply = result["suggested_reply"]
+    assert any(token in reply for token in ("材质", "安全", "宝宝", "受潮", "防潮"))
+    assert any(token in reply for token in ("发货", "库存", "现货", "仓库", "下单页"))
+    assert "承重" not in reply
+    assert "15-30kg" not in reply
+    assert "一定发" not in reply
 
 
 def test_installation_question_stays_installation_under_llm_config(monkeypatch):

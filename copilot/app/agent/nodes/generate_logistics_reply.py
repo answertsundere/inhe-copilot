@@ -43,7 +43,8 @@ def _fallback_low_confidence_signed(tracking_no: str, courier: str) -> str:
     reply = "亲，我帮您查到的物流信息显示该包裹可能已送达，但暂无法确认具体签收状态。"
     if tracking_no:
         reply += f"\n物流单号：{tracking_no}。"
-    reply += "\n麻烦您发一下订单号或订单截图，我帮您进一步核实签收详情。"
+    reply += "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
+    reply += "\n我会继续帮您核实签收记录和派送情况；如果方便，也可以补充快递通知、取件码或派送电话，定位会更快。"
     reply += "\n如需进一步帮助，也可以提供更多信息，我来帮您跟进。"
     return reply
 
@@ -97,6 +98,30 @@ def _is_order_logistics_query(msg: str) -> bool:
         "到哪里", "没收到", "签收", "派送", "已发货", "发出了吗",
     )
     return any(term in msg for term in order_terms)
+
+
+def _delivery_not_received_reply(state: dict, order: dict | None, order_id: str, tracking_no: str) -> str:
+    trace = state.get("logistics_trace") or {}
+    carrier = str(trace.get("carrier") or trace.get("logistics_company") or "").strip()
+    trace_no = str(trace.get("tracking_no") or tracking_no or "").strip()
+    known_context = bool(order or order_id or trace_no)
+
+    reply = (
+        "亲，非常抱歉给您带来不便，我理解您没收到包裹会着急。"
+        "\n显示签收但您没有收到的话，我会帮您一起核实派送和签收记录。"
+        "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
+    )
+    if order:
+        items_text = _get_order_items_text(order)
+        reply += f"\n我这边会按这笔订单（{items_text}）继续核对。"
+    elif known_context:
+        prefix = f"{carrier} " if carrier else ""
+        id_text = trace_no or order_id
+        reply += f"\n我已收到当前订单/物流信息，会按 {prefix}{id_text} 继续核对。"
+    else:
+        reply += "\n麻烦您补充一下订单号或物流单号，我这边按号码帮您核实。"
+    reply += "\n如果确认都没有收到，我这边会联系快递核实派送情况，并继续跟进处理。"
+    return reply
 
 
 def _known_product_name(state: dict) -> str:
@@ -234,18 +259,7 @@ def generate_logistics_reply(state: dict) -> dict:
     # ========== 签收未收到场景 ==========
     intent = state.get("intent", "")
     if intent == "delivery_not_received":
-        reply = (
-            "亲，非常抱歉给您带来不便，我理解您的焦急心情。"
-            "\n建议您先确认一下：家人、门卫或邻居是否已代为签收？"
-            "也可以查看一下门口、快递柜或驿站是否有包裹。"
-        )
-        if order:
-            items_text = _get_order_items_text(order)
-            reply += f"\n我这边查到您的订单（{items_text}）显示已签收。"
-        reply += (
-            "\n如果确认没有收到，麻烦您发一下订单截图，我会立即帮您联系快递核实并持续跟进。"
-            "\n请放心，我们会负责到底的。"
-        )
+        reply = _delivery_not_received_reply(state, order, order_id, tracking_no)
         return {
             "suggested_reply": reply,
             "answer_type": "human_review",
@@ -422,7 +436,8 @@ def generate_logistics_reply(state: dict) -> dict:
                 reply = f"亲，您的订单（{items_text}）的物流信息更新较少，目前暂时无法确认具体状态。"
                 if l_id:
                     reply += f"\n物流单号：{l_id}。"
-                reply += "\n麻烦您发一下订单截图，我帮您进一步核实～"
+                reply += "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
+                reply += "\n我会继续帮您核实签收记录和派送情况；如果方便，也可以补充快递通知、取件码或派送电话，定位会更快。"
             else:
                 reply = f"亲，您的订单（{items_text}）已由{courier}发货"
                 if l_id:
@@ -479,7 +494,8 @@ def generate_logistics_reply(state: dict) -> dict:
             reply = _fallback_low_confidence_signed(l_id, courier)
         elif low_conf:
             reply = f"亲，我查到这个单号（{l_id}）目前物流信息较少，状态需要进一步核实。"
-            reply += "\n麻烦您发一下订单号或订单截图，我帮您继续核实～"
+            reply += "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
+            reply += "\n我会继续帮您核实签收记录和派送情况；如果方便，也可以补充订单号、快递通知、取件码或派送电话，定位会更快。"
         elif trace_status == "api_failed":
             # 场景D: 接口失败
             reply = _fallback_api_failed(l_id)

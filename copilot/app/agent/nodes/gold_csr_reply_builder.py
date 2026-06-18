@@ -28,8 +28,8 @@ def _already_asked_order_text(state: dict) -> str:
         return "我已收到您提供的单号，正在进一步核实中，请稍等。"
     ctx = state.get("conversation_context", {}) or {}
     if ctx.get("has_already_asked_order_id"):
-        return "我这边需要订单号或物流单号才能准确核实，您发订单截图也可以，我会继续帮您查。"
-    return "麻烦您提供一下订单号、物流单号或订单截图，我帮您继续核实。"
+        return "我这边需要订单号或物流单号才能准确核实，您发来后我会继续帮您查。"
+    return "麻烦您提供一下订单号或物流单号，我帮您继续核实。"
 
 
 def _known_product_text(state: dict) -> str:

@@ -152,6 +152,12 @@ _STOCK_QUERY_KEYWORDS = [
     "\u65ad\u8d27",
     "\u9a6c\u4e0a\u53d1",
     "\u4eca\u5929\u53d1",
+    "\u4eca\u5929\u62cd",
+    "\u4eca\u5929\u62cd\u80fd\u53d1",
+    "\u62cd\u4e0b\u80fd\u53d1",
+    "\u80fd\u53d1\u5417",
+    "\u4ec0\u4e48\u65f6\u5019\u53d1",
+    "\u4ec0\u4e48\u65f6\u5019\u53d1\u8d27",
     "\u73b0\u8d27",
 ]
 
@@ -201,7 +207,14 @@ _CLEANING_CARE_KEYWORDS = [
 _MATERIAL_SAFETY_KEYWORDS = [
     "\u6750\u8d28\u5b89\u5168",
     "\u5b89\u5168\u5417",
+    "\u5b9d\u5b9d\u80fd\u7528",
+    "\u5b69\u5b50\u80fd\u7528",
+    "\u6750\u8d28\u653e\u5fc3",
+    "\u653e\u5fc3\u5417",
+    "\u7528\u7740\u653e\u5fc3",
     "\u53d7\u6f6e",
+    "\u6f6e\u6e7f",
+    "\u6f6e\u4e0d\u6f6e",
     "\u9632\u6f6e",
     "\u751f\u9508",
     "\u98df\u54c1\u7ea7",

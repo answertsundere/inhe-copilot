@@ -425,18 +425,21 @@ def _rewrite_safe_reply(state: dict, original_reply: str) -> str:
     # --- delivery_not_received: must NEVER become generic "shipped" ---
     if intent == "delivery_not_received":
         reply = (
-            "亲，非常抱歉给您带来不便，我理解您的焦急心情。"
-            "\n建议您先确认一下：家人、门卫或邻居是否已代为签收？"
-            "也可以查看一下门口、快递柜或驿站是否有包裹。"
+            "亲，非常抱歉给您带来不便，我理解您没收到包裹会着急。"
+            "\n显示签收但您没有收到的话，我会帮您一起核实派送和签收记录。"
+            "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
         )
         if order:
             items = order.get("items", [])
             names = [i.get("name", "").strip() for i in items if i.get("name", "").strip()]
             item_names = "、".join(names[:3]) or "您购买的商品"
-            reply += f"\n我这边查到您的订单（{item_names}）显示已签收。"
+            reply += f"\n我这边会按这笔订单（{item_names}）继续核对。"
+        elif has_order_id:
+            reply += "\n我已收到当前订单/物流信息，会按现有号码继续核对。"
+        else:
+            reply += "\n麻烦您补充一下订单号或物流单号，我这边按号码帮您核实。"
         reply += (
-            "\n如果确认没有收到，麻烦您发一下订单截图，我会立即帮您联系快递核实并持续跟进。"
-            "\n我会继续协助核实并跟进处理。"
+            "\n如果确认都没有收到，我这边会联系快递核实派送情况，并继续跟进处理。"
         )
         return reply
 

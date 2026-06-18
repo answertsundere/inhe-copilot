@@ -108,6 +108,37 @@ _REPLY_PATTERNS = {
     ),
 }
 
+_UNICODE_PATTERN_EXTENSIONS = {
+    "stock_shipping": (
+        "\u4eca\u5929\u62cd",
+        "\u4eca\u5929\u62cd\u80fd\u53d1",
+        "\u62cd\u4e0b\u80fd\u53d1",
+        "\u80fd\u53d1\u5417",
+        "\u4ec0\u4e48\u65f6\u5019\u53d1",
+        "\u4ec0\u4e48\u65f6\u5019\u53d1\u8d27",
+        "\u6709\u73b0\u8d27",
+    ),
+    "material_safety": (
+        "\u5b9d\u5b9d\u80fd\u7528",
+        "\u5b69\u5b50\u80fd\u7528",
+        "\u6750\u8d28\u653e\u5fc3",
+        "\u653e\u5fc3\u5417",
+        "\u7528\u7740\u653e\u5fc3",
+        "\u6f6e\u6e7f",
+        "\u53d7\u6f6e",
+        "\u9632\u6f6e",
+    ),
+    "returns": (
+        "\u60f3\u9000",
+        "\u600e\u4e48\u9000",
+        "\u76f4\u63a5\u9000",
+        "\u80fd\u4e0d\u80fd\u9000",
+    ),
+}
+for _pattern_key, _pattern_values in _UNICODE_PATTERN_EXTENSIONS.items():
+    _QUESTION_PATTERNS[_pattern_key] = _QUESTION_PATTERNS.get(_pattern_key, ()) + _pattern_values
+    _REPLY_PATTERNS[_pattern_key] = _REPLY_PATTERNS.get(_pattern_key, ()) + _pattern_values
+
 _QUESTION_PATTERNS["complaint"] = (
     "投诉", "差评", "12315", "平台介入", "曝光", "再不处理", "不处理",
     "质量太差", "太差了", "售后", "处理", "解决",
@@ -514,7 +545,10 @@ def _safe_rewrite(
 
 def _missing_question_followup(question_type: str, state: dict) -> str:
     if question_type == "material_safety":
-        return "材质和安全部分还需要结合具体商品及已确认资料核实，我会一并帮您确认。"
+        return (
+            "\u6750\u8d28\u548c\u5b89\u5168\u90e8\u5206\u9700\u8981\u7ed3\u5408\u5177\u4f53\u5546\u54c1\u53ca\u5df2\u786e\u8ba4\u8d44\u6599\u6838\u5b9e\uff0c"
+            "\u6211\u4f1a\u4e00\u5e76\u5e2e\u60a8\u6838\u5b9e\u786e\u8ba4\u3002"
+        )
     if question_type == "logistics":
         if has_order_identifier(state):
             return "物流部分我会按您提供的订单或物流信息继续核实最新状态。"

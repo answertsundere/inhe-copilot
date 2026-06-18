@@ -853,11 +853,25 @@ def _generate_rule_reply(
         return _image_attachment_reply(state)
 
     if intent == "delivery_not_received":
-        return (
-            "亲亲，非常理解您的着急。显示签收但您没有收到的话，我们会帮您一起核实。"
-            "\n麻烦您发一下订单号或订单截图，我这边帮您查看签收情况；"
-            "同时您可以先确认一下家人、门卫、驿站或快递员是否代收。"
+        slots = state.get("slots") or {}
+        has_identifier = bool(
+            state.get("order_id")
+            or state.get("tracking_no")
+            or slots.get("order_id")
+            or slots.get("platform_trade_id")
+            or slots.get("platform_order_id")
+            or slots.get("tracking_no")
         )
+        reply = (
+            "亲亲，非常理解您的着急。显示签收但您没有收到的话，我会帮您一起核实派送和签收记录。"
+            "\n您可以先看一下家人、门卫、前台、驿站、快递柜或门口附近是否代收/暂放。"
+        )
+        if has_identifier:
+            reply += "\n我已收到当前订单/物流信息，会按现有号码继续核对。"
+        else:
+            reply += "\n麻烦您补充一下订单号或物流单号，我这边按号码帮您核实。"
+        reply += "\n如果确认都没有收到，我这边会联系快递核实派送情况，并继续跟进处理。"
+        return reply
 
     if risk_level == "high":
         return "非常理解您的心情，这个问题我会先升级给主管核实处理，请您稍等。"
@@ -1098,6 +1112,20 @@ def _aftersales_reply(state: dict) -> str:
         or any(word in combined for word in ("被夹", "夹到", "夹到了", "夹住", "夹手", "宝宝受伤", "孩子受伤", "质量问题"))
     )
 
+    return_request = return_request or any(
+        word in combined
+        for word in (
+            "\u60f3\u9000",
+            "\u600e\u4e48\u9000",
+            "\u76f4\u63a5\u9000",
+            "\u80fd\u4e0d\u80fd\u9000",
+            "\u9000\u8d27",
+            "\u9000\u56de",
+            "\u9000\u6362",
+            "\u7533\u8bf7\u552e\u540e",
+        )
+    )
+
     if safety_issue:
         product_name = _product_name(state)
         name_part = f"「{product_name}」" if product_name else "这款商品"
@@ -1122,6 +1150,16 @@ def _aftersales_reply(state: dict) -> str:
     if wrong_item or missing_part:
         detail = "发错货/少件" if wrong_item and missing_part else ("发错货" if wrong_item else "少件/缺配件")
         order_text = f"我会先按订单 {order_id} " if order_id else "我需要先对上订单和发货明细，"
+        if wrong_item:
+            return (
+                "\u4eb2\uff0c\u6536\u5230\u7684\u548c\u4e0b\u5355\u6b3e\u4e0d\u4e00\u81f4\u786e\u5b9e\u4f1a\u8ba9\u4eba\u7740\u6025\uff0c"
+                "\u8fd9\u4e2a\u53ef\u4ee5\u5148\u6309\u5e97\u94fa\u552e\u540e\u6d41\u7a0b\u6838\u5bf9\u5904\u7406\uff0c"
+                "\u6d89\u53ca\u9000\u8d27\u3001\u6362\u8d27\u6216\u8865\u53d1\u6211\u4f1a\u4e00\u8d77\u5e2e\u60a8\u786e\u8ba4\u3002\n"
+                f"{order_text}\u6838\u5bf9\u60a8\u4e0b\u5355\u7684\u6b3e\u5f0f\u3001\u4ed3\u5e93\u53d1\u8d27\u8bb0\u5f55\u548c\u5b9e\u9645\u6536\u5230\u7684\u5546\u54c1\u3002\n"
+                "\u4e3a\u4e86\u66f4\u5feb\u5904\u7406\uff0c\u5982\u679c\u65b9\u4fbf\uff0c\u9ebb\u70e6\u60a8\u628a\u6536\u5230\u7684\u5546\u54c1\u6574\u4f53\u56fe\u3001"
+                "\u5916\u5305\u88c5\u9762\u5355\u548c\u95ee\u9898\u4f4d\u7f6e\u62cd\u6e05\u695a\u53d1\u6211\uff1b"
+                "\u6838\u5bf9\u540e\u5982\u679c\u786e\u8ba4\u662f\u53d1\u9519\uff0c\u4f1a\u6309\u5e97\u94fa\u552e\u540e\u6d41\u7a0b\u7ee7\u7eed\u5904\u7406\u3002"
+            )
         return (
             f"亲，收到的和拍的不一致确实会让人着急，这个我先按{detail}帮您核对。\n"
             f"{order_text}核对您下单的款式、仓库发货记录和实际收到的商品/配件。\n"

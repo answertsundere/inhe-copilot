@@ -107,6 +107,38 @@ _UNICODE_TOPIC_CUES = {
     "aftersales": ("补发", "漏发", "发错", "少件", "少了", "缺件", "破损", "坏了", "退货", "退款", "换货", "售后"),
 }
 
+_UNICODE_TOPIC_CUE_EXTENSIONS = {
+    "material": (
+        "\u5b9d\u5b9d\u80fd\u7528",
+        "\u5b69\u5b50\u80fd\u7528",
+        "\u6750\u8d28\u653e\u5fc3",
+        "\u653e\u5fc3\u5417",
+        "\u6f6e\u6e7f",
+        "\u53d7\u6f6e",
+        "\u9632\u6f6e",
+    ),
+    "stock_shipping": (
+        "\u4eca\u5929\u62cd",
+        "\u4eca\u5929\u62cd\u80fd\u53d1",
+        "\u62cd\u4e0b\u80fd\u53d1",
+        "\u80fd\u53d1\u5417",
+        "\u4ec0\u4e48\u65f6\u5019\u53d1",
+        "\u4ec0\u4e48\u65f6\u5019\u53d1\u8d27",
+        "\u6709\u73b0\u8d27",
+    ),
+    "aftersales": (
+        "\u60f3\u9000",
+        "\u600e\u4e48\u9000",
+        "\u76f4\u63a5\u9000",
+        "\u6536\u5230\u4e0d\u662f",
+        "\u4e0d\u662f\u6211\u62cd",
+        "\u53d1\u9519",
+    ),
+}
+for _topic_key, _topic_values in _UNICODE_TOPIC_CUE_EXTENSIONS.items():
+    _TOPIC_CUES[_topic_key] = _TOPIC_CUES.get(_topic_key, ()) + _topic_values
+    _UNICODE_TOPIC_CUES[_topic_key] = _UNICODE_TOPIC_CUES.get(_topic_key, ()) + _topic_values
+
 _MESSAGE_REQUIRED_TOPICS = {
     "pinch_safety",
     "small_parts_battery",
