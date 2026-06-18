@@ -1,0 +1,38 @@
+{
+  "knowledge_entries": [
+    {
+      "business_key": "golden:agent_phase1:YH06K53:material",
+      "source_type": "product_facts",
+      "title": "九号防夹滑门收纳柜材质是什么？会不会受潮？",
+      "content": "九号防夹滑门收纳柜主要采用冷轧钢管、环保PP和无纺布等材质；金属部分经过防锈喷涂处理，具备一定防潮能力。潮湿环境下建议放在干燥通风处，避免长期积水或贴近明显潮湿位置。",
+      "intent": "product_question",
+      "category": "收纳柜",
+      "category_l3": "九号防夹滑门收纳柜",
+      "search_keywords": "材质 安全 防潮 受潮 潮湿 冷轧钢 钢管 环保PP 无纺布 生锈 宝宝",
+      "product_scope": ["九号防夹滑门收纳柜", "防夹滑门收纳柜"],
+      "sku_scope": ["YH06K53B05S13", "YH06K53"],
+      "fact_type": "material",
+      "fact_scope": "sku",
+      "product_id": "YH06K53",
+      "sku_id": "YH06K53B05S13",
+      "source_confidence": 0.96
+    },
+    {
+      "business_key": "golden:agent_phase1:bib-lion-1:waterproof",
+      "source_type": "faq",
+      "title": "一号狮子围兜防水吗？",
+      "content": "一号狮子围兜采用防水面料，日常脏了可以用湿布一擦；如果比较脏，也可以水冲后晾干。下方有接漏袋，吃饭时能接住一部分掉落的食物。",
+      "intent": "product_question",
+      "category": "围兜",
+      "category_l3": "一号狮子围兜",
+      "search_keywords": "一号狮子围兜 狮子围兜 围兜 防水 湿布 水冲 晾干 接漏袋",
+      "product_scope": ["一号狮子围兜", "狮子围兜", "围兜"],
+      "sku_scope": [],
+      "fact_type": "material",
+      "fact_scope": "product",
+      "product_id": "bib-lion-1",
+      "sku_id": "",
+      "source_confidence": 0.96
+    }
+  ]
+}

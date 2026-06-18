@@ -481,6 +481,33 @@ class TestOrderStatusRouting:
         result = detect_intent(state)
         assert result["intent"] in ("logistics_eta", "logistics_trace")
 
+    def test_long_numeric_order_lookup_routes_logistics(self):
+        from app.agent.nodes.detect_intent import detect_intent
+        state = {
+            "normalized_message": "9876543210123456789帮我查一下订单",
+            "customer_message": "9876543210123456789帮我查一下订单",
+            "trace_steps": [],
+        }
+        result = detect_intent(state)
+        assert result["intent"] in ("logistics_eta", "logistics_trace")
+
+    def test_router_validation_blocks_numeric_order_lookup_to_product(self):
+        from app.agent.nodes.router_validation import router_validation
+        state = {
+            "normalized_message": "9876543210123456789帮我查一下订单",
+            "customer_message": "9876543210123456789帮我查一下订单",
+            "slots": {"possible_numeric_id": "9876543210123456789", "identifier_type": "unknown_identifier"},
+            "conversation_context": {},
+            "router_decision": {"intent": "product_question"},
+            "intent": "product_question",
+            "router_source": "llm",
+            "router_reason": "",
+            "selected_tool": "none",
+            "trace_steps": [],
+        }
+        result = router_validation(state)
+        assert result["intent"] in ("logistics_eta", "logistics_trace")
+
     def test_signed_not_received_routes_delivery(self):
         from app.agent.nodes.detect_intent import detect_intent
         state = {

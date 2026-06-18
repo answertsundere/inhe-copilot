@@ -25,6 +25,8 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u6709\u6ca1\u6709\u56fe\u7247\u770b\u4e00\u4e0b": "visual_asset",
         "\u5b89\u88c5\u9700\u8981\u6253\u5b54\u5417\uff0c\u79df\u623f\u53ef\u4ee5\u7528\u5417": "installation",
         "\u653e\u4e66\u4f1a\u4e0d\u4f1a\u538b\u584c": "load_capacity",
+        "\u4e00\u53f7\u72ee\u5b50\u56f4\u515c\u9632\u6c34\u5417\uff1f": "material",
+        "\u8fd9\u4e2a\u9002\u5408\u4e00\u5c81\u5b9d\u5b9d\u5417\uff1f": "age_range",
     }
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")

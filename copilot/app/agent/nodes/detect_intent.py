@@ -61,7 +61,7 @@ _PRODUCT_KEYWORDS = [
 _LOGISTICS_KEYWORDS = [
     "几天到", "什么时候到", "多久到", "物流", "快递",
     "到哪了", "运单", "发货", "没到", "签收", "配送",
-    "什么时候发货", "多久发货", "快递单号",
+    "什么时候发货", "多久发货", "快递单号", "订单", "订单号", "查订单", "查询订单",
     "待出库", "包裹", "派送", "改地址", "取件码", "合并发",
     "拆单", "尾款", "补尾款", "预约配送",
 ]
@@ -303,9 +303,10 @@ def _has_numeric_logistics_query(msg: str) -> bool:
     if not _NUMERIC_IDENTIFIER_PATTERN.search(msg or ""):
         return False
     logistics_terms = [
-        "快递", "物流", "运单", "单号", "发货", "到货", "配送", "签收",
+        "快递", "物流", "运单", "单号", "订单", "订单号", "查订单", "查询订单", "帮我查", "发货", "到货", "配送", "签收",
         "什么时候到", "大概什么时候到", "几天到", "多久到", "到哪",
         "\u5feb\u9012", "\u7269\u6d41", "\u8fd0\u5355", "\u5355\u53f7",
+        "\u8ba2\u5355", "\u8ba2\u5355\u53f7", "\u67e5\u8ba2\u5355", "\u67e5\u8be2\u8ba2\u5355", "\u5e2e\u6211\u67e5",
         "\u53d1\u8d27", "\u5230\u8d27", "\u914d\u9001", "\u7b7e\u6536",
         "\u4ec0\u4e48\u65f6\u5019\u5230", "\u51e0\u5929\u5230",
         "\u591a\u4e45\u5230", "\u5230\u54ea",
@@ -486,6 +487,24 @@ def detect_intent(state: dict) -> dict:
             "intent": intent,
             "skill": "aftersales",
             "matched_keywords": [k for k in _GIFT_MISSING_KEYWORDS if k in msg][:3],
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
+    if _has_order_identifier_in_state(state) and _keyword_match(msg, _STOCK_QUERY_KEYWORDS):
+        intent = "logistics_eta"
+        duration_ms = int((time.time() - t0) * 1000)
+        trace = {
+            "node": "detect_intent",
+            "status": "success",
+            "duration_ms": duration_ms,
+            "cache_hit": False,
+            "summary": f"order_fulfillment_query -> {intent}",
+        }
+        return {
+            "intent": intent,
+            "skill": "logistics",
+            "matched_keywords": [k for k in _STOCK_QUERY_KEYWORDS if k in msg][:3],
+            "is_logistics_time_commitment": False,
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 

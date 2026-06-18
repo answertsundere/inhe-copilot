@@ -7,9 +7,10 @@ import time
 
 NUMERIC_IDENTIFIER_RE = re.compile(r"(?<![A-Za-z0-9])(\d{12,20})(?![A-Za-z0-9])")
 LOGISTICS_TERMS = (
-    "快递", "物流", "运单", "单号", "发货", "到货", "配送", "签收",
+    "快递", "物流", "运单", "单号", "订单", "订单号", "查订单", "查询订单", "帮我查", "发货", "到货", "配送", "签收",
     "什么时候到", "大概什么时候到", "几天到", "多久到", "到哪", "到哪里",
     "\u5feb\u9012", "\u7269\u6d41", "\u8fd0\u5355", "\u5355\u53f7",
+    "\u8ba2\u5355", "\u8ba2\u5355\u53f7", "\u67e5\u8ba2\u5355", "\u67e5\u8be2\u8ba2\u5355", "\u5e2e\u6211\u67e5",
     "\u53d1\u8d27", "\u5230\u8d27", "\u914d\u9001", "\u7b7e\u6536",
     "\u4ec0\u4e48\u65f6\u5019\u5230", "\u51e0\u5929\u5230",
     "\u591a\u4e45\u5230", "\u5230\u54ea", "\u5230\u54ea\u91cc",
@@ -233,7 +234,7 @@ def router_validation(state: dict) -> dict:
         overrides.append(f"order op -> logistics_eta ({order_operation})")
 
     # Numeric in message + logistics terms → logistics
-    elif numeric_match and has_logistics_terms:
+    elif numeric_match and has_logistics_terms and not has_aftersales_terms and not has_complaint_terms:
         if intent not in ("logistics_eta", "logistics_trace"):
             overrides.append(f"intent {intent} -> logistics_eta")
         intent = "logistics_eta"
@@ -255,7 +256,13 @@ def router_validation(state: dict) -> dict:
 
     # NEW: Slot/state has order identifier + logistics terms → logistics
     # This catches cases where order_id comes from API (not in message text)
-    elif has_any_identifier and has_logistics_terms and intent not in ("logistics_eta", "logistics_trace", "delivery_not_received", "aftersales", "complaint"):
+    elif (
+        has_any_identifier
+        and has_logistics_terms
+        and not has_aftersales_terms
+        and not has_complaint_terms
+        and intent not in ("logistics_eta", "logistics_trace", "delivery_not_received", "aftersales", "complaint")
+    ):
         overrides.append(f"intent {intent} -> logistics_eta (slot identifier + logistics terms)")
         intent = "logistics_eta"
         selected_tool = "jst_live_query"

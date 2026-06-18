@@ -41,6 +41,7 @@ _FACT_REPLY_CUES = {
     "odor": ("气味", "味道", "味儿", "异味", "刺鼻", "通风", "散味"),
     "space_fit": ("空间", "放得下", "放的下", "预留", "宽度", "进深", "高度", "尺寸"),
     "placement_scene": ("卧室", "客厅", "书房", "摆放", "放在", "干燥", "平整"),
+    "age_range": ("适合", "适龄", "年龄", "月龄", "宝宝", "一岁", "两岁", "三岁", "几个月", "多大"),
     "installation": ("安装", "组装", "打孔", "免打孔", "租房", "教程", "视频", "说明"),
     "aftersales_policy": ("抱歉", "反馈", "售后", "处理", "跟进", "核实", "投诉", "平台"),
 }
@@ -65,6 +66,10 @@ _FACT_TOPIC_CONTRACTS = {
     "visual_asset": {
         "allowed": {"visual_asset"},
         "conflicts": {"material", "load_capacity"},
+    },
+    "age_range": {
+        "allowed": {"age_range"},
+        "conflicts": {"load_capacity", "material", "dimensions", "installation"},
     },
 }
 
@@ -95,6 +100,14 @@ def audit_customer_reply_semantic_fit(
         copilot_context=copilot_context or {},
     )
     if llm_result:
+        if _llm_only_complains_about_review_flag(response, llm_result):
+            return _result(
+                True,
+                [],
+                "LLM semantic fit only complained about a human-review flag while the reply directly used selected evidence.",
+                "deterministic_review_flag_override",
+                details={"llm_semantic_fit": llm_result},
+            )
         return llm_result
 
     return _result(True, [], "No structural semantic issue detected.", "deterministic")
@@ -404,6 +417,12 @@ def _semantic_fit_fallback(response: dict[str, Any]) -> str:
             "\u6211\u5148\u5e2e\u60a8\u6309\u5f53\u524d\u5546\u54c1\u786e\u8ba4\uff0c\u907f\u514d\u628a\u5176\u4ed6\u6b3e\u5f0f\u7684\u627f\u91cd\u4fe1\u606f\u8bf4\u9519\u3002"
         )
 
+    if query_fact_type == "age_range":
+        return (
+            "\u4eb2\uff0c\u9002\u5408\u591a\u5927\u5b9d\u5b9d\u9700\u8981\u6309\u5bf9\u5e94\u5546\u54c1\u7684\u9002\u7528\u5e74\u9f84\u3001\u7ed3\u6784\u548c\u4f7f\u7528\u573a\u666f\u6838\u5b9e\u3002\n"
+            "\u6211\u5148\u5e2e\u60a8\u6309\u5f53\u524d\u5546\u54c1\u8d44\u6599\u786e\u8ba4\uff1b\u6ca1\u6709\u660e\u786e\u9002\u9f84\u8bc1\u636e\u65f6\uff0c\u4e0d\u76f4\u63a5\u7ed9\u51fa\u9002\u9f84\u7ed3\u8bba\u3002"
+        )
+
     if query_fact_type in {"material", "certification_report", "odor", "safety_small_parts", "pinch_safety"}:
         return (
             "\u4eb2\uff0c\u6750\u8d28\u3001\u5b89\u5168\u6216\u6c14\u5473\u8fd9\u7c7b\u95ee\u9898\u6211\u5148\u6309\u5f53\u524d\u5546\u54c1\u7684\u5df2\u786e\u8ba4\u8d44\u6599\u5e2e\u60a8\u6838\u5b9e\u3002\n"
@@ -418,6 +437,57 @@ def _semantic_fit_fallback(response: dict[str, Any]) -> str:
         "\u907f\u514d\u7ed9\u60a8\u8bf4\u9519\u5f71\u54cd\u4f7f\u7528\u6216\u9009\u62e9\u3002\n"
         "\u60a8\u7a0d\u7b49\u4e00\u4e0b\uff0c\u6211\u8fd9\u8fb9\u786e\u8ba4\u6e05\u695a\u540e\u518d\u56de\u590d\u60a8\u3002"
     )
+
+
+def _llm_only_complains_about_review_flag(response: dict[str, Any], llm_result: dict[str, Any]) -> bool:
+    """Keep a grounded direct answer when the LLM only objects to review metadata.
+
+    Some low-risk product fact answers may keep requires_human_review=True for
+    operator review even though the customer-facing reply itself is grounded and
+    directly answers the question. That metadata should not cause the semantic
+    gate to discard a correct evidence-based reply.
+    """
+    if llm_result.get("passed", True):
+        return False
+    if not response.get("requires_human_review"):
+        return False
+
+    evidence_pack = _evidence_pack(response)
+    query_fact_type = _query_fact_type(response, evidence_pack)
+    if not query_fact_type:
+        return False
+    if evidence_pack.get("answerability") != "direct_answer":
+        return False
+
+    matched_facts = evidence_pack.get("matched_facts") or []
+    has_direct_fact = any(
+        item.get("fact_type") == query_fact_type
+        and item.get("direct_answer_allowed", True) is not False
+        for item in matched_facts
+        if isinstance(item, dict)
+    )
+    if not has_direct_fact:
+        return False
+
+    reply = str(response.get("suggested_reply") or "")
+    if _is_human_review_reply(reply):
+        return False
+    if not _has_topic(reply, query_fact_type):
+        return False
+
+    text = " ".join(
+        [str(llm_result.get("reason") or "")]
+        + [str(issue) for issue in (llm_result.get("issues") or [])]
+    ).lower()
+    review_markers = (
+        "requires_human_review",
+        "human review",
+        "handoff",
+        "turns to human",
+        "review is unnecessary",
+    )
+    return any(marker in text for marker in review_markers)
+
 
 def _append_reason(existing: str, reason: str) -> str:
     existing = str(existing or "").strip()

@@ -167,6 +167,46 @@ def test_final_semantic_fit_allows_direct_evidence_answer(monkeypatch):
     assert result["passed"] is True
 
 
+def test_final_semantic_fit_does_not_discard_grounded_reply_for_review_flag_only(monkeypatch):
+    from app import config
+    from app.llm import client as llm_client
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        llm_client,
+        "get_llm_client",
+        lambda: _FakeClient(
+            '{"passed": false, "issues": ["requires_human_review is true despite direct evidence"], "reason": "The final reply turns to human review while direct evidence is available."}'
+        ),
+    )
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u4e3b\u8981\u91c7\u7528\u51b7\u8f67\u94a2\u7ba1\u3001\u73af\u4fddPP\u548c\u65e0\u7eba\u5e03\u7b49\u6750\u8d28\uff0c\u91d1\u5c5e\u90e8\u5206\u7ecf\u8fc7\u9632\u9508\u55b7\u6d82\u5904\u7406\uff0c\u5177\u5907\u4e00\u5b9a\u9632\u6f6e\u80fd\u529b\u3002",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "semantic_query": {"primary_fact_type": "material"},
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "answerability": "direct_answer",
+                    "query_fact_type": "material",
+                    "matched_facts": [{
+                        "fact_type": "material",
+                        "preview": "\u51b7\u8f67\u94a2\u7ba1\u3001\u73af\u4fddPP\u548c\u65e0\u7eba\u5e03",
+                        "direct_answer_allowed": True,
+                    }],
+                }
+            },
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f\u4f1a\u4e0d\u4f1a\u5bb9\u6613\u53d7\u6f6e\uff1f",
+    )
+
+    assert result["passed"] is True
+    assert result["mode"] == "deterministic_review_flag_override"
+
+
 def test_quality_gate_rejects_off_topic_answer(monkeypatch):
     from app import config
 
@@ -362,3 +402,17 @@ def test_deterministic_gate_rejects_visual_asset_without_asset_or_visual_answer(
     assert result["passed"] is False
     assert result["missing_answer"] is True or result["off_topic"] is True
     assert any("visual_asset" in issue for issue in result["issues"])
+
+
+def test_deterministic_gate_rejects_age_range_answered_as_load_capacity(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    result = audit_customer_reply_semantic_fit(
+        _semantic_response("age_range", "\u4eb2\uff0c\u8fd9\u6b3e\u5355\u5c42\u627f\u91cd\u7ea615-30kg\uff0c\u6750\u8d28\u7ed3\u5b9e\u8010\u7528\u3002"),
+        customer_message="\u8fd9\u4e2a\u9002\u5408\u4e00\u5c81\u5b9d\u5b9d\u5417\uff1f",
+    )
+
+    assert result["passed"] is False
+    assert result["off_topic"] is True
+    assert any(issue.startswith("off_topic:age_range") for issue in result["issues"])

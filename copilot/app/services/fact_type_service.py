@@ -47,7 +47,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("stock_shipping", ("有货", "库存", "今天拍", "今天发", "什么时候发", "能发吗", "上发", "发货")),
     ("cleaning_care", ("清洁", "清理", "脏了", "水洗", "洗吗", "怎么洗", "擦洗", "可以洗", "酒精擦")),
     ("odor", ("味道", "异味", "刺鼻", "闻着", "散味")),
-    ("age_range", ("适合多大", "适合几岁", "几个月", "多大宝宝", "几岁", "年龄")),
+    ("age_range", ("适合多大", "适合几岁", "几个月", "多大宝宝", "几岁", "年龄", "月龄", "半岁", "一岁", "两岁", "三岁", "岁宝宝")),
     ("stability", (
         "\u7edd\u5bf9\u4e0d\u4f1a\u5012",
         "\u4e0d\u4f1a\u5012",
@@ -64,7 +64,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("dimensions", ("尺寸", "多高", "多宽", "多长", "高度", "长度", "宽度", "占地")),
     ("detachable", ("可拆", "可拆卸", "拆卸", "拆开", "拆下来", "能拆", "拆装")),
     ("installation", ("安装", "怎么装", "装不上", "螺丝", "配件", "说明书", "安装视频", "教程", "组装", "拼接", "打孔", "需要打孔", "免打孔", "租房")),
-    ("material", ("材质", "材料", "什么料", "用料", "板材", "实木", "环保", "安全吗", "安全", "受潮", "防潮", "生锈")),
+    ("material", ("材质", "材料", "什么料", "用料", "板材", "实木", "环保", "安全吗", "安全", "受潮", "防潮", "防水", "生锈")),
     ("aftersales_policy", ("退货", "退款", "换货", "补发", "售后", "破损", "坏了", "少件", "发错")),
 ]
 
@@ -91,7 +91,7 @@ _EVIDENCE_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("dimensions", ("尺寸", "高度", "宽度", "长度", "cm", "CM", "厘米")),
     ("detachable", ("可拆", "可拆卸", "拆卸", "拆开", "拆下来", "能拆", "拆装")),
     ("installation", ("安装", "组装", "螺丝", "配件", "说明书", "工具", "步骤", "卡扣")),
-    ("material", ("材质", "材料", "用料", "PP", "PET", "ABS", "钢管", "铁管", "冷轧钢", "无纺布", "塑料", "板材", "木")),
+    ("material", ("材质", "材料", "用料", "PP", "PET", "ABS", "钢管", "铁管", "冷轧钢", "无纺布", "塑料", "板材", "防水", "木")),
     ("stock_shipping", ("库存", "发货", "现货", "出库", "预售")),
     ("invoice_policy", ("发票", "抬头", "税号")),
     ("price_protection", ("价保", "保价", "降价")),
@@ -158,7 +158,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("cleaning_care", ("\u6e05\u6d01", "\u6e05\u7406", "\u6c34\u6d17", "\u600e\u4e48\u6d17", "\u4fdd\u517b")),
     ("odor", ("\u6c14\u5473", "\u5473\u9053", "\u6709\u5473", "\u65e0\u5473", "\u65e0\u5f02\u5473", "\u5f02\u5473", "\u523a\u9f3b", "\u6563\u5473")),
     ("visual_asset", ("\u56fe\u7247", "\u7167\u7247", "\u56fe\u770b", "\u770b\u56fe", "\u6709\u56fe", "\u5b9e\u7269\u56fe", "\u6548\u679c\u56fe", "\u6837\u5b50")),
-    ("age_range", ("\u9002\u5408\u591a\u5927", "\u9002\u5408\u51e0\u5c81", "\u591a\u5927\u5b9d\u5b9d", "\u6708\u9f84", "\u5e74\u9f84")),
+    ("age_range", ("\u9002\u5408\u591a\u5927", "\u9002\u5408\u51e0\u5c81", "\u591a\u5927\u5b9d\u5b9d", "\u6708\u9f84", "\u5e74\u9f84", "\u51e0\u4e2a\u6708", "\u534a\u5c81", "\u4e00\u5c81", "\u4e24\u5c81", "\u4e09\u5c81", "\u5c81\u5b9d\u5b9d")),
     ("stability", ("\u4f1a\u4e0d\u4f1a\u5012", "\u9632\u503e\u5012", "\u503e\u5012", "\u5012\u584c", "\u7a33\u4e0d\u7a33", "\u7a33\u56fa", "\u7a33\u5b9a")),
     ("space_fit", (
         "\u653e\u5f97\u4e0b",
@@ -205,6 +205,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u53d7\u6f6e",
         "\u6f6e\u6e7f",
         "\u9632\u6f6e",
+        "\u9632\u6c34",
         "\u751f\u9508",
     )),
     ("aftersales_policy", ("\u9000\u8d27", "\u9000\u6b3e", "\u6362\u8d27", "\u8865\u53d1", "\u552e\u540e", "\u7834\u635f", "\u574f\u4e86", "\u5c11\u4ef6", "\u53d1\u9519")),
@@ -291,13 +292,13 @@ def infer_evidence_fact_type(item: dict | None = None, text: str = "") -> str:
         return "load_capacity"
     if any(kw in title_text for kw in ("尺寸", "高度", "宽度", "长度", "多高", "多宽", "多长", "规格")):
         return "dimensions"
-    if any(kw in title_text for kw in ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄")):
+    if any(kw in title_text for kw in ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄", "几个月", "半岁", "一岁", "两岁", "三岁", "岁宝宝")):
         return "age_range"
     if any(kw in title_text for kw in ("清洁", "清理", "水洗", "怎么洗", "保养")):
         return "cleaning_care"
     if any(kw in title_text for kw in ("安装", "怎么装", "组装", "装不上", "说明书", "安装视频", "教程")):
         return "installation"
-    if any(kw in title_text for kw in ("材质", "材料", "什么料", "用料", "防潮", "受潮", "生锈")):
+    if any(kw in title_text for kw in ("材质", "材料", "什么料", "用料", "防潮", "受潮", "防水", "生锈")):
         return "material"
     for fact_type, keywords in _UNICODE_QUERY_RULES:
         if any(kw in title_text for kw in keywords):

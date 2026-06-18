@@ -247,6 +247,23 @@ def test_final_answer_auditor_blocks_visual_question_answered_as_load_capacity()
     assert audited["requires_human_review"] is True
 
 
+def test_final_answer_auditor_blocks_age_question_answered_as_load_capacity():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "\u4eb2\uff5e\u8fd9\u6b3e\u5355\u5c42\u5747\u5300\u627f\u91cd\u7ea615-30kg\uff0c\u6750\u8d28\u6bd4\u8f83\u7ed3\u5b9e\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "age_range"},
+    }
+
+    audited = audit_final_answer(response, customer_message="\u8fd9\u4e2a\u9002\u5408\u4e00\u5c81\u5b9d\u5b9d\u5417\uff1f")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert any("age_range" in issue for issue in audited["final_answer_audit"]["issues"])
+    assert "\u9002\u5408" in audited["suggested_reply"]
+    assert "\u5b9d\u5b9d" in audited["suggested_reply"]
+    assert "\u4e00\u5b9a\u9002\u5408" not in audited["suggested_reply"]
+
+
 def test_final_answer_auditor_does_not_use_non_exact_generic_rule_as_correction():
     response = {
         "intent": "product_question",

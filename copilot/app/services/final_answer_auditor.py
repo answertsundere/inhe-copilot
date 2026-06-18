@@ -68,7 +68,7 @@ _TOPIC_CUES = {
     "dimensions": ("尺寸", "多高", "多宽", "多长", "长宽高", "占地", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
-    "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄"),
+    "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄", "几个月", "半岁", "一岁", "两岁", "三岁", "岁宝宝"),
     "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "有味", "无味", "无异味", "异味", "刺鼻", "散味", "闻着", "通风"),
     "visual_asset": ("图片", "照片", "图看", "看图", "有图", "实物图", "效果图", "样子"),
@@ -95,7 +95,7 @@ _UNICODE_TOPIC_CUES = {
     "dimensions": ("尺寸", "多高", "多宽", "多长", "长宽高", "占地", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
-    "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄"),
+    "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄", "几个月", "半岁", "一岁", "两岁", "三岁", "岁宝宝"),
     "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "味儿", "有味", "无味", "无异味", "无毒无味", "异味", "刺鼻", "散味", "闻着", "通风"),
     "visual_asset": ("图片", "照片", "图看", "看图", "有图", "实物图", "效果图", "样子"),
@@ -194,6 +194,7 @@ _CONFLICTS = {
     "dimensions": {"installation", "cleaning", "gift", "invoice"},
     "space_fit": {"load_capacity", "material", "cleaning", "gift", "invoice"},
     "placement_scene": {"load_capacity", "material", "gift", "invoice"},
+    "age_range": {"load_capacity", "material", "dimensions", "installation", "gift", "invoice"},
     "visual_asset": {"load_capacity", "material", "installation", "invoice"},
     "gift": {"installation", "material", "load_capacity", "dimensions"},
     "invoice": {"installation", "material", "load_capacity", "dimensions"},
@@ -522,6 +523,14 @@ def _fallback_reply(response: dict[str, Any], message: str, expected: set[str]) 
             "\u4eb2\uff0c\u53d1\u8d27\u90e8\u5206\u9700\u8981\u7ed3\u5408\u5f53\u524d\u5e93\u5b58\u3001\u4e0b\u5355\u65f6\u95f4\u548c\u53d1\u8d27\u5b89\u6392\u786e\u8ba4\u3002\n"
             "\u5b9e\u9645\u662f\u5426\u4eca\u5929\u53d1\u51fa\u4ee5\u4e0b\u5355\u9875\u663e\u793a\u548c\u5b9e\u9645\u5904\u7406\u72b6\u6001\u4e3a\u51c6\uff0c\u5177\u4f53\u53d1\u51fa\u65f6\u95f4\u4e0d\u505a\u786e\u5b9a\u6027\u627f\u8bfa\u3002\n"
             "\u5982\u679c\u60a8\u540c\u65f6\u5173\u5fc3\u6750\u8d28\u6216\u5b9d\u5b9d\u4f7f\u7528\u5b89\u5168\uff0c\u6211\u4e5f\u4f1a\u6309\u5546\u54c1\u8d44\u6599\u4e00\u8d77\u6838\u5b9e\u3002"
+        )
+    if query_fact_type == "age_range" or (
+        "age_range" in expected
+        and not ({"pinch_safety", "small_parts_battery"} & set(expected))
+    ):
+        return (
+            "\u4eb2\uff0c\u9002\u5408\u591a\u5927\u5b9d\u5b9d\u9700\u8981\u6309\u5bf9\u5e94\u5546\u54c1\u7684\u9002\u7528\u5e74\u9f84\u3001\u7ed3\u6784\u548c\u4f7f\u7528\u573a\u666f\u6838\u5b9e\u3002\n"
+            "\u6211\u5148\u5e2e\u60a8\u6309\u5f53\u524d\u5546\u54c1\u8d44\u6599\u786e\u8ba4\uff1b\u6ca1\u6709\u660e\u786e\u9002\u9f84\u8bc1\u636e\u65f6\uff0c\u6211\u4e0d\u76f4\u63a5\u7ed9\u51fa\u9002\u9f84\u7ed3\u8bba\uff0c\u786e\u8ba4\u540e\u518d\u7ed9\u60a8\u51c6\u786e\u56de\u590d\u3002"
         )
     if query_fact_type == "dimensions" or "dimensions" in expected:
         return (

@@ -15,6 +15,10 @@ from urllib import error, request
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASE_DIR = ROOT / "tests" / "golden_cases" / "agent_phase1"
 DEFAULT_REPORT_DIR = ROOT / "reports" / "agent_phase1_golden"
+DEFAULT_FIXTURE_NAME = "knowledge_fixtures.json"
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def _load_cases(case_dir: Path) -> list[dict]:
@@ -26,9 +30,110 @@ def _load_cases(case_dir: Path) -> list[dict]:
             cases.extend(payload)
         elif isinstance(payload, dict) and isinstance(payload.get("cases"), list):
             cases.extend(payload["cases"])
-        elif isinstance(payload, dict):
+        elif isinstance(payload, dict) and payload.get("case_id"):
             cases.append(payload)
     return cases
+
+
+def _seed_knowledge_fixtures(case_dir: Path) -> int:
+    """Seed published knowledge needed by the golden set in a clean SQLite DB.
+
+    This is test harness data, not business routing logic. The production agent
+    still uses whatever published knowledge exists in the deployed DB.
+    """
+    fixture_path = case_dir / DEFAULT_FIXTURE_NAME
+    if not fixture_path.exists():
+        return 0
+    with fixture_path.open("r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+    entries = payload.get("knowledge_entries") if isinstance(payload, dict) else []
+    if not entries:
+        return 0
+
+    from app.db import SessionLocal, init_db
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+    init_db()
+    db = SessionLocal()
+    try:
+        seeded = 0
+        for item in entries:
+            business_key = str(item.get("business_key") or "").strip()
+            content = str(item.get("content") or "").strip()
+            if not business_key or not content:
+                continue
+
+            existing = (
+                db.query(KnowledgeEntry)
+                .filter(KnowledgeEntry.business_key == business_key)
+                .first()
+            )
+            if existing:
+                db.query(KnowledgeChunk).filter(KnowledgeChunk.entry_id == existing.id).delete()
+                db.delete(existing)
+                db.flush()
+
+            product_scope = item.get("product_scope") or []
+            sku_scope = item.get("sku_scope") or []
+            platform_scope = item.get("platform_scope") or []
+            metadata = {
+                "auto_reply_allowed": True,
+                "human_review_required": False,
+                "fact_type": item.get("fact_type", ""),
+                "fact_review_status": "verified",
+                "golden_fixture": True,
+            }
+            entry = KnowledgeEntry(
+                source_type=item.get("source_type", "product_facts"),
+                title=item.get("title", business_key),
+                content=content,
+                intent=item.get("intent", "product_question"),
+                category=item.get("category", ""),
+                category_l3=item.get("category_l3", ""),
+                search_keywords=item.get("search_keywords", ""),
+                product_scope_json=json.dumps(product_scope, ensure_ascii=False),
+                sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
+                platform_scope_json=json.dumps(platform_scope, ensure_ascii=False),
+                risk_level=item.get("risk_level", "low"),
+                auto_reply_allowed=True,
+                human_review_required=False,
+                status="published",
+                index_status="ready",
+                source_confidence=float(item.get("source_confidence", 0.95)),
+                fact_review_status="verified",
+                fact_type=item.get("fact_type", ""),
+                fact_scope=item.get("fact_scope", "sku"),
+                business_key=business_key,
+                product_id=item.get("product_id", ""),
+                sku_id=item.get("sku_id", ""),
+                source_sheet="agent_phase1_golden_fixture",
+                reviewed_by="golden_runner",
+            )
+            db.add(entry)
+            db.flush()
+            db.add(KnowledgeChunk(
+                entry_id=entry.id,
+                chunk_text=content,
+                chunk_index=0,
+                source_type=item.get("source_type", "product_facts"),
+                intent=item.get("intent", "product_question"),
+                product_scope_json=json.dumps(product_scope, ensure_ascii=False),
+                sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
+                platform_scope_json=json.dumps(platform_scope, ensure_ascii=False),
+                metadata_json=json.dumps(metadata, ensure_ascii=False),
+                category=item.get("category", ""),
+                category_l3=item.get("category_l3", ""),
+                search_keywords=item.get("search_keywords", ""),
+                embedding_status="pending",
+                source_confidence=float(item.get("source_confidence", 0.95)),
+                fact_review_status="verified",
+                fact_source_type="golden_fixture",
+            ))
+            seeded += 1
+        db.commit()
+        return seeded
+    finally:
+        db.close()
 
 
 def _post_json(url: str, payload: dict, timeout: int) -> tuple[dict, int]:
@@ -208,6 +313,10 @@ def main() -> int:
     if not cases:
         print(f"No golden cases found in {case_dir}", file=sys.stderr)
         return 2
+
+    seeded_count = _seed_knowledge_fixtures(case_dir)
+    if seeded_count:
+        print(f"seeded_golden_knowledge={seeded_count}")
 
     results: list[dict] = []
     for case in cases:
