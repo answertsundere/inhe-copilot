@@ -126,6 +126,25 @@ def test_material_question_stays_material_under_llm_config(monkeypatch):
     assert "15-30kg" not in reply
 
 
+def test_material_question_unicode_stays_material_under_llm_config(monkeypatch):
+    monkeypatch.setattr(
+        semantic_fact_type_service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True
+    )
+    monkeypatch.setattr(
+        semantic_fact_type_service, "_classify_with_llm", _stub_llm_misclassify
+    )
+    message = "\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f\u4f1a\u4e0d\u4f1a\u5bb9\u6613\u53d7\u6f6e\uff1f"
+    result = _post(create_app().test_client(), message)
+
+    ed = result["evidence_debug"]
+    assert ed["query_fact_type"] == "material"
+    assert ed["query_fact_type_source"] == "semantic_consistency_guard"
+    reply = result["suggested_reply"]
+    assert any(token in reply for token in ("\u51b7\u8f67\u94a2", "\u94a2\u7ba1", "\u73af\u4fddPP", "\u65e0\u7eba\u5e03"))
+    assert "\u627f\u91cd" not in reply
+    assert "15-30kg" not in reply
+
+
 @pytest.mark.parametrize("message", [
     "宝宝用安全吗，会不会受潮？",
     "这个材质放心吗？",

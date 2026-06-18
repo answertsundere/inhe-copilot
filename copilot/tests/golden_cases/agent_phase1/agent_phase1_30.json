@@ -1,0 +1,418 @@
+[
+  {
+    "case_id": "P01-material-safety",
+    "name": "材质安全和防潮必须走 material 证据链",
+    "request": {
+      "message": "这个材质安全吗？会不会容易受潮？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}],
+      "copilot_context": {"product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]}
+    },
+    "expect": {
+      "allowed_intents": ["material_safety", "product_question"],
+      "allowed_risk_levels": ["low"],
+      "allowed_query_fact_types": ["material"],
+      "reply_must_contain_any": ["冷轧钢", "钢管", "环保PP", "无纺布"],
+      "reply_must_not_contain": ["承重", "15-30kg", "绝对安全", "0甲醛"],
+      "trace_must_include": ["query_fact_type_classifier", "reply_relevance_guard"],
+      "max_duration_ms": 30000
+    }
+  },
+  {
+    "case_id": "P02-material-moisture",
+    "name": "潮湿环境问题不能漂移到承重",
+    "request": {
+      "message": "放潮湿一点的地方会不会有问题？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}],
+      "copilot_context": {"product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]}
+    },
+    "expect": {
+      "allowed_intents": ["material_safety", "product_question"],
+      "allowed_query_fact_types": ["material", "placement_scene"],
+      "reply_must_contain_any": ["潮湿", "受潮", "防潮", "干燥", "生锈"],
+      "reply_must_not_contain": ["承重", "15-30kg", "一定没问题"]
+    }
+  },
+  {
+    "case_id": "P03-material-confidence",
+    "name": "材质放心类口语问题",
+    "request": {
+      "message": "这个材质放心吗？宝宝能用吗？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}],
+      "copilot_context": {"product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]}
+    },
+    "expect": {
+      "allowed_intents": ["material_safety", "product_question"],
+      "allowed_query_fact_types": ["material"],
+      "reply_must_contain_any": ["材质", "安全", "宝宝", "冷轧钢", "环保PP"],
+      "reply_must_not_contain": ["承重", "保证", "绝对"]
+    }
+  },
+  {
+    "case_id": "P04-stock-shipping",
+    "name": "售前发货时效不能承诺一定发",
+    "request": {
+      "message": "今天拍能发吗？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["stock_query", "logistics_eta", "product_question"],
+      "allowed_query_fact_types": ["stock_shipping"],
+      "reply_must_contain_any": ["发货", "库存", "仓库", "下单页", "核实"],
+      "reply_must_not_contain": ["一定发", "保证发", "肯定发"]
+    }
+  },
+  {
+    "case_id": "P05-multi-safety-ship",
+    "name": "材质安全和今天发货必须都覆盖",
+    "request": {
+      "message": "这个宝宝用安全吗？今天能发吗？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["material_safety", "stock_query", "product_question"],
+      "reply_must_contain_any": ["材质", "安全", "宝宝", "冷轧钢", "环保PP"],
+      "reply_must_contain_all": ["发货"],
+      "reply_must_not_contain": ["一定发", "保证发", "承重"]
+    }
+  },
+  {
+    "case_id": "P06-installation-video",
+    "name": "安装视频问题不能回答承重",
+    "request": {
+      "message": "这个怎么安装？有安装视频吗？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["installation", "product_question"],
+      "allowed_query_fact_types": ["installation", "visual_asset"],
+      "reply_must_contain_any": ["安装", "视频", "教程", "说明"],
+      "reply_must_not_contain": ["承重", "15-30kg"]
+    }
+  },
+  {
+    "case_id": "P07-dimensions",
+    "name": "尺寸问题不能回答材质或承重",
+    "request": {
+      "message": "尺寸多少？有没有尺寸图？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["product_question"],
+      "allowed_query_fact_types": ["dimensions"],
+      "reply_must_contain_any": ["尺寸", "长", "宽", "高", "尺寸图"],
+      "reply_must_not_contain": ["承重", "冷轧钢"]
+    }
+  },
+  {
+    "case_id": "P08-load-capacity",
+    "name": "承重问题可以回答承重但不能漂移到安装",
+    "request": {
+      "message": "这个能放多少本书？会不会压弯？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["product_question"],
+      "allowed_query_fact_types": ["load_capacity"],
+      "reply_must_contain_any": ["承重", "放书", "压弯", "结实", "核实"],
+      "reply_must_not_contain": ["安装视频"]
+    }
+  },
+  {
+    "case_id": "P09-placement-scene",
+    "name": "摆放场景不能只回答材质",
+    "request": {
+      "message": "这个在卧室可以用吗？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["product_question"],
+      "allowed_query_fact_types": ["placement_scene"],
+      "reply_must_contain_any": ["卧室", "摆放", "使用", "通风", "干燥"],
+      "reply_must_not_contain": ["承重"]
+    }
+  },
+  {
+    "case_id": "P10-wrong-item-return",
+    "name": "发错货想退先回答退货流程再温和索证",
+    "request": {
+      "message": "你们发错了，我想退，怎么弄？",
+      "order_id": "202501010001"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales"],
+      "allowed_query_fact_types": ["aftersales_policy"],
+      "reply_must_contain_all": ["售后", "退货"],
+      "reply_terms_in_order": ["售后", "拍"],
+      "reply_must_not_contain": ["订单截图", "内部", "仓库"]
+    }
+  },
+  {
+    "case_id": "P11-wrong-color-return",
+    "name": "发错颜色退货同类口语",
+    "request": {
+      "message": "发错颜色了，我想退",
+      "order_id": "202501010002"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales"],
+      "reply_must_contain_any": ["售后", "退货", "换货"],
+      "reply_must_not_contain": ["订单截图", "仓库"]
+    }
+  },
+  {
+    "case_id": "P12-signed-not-received-known-order",
+    "name": "签收未收到已有订单不再要截图",
+    "request": {
+      "message": "显示签收了但是我没收到。",
+      "order_id": "202501010003"
+    },
+    "expect": {
+      "allowed_intents": ["delivery_not_received", "logistics_eta", "logistics_trace"],
+      "reply_must_contain_any": ["驿站", "快递柜", "门卫", "家人", "派送"],
+      "reply_must_not_contain": ["订单截图"]
+    }
+  },
+  {
+    "case_id": "P13-signed-not-received-no-order",
+    "name": "签收未收到无订单可温和追问号码",
+    "request": {
+      "message": "显示签收了但是我没收到。"
+    },
+    "expect": {
+      "allowed_intents": ["delivery_not_received", "logistics_eta", "logistics_trace"],
+      "reply_must_contain_any": ["订单号", "物流单号", "驿站", "快递柜"],
+      "reply_must_not_contain": ["负责到底"]
+    }
+  },
+  {
+    "case_id": "P14-missing-part",
+    "name": "少件走售后不漂移到安装",
+    "request": {
+      "message": "少了一个螺丝，能补发不？",
+      "order_id": "202501010004"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales"],
+      "allowed_query_fact_types": ["aftersales_policy"],
+      "reply_must_contain_any": ["补发", "少件", "缺配件", "售后"],
+      "reply_must_not_contain": ["安装视频"]
+    }
+  },
+  {
+    "case_id": "P15-damage-exchange",
+    "name": "坏了换一个不承诺直接补发赔偿",
+    "request": {
+      "message": "这个坏了能换一个吗？",
+      "order_id": "202501010005"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales"],
+      "reply_must_contain_any": ["核实", "售后", "换", "破损", "坏"],
+      "reply_must_not_contain": ["一定换", "直接补发", "赔偿"]
+    }
+  },
+  {
+    "case_id": "P16-return-request",
+    "name": "普通退货请求正面回答售后路径",
+    "request": {
+      "message": "我想退货，怎么申请？",
+      "order_id": "202501010006"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales"],
+      "reply_must_contain_any": ["退货", "售后", "申请"],
+      "reply_must_not_contain": ["订单截图"]
+    }
+  },
+  {
+    "case_id": "P17-logistics-order",
+    "name": "订单号查物流不误判商品",
+    "request": {
+      "message": "5116887975001001001帮我查一下订单"
+    },
+    "expect": {
+      "allowed_intents": ["logistics_eta", "logistics_trace"],
+      "reply_must_contain_any": ["订单", "物流", "快递", "发出", "查询"],
+      "reply_must_not_contain": ["材质", "承重"]
+    }
+  },
+  {
+    "case_id": "P18-logistics-tracking",
+    "name": "快递单号查轨迹",
+    "request": {
+      "message": "SF0229477422177 到哪里了"
+    },
+    "expect": {
+      "allowed_intents": ["logistics_eta", "logistics_trace"],
+      "reply_must_contain_any": ["物流", "快递", "单号", "轨迹", "查询"],
+      "reply_must_not_contain": ["材质", "承重"]
+    }
+  },
+  {
+    "case_id": "P19-logistics-commitment",
+    "name": "明天到不能承诺一定",
+    "request": {
+      "message": "明天能不能一定到？"
+    },
+    "expect": {
+      "allowed_intents": ["logistics_eta", "logistics_trace"],
+      "reply_must_contain_any": ["物流", "时效", "预计", "无法保证", "不能保证"],
+      "reply_must_not_contain": ["一定到", "保证到", "肯定到"]
+    }
+  },
+  {
+    "case_id": "P20-platform-trade-id",
+    "name": "平台交易号问到达时间",
+    "request": {
+      "message": "5118207015382036103 我的快递什么时候到"
+    },
+    "expect": {
+      "allowed_intents": ["logistics_eta", "logistics_trace"],
+      "reply_must_contain_any": ["订单", "物流", "快递", "单号", "查询"],
+      "reply_must_not_contain": ["材质", "承重"]
+    }
+  },
+  {
+    "case_id": "P21-complaint-platform",
+    "name": "投诉平台必须人工复核",
+    "request": {
+      "message": "再不发货我就投诉平台"
+    },
+    "expect": {
+      "allowed_intents": ["complaint", "logistics_eta"],
+      "allowed_risk_levels": ["high", "medium"],
+      "need_human_review": true,
+      "reply_must_contain_any": ["人工", "主管", "核实", "跟进", "处理"],
+      "reply_must_not_contain": ["赔偿", "一定发"]
+    }
+  },
+  {
+    "case_id": "P22-platform-intervention",
+    "name": "平台介入威胁不降级",
+    "request": {
+      "message": "你们不处理我就申请平台介入"
+    },
+    "expect": {
+      "allowed_intents": ["complaint", "aftersales"],
+      "allowed_risk_levels": ["high", "medium"],
+      "need_human_review": true,
+      "reply_must_contain_any": ["人工", "主管", "核实", "跟进", "处理"],
+      "reply_must_not_contain": ["赔偿", "退款成功"]
+    }
+  },
+  {
+    "case_id": "P23-compensation-question",
+    "name": "赔不赔不能承诺赔偿",
+    "request": {
+      "message": "这个坏了你们赔不赔？",
+      "order_id": "202501010007"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales", "complaint"],
+      "allowed_risk_levels": ["low", "medium", "high"],
+      "reply_must_contain_any": ["核实", "售后", "处理", "确认"],
+      "reply_must_not_contain": ["一定赔", "直接赔", "保证赔"]
+    }
+  },
+  {
+    "case_id": "P24-greeting",
+    "name": "闲聊要有人味",
+    "request": {
+      "message": "你好啊"
+    },
+    "expect": {
+      "allowed_intents": ["general"],
+      "allowed_risk_levels": ["low"],
+      "reply_must_contain_any": ["你好", "我在", "在的", "帮您"],
+      "reply_must_not_contain": ["订单号", "商品链接"]
+    }
+  },
+  {
+    "case_id": "P25-insult-light",
+    "name": "轻度冒犯不机械索要订单",
+    "request": {
+      "message": "你真是人才"
+    },
+    "expect": {
+      "allowed_intents": ["general", "complaint"],
+      "reply_must_contain_any": ["在", "您", "处理", "问题"],
+      "reply_must_not_contain": ["订单号", "商品名称或问题截图"]
+    }
+  },
+  {
+    "case_id": "P26-bib-waterproof",
+    "name": "围兜防水 FAQ 不新增功能",
+    "request": {
+      "message": "一号狮子围兜防水吗？"
+    },
+    "expect": {
+      "allowed_intents": ["product_question"],
+      "reply_must_contain_any": ["防水", "湿布", "水冲", "接漏袋"],
+      "reply_must_not_contain": ["承重", "0甲醛", "保证"]
+    }
+  },
+  {
+    "case_id": "P27-pillow-material",
+    "name": "防摔枕材质不能编造填充棉记忆棉",
+    "request": {
+      "message": "六号防摔枕材质是什么？能洗吗？"
+    },
+    "expect": {
+      "allowed_intents": ["product_question", "material_safety", "cleaning_care"],
+      "reply_must_contain_any": ["材质", "洗", "清洗", "水洗"],
+      "reply_must_not_contain": ["记忆棉", "填充棉", "枕芯采用"]
+    }
+  },
+  {
+    "case_id": "P28-age-range",
+    "name": "适龄问题无证据时不编造年龄",
+    "request": {
+      "message": "这个适合一岁宝宝吗？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["product_question", "material_safety"],
+      "reply_must_contain_any": ["适合", "宝宝", "核实", "确认"],
+      "reply_must_not_contain": ["绝对适合", "一定适合"]
+    }
+  },
+  {
+    "case_id": "P29-odor",
+    "name": "气味问题走气味/材质边界",
+    "request": {
+      "message": "有味儿咋办？宝宝用会不会有事？",
+      "sku_code": "YH06K53B05S13",
+      "product_candidates": [{"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": true}]
+    },
+    "expect": {
+      "allowed_intents": ["odor_question", "material_safety", "product_question"],
+      "allowed_query_fact_types": ["odor", "material", "certification_report"],
+      "reply_must_contain_any": ["味", "通风", "材质", "宝宝", "安全"],
+      "reply_must_not_contain": ["绝对无味", "无毒无害"]
+    }
+  },
+  {
+    "case_id": "P30-missing-part-installation",
+    "name": "少配件加安装多意图优先售后并覆盖安装",
+    "request": {
+      "message": "少了配件，还能安装吗？",
+      "order_id": "202501010008"
+    },
+    "expect": {
+      "allowed_intents": ["aftersales", "installation"],
+      "reply_must_contain_any": ["配件", "少件", "补发", "售后"],
+      "reply_must_contain_all": ["安装"],
+      "reply_must_not_contain": ["直接补发", "一定能安装"]
+    }
+  }
+]
