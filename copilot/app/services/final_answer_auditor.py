@@ -61,7 +61,7 @@ _TOPIC_CUES = {
     "small_parts_battery": ("小零件", "零件松", "误吞", "吞了", "卡喉", "窒息", "电池", "电池仓", "电池盖"),
     "installation": ("安装", "组装", "怎么装", "教程", "说明书", "打孔", "租房", "螺丝", "装不上"),
     "detachable": ("可拆", "拆卸", "拆开", "拆下来", "能拆", "拆装"),
-    "material": ("材质", "材料", "什么料", "用料", "板材", "环保", "受潮", "防潮", "生锈"),
+    "material": ("材质", "材料", "什么料", "用料", "板材", "环保", "受潮", "防潮", "防水", "面料", "生锈"),
     "certification": ("甲醛", "检测报告", "质检", "认证", "合格证", "环保报告"),
     "load_capacity": ("承重", "放多重", "放多少", "多少本", "压弯", "结实"),
     "stability": ("会不会倒", "防倾倒", "倾倒", "倒塌", "稳不稳", "稳定", "稳固"),
@@ -69,7 +69,7 @@ _TOPIC_CUES = {
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
     "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄", "几个月", "半岁", "一岁", "两岁", "三岁", "岁宝宝"),
-    "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
+    "cleaning": ("清洁", "清理", "水洗", "水冲", "湿布", "晾干", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "有味", "无味", "无异味", "异味", "刺鼻", "散味", "闻着", "通风"),
     "visual_asset": ("图片", "照片", "图看", "看图", "有图", "实物图", "效果图", "样子"),
     "gift": ("赠品", "礼品", "没送", "少送", "赠送"),
@@ -88,7 +88,7 @@ _UNICODE_TOPIC_CUES = {
     "small_parts_battery": ("小零件", "零件松", "误吞", "吞了", "卡喉", "窒息", "电池", "电池仓", "电池盖"),
     "installation": ("安装", "组装", "怎么装", "教程", "说明书", "打孔", "租房", "螺丝", "装不上"),
     "detachable": ("可拆", "可拆卸", "拆卸", "拆开", "拆下来", "能拆", "拆装"),
-    "material": ("材质", "材料", "什么料", "用料", "板材", "环保", "受潮", "防潮", "生锈", "食品级", "PP", "HDPE"),
+    "material": ("材质", "材料", "什么料", "用料", "板材", "环保", "受潮", "防潮", "防水", "面料", "生锈", "食品级", "PP", "HDPE"),
     "certification": ("甲醛", "检测报告", "质检", "认证", "合格证", "环保证书", "3C"),
     "load_capacity": ("承重", "载重", "放多重", "放多少", "多少本", "压弯", "结实"),
     "stability": ("会不会倒", "防倾倒", "倾倒", "倒塌", "稳不稳", "稳定", "稳固"),
@@ -96,7 +96,7 @@ _UNICODE_TOPIC_CUES = {
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
     "age_range": ("适合多大", "适合几岁", "多大宝宝", "月龄", "年龄", "几个月", "半岁", "一岁", "两岁", "三岁", "岁宝宝"),
-    "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
+    "cleaning": ("清洁", "清理", "水洗", "水冲", "湿布", "晾干", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "味儿", "有味", "无味", "无异味", "无毒无味", "异味", "刺鼻", "散味", "闻着", "通风"),
     "visual_asset": ("图片", "照片", "图看", "看图", "有图", "实物图", "效果图", "样子"),
     "gift": ("赠品", "礼品", "没送", "少送", "漏发赠品"),
@@ -182,6 +182,10 @@ _PRODUCT_CARD_REQUIRED_FACT_TYPES = {
 # installation expectation when the message is a 补发/少件 aftersales request.
 _INSTALLATION_AMBIGUOUS_CUES = ("螺丝", "配件", "说明书")
 _INSTALLATION_STRONG_CUES = ("安装", "组装", "怎么装", "装不上", "教程", "打孔", "租房")
+_PLACEMENT_STRONG_CUES = (
+    "卧室", "客厅", "书房", "厨房", "阳台", "卫生间",
+    "摆放", "放在", "适合放", "使用环境", "干燥", "平整",
+)
 
 _CONFLICTS = {
     "pinch_safety": {"small_parts_battery", "material", "load_capacity", "dimensions", "cleaning", "gift", "invoice"},
@@ -341,6 +345,8 @@ def _detect_topics(text: str, *, ignore_quoted_names: bool = False) -> set[str]:
         has_strong = any(cue in text for cue in _INSTALLATION_STRONG_CUES)
         if only_ambiguous and not has_strong:
             found.discard("installation")
+    if "placement_scene" in found and not any(cue in text for cue in _PLACEMENT_STRONG_CUES):
+        found.discard("placement_scene")
     return found
 
 

@@ -264,6 +264,38 @@ def test_final_answer_auditor_blocks_age_question_answered_as_load_capacity():
     assert "\u4e00\u5b9a\u9002\u5408" not in audited["suggested_reply"]
 
 
+def test_final_answer_auditor_allows_waterproof_faq_with_generic_can_use_phrase():
+    reply = (
+        "\u4eb2\uff5e\n"
+        "\U0001f9f8 \u5173\u4e8e\u300c\u4e00\u53f7\u72ee\u5b50\u56f4\u515c\u300d\uff1a"
+        "\u4e00\u53f7\u72ee\u5b50\u56f4\u515c\u91c7\u7528\u9632\u6c34\u9762\u6599\uff0c"
+        "\u65e5\u5e38\u810f\u4e86\u53ef\u4ee5\u7528\u6e7f\u5e03\u4e00\u64e6\uff1b\n"
+        "\u5982\u679c\u6bd4\u8f83\u810f\uff0c\u4e5f\u53ef\u4ee5\u6c34\u51b2\u540e\u667e\u5e72\u3002\n"
+        "\u4e0b\u65b9\u6709\u63a5\u6f0f\u888b\uff0c\u5403\u996d\u65f6\u80fd\u63a5\u4f4f\u4e00\u90e8\u5206\u6389\u843d\u7684\u98df\u7269\u3002"
+    )
+    response = {
+        "intent": "product_question",
+        "suggested_reply": reply,
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "answer_mode": "exact_faq_answer",
+            "direct_answer_supported": True,
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="\u4e00\u53f7\u72ee\u5b50\u56f4\u515c\u9632\u6c34\u5417\uff1f",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["suggested_reply"] == reply
+    assert "\u9632\u6c34\u9762\u6599" in audited["suggested_reply"]
+    assert "\u6e7f\u5e03" in audited["suggested_reply"]
+    assert "\u63a5\u6f0f\u888b" in audited["suggested_reply"]
+
+
 def test_final_answer_auditor_does_not_use_non_exact_generic_rule_as_correction():
     response = {
         "intent": "product_question",
