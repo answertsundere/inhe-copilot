@@ -16,6 +16,8 @@ Together these lock the P0-1 fixes: material/installation/dimensions never
 surface the wrong FAQ, and aftersales never drifts to installation.
 """
 
+import json
+
 import pytest
 
 from app.main import create_app
@@ -24,6 +26,10 @@ from app.services.fact_type_service import classify_query_fact_type
 
 
 SKU = "YH06K53B05S13"
+SKU_FAMILY = "YH06K53"
+PRODUCT_NAME = "九号防夹滑门收纳柜"
+MATERIAL_FACT = "主要采用冷轧钢管/环保PP/无纺布等材质，金属部分经过防锈喷涂处理，具备一定防潮能力。"
+CONTRACT_ENTRY_KEY = "contract:YH06K53:material"
 
 
 def _stub_llm_misclassify(state, message, intent):
@@ -41,6 +47,91 @@ def _stub_llm_misclassify(state, message, intent):
         "risk_hint": "",
         "secondary_fact_types": [],
     }
+
+
+@pytest.fixture(autouse=True)
+def _seed_contract_material_evidence():
+    """Keep this real-analyze contract independent from an operator's local DB.
+
+    The assertions below require a verified material evidence chain. Production
+    gets that from the deployed knowledge database; a clean clone has no data,
+    so the test seeds the minimum published chunk for the existing contract SKU.
+    """
+    from app.db import SessionLocal, init_db
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+    init_db()
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(KnowledgeEntry)
+            .filter(KnowledgeEntry.business_key == CONTRACT_ENTRY_KEY)
+            .first()
+        )
+        if existing:
+            db.query(KnowledgeChunk).filter(KnowledgeChunk.entry_id == existing.id).delete()
+            db.delete(existing)
+            db.flush()
+
+        product_scope = [PRODUCT_NAME]
+        sku_scope = [SKU, SKU_FAMILY]
+        entry = KnowledgeEntry(
+            source_type="product_facts",
+            title=f"{PRODUCT_NAME}材质是什么？防潮吗？",
+            content=MATERIAL_FACT,
+            intent="product_question",
+            category="收纳柜",
+            category_l3=PRODUCT_NAME,
+            search_keywords="材质 安全 防潮 冷轧钢 钢管 环保PP 无纺布",
+            product_scope_json=json.dumps(product_scope, ensure_ascii=False),
+            sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
+            platform_scope_json="[]",
+            risk_level="low",
+            auto_reply_allowed=True,
+            human_review_required=False,
+            status="published",
+            index_status="ready",
+            source_confidence=0.95,
+            fact_review_status="verified",
+            fact_type="material",
+            fact_scope="sku",
+            business_key=CONTRACT_ENTRY_KEY,
+            product_id=SKU_FAMILY,
+            sku_id=SKU,
+            source_sheet="contract_fixture",
+            reviewed_by="contract_test",
+        )
+        db.add(entry)
+        db.flush()
+        chunk = KnowledgeChunk(
+            entry_id=entry.id,
+            chunk_text=MATERIAL_FACT,
+            chunk_index=0,
+            source_type="product_facts",
+            intent="product_question",
+            product_scope_json=json.dumps(product_scope, ensure_ascii=False),
+            sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
+            platform_scope_json="[]",
+            metadata_json=json.dumps({
+                "auto_reply_allowed": True,
+                "human_review_required": False,
+                "fact_type": "material",
+                "fact_review_status": "verified",
+                "contract_fixture": True,
+            }, ensure_ascii=False),
+            category="收纳柜",
+            category_l3=PRODUCT_NAME,
+            search_keywords="材质 安全 防潮 冷轧钢 钢管 环保PP 无纺布",
+            embedding_status="pending",
+            source_confidence=0.95,
+            fact_review_status="verified",
+            fact_source_type="contract_fixture",
+        )
+        db.add(chunk)
+        db.commit()
+        yield
+    finally:
+        db.close()
 
 
 def _post(client, message: str) -> dict:

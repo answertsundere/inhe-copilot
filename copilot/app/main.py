@@ -518,6 +518,7 @@ def get_sop_repo():
 def _init_db():
     """初始化知识库数据库"""
     from app.db import init_db
+    import app.models.knowledge_base  # noqa: F401 - register RAG knowledge tables
     import app.models.kb_tables  # noqa: F401 - 注册新表
     db_dir = os.path.dirname(KNOWLEDGE_DB_PATH)
     if db_dir and not os.path.exists(db_dir):
