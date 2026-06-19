@@ -400,10 +400,11 @@ def _remove_unsupported_media_send_claims(text: str, response: dict[str, Any], d
         and any(term in value for term in send_terms)
     )
     if not has_unsupported_send_claim and not _has_media_fallback_topic_drift(value, fact_type):
-        return value
+        return _remove_redundant_handoff_sentences(value, fact_type)
 
     product = f"「{display_name}」" if display_name else "这款商品"
-    replacement = _media_fallback_replacement(product, fact_type)
+    fallback_fact_type = _media_fallback_fact_type(response, fact_type)
+    replacement = _media_fallback_replacement(product, fallback_fact_type)
     lines = []
     replaced = False
     for raw_line in value.splitlines():
@@ -420,7 +421,56 @@ def _remove_unsupported_media_send_claims(text: str, response: dict[str, Any], d
         lines.append(raw_line)
     cleaned = "\n".join(line for line in lines if str(line).strip())
     cleaned = re.sub(r"^亲～\s*\n\s*亲～", "亲～", cleaned)
-    return cleaned or replacement
+    return _remove_redundant_handoff_sentences(cleaned or replacement, fallback_fact_type)
+
+
+def _media_fallback_fact_type(response: dict[str, Any], fact_type: str) -> str:
+    if fact_type != "visual_asset":
+        return fact_type
+    required = _response_required_fact_types(response)
+    if "dimensions" in required:
+        return "dimensions"
+    if "installation" in required:
+        return "installation"
+    if "accessories" in required:
+        return "accessories"
+    if "packaging" in required:
+        return "packaging"
+    return fact_type
+
+
+def _response_required_fact_types(response: dict[str, Any]) -> set[str]:
+    debug = response.get("evidence_debug") or {}
+    trace = response.get("answer_trace") or (debug.get("answer_trace") if isinstance(debug, dict) else {}) or {}
+    composition = response.get("answer_composition_trace") or (debug.get("answer_composition_trace") if isinstance(debug, dict) else {}) or {}
+    query_understanding = response.get("query_understanding") or (debug.get("query_understanding") if isinstance(debug, dict) else {}) or {}
+    values: list[Any] = [
+        response.get("query_fact_type"),
+        *(response.get("secondary_fact_types") or []),
+    ]
+    for container in (trace, composition, query_understanding):
+        if isinstance(container, dict):
+            values.extend(container.get("required_fact_types") or [])
+            values.extend(container.get("secondary_fact_types") or [])
+    return {str(value) for value in values if str(value or "").strip()}
+
+
+def _remove_redundant_handoff_sentences(text: str, fact_type: str) -> str:
+    if fact_type not in {"dimensions", "visual_asset", "installation", "accessories", "packaging"}:
+        return text
+    value = str(text or "")
+    has_actionable_guidance = any(anchor in value for anchor in ("页面标注", "预留空间", "安装", "配件", "截图", "拍给我"))
+    if not has_actionable_guidance:
+        return text
+    kept: list[str] = []
+    for part in re.split(r"(?<=[。！？])\s*", value):
+        sentence = part.strip()
+        if not sentence:
+            continue
+        if "确认清楚后再回复" in sentence or "稍等" in sentence:
+            continue
+        kept.append(sentence)
+    return " ".join(kept).strip() or text
 
 
 def _has_media_fallback_topic_drift(text: str, fact_type: str) -> bool:
@@ -445,14 +495,18 @@ def _is_media_fallback_drift_line(line: str, fact_type: str) -> bool:
 def _media_fallback_replacement(product: str, fact_type: str) -> str:
     if fact_type == "installation":
         return (
-            f"亲～{product}目前没有可直接发送的安装图片/视频素材，我先帮您核对对应商品的安装资料，确认清楚后再回复您。"
-            "安装前建议先对照配件清单，确认配件齐全后再操作。"
+            f"亲～{product}目前没有可直接发送的安装视频。"
+            "安装前建议先核对配件，再按说明书从主体框架开始装；卡扣或螺丝位置可以先不要一次性拧太紧，整体对齐后再固定会更稳。"
+            "如果您安装到某一步卡住，可以把卡住的位置拍给我，我帮您对照看一下。"
         )
     if fact_type in {"dimensions", "space_fit"}:
-        return f"亲～{product}目前没有可直接发送的尺寸图，我先帮您核对对应款式的尺寸资料，确认清楚后再回复您。"
+        return (
+            f"亲～{product}目前没有可直接发送的尺寸图，具体尺寸建议先以商品页面标注为准。"
+            "如果您是想确认家里位置能不能放下，可以把预留空间的大概宽度、深度发我，我帮您一起核对一下。"
+        )
     if fact_type in {"accessories", "packaging"}:
-        return f"亲～{product}目前没有可直接发送的配件/包装清单图片，我先帮您核对对应款式的配件资料，确认清楚后再回复您。"
-    return f"亲～{product}目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
+        return f"亲～{product}目前没有可直接发送的配件/包装清单图片，建议先按包装内清单和说明书逐一核对；如果您觉得少了某个部件，可以把收到的配件整体拍给我，我帮您一起看。"
+    return f"亲～{product}目前没有可直接发送的图片素材；如果您想确认外观或细节，可以把页面截图或您关心的位置发我，我帮您对照核对。"
 
 
 def _contains_media_workflow_language(text: str) -> bool:

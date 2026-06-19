@@ -14,6 +14,10 @@ from app.services.fact_type_service import FACT_TYPE_LABELS, fact_type_matches, 
 
 
 COMPOSABLE_SINGLE_FACT_TYPES = {
+    "material",
+    "certification_report",
+    "dimensions",
+    "installation",
     "odor",
     "space_fit",
     "placement_scene",
@@ -177,16 +181,19 @@ def compose_customer_reply(
     evidence_used_by_fact_type: dict[str, list[dict[str, Any]]] = {}
     evidence_origin_by_fact_type: dict[str, list[str]] = {}
     fallback_used_by_fact_type: dict[str, bool] = {}
+    evidence_dedup_by_fact_type: dict[str, dict[str, int]] = {}
 
     for fact_type in _ordered_fact_types(required, customer_message):
         group = groups.get(fact_type, {})
-        evidence_items = _evidence_for_fact_type(
+        evidence_items, dedup_stats = _evidence_for_fact_type(
             fact_type,
             group,
             selected_evidence,
             selected_assets,
             product_name=product_name,
         )
+        if dedup_stats.get("removed_count", 0) > 0:
+            evidence_dedup_by_fact_type[fact_type] = dedup_stats
         section = _section_for_fact_type(
             fact_type,
             evidence_items,
@@ -265,6 +272,8 @@ def compose_customer_reply(
         "media_evidence_used": _trace_items_by_origin(evidence_used_by_fact_type, "product_media"),
         "asset_evidence_used": _trace_asset_items(evidence_used_by_fact_type),
         "fallback_used_by_fact_type": fallback_used_by_fact_type,
+        "evidence_dedup": _merge_dedup_stats(evidence_dedup_by_fact_type),
+        "evidence_dedup_by_fact_type": evidence_dedup_by_fact_type,
         "blocked_claims": blocked_claims,
         "suppressed_identity_prompt": identity_suppression.get("suppressed", False),
         "identity_prompt_suppression_reason": identity_suppression.get("reason", ""),
@@ -549,10 +558,10 @@ def _evidence_for_fact_type(
     selected_assets: list[dict[str, Any]],
     *,
     product_name: str = "",
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     items: list[dict[str, Any]] = []
     for item in group.get("selected_evidence") or []:
-        if isinstance(item, dict):
+        if isinstance(item, dict) and _supports_fact_type(item, fact_type):
             items.append(item)
     for item in selected_evidence:
         if isinstance(item, dict) and _supports_fact_type(item, fact_type):
@@ -560,7 +569,9 @@ def _evidence_for_fact_type(
     if fact_type == "visual_asset":
         items.extend([item for item in selected_assets if isinstance(item, dict)])
     items = _filter_composable_evidence(items, fact_type)
-    return _dedupe_evidence(_filter_unscoped_faq_items(items, product_name))
+    filtered = _filter_unscoped_faq_items(items, product_name)
+    deduped, stats = _dedupe_evidence(filtered)
+    return deduped, stats
 
 
 def _filter_composable_evidence(items: list[dict[str, Any]], fact_type: str) -> list[dict[str, Any]]:
@@ -608,6 +619,8 @@ def _supports_fact_type(item: dict[str, Any], fact_type: str) -> bool:
         return False
     if ev_type and fact_type_matches(fact_type, str(ev_type)):
         return True
+    if ev_type:
+        return False
     inferred = infer_evidence_fact_type(item)
     return bool(inferred and fact_type_matches(fact_type, inferred))
 
@@ -622,26 +635,30 @@ def _section_for_fact_type(
 ) -> str:
     evidence_text = _best_evidence_text(evidence_items)
     product = f"{product_name}" if product_name else "这款"
+    evidence_text = _remove_product_name_prefix(evidence_text, product_name)
 
     if fact_type == "material":
         if evidence_text:
-            return f"宝宝用的东西谨慎一点是对的，{_trim_sentence(evidence_text)}；建议按页面使用说明正常使用，收到后也可以先通风再给宝宝接触。"
-        return "宝宝用的东西谨慎一点是对的，材质、安全和防潮表现需要以对应款式页面说明为准；收到后建议先通风，使用中尽量保持干燥。"
+            fact = _trim_sentence(evidence_text, 140)
+            return f"{fact}。宝宝用品您担心材质和安全很正常，按页面说明和实际状态来判断会更稳妥。"
+        return "宝宝用品谨慎一点是对的。材质、安全和防潮表现需要以对应款式页面说明为准；收到后建议先通风放置，日常尽量保持干燥通风。"
     if fact_type == "certification_report":
         if evidence_text:
             return f"\u8bc1\u4e66/\u68c0\u6d4b\u62a5\u544a\u8fd9\u5757\uff0c{_trim_sentence(evidence_text)}\uff1b\u5177\u4f53\u7ed3\u8bba\u8981\u4ee5\u62a5\u544a\u6807\u6ce8\u4e3a\u51c6\uff0c\u4e0d\u505a\u8d85\u51fa\u62a5\u544a\u5185\u5bb9\u7684\u7ed3\u8bba\u627f\u8bfa\u3002"
-        return "\u8bc1\u4e66/\u68c0\u6d4b\u62a5\u544a\u8fd9\u5757\u9700\u8981\u770b\u5bf9\u5e94\u5546\u54c1\u7684\u660e\u786e\u7d20\u6750\u6216\u9875\u9762\u8bf4\u660e\uff1b\u6ca1\u6709\u8bc1\u636e\u65f6\u4e0d\u76f4\u63a5\u4e0b\u5b89\u5168\u7ed3\u8bba\u3002"
+        return "宝宝用的东西谨慎一点是对的。检测报告/证书需要以页面展示或可发送的报告素材为准；如果当前没有看到对应报告，我不能直接替您下检测结论，您也可以把页面上的证书或报告截图发我，我帮您一起核对。"
     if fact_type == "stock_shipping":
         return "发货这块要看当前库存、下单时间和仓库截单情况；没有实时核实前，我不能承诺今天一定发出，我会按下单页和仓库状态帮您确认。"
     if fact_type == "dimensions":
         if evidence_text:
-            return f"尺寸方面，{_trim_sentence(evidence_text)}。"
-        return "尺寸需要看对应款式的长宽高和尺寸图来确认，避免只凭名称判断放置空间。"
+            return f"尺寸我先按页面标注给您参考：{_trim_sentence(evidence_text, 120)}。如果您担心家里位置放不下，可以把预留空间的大概宽度、深度发我，我帮您一起核对一下。"
+        return "这款我这边暂时没有可直接发送的尺寸图或明确尺寸，具体尺寸建议以商品页面标注为准。如果您是想确认家里位置能不能放下，可以把预留空间的大概宽度、深度发我，我帮您一起核对一下。"
     if fact_type == "visual_asset":
         if _has_sendable_asset(evidence_items):
             asset_name = _asset_title(evidence_items[0]) or "图片/尺寸图"
             return f"图片这边可以把当前商品的{asset_name}一起发您参考。"
-        return "目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
+        if "尺寸" in customer_message or "多大" in customer_message:
+            return "目前没有可直接发送的尺寸图；如果页面有文字尺寸，建议先以页面标注为准，也可以把预留空间发我一起核对。"
+        return "目前没有可直接发送的图片素材；如果您想确认外观或细节，可以把页面截图或您关心的位置发我，我帮您对照核对。"
     if fact_type == "space_fit":
         if evidence_text:
             return f"能不能放下主要看长宽高、占地和预留空间，{_trim_sentence(evidence_text)}；您也可以量一下预留位置，我按尺寸帮您对。"
@@ -657,7 +674,7 @@ def _section_for_fact_type(
     if fact_type == "installation":
         if evidence_text:
             return f"安装这块，{_trim_sentence(evidence_text)}；如果配件不齐，先不要硬装，等售后核对后再继续安装。"
-        return "安装不了时要先确认配件是否齐全；如果是少件导致装不上，先按售后核对，配件没确认前不建议硬装。"
+        return "安装一般建议先核对配件，再按说明书从主体框架开始装。卡扣或螺丝位置可以先不要一次性拧太紧，整体对齐后再固定会更稳；目前没有可直接发送的安装视频，如果您安装到某一步卡住，可以把卡住的位置拍给我，我帮您对照看一下。"
     if fact_type == "age_range":
         if evidence_text:
             return f"适用年龄方面，{_trim_sentence(evidence_text)}；实际还要结合宝宝身高、活动能力和家长看护情况。"
@@ -693,20 +710,15 @@ def _join_sections(sections: list[dict[str, Any]], customer_tone: str) -> str:
 
 
 def _best_evidence_text(items: list[dict[str, Any]]) -> str:
-    for item in items:
-        text = (
-            item.get("chunk_text")
-            or item.get("fact")
-            or item.get("content")
-            or item.get("answer")
-            or item.get("preview")
-            or item.get("chunk_preview")
-            or ""
-        )
-        text = _clean_reply(str(text))
-        if text:
-            return text
-    return ""
+    scored = [
+        (_evidence_completeness_score(item), _evidence_text(item))
+        for item in items
+        if _evidence_text(item)
+    ]
+    if not scored:
+        return ""
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return scored[0][1]
 
 
 def _trim_sentence(text: str, limit: int = 90) -> str:
@@ -714,6 +726,21 @@ def _trim_sentence(text: str, limit: int = 90) -> str:
     if len(text) <= limit:
         return text.rstrip("。")
     return text[:limit].rstrip("，。；; ") + "..."
+
+
+def _remove_product_name_prefix(text: str, product_name: str) -> str:
+    value = _clean_reply(text)
+    name = str(product_name or "").strip()
+    if not value or not name or len(name) < 2:
+        return value
+    patterns = (
+        rf"^「{re.escape(name)}」",
+        rf"^《{re.escape(name)}》",
+        rf"^{re.escape(name)}",
+    )
+    for pattern in patterns:
+        value = re.sub(pattern, "", value, count=1).lstrip("：:，,。；; 的")
+    return value or text
 
 
 def _asset_title(item: dict[str, Any]) -> str:
@@ -827,7 +854,7 @@ def _trace_asset_items(evidence_used_by_fact_type: dict[str, list[dict[str, Any]
     return out
 
 
-def _dedupe_evidence(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _dedupe_evidence(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
     out: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
     for item in items:
@@ -839,5 +866,105 @@ def _dedupe_evidence(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
+        duplicate_index = _similar_evidence_index(out, item)
+        if duplicate_index >= 0:
+            if _evidence_completeness_score(item) > _evidence_completeness_score(out[duplicate_index]):
+                out[duplicate_index] = item
+            continue
         out.append(item)
-    return out
+    return out, {
+        "before_count": len(items),
+        "after_count": len(out),
+        "removed_count": max(0, len(items) - len(out)),
+    }
+
+
+def _similar_evidence_index(existing: list[dict[str, Any]], item: dict[str, Any]) -> int:
+    item_fact_type = str(item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or "").strip()
+    item_source_type = str(item.get("source_type") or "").strip()
+    item_text = _normalized_evidence_text(_evidence_text(item))
+    if not item_text:
+        return -1
+    for index, current in enumerate(existing):
+        current_fact_type = str(current.get("evidence_fact_type") or current.get("fact_type") or current.get("query_fact_type") or "").strip()
+        current_source_type = str(current.get("source_type") or "").strip()
+        if item_fact_type and current_fact_type and item_fact_type != current_fact_type:
+            continue
+        if item_source_type and current_source_type and item_source_type != current_source_type:
+            continue
+        current_text = _normalized_evidence_text(_evidence_text(current))
+        if _texts_are_similar(item_text, current_text):
+            return index
+    return -1
+
+
+def _evidence_text(item: dict[str, Any]) -> str:
+    text = (
+        item.get("chunk_text")
+        or item.get("fact")
+        or item.get("content")
+        or item.get("answer")
+        or item.get("preview")
+        or item.get("chunk_preview")
+        or item.get("text")
+        or ""
+    )
+    return _clean_reply(str(text))
+
+
+def _normalized_evidence_text(text: str) -> str:
+    value = str(text or "").lower()
+    value = re.sub(r"[，,、/；;。.!！?？：:\s]+", "", value)
+    value = value.replace("环保pp", "pp")
+    value = value.replace("冷轧钢管", "冷轧钢")
+    value = value.replace("金属部分", "金属")
+    return value
+
+
+def _texts_are_similar(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    if left in right or right in left:
+        shorter = min(len(left), len(right))
+        longer = max(len(left), len(right))
+        return shorter >= 12 or shorter / max(longer, 1) >= 0.45
+    left_tokens = _text_tokens(left)
+    right_tokens = _text_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = len(left_tokens & right_tokens)
+    return overlap / max(1, min(len(left_tokens), len(right_tokens))) >= 0.72
+
+
+def _text_tokens(text: str) -> set[str]:
+    value = str(text or "")
+    tokens = set(re.findall(r"[a-z0-9]+", value))
+    if len(value) >= 2:
+        tokens.update(value[index:index + 2] for index in range(len(value) - 1))
+    return {token for token in tokens if token.strip()}
+
+
+def _evidence_completeness_score(item: dict[str, Any]) -> int:
+    text = _evidence_text(item)
+    score = len(text)
+    if item.get("selected") is True:
+        score += 20
+    if item.get("source_confidence"):
+        try:
+            score += int(float(item.get("source_confidence") or 0) * 10)
+        except Exception:
+            pass
+    if item.get("human_review_required") or item.get("fact_review_status") == "verified":
+        score += 5
+    return score
+
+
+def _merge_dedup_stats(by_fact_type: dict[str, dict[str, int]]) -> dict[str, int]:
+    before = sum(int(stats.get("before_count", 0)) for stats in by_fact_type.values())
+    after = sum(int(stats.get("after_count", 0)) for stats in by_fact_type.values())
+    removed = sum(int(stats.get("removed_count", 0)) for stats in by_fact_type.values())
+    return {
+        "before_count": before,
+        "after_count": after,
+        "removed_count": removed,
+    }

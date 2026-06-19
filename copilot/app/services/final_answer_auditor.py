@@ -511,6 +511,7 @@ def _audit_issues(
         issues.append("product_card_missing_fact_answered_as_direct")
 
     issues.extend(_media_reference_contract_issues(reply, response))
+    issues.extend(_certification_report_contract_issues(reply, response))
 
     return _dedupe(issues)
 
@@ -554,7 +555,69 @@ def _hard_safety_issues(
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
     issues.extend(_media_reference_contract_issues(reply, response))
+    issues.extend(_certification_report_contract_issues(reply, response))
     return _dedupe(issues)
+
+
+def _certification_report_contract_issues(reply: str, response: dict[str, Any]) -> list[str]:
+    fact_types = _required_fact_types(response)
+    primary = _primary_fact_type(response)
+    if primary:
+        fact_types.add(primary)
+    if "certification_report" not in fact_types:
+        return []
+    if _has_certification_report_evidence(response):
+        return []
+    positive_report_claims = (
+        "有检测报告",
+        "有质检报告",
+        "检测报告已",
+        "已通过检测",
+        "通过检测",
+        "检测合格",
+        "有证书",
+        "有认证",
+    )
+    if _contains_any(reply, positive_report_claims):
+        return ["unsupported_certification_report_claim"]
+    return []
+
+
+def _has_certification_report_evidence(response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") or {}
+    trace = debug.get("answer_trace") or response.get("answer_trace") or {}
+    composition = debug.get("answer_composition_trace") or response.get("answer_composition_trace") or {}
+    for source in (
+        response.get("selected_assets"),
+        response.get("recommended_assets"),
+        debug.get("selected_assets") if isinstance(debug, dict) else None,
+        trace.get("selected_assets") if isinstance(trace, dict) else None,
+    ):
+        if _source_has_certification_asset(source):
+            return True
+    for container in (trace, composition):
+        if not isinstance(container, dict):
+            continue
+        for key in ("rag_evidence_used", "media_evidence_used", "asset_evidence_used", "evidence_used_by_fact_type"):
+            value = container.get(key)
+            if isinstance(value, dict) and value.get("certification_report"):
+                return True
+    return False
+
+
+def _source_has_certification_asset(source: Any) -> bool:
+    if isinstance(source, dict):
+        return any(_source_has_certification_asset(value) for value in source.values())
+    if not isinstance(source, list):
+        return False
+    for item in source:
+        if not isinstance(item, dict):
+            continue
+        asset_type = str(item.get("asset_type") or item.get("type") or item.get("media_type") or "")
+        fact_type = str(item.get("fact_type") or item.get("evidence_fact_type") or "")
+        if asset_type == "certificate_image" or fact_type == "certification_report":
+            return True
+    return False
 
 
 def _media_reference_contract_issues(reply: str, response: dict[str, Any]) -> list[str]:
