@@ -57,12 +57,8 @@ _INTENT_TOPIC = {
 }
 
 _SAFE_COMPOSITION_FALLBACK_FACT_TYPES = {
-    "dimensions",
     "space_fit",
     "placement_scene",
-    "material",
-    "odor",
-    "age_range",
     "stock_shipping",
     "visual_asset",
     "aftersales_policy",
@@ -356,17 +352,37 @@ def _multi_intent_coverage_audit(reply: str, response: dict[str, Any]) -> dict[s
     if len(required) < 2:
         return {"covered_fact_types": [], "missing_fact_types": [], "issues": []}
 
-    plan = debug.get("multi_intent_answer_plan") or response.get("multi_intent_answer_plan") or []
+    trace = debug.get("answer_composition_trace") or response.get("answer_composition_trace") or {}
+    if isinstance(trace, dict) and trace.get("answer_sections"):
+        answered = {
+            str(item)
+            for item in trace.get("answered_fact_types", trace.get("covered_fact_types", []))
+            if str(item).strip()
+        }
+        acceptable_followup = {
+            str(item)
+            for item in [
+                *(trace.get("fallback_fact_types") or []),
+                *(trace.get("needs_followup_fact_types") or []),
+            ]
+            if str(item).strip()
+        }
+        covered = [fact_type for fact_type in required if fact_type in answered]
+        missing = [fact_type for fact_type in required if fact_type not in answered]
+        blocking_missing = [
+            fact_type for fact_type in missing
+            if fact_type not in acceptable_followup
+        ]
+        return {
+            "covered_fact_types": covered,
+            "missing_fact_types": missing,
+            "issues": [f"missing_multi_intent_fact_type:{item}" for item in blocking_missing],
+        }
+
     covered = []
     missing = []
     for fact_type in required:
-        planned = [
-            item for item in plan
-            if isinstance(item, dict) and item.get("fact_type") == fact_type
-        ]
-        if _reply_covers_fact_type(reply, fact_type) or any(
-            item.get("covered_by_existing_reply") or item.get("reply_part") for item in planned
-        ):
+        if _reply_covers_fact_type(reply, fact_type):
             covered.append(fact_type)
         else:
             missing.append(fact_type)
@@ -528,6 +544,27 @@ def _product_card_missing_fact_but_reply_answers(response: dict[str, Any], reply
         return False
     if evidence_pack.get("answerability") not in {"missing_product_fact", "no_product_profile", "no_product_identity"}:
         return False
+    trace = debug.get("answer_composition_trace") or response.get("answer_composition_trace") or {}
+    if isinstance(trace, dict):
+        needs_followup = {
+            str(item)
+            for item in trace.get("needs_followup_fact_types", [])
+            if str(item).strip()
+        }
+        fallback = {
+            str(item)
+            for item in trace.get("fallback_fact_types", [])
+            if str(item).strip()
+        }
+        evidence_answered = {
+            str(item)
+            for item in trace.get("evidence_answered_fact_types", [])
+            if str(item).strip()
+        }
+        if fact_type in needs_followup and fact_type not in evidence_answered:
+            return False
+        if fact_type in fallback and fact_type not in evidence_answered and _is_generic_handoff(reply):
+            return False
     if _safe_composition_fallback_covers(debug, fact_type, reply):
         return False
     return not _is_generic_handoff(reply)

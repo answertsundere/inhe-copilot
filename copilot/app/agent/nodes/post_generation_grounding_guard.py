@@ -26,12 +26,8 @@ POLICY_LOCKED_INTENTS = {
 }
 
 SAFE_COMPOSITION_FALLBACK_FACT_TYPES = {
-    "dimensions",
     "space_fit",
     "placement_scene",
-    "material",
-    "odor",
-    "age_range",
     "stock_shipping",
     "visual_asset",
     "aftersales_policy",
@@ -246,7 +242,8 @@ def _safe_composition_fallback(state: dict) -> bool:
     if any(trace.get("missing_fact_types") or []):
         return False
     fallback = trace.get("fallback_used_by_fact_type") or {}
-    for fact_type in trace.get("covered_fact_types") or []:
+    covered = trace.get("answered_fact_types") or trace.get("covered_fact_types") or []
+    for fact_type in covered:
         fact_type = str(fact_type or "")
         if fallback.get(fact_type) and fact_type not in SAFE_COMPOSITION_FALLBACK_FACT_TYPES:
             return False

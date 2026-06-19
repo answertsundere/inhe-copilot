@@ -101,6 +101,24 @@ def test_material_and_stock_shipping_are_naturally_merged():
     assert set(trace["covered_fact_types"]) == {"material", "stock_shipping"}
     assert trace["fallback_used_by_fact_type"]["material"] is False
     assert trace["fallback_used_by_fact_type"]["stock_shipping"] is True
+    assert set(trace["evidence_answered_fact_types"]) == {"material"}
+    assert "stock_shipping" in trace["fallback_fact_types"]
+
+
+def test_material_followup_is_not_marked_as_evidence_covered():
+    result = generate_reply(_state(
+        "宝宝能用吗，今天能发吗？",
+        "material",
+        ["stock_shipping"],
+        [],
+    ))
+
+    trace = result["answer_composition_trace"]
+    assert "stock_shipping" in trace["answered_fact_types"]
+    assert "material" not in trace["evidence_answered_fact_types"]
+    assert "material" not in trace["covered_fact_types"]
+    assert "material" in trace["fallback_fact_types"]
+    assert "material" in trace["needs_followup_fact_types"]
 
 
 def test_baby_can_use_plus_shipping_routes_to_material_not_age(monkeypatch):
@@ -140,6 +158,37 @@ def test_dimensions_and_visual_asset_do_not_drift_to_load_or_material():
     assert "尺寸" in reply
     assert any(token in reply for token in ("60cm", "长60", "宽30", "高90"))
     assert any(token in reply for token in ("图", "图片", "尺寸图"))
+    assert "承重" not in reply
+    assert "材质" not in reply
+    assert "2." not in reply or reply.find("1.") < reply.find("2.")
+    assert "资料这块" not in reply
+    assert "辅助确认" not in reply
+    assert "不用图片替代参数结论" not in reply
+
+
+def test_dimensions_visual_asset_order_is_stable_and_customer_friendly():
+    product_pack = {
+        "recommended_assets": [{
+            "asset_id": "asset-size",
+            "asset_type": "image",
+            "asset_title": "尺寸图",
+        }],
+    }
+    result = generate_reply(_state(
+        "尺寸多大，有没有图？",
+        "dimensions",
+        ["visual_asset"],
+        [_fact("dimensions", "尺寸为长60cm、宽30cm、高90cm。")],
+        product_pack=product_pack,
+    ))
+
+    reply = result["suggested_reply"]
+    assert "2." not in reply or reply.find("1.") < reply.find("2.")
+    assert "资料这块" not in reply
+    assert "辅助确认" not in reply
+    assert "不用图片替代参数结论" not in reply
+    assert "尺寸" in reply
+    assert "图" in reply
     assert "承重" not in reply
     assert "材质" not in reply
 
@@ -225,6 +274,28 @@ def test_aftersales_plus_installation_answers_aftersales_first():
     assert "安装" in reply
     assert reply.find("售后") < reply.find("安装")
     assert "硬装" in reply or "配件" in reply
+    trace = result["answer_composition_trace"]
+    assert "aftersales_policy" in trace["answered_fact_types"]
+    assert "installation" in trace["answered_fact_types"]
+
+
+def test_missing_parts_installation_requires_aftersales_and_installation():
+    result = generate_reply(_state(
+        "少了配件，安装不了怎么办？",
+        "installation",
+        [],
+        [_fact("installation", "安装前需要先核对配件是否齐全。", "installation_guide")],
+        intent="aftersales",
+        risk_level="medium",
+    ))
+
+    trace = result["answer_composition_trace"]
+    required = [section["fact_type"] for section in trace["answer_sections"]]
+    assert "aftersales_policy" in required
+    assert "installation" in required
+    assert required.index("aftersales_policy") < required.index("installation")
+    assert "aftersales_policy" in trace["answered_fact_types"]
+    assert "installation" in trace["answered_fact_types"]
 
 
 def test_wrong_item_return_explains_aftersales_before_photo_request():
@@ -262,6 +333,68 @@ def test_odor_fallback_has_no_internal_terms_or_absolute_promise():
     assert "通风" in reply
     assert "保证无味" not in reply
     assert "绝对无味" not in reply
+    trace = result["answer_composition_trace"]
+    assert "odor" not in trace["evidence_answered_fact_types"]
+    assert "odor" in trace["fallback_fact_types"]
+    assert "odor" in trace["needs_followup_fact_types"]
+
+
+def test_high_risk_fallback_does_not_skip_grounding_as_fact():
+    generated = generate_reply(_state(
+        "这个适合一岁宝宝吗？",
+        "age_range",
+        [],
+        [],
+        intent="child_safety",
+        risk_level="high",
+    ))
+
+    reply = generated["suggested_reply"]
+    trace = generated["answer_composition_trace"]
+    assert "age_range" not in trace["evidence_answered_fact_types"]
+    assert "age_range" not in trace["covered_fact_types"]
+    assert "age_range" in trace["needs_followup_fact_types"]
+    assert "一定适合" not in reply
+    guarded = post_generation_grounding_guard({**_state(
+        "这个适合一岁宝宝吗？",
+        "age_range",
+        [],
+        [],
+        intent="child_safety",
+        risk_level="high",
+    ), **generated})
+    assert guarded["post_generation_grounding"]["judge_mode"] != "answer_composition_fallback_skip"
+
+
+def test_odor_fallback_is_service_guidance_not_product_fact():
+    result = generate_reply(_state(
+        "这个有味道吗？",
+        "odor",
+        [],
+        [],
+        intent="odor_question",
+    ))
+
+    reply = result["suggested_reply"]
+    trace = result["answer_composition_trace"]
+    assert "完全没味" not in reply
+    assert "0甲醛" not in reply
+    assert "odor" not in trace["evidence_answered_fact_types"]
+    assert "odor" in trace["fallback_fact_types"]
+
+
+def test_composition_trace_is_not_plan_only():
+    result = generate_reply(_state(
+        "宝宝能用吗，今天能发吗？",
+        "material",
+        ["stock_shipping"],
+        [],
+    ))
+
+    trace = result["answer_composition_trace"]
+    assert "material" not in trace["answered_fact_types"]
+    assert "material" in trace["missing_fact_types"]
+    assert "stock_shipping" in trace["answered_fact_types"]
 
 
 def test_odor_composition_does_not_quote_policy_redline_as_product_fact():

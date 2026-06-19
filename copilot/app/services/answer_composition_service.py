@@ -25,6 +25,33 @@ COMPOSABLE_INTENTS = {
     "aftersales",
 }
 
+FACT_EVIDENCE_REQUIRED_TYPES = {
+    "material",
+    "certification_report",
+    "dimensions",
+    "load_capacity",
+    "age_range",
+    "odor",
+    "cleaning_care",
+    "safety_small_parts",
+    "pinch_safety",
+    "stability",
+}
+
+SERVICE_GUIDANCE_FACT_TYPES = {
+    "stock_shipping",
+    "aftersales_policy",
+    "installation",
+    "visual_asset",
+    "space_fit",
+    "placement_scene",
+}
+
+BUSINESS_PRIORITY = {
+    "aftersales_policy": 10,
+    "installation": 20,
+}
+
 FORBIDDEN_CLAIMS = (
     "绝对安全",
     "100%安全",
@@ -109,12 +136,16 @@ def compose_customer_reply(
 
     if not required:
         required = _fallback_required_fact_types(query_understanding, intent)
+    if _needs_aftersales_policy(customer_message, intent):
+        required = _prepend_unique(required, ["aftersales_policy"])
+        if _mentions_installation(customer_message):
+            required = _append_unique(required, ["installation"])
 
     sections: list[dict[str, Any]] = []
     evidence_used_by_fact_type: dict[str, list[dict[str, Any]]] = {}
     fallback_used_by_fact_type: dict[str, bool] = {}
 
-    for fact_type in required:
+    for fact_type in _ordered_fact_types(required, customer_message):
         group = groups.get(fact_type, {})
         evidence_items = _evidence_for_fact_type(
             fact_type,
@@ -132,12 +163,16 @@ def compose_customer_reply(
         )
         if not section:
             continue
+        section_source = _section_source(fact_type, bool(evidence_items))
         evidence_used_by_fact_type[fact_type] = [_summarize_evidence(item) for item in evidence_items[:3]]
         fallback_used_by_fact_type[fact_type] = not bool(evidence_items)
         sections.append({
             "fact_type": fact_type,
             "fact_label": FACT_TYPE_LABELS.get(fact_type, fact_type),
             "source": "evidence" if evidence_items else "fallback",
+            "answer_source": section_source,
+            "answered": _section_counts_as_answered(fact_type, section_source),
+            "needs_followup": section_source == "handoff_guidance",
             "text": section,
         })
 
@@ -154,11 +189,35 @@ def compose_customer_reply(
     reply = _remove_internal_terms(reply)
     reply = _clean_reply(reply)
 
-    covered = [section["fact_type"] for section in sections if section.get("fact_type") != "base_reply"]
+    answered = [
+        section["fact_type"]
+        for section in sections
+        if section.get("fact_type") != "base_reply" and section.get("answered")
+    ]
+    evidence_answered = [
+        section["fact_type"]
+        for section in sections
+        if section.get("fact_type") != "base_reply" and section.get("answer_source") == "evidence_answer"
+    ]
+    fallback_fact_types = [
+        section["fact_type"]
+        for section in sections
+        if section.get("fact_type") != "base_reply" and section.get("answer_source") in {"service_guidance", "handoff_guidance"}
+    ]
+    needs_followup = [
+        section["fact_type"]
+        for section in sections
+        if section.get("fact_type") != "base_reply" and section.get("needs_followup")
+    ]
+    covered = answered
     missing = [fact_type for fact_type in required if fact_type not in covered]
     trace = {
         "mode": "multi_intent" if len(required) >= 2 else "single_intent",
         "covered_fact_types": covered,
+        "answered_fact_types": answered,
+        "evidence_answered_fact_types": evidence_answered,
+        "fallback_fact_types": fallback_fact_types,
+        "needs_followup_fact_types": needs_followup,
         "missing_fact_types": missing,
         "evidence_used_by_fact_type": evidence_used_by_fact_type,
         "fallback_used_by_fact_type": fallback_used_by_fact_type,
@@ -199,6 +258,95 @@ def _fallback_required_fact_types(query_understanding: dict[str, Any], intent: s
     if intent in {"complaint", "high_risk", "aftersales"}:
         return ["aftersales_policy"]
     return []
+
+
+def _prepend_unique(values: list[str], prefix: list[str]) -> list[str]:
+    out: list[str] = []
+    for value in [*prefix, *values]:
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+def _append_unique(values: list[str], suffix: list[str]) -> list[str]:
+    out = list(values)
+    for value in suffix:
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+def _needs_aftersales_policy(message: str, intent: str) -> bool:
+    text = message or ""
+    if intent != "aftersales":
+        return False
+    return any(cue in text for cue in (
+        "\u5c11\u4ef6",
+        "\u5c11\u4e86",
+        "\u7f3a\u4ef6",
+        "\u7f3a\u914d\u4ef6",
+        "\u6f0f\u53d1",
+        "\u53d1\u9519",
+        "\u9519\u53d1",
+        "\u7834\u635f",
+        "\u574f\u4e86",
+        "\u5b89\u88c5\u4e0d\u4e86",
+        "\u88c5\u4e0d\u4e86",
+        "\u88c5\u4e0d\u4e0a",
+    ))
+
+
+def _mentions_installation(message: str) -> bool:
+    return any(cue in (message or "") for cue in (
+        "\u5b89\u88c5",
+        "\u88c5\u4e0d\u4e86",
+        "\u88c5\u4e0d\u4e0a",
+        "\u7ec4\u88c5",
+        "\u6559\u7a0b",
+    ))
+
+
+def _ordered_fact_types(values: list[str], message: str) -> list[str]:
+    indexed = {fact_type: idx for idx, fact_type in enumerate(values)}
+
+    def key(fact_type: str) -> tuple[int, int]:
+        if fact_type in BUSINESS_PRIORITY:
+            return (BUSINESS_PRIORITY[fact_type], indexed.get(fact_type, 999))
+        pos = _message_position_for_fact_type(message, fact_type)
+        if pos >= 0:
+            return (100 + pos, indexed.get(fact_type, 999))
+        return (10000, indexed.get(fact_type, 999))
+
+    return sorted(values, key=key)
+
+
+def _message_position_for_fact_type(message: str, fact_type: str) -> int:
+    cues = {
+        "material": ("\u6750\u8d28", "\u5b89\u5168", "\u5b9d\u5b9d", "\u9632\u6f6e", "\u9632\u6c34"),
+        "stock_shipping": ("\u53d1\u8d27", "\u4eca\u5929", "\u73b0\u8d27", "\u5e93\u5b58"),
+        "dimensions": ("\u5c3a\u5bf8", "\u591a\u5927", "\u957f\u5bbd\u9ad8"),
+        "visual_asset": ("\u56fe", "\u56fe\u7247", "\u7167\u7247"),
+        "aftersales_policy": ("\u5c11\u4ef6", "\u7f3a\u914d\u4ef6", "\u53d1\u9519", "\u7834\u635f", "\u552e\u540e"),
+        "installation": ("\u5b89\u88c5", "\u88c5\u4e0d\u4e86", "\u88c5\u4e0d\u4e0a", "\u6559\u7a0b"),
+        "age_range": ("\u4e00\u5c81", "\u5e74\u9f84", "\u9002\u9f84", "\u591a\u5927\u5b9d\u5b9d"),
+        "odor": ("\u5473\u9053", "\u6c14\u5473", "\u5f02\u5473"),
+    }.get(fact_type, (fact_type,))
+    positions = [message.find(cue) for cue in cues if cue and cue in message]
+    return min(positions) if positions else -1
+
+
+def _section_source(fact_type: str, has_evidence: bool) -> str:
+    if has_evidence:
+        return "evidence_answer"
+    if fact_type in FACT_EVIDENCE_REQUIRED_TYPES:
+        return "handoff_guidance"
+    return "service_guidance"
+
+
+def _section_counts_as_answered(fact_type: str, section_source: str) -> bool:
+    if section_source == "evidence_answer":
+        return True
+    return section_source == "service_guidance" and fact_type in SERVICE_GUIDANCE_FACT_TYPES
 
 
 def _evidence_for_fact_type(
@@ -293,7 +441,7 @@ def _section_for_fact_type(
     if fact_type == "visual_asset":
         if evidence_items:
             asset_name = _asset_title(evidence_items[0]) or "图片/尺寸图"
-            return f"图片资料这块，可以参考当前商品的{asset_name}，我这边只把它作为辅助确认，不用图片替代参数结论。"
+            return f"图片这边可以把当前商品的{asset_name}一起发您参考。"
         return "如果您需要看图，我可以优先按当前商品的图片或尺寸图给您参考；没有对应素材时，不会用别的款式图片代替。"
     if fact_type == "space_fit":
         if evidence_text:
@@ -338,6 +486,8 @@ def _join_sections(sections: list[dict[str, Any]], customer_tone: str) -> str:
     intro = "亲亲，" if customer_tone != "complaint" else "亲，"
     if len(texts) == 1:
         return intro + texts[0]
+    if len(texts) == 2:
+        return intro + " ".join(texts)
     return intro + "您这边问到的点我分开帮您说明：\n" + "\n".join(
         f"{index}. {text}" for index, text in enumerate(texts, start=1)
     )

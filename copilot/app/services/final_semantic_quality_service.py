@@ -221,19 +221,19 @@ def _safe_composition_fallback(response: dict[str, Any]) -> bool:
     if any(trace.get("missing_fact_types") or []):
         return False
     safe_fact_types = {
-        "dimensions",
         "space_fit",
         "placement_scene",
-        "material",
-        "odor",
-        "age_range",
         "stock_shipping",
         "visual_asset",
         "aftersales_policy",
         "installation",
     }
     fallback = trace.get("fallback_used_by_fact_type") or {}
-    covered = [str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()]
+    covered = [
+        str(item)
+        for item in trace.get("answered_fact_types", trace.get("covered_fact_types", []))
+        if str(item).strip()
+    ]
     if not covered:
         return False
     for fact_type in covered:

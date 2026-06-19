@@ -483,11 +483,17 @@ def _restore_composed_reply_from_trace(current_reply: str, state: dict) -> str:
     ]
     if not sections:
         return current_reply
-    covered = [str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()]
+    covered = [
+        str(item)
+        for item in trace.get("answered_fact_types", trace.get("covered_fact_types", []))
+        if str(item).strip()
+    ]
     fallback = trace.get("fallback_used_by_fact_type") or {}
     if any(fallback.get(fact_type) for fact_type in covered):
         if len(sections) == 1:
             return "亲亲，" + sections[0]
+        if len(sections) == 2:
+            return "亲亲，" + " ".join(sections)
         return "亲亲，您这边问到的点我分开帮您说明：\n" + "\n".join(
             f"{index}. {text}" for index, text in enumerate(sections, start=1)
         )
@@ -495,6 +501,8 @@ def _restore_composed_reply_from_trace(current_reply: str, state: dict) -> str:
         return current_reply
     if len(sections) == 1:
         return "亲亲，" + sections[0]
+    if len(sections) == 2:
+        return "亲亲，" + " ".join(sections)
     return "亲亲，您这边问到的点我分开帮您说明：\n" + "\n".join(
         f"{index}. {text}" for index, text in enumerate(sections, start=1)
     )
