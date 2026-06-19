@@ -66,6 +66,8 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
     answered_fact_types = _ordered_unique([*answered_fact_types, *rag_evidence_answered_fact_types])
     trace = {
         "mode": _trace_mode(response, composition, selected_assets, evidence_answered_fact_types),
+        "trace_contract_broken": not bool(query_fact_type),
+        "trace_contract_reason": "" if query_fact_type else "missing_query_fact_type",
         "customer_message": customer_message or debug.get("current_query") or response.get("current_query", ""),
         "query_fact_type": query_fact_type,
         "secondary_fact_types": secondary_fact_types,
@@ -104,11 +106,11 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
 
 
 def normalize_answer_trace_inputs(response: dict[str, Any]) -> dict[str, Any]:
-    """Restore the fact-type contract from already-selected evidence.
+    """Preserve the fact-type contract from upstream understanding nodes.
 
-    Late response assembly should not need to re-run retrieval or classification,
-    but it must preserve the fact type that retrieval/evidence evaluation already
-    selected. This keeps the final auditor and answer_trace on the same contract.
+    Evidence is not a valid source for the customer's intent. If the upstream
+    contract is missing, leave it missing so trace/audit can expose the break
+    instead of turning a retrieved evidence type into the query fact type.
     """
     if not isinstance(response, dict):
         return response
@@ -119,13 +121,17 @@ def normalize_answer_trace_inputs(response: dict[str, Any]) -> dict[str, Any]:
 
     query_fact_type = _recover_query_fact_type(response, debug)
     if query_fact_type:
-        response.setdefault("query_fact_type", query_fact_type)
-        debug.setdefault("query_fact_type", query_fact_type)
+        if not str(response.get("query_fact_type") or "").strip():
+            response["query_fact_type"] = query_fact_type
+        if not str(debug.get("query_fact_type") or "").strip():
+            debug["query_fact_type"] = query_fact_type
 
     required_fact_types = _recover_required_fact_types(response, debug, query_fact_type)
     if required_fact_types:
-        response.setdefault("required_fact_types", required_fact_types)
-        debug.setdefault("required_fact_types", required_fact_types)
+        if not response.get("required_fact_types"):
+            response["required_fact_types"] = required_fact_types
+        if not debug.get("required_fact_types"):
+            debug["required_fact_types"] = required_fact_types
         grouping = debug.setdefault("evidence_grouping", {})
         if isinstance(grouping, dict):
             coverage = grouping.setdefault("coverage", {})
@@ -194,14 +200,11 @@ def _recover_query_fact_type(response: dict[str, Any], debug: dict[str, Any]) ->
         (response.get("product_context_pack_stats") or {}).get("query_fact_type")
         if isinstance(response.get("product_context_pack_stats"), dict) else "",
     ]
-    evidence_pack = _evidence_pack(debug, response)
-    candidates.append(evidence_pack.get("query_fact_type") if isinstance(evidence_pack, dict) else "")
     for value in candidates:
         text = str(value or "").strip()
         if text:
             return text
-    selected_types = _selected_evidence_fact_types(debug, response)
-    return selected_types[0] if len(selected_types) == 1 else ""
+    return ""
 
 
 def _recover_required_fact_types(
@@ -215,7 +218,6 @@ def _recover_required_fact_types(
     stats_debug = debug.get("product_context_pack_stats") or {}
     stats_response = response.get("product_context_pack_stats") or {}
     query_understanding = debug.get("query_understanding") or response.get("query_understanding") or {}
-    evidence_pack = _evidence_pack(debug, response)
     return _ordered_unique([
         *(coverage.get("required_fact_types") or [] if isinstance(coverage, dict) else []),
         *(composition.get("required_fact_types") or [] if isinstance(composition, dict) else []),
@@ -225,54 +227,7 @@ def _recover_required_fact_types(
         *(stats_debug.get("required_fact_types") or [] if isinstance(stats_debug, dict) else []),
         *(stats_response.get("required_fact_types") or [] if isinstance(stats_response, dict) else []),
         query_fact_type,
-        *_selected_evidence_fact_types(debug, response),
-        *(evidence_pack.get("matched_fields") or [] if isinstance(evidence_pack, dict) else []),
     ])
-
-
-def _selected_evidence_fact_types(debug: dict[str, Any], response: dict[str, Any]) -> list[str]:
-    fact_types: list[Any] = []
-
-    def collect(items: Any, *, selected_by_container: bool = False) -> None:
-        if not isinstance(items, list):
-            return
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if item.get("selected") is False:
-                continue
-            if not selected_by_container and item.get("selected") is not True:
-                continue
-            fact_types.append(item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or "")
-
-    collect(debug.get("selected_evidence"), selected_by_container=True)
-    collect(response.get("selected_evidence"), selected_by_container=True)
-    evidence_pack = _evidence_pack(debug, response)
-    if isinstance(evidence_pack, dict):
-        collect(evidence_pack.get("matched_facts"), selected_by_container=True)
-        collect(evidence_pack.get("evidence_evaluation"))
-    return _ordered_unique(fact_types)
-
-
-def _evidence_pack(debug: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
-    product_pack_summary = debug.get("product_context_pack_summary") or {}
-    if isinstance(product_pack_summary, dict):
-        evidence_pack = product_pack_summary.get("evidence_pack") or {}
-        if isinstance(evidence_pack, dict) and evidence_pack:
-            return evidence_pack
-    product_pack = response.get("product_context_pack") or {}
-    if isinstance(product_pack, dict):
-        evidence_pack = product_pack.get("evidence_pack") or {}
-        if isinstance(evidence_pack, dict):
-            return evidence_pack
-    context_used = response.get("context_used") or {}
-    if isinstance(context_used, dict):
-        product_pack = context_used.get("product_context_pack") or {}
-        if isinstance(product_pack, dict):
-            evidence_pack = product_pack.get("evidence_pack") or {}
-            if isinstance(evidence_pack, dict):
-                return evidence_pack
-    return {}
 
 
 def _rag_evidence_used(

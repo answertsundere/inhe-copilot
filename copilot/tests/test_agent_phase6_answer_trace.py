@@ -460,7 +460,7 @@ def test_answer_trace_records_composition_knowledge_evidence_without_media_dupli
     assert "visual_asset" not in trace["rag_evidence_used"]
 
 
-def test_answer_trace_recovers_fact_type_from_selected_evidence_when_response_lost_query():
+def test_answer_trace_does_not_infer_query_fact_type_from_selected_evidence():
     from app.services.answer_trace_service import attach_answer_trace
 
     response = {
@@ -502,12 +502,13 @@ def test_answer_trace_recovers_fact_type_from_selected_evidence_when_response_lo
     )
     trace = result["answer_trace"]
 
-    assert result["query_fact_type"] == "material"
-    assert trace["query_fact_type"] == "material"
-    assert "material" in trace["required_fact_types"]
-    assert trace["rag_evidence_used"]["material"]
-    assert "material" in trace["evidence_answered_fact_types"]
-    assert trace["mode"] == "mixed_with_human_review"
+    assert result.get("query_fact_type", "") == ""
+    assert trace["query_fact_type"] == ""
+    assert trace["required_fact_types"] == []
+    assert trace["rag_evidence_used"] == {}
+    assert trace["evidence_answered_fact_types"] == []
+    assert trace["trace_contract_broken"] is True
+    assert trace["trace_contract_reason"] == "missing_query_fact_type"
 
 
 def test_real_api_material_rag_trace_keeps_fact_contract_and_no_load_capacity(phase6_rag_api):
@@ -548,3 +549,56 @@ def test_real_api_material_rag_trace_keeps_fact_contract_and_no_load_capacity(ph
         assert internal_term not in reply
     for unsafe in ("\u7edd\u5bf9\u5b89\u5168", "0\u7532\u919b", "\u5b8c\u5168\u65e0\u5bb3", "\u5b9d\u5b9d\u53ef\u4ee5\u76f4\u63a5\u7528"):
         assert unsafe not in reply
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_fact_type"),
+    [
+        ("\u5c3a\u5bf8\u591a\u5927\uff0c\u6709\u6ca1\u6709\u56fe\uff1f", "visual_asset"),
+        ("\u600e\u4e48\u5b89\u88c5\uff0c\u6709\u89c6\u9891\u5417\uff1f", "installation"),
+        ("\u6709\u6ca1\u6709\u68c0\u6d4b\u62a5\u544a\uff0c\u5b89\u5168\u5417\uff1f", "certification_report"),
+    ],
+)
+def test_real_api_non_material_queries_are_not_overwritten_by_material_evidence(
+    phase6_rag_api,
+    message,
+    expected_fact_type,
+):
+    data = _post_phase6_rag_api(
+        phase6_rag_api,
+        message,
+        f"phase6_trace_{expected_fact_type}_api_test",
+    )
+    trace = _phase6_trace(data)
+    reply = data.get("suggested_reply") or ""
+
+    assert data["query_fact_type"] == expected_fact_type
+    assert trace["query_fact_type"] == expected_fact_type
+    assert expected_fact_type in trace["required_fact_types"]
+    assert data["query_fact_type"] != "material"
+    assert trace["query_fact_type"] != "material"
+    assert trace["required_fact_types"] != ["material"]
+    assert "\u6750\u8d28/\u9632\u6f6e" not in reply
+    assert "2.65" not in reply
+
+
+def _post_phase6_rag_api(client, message: str, conversation_id: str) -> dict:
+    response = client.post("/ask/api/analyze", json={
+        "message": message,
+        "sku_code": PHASE6_RAG_SKU,
+        "conversation_id": conversation_id,
+        "product_candidates": [
+            {"type": "i_id", "value": PHASE6_RAG_I_ID, "i_id": PHASE6_RAG_I_ID, "product_name": PHASE6_RAG_PRODUCT},
+            {"type": "sku_code", "value": PHASE6_RAG_SKU, "sku_code": PHASE6_RAG_SKU, "product_name": PHASE6_RAG_PRODUCT},
+        ],
+        "copilot_context": {
+            "product_name": PHASE6_RAG_PRODUCT,
+            "i_id": PHASE6_RAG_I_ID,
+            "sku_code": PHASE6_RAG_SKU,
+            "product_candidates": [
+                {"type": "sku_code", "value": PHASE6_RAG_SKU, "sku_code": PHASE6_RAG_SKU, "product_name": PHASE6_RAG_PRODUCT},
+            ],
+        },
+    })
+    assert response.status_code == 200, response.data[:500]
+    return response.get_json()
