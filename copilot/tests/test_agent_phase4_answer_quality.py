@@ -31,6 +31,10 @@ def _assert_customer_reply_clean(reply: str):
     assert not any(token in reply for token in ("系统", "知识库", "RAG", "fact_type", "query_fact_type"))
 
 
+def _identity_prompt_terms():
+    return ("商品链接", "商品截图", "订单号", "发一下链接", "发个截图", "把商品标题发我", "提供商品信息")
+
+
 def _fact(fact_type, text, source_type="product_facts"):
     return {
         "chunk_id": f"chunk-{fact_type}",
@@ -45,6 +49,16 @@ def _fact(fact_type, text, source_type="product_facts"):
         "evidence_allowed_for_direct_answer": True,
         "direct_answer_allowed": True,
         "evidence_allowed_for_exact_answer": True,
+    }
+
+
+def _asset(title="尺寸图", asset_id="asset-demo-001"):
+    return {
+        "asset_id": asset_id,
+        "asset_type": "image",
+        "asset_title": title,
+        "url": "https://example.invalid/demo.png",
+        "send_mode": "manual",
     }
 
 
@@ -607,3 +621,128 @@ def test_phase4_output_has_no_internal_terms():
     ))
 
     _assert_customer_reply_clean(result["suggested_reply"])
+
+
+def test_resolved_sku_does_not_ask_for_product_link_or_order_for_product_fact_gap():
+    state = _state(
+        "宝宝能用吗，今天能发吗？",
+        "stock_shipping",
+        ["material"],
+        [],
+        intent="stock_query",
+    )
+    state.update({
+        "sku_code": "SKU-DEMO-001",
+        "slots": {"sku_code": "SKU-DEMO-001"},
+        "product_candidates": [{"sku_code": "SKU-DEMO-001", "verified": True}],
+        "copilot_context": {
+            "sku_code": "SKU-DEMO-001",
+            "product_candidates": [{"sku_code": "SKU-DEMO-001", "verified": True}],
+        },
+    })
+
+    result = generate_reply(state)
+    reply = result["suggested_reply"]
+    trace = result["answer_composition_trace"]
+
+    assert not any(term in reply for term in _identity_prompt_terms())
+    assert "material" not in trace["evidence_answered_fact_types"]
+    assert "material" in trace["fallback_fact_types"] or "material" in trace["needs_followup_fact_types"]
+    assert "stock_shipping" in trace["answered_fact_types"]
+    _assert_customer_reply_clean(reply)
+
+
+def test_unresolved_product_can_ask_for_product_context():
+    state = _state(
+        "尺寸多大，有没有图？",
+        "dimensions",
+        ["visual_asset"],
+        [],
+    )
+
+    response = build_response({
+        **state,
+        "suggested_reply": "亲亲，麻烦您发一下商品链接或商品截图，我帮您按对应商品核实。",
+    })
+
+    reply = response["suggested_reply"]
+    assert any(term in reply for term in ("商品链接", "商品截图", "链接", "截图"))
+    _assert_customer_reply_clean(reply)
+
+
+def test_visual_asset_answered_only_when_sendable_asset_exists():
+    state = _state(
+        "有没有图？",
+        "visual_asset",
+        [],
+        [],
+        product_pack={"recommended_assets": [_asset("实物图")]},
+    )
+
+    result = generate_reply(state)
+    reply = result["suggested_reply"]
+    trace = result["answer_composition_trace"]
+
+    assert "visual_asset" in trace["answered_fact_types"]
+    assert "visual_asset" in trace["evidence_answered_fact_types"]
+    assert "图" in reply
+    assert any(term in reply for term in ("发您参考", "一起发您", "给您参考"))
+    assert "稍等确认" not in reply
+
+
+def test_visual_asset_without_asset_is_followup_not_answered():
+    result = generate_reply(_state(
+        "有没有图？",
+        "visual_asset",
+        [],
+        [],
+    ))
+
+    reply = result["suggested_reply"]
+    trace = result["answer_composition_trace"]
+    assert "visual_asset" not in trace["evidence_answered_fact_types"]
+    assert "visual_asset" not in trace["answered_fact_types"]
+    assert "visual_asset" in trace["fallback_fact_types"] or "visual_asset" in trace["needs_followup_fact_types"]
+    assert "已经有图" not in reply
+
+
+def test_dimensions_plus_visual_asset_with_image_but_no_dimensions_marks_dimension_followup():
+    result = generate_reply(_state(
+        "尺寸多大，有没有图？",
+        "dimensions",
+        ["visual_asset"],
+        [],
+        product_pack={"recommended_assets": [_asset("尺寸图")]},
+    ))
+
+    reply = result["suggested_reply"]
+    trace = result["answer_composition_trace"]
+    assert "visual_asset" in trace["answered_fact_types"]
+    assert "dimensions" not in trace["evidence_answered_fact_types"]
+    assert "dimensions" in trace["needs_followup_fact_types"] or "dimensions" in trace["fallback_fact_types"]
+    assert "图" in reply
+    assert any(term in reply for term in ("发您参考", "给您参考", "一起发您"))
+    assert any(term in reply for term in ("预留", "长宽高", "尺寸"))
+    assert "承重" not in reply
+    assert "材质" not in reply
+
+
+def test_build_response_does_not_reintroduce_identity_prompt_when_product_resolved():
+    state = _state(
+        "宝宝能用吗？",
+        "material",
+        [],
+        [],
+        intent="product_question",
+    )
+    state.update({
+        "sku_code": "SKU-DEMO-001",
+        "slots": {"sku_code": "SKU-DEMO-001"},
+        "product_candidates": [{"sku_code": "SKU-DEMO-001", "verified": True}],
+        "suggested_reply": "亲亲，麻烦您提供一下商品链接、商品截图或订单号，我帮您核实准确参数。",
+    })
+
+    response = build_response(state)
+    reply = response["suggested_reply"]
+    assert not any(term in reply for term in _identity_prompt_terms())
+    assert response["evidence_debug"]["suppressed_identity_prompt"] is True

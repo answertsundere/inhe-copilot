@@ -465,6 +465,7 @@ def generate_reply(state: dict) -> dict:
             product_name=product_name,
             risk_level=risk_level,
             intent=intent,
+            identity_context=grouping_state,
         )
         composed_reply = composition.get("composed_reply", "")
         if composed_reply:

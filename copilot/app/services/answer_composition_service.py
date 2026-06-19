@@ -17,6 +17,7 @@ COMPOSABLE_SINGLE_FACT_TYPES = {
     "odor",
     "space_fit",
     "placement_scene",
+    "visual_asset",
 }
 
 COMPOSABLE_INTENTS = {
@@ -42,15 +43,44 @@ SERVICE_GUIDANCE_FACT_TYPES = {
     "stock_shipping",
     "aftersales_policy",
     "installation",
+    "space_fit",
+    "placement_scene",
+}
+
+PRODUCT_IDENTITY_FACT_TYPES = {
+    "material",
+    "certification_report",
+    "dimensions",
     "visual_asset",
     "space_fit",
     "placement_scene",
+    "age_range",
+    "odor",
+    "cleaning_care",
+    "load_capacity",
+    "stability",
+    "pinch_safety",
+    "safety_small_parts",
 }
 
 BUSINESS_PRIORITY = {
     "aftersales_policy": 10,
     "installation": 20,
 }
+
+IDENTITY_PROMPT_TERMS = (
+    "商品链接",
+    "商品截图",
+    "商品页面截图",
+    "订单号",
+    "商品标题",
+    "发一下链接",
+    "发个截图",
+    "提供商品信息",
+    "链接",
+    "SKU",
+    "sku",
+)
 
 FORBIDDEN_CLAIMS = (
     "绝对安全",
@@ -116,6 +146,7 @@ def compose_customer_reply(
     product_name: str = "",
     risk_level: str = "",
     intent: str = "",
+    identity_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compose a concise reply and a section-level trace.
 
@@ -132,6 +163,7 @@ def compose_customer_reply(
     }
     selected_evidence = selected_evidence or []
     selected_assets = selected_assets or []
+    identity_context = identity_context or {}
     customer_tone = _customer_tone(customer_message, risk_level, intent)
 
     if not required:
@@ -163,7 +195,7 @@ def compose_customer_reply(
         )
         if not section:
             continue
-        section_source = _section_source(fact_type, bool(evidence_items))
+        section_source = _section_source(fact_type, evidence_items)
         evidence_used_by_fact_type[fact_type] = [_summarize_evidence(item) for item in evidence_items[:3]]
         fallback_used_by_fact_type[fact_type] = not bool(evidence_items)
         sections.append({
@@ -171,7 +203,7 @@ def compose_customer_reply(
             "fact_label": FACT_TYPE_LABELS.get(fact_type, fact_type),
             "source": "evidence" if evidence_items else "fallback",
             "answer_source": section_source,
-            "answered": _section_counts_as_answered(fact_type, section_source),
+            "answered": _section_counts_as_answered(fact_type, section_source, section, evidence_items),
             "needs_followup": section_source == "handoff_guidance",
             "text": section,
         })
@@ -188,6 +220,12 @@ def compose_customer_reply(
     reply, blocked_claims = _remove_forbidden_claims(reply)
     reply = _remove_internal_terms(reply)
     reply = _clean_reply(reply)
+    reply, identity_suppression = _suppress_identity_prompt_when_product_resolved(
+        reply,
+        identity_context,
+        intent=intent,
+        required_fact_types=required,
+    )
 
     answered = [
         section["fact_type"]
@@ -222,6 +260,8 @@ def compose_customer_reply(
         "evidence_used_by_fact_type": evidence_used_by_fact_type,
         "fallback_used_by_fact_type": fallback_used_by_fact_type,
         "blocked_claims": blocked_claims,
+        "suppressed_identity_prompt": identity_suppression.get("suppressed", False),
+        "identity_prompt_suppression_reason": identity_suppression.get("reason", ""),
         "customer_tone": customer_tone,
         "answer_sections": sections,
         "base_reply_used": bool(base_reply and not sections),
@@ -335,18 +375,158 @@ def _message_position_for_fact_type(message: str, fact_type: str) -> int:
     return min(positions) if positions else -1
 
 
-def _section_source(fact_type: str, has_evidence: bool) -> str:
-    if has_evidence:
+def _section_source(fact_type: str, evidence_items: list[dict[str, Any]]) -> str:
+    if fact_type == "visual_asset":
+        return "evidence_answer" if _has_sendable_asset(evidence_items) else "handoff_guidance"
+    if evidence_items:
         return "evidence_answer"
     if fact_type in FACT_EVIDENCE_REQUIRED_TYPES:
         return "handoff_guidance"
     return "service_guidance"
 
 
-def _section_counts_as_answered(fact_type: str, section_source: str) -> bool:
+def _section_counts_as_answered(
+    fact_type: str,
+    section_source: str,
+    section_text: str,
+    evidence_items: list[dict[str, Any]],
+) -> bool:
+    if fact_type == "visual_asset":
+        return _visual_asset_counts_as_answered(section_text, evidence_items)
     if section_source == "evidence_answer":
         return True
     return section_source == "service_guidance" and fact_type in SERVICE_GUIDANCE_FACT_TYPES
+
+
+def _has_sendable_asset(items: list[dict[str, Any]]) -> bool:
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        asset_type = str(item.get("asset_type") or item.get("type") or item.get("media_type") or "").lower()
+        source_type = str(item.get("source_type") or "").lower()
+        has_asset_id = bool(item.get("asset_id") or item.get("id"))
+        has_url = bool(item.get("url") or item.get("oss_url") or item.get("signed_url") or item.get("media_url"))
+        if asset_type in {"image", "video", "picture", "photo"} and (has_asset_id or has_url):
+            return True
+        if source_type == "product_media" and has_asset_id:
+            return True
+        if has_asset_id and any(key in item for key in ("asset_title", "send_mode", "asset_type")):
+            return True
+    return False
+
+
+def _visual_asset_counts_as_answered(section_text: str, evidence_items: list[dict[str, Any]]) -> bool:
+    if not _has_sendable_asset(evidence_items):
+        return False
+    text = section_text or ""
+    return any(cue in text for cue in ("发您参考", "一起发您", "看图参考", "给您参考", "发您看"))
+
+
+def _has_resolved_product_identity(state: dict[str, Any] | None) -> bool:
+    if not isinstance(state, dict):
+        return False
+    slots = state.get("slots") if isinstance(state.get("slots"), dict) else {}
+    ctx = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
+    identity = state.get("order_product_identity") if isinstance(state.get("order_product_identity"), dict) else {}
+    product_identity = state.get("product_identity") if isinstance(state.get("product_identity"), dict) else {}
+    resolved_product = state.get("resolved_product") if isinstance(state.get("resolved_product"), dict) else {}
+    product_pack = state.get("product_context_pack") if isinstance(state.get("product_context_pack"), dict) else {}
+    pack_identity = product_pack.get("identity") if isinstance(product_pack.get("identity"), dict) else {}
+
+    direct_values = (
+        state.get("sku_code"),
+        state.get("i_id"),
+        slots.get("sku_code"),
+        slots.get("i_id"),
+        ctx.get("sku_code"),
+        ctx.get("i_id"),
+        identity.get("sku_id"),
+        identity.get("i_id"),
+        product_identity.get("sku_code"),
+        product_identity.get("i_id"),
+        resolved_product.get("sku_code"),
+        resolved_product.get("i_id"),
+        pack_identity.get("sku_code"),
+        pack_identity.get("i_id"),
+    )
+    if any(str(value or "").strip() for value in direct_values):
+        return True
+    if identity.get("status") == "resolved" or product_identity.get("status") == "resolved":
+        return True
+    if any(str(source.get("product_name") or source.get("matched_product_name") or "").strip() for source in (
+        identity,
+        product_identity,
+        resolved_product,
+        pack_identity,
+    )):
+        return True
+    return _has_verified_product_candidate(state.get("product_candidates")) or _has_verified_product_candidate(ctx.get("product_candidates"))
+
+
+def _has_verified_product_candidate(candidates: Any) -> bool:
+    if not isinstance(candidates, list):
+        return False
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if candidate.get("verified") is True or candidate.get("is_verified") is True:
+            return True
+        status = str(candidate.get("status") or candidate.get("match_status") or "").lower()
+        if status in {"verified", "resolved", "matched"}:
+            return True
+    return False
+
+
+def _suppress_identity_prompt_when_product_resolved(
+    reply: str,
+    state: dict[str, Any] | None,
+    *,
+    intent: str = "",
+    required_fact_types: list[str] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    if not reply or not _has_resolved_product_identity(state):
+        return reply, {"suppressed": False, "reason": ""}
+    if not _identity_prompt_suppression_applies(intent, required_fact_types or []):
+        return reply, {"suppressed": False, "reason": ""}
+
+    lines = reply.splitlines()
+    kept: list[str] = []
+    suppressed = False
+    for line in lines:
+        if _is_identity_prompt(line):
+            suppressed = True
+            continue
+        kept.append(line)
+    cleaned = _clean_reply("\n".join(kept))
+    if not suppressed:
+        return reply, {"suppressed": False, "reason": ""}
+    if not cleaned:
+        cleaned = "这款商品我已经帮您对到了，相关细节我会按已确认资料继续核实，避免说错。"
+    elif not any(cue in cleaned for cue in ("已经帮您对到了", "按已确认资料", "当前商品", "这款")):
+        cleaned = f"{cleaned}\n这款商品我已经帮您对到了，相关细节我会按已确认资料继续核实，避免说错。"
+    return cleaned, {"suppressed": True, "reason": "resolved_product_identity"}
+
+
+def _identity_prompt_suppression_applies(intent: str, required_fact_types: list[str]) -> bool:
+    if str(intent or "") in {"logistics", "logistics_eta", "logistics_trace", "shipping", "delivery_not_received"}:
+        return False
+    if str(intent or "") == "aftersales":
+        return False
+    return bool(set(required_fact_types or []) & PRODUCT_IDENTITY_FACT_TYPES) or str(intent or "") in {
+        "product_question",
+        "product_consult",
+        "material_safety",
+        "child_safety",
+        "odor_question",
+    }
+
+
+def _is_identity_prompt(text: str) -> bool:
+    line = str(text or "")
+    if not any(term in line for term in IDENTITY_PROMPT_TERMS):
+        return False
+    prompt_cues = ("麻烦", "请", "发", "提供", "补充", "把", "截图", "链接", "订单号", "标题")
+    return any(cue in line for cue in prompt_cues)
 
 
 def _evidence_for_fact_type(

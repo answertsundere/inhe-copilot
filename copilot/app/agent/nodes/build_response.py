@@ -8,6 +8,7 @@ import time
 
 from app.services.reply_style_service import beautify_customer_reply
 from app.services.fact_type_service import FACT_TYPE_LABELS
+from app.services.answer_composition_service import _suppress_identity_prompt_when_product_resolved
 from app.agent.query_understanding import refresh_query_understanding
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,15 @@ def build_response(state: dict) -> dict:
     suggested_reply = _append_image_degrade_notice(suggested_reply, state)
     suggested_reply = beautify_customer_reply(suggested_reply, state)
     suggested_reply = _ensure_tracking_reference(suggested_reply, state)
+    suggested_reply, identity_suppression = _suppress_identity_prompt_when_product_resolved(
+        suggested_reply,
+        state,
+        intent=state.get("intent", ""),
+        required_fact_types=[
+            state.get("query_fact_type", ""),
+            *(state.get("secondary_fact_types", []) or []),
+        ],
+    )
     guard_warnings = state.get("guard_warnings", [])
     requires_human_review = state.get("requires_human_review", False)
     review_reason = state.get("review_reason", "")
@@ -72,6 +82,8 @@ def build_response(state: dict) -> dict:
         "duration_ms": duration_ms,
         "cache_hit": False,
         "answer_type": answer_type,
+        "suppressed_identity_prompt": identity_suppression.get("suppressed", False),
+        "identity_prompt_suppression_reason": identity_suppression.get("reason", ""),
         "summary": f"组装最终回复: answer_type={answer_type}, guard_warnings={len(guard_warnings)}, human_review={requires_human_review}",
     }
 
@@ -399,6 +411,8 @@ def build_response(state: dict) -> dict:
     evidence_debug["generated_context"] = generated_context
     evidence_debug["generation_context"] = generation_context
     evidence_debug["query_understanding"] = query_understanding
+    evidence_debug["suppressed_identity_prompt"] = identity_suppression.get("suppressed", False)
+    evidence_debug["identity_prompt_suppression_reason"] = identity_suppression.get("reason", "")
 
     logger.debug("build_response: reply assembled, warnings=%d", len(guard_warnings))
     return {
