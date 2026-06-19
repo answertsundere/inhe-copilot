@@ -99,14 +99,17 @@ def classify_query_fact_type_llm_first(state: dict[str, Any]) -> dict[str, Any]:
     if _is_usable_llm_result(llm_result):
         guarded = _semantic_consistency_guard(deterministic, llm_result)
         if guarded:
+            guarded = _normalize_baby_safety_secondary(guarded, message)
             guarded["semantic_query"] = _semantic_query_from_result(guarded, message)
             return guarded
         result = dict(llm_result)
         result["deterministic_hint"] = _compact_hint(deterministic)
+        result = _normalize_baby_safety_secondary(result, message)
         result["semantic_query"] = _semantic_query_from_result(result, message)
         return result
 
     fallback = _fallback_from_rule(deterministic, llm_result)
+    fallback = _normalize_baby_safety_secondary(fallback, message)
     fallback["semantic_query"] = _semantic_query_from_result(fallback, message)
     return fallback
 
@@ -287,6 +290,43 @@ def _semantic_query_from_result(result: dict[str, Any], message: str) -> dict[st
         "confidence": float(result.get("confidence") or 0),
         "reason": result.get("reason", ""),
     }
+
+
+def _normalize_baby_safety_secondary(result: dict[str, Any], message: str) -> dict[str, Any]:
+    """Treat "宝宝/孩子能用吗" as material safety, not age range.
+
+    Age range remains valid when the customer asks actual age/month cues. This
+    only fixes mixed questions such as safety + shipping.
+    """
+    text = message or ""
+    asks_baby_use_safety = any(
+        cue in text
+        for cue in ("宝宝能用", "孩子能用", "小孩能用", "宝宝用安全吗", "孩子用安全吗", "宝宝用", "孩子用")
+    ) or ("宝宝" in text and "安全" in text)
+    asks_age = any(
+        cue in text
+        for cue in ("适合多大", "适合几岁", "多大宝宝", "几个月", "月龄", "半岁", "一岁", "两岁", "三岁", "岁宝宝")
+    )
+    if not asks_baby_use_safety or asks_age:
+        return result
+
+    normalized = dict(result)
+    primary = str(normalized.get("query_fact_type") or "")
+    secondary = [
+        str(item)
+        for item in normalized.get("secondary_fact_types", []) or []
+        if str(item) and str(item) != primary
+    ]
+    secondary = [item for item in secondary if item != "age_range"]
+    if primary == "age_range":
+        normalized["query_fact_type"] = "material"
+        normalized["query_fact_type_label"] = FACT_TYPE_LABELS.get("material", "material")
+        primary = "material"
+    elif primary != "material" and "material" not in secondary:
+        secondary.insert(0, "material")
+    normalized["secondary_fact_types"] = secondary[:5]
+    normalized["reason"] = (normalized.get("reason") or "") + " normalized_baby_use_as_material_safety"
+    return normalized
 
 
 def _compact_hint(result: dict[str, Any]) -> dict[str, Any]:

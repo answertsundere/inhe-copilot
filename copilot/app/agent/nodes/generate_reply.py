@@ -19,8 +19,8 @@ from app.services.fact_type_service import fact_type_matches, infer_evidence_fac
 from app.services.evidence_grouping_service import (
     build_multi_intent_answer_plan,
     group_evidence_by_fact_type,
-    merge_multi_intent_reply,
 )
+from app.services.answer_composition_service import compose_customer_reply, should_compose_answer
 
 logger = logging.getLogger(__name__)
 
@@ -443,10 +443,34 @@ def generate_reply(state: dict) -> dict:
             current_reply=suggested_reply,
             customer_message=msg,
         )
-        merged_reply = merge_multi_intent_reply(suggested_reply, multi_intent_answer_plan)
-        if merged_reply != suggested_reply:
-            suggested_reply = merged_reply
-            generation_mode = "rule_based_multi_intent"
+    answer_composition_trace = {}
+    query_understanding = grouping_state.get("query_understanding") or {
+        "query_fact_type": grouping_state.get("query_fact_type", ""),
+        "secondary_fact_types": grouping_state.get("secondary_fact_types", []),
+    }
+    if should_compose_answer(
+        intent=intent,
+        risk_level=risk_level,
+        query_understanding=query_understanding,
+        evidence_grouping=evidence_grouping,
+    ):
+        composition = compose_customer_reply(
+            customer_message=msg,
+            base_reply=suggested_reply,
+            query_understanding=query_understanding,
+            evidence_grouping=evidence_grouping,
+            multi_intent_answer_plan=multi_intent_answer_plan,
+            selected_evidence=_selected_evidence_for_composition(grouping_state),
+            selected_assets=_selected_assets_for_composition(grouping_state),
+            product_name=product_name,
+            risk_level=risk_level,
+            intent=intent,
+        )
+        composed_reply = composition.get("composed_reply", "")
+        if composed_reply:
+            suggested_reply = composed_reply
+            generation_mode = "rule_based_answer_composition"
+        answer_composition_trace = composition.get("composition_trace", {})
     trace["evidence_grouping_coverage"] = evidence_grouping.get("coverage", {})
     trace["multi_intent_answer_plan"] = [
         {
@@ -457,6 +481,8 @@ def generate_reply(state: dict) -> dict:
         }
         for item in multi_intent_answer_plan
     ]
+    if answer_composition_trace:
+        trace["answer_composition_trace"] = answer_composition_trace
 
     return {
         "suggested_reply": suggested_reply,
@@ -468,6 +494,7 @@ def generate_reply(state: dict) -> dict:
         "generation_mode": generation_mode,
         "evidence_grouping": evidence_grouping,
         "multi_intent_answer_plan": multi_intent_answer_plan,
+        "answer_composition_trace": answer_composition_trace,
         "llm_used": llm_used,
         "llm_skipped": llm_skipped,
         "llm_error": llm_error,
@@ -508,6 +535,39 @@ def _build_evidence_grouping(state: dict) -> dict:
         "selected_assets": state.get("selected_assets", []),
     }
     return group_evidence_by_fact_type(payload, query_understanding)
+
+
+def _selected_evidence_for_composition(state: dict) -> list[dict[str, Any]]:
+    evidence_items: list[dict[str, Any]] = []
+    for key in ("knowledge_evidence", "filtered_evidence"):
+        evidence_items.extend([item for item in state.get(key, []) or [] if isinstance(item, dict)])
+    raw_evidence = state.get("evidence") or {}
+    for key in ("product_facts", "faq_evidence", "policy_facts", "sop_evidence", "template_evidence"):
+        evidence_items.extend([item for item in raw_evidence.get(key, []) or [] if isinstance(item, dict)])
+    return _dedupe_composition_items(evidence_items)
+
+
+def _selected_assets_for_composition(state: dict) -> list[dict[str, Any]]:
+    product_context_pack = state.get("product_context_pack") or {}
+    assets = [item for item in state.get("selected_assets", []) or [] if isinstance(item, dict)]
+    assets.extend([item for item in product_context_pack.get("recommended_assets", []) or [] if isinstance(item, dict)])
+    return _dedupe_composition_items(assets)
+
+
+def _dedupe_composition_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in items:
+        key = (
+            str(item.get("entry_id") or ""),
+            str(item.get("chunk_id") or ""),
+            str(item.get("asset_id") or item.get("id") or item.get("title") or item.get("asset_title") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
 
 
 def _resolve_answer_mode(state: dict) -> tuple[str, str]:

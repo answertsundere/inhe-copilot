@@ -243,6 +243,14 @@ def _reply_part_for_group(group: dict[str, Any], customer_message: str) -> str:
 def _summarize_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for item in items[:8]:
+        preview = (
+            item.get("chunk_text")
+            or item.get("fact")
+            or item.get("content")
+            or item.get("answer")
+            or item.get("description")
+            or ""
+        )
         out.append({
             "chunk_id": item.get("chunk_id", ""),
             "entry_id": item.get("entry_id", ""),
@@ -250,6 +258,8 @@ def _summarize_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "title": item.get("title") or item.get("asset_title") or "",
             "source_type": item.get("source_type", ""),
             "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or "",
+            "preview": str(preview)[:120],
+            "chunk_preview": str(preview)[:120],
             "gate_status": item.get("gate_status", ""),
             "gate_reasons": item.get("gate_reasons", []),
             "rejection_reasons": item.get("rejection_reasons") or item.get("reasons") or [],

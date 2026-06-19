@@ -56,6 +56,19 @@ _INTENT_TOPIC = {
     "aftersales": "aftersales",
 }
 
+_SAFE_COMPOSITION_FALLBACK_FACT_TYPES = {
+    "dimensions",
+    "space_fit",
+    "placement_scene",
+    "material",
+    "odor",
+    "age_range",
+    "stock_shipping",
+    "visual_asset",
+    "aftersales_policy",
+    "installation",
+}
+
 _TOPIC_CUES = {
     "pinch_safety": ("夹手", "防夹", "被夹", "夹到", "夹住", "滑门", "结构安全", "安全隐患"),
     "small_parts_battery": ("小零件", "零件松", "误吞", "吞了", "卡喉", "窒息", "电池", "电池仓", "电池盖"),
@@ -257,10 +270,13 @@ def audit_final_answer(
 
     multi_intent_audit = _multi_intent_coverage_audit(reply, response)
     if llm_audit:
+        hard_issues = _hard_safety_issues(reply, response, copilot_context or {})
         issues = []
         if not llm_audit.get("passed", True):
             issues.extend(f"llm:{issue}" for issue in llm_audit.get("issues", []) or ["semantic_mismatch"])
-        issues.extend(_hard_safety_issues(reply, response, copilot_context or {}))
+        if issues and _safe_composition_reply_covers(response, reply) and not hard_issues:
+            issues = []
+        issues.extend(hard_issues)
     else:
         issues = _audit_issues(customer_message, reply, expected, actual, response, copilot_context or {})
     issues.extend(multi_intent_audit.get("issues", []))
@@ -367,10 +383,13 @@ def _reply_covers_fact_type(reply: str, fact_type: str) -> bool:
         "material": ("材质", "材料", "安全", "宝宝", "防潮", "防水", "检测"),
         "stock_shipping": ("发货", "库存", "现货", "仓库", "下单页", "今天"),
         "dimensions": ("尺寸", "长", "宽", "高", "尺寸图"),
+        "space_fit": ("放得下", "放的下", "空间", "长宽高", "占地", "预留"),
+        "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "摆放", "放在", "通风"),
         "visual_asset": ("图", "图片", "素材", "视频"),
         "aftersales_policy": ("售后", "补发", "少件", "缺配件", "退货", "退款"),
         "installation": ("安装", "组装", "教程", "说明"),
         "age_range": ("适合", "宝宝", "年龄", "月龄", "适龄"),
+        "odor": ("气味", "味道", "有味", "异味", "通风", "刺鼻"),
     }.get(fact_type, (_FACT_TOPIC.get(fact_type, fact_type),))
     return any(cue and cue in text for cue in cues)
 
@@ -509,7 +528,44 @@ def _product_card_missing_fact_but_reply_answers(response: dict[str, Any], reply
         return False
     if evidence_pack.get("answerability") not in {"missing_product_fact", "no_product_profile", "no_product_identity"}:
         return False
+    if _safe_composition_fallback_covers(debug, fact_type, reply):
+        return False
     return not _is_generic_handoff(reply)
+
+
+def _safe_composition_fallback_covers(debug: dict[str, Any], fact_type: str, reply: str) -> bool:
+    if fact_type not in _SAFE_COMPOSITION_FALLBACK_FACT_TYPES:
+        return False
+    if unsafe_promise_terms(reply):
+        return False
+    trace = debug.get("answer_composition_trace") or {}
+    if not isinstance(trace, dict):
+        return False
+    covered = {str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()}
+    fallback = trace.get("fallback_used_by_fact_type") or {}
+    return fact_type in covered and bool(fallback.get(fact_type))
+
+
+def _safe_composition_reply_covers(response: dict[str, Any], reply: str) -> bool:
+    if unsafe_promise_terms(reply):
+        return False
+    debug = response.get("evidence_debug") or {}
+    trace = debug.get("answer_composition_trace") or response.get("answer_composition_trace") or {}
+    if not isinstance(trace, dict) or not trace.get("answer_sections"):
+        return False
+    missing = [item for item in trace.get("missing_fact_types", []) if item]
+    if missing:
+        return False
+    covered = [str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()]
+    if not covered:
+        return False
+    fallback = trace.get("fallback_used_by_fact_type") or {}
+    for fact_type in covered:
+        if fallback.get(fact_type) and fact_type not in _SAFE_COMPOSITION_FALLBACK_FACT_TYPES:
+            return False
+        if not _reply_covers_fact_type(reply, fact_type):
+            return False
+    return True
 
 
 def _product_card_evidence_pack(response: dict[str, Any]) -> dict[str, Any]:

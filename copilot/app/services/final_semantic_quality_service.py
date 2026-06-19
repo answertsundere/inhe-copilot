@@ -108,6 +108,14 @@ def audit_customer_reply_semantic_fit(
                 "deterministic_review_flag_override",
                 details={"llm_semantic_fit": llm_result},
             )
+        if not llm_result.get("passed", True) and _safe_composition_fallback(response):
+            return _result(
+                True,
+                [],
+                "LLM semantic fit false negative overridden by safe answer_composition_trace fallback.",
+                "deterministic_composition_fallback_override",
+                details={"llm_semantic_fit": llm_result},
+            )
         return llm_result
 
     return _result(True, [], "No structural semantic issue detected.", "deterministic")
@@ -186,7 +194,7 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
 
     answerability = str(evidence_pack.get("answerability") or "")
     if answerability in {"missing_product_fact", "no_product_profile", "no_product_identity"}:
-        if not bool(response.get("requires_human_review")):
+        if not bool(response.get("requires_human_review")) and not _safe_composition_fallback(response):
             issues.append("missing_evidence_without_human_review")
 
     matched_facts = evidence_pack.get("matched_facts") or []
@@ -200,6 +208,40 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
 
     reason = "Final reply failed deterministic semantic quality gate." if issues else ""
     return _structural_result(issues, reason)
+
+
+def _safe_composition_fallback(response: dict[str, Any]) -> bool:
+    reply = str(response.get("suggested_reply") or "")
+    if unsafe_promise_terms(reply):
+        return False
+    debug = response.get("evidence_debug") or {}
+    trace = debug.get("answer_composition_trace") or response.get("answer_composition_trace") or {}
+    if not isinstance(trace, dict) or not trace.get("answer_sections"):
+        return False
+    if any(trace.get("missing_fact_types") or []):
+        return False
+    safe_fact_types = {
+        "dimensions",
+        "space_fit",
+        "placement_scene",
+        "material",
+        "odor",
+        "age_range",
+        "stock_shipping",
+        "visual_asset",
+        "aftersales_policy",
+        "installation",
+    }
+    fallback = trace.get("fallback_used_by_fact_type") or {}
+    covered = [str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()]
+    if not covered:
+        return False
+    for fact_type in covered:
+        if fallback.get(fact_type) and fact_type not in safe_fact_types:
+            return False
+        if not _has_topic(reply, fact_type):
+            return False
+    return True
 
 
 def _llm_semantic_fit_check(

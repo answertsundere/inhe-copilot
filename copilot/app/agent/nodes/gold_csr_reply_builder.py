@@ -250,6 +250,7 @@ def gold_csr_reply_builder(state: dict) -> dict:
         bool(state.get("used_knowledge_entry_ids"))
         or identity.get("status") == "resolved"
     )
+    composition_covers_required = _composition_covers_required(_composition_trace_from_state(state))
     changed = False
     # clarify_product_identity 只有在没有已解析商品身份时才强制改写；
     # 若已有明确商品身份和 grounded 答案，则保留原答案。
@@ -263,6 +264,9 @@ def gold_csr_reply_builder(state: dict) -> dict:
         and answer_mode in ("exact_faq_answer", "product_fact_answer")
         and bool((reply or "").strip())
         and has_grounded_identity_or_evidence
+    ) or (
+        composition_covers_required
+        and bool((reply or "").strip())
     ) or (
         state.get("intent", "") in LOCKED_POLICY_INTENTS
         and answer_mode == "policy_grounded_answer"
@@ -393,3 +397,25 @@ def gold_csr_reply_builder(state: dict) -> dict:
         ),
         "trace_steps": state.get("trace_steps", []) + [trace],
     }
+
+
+def _composition_covers_required(trace: dict) -> bool:
+    if not isinstance(trace, dict):
+        return False
+    covered = {str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()}
+    missing = [str(item) for item in trace.get("missing_fact_types", []) if str(item).strip()]
+    sections = trace.get("answer_sections") or []
+    return bool(covered and not missing and sections)
+
+
+def _composition_trace_from_state(state: dict) -> dict:
+    trace = state.get("answer_composition_trace") or {}
+    if isinstance(trace, dict) and trace:
+        return trace
+    for step in reversed(state.get("trace_steps", []) or []):
+        if not isinstance(step, dict):
+            continue
+        trace = step.get("answer_composition_trace")
+        if isinstance(trace, dict) and trace:
+            return trace
+    return {}

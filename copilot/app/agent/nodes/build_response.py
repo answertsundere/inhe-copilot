@@ -33,6 +33,7 @@ def build_response(state: dict) -> dict:
     """组装最终回复"""
     t0 = time.time()
     suggested_reply = state.get("suggested_reply", "")
+    suggested_reply = _restore_composed_reply_from_trace(suggested_reply, state)
     suggested_reply = _append_aftersales_issue_followup(suggested_reply, state)
     suggested_reply = _append_image_degrade_notice(suggested_reply, state)
     suggested_reply = beautify_customer_reply(suggested_reply, state)
@@ -62,6 +63,7 @@ def build_response(state: dict) -> dict:
 
     evidence = state.get("evidence", {})
     answer_type = state.get("answer_type", "")
+    trace_steps = state.get("trace_steps", [])
 
     duration_ms = int((time.time() - t0) * 1000)
     trace = {
@@ -259,8 +261,12 @@ def build_response(state: dict) -> dict:
     evidence_debug["context_updated"] = state.get("context_updated", False)
     evidence_debug["generation_mode"] = state.get("generation_mode", "")
     evidence_debug["llm_used"] = state.get("llm_used", False)
-    evidence_debug["evidence_grouping"] = state.get("evidence_grouping", {})
+    evidence_debug["evidence_grouping"] = state.get("evidence_grouping", {}) or _evidence_grouping_from_trace(trace_steps)
     evidence_debug["multi_intent_answer_plan"] = state.get("multi_intent_answer_plan", [])
+    evidence_debug["answer_composition_trace"] = (
+        state.get("answer_composition_trace", {})
+        or _answer_composition_trace_from_trace(trace_steps)
+    )
     evidence_debug["generic_service_rule_used"] = generic_service_rule_used
     evidence_debug["hallucination_guard"] = state.get("hallucination_guard", {
         "passed": True,
@@ -288,7 +294,6 @@ def build_response(state: dict) -> dict:
     evidence_debug["evidence_quality"] = state.get("evidence_quality", {})
 
     # Tool Registry 调试字段
-    trace_steps = state.get("trace_steps", [])
     evidence_debug["tool_plan"] = [c.get("tool_name") for c in state.get("tool_plan", [])]
     evidence_debug["tool_results_summary"] = {
         k: {
@@ -459,6 +464,78 @@ def _generic_rule_used_from_trace(trace_steps: list) -> dict:
                 "fact_type": used.get("fact_type", ""),
                 "score": used.get("score", 0),
             }
+    return {}
+
+
+def _restore_composed_reply_from_trace(current_reply: str, state: dict) -> str:
+    trace = (
+        state.get("answer_composition_trace")
+        or _answer_composition_trace_from_trace(state.get("trace_steps", []))
+    )
+    if not isinstance(trace, dict) or not trace.get("answer_sections"):
+        return current_reply
+    if any(trace.get("missing_fact_types") or []):
+        return current_reply
+    sections = [
+        str(section.get("text") or "").strip()
+        for section in trace.get("answer_sections", [])
+        if isinstance(section, dict) and str(section.get("text") or "").strip()
+    ]
+    if not sections:
+        return current_reply
+    covered = [str(item) for item in trace.get("covered_fact_types", []) if str(item).strip()]
+    fallback = trace.get("fallback_used_by_fact_type") or {}
+    if any(fallback.get(fact_type) for fact_type in covered):
+        if len(sections) == 1:
+            return "亲亲，" + sections[0]
+        return "亲亲，您这边问到的点我分开帮您说明：\n" + "\n".join(
+            f"{index}. {text}" for index, text in enumerate(sections, start=1)
+        )
+    if covered and all(_reply_mentions_fact_type(current_reply, fact_type) for fact_type in covered):
+        return current_reply
+    if len(sections) == 1:
+        return "亲亲，" + sections[0]
+    return "亲亲，您这边问到的点我分开帮您说明：\n" + "\n".join(
+        f"{index}. {text}" for index, text in enumerate(sections, start=1)
+    )
+
+
+def _reply_mentions_fact_type(reply: str, fact_type: str) -> bool:
+    text = reply or ""
+    cues = {
+        "material": ("材质", "材料", "安全", "宝宝", "防潮", "防水", "检测"),
+        "stock_shipping": ("发货", "库存", "现货", "仓库", "下单页", "今天"),
+        "dimensions": ("尺寸", "长宽高", "长", "宽", "高", "尺寸图"),
+        "space_fit": ("放得下", "放的下", "空间", "长宽高", "占地", "预留"),
+        "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "摆放", "通风"),
+        "visual_asset": ("图", "图片", "素材", "视频"),
+        "aftersales_policy": ("售后", "补发", "少件", "缺配件", "退货", "退款"),
+        "installation": ("安装", "组装", "教程", "说明"),
+        "age_range": ("适合", "宝宝", "年龄", "月龄", "适龄"),
+        "odor": ("气味", "味道", "有味", "异味", "通风", "刺鼻"),
+    }.get(fact_type, (FACT_TYPE_LABELS.get(fact_type, fact_type),))
+    return any(cue and cue in text for cue in cues)
+
+
+def _evidence_grouping_from_trace(trace_steps: list) -> dict:
+    for step in reversed(trace_steps or []):
+        if not isinstance(step, dict):
+            continue
+        if (step.get("node") or step.get("step")) != "generate_reply":
+            continue
+        coverage = step.get("evidence_grouping_coverage") or {}
+        if coverage:
+            return {"coverage": coverage, "groups": []}
+    return {}
+
+
+def _answer_composition_trace_from_trace(trace_steps: list) -> dict:
+    for step in reversed(trace_steps or []):
+        if not isinstance(step, dict):
+            continue
+        trace = step.get("answer_composition_trace")
+        if isinstance(trace, dict) and trace:
+            return trace
     return {}
 
 

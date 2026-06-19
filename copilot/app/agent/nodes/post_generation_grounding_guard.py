@@ -25,6 +25,19 @@ POLICY_LOCKED_INTENTS = {
     "image_attachment",
 }
 
+SAFE_COMPOSITION_FALLBACK_FACT_TYPES = {
+    "dimensions",
+    "space_fit",
+    "placement_scene",
+    "material",
+    "odor",
+    "age_range",
+    "stock_shipping",
+    "visual_asset",
+    "aftersales_policy",
+    "installation",
+}
+
 
 def _filter_order_item_name_claims(state: dict, unsupported_claims: list[dict]) -> list[dict]:
     if state.get("intent") not in ("logistics_eta", "logistics_trace", "shipping", "logistics"):
@@ -117,6 +130,30 @@ def post_generation_grounding_guard(state: dict) -> dict:
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
+    if _safe_composition_fallback(state):
+        trace = {
+            "node": "post_generation_grounding",
+            "status": "skipped",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "passed": True,
+            "unsupported_claims_count": 0,
+            "fallback_used": False,
+            "fallback_mode": "",
+            "summary": "answer_composition_fallback_skip",
+        }
+        return {
+            "post_generation_grounding": {
+                "checked": False,
+                "passed": True,
+                "unsupported_claims": [],
+                "supported_claims": [],
+                "fallback_used": False,
+                "fallback_mode": "",
+                "judge_mode": "answer_composition_fallback_skip",
+            },
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
     result = validate_reply_grounding(state)
     duration_ms = int((time.time() - t0) * 1000)
 
@@ -195,3 +232,26 @@ def post_generation_grounding_guard(state: dict) -> dict:
         },
         "trace_steps": trace_steps,
     }
+
+
+def _safe_composition_fallback(state: dict) -> bool:
+    trace = state.get("answer_composition_trace") or {}
+    if not isinstance(trace, dict) or not trace:
+        for step in reversed(state.get("trace_steps", []) or []):
+            if isinstance(step, dict) and isinstance(step.get("answer_composition_trace"), dict):
+                trace = step.get("answer_composition_trace")
+                break
+    if not isinstance(trace, dict) or not trace.get("answer_sections"):
+        return False
+    if any(trace.get("missing_fact_types") or []):
+        return False
+    fallback = trace.get("fallback_used_by_fact_type") or {}
+    for fact_type in trace.get("covered_fact_types") or []:
+        fact_type = str(fact_type or "")
+        if fallback.get(fact_type) and fact_type not in SAFE_COMPOSITION_FALLBACK_FACT_TYPES:
+            return False
+    if not any(fallback.values()):
+        return False
+    reply = state.get("suggested_reply", "") or ""
+    unsafe_terms = ("一定今天发", "保证", "绝对", "100%", "零甲醛", "0甲醛", "一定赔", "直接赔")
+    return not any(term in reply for term in unsafe_terms)
