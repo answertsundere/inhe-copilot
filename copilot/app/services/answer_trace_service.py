@@ -52,20 +52,29 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
         *(product_pack_summary.get("recommended_assets") or [] if isinstance(product_pack_summary, dict) else []),
         *(product_pack_summary.get("media_assets") or [] if isinstance(product_pack_summary, dict) else []),
     ])
+    rag_evidence_used = _rag_evidence_used(debug, composition, product_pack_summary, required_fact_types)
+    composition_evidence_answered_fact_types = _ordered_unique(
+        composition.get("evidence_answered_fact_types") or []
+        if isinstance(composition, dict) else []
+    )
+    rag_evidence_answered_fact_types = _ordered_unique(list(rag_evidence_used.keys()))
+    evidence_answered_fact_types = _ordered_unique([
+        *composition_evidence_answered_fact_types,
+        *rag_evidence_answered_fact_types,
+    ])
+    answered_fact_types = _ordered_unique(
+        (composition.get("answered_fact_types") or composition.get("covered_fact_types") or [])
+        if isinstance(composition, dict) else []
+    )
+    answered_fact_types = _ordered_unique([*answered_fact_types, *rag_evidence_answered_fact_types])
     trace = {
-        "mode": _trace_mode(response, composition, selected_assets),
+        "mode": _trace_mode(response, composition, selected_assets, evidence_answered_fact_types),
         "customer_message": customer_message or debug.get("current_query") or response.get("current_query", ""),
         "query_fact_type": query_fact_type,
         "secondary_fact_types": secondary_fact_types,
         "required_fact_types": required_fact_types,
-        "answered_fact_types": _ordered_unique(
-            (composition.get("answered_fact_types") or composition.get("covered_fact_types") or [])
-            if isinstance(composition, dict) else []
-        ),
-        "evidence_answered_fact_types": _ordered_unique(
-            composition.get("evidence_answered_fact_types") or []
-            if isinstance(composition, dict) else []
-        ),
+        "answered_fact_types": answered_fact_types,
+        "evidence_answered_fact_types": evidence_answered_fact_types,
         "fallback_fact_types": _ordered_unique(
             composition.get("fallback_fact_types") or []
             if isinstance(composition, dict) else []
@@ -75,6 +84,7 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
             if isinstance(composition, dict) else []
         ),
         "product_card_evidence_used": _dict_or_empty(composition.get("product_card_evidence_used") if isinstance(composition, dict) else {}),
+        "rag_evidence_used": rag_evidence_used,
         "media_evidence_used": _dict_or_empty(composition.get("media_evidence_used") if isinstance(composition, dict) else {}),
         "asset_evidence_used": _dict_or_empty(composition.get("asset_evidence_used") if isinstance(composition, dict) else {}),
         "selected_assets": selected_assets,
@@ -103,17 +113,27 @@ def attach_answer_trace(response: dict[str, Any], *, customer_message: str = "")
     return response
 
 
-def _trace_mode(response: dict[str, Any], composition: dict[str, Any], selected_assets: list[dict[str, Any]]) -> str:
+def _trace_mode(
+    response: dict[str, Any],
+    composition: dict[str, Any],
+    selected_assets: list[dict[str, Any]],
+    evidence_answered_fact_types: list[str],
+) -> str:
     generation_mode = str(response.get("generation_mode") or "")
     if "audit" in generation_mode:
         return "final_audit_rewrite"
+    requires_human_review = bool(response.get("requires_human_review"))
     if selected_assets:
+        if requires_human_review:
+            return "mixed_with_human_review"
         return "media_answer"
+    if evidence_answered_fact_types:
+        if requires_human_review:
+            return "mixed_with_human_review"
+        return "evidence_answer"
     if response.get("generic_service_rule_used") or (response.get("evidence_debug") or {}).get("generic_service_rule_used"):
         return "generic_rule_fallback"
-    if isinstance(composition, dict) and composition.get("evidence_answered_fact_types"):
-        return "evidence_answer"
-    if response.get("requires_human_review"):
+    if requires_human_review:
         return "human_followup"
     return str(composition.get("mode") or "mixed") if isinstance(composition, dict) else "mixed"
 
@@ -129,6 +149,105 @@ def _ordered_unique(values: list[Any]) -> list[str]:
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _rag_evidence_used(
+    debug: dict[str, Any],
+    composition: dict[str, Any],
+    product_pack_summary: dict[str, Any],
+    required_fact_types: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    allowed_fact_types = set(required_fact_types or [])
+    if not allowed_fact_types:
+        return {}
+    result: dict[str, list[dict[str, Any]]] = {}
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add_items(
+        items: Any,
+        *,
+        source_bucket: str,
+        selected_by_container: bool = False,
+        excluded_origins: set[str] | None = None,
+    ) -> None:
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            origin = str(item.get("evidence_origin") or "").strip()
+            if excluded_origins and origin in excluded_origins:
+                continue
+            if item.get("selected") is False:
+                continue
+            if not selected_by_container and item.get("selected") is not True:
+                continue
+            fact_type = str(item.get("evidence_fact_type") or item.get("fact_type") or "").strip()
+            if not fact_type or fact_type not in allowed_fact_types:
+                continue
+            source_type = str(item.get("source_type") or source_bucket or "").strip()
+            summary = _knowledge_evidence_summary(item, fact_type, source_type)
+            dedupe_key = (
+                fact_type,
+                str(summary.get("entry_id") or ""),
+                str(summary.get("chunk_id") or ""),
+                str(summary.get("evidence_id") or ""),
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            result.setdefault(fact_type, []).append(summary)
+
+    add_items(debug.get("selected_evidence"), source_bucket="selected_evidence", selected_by_container=True)
+    add_items(debug.get("retrieved_chunks_summary"), source_bucket="retrieved_chunks_summary")
+    if isinstance(composition, dict):
+        evidence_used_by_fact_type = composition.get("evidence_used_by_fact_type") or {}
+        if isinstance(evidence_used_by_fact_type, dict):
+            for fact_type, items in evidence_used_by_fact_type.items():
+                if not isinstance(items, list):
+                    continue
+                normalized_items = [
+                    {**item, "fact_type": item.get("fact_type") or fact_type}
+                    for item in items
+                    if isinstance(item, dict)
+                ]
+                add_items(
+                    normalized_items,
+                    source_bucket="answer_composition_trace",
+                    selected_by_container=True,
+                    excluded_origins={"product_card", "product_media"},
+                )
+
+    evidence_pack = {}
+    if isinstance(product_pack_summary, dict):
+        evidence_pack = product_pack_summary.get("evidence_pack") or {}
+    if isinstance(evidence_pack, dict):
+        add_items(evidence_pack.get("matched_facts"), source_bucket="product_context_pack", selected_by_container=True)
+        add_items(evidence_pack.get("evidence_evaluation"), source_bucket="product_context_pack")
+
+    return result
+
+
+def _knowledge_evidence_summary(item: dict[str, Any], fact_type: str, source_type: str) -> dict[str, Any]:
+    text = str(
+        item.get("preview")
+        or item.get("chunk_preview")
+        or item.get("text")
+        or item.get("chunk_text")
+        or item.get("content")
+        or item.get("fact")
+        or ""
+    ).strip()
+    return {
+        "entry_id": item.get("entry_id", ""),
+        "chunk_id": item.get("chunk_id", ""),
+        "evidence_id": item.get("evidence_id") or item.get("id") or item.get("fact_id") or "",
+        "fact_type": fact_type,
+        "source_type": source_type,
+        "title": item.get("title") or item.get("matched_title") or "",
+        "score": item.get("score") or item.get("rerank_score") or item.get("relevance_score") or 0,
+        "preview": text[:160],
+    }
 
 
 def _asset_summaries(values: list[Any]) -> list[dict[str, Any]]:

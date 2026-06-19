@@ -146,3 +146,185 @@ def test_answer_trace_records_final_audit_rewrite():
     assert trace["final_audit"]["passed"] is False
     assert trace["final_audit"]["fallback_used"] is True
     assert trace["rewrite_applied"] is True
+
+
+def test_answer_trace_records_selected_rag_evidence():
+    from app.services.answer_trace_service import attach_answer_trace
+
+    response = {
+        "suggested_reply": "材质是高密度板，日常使用注意保持干燥。",
+        "query_fact_type": "material",
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "selected_evidence": [{
+                "entry_id": "fact-1",
+                "chunk_id": "chunk-1",
+                "fact_type": "material",
+                "source_type": "product_facts",
+                "title": "材质",
+                "preview": "商品材质为高密度板。",
+                "selected": True,
+            }],
+            "answer_composition_trace": {
+                "answered_fact_types": [],
+                "evidence_answered_fact_types": [],
+            },
+            "evidence_grouping": {"coverage": {"required_fact_types": ["material"]}},
+        },
+    }
+
+    result = attach_answer_trace(response, customer_message="这个材质安全吗？")
+    trace = result["answer_trace"]
+
+    assert trace["mode"] == "evidence_answer"
+    assert trace["evidence_answered_fact_types"] == ["material"]
+    assert trace["answered_fact_types"] == ["material"]
+    assert trace["rag_evidence_used"]["material"][0]["source_type"] == "product_facts"
+    assert trace["rag_evidence_used"]["material"][0]["entry_id"] == "fact-1"
+
+
+def test_answer_trace_keeps_evidence_answer_when_human_review_required():
+    from app.services.answer_trace_service import attach_answer_trace
+
+    response = {
+        "suggested_reply": "材质信息可参考商品事实，检测报告我帮您再核对。",
+        "query_fact_type": "material",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "selected_evidence": [{
+                "entry_id": "fact-2",
+                "chunk_id": "chunk-2",
+                "fact_type": "material",
+                "source_type": "product_facts",
+                "preview": "商品材质为实木颗粒板。",
+                "selected": True,
+            }],
+            "answer_composition_trace": {
+                "answered_fact_types": [],
+                "evidence_answered_fact_types": [],
+            },
+            "evidence_grouping": {"coverage": {"required_fact_types": ["material"]}},
+        },
+    }
+
+    result = attach_answer_trace(response, customer_message="材质安全吗，有检测报告吗？")
+    trace = result["answer_trace"]
+
+    assert trace["mode"] == "mixed_with_human_review"
+    assert trace["evidence_answered_fact_types"] == ["material"]
+    assert trace["rag_evidence_used"]["material"][0]["chunk_id"] == "chunk-2"
+
+
+def test_answer_trace_does_not_use_rejected_evidence():
+    from app.services.answer_trace_service import attach_answer_trace
+
+    response = {
+        "suggested_reply": "我先帮您核对准确材质。",
+        "query_fact_type": "material",
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "selected_evidence": [{
+                "entry_id": "fact-rejected",
+                "chunk_id": "chunk-rejected",
+                "fact_type": "material",
+                "source_type": "product_facts",
+                "preview": "不匹配的材质信息。",
+                "selected": False,
+            }],
+            "rejected_evidence": [{
+                "entry_id": "fact-rejected",
+                "chunk_id": "chunk-rejected",
+                "fact_type": "material",
+                "source_type": "product_facts",
+                "reason": "wrong_product",
+            }],
+            "answer_composition_trace": {
+                "answered_fact_types": [],
+                "evidence_answered_fact_types": [],
+            },
+            "evidence_grouping": {"coverage": {"required_fact_types": ["material"]}},
+        },
+    }
+
+    result = attach_answer_trace(response, customer_message="这个是什么材质？")
+    trace = result["answer_trace"]
+
+    assert trace["rag_evidence_used"] == {}
+    assert trace["evidence_answered_fact_types"] == []
+    assert trace["mode"] == "mixed"
+
+
+def test_answer_trace_records_product_context_matched_facts():
+    from app.services.answer_trace_service import attach_answer_trace
+
+    response = {
+        "suggested_reply": "尺寸是 60*30*90cm。",
+        "query_fact_type": "dimensions",
+        "evidence_debug": {
+            "query_fact_type": "dimensions",
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "matched_facts": [{
+                        "entry_id": "card-dimensions",
+                        "chunk_id": "card-dimensions",
+                        "fact_type": "dimensions",
+                        "source_type": "product_facts",
+                        "preview": "尺寸：60*30*90cm",
+                    }]
+                }
+            },
+            "answer_composition_trace": {
+                "answered_fact_types": [],
+                "evidence_answered_fact_types": [],
+            },
+            "evidence_grouping": {"coverage": {"required_fact_types": ["dimensions"]}},
+        },
+    }
+
+    result = attach_answer_trace(response, customer_message="尺寸多大？")
+    trace = result["answer_trace"]
+
+    assert trace["mode"] == "evidence_answer"
+    assert trace["evidence_answered_fact_types"] == ["dimensions"]
+    assert trace["rag_evidence_used"]["dimensions"][0]["entry_id"] == "card-dimensions"
+
+
+def test_answer_trace_records_composition_knowledge_evidence_without_media_duplication():
+    from app.services.answer_trace_service import attach_answer_trace
+
+    response = {
+        "suggested_reply": "材质为环保 PP。",
+        "query_fact_type": "material",
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "answer_composition_trace": {
+                "answered_fact_types": ["material"],
+                "evidence_answered_fact_types": ["material"],
+                "evidence_used_by_fact_type": {
+                    "material": [{
+                        "entry_id": "knowledge-1",
+                        "chunk_id": "knowledge-chunk-1",
+                        "fact_type": "material",
+                        "source_type": "product_facts",
+                        "preview": "材质为环保 PP。",
+                    }],
+                    "visual_asset": [{
+                        "entry_id": "media-1",
+                        "chunk_id": "media-chunk-1",
+                        "fact_type": "visual_asset",
+                        "source_type": "product_media",
+                        "evidence_origin": "product_media",
+                        "asset_id": "asset-1",
+                    }],
+                },
+            },
+            "evidence_grouping": {"coverage": {"required_fact_types": ["material", "visual_asset"]}},
+        },
+    }
+
+    result = attach_answer_trace(response, customer_message="材质是什么，有没有图？")
+    trace = result["answer_trace"]
+
+    assert trace["rag_evidence_used"]["material"][0]["entry_id"] == "knowledge-1"
+    assert "visual_asset" not in trace["rag_evidence_used"]
