@@ -97,8 +97,9 @@ def _merge_ranked_results(primary: list[dict], supplemental: list[dict], limit: 
     return merged[:limit]
 
 
-def _prefer_matching_fact_type(results: list[dict], query_fact_type: str) -> list[dict]:
-    if not query_fact_type or not results:
+def _prefer_matching_fact_type(results: list[dict], query_fact_type: str, required_fact_types: list[str] | None = None) -> list[dict]:
+    required = [fact_type for fact_type in ([query_fact_type, *(required_fact_types or [])]) if fact_type]
+    if not required or not results:
         return results
     try:
         from app.services.fact_type_service import fact_type_matches
@@ -106,9 +107,30 @@ def _prefer_matching_fact_type(results: list[dict], query_fact_type: str) -> lis
         return results
     matched = [
         item for item in results
-        if fact_type_matches(query_fact_type, str(item.get("fact_type") or item.get("evidence_fact_type") or ""))
+        if any(
+            fact_type_matches(required_type, str(item.get("fact_type") or item.get("evidence_fact_type") or ""))
+            for required_type in required
+        )
     ]
     return matched if matched else results
+
+
+def _required_fact_types_for_retrieval(state: dict, query_fact_type: str) -> list[str]:
+    query_understanding = state.get("query_understanding") if isinstance(state.get("query_understanding"), dict) else {}
+    rejected = str(query_understanding.get("llm_rejected_fact_type") or state.get("llm_rejected_fact_type") or "").strip()
+    values = [
+        query_fact_type,
+        query_understanding.get("query_fact_type", ""),
+        state.get("query_fact_type", ""),
+        *(query_understanding.get("secondary_fact_types") or []),
+        *(state.get("secondary_fact_types") or []),
+    ]
+    out: list[str] = []
+    for value in values:
+        fact_type = str(value or "").strip()
+        if fact_type and fact_type != rejected and fact_type not in out:
+            out.append(fact_type)
+    return out
 
 
 def rag_retrieve(state: dict) -> dict:
@@ -147,6 +169,7 @@ def rag_retrieve(state: dict) -> dict:
     identity_i_id = str(identity.get("i_id") or "").strip()
     sku_name = slots.get("sku_name") or sku_code or identity_sku
     query_fact_type = state.get("query_fact_type", "")
+    required_fact_types = _required_fact_types_for_retrieval(state, query_fact_type)
 
     # 如果 allowed_source_types 为空，直接跳过
     if not allowed_source_types:
@@ -246,6 +269,7 @@ def rag_retrieve(state: dict) -> dict:
             query=locals().get("search_query", msg),
             allowed_source_types=allowed_source_types,
             query_fact_type=query_fact_type,
+            required_fact_types=required_fact_types,
             top_k=8,
         )
         product_pack_evidence = [
@@ -254,7 +278,7 @@ def rag_retrieve(state: dict) -> dict:
             *(product_context_pack.get("media_evidence", []) or []),
         ]
         results = _merge_ranked_results(results, product_pack_evidence, limit=8)
-        results = _prefer_matching_fact_type(results, query_fact_type)
+        results = _prefer_matching_fact_type(results, query_fact_type, required_fact_types)
     except Exception as exc:
         logger.warning("Product context pack failed: %s", exc)
 
@@ -279,6 +303,7 @@ def rag_retrieve(state: dict) -> dict:
         "sku_name": sku_name,
         "query_fact_type": query_fact_type,
         "secondary_fact_types": state.get("secondary_fact_types", []),
+        "required_fact_types": required_fact_types,
         "query_understanding": query_understanding,
         "product_context_pack_stats": product_context_pack.get("stats", {}),
         "product_card_evidence": product_context_pack.get("evidence_pack", {}),

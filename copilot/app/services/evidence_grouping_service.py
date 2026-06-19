@@ -185,6 +185,8 @@ def _generic_rules(product_pack: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _evidence_supports_fact_type(item: dict[str, Any], fact_type: str) -> bool:
     ev_type = item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or ""
+    if fact_type == "certification_report" and str(ev_type) != "certification_report":
+        return False
     if ev_type and fact_type_matches(fact_type, str(ev_type)):
         return True
     inferred = infer_evidence_fact_type(item)

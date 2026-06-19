@@ -411,12 +411,19 @@ def _has_sendable_asset(items: list[dict[str, Any]]) -> bool:
         asset_type = str(item.get("asset_type") or item.get("type") or item.get("media_type") or "").lower()
         source_type = str(item.get("source_type") or "").lower()
         has_asset_id = bool(item.get("asset_id") or item.get("id"))
-        has_url = bool(item.get("url") or item.get("oss_url") or item.get("signed_url") or item.get("media_url"))
+        has_url = bool(
+            item.get("url")
+            or item.get("asset_url")
+            or item.get("oss_url")
+            or item.get("signed_url")
+            or item.get("media_url")
+            or item.get("thumbnail_url")
+        )
         if asset_type in {"image", "video", "picture", "photo"} and (has_asset_id or has_url):
             return True
-        if source_type == "product_media" and has_asset_id:
+        if source_type == "product_media" and has_asset_id and has_url:
             return True
-        if has_asset_id and any(key in item for key in ("asset_title", "send_mode", "asset_type")):
+        if has_asset_id and has_url and any(key in item for key in ("asset_title", "send_mode", "asset_type")):
             return True
     return False
 
@@ -597,6 +604,8 @@ def _filter_unscoped_faq_items(items: list[dict[str, Any]], product_name: str) -
 
 def _supports_fact_type(item: dict[str, Any], fact_type: str) -> bool:
     ev_type = item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or ""
+    if fact_type == "certification_report" and str(ev_type) != "certification_report":
+        return False
     if ev_type and fact_type_matches(fact_type, str(ev_type)):
         return True
     inferred = infer_evidence_fact_type(item)
@@ -629,10 +638,10 @@ def _section_for_fact_type(
             return f"尺寸方面，{_trim_sentence(evidence_text)}。"
         return "尺寸需要看对应款式的长宽高和尺寸图来确认，避免只凭名称判断放置空间。"
     if fact_type == "visual_asset":
-        if evidence_items:
+        if _has_sendable_asset(evidence_items):
             asset_name = _asset_title(evidence_items[0]) or "图片/尺寸图"
             return f"图片这边可以把当前商品的{asset_name}一起发您参考。"
-        return "如果您需要看图，我可以优先按当前商品的图片或尺寸图给您参考；没有对应素材时，不会用别的款式图片代替。"
+        return "目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
     if fact_type == "space_fit":
         if evidence_text:
             return f"能不能放下主要看长宽高、占地和预留空间，{_trim_sentence(evidence_text)}；您也可以量一下预留位置，我按尺寸帮您对。"

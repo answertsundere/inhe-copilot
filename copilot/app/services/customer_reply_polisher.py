@@ -45,6 +45,7 @@ def polish_customer_reply(
         response["display_product_name"] = display_name
     polished = _rewrite_complaint_service_reply(polished, response, customer_message)
     polished = _rewrite_media_workflow_reply(polished, response, customer_message, display_name)
+    polished = _remove_unsupported_media_send_claims(polished, response, display_name)
     complaint_contract_passed = _is_customer_safe_complaint_reply(polished, response, customer_message)
     if complaint_contract_passed:
         debug = response.setdefault("evidence_debug", {})
@@ -387,6 +388,31 @@ def _rewrite_media_workflow_reply(
     )
 
 
+def _remove_unsupported_media_send_claims(text: str, response: dict[str, Any], display_name: str) -> str:
+    if _has_deliverable_media(response):
+        return text
+    value = str(text or "")
+    media_terms = ("图片", "视频", "图", "照片", "实物图", "尺寸图", "安装图")
+    send_terms = ("下面发", "发您参考", "发您看", "一起发您", "下方图片", "直接参考我下面发")
+    if not any(term in value for term in media_terms) or not any(term in value for term in send_terms):
+        return value
+
+    product = f"「{display_name}」" if display_name else "这款商品"
+    replacement = f"亲～{product}目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
+    lines = []
+    replaced = False
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if line and any(term in line for term in media_terms) and any(term in line for term in send_terms):
+            if not replaced:
+                lines.append(replacement)
+                replaced = True
+            continue
+        lines.append(raw_line)
+    cleaned = "\n".join(line for line in lines if str(line).strip())
+    return cleaned or replacement
+
+
 def _contains_media_workflow_language(text: str) -> bool:
     value = str(text or "")
     phrases = (
@@ -420,13 +446,19 @@ def _current_fact_type(response: dict[str, Any]) -> str:
 def _has_deliverable_media(response: dict[str, Any]) -> bool:
     sources: list[Any] = [
         response.get("recommended_assets"),
+        response.get("selected_assets"),
         response.get("reply_blocks"),
     ]
+    evidence_debug = response.get("evidence_debug") or {}
+    if isinstance(evidence_debug, dict):
+        sources.append(evidence_debug.get("selected_assets"))
     context_used = response.get("context_used") or {}
     if isinstance(context_used, dict):
         pack = context_used.get("product_context_pack") or {}
         if isinstance(pack, dict):
             sources.append(pack.get("recommended_assets"))
+            sources.append(pack.get("selected_assets"))
+            sources.append(pack.get("media_evidence"))
 
     for source in sources:
         if not isinstance(source, list):
@@ -434,7 +466,17 @@ def _has_deliverable_media(response: dict[str, Any]) -> bool:
         for item in source:
             if not isinstance(item, dict):
                 continue
-            if item.get("asset_url") or item.get("url") or item.get("type") in {"image", "video"}:
+            media_type = str(item.get("asset_type") or item.get("type") or item.get("media_type") or "").lower()
+            has_asset_id = bool(item.get("asset_id") or item.get("id"))
+            has_url = bool(
+                item.get("asset_url")
+                or item.get("url")
+                or item.get("oss_url")
+                or item.get("signed_url")
+                or item.get("media_url")
+                or item.get("thumbnail_url")
+            )
+            if has_url and (has_asset_id or media_type in {"image", "video", "picture", "photo"} or media_type.endswith("_image") or media_type.endswith("_video")):
                 return True
     return False
 

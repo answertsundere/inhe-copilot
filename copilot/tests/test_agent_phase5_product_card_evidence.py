@@ -191,6 +191,21 @@ def test_certificate_media_does_not_expand_to_absolute_safety_claim():
     assert result["composition_trace"]["media_evidence_used"]["certification_report"]
 
 
+def test_certification_report_does_not_reuse_material_evidence_as_direct_answer():
+    pack = {"product_card_evidence": [_product_card_item("material", "\u6750\u8d28: \u73af\u4fddPP")]}
+
+    result = _compose_from_pack(
+        pack,
+        query_fact_type="certification_report",
+        secondary_fact_types=["material"],
+    )
+
+    trace = result["composition_trace"]
+    assert "material" in trace["evidence_answered_fact_types"]
+    assert "certification_report" not in trace["evidence_answered_fact_types"]
+    assert "certification_report" in trace["needs_followup_fact_types"]
+
+
 def test_invalid_product_card_placeholders_do_not_become_evidence(phase5_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack
@@ -253,3 +268,213 @@ def test_product_card_evidence_takes_priority_over_generic_rag_text():
 
     assert "60*30*90cm" in result["composed_reply"]
     assert "\u4e0d\u540c\u6b3e\u5f0f\u5c3a\u5bf8\u4e0d\u540c" not in result["composed_reply"]
+
+
+def test_primary_visual_secondary_dimensions_builds_card_dimensions_evidence(phase5_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = phase5_db()
+    try:
+        db.add(KBProduct(
+            i_id="PHASE5_MULTI_CARD",
+            product_name="\u591a\u610f\u56fe\u5361\u7247\u6d4b\u8bd5",
+            sku_list_json=json.dumps([{"sku_code": "PHASE5_MULTI_CARDB01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"size": "88*42*106cm"}, ensure_ascii=False),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "PHASE5_MULTI_CARDB01S01"},
+            "matched_product_name": "\u591a\u610f\u56fe\u5361\u7247\u6d4b\u8bd5",
+            "query_understanding": {
+                "query_fact_type": "visual_asset",
+                "secondary_fact_types": ["dimensions"],
+            },
+        },
+        query="\u5c3a\u5bf8\u591a\u5927\uff0c\u6709\u6ca1\u6709\u56fe",
+        allowed_source_types=["product_facts"],
+        query_fact_type="visual_asset",
+    )
+
+    dimensions = [
+        item for item in pack["product_card_evidence"]
+        if item["evidence_fact_type"] == "dimensions"
+    ]
+    assert dimensions
+    assert "88*42*106cm" in dimensions[0]["chunk_text"]
+    assert "dimensions" in pack["stats"]["required_fact_types"]
+
+    result = _compose_from_pack(
+        pack,
+        query_fact_type="visual_asset",
+        secondary_fact_types=["dimensions"],
+    )
+    trace = result["composition_trace"]
+    assert "dimensions" in trace["evidence_answered_fact_types"]
+    assert trace["evidence_origin_by_fact_type"]["dimensions"] == ["product_card"]
+    assert "dimensions" not in trace["missing_fact_types"]
+
+
+def test_primary_visual_secondary_dimensions_builds_size_image_media_evidence(phase5_db):
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = phase5_db()
+    try:
+        product = KBProduct(
+            i_id="PHASE5_MULTI_MEDIA",
+            product_name="\u591a\u610f\u56fe\u7d20\u6750\u6d4b\u8bd5",
+            sku_list_json=json.dumps([{"sku_code": "PHASE5_MULTI_MEDIAB01S01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        asset = KBMediaAsset(
+            product_id=product.id,
+            i_id="PHASE5_MULTI_MEDIA",
+            sku_code="PHASE5_MULTI_MEDIAB01S01",
+            product_name="\u591a\u610f\u56fe\u7d20\u6750\u6d4b\u8bd5",
+            asset_type="size_image",
+            asset_title="\u5c3a\u5bf8\u56fe",
+            asset_url="https://example.com/size.jpg",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.95,
+        )
+        asset.set_source_raw({"auto_send_level": "auto", "answer_scenarios": ["dimensions", "ask_photo"]})
+        db.add(asset)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "PHASE5_MULTI_MEDIAB01S01"},
+            "matched_product_name": "\u591a\u610f\u56fe\u7d20\u6750\u6d4b\u8bd5",
+            "query_understanding": {
+                "query_fact_type": "visual_asset",
+                "secondary_fact_types": ["dimensions"],
+            },
+        },
+        query="\u5c3a\u5bf8\u591a\u5927\uff0c\u6709\u6ca1\u6709\u56fe",
+        allowed_source_types=["product_facts"],
+        query_fact_type="visual_asset",
+    )
+
+    fact_types = {item["evidence_fact_type"] for item in pack["media_evidence"]}
+    assert {"dimensions", "visual_asset"} <= fact_types
+
+    result = _compose_from_pack(
+        pack,
+        query_fact_type="visual_asset",
+        secondary_fact_types=["dimensions"],
+    )
+    trace = result["composition_trace"]
+    assert "visual_asset" in trace["evidence_answered_fact_types"]
+    assert trace["media_evidence_used"]["dimensions"]
+    assert trace["asset_evidence_used"]["visual_asset"][0]["asset_type"] == "size_image"
+
+
+def test_installation_with_visual_asset_builds_install_video_evidence(phase5_db):
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = phase5_db()
+    try:
+        product = KBProduct(
+            i_id="PHASE5_INSTALL_MEDIA",
+            product_name="\u5b89\u88c5\u7d20\u6750\u6d4b\u8bd5",
+            sku_list_json=json.dumps([{"sku_code": "PHASE5_INSTALL_MEDIAB01S01"}], ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        asset = KBMediaAsset(
+            product_id=product.id,
+            i_id="PHASE5_INSTALL_MEDIA",
+            sku_code="PHASE5_INSTALL_MEDIAB01S01",
+            product_name="\u5b89\u88c5\u7d20\u6750\u6d4b\u8bd5",
+            asset_type="install_video",
+            asset_title="\u5b89\u88c5\u89c6\u9891",
+            asset_url="https://example.com/install.mp4",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.95,
+        )
+        asset.set_source_raw({"auto_send_level": "auto", "answer_scenarios": ["installation", "ask_photo"]})
+        db.add(asset)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "PHASE5_INSTALL_MEDIAB01S01"},
+            "matched_product_name": "\u5b89\u88c5\u7d20\u6750\u6d4b\u8bd5",
+            "secondary_fact_types": ["visual_asset"],
+        },
+        query="\u600e\u4e48\u5b89\u88c5\uff0c\u6709\u89c6\u9891\u5417",
+        allowed_source_types=["product_facts"],
+        query_fact_type="installation",
+    )
+
+    result = _compose_from_pack(
+        pack,
+        query_fact_type="installation",
+        secondary_fact_types=["visual_asset"],
+    )
+    trace = result["composition_trace"]
+    assert "installation" in trace["evidence_answered_fact_types"]
+    assert "visual_asset" in trace["evidence_answered_fact_types"]
+    asset_trace = trace["asset_evidence_used"]["visual_asset"][0]
+    assert asset_trace["asset_type"] == "install_video"
+    assert asset_trace["asset_id"]
+    assert asset_trace["asset_url"] == "https://example.com/install.mp4"
+    assert "\u89c6\u9891" in result["composed_reply"]
+
+
+def test_visual_asset_without_sendable_asset_is_not_answered_and_has_no_fake_send_claim():
+    pack = {"media_evidence": []}
+
+    result = _compose_from_pack(pack, query_fact_type="visual_asset")
+
+    reply = result["composed_reply"]
+    trace = result["composition_trace"]
+    assert "visual_asset" not in trace["answered_fact_types"]
+    assert "visual_asset" in trace["needs_followup_fact_types"]
+    assert "下面发" not in reply
+    assert "视频发您参考" not in reply
+    assert "看下方图片" not in reply
+    assert "一起发您" not in reply
+
+
+def test_required_fact_types_include_secondary_fact_types():
+    pack = {
+        "product_card_evidence": [_product_card_item("dimensions", "size: 60*30*90cm")],
+        "media_evidence": [_media_item("visual_asset", "sku_image", "\u5546\u54c1\u56fe", "\u5f53\u524d\u5546\u54c1\u6709\u56fe\u7247\u300a\u5546\u54c1\u56fe\u300b\uff0c\u53ef\u4e00\u8d77\u53d1\u60a8\u53c2\u8003\u3002")],
+    }
+
+    result = _compose_from_pack(
+        pack,
+        query_fact_type="visual_asset",
+        secondary_fact_types=["dimensions"],
+    )
+
+    assert result["composition_trace"]["mode"] == "multi_intent"
+    assert set(result["composition_trace"]["covered_fact_types"]) == {"visual_asset", "dimensions"}
+
+
+def test_composed_reply_does_not_leak_internal_terms():
+    pack = {"product_card_evidence": [_product_card_item("dimensions", "size: 60*30*90cm")]}
+
+    result = _compose_from_pack(pack, query_fact_type="dimensions")
+
+    for term in ("RAG", "fact_type", "query_fact_type", "\u77e5\u8bc6\u5e93", "\u8d44\u6599\u5e93", "\u7cfb\u7edf"):
+        assert term not in result["composed_reply"]

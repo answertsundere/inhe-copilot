@@ -29,6 +29,7 @@ def build_product_context_pack(
     query: str = "",
     allowed_source_types: list[str] | None = None,
     query_fact_type: str = "",
+    required_fact_types: list[str] | None = None,
     top_k: int = 8,
 ) -> dict[str, Any]:
     identity = _state_identity(state)
@@ -49,6 +50,7 @@ def build_product_context_pack(
         return _empty_pack(identity, f"import_failed:{type(exc).__name__}")
 
     allowed = set(allowed_source_types or [])
+    required_types = _required_fact_types(state, query_fact_type, required_fact_types)
     semantic_query = state.get("semantic_query") if isinstance(state.get("semantic_query"), dict) else {}
     db = SessionLocal()
     try:
@@ -72,18 +74,24 @@ def build_product_context_pack(
             "i_id": identity.get("i_id", ""),
             "product_name": structured_profile.get("product_name") or identity.get("product_name", ""),
         }
-        recommended_assets = _rank_media_assets_for_query(
-            media_assets, query=query, query_fact_type=query_fact_type, limit=1, signals=signals
+        recommended_assets = _rank_media_assets_for_required_types(
+            media_assets, query=query, required_fact_types=required_types, limit=3, signals=signals
         )
         media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
-        product_card_evidence = _product_card_evidence_items(structured_profile, query=query, query_fact_type=query_fact_type)
+        product_card_evidence = _product_card_evidence_items(
+            structured_profile,
+            query=query,
+            query_fact_type=query_fact_type,
+            required_fact_types=required_types,
+        )
         media_evidence = _media_evidence_items(
             structured_profile,
             media_assets=media_assets,
             recommended_assets=recommended_assets,
             query=query,
             query_fact_type=query_fact_type,
+            required_fact_types=required_types,
         )
         if not allowed or "product_facts" in allowed:
             candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
@@ -301,6 +309,7 @@ def build_product_context_pack(
                 "media_evidence_count": len(media_evidence),
                 "has_structured_profile": bool(structured_profile),
                 "query_fact_type": query_fact_type,
+                "required_fact_types": required_types,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
             },
         }
@@ -332,6 +341,29 @@ def _empty_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
             "evidence_pack_answerability": evidence_pack.get("answerability", ""),
         },
     }
+
+
+def _required_fact_types(
+    state: dict[str, Any],
+    query_fact_type: str,
+    explicit_required: list[str] | None = None,
+) -> list[str]:
+    query_understanding = state.get("query_understanding") if isinstance(state.get("query_understanding"), dict) else {}
+    values = [
+        query_fact_type,
+        query_understanding.get("query_fact_type", ""),
+        state.get("query_fact_type", ""),
+        *(explicit_required or []),
+        *(query_understanding.get("secondary_fact_types") or []),
+        *(state.get("secondary_fact_types") or []),
+    ]
+    rejected = str(query_understanding.get("llm_rejected_fact_type") or state.get("llm_rejected_fact_type") or "").strip()
+    out: list[str] = []
+    for value in values:
+        fact_type = str(value or "").strip()
+        if fact_type and fact_type != rejected and fact_type not in out:
+            out.append(fact_type)
+    return out
 
 
 def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
@@ -780,6 +812,7 @@ def _product_card_evidence_items(
     *,
     query: str,
     query_fact_type: str,
+    required_fact_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     if not profile:
         return []
@@ -787,13 +820,13 @@ def _product_card_evidence_items(
     logistics = profile.get("logistics") or {}
     warranty = profile.get("warranty") or {}
     field_map = _profile_field_map(specs, logistics, warranty)
-    requested = {query_fact_type} if query_fact_type else set(profile.get("answerable_fields") or [])
+    requested = set(required_fact_types or ([query_fact_type] if query_fact_type else profile.get("answerable_fields") or []))
     blocked = {"pinch_safety", "certification_report", "safety_small_parts", "stability"}
     items: list[dict[str, Any]] = []
     for fact_type, fields in field_map.items():
         if fact_type in blocked:
             continue
-        if requested and fact_type not in requested and not _fact_matches_query_type(query_fact_type, {"fact_type": fact_type}):
+        if requested and not _fact_type_in_required(fact_type, requested):
             continue
         values = [(label, value) for label, value in fields if _is_answerable_value(value)]
         if not values:
@@ -830,22 +863,20 @@ def _media_evidence_items(
     recommended_assets: list[dict[str, Any]],
     query: str,
     query_fact_type: str,
+    required_fact_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    requested = set(required_fact_types or ([query_fact_type] if query_fact_type else []))
     assets = _dedupe_media_assets([*(recommended_assets or []), *(media_assets or [])])
     items: list[dict[str, Any]] = []
     for asset in assets:
         if not _media_asset_is_usable(asset):
             continue
         fact_types = _media_fact_types_for_asset(asset)
-        if query_fact_type and not any(
-            _fact_matches_query_type(query_fact_type, {"fact_type": fact_type})
-            or _fact_matches_query_type(fact_type, {"fact_type": query_fact_type})
-            for fact_type in fact_types
-        ):
-            if "visual_asset" in fact_types and query_fact_type == "visual_asset":
-                fact_types = ["visual_asset"]
-            else:
-                fact_types = [fact_type for fact_type in fact_types if fact_type == "visual_asset" and not query_fact_type]
+        if requested:
+            fact_types = [
+                fact_type for fact_type in fact_types
+                if _fact_type_in_required(fact_type, requested)
+            ]
         for fact_type in fact_types:
             chunk_text = _media_evidence_text(asset, fact_type)
             title = asset.get("asset_title") or asset.get("title") or _media_fact_title(fact_type)
@@ -885,6 +916,18 @@ def _media_evidence_items(
                 },
             ))
     return sorted(_dedupe_evidence_items(items), key=lambda item: item.get("rerank_score", 0), reverse=True)
+
+
+def _fact_type_in_required(fact_type: str, required: set[str]) -> bool:
+    if not required:
+        return True
+    if fact_type in required:
+        return True
+    return any(
+        _fact_matches_query_type(required_type, {"fact_type": fact_type})
+        or _fact_matches_query_type(fact_type, {"fact_type": required_type})
+        for required_type in required
+    )
 
 
 def _context_evidence_item(
@@ -1337,6 +1380,50 @@ def _rank_media_assets_for_query(
         order.get(asset.asset_type, 99),
         -float(asset.match_confidence or 0),
     ))
+    return ranked[:limit]
+
+
+def _rank_media_assets_for_required_types(
+    media_assets: list[Any],
+    *,
+    query: str,
+    required_fact_types: list[str],
+    limit: int,
+    signals: dict[str, Any] | None = None,
+) -> list[Any]:
+    if not media_assets:
+        return []
+    fact_types = required_fact_types or [""]
+    ranked: list[Any] = []
+    seen = set()
+    for fact_type in fact_types:
+        for asset in _rank_media_assets_for_query(
+            media_assets,
+            query=query,
+            query_fact_type=fact_type,
+            limit=limit,
+            signals=signals,
+        ):
+            key = getattr(asset, "id", None) or (getattr(asset, "asset_type", ""), getattr(asset, "asset_title", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            ranked.append(asset)
+    if len(ranked) < limit:
+        for asset in _rank_media_assets_for_query(
+            media_assets,
+            query=query,
+            query_fact_type="",
+            limit=limit,
+            signals=signals,
+        ):
+            key = getattr(asset, "id", None) or (getattr(asset, "asset_type", ""), getattr(asset, "asset_title", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            ranked.append(asset)
+            if len(ranked) >= limit:
+                break
     return ranked[:limit]
 
 
