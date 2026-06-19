@@ -693,6 +693,8 @@ def _summarize_product_context_pack(pack: dict) -> dict:
     profile = pack.get("structured_profile") or {}
     media_assets = pack.get("media_assets") or []
     recommended_assets = pack.get("recommended_assets") or []
+    product_card_evidence = pack.get("product_card_evidence") or []
+    media_evidence = pack.get("media_evidence") or []
     generic_rules = pack.get("generic_rules") or []
     return {
         "identity": pack.get("identity", {}),
@@ -709,6 +711,30 @@ def _summarize_product_context_pack(pack: dict) -> dict:
             "warranty_keys": list((profile.get("warranty") or {}).keys())[:20],
         } if profile else {},
         "fact_titles": [item.get("title", "") for item in (pack.get("facts") or [])[:8]],
+        "product_card_evidence_count": len(product_card_evidence),
+        "media_evidence_count": len(media_evidence),
+        "product_card_evidence": [
+            {
+                "chunk_id": item.get("chunk_id", ""),
+                "fact_type": item.get("evidence_fact_type") or item.get("fact_type", ""),
+                "title": item.get("title", ""),
+                "preview": item.get("chunk_text", "")[:120],
+                "evidence_origin": item.get("evidence_origin", ""),
+            }
+            for item in product_card_evidence[:8]
+        ],
+        "media_evidence": [
+            {
+                "chunk_id": item.get("chunk_id", ""),
+                "asset_id": item.get("asset_id") or item.get("id"),
+                "asset_type": item.get("asset_type", ""),
+                "fact_type": item.get("evidence_fact_type") or item.get("fact_type", ""),
+                "asset_title": item.get("asset_title", ""),
+                "preview": item.get("chunk_text", "")[:120],
+                "evidence_origin": item.get("evidence_origin", ""),
+            }
+            for item in media_evidence[:8]
+        ],
         "generic_rule_titles": [item.get("title", "") for item in generic_rules[:5]],
         "media_assets": [
             {

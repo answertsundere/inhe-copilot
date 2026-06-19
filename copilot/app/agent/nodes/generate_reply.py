@@ -540,6 +540,9 @@ def _build_evidence_grouping(state: dict) -> dict:
 
 def _selected_evidence_for_composition(state: dict) -> list[dict[str, Any]]:
     evidence_items: list[dict[str, Any]] = []
+    product_context_pack = state.get("product_context_pack") or {}
+    for key in ("product_card_evidence", "media_evidence"):
+        evidence_items.extend([item for item in product_context_pack.get(key, []) or [] if isinstance(item, dict)])
     for key in ("knowledge_evidence", "filtered_evidence"):
         evidence_items.extend([item for item in state.get(key, []) or [] if isinstance(item, dict)])
     raw_evidence = state.get("evidence") or {}
@@ -551,7 +554,12 @@ def _selected_evidence_for_composition(state: dict) -> list[dict[str, Any]]:
 def _selected_assets_for_composition(state: dict) -> list[dict[str, Any]]:
     product_context_pack = state.get("product_context_pack") or {}
     assets = [item for item in state.get("selected_assets", []) or [] if isinstance(item, dict)]
+    assets.extend([item for item in product_context_pack.get("selected_assets", []) or [] if isinstance(item, dict)])
     assets.extend([item for item in product_context_pack.get("recommended_assets", []) or [] if isinstance(item, dict)])
+    assets.extend([
+        item for item in product_context_pack.get("media_evidence", []) or []
+        if isinstance(item, dict) and (item.get("evidence_fact_type") or item.get("fact_type")) == "visual_asset"
+    ])
     return _dedupe_composition_items(assets)
 
 

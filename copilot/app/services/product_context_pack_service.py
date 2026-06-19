@@ -77,6 +77,14 @@ def build_product_context_pack(
         )
         media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
+        product_card_evidence = _product_card_evidence_items(structured_profile, query=query, query_fact_type=query_fact_type)
+        media_evidence = _media_evidence_items(
+            structured_profile,
+            media_assets=media_assets,
+            recommended_assets=recommended_assets,
+            query=query,
+            query_fact_type=query_fact_type,
+        )
         if not allowed or "product_facts" in allowed:
             candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
             candidates.extend(_activity_facts_for_query(activity_rules, query=query, query_fact_type=query_fact_type))
@@ -275,6 +283,8 @@ def build_product_context_pack(
             "identity": identity,
             "structured_profile": structured_profile,
             "facts": returned_facts,
+            "product_card_evidence": product_card_evidence,
+            "media_evidence": media_evidence,
             "media_assets": media_assets,
             "recommended_assets": recommended_assets,
             "activity_rules": activity_rules,
@@ -287,6 +297,8 @@ def build_product_context_pack(
                 "recommended_media_count": len(recommended_assets),
                 "activity_rule_count": len(activity_rules),
                 "generic_rule_count": len(generic_rules),
+                "product_card_evidence_count": len(product_card_evidence),
+                "media_evidence_count": len(media_evidence),
                 "has_structured_profile": bool(structured_profile),
                 "query_fact_type": query_fact_type,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
@@ -302,6 +314,8 @@ def _empty_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
         "identity": identity,
         "structured_profile": {},
         "facts": [],
+        "product_card_evidence": [],
+        "media_evidence": [],
         "media_assets": [],
         "recommended_assets": [],
         "activity_rules": [],
@@ -759,6 +773,284 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
         "evidence_allowed_for_direct_answer": True,
         "evidence_allowed_for_exact_answer": True,
     }]
+
+
+def _product_card_evidence_items(
+    profile: dict[str, Any],
+    *,
+    query: str,
+    query_fact_type: str,
+) -> list[dict[str, Any]]:
+    if not profile:
+        return []
+    specs = profile.get("specs") or {}
+    logistics = profile.get("logistics") or {}
+    warranty = profile.get("warranty") or {}
+    field_map = _profile_field_map(specs, logistics, warranty)
+    requested = {query_fact_type} if query_fact_type else set(profile.get("answerable_fields") or [])
+    blocked = {"pinch_safety", "certification_report", "safety_small_parts", "stability"}
+    items: list[dict[str, Any]] = []
+    for fact_type, fields in field_map.items():
+        if fact_type in blocked:
+            continue
+        if requested and fact_type not in requested and not _fact_matches_query_type(query_fact_type, {"fact_type": fact_type}):
+            continue
+        values = [(label, value) for label, value in fields if _is_answerable_value(value)]
+        if not values:
+            continue
+        body = "\n".join(f"{label}: {_stringify_profile_value(value)}" for label, value in values)
+        title = f"{profile.get('product_name') or 'current product'} product card"
+        text_score = _text_overlap_score(query, title, body)
+        score = 20.0 + text_score + (2.0 if fact_type == query_fact_type else 0.0)
+        items.append(_context_evidence_item(
+            profile=profile,
+            fact_type=fact_type,
+            title=title,
+            chunk_text=body,
+            chunk_id=f"kbproduct:{profile.get('product_id')}:{fact_type}:card",
+            entry_id=f"kbproduct:{profile.get('product_id')}",
+            source_type="product_facts",
+            category="product_card",
+            source_confidence=0.9,
+            score=score,
+            metadata={
+                "source": "kb_product",
+                "evidence_origin": "product_card",
+                "profile_fields": [label for label, _ in values],
+            },
+            origin="product_card",
+        ))
+    return sorted(items, key=lambda item: item.get("rerank_score", 0), reverse=True)
+
+
+def _media_evidence_items(
+    profile: dict[str, Any],
+    *,
+    media_assets: list[dict[str, Any]],
+    recommended_assets: list[dict[str, Any]],
+    query: str,
+    query_fact_type: str,
+) -> list[dict[str, Any]]:
+    assets = _dedupe_media_assets([*(recommended_assets or []), *(media_assets or [])])
+    items: list[dict[str, Any]] = []
+    for asset in assets:
+        if not _media_asset_is_usable(asset):
+            continue
+        fact_types = _media_fact_types_for_asset(asset)
+        if query_fact_type and not any(
+            _fact_matches_query_type(query_fact_type, {"fact_type": fact_type})
+            or _fact_matches_query_type(fact_type, {"fact_type": query_fact_type})
+            for fact_type in fact_types
+        ):
+            if "visual_asset" in fact_types and query_fact_type == "visual_asset":
+                fact_types = ["visual_asset"]
+            else:
+                fact_types = [fact_type for fact_type in fact_types if fact_type == "visual_asset" and not query_fact_type]
+        for fact_type in fact_types:
+            chunk_text = _media_evidence_text(asset, fact_type)
+            title = asset.get("asset_title") or asset.get("title") or _media_fact_title(fact_type)
+            score = 17.0 + _text_overlap_score(query, str(title), chunk_text)
+            items.append(_context_evidence_item(
+                profile=profile,
+                fact_type=fact_type,
+                title=str(title),
+                chunk_text=chunk_text,
+                chunk_id=f"kbmedia:{asset.get('asset_id') or asset.get('id')}:{fact_type}",
+                entry_id=f"kbmedia:{asset.get('asset_id') or asset.get('id')}",
+                source_type="product_media",
+                category="product_media",
+                source_confidence=float(asset.get("confidence") or asset.get("match_confidence") or 0.8),
+                score=score,
+                metadata={
+                    "source": "kb_media_asset",
+                    "evidence_origin": "product_media",
+                    "media_asset_id": asset.get("asset_id") or asset.get("id"),
+                    "asset_type": asset.get("asset_type", ""),
+                    "media_purpose": asset.get("media_purpose", ""),
+                    "scene_tags": asset.get("scene_tags") or [],
+                    "answer_scenarios": asset.get("answer_scenarios") or [],
+                    "auto_send_level": asset.get("auto_send_level", ""),
+                },
+                origin="product_media",
+                extra={
+                    "asset_id": asset.get("asset_id") or asset.get("id"),
+                    "asset_type": asset.get("asset_type", ""),
+                    "asset_title": asset.get("asset_title") or asset.get("title") or "",
+                    "asset_url": asset.get("asset_url") or asset.get("url") or "",
+                    "url": asset.get("asset_url") or asset.get("url") or "",
+                    "thumbnail_url": asset.get("thumbnail_url") or asset.get("asset_url") or asset.get("url") or "",
+                    "send_mode": asset.get("send_mode", "manual"),
+                    "auto_send_level": asset.get("auto_send_level", ""),
+                    "sendable": True,
+                },
+            ))
+    return sorted(_dedupe_evidence_items(items), key=lambda item: item.get("rerank_score", 0), reverse=True)
+
+
+def _context_evidence_item(
+    *,
+    profile: dict[str, Any],
+    fact_type: str,
+    title: str,
+    chunk_text: str,
+    chunk_id: str,
+    entry_id: str,
+    source_type: str,
+    category: str,
+    source_confidence: float,
+    score: float,
+    metadata: dict[str, Any],
+    origin: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    item = {
+        "score": round(score, 4),
+        "text_score": 0.0,
+        "vector_score": 0.0,
+        "scope_score": 1.0,
+        "source_confidence": source_confidence,
+        "rerank_score": round(score, 4),
+        "mismatch_reason": "",
+        "chunk_id": chunk_id,
+        "entry_id": entry_id,
+        "title": title,
+        "chunk_text": chunk_text,
+        "chunk_index": 0,
+        "source_type": source_type,
+        "intent": "product_question",
+        "category": category,
+        "category_l3": fact_type,
+        "fact_type": fact_type,
+        "evidence_fact_type": fact_type,
+        "metadata": metadata,
+        "semantic_alignment": _direct_semantic_alignment(fact_type, fact_type),
+        "entry_status": "published",
+        "index_status": "ready",
+        "entry_risk_level": "low",
+        "source_sheet": "",
+        "row_number": 0,
+        "sku_scope": [item.get("sku_code") for item in profile.get("sku_list", []) if isinstance(item, dict) and item.get("sku_code")],
+        "product_scope": [profile.get("i_id", ""), profile.get("product_name", "")],
+        "product_context_pack": True,
+        "evidence_origin": origin,
+        "evidence_allowed_for_direct_answer": True,
+        "evidence_allowed_for_exact_answer": True,
+    }
+    if extra:
+        item.update(extra)
+    return item
+
+
+def _is_answerable_value(value: Any) -> bool:
+    if value in (None, "", [], {}, "-"):
+        return False
+    text = _stringify_profile_value(value).strip()
+    if not text:
+        return False
+    invalid_terms = (
+        "\u8be6\u89c1\u5546\u54c1\u8be6\u60c5\u9875",
+        "\u8be6\u89c1\u9875\u9762",
+        "\u5f85\u8865\u5145",
+        "\u6682\u65e0",
+        "\u65e0",
+        "n/a",
+        "none",
+        "null",
+    )
+    return text.lower() not in invalid_terms
+
+
+def _stringify_profile_value(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value).strip()
+
+
+def _media_asset_is_usable(asset: dict[str, Any]) -> bool:
+    if not isinstance(asset, dict):
+        return False
+    if not (asset.get("asset_id") or asset.get("id")):
+        return False
+    if not (asset.get("asset_url") or asset.get("url") or asset.get("thumbnail_url")):
+        return False
+    return str(asset.get("auto_send_level") or "auto") != "disabled"
+
+
+def _media_fact_types_for_asset(asset: dict[str, Any]) -> list[str]:
+    text = " ".join(str(part or "").lower() for part in (
+        asset.get("asset_type"),
+        asset.get("media_purpose"),
+        asset.get("asset_title"),
+        " ".join(str(tag or "") for tag in asset.get("scene_tags") or []),
+        " ".join(str(tag or "") for tag in asset.get("answer_scenarios") or []),
+    ))
+    mapping = [
+        ("dimensions", ("size_image", "dimensions", "size", "\u5c3a\u5bf8", "\u89c4\u683c")),
+        ("installation", ("install_video", "install_image", "installation", "install", "\u5b89\u88c5", "\u6559\u7a0b")),
+        ("accessories", ("accessory_image", "pack_guide_image", "packing_list", "accessories", "parts", "\u914d\u4ef6", "\u88c5\u7bb1")),
+        ("certification_report", ("certificate_image", "certificate", "certification", "\u8bc1\u4e66", "\u68c0\u6d4b", "\u8d28\u68c0")),
+        ("material", ("material_image", "material", "\u6750\u8d28", "\u6750\u6599")),
+    ]
+    fact_types = []
+    for fact_type, tokens in mapping:
+        if any(token in text for token in tokens):
+            fact_types.append(fact_type)
+    if "visual_asset" not in fact_types:
+        fact_types.append("visual_asset")
+    return list(dict.fromkeys(fact_types))
+
+
+def _media_fact_title(fact_type: str) -> str:
+    return {
+        "dimensions": "size image",
+        "installation": "installation media",
+        "accessories": "packing list media",
+        "certification_report": "certificate media",
+        "material": "material media",
+        "visual_asset": "product media",
+    }.get(fact_type, "product media")
+
+
+def _media_evidence_text(asset: dict[str, Any], fact_type: str) -> str:
+    title = str(asset.get("asset_title") or _media_fact_title(fact_type))
+    word = "\u89c6\u9891" if str(asset.get("asset_type") or "").endswith("_video") else "\u56fe\u7247"
+    if fact_type == "dimensions":
+        return f"\u5f53\u524d\u5546\u54c1\u6709\u5c3a\u5bf8/\u89c4\u683c{word}\u300a{title}\u300b\uff0c\u53ef\u53d1\u60a8\u53c2\u8003\uff0c\u5c3a\u5bf8\u4ee5\u56fe\u4e2d\u6807\u6ce8\u4e3a\u51c6\u3002"
+    if fact_type == "installation":
+        return f"\u5f53\u524d\u5546\u54c1\u6709\u5b89\u88c5\u8bf4\u660e{word}\u300a{title}\u300b\uff0c\u53ef\u53d1\u60a8\u5bf9\u7167\u5b89\u88c5\u6b65\u9aa4\u53c2\u8003\u3002"
+    if fact_type == "accessories":
+        return f"\u5f53\u524d\u5546\u54c1\u6709\u914d\u4ef6/\u88c5\u7bb1\u6e05\u5355{word}\u300a{title}\u300b\uff0c\u53ef\u53d1\u60a8\u6838\u5bf9\u3002"
+    if fact_type == "certification_report":
+        return f"\u5f53\u524d\u5546\u54c1\u6709\u8bc1\u4e66/\u68c0\u6d4b\u7c7b{word}\u300a{title}\u300b\uff0c\u53ef\u53d1\u60a8\u53c2\u8003\uff0c\u5177\u4f53\u7ed3\u8bba\u4ee5\u62a5\u544a\u6807\u6ce8\u4e3a\u51c6\u3002"
+    if fact_type == "material":
+        return f"\u5f53\u524d\u5546\u54c1\u6709\u6750\u8d28\u8bf4\u660e{word}\u300a{title}\u300b\uff0c\u53ef\u53d1\u60a8\u6838\u5bf9\uff0c\u4e0d\u4ee3\u66ff\u68c0\u6d4b\u62a5\u544a\u7ed3\u8bba\u3002"
+    return f"\u5f53\u524d\u5546\u54c1\u6709{word}\u300a{title}\u300b\uff0c\u53ef\u4e00\u8d77\u53d1\u60a8\u53c2\u8003\u3002"
+
+
+def _dedupe_media_assets(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = (item.get("asset_id") or item.get("id"), item.get("asset_type"), item.get("asset_title"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _dedupe_evidence_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen = set()
+    for item in items:
+        key = (item.get("chunk_id"), item.get("entry_id"), item.get("fact_type"), item.get("asset_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
 
 
 def _media_fact_customer_text(query_fact_type: str, media_word: str) -> str:

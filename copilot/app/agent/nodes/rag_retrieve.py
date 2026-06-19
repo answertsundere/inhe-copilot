@@ -248,7 +248,12 @@ def rag_retrieve(state: dict) -> dict:
             query_fact_type=query_fact_type,
             top_k=8,
         )
-        results = _merge_ranked_results(results, product_context_pack.get("facts", []), limit=8)
+        product_pack_evidence = [
+            *(product_context_pack.get("facts", []) or []),
+            *(product_context_pack.get("product_card_evidence", []) or []),
+            *(product_context_pack.get("media_evidence", []) or []),
+        ]
+        results = _merge_ranked_results(results, product_pack_evidence, limit=8)
         results = _prefer_matching_fact_type(results, query_fact_type)
     except Exception as exc:
         logger.warning("Product context pack failed: %s", exc)

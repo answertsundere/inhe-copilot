@@ -138,11 +138,16 @@ def _required_fact_types(query_understanding: dict[str, Any]) -> list[str]:
 
 def _selected_pool(evidence: dict[str, Any]) -> list[dict[str, Any]]:
     pool = []
+    product_pack = evidence.get("product_context_pack") or {}
+    for key in ("product_card_evidence", "media_evidence"):
+        pool.extend([item for item in product_pack.get(key, []) or [] if isinstance(item, dict)])
     for key in ("knowledge_evidence", "filtered_evidence", "selected_evidence"):
         pool.extend([item for item in evidence.get(key, []) or [] if isinstance(item, dict)])
     raw_evidence = evidence.get("evidence") or {}
     for key in ("product_facts", "faq_evidence", "policy_facts", "sop_evidence", "template_evidence"):
         pool.extend([item for item in raw_evidence.get(key, []) or [] if isinstance(item, dict)])
+    evidence_pack = product_pack.get("evidence_pack") or {}
+    pool.extend([_expand_compact_fact(item) for item in evidence_pack.get("matched_facts", []) or [] if isinstance(item, dict)])
     return _dedupe_items(pool)
 
 
@@ -153,8 +158,22 @@ def _rejected_pool(evidence: dict[str, Any]) -> list[dict[str, Any]]:
 def _selected_assets(evidence: dict[str, Any], product_pack: dict[str, Any]) -> list[dict[str, Any]]:
     assets = []
     assets.extend([item for item in evidence.get("selected_assets", []) or [] if isinstance(item, dict)])
+    assets.extend([item for item in product_pack.get("selected_assets", []) or [] if isinstance(item, dict)])
     assets.extend([item for item in product_pack.get("recommended_assets", []) or [] if isinstance(item, dict)])
-    return _dedupe_items([{**item, "evidence_fact_type": "visual_asset", "source_type": "product_media"} for item in assets])
+    assets.extend([
+        item for item in product_pack.get("media_evidence", []) or []
+        if isinstance(item, dict) and _evidence_supports_fact_type(item, "visual_asset")
+    ])
+    return _dedupe_items([
+        {
+            **item,
+            "evidence_fact_type": "visual_asset",
+            "fact_type": "visual_asset",
+            "source_type": "product_media",
+            "evidence_origin": item.get("evidence_origin") or "product_media",
+        }
+        for item in assets
+    ])
 
 
 def _generic_rules(product_pack: dict[str, Any]) -> list[dict[str, Any]]:
@@ -255,9 +274,16 @@ def _summarize_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "chunk_id": item.get("chunk_id", ""),
             "entry_id": item.get("entry_id", ""),
             "asset_id": item.get("asset_id") or item.get("id") or "",
+            "asset_type": item.get("asset_type", ""),
+            "asset_title": item.get("asset_title", ""),
+            "asset_url": item.get("asset_url") or item.get("url") or "",
+            "url": item.get("url") or item.get("asset_url") or "",
+            "sendable": item.get("sendable", False),
             "title": item.get("title") or item.get("asset_title") or "",
             "source_type": item.get("source_type", ""),
             "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or "",
+            "evidence_origin": item.get("evidence_origin") or (item.get("metadata") or {}).get("evidence_origin", ""),
+            "metadata": item.get("metadata", {}),
             "preview": str(preview)[:120],
             "chunk_preview": str(preview)[:120],
             "gate_status": item.get("gate_status", ""),
@@ -265,6 +291,15 @@ def _summarize_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "rejection_reasons": item.get("rejection_reasons") or item.get("reasons") or [],
         })
     return out
+
+
+def _expand_compact_fact(item: dict[str, Any]) -> dict[str, Any]:
+    preview = item.get("preview") or item.get("chunk_preview") or ""
+    return {
+        **item,
+        "chunk_text": preview,
+        "evidence_fact_type": item.get("fact_type", ""),
+    }
 
 
 def _dedupe_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
