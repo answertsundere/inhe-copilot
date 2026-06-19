@@ -392,25 +392,67 @@ def _remove_unsupported_media_send_claims(text: str, response: dict[str, Any], d
     if _has_deliverable_media(response):
         return text
     value = str(text or "")
+    fact_type = _current_fact_type(response)
     media_terms = ("图片", "视频", "图", "照片", "实物图", "尺寸图", "安装图")
     send_terms = ("下面发", "发您参考", "发您看", "一起发您", "下方图片", "直接参考我下面发")
-    if not any(term in value for term in media_terms) or not any(term in value for term in send_terms):
+    has_unsupported_send_claim = (
+        any(term in value for term in media_terms)
+        and any(term in value for term in send_terms)
+    )
+    if not has_unsupported_send_claim and not _has_media_fallback_topic_drift(value, fact_type):
         return value
 
     product = f"「{display_name}」" if display_name else "这款商品"
-    replacement = f"亲～{product}目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
+    replacement = _media_fallback_replacement(product, fact_type)
     lines = []
     replaced = False
     for raw_line in value.splitlines():
         line = raw_line.strip()
-        if line and any(term in line for term in media_terms) and any(term in line for term in send_terms):
+        remove_line = bool(line) and (
+            (any(term in line for term in media_terms) and any(term in line for term in send_terms))
+            or _is_media_fallback_drift_line(line, fact_type)
+        )
+        if remove_line:
             if not replaced:
                 lines.append(replacement)
                 replaced = True
             continue
         lines.append(raw_line)
     cleaned = "\n".join(line for line in lines if str(line).strip())
+    cleaned = re.sub(r"^亲～\s*\n\s*亲～", "亲～", cleaned)
     return cleaned or replacement
+
+
+def _has_media_fallback_topic_drift(text: str, fact_type: str) -> bool:
+    return any(_is_media_fallback_drift_line(line.strip(), fact_type) for line in str(text or "").splitlines())
+
+
+def _is_media_fallback_drift_line(line: str, fact_type: str) -> bool:
+    if not line:
+        return False
+    dimension_terms = ("尺寸", "宽度", "进深", "高度", "预留位置", "长宽高")
+    installation_terms = ("安装", "配件", "按图", "图里标注", "步骤", "教程")
+    unsupported_visual_terms = ("按图", "图里", "下方图片", "下面发", "看图", "发您参考", "图片/视频")
+    if fact_type == "installation":
+        return any(term in line for term in dimension_terms) or any(term in line for term in unsupported_visual_terms)
+    if fact_type in {"dimensions", "space_fit"}:
+        return any(term in line for term in installation_terms)
+    if fact_type == "visual_asset":
+        return any(term in line for term in unsupported_visual_terms)
+    return False
+
+
+def _media_fallback_replacement(product: str, fact_type: str) -> str:
+    if fact_type == "installation":
+        return (
+            f"亲～{product}目前没有可直接发送的安装图片/视频素材，我先帮您核对对应商品的安装资料，确认清楚后再回复您。"
+            "安装前建议先对照配件清单，确认配件齐全后再操作。"
+        )
+    if fact_type in {"dimensions", "space_fit"}:
+        return f"亲～{product}目前没有可直接发送的尺寸图，我先帮您核对对应款式的尺寸资料，确认清楚后再回复您。"
+    if fact_type in {"accessories", "packaging"}:
+        return f"亲～{product}目前没有可直接发送的配件/包装清单图片，我先帮您核对对应款式的配件资料，确认清楚后再回复您。"
+    return f"亲～{product}目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
 
 
 def _contains_media_workflow_language(text: str) -> bool:

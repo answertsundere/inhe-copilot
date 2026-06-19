@@ -175,6 +175,7 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
     if query_fact_type == "dimensions" and _has_topic(reply, "load_capacity") and not _has_topic(reply, "dimensions"):
         issues.append("off_topic:dimensions_answered_as_load_capacity")
     issues.extend(_fact_type_topic_contract_issues(query_fact_type, reply, selected_assets))
+    issues.extend(_media_reference_contract_issues(query_fact_type, reply, response))
     if query_fact_type == "visual_asset":
         has_asset = bool(selected_assets)
         if not has_asset and not _has_topic(reply, "visual_asset"):
@@ -567,6 +568,77 @@ def _fact_type_topic_contract_issues(query_fact_type: str, reply: str, selected_
     elif not has_allowed:
         issues.append(f"missing_answer:{query_fact_type}")
     return issues
+
+
+def _media_reference_contract_issues(query_fact_type: str, reply: str, response: dict[str, Any]) -> list[str]:
+    if _has_deliverable_media_trace(response):
+        return []
+    issues: list[str] = []
+    if query_fact_type == "installation":
+        if _contains_any(reply, ("按图", "图里", "下方图片", "下面发", "看图", "发您参考", "图片/视频")):
+            issues.append("unsupported_media_reference_without_asset")
+        if _contains_any(reply, ("尺寸", "宽度", "进深", "高度", "预留位置", "长宽高")):
+            issues.append("off_topic:installation_media_fallback_mentions_dimensions")
+    if query_fact_type in {"dimensions", "space_fit"}:
+        if _contains_any(reply, ("安装", "配件", "按图", "图里标注", "步骤", "教程")) and not _contains_any(reply, ("尺寸", "宽度", "进深", "高度", "长宽高")):
+            issues.append("off_topic:dimensions_fallback_mentions_installation")
+    if query_fact_type == "visual_asset":
+        if _contains_any(reply, ("下面发", "下方图片", "发您参考", "发您看", "一起发您", "直接参考我下面发")):
+            issues.append("unsupported_media_reference_without_asset")
+    return list(dict.fromkeys(issues))
+
+
+def _has_deliverable_media_trace(response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") or {}
+    trace = debug.get("answer_composition_trace") or response.get("answer_composition_trace") or {}
+    sources: list[Any] = [
+        response.get("selected_assets"),
+        response.get("recommended_assets"),
+        response.get("reply_blocks"),
+        debug.get("selected_assets") if isinstance(debug, dict) else None,
+    ]
+    if isinstance(trace, dict):
+        sources.extend([
+            trace.get("asset_evidence_used"),
+            trace.get("media_evidence_used"),
+        ])
+    context_used = response.get("context_used") or {}
+    if isinstance(context_used, dict):
+        pack = context_used.get("product_context_pack") or {}
+        if isinstance(pack, dict):
+            sources.extend([
+                pack.get("selected_assets"),
+                pack.get("recommended_assets"),
+                pack.get("media_evidence"),
+            ])
+    return any(_source_has_deliverable_media(source) for source in sources)
+
+
+def _source_has_deliverable_media(source: Any) -> bool:
+    if isinstance(source, dict):
+        return any(_source_has_deliverable_media(value) for value in source.values())
+    if not isinstance(source, list):
+        return False
+    for item in source:
+        if not isinstance(item, dict):
+            continue
+        media_type = str(item.get("asset_type") or item.get("type") or item.get("media_type") or "").lower()
+        has_asset_id = bool(item.get("asset_id") or item.get("id"))
+        has_url = bool(
+            item.get("asset_url")
+            or item.get("url")
+            or item.get("oss_url")
+            or item.get("signed_url")
+            or item.get("media_url")
+            or item.get("thumbnail_url")
+        )
+        if has_url and (has_asset_id or media_type in {"image", "video", "picture", "photo"} or media_type.endswith("_image") or media_type.endswith("_video")):
+            return True
+    return False
+
+
+def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in str(text or "") for term in terms)
 
 
 def _covered_reply_topics(reply: str) -> set[str]:

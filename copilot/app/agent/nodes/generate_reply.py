@@ -804,7 +804,31 @@ def _render_generic_service_rule(rule: dict[str, Any], state: dict, product_name
     except Exception:
         return ""
     display_name = _customer_product_display_name(state, product_name)
-    return render_generic_service_reply(rule, product_name=display_name)
+    return render_generic_service_reply(
+        rule,
+        product_name=display_name,
+        fact_type=str(state.get("query_fact_type") or ""),
+        has_media=_has_sendable_media_evidence(state),
+    )
+
+
+def _has_sendable_media_evidence(state: dict) -> bool:
+    product_context_pack = state.get("product_context_pack") or {}
+    candidates = [
+        *(state.get("selected_assets") or []),
+        *(state.get("recommended_assets") or []),
+        *(product_context_pack.get("selected_assets") or []),
+        *(product_context_pack.get("recommended_assets") or []),
+        *(product_context_pack.get("media_evidence") or []),
+    ]
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        has_id = bool(item.get("asset_id") or item.get("id"))
+        has_url = bool(item.get("asset_url") or item.get("url") or item.get("media_url") or item.get("thumbnail_url"))
+        if has_id and has_url:
+            return True
+    return False
 
 
 def _customer_product_display_name(state: dict, fallback: str = "") -> str:

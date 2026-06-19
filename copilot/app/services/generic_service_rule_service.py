@@ -350,12 +350,54 @@ def generic_rule_to_fact(rule: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def render_generic_service_reply(rule: dict[str, Any], *, product_name: str = "") -> str:
+def render_generic_service_reply(
+    rule: dict[str, Any],
+    *,
+    product_name: str = "",
+    fact_type: str = "",
+    has_media: bool = False,
+) -> str:
+    if str(rule.get("fact_type") or "") == "media_reference":
+        rendered = _render_media_reference_reply(
+            product_name=product_name,
+            fact_type=fact_type,
+            has_media=has_media,
+        )
+        if rendered:
+            return rendered
     template = str(rule.get("reply_template") or rule.get("content") or "").strip()
     if not template:
         return ""
     product_display = f"「{product_name}」" if product_name else "这款商品"
     return template.replace("{product_display}", product_display).strip()
+
+
+def _render_media_reference_reply(*, product_name: str, fact_type: str, has_media: bool) -> str:
+    product_display = f"「{product_name}」" if product_name else "这款商品"
+    if fact_type == "installation":
+        if has_media:
+            return (
+                f"亲～{product_display}的安装图片/视频可以发您参考。"
+                "安装前建议先对照配件清单，确认配件齐全后再按步骤操作。"
+            )
+        return (
+            f"亲～{product_display}目前没有可直接发送的安装图片/视频，"
+            "我先帮您核对对应商品的安装资料，确认清楚后再回复您。"
+            "安装前建议先对照配件清单，确认配件齐全后再操作。"
+        )
+    if fact_type in {"dimensions", "space_fit"}:
+        if has_media:
+            return f"亲～{product_display}的尺寸图可以发您参考，具体尺寸以对应款式标注为准。"
+        return f"亲～{product_display}目前没有可直接发送的尺寸图，我先帮您核对对应款式的尺寸资料，确认清楚后再回复您。"
+    if fact_type in {"accessories", "packaging"}:
+        if has_media:
+            return f"亲～{product_display}的配件/包装清单图片可以发您参考，您可以按对应款式核对数量。"
+        return f"亲～{product_display}目前没有可直接发送的配件/包装清单图片，我先帮您核对对应款式的配件资料，确认清楚后再回复您。"
+    if fact_type == "visual_asset":
+        if has_media:
+            return f"亲～{product_display}的图片/视频可以发您参考。"
+        return f"亲～{product_display}目前没有可直接发送的图片/视频素材，我先帮您核对对应商品，确认清楚后再回复您。"
+    return ""
 
 
 def unsafe_promise_terms(text: str) -> list[str]:

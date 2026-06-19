@@ -478,3 +478,95 @@ def test_composed_reply_does_not_leak_internal_terms():
 
     for term in ("RAG", "fact_type", "query_fact_type", "\u77e5\u8bc6\u5e93", "\u8d44\u6599\u5e93", "\u7cfb\u7edf"):
         assert term not in result["composed_reply"]
+
+
+def test_installation_media_fallback_without_asset_does_not_mix_dimensions():
+    from app.services.customer_reply_polisher import polish_customer_reply
+
+    response = {
+        "suggested_reply": (
+            "亲～这款商品这个细节可以直接参考我下面发您的图片或视频。\n"
+            "如果是看尺寸，重点对照家里预留位置的宽度、进深和高度；\n"
+            "如果是看安装或配件，按图里标注的位置和步骤核对会更直观。"
+        ),
+        "query_fact_type": "installation",
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "evidence_grouping": {"coverage": {"required_fact_types": ["installation"]}},
+            "answer_composition_trace": {"needs_followup_fact_types": ["installation"]},
+        },
+    }
+
+    result = polish_customer_reply(response, customer_message="怎么安装，有视频吗？")
+    reply = result["suggested_reply"]
+
+    assert "安装" in reply
+    assert "没有可直接发送" in reply
+    for term in ("尺寸", "宽度", "进深", "高度", "预留位置", "按图", "图里", "下面发"):
+        assert term not in reply
+
+
+def test_final_answer_auditor_blocks_installation_fallback_with_dimension_drift():
+    from app.services.final_answer_auditor import audit_final_answer
+
+    response = {
+        "suggested_reply": (
+            "亲～这款商品这个细节可以直接参考我下面发您的图片或视频。\n"
+            "如果是看尺寸，重点对照家里预留位置的宽度、进深和高度。"
+        ),
+        "query_fact_type": "installation",
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "evidence_grouping": {"coverage": {"required_fact_types": ["installation"]}},
+            "answer_composition_trace": {"needs_followup_fact_types": ["installation"]},
+        },
+    }
+
+    audited = audit_final_answer(response, customer_message="怎么安装，有视频吗？")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "unsupported_media_reference_without_asset" in audited["final_answer_audit"]["issues"]
+    assert "off_topic:installation_media_fallback_mentions_dimensions" in audited["final_answer_audit"]["issues"]
+    assert audited["generation_mode"] == "final_answer_audit_fallback"
+
+
+def test_final_semantic_gate_blocks_unsupported_media_reference_without_asset():
+    from app.services.final_semantic_quality_service import audit_customer_reply_semantic_fit
+
+    response = {
+        "suggested_reply": "亲～安装步骤可以参考我下面发您的视频，按图里标注的位置操作就可以。",
+        "query_fact_type": "installation",
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "answer_composition_trace": {"needs_followup_fact_types": ["installation"]},
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(response, customer_message="怎么安装，有视频吗？")
+
+    assert result["passed"] is False
+    assert "unsupported_media_reference_without_asset" in result["issues"]
+
+
+def test_dimensions_media_fallback_without_asset_does_not_mix_installation():
+    from app.services.customer_reply_polisher import polish_customer_reply
+
+    response = {
+        "suggested_reply": (
+            "亲～这款商品目前没有可直接发送的图片/视频素材，我先帮您核对。\n"
+            "如果是看安装或配件，按图里标注的位置和步骤核对会更直观。"
+        ),
+        "query_fact_type": "dimensions",
+        "evidence_debug": {
+            "query_fact_type": "dimensions",
+            "evidence_grouping": {"coverage": {"required_fact_types": ["dimensions"]}},
+        },
+    }
+
+    result = polish_customer_reply(response, customer_message="尺寸多大，有没有图？")
+    reply = result["suggested_reply"]
+
+    assert "尺寸" in reply
+    assert "没有可直接发送" in reply
+    for term in ("安装", "配件", "按图", "图里", "步骤"):
+        assert term not in reply
