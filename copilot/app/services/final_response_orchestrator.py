@@ -60,6 +60,11 @@ def orchestrate_final_response(
     API handlers; doing so makes the final node order ambiguous.
     """
     pipeline: list[dict[str, Any]] = []
+    try:
+        from app.services.answer_trace_service import normalize_answer_trace_inputs
+        response = normalize_answer_trace_inputs(response)
+    except Exception:
+        pass
 
     response = audit_final_answer(
         response,

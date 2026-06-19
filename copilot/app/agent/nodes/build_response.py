@@ -452,6 +452,14 @@ def build_response(state: dict) -> dict:
         "generated_context": generated_context,
         "generation_context": generation_context,
         "query_understanding": query_understanding,
+        "query_fact_type": state.get("query_fact_type", ""),
+        "query_fact_type_label": state.get("query_fact_type_label", ""),
+        "secondary_fact_types": state.get("secondary_fact_types", []),
+        "required_fact_types": (
+            (state.get("evidence_grouping") or {}).get("coverage", {}).get("required_fact_types", [])
+            if isinstance((state.get("evidence_grouping") or {}).get("coverage", {}), dict)
+            else []
+        ),
         "history_snapshot": state.get("history_snapshot", {}),
         "context_reset_reason": state.get("context_reset_reason", ""),
         "answer_mode": state.get("answer_mode", ""),

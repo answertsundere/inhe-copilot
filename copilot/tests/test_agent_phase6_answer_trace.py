@@ -1,5 +1,135 @@
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+
+PHASE6_RAG_I_ID = "PHASE6_RAG_TRACE_PRODUCT"
+PHASE6_RAG_SKU = "PHASE6_RAG_TRACE_SKU"
+PHASE6_RAG_PRODUCT = "\u6d4b\u8bd5\u9632\u6f6e\u6536\u7eb3\u67dc"
+PHASE6_RAG_MATERIAL = (
+    "\u4e3b\u8981\u91c7\u7528\u51b7\u8f67\u94a2\u7ba1\u3001\u73af\u4fddPP\u548c\u65e0\u7eba\u5e03\u7b49\u6750\u8d28\uff1b"
+    "\u91d1\u5c5e\u90e8\u5206\u7ecf\u8fc7\u9632\u9508\u55b7\u6d82\u5904\u7406\uff0c\u5177\u5907\u4e00\u5b9a\u9632\u6f6e\u80fd\u529b\u3002"
+)
+
+
+@pytest.fixture()
+def phase6_rag_api(monkeypatch):
+    import app.db as db_module
+    from app.models.kb_tables import KBGenericServiceRule, KBMediaAsset, KBProduct, KBProductActivityRule, KBQA  # noqa: F401
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry  # noqa: F401
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    db_module.Base.metadata.create_all(bind=engine)
+
+    saved_key = os.environ.get("COPILOT_LLM_API_KEY", "")
+    os.environ["COPILOT_LLM_API_KEY"] = ""
+    os.environ["COPILOT_FEEDBACK_FILE"] = os.path.join(tempfile.gettempdir(), "phase6_rag_feedback.jsonl")
+    os.environ["COPILOT_REVIEW_QUEUE_FILE"] = os.path.join(tempfile.gettempdir(), "phase6_rag_review.jsonl")
+
+    _seed_phase6_rag_material(session_factory)
+
+    from app.main import create_app
+
+    app = create_app()
+    app.config["TESTING"] = True
+    try:
+        yield app.test_client()
+    finally:
+        os.environ["COPILOT_LLM_API_KEY"] = saved_key
+
+
+def _seed_phase6_rag_material(session_factory) -> None:
+    from app.models.kb_tables import KBProduct
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+    db = session_factory()
+    try:
+        product = KBProduct(
+            i_id=PHASE6_RAG_I_ID,
+            product_name=PHASE6_RAG_PRODUCT,
+            sku_list_json=json.dumps([{"sku_code": PHASE6_RAG_SKU}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "material": "\u73af\u4fddPP/\u51b7\u8f67\u94a2\u7ba1",
+                "weight": "2.65",
+                "load_capacity": "",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        entry = KnowledgeEntry(
+            source_type="product_facts",
+            title=f"{PHASE6_RAG_PRODUCT}\u6750\u8d28\u548c\u9632\u6f6e\u8bf4\u660e",
+            content=PHASE6_RAG_MATERIAL,
+            intent="product_question",
+            category="\u6536\u7eb3\u67dc",
+            category_l3=PHASE6_RAG_PRODUCT,
+            search_keywords="\u6750\u8d28 \u5b89\u5168 \u9632\u6f6e \u53d7\u6f6e \u73af\u4fddPP \u51b7\u8f67\u94a2\u7ba1",
+            product_scope_json=json.dumps([PHASE6_RAG_PRODUCT], ensure_ascii=False),
+            sku_scope_json=json.dumps([PHASE6_RAG_SKU, PHASE6_RAG_I_ID], ensure_ascii=False),
+            platform_scope_json="[]",
+            risk_level="low",
+            auto_reply_allowed=True,
+            human_review_required=True,
+            status="published",
+            index_status="ready",
+            source_confidence=0.95,
+            fact_review_status="verified",
+            fact_type="material",
+            fact_scope="sku",
+            business_key="phase6-rag-material",
+            product_id=PHASE6_RAG_I_ID,
+            sku_id=PHASE6_RAG_SKU,
+            source_sheet="phase6_test",
+            reviewed_by="phase6_test",
+        )
+        db.add(entry)
+        db.flush()
+        db.add(KnowledgeChunk(
+            entry_id=entry.id,
+            chunk_text=PHASE6_RAG_MATERIAL,
+            chunk_index=0,
+            source_type="product_facts",
+            intent="product_question",
+            product_scope_json=json.dumps([PHASE6_RAG_PRODUCT], ensure_ascii=False),
+            sku_scope_json=json.dumps([PHASE6_RAG_SKU, PHASE6_RAG_I_ID], ensure_ascii=False),
+            platform_scope_json="[]",
+            metadata_json=json.dumps({
+                "auto_reply_allowed": True,
+                "human_review_required": True,
+                "fact_type": "material",
+                "fact_review_status": "verified",
+            }, ensure_ascii=False),
+            category="\u6536\u7eb3\u67dc",
+            category_l3=PHASE6_RAG_PRODUCT,
+            search_keywords="\u6750\u8d28 \u5b89\u5168 \u9632\u6f6e \u53d7\u6f6e \u73af\u4fddPP \u51b7\u8f67\u94a2\u7ba1",
+            embedding_status="pending",
+            source_confidence=0.95,
+            fact_review_status="verified",
+            fact_source_type="phase6_test",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _phase6_trace(data: dict) -> dict:
+    return data.get("answer_trace") or (data.get("evidence_debug") or {}).get("answer_trace") or {}
+
 
 def test_answer_trace_normalizes_product_card_evidence_answer():
     from app.services.answer_trace_service import attach_answer_trace
@@ -328,3 +458,93 @@ def test_answer_trace_records_composition_knowledge_evidence_without_media_dupli
 
     assert trace["rag_evidence_used"]["material"][0]["entry_id"] == "knowledge-1"
     assert "visual_asset" not in trace["rag_evidence_used"]
+
+
+def test_answer_trace_recovers_fact_type_from_selected_evidence_when_response_lost_query():
+    from app.services.answer_trace_service import attach_answer_trace
+
+    response = {
+        "suggested_reply": "\u6750\u8d28\u4fe1\u606f\u9700\u8981\u7ed3\u5408\u5df2\u786e\u8ba4\u8bc1\u636e\u8bf4\u660e\u3002",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "selected_evidence": [{
+                "entry_id": "selected-material",
+                "chunk_id": "selected-material-1",
+                "fact_type": "material",
+                "source_type": "product_facts",
+                "text": PHASE6_RAG_MATERIAL,
+                "selected": True,
+            }],
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "matched_facts": [{
+                        "entry_id": "matched-material",
+                        "chunk_id": "matched-material-1",
+                        "fact_type": "material",
+                        "source_type": "product_facts",
+                        "preview": PHASE6_RAG_MATERIAL,
+                    }],
+                    "evidence_evaluation": [{
+                        "evidence_id": "eval-material",
+                        "fact_type": "material",
+                        "source_type": "product_facts",
+                        "text": PHASE6_RAG_MATERIAL,
+                        "selected": True,
+                    }],
+                }
+            },
+        },
+    }
+
+    result = attach_answer_trace(
+        response,
+        customer_message="\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f\u4f1a\u4e0d\u4f1a\u5bb9\u6613\u53d7\u6f6e\uff1f",
+    )
+    trace = result["answer_trace"]
+
+    assert result["query_fact_type"] == "material"
+    assert trace["query_fact_type"] == "material"
+    assert "material" in trace["required_fact_types"]
+    assert trace["rag_evidence_used"]["material"]
+    assert "material" in trace["evidence_answered_fact_types"]
+    assert trace["mode"] == "mixed_with_human_review"
+
+
+def test_real_api_material_rag_trace_keeps_fact_contract_and_no_load_capacity(phase6_rag_api):
+    response = phase6_rag_api.post("/ask/api/analyze", json={
+        "message": "\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f\u4f1a\u4e0d\u4f1a\u5bb9\u6613\u53d7\u6f6e\uff1f",
+        "sku_code": PHASE6_RAG_SKU,
+        "conversation_id": "phase6_trace_material_api_test",
+        "product_candidates": [
+            {"type": "i_id", "value": PHASE6_RAG_I_ID, "i_id": PHASE6_RAG_I_ID, "product_name": PHASE6_RAG_PRODUCT},
+            {"type": "sku_code", "value": PHASE6_RAG_SKU, "sku_code": PHASE6_RAG_SKU, "product_name": PHASE6_RAG_PRODUCT},
+        ],
+        "copilot_context": {
+            "product_name": PHASE6_RAG_PRODUCT,
+            "i_id": PHASE6_RAG_I_ID,
+            "sku_code": PHASE6_RAG_SKU,
+            "product_candidates": [
+                {"type": "sku_code", "value": PHASE6_RAG_SKU, "sku_code": PHASE6_RAG_SKU, "product_name": PHASE6_RAG_PRODUCT},
+            ],
+        },
+    })
+    assert response.status_code == 200, response.data[:500]
+    data = response.get_json()
+    trace = _phase6_trace(data)
+    debug = data.get("evidence_debug") or {}
+    reply = data.get("suggested_reply") or ""
+
+    assert data["query_fact_type"] == "material"
+    assert trace["query_fact_type"] == "material"
+    assert "material" in trace["required_fact_types"]
+    assert trace["rag_evidence_used"]["material"]
+    assert "material" in trace["evidence_answered_fact_types"]
+    assert trace["mode"] == "mixed_with_human_review"
+    assert len(debug.get("selected_evidence") or []) >= 1
+    assert "\u627f\u91cd" not in reply
+    assert "\u5bb9\u91cf" not in reply
+    assert "2.65" not in reply
+    for internal_term in ("系统", "知识库", "RAG", "fact_type", "query_fact_type", "evidence_debug"):
+        assert internal_term not in reply
+    for unsafe in ("\u7edd\u5bf9\u5b89\u5168", "0\u7532\u919b", "\u5b8c\u5168\u65e0\u5bb3", "\u5b9d\u5b9d\u53ef\u4ee5\u76f4\u63a5\u7528"):
+        assert unsafe not in reply
