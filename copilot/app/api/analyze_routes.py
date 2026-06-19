@@ -135,7 +135,15 @@ def _is_visual_media_question(message: str, response: dict) -> bool:
     if isinstance(semantic_query, dict) and semantic_query.get("needs_visual_asset"):
         return True
     fact_type = str(debug.get("query_fact_type") or "").strip()
-    visual_fact_types = {"installation", "detachable", "dimensions", "space_fit", "accessories", "packaging"}
+    visual_fact_types = {
+        "installation",
+        "detachable",
+        "dimensions",
+        "space_fit",
+        "accessories",
+        "packaging",
+        "certification_report",
+    }
     if fact_type in visual_fact_types:
         return True
 
@@ -390,10 +398,12 @@ def api_analyze():
                     "has_unapproved": False,
                     "source": "product_context_pack",
                 }
-            response["recommended_assets"] = (
+            selected_assets = (
                 select_delivery_assets(reco.get("recommended_assets") or [], max_assets=1)
                 if allow_media_delivery else []
             )
+            response["recommended_assets"] = selected_assets
+            response["selected_assets"] = selected_assets
             response["suggested_reply"] = _sanitize_media_promise_without_assets(
                 response.get("suggested_reply", ""),
                 response["recommended_assets"],
@@ -432,6 +442,12 @@ def api_analyze():
                 customer_message=message,
                 copilot_context=copilot_context,
             )
+        except Exception:
+            pass
+
+        try:
+            from app.services.answer_trace_service import attach_answer_trace
+            response = attach_answer_trace(response, customer_message=message)
         except Exception:
             pass
 

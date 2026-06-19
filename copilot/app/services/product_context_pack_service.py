@@ -1463,6 +1463,7 @@ def _media_scenario_from_fact_type(query_fact_type: str) -> str:
         "detachable": "detachable",
         "installation": "installation",
         "accessories": "accessories",
+        "certification_report": "certification_report",
         "visual_asset": "product_image",
     }.get(query_fact_type or "", "")
 
@@ -1477,6 +1478,8 @@ def _media_priority(query: str, query_fact_type: str) -> list[str]:
         return ["size_image", "sku_image"]
     if any(term in msg for term in ("配件", "少件", "零件", "漏发", "装不上")):
         return ["accessory_image", "pack_guide_image", "install_image"]
+    if query_fact_type == "certification_report" or any(term in msg for term in ("证书", "质检", "检测", "报告", "认证")):
+        return ["certificate_image"]
     if query_fact_type == "visual_asset" or any(term in msg for term in ("图片", "照片", "图", "外观", "颜色", "样子", "实物")):
         return ["sku_image", "size_image"]
     return []
@@ -1489,6 +1492,7 @@ def _media_tag_priority(query_fact_type: str) -> list[str]:
         "space_fit": ["dimensions", "尺寸", "size", "规格", "space_fit", "空间"],
         "installation": ["installation", "安装", "install", "video", "教程"],
         "accessories": ["accessories", "配件", "零件", "parts"],
+        "certification_report": ["certification_report", "certificate", "证书", "检测", "质检"],
         "visual_asset": ["sku", "image", "商品图", "实物图", "外观", "颜色"],
     }.get(query_fact_type or "", [])
 

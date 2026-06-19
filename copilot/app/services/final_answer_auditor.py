@@ -672,6 +672,8 @@ def _product_card_missing_fact_but_reply_answers(response: dict[str, Any], reply
             for item in trace.get("evidence_answered_fact_types", [])
             if str(item).strip()
         }
+        if fact_type in evidence_answered and _trace_has_media_evidence_for_fact_type(trace, fact_type):
+            return False
         if fact_type in needs_followup and fact_type not in evidence_answered:
             return False
         if fact_type in fallback and fact_type not in evidence_answered and _is_generic_handoff(reply):
@@ -679,6 +681,26 @@ def _product_card_missing_fact_but_reply_answers(response: dict[str, Any], reply
     if _safe_composition_fallback_covers(debug, fact_type, reply):
         return False
     return not _is_generic_handoff(reply)
+
+
+def _trace_has_media_evidence_for_fact_type(trace: dict[str, Any], fact_type: str) -> bool:
+    for key in ("media_evidence_used", "asset_evidence_used"):
+        value = trace.get(key)
+        if not isinstance(value, dict):
+            continue
+        if value.get(fact_type):
+            return True
+        if fact_type == "certification_report":
+            for items in value.values():
+                if not isinstance(items, list):
+                    continue
+                if any(
+                    isinstance(item, dict)
+                    and str(item.get("asset_type") or "") == "certificate_image"
+                    for item in items
+                ):
+                    return True
+    return False
 
 
 def _safe_composition_fallback_covers(debug: dict[str, Any], fact_type: str, reply: str) -> bool:

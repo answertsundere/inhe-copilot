@@ -117,7 +117,8 @@ _ANSWER_SCENARIO_PRIORITY = {
     "packing_list": ["packing_list"],
     "accessories": ["accessories", "packing_list"],
     "material": ["material"],
-    "certificate": ["certificate"],
+    "certificate": ["certificate", "certification_report"],
+    "certification_report": ["certification_report", "certificate"],
     "age_range": ["age_range"],
     "cleaning_care": ["cleaning_care"],
     "usage": ["usage"],
@@ -511,10 +512,13 @@ def get_approved_assets_for_scope(
 
 def _decide_priority_types(message: str, intent: str) -> list[str]:
     """根据消息和意图决定推荐的素材类型优先级。"""
-    # 材质/安全/质检类问题不能拿图片当证据，直接不进入推荐
-    if intent == "material_safety":
-        return []
     msg = (message or "").lower()
+    # 材质/安全问题不能拿普通图片当证据；但客户明确问证书/检测报告时，
+    # certificate_image 是对应证据素材，不是用 material 图片冒充安全结论。
+    if intent == "material_safety":
+        if any(term in msg for term in ("证书", "质检", "合格", "检测", "报告", "认证")):
+            return ["certificate_image"]
+        return []
     # 关键词优先（更具体）
     for kws, types in _KEYWORD_PRIORITY:
         if any(k in msg for k in kws):

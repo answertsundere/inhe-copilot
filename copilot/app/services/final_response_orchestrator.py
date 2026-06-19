@@ -194,6 +194,11 @@ def orchestrate_final_response(
         "final_semantic_fit_audit": response.get("final_semantic_fit_audit", {}),
         "post_polish_redline": response.get("evidence_debug", {}).get("post_polish_redline", {}),
     }
+    try:
+        from app.services.answer_trace_service import attach_answer_trace
+        response = attach_answer_trace(response, customer_message=customer_message)
+    except Exception:
+        pass
     response.setdefault("trace_steps", []).append({
         "node": "final_response_orchestrator",
         "status": "completed",

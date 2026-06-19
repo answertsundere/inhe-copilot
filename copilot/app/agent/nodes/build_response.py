@@ -9,6 +9,7 @@ import time
 from app.services.reply_style_service import beautify_customer_reply
 from app.services.fact_type_service import FACT_TYPE_LABELS
 from app.services.answer_composition_service import _suppress_identity_prompt_when_product_resolved
+from app.services.answer_trace_service import build_answer_trace
 from app.agent.query_understanding import refresh_query_understanding
 
 logger = logging.getLogger(__name__)
@@ -413,6 +414,24 @@ def build_response(state: dict) -> dict:
     evidence_debug["query_understanding"] = query_understanding
     evidence_debug["suppressed_identity_prompt"] = identity_suppression.get("suppressed", False)
     evidence_debug["identity_prompt_suppression_reason"] = identity_suppression.get("reason", "")
+
+    trace_response_view = {
+        "suggested_reply": suggested_reply,
+        "requires_human_review": requires_human_review,
+        "generation_mode": state.get("generation_mode", ""),
+        "query_fact_type": state.get("query_fact_type", ""),
+        "secondary_fact_types": state.get("secondary_fact_types", []),
+        "answer_composition_trace": evidence_debug.get("answer_composition_trace", {}),
+        "evidence_grouping": evidence_debug.get("evidence_grouping", {}),
+        "generic_service_rule_used": generic_service_rule_used,
+        "context_used": {"product_context_pack": product_context_pack},
+        "product_context_pack": product_context_pack,
+        "evidence_debug": evidence_debug,
+    }
+    evidence_debug["answer_trace"] = build_answer_trace(
+        trace_response_view,
+        customer_message=state.get("customer_message", ""),
+    )
 
     logger.debug("build_response: reply assembled, warnings=%d", len(guard_warnings))
     return {
