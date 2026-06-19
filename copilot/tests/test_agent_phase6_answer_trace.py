@@ -615,13 +615,19 @@ def test_real_api_sku_only_keeps_query_fact_contract(phase6_rag_api, message, ex
     assert response.status_code == 200, response.data[:500]
     data = response.get_json()
     debug = data.get("evidence_debug") or {}
+    query_understanding = debug.get("query_understanding") or data.get("query_understanding") or {}
     trace = _phase6_trace(data)
     reply = data.get("suggested_reply") or ""
 
     assert data["query_fact_type"] == expected_fact_type
     assert debug["query_fact_type"] == expected_fact_type
     assert data["query_understanding"]["query_fact_type"] == expected_fact_type
-    assert debug["query_understanding"]["query_fact_type"] == expected_fact_type
+    assert query_understanding["query_fact_type"] == expected_fact_type
+    assert query_understanding["original_message"] == message
+    assert query_understanding["normalized_message"] == message
+    assert "????" not in query_understanding["original_message"]
+    assert "????" not in query_understanding["normalized_message"]
+    assert "????" not in query_understanding["retrieval_query"]
     assert trace["query_fact_type"] == expected_fact_type
     assert trace["trace_contract_broken"] is False
     assert required_any & set(trace["required_fact_types"])
@@ -629,6 +635,53 @@ def test_real_api_sku_only_keeps_query_fact_contract(phase6_rag_api, message, ex
     assert "\u627f\u91cd" not in reply
     assert "\u5bb9\u91cf" not in reply
     assert "2.65" not in reply
+
+
+def test_real_api_utf8_json_body_preserves_chinese_message(phase6_rag_api):
+    message = "\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f\u4f1a\u4e0d\u4f1a\u5bb9\u6613\u53d7\u6f6e\uff1f"
+    payload = {
+        "message": message,
+        "sku_code": PHASE6_RAG_SKU,
+        "conversation_id": "phase6_trace_utf8_json_body",
+    }
+
+    response = phase6_rag_api.post(
+        "/ask/api/analyze",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        content_type="application/json; charset=utf-8",
+    )
+    assert response.status_code == 200, response.data[:500]
+    data = response.get_json()
+    debug = data.get("evidence_debug") or {}
+    query_understanding = debug.get("query_understanding") or data.get("query_understanding") or {}
+    trace = _phase6_trace(data)
+
+    assert query_understanding["original_message"] == message
+    assert query_understanding["normalized_message"] == message
+    assert "????" not in query_understanding["retrieval_query"]
+    assert data["query_fact_type"] == "material"
+    assert debug["query_fact_type"] == "material"
+    assert trace["query_fact_type"] == "material"
+    assert trace["trace_contract_broken"] is False
+
+
+def test_real_api_question_mark_corrupted_message_does_not_pass_contract(phase6_rag_api):
+    response = phase6_rag_api.post("/ask/api/analyze", json={
+        "message": "????????????????",
+        "sku_code": PHASE6_RAG_SKU,
+        "conversation_id": "phase6_trace_corrupted_question_marks",
+    })
+    assert response.status_code == 200, response.data[:500]
+    data = response.get_json()
+    trace = _phase6_trace(data)
+
+    assert not data.get("query_fact_type")
+    assert trace["query_fact_type"] == ""
+    assert trace["trace_contract_broken"] is True
+    assert trace["trace_contract_reason"] == "missing_query_fact_type"
+    assert data["final_answer_audit"]["passed"] is False
+    assert "missing_query_fact_type_contract" in data["final_answer_audit"]["issues"]
+    assert data["requires_human_review"] is True
 
 
 def _post_phase6_rag_api(client, message: str, conversation_id: str) -> dict:
