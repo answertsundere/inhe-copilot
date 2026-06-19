@@ -3,6 +3,30 @@ from app.services.evidence_grouping_service import group_evidence_by_fact_type
 from app.services.final_answer_auditor import audit_final_answer
 
 
+def _bad_text_tokens():
+    return [
+        chr(code)
+        for code in (
+            0x95BA,
+            0x940E,
+            0x95B8,
+            0x940F,
+            0x95C1,
+            0x6FE0,
+            0x7F01,
+            0x6FE1,
+            0x93C9,
+            0x7039,
+            0x9359,
+        )
+    ] + ["\ufffd", "?"]
+
+
+def _assert_customer_reply_clean(reply: str):
+    assert not any(token in reply for token in _bad_text_tokens())
+    assert not any(token in reply for token in ("系统", "知识库", "RAG", "fact_type", "query_fact_type"))
+
+
 def _state(message, primary, secondary, evidence_items=None, product_pack=None):
     return {
         "customer_message": message,
@@ -48,6 +72,20 @@ def _fact(fact_type, text, source_type="product_facts"):
     }
 
 
+def test_phase3_files_have_no_common_mojibake_tokens():
+    from pathlib import Path
+
+    paths = [
+        Path("app/services/evidence_grouping_service.py"),
+        Path("tests/test_agent_phase3_evidence_grouping.py"),
+    ]
+    bad_tokens = [token for token in _bad_text_tokens() if token != "?"]
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        assert not [token for token in bad_tokens if token in text], path
+
+
 def test_grouping_and_reply_cover_material_plus_shipping():
     state = _state(
         "宝宝能用吗，今天能发吗？",
@@ -62,6 +100,7 @@ def test_grouping_and_reply_cover_material_plus_shipping():
     assert set(grouping["coverage"]["required_fact_types"]) == {"material", "stock_shipping"}
     assert {g["fact_type"] for g in grouping["groups"]} == {"material", "stock_shipping"}
     reply = result["suggested_reply"]
+    _assert_customer_reply_clean(reply)
     assert any(token in reply for token in ("材质", "安全", "宝宝"))
     assert any(token in reply for token in ("发货", "库存", "下单页", "今天"))
     assert "绝对安全" not in reply
@@ -79,6 +118,7 @@ def test_grouping_and_reply_cover_waterproof_plus_shipping():
     result = generate_reply(state)
 
     reply = result["suggested_reply"]
+    _assert_customer_reply_clean(reply)
     assert "防水" in reply or "湿布" in reply
     assert any(token in reply for token in ("发货", "库存", "下单页"))
     assert result["evidence_grouping"]["coverage"]["missing_fact_types"] == []
@@ -107,6 +147,7 @@ def test_grouping_and_reply_cover_dimensions_plus_visual_asset():
     visual_group = next(g for g in grouping["groups"] if g["fact_type"] == "visual_asset")
     assert visual_group["selected_evidence"][0]["asset_id"] == "asset-size-1"
     reply = result["suggested_reply"]
+    _assert_customer_reply_clean(reply)
     assert "尺寸" in reply or "60cm" in reply
     assert any(token in reply for token in ("图", "图片", "素材"))
     assert "承重" not in reply
@@ -124,6 +165,7 @@ def test_grouping_and_reply_cover_aftersales_plus_installation():
     result = generate_reply(state)
 
     reply = result["suggested_reply"]
+    _assert_customer_reply_clean(reply)
     assert any(token in reply for token in ("售后", "补发", "少件", "缺配件"))
     assert "安装" in reply
     assert "只按安装教程" in reply or "配件不齐" in reply
@@ -142,6 +184,7 @@ def test_missing_one_sub_intent_keeps_supported_shipping_answer():
     grouping = result["evidence_grouping"]
     assert "age_range" in grouping["coverage"]["missing_fact_types"]
     reply = result["suggested_reply"]
+    _assert_customer_reply_clean(reply)
     assert any(token in reply for token in ("适龄", "适合", "一岁", "宝宝"))
     assert any(token in reply for token in ("发货", "库存", "下单页", "今天"))
     assert "一定适合" not in reply
