@@ -131,12 +131,17 @@ class AgentState(TypedDict, total=False):
     knowledge_evidence: list
     current_query: str
     retrieval_query: str
+    query_understanding: dict
+    required_fact_types: list
     generated_context: dict
+    generation_context: dict
     history_snapshot: dict
     context_reset_reason: str
     rag_retrieval_mode: str
     product_context_pack: dict
     product_context_pack_stats: dict
+    evidence_grouping: dict
+    answer_composition_trace: dict
 
     # ========== LLM / 回复生成 ==========
     suggested_reply: str

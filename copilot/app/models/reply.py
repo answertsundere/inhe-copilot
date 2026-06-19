@@ -66,6 +66,12 @@ class ReplySuggestion(BaseModel):
     used_fact_tools: list = Field(default_factory=list)
     product_context_validation: dict = Field(default_factory=dict)
     generic_service_rule_used: dict = Field(default_factory=dict)
+    query_fact_type: str = ""
+    query_fact_type_label: str = ""
+    secondary_fact_types: list[str] = Field(default_factory=list)
+    required_fact_types: list[str] = Field(default_factory=list)
+    query_understanding: dict = Field(default_factory=dict)
+    product_context_pack_stats: dict = Field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """转为字典（API 响应用）"""
@@ -116,6 +122,18 @@ class ReplySuggestion(BaseModel):
             d.pop("product_context_validation", None)
         if not self.generic_service_rule_used:
             d.pop("generic_service_rule_used", None)
+        if not self.query_fact_type:
+            d.pop("query_fact_type", None)
+        if not self.query_fact_type_label:
+            d.pop("query_fact_type_label", None)
+        if not self.secondary_fact_types:
+            d.pop("secondary_fact_types", None)
+        if not self.required_fact_types:
+            d.pop("required_fact_types", None)
+        if not self.query_understanding:
+            d.pop("query_understanding", None)
+        if not self.product_context_pack_stats:
+            d.pop("product_context_pack_stats", None)
         return d
 
     @classmethod
@@ -185,6 +203,12 @@ class ReplySuggestion(BaseModel):
             used_fact_tools=data.get("used_fact_tools", data.get("fact_tools", [])),
             product_context_validation=data.get("product_context_validation", {}),
             generic_service_rule_used=data.get("generic_service_rule_used", {}),
+            query_fact_type=data.get("query_fact_type", ""),
+            query_fact_type_label=data.get("query_fact_type_label", ""),
+            secondary_fact_types=data.get("secondary_fact_types", []),
+            required_fact_types=data.get("required_fact_types", []),
+            query_understanding=data.get("query_understanding", {}),
+            product_context_pack_stats=data.get("product_context_pack_stats", {}),
         )
 
 

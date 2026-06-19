@@ -37,6 +37,10 @@ def build_query_understanding(state: dict[str, Any], fact_result: dict[str, Any]
     ])
     if rejected_fact_type:
         secondary_fact_types = [item for item in secondary_fact_types if item != rejected_fact_type]
+    required_fact_types = _unique([
+        query_fact_type,
+        *secondary_fact_types,
+    ])
     intent = str(state.get("intent") or state.get("final_intent") or "general")
     sub_intents = _unique([
         *list(state.get("secondary_intents") or []),
@@ -54,6 +58,7 @@ def build_query_understanding(state: dict[str, Any], fact_result: dict[str, Any]
         "sub_intents": sub_intents,
         "query_fact_type": query_fact_type,
         "secondary_fact_types": secondary_fact_types,
+        "required_fact_types": required_fact_types,
         "risk_level": state.get("risk_level", ""),
         "product_entities": _product_entities(state),
         "order_entities": _order_entities(state),

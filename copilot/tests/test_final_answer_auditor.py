@@ -325,3 +325,32 @@ def test_final_answer_auditor_does_not_use_non_exact_generic_rule_as_correction(
     assert audited["requires_human_review"] is True
     assert audited["final_answer_audit"].get("correction_source") != "generic_service_rule"
     assert "\u4e0b\u9762\u53d1\u60a8\u7684\u56fe\u7247\u6216\u89c6\u9891" not in audited["suggested_reply"]
+
+
+def test_final_answer_auditor_blocks_missing_query_fact_type_contract():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "\u4eb2\uff5e\u8fd9\u6b3e\u5546\u54c1\u7684\u6750\u8d28\u6211\u5148\u5e2e\u60a8\u6838\u5bf9\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "",
+            "selected_evidence": [{
+                "fact_type": "material",
+                "source_type": "product_facts",
+                "selected": True,
+            }],
+            "answer_trace": {
+                "trace_contract_broken": True,
+                "trace_contract_reason": "missing_query_fact_type",
+            },
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "missing_query_fact_type_contract" in audited["final_answer_audit"]["issues"]
+    assert audited["requires_human_review"] is True

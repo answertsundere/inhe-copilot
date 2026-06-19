@@ -275,7 +275,10 @@ def audit_final_answer(
         issues.extend(hard_issues)
     else:
         issues = _audit_issues(customer_message, reply, expected, actual, response, copilot_context or {})
+    if _query_fact_type_contract_broken(customer_message, response):
+        issues.append("missing_query_fact_type_contract")
     issues.extend(multi_intent_audit.get("issues", []))
+    issues = _dedupe(issues)
     passed = not issues
 
     audit = {
@@ -510,6 +513,29 @@ def _audit_issues(
     issues.extend(_media_reference_contract_issues(reply, response))
 
     return _dedupe(issues)
+
+
+def _query_fact_type_contract_broken(message: str, response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") or {}
+    if str(debug.get("query_fact_type") or response.get("query_fact_type") or "").strip():
+        return False
+    trace = debug.get("answer_trace") or response.get("answer_trace") or {}
+    if isinstance(trace, dict) and trace.get("trace_contract_broken") is False:
+        return False
+    topics = _detect_topics(message or "")
+    product_topics = set(_FACT_TOPIC.values()) - {"aftersales", "stock_shipping", "invoice", "gift", "promotion", "price_protection"}
+    if topics & product_topics:
+        return True
+    semantic_query = debug.get("semantic_query") or response.get("semantic_query") or {}
+    if isinstance(semantic_query, dict) and semantic_query.get("needs_visual_asset"):
+        return True
+    evidence = debug.get("selected_evidence") or []
+    product_context_pack_summary = debug.get("product_context_pack_summary") or {}
+    if not evidence and isinstance(product_context_pack_summary, dict):
+        evidence_pack = product_context_pack_summary.get("evidence_pack") or {}
+        if isinstance(evidence_pack, dict):
+            evidence = evidence_pack.get("matched_facts") or []
+    return bool(evidence and str(response.get("intent") or debug.get("normalized_intent") or "") in {"product_question", "installation", ""})
 
 
 def _hard_safety_issues(

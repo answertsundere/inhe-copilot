@@ -172,6 +172,18 @@ class ReplyService:
         generic_service_rule_used = result.get("generic_service_rule_used") or _generic_rule_used_from_trace(result.get("trace_steps", []))
         if generic_service_rule_used:
             evidence_debug["generic_service_rule_used"] = generic_service_rule_used
+        query_understanding = result.get("query_understanding") or evidence_debug.get("query_understanding") or {}
+        product_context_pack_stats = (
+            result.get("product_context_pack_stats")
+            or evidence_debug.get("product_context_pack_stats")
+            or {}
+        )
+        required_fact_types = (
+            result.get("required_fact_types")
+            or evidence_debug.get("required_fact_types")
+            or (query_understanding.get("required_fact_types") if isinstance(query_understanding, dict) else [])
+            or []
+        )
 
         # 组装 ReplySuggestion
         data = {
@@ -206,6 +218,12 @@ class ReplyService:
             "used_endpoint": result.get("used_endpoint", ""),
             "identifier_type": result.get("identifier_type", ""),
             "generic_service_rule_used": generic_service_rule_used,
+            "query_fact_type": result.get("query_fact_type", ""),
+            "query_fact_type_label": result.get("query_fact_type_label", ""),
+            "secondary_fact_types": result.get("secondary_fact_types", []),
+            "required_fact_types": required_fact_types,
+            "query_understanding": query_understanding,
+            "product_context_pack_stats": product_context_pack_stats,
         }
 
         suggestion = ReplySuggestion.from_dict(data)

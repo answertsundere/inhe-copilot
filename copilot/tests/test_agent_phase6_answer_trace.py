@@ -536,6 +536,10 @@ def test_real_api_material_rag_trace_keeps_fact_contract_and_no_load_capacity(ph
     reply = data.get("suggested_reply") or ""
 
     assert data["query_fact_type"] == "material"
+    assert debug["query_fact_type"] == "material"
+    assert data["query_understanding"]["query_fact_type"] == "material"
+    assert debug["query_understanding"]["query_fact_type"] == "material"
+    assert data["product_context_pack_stats"]["query_fact_type"] == "material"
     assert trace["query_fact_type"] == "material"
     assert "material" in trace["required_fact_types"]
     assert trace["rag_evidence_used"]["material"]
@@ -573,12 +577,57 @@ def test_real_api_non_material_queries_are_not_overwritten_by_material_evidence(
     reply = data.get("suggested_reply") or ""
 
     assert data["query_fact_type"] == expected_fact_type
+    assert (data.get("evidence_debug") or {})["query_fact_type"] == expected_fact_type
+    assert data["query_understanding"]["query_fact_type"] == expected_fact_type
+    assert (data.get("evidence_debug") or {})["query_understanding"]["query_fact_type"] == expected_fact_type
     assert trace["query_fact_type"] == expected_fact_type
     assert expected_fact_type in trace["required_fact_types"]
     assert data["query_fact_type"] != "material"
     assert trace["query_fact_type"] != "material"
     assert trace["required_fact_types"] != ["material"]
     assert "\u6750\u8d28/\u9632\u6f6e" not in reply
+    assert "2.65" not in reply
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_fact_type", "required_any"),
+    [
+        (
+            "\u8fd9\u4e2a\u6750\u8d28\u5b89\u5168\u5417\uff1f\u4f1a\u4e0d\u4f1a\u5bb9\u6613\u53d7\u6f6e\uff1f",
+            "material",
+            {"material"},
+        ),
+        ("\u5c3a\u5bf8\u591a\u5927\uff0c\u6709\u6ca1\u6709\u56fe\uff1f", "visual_asset", {"visual_asset", "dimensions"}),
+        ("\u600e\u4e48\u5b89\u88c5\uff0c\u6709\u89c6\u9891\u5417\uff1f", "installation", {"installation"}),
+        (
+            "\u6709\u6ca1\u6709\u68c0\u6d4b\u62a5\u544a\uff0c\u5b89\u5168\u5417\uff1f",
+            "certification_report",
+            {"certification_report"},
+        ),
+    ],
+)
+def test_real_api_sku_only_keeps_query_fact_contract(phase6_rag_api, message, expected_fact_type, required_any):
+    response = phase6_rag_api.post("/ask/api/analyze", json={
+        "message": message,
+        "sku_code": PHASE6_RAG_SKU,
+        "conversation_id": f"phase6_trace_sku_only_{expected_fact_type}",
+    })
+    assert response.status_code == 200, response.data[:500]
+    data = response.get_json()
+    debug = data.get("evidence_debug") or {}
+    trace = _phase6_trace(data)
+    reply = data.get("suggested_reply") or ""
+
+    assert data["query_fact_type"] == expected_fact_type
+    assert debug["query_fact_type"] == expected_fact_type
+    assert data["query_understanding"]["query_fact_type"] == expected_fact_type
+    assert debug["query_understanding"]["query_fact_type"] == expected_fact_type
+    assert trace["query_fact_type"] == expected_fact_type
+    assert trace["trace_contract_broken"] is False
+    assert required_any & set(trace["required_fact_types"])
+    assert data["query_fact_type"] != "material" or expected_fact_type == "material"
+    assert "\u627f\u91cd" not in reply
+    assert "\u5bb9\u91cf" not in reply
     assert "2.65" not in reply
 
 
