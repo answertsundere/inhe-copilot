@@ -137,6 +137,76 @@ _SAFETY_OVERRIDE_BLOCKERS = (
     "窒息", "电池", "小零件", "安全隐患",
 )
 
+_USAGE_PLACEMENT_VERBS = (
+    "能不能放",
+    "可以放",
+    "适合放",
+    "能放",
+    "放得了",
+    "放的了",
+    "放得下",
+    "放的下",
+    "摆得下",
+    "摆的下",
+    "放",
+)
+_USAGE_ITEM_TERMS = (
+    "小朋友的东西",
+    "孩子的东西",
+    "宝宝用品",
+    "儿童用品",
+    "宝宝玩具",
+    "孩子玩具",
+    "儿童玩具",
+    "玩具",
+    "绘本",
+    "书本",
+    "书籍",
+    "图书",
+    "书",
+    "日用品",
+    "杂物",
+)
+_SPACE_FIT_TERMS = (
+    "空间小",
+    "空间够",
+    "放得下",
+    "放的下",
+    "摆得下",
+    "摆的下",
+    "占空间",
+    "占地方",
+    "预留",
+    "位置够",
+)
+_SCENE_TERMS = (
+    "卧室",
+    "客厅",
+    "书房",
+    "厨房",
+    "阳台",
+    "卫生间",
+    "儿童房",
+)
+_LOAD_STRESS_TERMS = (
+    "承重",
+    "多重",
+    "多少本",
+    "很多",
+    "很重",
+    "压弯",
+    "压塌",
+    "塌",
+)
+_STABILITY_STRESS_TERMS = (
+    "稳",
+    "晃",
+    "倒",
+    "倾倒",
+    "倒塌",
+    "结实",
+)
+
 
 _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("pinch_safety", ("\u9632\u5939", "\u5939\u624b", "\u5939\u5230", "\u88ab\u5939", "\u5939\u4f4f", "\u5b89\u5168\u9690\u60a3")),
@@ -228,6 +298,56 @@ def _secondary_fact_types(matches: list[tuple[str, list[str]]], primary: str) ->
     return [fact_type for fact_type, _ in matches if fact_type and fact_type != primary][:5]
 
 
+def _classify_usage_item_question(message: str) -> dict[str, Any]:
+    """Classify usage questions about putting items on/in the product.
+
+    This is domain logic rather than a fixed-sentence patch: item-bearing
+    placement questions route to stability/load capacity, space-constrained
+    placement routes to space_fit, and pure room/scene placement stays
+    placement_scene.
+    """
+    msg = message or ""
+    if not any(verb in msg for verb in _USAGE_PLACEMENT_VERBS):
+        return {}
+    matched_space = [term for term in _SPACE_FIT_TERMS if term in msg]
+    matched_scene = [term for term in _SCENE_TERMS if term in msg]
+    matched_items = [term for term in _USAGE_ITEM_TERMS if term in msg]
+    matched_load = [term for term in _LOAD_STRESS_TERMS if term in msg]
+    matched_stability = [term for term in _STABILITY_STRESS_TERMS if term in msg]
+
+    if matched_space and not matched_items:
+        secondary = ["placement_scene"] if matched_scene else []
+        return _usage_result("space_fit", matched_space, secondary)
+    if matched_scene and not matched_items and not matched_load and not matched_stability:
+        return _usage_result("placement_scene", matched_scene, [])
+    if not matched_items:
+        return {}
+    if matched_load:
+        secondary = ["stability"] if matched_stability else []
+        if matched_scene:
+            secondary.append("placement_scene")
+        return _usage_result("load_capacity", [*matched_items, *matched_load], secondary)
+    secondary = []
+    if matched_scene:
+        secondary.append("placement_scene")
+    return _usage_result("stability", [*matched_items, *matched_stability], secondary)
+
+
+def _usage_result(fact_type: str, matched: list[str], secondary: list[str]) -> dict[str, Any]:
+    secondary_unique = []
+    for item in secondary:
+        if item and item != fact_type and item not in secondary_unique:
+            secondary_unique.append(item)
+    return {
+        "query_fact_type": fact_type,
+        "query_fact_type_label": FACT_TYPE_LABELS.get(fact_type, fact_type),
+        "confidence": 0.86,
+        "matched_terms": matched[:5],
+        "source": "usage_domain_rule",
+        "secondary_fact_types": secondary_unique[:5],
+    }
+
+
 def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
     """Classify the business fact field a customer is asking about."""
     msg = message or ""
@@ -247,6 +367,9 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
             "matched_terms": aftersales_hits[:5],
             "source": "unicode_rule",
         }
+    usage = _classify_usage_item_question(msg)
+    if usage:
+        return usage
     unicode_matches = _matched_fact_types(msg, _UNICODE_QUERY_RULES)
     for fact_type, matched in unicode_matches:
         if matched:

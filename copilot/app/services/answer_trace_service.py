@@ -402,7 +402,10 @@ def _semantic_compiler_summary(response: dict[str, Any]) -> dict[str, Any]:
     return {
         "passed": bool(result.get("passed", True)),
         "issues": result.get("issues") or [],
+        "deterministic_gate": bool(result.get("deterministic_gate", True)),
         "renderer_used": bool(result.get("renderer_used")),
+        "post_compiler_validation": result.get("post_compiler_validation") or {},
+        "final_text_passed": bool(result.get("final_text_passed", result.get("passed", True))),
         "blocked_raw_text": result.get("blocked_raw_text", ""),
         "reject_reason": result.get("reject_reason") or [],
     }

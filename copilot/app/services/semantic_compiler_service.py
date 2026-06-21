@@ -70,12 +70,14 @@ def compile_customer_response(
         customer_message=customer_message,
     )
     compiler_result: dict[str, Any] = {
+        "deterministic_gate": True,
         "passed": not initial,
         "issues": initial,
         "renderer_used": False,
         "blocked_raw_text": original_reply if initial else "",
         "reject_reason": initial,
         "answer_blocks_count": len(blocks),
+        "final_text_passed": not initial,
     }
 
     if initial:
@@ -95,6 +97,7 @@ def compile_customer_response(
                 "renderer_used": True,
                 "render_result": rendered,
                 "reject_reason": [],
+                "final_text_passed": True,
             })
         else:
             response["suggested_reply"] = controlled_fallback_reply(reason="semantic_compiler_blocked")
@@ -106,6 +109,7 @@ def compile_customer_response(
                 "render_result": rendered,
                 "rendered_issues": rendered_issues,
                 "final_fallback_used": True,
+                "final_text_passed": False,
             })
             response.setdefault("guard_warnings", []).append(
                 "semantic_compiler: " + ",".join(initial or rendered_issues)
@@ -141,6 +145,67 @@ def semantic_compiler_issues(
     issues.extend(_semantic_fit_issues(text, response=response, customer_message=customer_message))
     issues.extend(_unsupported_media_issues(text, response=response))
     return _ordered_unique(issues)
+
+
+def validate_final_output_contract(
+    response: dict[str, Any],
+    *,
+    customer_message: str = "",
+) -> dict[str, Any]:
+    """Run the final deterministic text contract after all downstream rewrites.
+
+    This is intentionally narrower than compile_customer_response: it does not
+    rebuild blocks or call an LLM. It verifies the actual text that will be
+    returned to the frontend and replaces unsafe text with a controlled fallback.
+    """
+    final_text = str(response.get("suggested_reply") or "")
+    issues = semantic_compiler_issues(
+        final_text,
+        response=response,
+        customer_message=customer_message,
+    )
+    result = {
+        "passed": not issues,
+        "issues": issues,
+        "checked_text_length": len(final_text),
+    }
+    compiler = response.setdefault("semantic_compiler_result", {})
+    if not isinstance(compiler, dict):
+        compiler = {}
+        response["semantic_compiler_result"] = compiler
+    compiler["deterministic_gate"] = True
+    compiler["post_compiler_validation"] = result
+    if issues:
+        previous_blocked = str(compiler.get("blocked_raw_text") or "")
+        if not previous_blocked:
+            compiler["blocked_raw_text"] = final_text
+        response["suggested_reply"] = controlled_fallback_reply(reason="final_output_contract")
+        response["requires_human_review"] = True
+        response["generation_mode"] = "final_output_contract_fallback"
+        response.setdefault("guard_warnings", []).append(
+            "final_output_contract: " + ",".join(issues)
+        )
+        fallback_issues = semantic_compiler_issues(
+            str(response.get("suggested_reply") or ""),
+            response=response,
+            customer_message=customer_message,
+        )
+        result["fallback_used"] = True
+        result["fallback_issues"] = fallback_issues
+        compiler["final_text_passed"] = not fallback_issues
+        compiler["passed"] = not fallback_issues
+        compiler["issues"] = fallback_issues
+        compiler["reject_reason"] = fallback_issues
+    else:
+        compiler["final_text_passed"] = True
+        compiler["passed"] = True
+        compiler["issues"] = []
+        compiler["reject_reason"] = []
+    response["final_quality_pass"] = bool(compiler.get("final_text_passed"))
+    debug = response.setdefault("evidence_debug", {})
+    debug["semantic_compiler_result"] = compiler
+    debug["final_quality_pass"] = response["final_quality_pass"]
+    return response
 
 
 def _semantic_fit_issues(

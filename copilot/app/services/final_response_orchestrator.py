@@ -22,7 +22,10 @@ from app.services.final_semantic_quality_service import (
     audit_customer_reply_semantic_fit,
 )
 from app.services.generic_service_rule_service import unsafe_promise_terms
-from app.services.semantic_compiler_service import compile_customer_response
+from app.services.semantic_compiler_service import (
+    compile_customer_response,
+    validate_final_output_contract,
+)
 
 
 _POST_POLISH_INTERNAL_TERMS = (
@@ -190,6 +193,17 @@ def orchestrate_final_response(
         "issues": post_issues,
     })
 
+    before_final_contract = str(response.get("suggested_reply") or "")
+    response = validate_final_output_contract(response, customer_message=customer_message)
+    final_contract = (response.get("semantic_compiler_result") or {}).get("post_compiler_validation") or {}
+    pipeline.append({
+        "stage": "final_output_contract",
+        "passed": bool(final_contract.get("passed", True)) and bool(response.get("final_quality_pass")),
+        "changed": before_final_contract != str(response.get("suggested_reply") or ""),
+        "issues": final_contract.get("issues", []),
+        "fallback_used": bool(final_contract.get("fallback_used", False)),
+    })
+
     _sync_text_reply_block(response)
     response["final_response_pipeline"] = {
         "version": "final-response-orchestrator-v1",
@@ -200,6 +214,7 @@ def orchestrate_final_response(
             "semantic_compiler",
             "final_semantic_fit_audit",
             "post_polish_redline",
+            "final_output_contract",
             "reply_block_sync",
         ],
         "stages": pipeline,
@@ -207,12 +222,7 @@ def orchestrate_final_response(
     response.setdefault("evidence_debug", {})["final_response_pipeline"] = response["final_response_pipeline"]
     response.setdefault("evidence_debug", {})["quality_result"] = {
         "stage": "final_response_orchestrator",
-        "passed": bool(
-            (response.get("final_answer_audit") or {}).get("passed", True)
-            and (response.get("semantic_compiler_result") or {}).get("passed", True)
-            and (response.get("final_semantic_fit_audit") or {}).get("passed", True)
-            and not post_issues
-        ),
+        "passed": bool(response.get("final_quality_pass")),
         "final_answer_audit": response.get("final_answer_audit", {}),
         "semantic_compiler_result": response.get("semantic_compiler_result", {}),
         "final_semantic_fit_audit": response.get("final_semantic_fit_audit", {}),

@@ -78,6 +78,15 @@ def test_stability_variants_do_not_render_database_field_values():
 def test_phase8_variant_intents_classify_to_customer_question_shape():
     assert classify_query_fact_type("\u653e\u5ba2\u5385\u6742\u7269\u4f1a\u4e0d\u4f1a\u6643\uff1f")["query_fact_type"] == "stability"
     assert classify_query_fact_type("\u5367\u5ba4\u7a7a\u95f4\u5c0f\u80fd\u653e\u5417\uff1f")["query_fact_type"] == "space_fit"
+    usage_cases = {
+        "\u80fd\u4e0d\u80fd\u653e\u5c0f\u670b\u53cb\u7684\u4e1c\u897f\uff1f": "stability",
+        "\u53ef\u4ee5\u653e\u5b69\u5b50\u7684\u73a9\u5177\u5417\uff1f": "stability",
+        "\u80fd\u653e\u5b9d\u5b9d\u7528\u54c1\u5417\uff1f": "stability",
+        "\u653e\u7ed8\u672c\u7a33\u5417\uff1f": "stability",
+        "\u653e\u4e66\u4f1a\u4e0d\u4f1a\u538b\u584c\uff1f": "load_capacity",
+    }
+    for message, expected in usage_cases.items():
+        assert classify_query_fact_type(message)["query_fact_type"] == expected
 
 
 def test_legal_answers_pass_renderer_contracts():

@@ -1,6 +1,10 @@
 from app.services.answer_trace_service import attach_answer_trace
 from app.services.final_response_orchestrator import orchestrate_final_response
-from app.services.semantic_compiler_service import compile_customer_response, semantic_compiler_issues
+from app.services.semantic_compiler_service import (
+    compile_customer_response,
+    semantic_compiler_issues,
+    validate_final_output_contract,
+)
 
 
 def _response(
@@ -111,6 +115,26 @@ def test_semantic_compiler_blocks_unsupported_install_video_claim():
     assert "下面发" not in compiled["suggested_reply"]
     assert "目前没有可直接发送的安装视频" in compiled["suggested_reply"]
     assert compiled["semantic_compiler_result"]["renderer_used"] is True
+
+
+def test_post_compiler_validation_blocks_late_text_pollution():
+    response = _response(
+        reply="亲亲，尺寸可以先按页面标注参考，您也可以把预留空间发我核对。",
+        query_fact_type="dimensions",
+        evidence=[],
+    )
+    compiled = compile_customer_response(response, customer_message="这个尺寸多大？")
+    assert compiled["final_quality_pass"] is True
+
+    compiled["suggested_reply"] = "尺寸: 2.65"
+    final = validate_final_output_contract(compiled, customer_message="这个尺寸多大？")
+    compiler = final["semantic_compiler_result"]
+
+    assert "尺寸: 2.65" not in final["suggested_reply"]
+    assert compiler["post_compiler_validation"]["fallback_used"] is True
+    assert compiler["blocked_raw_text"] == "尺寸: 2.65"
+    assert compiler["final_text_passed"] is True
+    assert final["final_quality_pass"] is True
 
 
 def test_certification_report_block_does_not_treat_mislabeled_load_fact_as_report():
