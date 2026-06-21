@@ -22,6 +22,7 @@ from app.services.final_semantic_quality_service import (
     audit_customer_reply_semantic_fit,
 )
 from app.services.generic_service_rule_service import unsafe_promise_terms
+from app.services.semantic_compiler_service import compile_customer_response
 
 
 _POST_POLISH_INTERNAL_TERMS = (
@@ -112,6 +113,21 @@ def orchestrate_final_response(
         "applied": bool(llm_polish),
     })
 
+    before_compiler = str(response.get("suggested_reply") or "")
+    response = compile_customer_response(
+        response,
+        customer_message=customer_message,
+        copilot_context=copilot_context,
+    )
+    compiler = response.get("semantic_compiler_result") or {}
+    pipeline.append({
+        "stage": "semantic_compiler",
+        "passed": bool(compiler.get("passed", True)),
+        "renderer_used": bool(compiler.get("renderer_used")),
+        "changed": before_compiler != str(response.get("suggested_reply") or ""),
+        "issues": compiler.get("issues", []),
+    })
+
     post_issues = _post_polish_redline_issues(str(response.get("suggested_reply") or ""))
     if post_issues:
         original_reply = str(response.get("suggested_reply") or "")
@@ -181,6 +197,7 @@ def orchestrate_final_response(
             "semantic_and_redline_audit",
             "customer_language_polish",
             "llm_customer_language_polish",
+            "semantic_compiler",
             "final_semantic_fit_audit",
             "post_polish_redline",
             "reply_block_sync",
@@ -192,10 +209,12 @@ def orchestrate_final_response(
         "stage": "final_response_orchestrator",
         "passed": bool(
             (response.get("final_answer_audit") or {}).get("passed", True)
+            and (response.get("semantic_compiler_result") or {}).get("passed", True)
             and (response.get("final_semantic_fit_audit") or {}).get("passed", True)
             and not post_issues
         ),
         "final_answer_audit": response.get("final_answer_audit", {}),
+        "semantic_compiler_result": response.get("semantic_compiler_result", {}),
         "final_semantic_fit_audit": response.get("final_semantic_fit_audit", {}),
         "post_polish_redline": response.get("evidence_debug", {}).get("post_polish_redline", {}),
     }

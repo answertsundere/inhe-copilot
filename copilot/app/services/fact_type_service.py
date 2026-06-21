@@ -55,6 +55,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u9632\u503e\u5012",
         "\u503e\u5012",
         "\u5012\u584c",
+        "\u6643",
         "\u7a33\u4e0d\u7a33",
         "\u7a33\u56fa",
         "\u7a33\u5b9a",
@@ -82,6 +83,7 @@ _EVIDENCE_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u9632\u503e\u5012",
         "\u503e\u5012",
         "\u5012\u584c",
+        "\u6643",
         "\u7a33\u4e0d\u7a33",
         "\u7a33\u56fa",
         "\u7a33\u5b9a",
@@ -159,7 +161,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("odor", ("\u6c14\u5473", "\u5473\u9053", "\u6709\u5473", "\u65e0\u5473", "\u65e0\u5f02\u5473", "\u5f02\u5473", "\u523a\u9f3b", "\u6563\u5473")),
     ("visual_asset", ("\u56fe\u7247", "\u7167\u7247", "\u56fe\u770b", "\u770b\u56fe", "\u6709\u56fe", "\u5b9e\u7269\u56fe", "\u6548\u679c\u56fe", "\u6837\u5b50")),
     ("age_range", ("\u9002\u5408\u591a\u5927", "\u9002\u5408\u51e0\u5c81", "\u591a\u5927\u5b9d\u5b9d", "\u6708\u9f84", "\u5e74\u9f84", "\u51e0\u4e2a\u6708", "\u534a\u5c81", "\u4e00\u5c81", "\u4e24\u5c81", "\u4e09\u5c81", "\u5c81\u5b9d\u5b9d")),
-    ("stability", ("\u4f1a\u4e0d\u4f1a\u5012", "\u9632\u503e\u5012", "\u503e\u5012", "\u5012\u584c", "\u7a33\u4e0d\u7a33", "\u7a33\u56fa", "\u7a33\u5b9a")),
+    ("stability", ("\u4f1a\u4e0d\u4f1a\u5012", "\u9632\u503e\u5012", "\u503e\u5012", "\u5012\u584c", "\u6643", "\u7a33\u4e0d\u7a33", "\u7a33\u56fa", "\u7a33\u5b9a")),
     ("space_fit", (
         "\u653e\u5f97\u4e0b",
         "\u653e\u7684\u4e0b",
@@ -173,6 +175,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u5360\u5730\u65b9",
         "\u9884\u7559",
         "\u4f4d\u7f6e\u591f",
+        "\u7a7a\u95f4\u5c0f",
     )),
     ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f")),
     ("placement_scene", (

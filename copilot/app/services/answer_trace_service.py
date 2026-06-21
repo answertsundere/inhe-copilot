@@ -90,6 +90,12 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
         "generic_rule_used": _generic_rule(response, debug),
         "final_audit": _audit_summary(response),
         "final_semantic_fit_audit": _semantic_audit_summary(response),
+        "semantic_compiler_result": _semantic_compiler_summary(response),
+        "answer_blocks": _answer_block_summaries(response, debug),
+        "renderer_used": bool((response.get("semantic_compiler_result") or {}).get("renderer_used")),
+        "blocked_raw_text": (response.get("semantic_compiler_result") or {}).get("blocked_raw_text", ""),
+        "final_quality_pass": bool(response.get("final_quality_pass")),
+        "reject_reason": (response.get("semantic_compiler_result") or {}).get("reject_reason", []),
         "rewrite_applied": _rewrite_applied(response),
         "reply_blocks": _reply_block_summaries(response.get("reply_blocks") or []),
         "reply_delivery": response.get("reply_delivery") or {},
@@ -387,6 +393,35 @@ def _semantic_audit_summary(response: dict[str, Any]) -> dict[str, Any]:
         "mode": audit.get("mode", ""),
         "fallback_used": bool(audit.get("fallback_used", False)),
     }
+
+
+def _semantic_compiler_summary(response: dict[str, Any]) -> dict[str, Any]:
+    result = response.get("semantic_compiler_result") or (response.get("evidence_debug") or {}).get("semantic_compiler_result") or {}
+    if not isinstance(result, dict):
+        return {}
+    return {
+        "passed": bool(result.get("passed", True)),
+        "issues": result.get("issues") or [],
+        "renderer_used": bool(result.get("renderer_used")),
+        "blocked_raw_text": result.get("blocked_raw_text", ""),
+        "reject_reason": result.get("reject_reason") or [],
+    }
+
+
+def _answer_block_summaries(response: dict[str, Any], debug: dict[str, Any]) -> list[dict[str, Any]]:
+    blocks = response.get("answer_blocks") or debug.get("answer_blocks") or []
+    out: list[dict[str, Any]] = []
+    for item in blocks or []:
+        if not isinstance(item, dict):
+            continue
+        out.append({
+            "type": item.get("type", ""),
+            "fact_type": item.get("fact_type", ""),
+            "can_send_to_customer": bool(item.get("can_send_to_customer", True)),
+            "requires_human_review": bool(item.get("requires_human_review", False)),
+            "evidence_refs": item.get("evidence_refs", []),
+        })
+    return out
 
 
 def _rewrite_applied(response: dict[str, Any]) -> bool:

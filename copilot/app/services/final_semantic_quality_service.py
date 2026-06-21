@@ -19,6 +19,7 @@ import json
 from typing import Any
 
 from app import config
+from app.services.answer_blocks_service import raw_field_leakage_issues
 from app.services.generic_service_rule_service import unsafe_promise_terms
 
 
@@ -168,6 +169,9 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
     unsafe = unsafe_promise_terms(reply)
     if unsafe:
         issues.append("unsafe_claim:" + ",".join(unsafe[:3]))
+    raw_field_issues = raw_field_leakage_issues(reply)
+    if raw_field_issues:
+        issues.extend(raw_field_issues)
 
     if not query_fact_type:
         return _structural_result(issues, "Final reply contains blocked language." if issues else "")

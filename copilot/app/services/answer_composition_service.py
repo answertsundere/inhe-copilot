@@ -18,6 +18,8 @@ COMPOSABLE_SINGLE_FACT_TYPES = {
     "certification_report",
     "dimensions",
     "installation",
+    "load_capacity",
+    "stability",
     "odor",
     "space_fit",
     "placement_scene",
@@ -585,6 +587,7 @@ def _filter_composable_evidence(items: list[dict[str, Any]], fact_type: str) -> 
         "odor",
         "cleaning_care",
         "load_capacity",
+        "stability",
     }
     if fact_type not in product_fact_types:
         return items
@@ -691,6 +694,10 @@ def _section_for_fact_type(
         if evidence_text:
             return f"承重方面，{_trim_sentence(evidence_text)}；建议日常均匀摆放，避免单点长期压重。"
         return "能放多少需要看对应款式的承重或容量说明；没有明确参数时，不建议直接按别的商品承重来判断。"
+    if fact_type == "stability":
+        if evidence_text:
+            return f"稳定性方面，{_trim_sentence(evidence_text)}；日常建议放在平整位置，重一点的物品尽量放在下层，会更稳当一些。"
+        return "稳不稳要结合结构、摆放地面和实际放置物品判断；日常建议放在平整位置，重一点的物品尽量放在下层，会更稳当一些。"
     return ""
 
 

@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from app import config
+from app.services.answer_blocks_service import raw_field_leakage_issues
 from app.services.generic_service_rule_service import unsafe_promise_terms
 
 logger = logging.getLogger(__name__)
@@ -275,6 +276,7 @@ def audit_final_answer(
         issues.extend(hard_issues)
     else:
         issues = _audit_issues(customer_message, reply, expected, actual, response, copilot_context or {})
+    issues.extend(raw_field_leakage_issues(reply))
     if _query_fact_type_contract_broken(customer_message, response):
         issues.append("missing_query_fact_type_contract")
     issues.extend(multi_intent_audit.get("issues", []))
