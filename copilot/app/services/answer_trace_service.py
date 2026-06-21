@@ -50,6 +50,21 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
         *(product_pack_summary.get("media_assets") or [] if isinstance(product_pack_summary, dict) else []),
     ])
     rag_evidence_used = _rag_evidence_used(debug, composition, product_pack_summary, required_fact_types)
+    evidence_rerank = debug.get("evidence_rerank") or response.get("evidence_rerank") or {}
+    selected_evidence_trace = _evidence_trace_summaries(
+        (evidence_rerank.get("selected_evidence") if isinstance(evidence_rerank, dict) else None)
+        or debug.get("selected_evidence")
+        or response.get("selected_evidence")
+        or [],
+        selected_default=True,
+    )
+    rejected_evidence_trace = _evidence_trace_summaries(
+        (evidence_rerank.get("rejected_evidence") if isinstance(evidence_rerank, dict) else None)
+        or debug.get("rejected_evidence")
+        or response.get("rejected_evidence")
+        or [],
+        selected_default=False,
+    )
     composition_evidence_answered_fact_types = _ordered_unique(
         composition.get("evidence_answered_fact_types") or []
         if isinstance(composition, dict) else []
@@ -64,6 +79,12 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
         if isinstance(composition, dict) else []
     )
     answered_fact_types = _ordered_unique([*answered_fact_types, *rag_evidence_answered_fact_types])
+    rerank_trace = (
+        evidence_rerank.get("rerank_trace", []) if isinstance(evidence_rerank, dict)
+        else debug.get("rerank_trace", [])
+    )
+    if not rerank_trace:
+        rerank_trace = _fallback_rerank_trace(selected_evidence_trace, rejected_evidence_trace)
     trace = {
         "mode": _trace_mode(response, composition, selected_assets, evidence_answered_fact_types),
         "trace_contract_broken": not bool(query_fact_type),
@@ -86,6 +107,19 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
         "rag_evidence_used": rag_evidence_used,
         "media_evidence_used": _dict_or_empty(composition.get("media_evidence_used") if isinstance(composition, dict) else {}),
         "asset_evidence_used": _dict_or_empty(composition.get("asset_evidence_used") if isinstance(composition, dict) else {}),
+        "retrieved_evidence_count": len(debug.get("retrieved_chunks_summary") or response.get("retrieved_chunks") or []),
+        "selected_evidence_count": len(selected_evidence_trace),
+        "rejected_evidence_count": len(rejected_evidence_trace),
+        "selected_evidence": selected_evidence_trace,
+        "rejected_evidence": rejected_evidence_trace,
+        "selected_evidence_by_fact_type": _evidence_by_fact_type(selected_evidence_trace),
+        "rejected_evidence_by_fact_type": _evidence_by_fact_type(rejected_evidence_trace),
+        "rerank_trace": rerank_trace,
+        "top_reject_reasons": _top_reject_reasons(rejected_evidence_trace),
+        "evidence_origin_by_fact_type": (
+            evidence_rerank.get("evidence_origin_by_fact_type", {}) if isinstance(evidence_rerank, dict)
+            else debug.get("evidence_origin_by_fact_type", {})
+        ),
         "selected_assets": selected_assets,
         "generic_rule_used": _generic_rule(response, debug),
         "final_audit": _audit_summary(response),
@@ -393,6 +427,96 @@ def _semantic_audit_summary(response: dict[str, Any]) -> dict[str, Any]:
         "mode": audit.get("mode", ""),
         "fallback_used": bool(audit.get("fallback_used", False)),
     }
+
+
+def _evidence_trace_summaries(values: Any, *, selected_default: bool) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    if not isinstance(values, list):
+        return out
+    for item in values[:16]:
+        if not isinstance(item, dict):
+            continue
+        preview = str(
+            item.get("chunk_preview")
+            or item.get("preview")
+            or item.get("text")
+            or item.get("chunk_text")
+            or item.get("content")
+            or item.get("fact")
+            or ""
+        ).strip()
+        out.append({
+            "entry_id": item.get("entry_id", ""),
+            "chunk_id": item.get("chunk_id", ""),
+            "asset_id": item.get("asset_id") or item.get("id") or "",
+            "asset_type": item.get("asset_type", ""),
+            "source_type": item.get("source_type", ""),
+            "evidence_origin": item.get("evidence_origin", ""),
+            "evidence_fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
+            "requested_fact_type": item.get("requested_fact_type") or item.get("query_fact_type") or "",
+            "rank_score": item.get("rank_score", item.get("rerank_score", item.get("score", 0))),
+            "rank_reason": item.get("rank_reason") or _default_rank_reason(item),
+            "selected": item.get("selected", selected_default),
+            "reject_reason": item.get("reject_reason") or item.get("rejection_reasons") or item.get("mismatch_reason") or "",
+            "role": item.get("role") or ("rejected" if item.get("selected", selected_default) is False else "direct_answer"),
+            "preview": preview[:160],
+        })
+    return out
+
+
+def _fallback_rerank_trace(selected: list[dict[str, Any]], rejected: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in [*selected, *rejected]:
+        rows.append({
+            "evidence_id": item.get("entry_id") or item.get("chunk_id") or item.get("asset_id") or "",
+            "entry_id": item.get("entry_id", ""),
+            "chunk_id": item.get("chunk_id", ""),
+            "asset_id": item.get("asset_id", ""),
+            "evidence_origin": item.get("evidence_origin", ""),
+            "source_type": item.get("source_type", ""),
+            "evidence_fact_type": item.get("evidence_fact_type", ""),
+            "requested_fact_type": item.get("requested_fact_type", ""),
+            "rank_score": item.get("rank_score", 0),
+            "rank_reason": item.get("rank_reason") or _default_rank_reason(item),
+            "selected": bool(item.get("selected", False)),
+            "reject_reason": "" if item.get("selected", False) else item.get("reject_reason", ""),
+            "role": item.get("role") or ("direct_answer" if item.get("selected", False) else "rejected"),
+        })
+    return rows
+
+
+def _default_rank_reason(item: dict[str, Any]) -> str:
+    if item.get("selected") is False:
+        return "evidence rejected by upstream evidence contract"
+    if item.get("asset_id"):
+        return "selected media evidence from upstream evidence contract"
+    if item.get("evidence_fact_type") and item.get("requested_fact_type") == item.get("evidence_fact_type"):
+        return "evidence fact_type matches requested fact_type"
+    return "selected by upstream evidence contract"
+
+
+def _evidence_by_fact_type(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        fact_type = str(item.get("evidence_fact_type") or "").strip()
+        if fact_type:
+            grouped.setdefault(fact_type, []).append(item)
+    return grouped
+
+
+def _top_reject_reasons(items: list[dict[str, Any]]) -> list[str]:
+    counts: dict[str, int] = {}
+    for item in items:
+        reason = item.get("reject_reason")
+        if isinstance(reason, list):
+            reason = ",".join(str(part) for part in reason if str(part or "").strip())
+        reason = str(reason or "").strip()
+        if reason:
+            counts[reason] = counts.get(reason, 0) + 1
+    return [
+        reason
+        for reason, _ in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:5]
+    ]
 
 
 def _semantic_compiler_summary(response: dict[str, Any]) -> dict[str, Any]:

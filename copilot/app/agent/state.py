@@ -129,6 +129,11 @@ class AgentState(TypedDict, total=False):
     retrieved_chunks: list
     filtered_evidence: list
     knowledge_evidence: list
+    selected_evidence: list
+    rejected_evidence: list
+    selected_assets: list
+    evidence_rerank: dict
+    rerank_trace: list
     current_query: str
     retrieval_query: str
     query_understanding: dict

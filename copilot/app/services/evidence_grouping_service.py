@@ -138,10 +138,11 @@ def _required_fact_types(query_understanding: dict[str, Any]) -> list[str]:
 
 def _selected_pool(evidence: dict[str, Any]) -> list[dict[str, Any]]:
     pool = []
+    pool.extend([item for item in evidence.get("selected_evidence", []) or [] if isinstance(item, dict)])
     product_pack = evidence.get("product_context_pack") or {}
     for key in ("product_card_evidence", "media_evidence"):
         pool.extend([item for item in product_pack.get(key, []) or [] if isinstance(item, dict)])
-    for key in ("knowledge_evidence", "filtered_evidence", "selected_evidence"):
+    for key in ("knowledge_evidence", "filtered_evidence"):
         pool.extend([item for item in evidence.get(key, []) or [] if isinstance(item, dict)])
     raw_evidence = evidence.get("evidence") or {}
     for key in ("product_facts", "faq_evidence", "policy_facts", "sop_evidence", "template_evidence"):

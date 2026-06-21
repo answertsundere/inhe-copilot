@@ -349,6 +349,30 @@ def evidence_filter_node(state: dict) -> dict:
         })
 
     duration_ms = int((time.time() - t0) * 1000)
+    try:
+        from app.services.evidence_rerank_service import rerank_evidence
+        rerank_result = rerank_evidence(
+            retrieved_evidence=knowledge_evidence,
+            product_context_pack=state.get("product_context_pack", {}),
+            query_fact_type=query_fact_type,
+            required_fact_types=(state.get("query_understanding") or {}).get("required_fact_types")
+            or state.get("required_fact_types")
+            or [query_fact_type],
+            secondary_fact_types=state.get("secondary_fact_types", []),
+            limit=8,
+        )
+    except Exception as exc:
+        logger.warning("Evidence rerank failed: %s", exc)
+        rerank_result = {
+            "selected_evidence": knowledge_evidence[:8],
+            "rejected_evidence": [],
+            "rerank_trace": [],
+            "evidence_origin_by_fact_type": {},
+            "required_fact_types": [query_fact_type] if query_fact_type else [],
+            "primary_fact_type": query_fact_type,
+            "selected_assets": [],
+        }
+    rerank_rejected = rerank_result.get("rejected_evidence") or []
     trace = {
         "node": "evidence_filter",
         "status": "success",
@@ -376,12 +400,24 @@ def evidence_filter_node(state: dict) -> dict:
             }
             for item in rejected[:8]
         ],
+        "evidence_rerank": {
+            "primary_fact_type": rerank_result.get("primary_fact_type", ""),
+            "required_fact_types": rerank_result.get("required_fact_types", []),
+            "selected_evidence_count": len(rerank_result.get("selected_evidence") or []),
+            "rejected_evidence_count": len(rerank_rejected),
+            "evidence_origin_by_fact_type": rerank_result.get("evidence_origin_by_fact_type", {}),
+            "rerank_trace": rerank_result.get("rerank_trace", [])[:8],
+        },
         "summary": f"过滤: 通过{len(filtered)}条, 拒绝{len(rejected)}条",
     }
 
     return {
         "filtered_evidence": filtered,
         "knowledge_evidence": knowledge_evidence,
-        "rejected_evidence": rejected,
+        "selected_evidence": rerank_result.get("selected_evidence", []),
+        "rejected_evidence": [*rejected, *rerank_rejected],
+        "evidence_rerank": rerank_result,
+        "rerank_trace": rerank_result.get("rerank_trace", []),
+        "selected_assets": rerank_result.get("selected_assets", []) or state.get("selected_assets", []),
         "trace_steps": state.get("trace_steps", []) + [trace],
     }

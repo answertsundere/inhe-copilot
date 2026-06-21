@@ -188,6 +188,26 @@ def build_response(state: dict) -> dict:
             "chunk_preview": c.get("chunk_text", "")[:80],
         })
 
+    selected_evidence_summary = []
+    for c in state.get("selected_evidence", [])[:10]:
+        selected_evidence_summary.append({
+            "chunk_id": c.get("chunk_id", ""),
+            "entry_id": c.get("entry_id", ""),
+            "asset_id": c.get("asset_id") or c.get("id") or "",
+            "asset_type": c.get("asset_type", ""),
+            "asset_url": c.get("asset_url") or c.get("url") or "",
+            "source_type": c.get("source_type", ""),
+            "query_fact_type": c.get("requested_fact_type") or c.get("query_fact_type", ""),
+            "evidence_fact_type": c.get("evidence_fact_type") or c.get("fact_type", ""),
+            "evidence_origin": c.get("evidence_origin", ""),
+            "rank_score": c.get("rank_score", c.get("rerank_score", 0)),
+            "rank_reason": c.get("rank_reason", ""),
+            "role": c.get("role", ""),
+            "selected": c.get("selected", True),
+            "reject_reason": c.get("reject_reason", ""),
+            "chunk_preview": (c.get("chunk_text") or c.get("preview") or c.get("text") or "")[:80],
+        })
+
     rejected_evidence_summary = []
     for c in state.get("rejected_evidence", [])[:10]:
         rejected_evidence_summary.append({
@@ -206,7 +226,7 @@ def build_response(state: dict) -> dict:
     evidence_debug["retrieved_chunks_summary"] = retrieved_chunks_summary
     evidence_debug["filtered_evidence_summary"] = filtered_evidence_summary
     evidence_debug["knowledge_evidence_summary"] = knowledge_evidence_summary
-    evidence_debug["selected_evidence"] = knowledge_evidence_summary or [
+    evidence_debug["selected_evidence"] = selected_evidence_summary or knowledge_evidence_summary or [
         item for item in filtered_evidence_summary
         if item.get("direct_answer_allowed") and item.get("gate_status") != "blocked"
     ][:10]
@@ -216,8 +236,13 @@ def build_response(state: dict) -> dict:
     generic_service_rule_used = state.get("generic_service_rule_used") or _generic_rule_used_from_trace(state.get("trace_steps", []))
     evidence_debug["product_context_pack_stats"] = state.get("product_context_pack_stats", product_context_pack.get("stats", {}))
     evidence_debug["product_context_pack_summary"] = _summarize_product_context_pack(product_context_pack)
+    evidence_rerank = state.get("evidence_rerank") or _evidence_rerank_from_trace(state.get("trace_steps", []))
+    if evidence_rerank:
+        evidence_debug["evidence_rerank"] = evidence_rerank
+        evidence_debug["rerank_trace"] = evidence_rerank.get("rerank_trace", [])
+        evidence_debug["evidence_origin_by_fact_type"] = evidence_rerank.get("evidence_origin_by_fact_type", {})
     evidence_evaluation = (product_context_pack.get("evidence_pack") or {}).get("evidence_evaluation") or []
-    if evidence_evaluation:
+    if evidence_evaluation and not selected_evidence_summary:
         evidence_debug["evidence_evaluation"] = evidence_evaluation
         evidence_debug["selected_evidence"] = [
             item for item in evidence_evaluation
@@ -229,6 +254,8 @@ def build_response(state: dict) -> dict:
         ][:10]
         if evaluation_rejected:
             evidence_debug["rejected_evidence"] = evaluation_rejected
+    elif evidence_evaluation:
+        evidence_debug["evidence_evaluation"] = evidence_evaluation
     evidence_debug["selected_assets"] = [
         {
             "asset_id": item.get("asset_id") or item.get("id"),
@@ -585,6 +612,16 @@ def _answer_composition_trace_from_trace(trace_steps: list) -> dict:
         trace = step.get("answer_composition_trace")
         if isinstance(trace, dict) and trace:
             return trace
+    return {}
+
+
+def _evidence_rerank_from_trace(trace_steps: list) -> dict:
+    for step in reversed(trace_steps or []):
+        if not isinstance(step, dict):
+            continue
+        rerank = step.get("evidence_rerank")
+        if isinstance(rerank, dict) and rerank:
+            return rerank
     return {}
 
 

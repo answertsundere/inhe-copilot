@@ -531,6 +531,7 @@ def _build_evidence_grouping(state: dict) -> dict:
         "evidence": state.get("evidence", {}),
         "knowledge_evidence": state.get("knowledge_evidence", []),
         "filtered_evidence": state.get("filtered_evidence", []),
+        "selected_evidence": state.get("selected_evidence", []),
         "rejected_evidence": state.get("rejected_evidence", []),
         "product_context_pack": state.get("product_context_pack", {}),
         "selected_assets": state.get("selected_assets", []),
@@ -539,6 +540,9 @@ def _build_evidence_grouping(state: dict) -> dict:
 
 
 def _selected_evidence_for_composition(state: dict) -> list[dict[str, Any]]:
+    reranked = [item for item in state.get("selected_evidence", []) or [] if isinstance(item, dict)]
+    if reranked:
+        return _dedupe_composition_items(reranked)
     evidence_items: list[dict[str, Any]] = []
     product_context_pack = state.get("product_context_pack") or {}
     for key in ("product_card_evidence", "media_evidence"):
