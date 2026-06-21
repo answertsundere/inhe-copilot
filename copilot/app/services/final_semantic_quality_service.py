@@ -39,6 +39,7 @@ _FACT_REPLY_CUES = {
     "load_capacity": ("承重", "载重", "放多重", "放多少", "多少本", "压弯", "结实"),
     "visual_asset": ("图片", "照片", "图", "实物图", "效果图", "下面发", "参考我下面"),
     "material": ("材质", "材料", "用料", "PP", "HDPE", "钢管", "板材", "实木"),
+    "certification_report": ("检测报告", "质检", "认证", "证书", "合格证", "甲醛", "报告"),
     "odor": ("气味", "味道", "味儿", "异味", "刺鼻", "通风", "散味"),
     "space_fit": ("空间", "放得下", "放的下", "预留", "宽度", "进深", "高度", "尺寸"),
     "placement_scene": ("卧室", "客厅", "书房", "摆放", "放在", "干燥", "平整"),
@@ -67,6 +68,10 @@ _FACT_TOPIC_CONTRACTS = {
     "visual_asset": {
         "allowed": {"visual_asset"},
         "conflicts": {"material", "load_capacity"},
+    },
+    "certification_report": {
+        "allowed": {"certification_report"},
+        "conflicts": {"material", "load_capacity", "dimensions"},
     },
     "age_range": {
         "allowed": {"age_range"},
@@ -278,7 +283,11 @@ def _llm_semantic_fit_check(
                         "Fail if the reply answers a different fact type, asks for information already provided, "
                         "turns to human review while direct evidence is available, or claims facts not supported by evidence. "
                         "Pass if the reply gives a safe handoff because evidence is missing or risk requires review. "
-                        "Return strict JSON: {\"passed\": boolean, \"issues\": string[], \"reason\": string}."
+                        "You are a judge only. Never output a customer reply or rewrite text. "
+                        "Return strict JSON only with this schema: "
+                        "{\"passed\": boolean, \"issues\": string[], \"reason\": string, "
+                        "\"semantic_mismatch\": boolean, \"risk_level\": \"low|medium|high\", "
+                        "\"requires_human_review\": boolean}."
                     ),
                 },
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -289,25 +298,44 @@ def _llm_semantic_fit_check(
         )
         raw = result.choices[0].message.content
         parsed = json.loads(raw)
-        return _result(
-            bool(parsed.get("passed", True)),
-            [str(item) for item in (parsed.get("issues") or [])],
-            str(parsed.get("reason") or "")[:500],
-            "llm_semantic_fit",
-            details={
-                "score": float(parsed.get("score") or (1.0 if parsed.get("passed", True) else 0.0)),
-                "off_topic": bool(parsed.get("off_topic", False)),
-                "missing_answer": bool(parsed.get("missing_answer", False)),
-                "unsupported_claim": bool(parsed.get("unsupported_claim", False)),
-                "unsafe_claim": bool(parsed.get("unsafe_claim", False)),
-                "internal_language_leak": bool(parsed.get("internal_language_leak", False)),
-                "product_name_leak": bool(parsed.get("product_name_leak", False)),
-                "should_retry": bool(parsed.get("should_retry", not parsed.get("passed", True))),
-                "rewrite_instruction": str(parsed.get("rewrite_instruction") or "")[:500],
-            },
-        )
+        return _normalize_llm_judge_result(parsed)
     except Exception as exc:
-        return _result(True, [], f"LLM semantic fit unavailable: {type(exc).__name__}", "deterministic")
+        return _result(
+            True,
+            [],
+            f"LLM semantic judge unavailable, deterministic gate used: {type(exc).__name__}",
+            "deterministic",
+            details={"llm_judge_fallback": True, "llm_error": type(exc).__name__},
+        )
+
+
+def _normalize_llm_judge_result(parsed: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM judge result must be a JSON object")
+    passed = bool(parsed.get("passed", True))
+    risk_level = str(parsed.get("risk_level") or ("low" if passed else "medium")).lower()
+    if risk_level not in {"low", "medium", "high"}:
+        risk_level = "low" if passed else "medium"
+    issues = [str(item)[:120] for item in (parsed.get("issues") or []) if str(item or "").strip()]
+    return _result(
+        passed,
+        issues,
+        str(parsed.get("reason") or "")[:500],
+        "llm_semantic_judge",
+        details={
+            "score": 1.0 if passed else 0.0,
+            "semantic_mismatch": bool(parsed.get("semantic_mismatch", not passed)),
+            "risk_level": risk_level,
+            "requires_human_review": bool(parsed.get("requires_human_review", False)),
+            "off_topic": bool(parsed.get("semantic_mismatch", False)),
+            "missing_answer": any("missing" in issue.lower() for issue in issues),
+            "unsupported_claim": any("unsupported" in issue.lower() for issue in issues),
+            "unsafe_claim": any("unsafe" in issue.lower() for issue in issues),
+            "should_retry": False,
+            "rewrite_instruction": "",
+            "llm_judge_schema_version": "phase9-v1",
+        },
+    )
 
 
 def _semantic_payload(
@@ -317,20 +345,38 @@ def _semantic_payload(
 ) -> dict[str, Any]:
     debug = response.get("evidence_debug") or {}
     evidence_pack = _evidence_pack(response)
+    required_fact_types = _required_fact_types(response, evidence_pack)
+    selected_evidence = debug.get("selected_evidence") or response.get("selected_evidence") or []
+    answer_blocks = response.get("answer_blocks") or debug.get("answer_blocks") or response.get("reply_blocks") or []
+    answer_trace = response.get("answer_trace") or debug.get("answer_trace") or {}
+    query_understanding = (
+        debug.get("query_understanding")
+        or response.get("query_understanding")
+        or debug.get("semantic_query")
+        or response.get("semantic_query")
+        or {}
+    )
     return {
+        "user_message": customer_message,
         "customer_message": customer_message,
+        "final_text": response.get("suggested_reply", ""),
         "final_reply": response.get("suggested_reply", ""),
         "requires_human_review": bool(response.get("requires_human_review")),
         "review_reason": response.get("reason_for_review") or response.get("review_reason") or "",
         "intent": response.get("intent", ""),
+        "query_understanding": query_understanding,
         "semantic_query": debug.get("semantic_query") or response.get("semantic_query") or {},
         "query_fact_type": _query_fact_type(response, evidence_pack),
+        "required_fact_types": required_fact_types,
         "product_display_name": response.get("display_product_name", ""),
         "classified_intent": response.get("intent", ""),
         "classified_fact_type": _query_fact_type(response, evidence_pack),
         "draft_answer": response.get("suggested_reply", ""),
         "risk_level": response.get("risk_level", ""),
-        "selected_evidence": (debug.get("selected_evidence") or [])[:8],
+        "selected_evidence_summary": _selected_evidence_summary(selected_evidence),
+        "selected_evidence": _selected_evidence_summary(selected_evidence),
+        "answer_blocks": _answer_block_payload(answer_blocks),
+        "answer_trace_summary": _answer_trace_summary(answer_trace),
         "selected_assets": (response.get("selected_assets") or debug.get("selected_assets") or response.get("recommended_assets") or [])[:5],
         "evidence_pack": {
             "answerability": evidence_pack.get("answerability", ""),
@@ -398,6 +444,78 @@ def _query_fact_type(response: dict[str, Any], evidence_pack: dict[str, Any]) ->
         or response.get("query_fact_type")
         or ""
     )
+
+
+def _required_fact_types(response: dict[str, Any], evidence_pack: dict[str, Any]) -> list[str]:
+    debug = response.get("evidence_debug") or {}
+    values: list[Any] = []
+    for container in (response, debug, evidence_pack):
+        if isinstance(container, dict):
+            values.extend(container.get("required_fact_types") or [])
+    query_fact_type = _query_fact_type(response, evidence_pack)
+    if query_fact_type:
+        values.append(query_fact_type)
+    result: list[str] = []
+    for value in values:
+        fact_type = str(value or "").strip()
+        if fact_type and fact_type not in result:
+            result.append(fact_type)
+    return result
+
+
+def _selected_evidence_summary(items: Any) -> list[dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for item in items[:8]:
+        if not isinstance(item, dict):
+            continue
+        preview = (
+            item.get("preview")
+            or item.get("fact")
+            or item.get("content")
+            or item.get("text")
+            or item.get("answer")
+            or ""
+        )
+        summaries.append({
+            "source_type": item.get("source_type") or item.get("evidence_origin") or "",
+            "fact_type": item.get("fact_type") or item.get("evidence_fact_type") or "",
+            "entry_id": item.get("entry_id") or item.get("id") or "",
+            "title": item.get("title") or item.get("question") or "",
+            "preview": str(preview)[:240],
+        })
+    return summaries
+
+
+def _answer_block_payload(blocks: Any) -> list[dict[str, Any]]:
+    if not isinstance(blocks, list):
+        return []
+    payload: list[dict[str, Any]] = []
+    for block in blocks[:8]:
+        if not isinstance(block, dict):
+            continue
+        payload.append({
+            "type": block.get("type", ""),
+            "title": block.get("title", ""),
+            "fact_type": block.get("fact_type", ""),
+            "content_preview": str(block.get("content") or block.get("text") or "")[:240],
+        })
+    return payload
+
+
+def _answer_trace_summary(trace: Any) -> dict[str, Any]:
+    if not isinstance(trace, dict):
+        return {}
+    return {
+        "query_fact_type": trace.get("query_fact_type", ""),
+        "required_fact_types": trace.get("required_fact_types", []),
+        "evidence_answered_fact_types": trace.get("evidence_answered_fact_types", []),
+        "mode": trace.get("mode", ""),
+        "final_quality_pass": trace.get("final_quality_pass", None),
+        "semantic_compiler_result": trace.get("semantic_compiler_result", {}),
+        "final_semantic_fit_audit": trace.get("final_semantic_fit_audit", {}),
+    }
 
 
 def _semantic_fit_fallback(response: dict[str, Any]) -> str:
@@ -579,7 +697,7 @@ def _media_reference_contract_issues(query_fact_type: str, reply: str, response:
         return []
     issues: list[str] = []
     if query_fact_type == "installation":
-        if _contains_any(reply, ("按图", "图里", "下方图片", "下面发", "看图", "发您参考", "图片/视频")):
+        if _contains_any(reply, ("按图", "图里", "下方图片", "下面发", "看图", "发您参考", "图片/视频", "发视频", "视频发您", "按视频", "安装视频发")):
             issues.append("unsupported_media_reference_without_asset")
         if _contains_any(reply, ("尺寸", "宽度", "进深", "高度", "预留位置", "长宽高")):
             issues.append("off_topic:installation_media_fallback_mentions_dimensions")
@@ -726,22 +844,39 @@ def _result(
     details = details or {}
     normalized_issues = list(dict.fromkeys(issues))
     score = float(details.get("score", 1.0 if passed else 0.0))
+    off_topic = bool(details.get("off_topic", any(issue.startswith("off_topic") for issue in normalized_issues)))
+    missing_answer = bool(details.get("missing_answer", any(issue.startswith("missing_answer") for issue in normalized_issues)))
+    unsupported_claim = bool(details.get("unsupported_claim", any("unsupported" in issue for issue in normalized_issues)))
+    unsafe_claim = bool(details.get("unsafe_claim", any(issue.startswith("unsafe_claim") for issue in normalized_issues)))
+    if "rewrite_instruction" in details:
+        rewrite_instruction = str(details.get("rewrite_instruction") or "")
+    else:
+        rewrite_instruction = "Use selected evidence only and answer the current user query." if not passed else ""
+    risk_level = str(details.get("risk_level") or ("low" if passed else "medium")).lower()
+    if risk_level not in {"low", "medium", "high"}:
+        risk_level = "low" if passed else "medium"
     result = {
         "checked": True,
         "pass": bool(passed),
         "passed": bool(passed),
         "score": score,
-        "off_topic": bool(details.get("off_topic", any(issue.startswith("off_topic") for issue in normalized_issues))),
-        "missing_answer": bool(details.get("missing_answer", any(issue.startswith("missing_answer") for issue in normalized_issues))),
-        "unsupported_claim": bool(details.get("unsupported_claim", any("unsupported" in issue for issue in normalized_issues))),
-        "unsafe_claim": bool(details.get("unsafe_claim", any(issue.startswith("unsafe_claim") for issue in normalized_issues))),
+        "semantic_mismatch": bool(details.get("semantic_mismatch", off_topic or missing_answer)),
+        "risk_level": risk_level,
+        "requires_human_review": bool(details.get("requires_human_review", False)),
+        "off_topic": off_topic,
+        "missing_answer": missing_answer,
+        "unsupported_claim": unsupported_claim,
+        "unsafe_claim": unsafe_claim,
         "internal_language_leak": bool(details.get("internal_language_leak", any(issue.startswith("internal_language_leak") for issue in normalized_issues))),
         "product_name_leak": bool(details.get("product_name_leak", any(issue.startswith("product_name_leak") for issue in normalized_issues))),
         "should_retry": bool(details.get("should_retry", not passed)),
         "failure_reason": reason if not passed else "",
-        "rewrite_instruction": str(details.get("rewrite_instruction") or ("Use selected evidence only and answer the current user query." if not passed else "")),
+        "rewrite_instruction": rewrite_instruction,
         "issues": normalized_issues,
         "reason": reason,
         "mode": mode,
     }
+    for key in ("llm_judge_fallback", "llm_error", "llm_judge_schema_version"):
+        if key in details:
+            result[key] = details[key]
     return result
