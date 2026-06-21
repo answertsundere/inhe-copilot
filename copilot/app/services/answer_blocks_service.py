@@ -291,7 +291,7 @@ def _usage_point(message: str) -> str:
     if "客厅" in text or "杂物" in text:
         return "客厅杂物、日用品这类常见物品"
     if "小朋友" in text or "宝宝" in text or "玩具" in text:
-        return "宝宝玩具、绘本、日用品这类常见物品"
+        return "儿童用品、绘本、日用品这类常见物品"
     return "玩具、绘本、日用品这类常见物品"
 
 

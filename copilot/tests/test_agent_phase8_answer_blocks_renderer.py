@@ -82,10 +82,29 @@ def test_phase8_variant_intents_classify_to_customer_question_shape():
         "\u80fd\u4e0d\u80fd\u653e\u5c0f\u670b\u53cb\u7684\u4e1c\u897f\uff1f": "stability",
         "\u53ef\u4ee5\u653e\u5b69\u5b50\u7684\u73a9\u5177\u5417\uff1f": "stability",
         "\u80fd\u653e\u5b9d\u5b9d\u7528\u54c1\u5417\uff1f": "stability",
+        "\u9002\u5408\u653e\u513f\u7ae5\u7528\u54c1\u5417\uff1f": "stability",
         "\u653e\u7ed8\u672c\u7a33\u5417\uff1f": "stability",
         "\u653e\u4e66\u4f1a\u4e0d\u4f1a\u538b\u584c\uff1f": "load_capacity",
     }
     for message, expected in usage_cases.items():
+        assert classify_query_fact_type(message)["query_fact_type"] == expected
+
+    scene_cases = {
+        "\u5367\u5ba4\u80fd\u4e0d\u80fd\u653e\uff1f": {"placement_scene", "space_fit"},
+        "\u536b\u751f\u95f4\u80fd\u4e0d\u80fd\u653e\uff1f": {"placement_scene", "material"},
+        "\u9633\u53f0\u80fd\u4e0d\u80fd\u653e\uff1f": {"placement_scene"},
+    }
+    for message, expected_types in scene_cases.items():
+        fact_type = classify_query_fact_type(message)["query_fact_type"]
+        assert fact_type in expected_types
+        assert fact_type != "stability"
+
+    space_cases = {
+        "\u5367\u5ba4\u7a7a\u95f4\u5c0f\u80fd\u653e\u5417\uff1f": "space_fit",
+        "5\u5e73\u65b9\u591f\u4e0d\u591f\u653e\uff1f": "space_fit",
+        "\u8fd9\u4e2a\u5c3a\u5bf8\u591a\u5927\uff1f": "dimensions",
+    }
+    for message, expected in space_cases.items():
         assert classify_query_fact_type(message)["query_fact_type"] == expected
 
 

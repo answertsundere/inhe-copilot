@@ -150,14 +150,16 @@ _USAGE_PLACEMENT_VERBS = (
     "摆的下",
     "放",
 )
-_USAGE_ITEM_TERMS = (
-    "小朋友的东西",
-    "孩子的东西",
-    "宝宝用品",
-    "儿童用品",
-    "宝宝玩具",
-    "孩子玩具",
-    "儿童玩具",
+_USAGE_PERSON_TERMS = (
+    "小朋友",
+    "孩子",
+    "宝宝",
+    "儿童",
+    "小孩",
+)
+_USAGE_OBJECT_TERMS = (
+    "东西",
+    "用品",
     "玩具",
     "绘本",
     "书本",
@@ -166,6 +168,7 @@ _USAGE_ITEM_TERMS = (
     "书",
     "日用品",
     "杂物",
+    "收纳物",
 )
 _SPACE_FIT_TERMS = (
     "空间小",
@@ -311,26 +314,28 @@ def _classify_usage_item_question(message: str) -> dict[str, Any]:
         return {}
     matched_space = [term for term in _SPACE_FIT_TERMS if term in msg]
     matched_scene = [term for term in _SCENE_TERMS if term in msg]
-    matched_items = [term for term in _USAGE_ITEM_TERMS if term in msg]
+    matched_people = [term for term in _USAGE_PERSON_TERMS if term in msg]
+    matched_objects = [term for term in _USAGE_OBJECT_TERMS if term in msg]
     matched_load = [term for term in _LOAD_STRESS_TERMS if term in msg]
     matched_stability = [term for term in _STABILITY_STRESS_TERMS if term in msg]
+    matched_usage_terms = [*matched_people, *matched_objects]
 
-    if matched_space and not matched_items:
+    if matched_space and not matched_objects:
         secondary = ["placement_scene"] if matched_scene else []
         return _usage_result("space_fit", matched_space, secondary)
-    if matched_scene and not matched_items and not matched_load and not matched_stability:
+    if matched_scene and not matched_objects and not matched_load and not matched_stability:
         return _usage_result("placement_scene", matched_scene, [])
-    if not matched_items:
+    if not matched_objects:
         return {}
     if matched_load:
         secondary = ["stability"] if matched_stability else []
         if matched_scene:
             secondary.append("placement_scene")
-        return _usage_result("load_capacity", [*matched_items, *matched_load], secondary)
+        return _usage_result("load_capacity", [*matched_usage_terms, *matched_load], secondary)
     secondary = []
     if matched_scene:
         secondary.append("placement_scene")
-    return _usage_result("stability", [*matched_items, *matched_stability], secondary)
+    return _usage_result("stability", [*matched_usage_terms, *matched_stability], secondary)
 
 
 def _usage_result(fact_type: str, matched: list[str], secondary: list[str]) -> dict[str, Any]:
