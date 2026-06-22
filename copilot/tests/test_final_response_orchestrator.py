@@ -222,3 +222,78 @@ def test_final_response_orchestrator_rejects_llm_polish_that_shortens_display_na
 
     assert "llm_customer_language_polish" not in result
     assert result["suggested_reply"] == original
+
+
+def test_final_response_orchestrator_rejects_llm_polish_that_keeps_only_short_product_name(monkeypatch):
+    from app import config
+    from app.llm import client as llm_client
+
+    display_name = "儿童书架收纳柜家用多层置物架"
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_polish(response, *, customer_message="", copilot_context=None):
+        response["customer_reply_polish"] = {"checked": True, "applied": False, "mode": "fake"}
+        return response
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_POLISH_LLM_ENABLED", True)
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", fake_polish)
+    monkeypatch.setattr(
+        llm_client,
+        "get_llm_client",
+        lambda: _FakeClient('{"reply": "亲，这款书架的尺寸可以参考页面标注。", "reason": "shortened"}'),
+    )
+
+    original = f"亲，关于「{display_name}」，尺寸可以参考页面标注。"
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": original,
+            "display_product_name": display_name,
+        },
+        customer_message="这个尺寸多大？",
+    )
+
+    assert "llm_customer_language_polish" not in result
+    assert result["suggested_reply"] == original
+    rejected = result["evidence_debug"]["llm_customer_language_polish_rejected"]
+    assert rejected["reason"] == "display_product_name_dropped"
+
+
+def test_final_response_orchestrator_accepts_llm_polish_that_preserves_display_name(monkeypatch):
+    from app import config
+    from app.llm import client as llm_client
+
+    display_name = "儿童书架收纳柜家用多层置物架"
+    polished = f"亲，{display_name}的尺寸可以先参考页面标注，您也可以把预留空间发我，我帮您一起核对。"
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_polish(response, *, customer_message="", copilot_context=None):
+        response["customer_reply_polish"] = {"checked": True, "applied": False, "mode": "fake"}
+        return response
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_POLISH_LLM_ENABLED", True)
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", fake_polish)
+    monkeypatch.setattr(
+        llm_client,
+        "get_llm_client",
+        lambda: _FakeClient(f'{{"reply": "{polished}", "reason": "polished"}}'),
+    )
+
+    original = f"亲，关于「{display_name}」，尺寸可以参考页面标注。"
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": original,
+            "display_product_name": display_name,
+        },
+        customer_message="这个尺寸多大？",
+    )
+
+    assert result["llm_customer_language_polish"]["applied"] is True
+    assert result["suggested_reply"] == polished
