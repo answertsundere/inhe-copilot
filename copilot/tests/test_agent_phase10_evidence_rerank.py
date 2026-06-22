@@ -1,4 +1,4 @@
-from app.services.evidence_rerank_service import rerank_evidence
+from app.services.evidence_rerank_service import _evidence_key, rerank_evidence
 
 
 def _ev(fact_type, text, *, origin="product_facts", source_type="product_facts", score=1):
@@ -28,6 +28,18 @@ def _asset(asset_type, fact_type, *, url="https://example.test/a.jpg", status="a
         "status": status,
         "usable_for_agent": usable,
     }
+
+
+def _keys(items):
+    return {_evidence_key(item) for item in items}
+
+
+def _trace_states(result):
+    states = {}
+    for row in result["rerank_trace"]:
+        key = row.get("rerank_key") or row.get("evidence_id")
+        states.setdefault(key, set()).add(bool(row.get("selected")))
+    return states
 
 
 def test_dimensions_question_selects_dimensions_not_load_capacity():
@@ -137,3 +149,71 @@ def test_stability_uses_load_capacity_only_as_supporting_evidence():
     assert roles["load_capacity"] == "supporting_evidence"
     assert result["rerank_trace"]
     assert result["evidence_origin_by_fact_type"]
+
+
+def test_selected_and_rejected_do_not_overlap_for_evidence_without_ids():
+    result = rerank_evidence(
+        retrieved_evidence=[
+            {"fact_type": "dimensions", "fact": "长宽高 120*40*80cm", "score": 1},
+            {"fact_type": "load_capacity", "fact": "承重/容量: 8.58", "score": 99},
+        ],
+        product_context_pack={},
+        query_fact_type="dimensions",
+        required_fact_types=["dimensions"],
+    )
+
+    assert any(item["evidence_fact_type"] == "dimensions" for item in result["selected_evidence"])
+    assert not (_keys(result["selected_evidence"]) & _keys(result["rejected_evidence"]))
+    selected_dimension_keys = {
+        _evidence_key(item)
+        for item in result["selected_evidence"]
+        if item["evidence_fact_type"] == "dimensions"
+    }
+    rejected_dimension_keys = {
+        _evidence_key(item)
+        for item in result["rejected_evidence"]
+        if item["evidence_fact_type"] == "dimensions"
+    }
+    assert not (selected_dimension_keys & rejected_dimension_keys)
+
+
+def test_supporting_evidence_selected_once_and_not_rejected_without_ids():
+    result = rerank_evidence(
+        retrieved_evidence=[
+            {"fact_type": "stability", "fact": "放在平整地面，重物建议放下层", "score": 1},
+            {"fact_type": "load_capacity", "fact": "承重/容量: 8.58", "score": 99},
+        ],
+        product_context_pack={},
+        query_fact_type="stability",
+        required_fact_types=["stability"],
+    )
+
+    roles = {item["evidence_fact_type"]: item["role"] for item in result["selected_evidence"]}
+    assert roles["stability"] == "direct_answer"
+    assert roles["load_capacity"] == "supporting_evidence"
+    assert not (_keys(result["selected_evidence"]) & _keys(result["rejected_evidence"]))
+    assert all(len(states) == 1 for states in _trace_states(result).values())
+    assert all(row["reject_reason"] == "" for row in result["rerank_trace"] if row["selected"])
+
+
+def test_evidence_key_is_stable_after_dict_copy_without_ids():
+    ev = {"fact_type": "dimensions", "fact": "长宽高 120*40*80cm"}
+    ev_copy = {**ev}
+
+    assert _evidence_key(ev) == _evidence_key(ev_copy)
+
+
+def test_real_entry_id_still_dedupes_duplicate_evidence():
+    result = rerank_evidence(
+        retrieved_evidence=[
+            {"entry_id": "E1", "fact_type": "dimensions", "fact": "长宽高 120*40*80cm", "score": 1},
+            {"entry_id": "E1", "fact_type": "dimensions", "fact": "长宽高 120*40*80cm", "score": 99},
+        ],
+        product_context_pack={},
+        query_fact_type="dimensions",
+        required_fact_types=["dimensions"],
+    )
+
+    selected_and_rejected = result["selected_evidence"] + result["rejected_evidence"]
+    assert len([item for item in selected_and_rejected if item.get("entry_id") == "E1"]) == 1
+    assert len([row for row in result["rerank_trace"] if row.get("entry_id") == "E1"]) == 1

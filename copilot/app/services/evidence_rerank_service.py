@@ -7,6 +7,8 @@ against that contract and annotated as direct, supporting, fallback, or rejected
 
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -143,6 +145,7 @@ def _with_origin(items: list[Any], *, fallback_origin: str) -> list[dict[str, An
 
 
 def _rank_candidate(item: dict[str, Any], primary: str, required: list[str]) -> dict[str, Any]:
+    rerank_key = _evidence_key(item)
     evidence_fact_type = _evidence_fact_type(item)
     origin = str(item.get("evidence_origin") or "").strip()
     source_type = str(item.get("source_type") or "").strip()
@@ -164,6 +167,7 @@ def _rank_candidate(item: dict[str, Any], primary: str, required: list[str]) -> 
         "evidence_fact_type": evidence_fact_type,
         "fact_type": item.get("fact_type") or evidence_fact_type,
         "requested_fact_type": primary,
+        "rerank_key": rerank_key,
         "rank_score": round(score, 4),
         "rank_reason": reason,
         "reject_reason": reject_reason,
@@ -336,6 +340,7 @@ def _trace_row(item: dict[str, Any], selected_keys: set[str]) -> dict[str, Any]:
     key = _evidence_key(item)
     return {
         "evidence_id": key,
+        "rerank_key": key,
         "entry_id": item.get("entry_id", ""),
         "chunk_id": item.get("chunk_id", ""),
         "asset_id": item.get("asset_id") or item.get("id") or "",
@@ -393,16 +398,62 @@ def _dedupe(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _evidence_key(item: dict[str, Any]) -> str:
-    return str(
-        item.get("evidence_id")
-        or item.get("entry_id")
-        or item.get("chunk_id")
-        or item.get("asset_id")
-        or item.get("id")
-        or item.get("title")
-        or item.get("asset_title")
-        or id(item)
+    rerank_key = str(item.get("rerank_key") or "").strip()
+    if rerank_key:
+        return rerank_key
+
+    stable_fields = (
+        "evidence_id",
+        "entry_id",
+        "matched_entry_id",
+        "chunk_id",
+        "asset_id",
+        "id",
     )
+    for field in stable_fields:
+        value = str(item.get(field) or "").strip()
+        if value:
+            return f"{field}:{value}"
+
+    for field in ("url", "asset_url", "media_url", "thumbnail_url"):
+        value = _normalize_url(str(item.get(field) or ""))
+        if value:
+            return f"{field}:{_short_hash(value)}"
+
+    for field in ("title", "asset_title", "matched_title"):
+        value = _normalize_text(str(item.get(field) or ""))
+        if value:
+            return f"{field}:{_short_hash(value)}"
+
+    text = _first_text_value(item)
+    source_type = str(item.get("source_type") or "").strip()
+    origin = str(item.get("evidence_origin") or "").strip()
+    fact_type = str(item.get("evidence_fact_type") or item.get("fact_type") or item.get("query_fact_type") or "").strip()
+    fingerprint = "|".join([source_type, origin, fact_type, text])
+    return f"content:{_short_hash(fingerprint)}"
+
+
+def _first_text_value(item: dict[str, Any]) -> str:
+    for field in ("fact", "chunk_text", "content", "text", "preview", "chunk_preview", "answer", "description"):
+        value = _normalize_text(str(item.get(field) or ""))
+        if value:
+            return value
+    return ""
+
+
+def _normalize_text(value: str) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[，,、；;。.!！?？：:\s]+", "", text)
+    return text
+
+
+def _normalize_url(value: str) -> str:
+    return str(value or "").strip().split("?", 1)[0].lower()
+
+
+def _short_hash(value: str) -> str:
+    return hashlib.sha1(str(value or "").encode("utf-8")).hexdigest()[:16]
 
 
 def _ordered_unique(values: list[Any]) -> list[str]:
