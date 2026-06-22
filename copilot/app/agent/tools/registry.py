@@ -192,6 +192,30 @@ def _register_default_tools(registry: ToolRegistry):
         handler=_handle_template_select,
     ))
 
+    registry.register(ToolSpec(
+        name="media_asset_recommend_tool",
+        description="Return a summary of approved media assets for a resolved product.",
+        input_schema={"type": "object", "properties": {"product_name": {"type": "string"}, "fact_type": {"type": "string"}}},
+        output_schema={"type": "object", "properties": {"recommended_assets": {"type": "array"}, "count": {"type": "integer"}}},
+        allowed_intents=["product_question", "installation", "cleaning_care", "stock_query"],
+        timeout_ms=1000,
+        read_only=True,
+        can_create_fact_types=["media_evidence", "visual_asset"],
+        handler=_handle_media_asset_recommend,
+    ))
+
+    registry.register(ToolSpec(
+        name="activity_rule_lookup_tool",
+        description="Return a summary of product promotion/activity rules when explicitly requested.",
+        input_schema={"type": "object", "properties": {"product_name": {"type": "string"}, "fact_type": {"type": "string"}}},
+        output_schema={"type": "object", "properties": {"rules": {"type": "array"}, "count": {"type": "integer"}}},
+        allowed_intents=["product_question", "stock_query"],
+        timeout_ms=1000,
+        read_only=True,
+        can_create_fact_types=["promotion_policy", "gift_policy", "price_protection"],
+        handler=_handle_activity_rule_lookup,
+    ))
+
 
 # ========== 工具 handler 实现 ==========
 # 每个 handler: (inputs: dict, state: dict) -> dict
@@ -524,3 +548,50 @@ def _handle_template_select(inputs: dict, state: dict) -> dict:
     except Exception as e:
         logger.warning("模板选择失败: %s", e)
         return {"templates": [], "error": str(e)}
+
+
+def _handle_media_asset_recommend(inputs: dict, state: dict) -> dict:
+    """Summarize media assets already attached to the current product context."""
+    context_pack = ((state or {}).get("context_used") or {}).get("product_context_pack") or {}
+    assets = (
+        context_pack.get("recommended_assets")
+        or (state or {}).get("recommended_assets")
+        or (state or {}).get("selected_assets")
+        or []
+    )
+    safe_assets = []
+    for asset in assets[:3]:
+        if not isinstance(asset, dict):
+            continue
+        safe_assets.append({
+            "asset_id": asset.get("asset_id") or asset.get("id") or "",
+            "asset_type": asset.get("asset_type") or asset.get("type") or "",
+            "title": asset.get("title", ""),
+            "review_status": asset.get("review_status", ""),
+        })
+    return {
+        "recommended_assets": safe_assets,
+        "count": len(assets) if isinstance(assets, list) else 0,
+        "source": "existing_product_context",
+    }
+
+
+def _handle_activity_rule_lookup(inputs: dict, state: dict) -> dict:
+    """Summarize activity rules already present in the current product context."""
+    context_pack = ((state or {}).get("context_used") or {}).get("product_context_pack") or {}
+    rules = context_pack.get("activity_rules") or (state or {}).get("activity_rules") or []
+    safe_rules = []
+    for rule in rules[:3]:
+        if not isinstance(rule, dict):
+            continue
+        safe_rules.append({
+            "rule_id": rule.get("rule_id") or rule.get("id") or "",
+            "activity_type": rule.get("activity_type") or rule.get("fact_type") or "",
+            "title": rule.get("title", ""),
+            "status": rule.get("status", ""),
+        })
+    return {
+        "rules": safe_rules,
+        "count": len(rules) if isinstance(rules, list) else 0,
+        "source": "existing_product_context",
+    }

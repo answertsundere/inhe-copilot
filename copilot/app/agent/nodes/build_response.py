@@ -355,6 +355,14 @@ def build_response(state: dict) -> dict:
         t.get("summary", "") for t in trace_steps
     } or any("fallback" in t.get("summary", "").lower() for t in trace_steps)
     evidence_debug["tool_planner_source"] = state.get("tool_planner_source", "")
+    evidence_debug["tool_policy_trace"] = state.get("tool_policy_trace", {
+        "evaluated_tools": [],
+        "allowed_tools": [],
+        "blocked_tools": [],
+        "skipped_tools": [],
+        "tool_call_count": 0,
+        "high_risk_tool_called": False,
+    })
     evidence_debug["rag_retrieval_mode"] = state.get("rag_retrieval_mode", "")
 
     # Parallel Understanding Layer is Phase 1 observation-only data.

@@ -15,6 +15,14 @@ from typing import Optional
 
 from app.agent.tools.base import ToolSpec
 from app.agent.tools.registry import get_tool_registry
+from app.agent.tools.tool_policy import READ_ONLY_SENSITIVE
+from app.agent.tools.tool_policy_gate import evaluate_tool_call
+from app.services.tool_call_ledger_service import (
+    record_tool_call,
+    sanitize_summary,
+    summarize_entities,
+    summarize_evidence,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +134,7 @@ class ToolExecutor:
         return {
             "tool_results": tool_results,
             "tool_traces": tool_traces,
+            "tool_policy_trace": _build_tool_policy_trace(tool_traces),
             "total_duration_ms": total_duration_ms,
             "timed_out": timed_out,
         }
@@ -139,15 +148,72 @@ class ToolExecutor:
     ) -> tuple[dict, dict]:
         """执行单个工具，返回 (result, trace)"""
         t0 = time.time()
+        decision = evaluate_tool_call(spec.name, state)
+        policy_decision = decision.to_dict()
+        entity_summary = summarize_entities(state or {})
+
+        if not decision.allowed:
+            duration_ms = int((time.time() - t0) * 1000)
+            input_summary = _summarize_inputs(inputs)
+            record_tool_call(
+                trace_id=str((state or {}).get("trace_id") or ""),
+                conversation_id=str((state or {}).get("conversation_id") or ""),
+                request_id=str((state or {}).get("request_id") or ""),
+                node_name="tool_executor",
+                tool_name=spec.name,
+                tool_risk_level=decision.risk_level,
+                intent=str((state or {}).get("intent") or ""),
+                query_fact_type=str((state or {}).get("query_fact_type") or ""),
+                allowed=False,
+                blocked_reason=decision.reason,
+                status="blocked",
+                latency_ms=duration_ms,
+                input_summary=input_summary,
+                entity_summary=entity_summary,
+            )
+            return {
+                "blocked": True,
+                "blocked_reason": decision.reason,
+                "required_entities_missing": list(decision.required_entities_missing),
+            }, {
+                "node": "tool_executor",
+                "tool_name": spec.name,
+                "status": "blocked",
+                "duration_ms": duration_ms,
+                "provider": "tool_registry",
+                "input_summary": input_summary,
+                "policy_decision": policy_decision,
+                "summary": f"{spec.name}: blocked ({decision.reason})",
+                "error_code": decision.reason,
+            }
 
         if spec.handler is None:
             duration_ms = int((time.time() - t0) * 1000)
+            input_summary = _summarize_inputs(inputs)
+            record_tool_call(
+                trace_id=str((state or {}).get("trace_id") or ""),
+                conversation_id=str((state or {}).get("conversation_id") or ""),
+                request_id=str((state or {}).get("request_id") or ""),
+                node_name="tool_executor",
+                tool_name=spec.name,
+                tool_risk_level=decision.risk_level,
+                intent=str((state or {}).get("intent") or ""),
+                query_fact_type=str((state or {}).get("query_fact_type") or ""),
+                allowed=True,
+                status="error",
+                error_type="no_handler",
+                error_message="tool has no handler",
+                latency_ms=duration_ms,
+                input_summary=input_summary,
+                entity_summary=entity_summary,
+            )
             return {}, {
                 "node": "tool_executor",
                 "tool_name": spec.name,
                 "status": "no_handler",
                 "duration_ms": duration_ms,
-                "input_summary": _summarize_inputs(inputs),
+                "input_summary": input_summary,
+                "policy_decision": policy_decision,
                 "summary": f"工具 {spec.name} 无 handler",
                 "error_code": "no_handler",
             }
@@ -160,14 +226,34 @@ class ToolExecutor:
             if duration_ms > timeout_ms:
                 logger.warning("工具 %s 超时: %dms > %dms", spec.name, duration_ms, timeout_ms)
 
+            input_summary = _summarize_inputs(inputs)
+            output_summary = _summarize_output(result)
+            record_tool_call(
+                trace_id=str((state or {}).get("trace_id") or ""),
+                conversation_id=str((state or {}).get("conversation_id") or ""),
+                request_id=str((state or {}).get("request_id") or ""),
+                node_name="tool_executor",
+                tool_name=spec.name,
+                tool_risk_level=decision.risk_level,
+                intent=str((state or {}).get("intent") or ""),
+                query_fact_type=str((state or {}).get("query_fact_type") or ""),
+                allowed=True,
+                status="success",
+                latency_ms=duration_ms,
+                input_summary=input_summary,
+                output_summary=output_summary,
+                entity_summary=entity_summary,
+                evidence_summary=summarize_evidence(result if isinstance(result, dict) else {}),
+            )
             trace = {
                 "node": "tool_executor",
                 "tool_name": spec.name,
                 "status": "success",
                 "duration_ms": duration_ms,
                 "provider": "tool_registry",
-                "input_summary": _summarize_inputs(inputs),
-                "output_summary": _summarize_output(result),
+                "input_summary": input_summary,
+                "output_summary": output_summary,
+                "policy_decision": policy_decision,
                 "can_create_fact_types": spec.can_create_fact_types,
                 "summary": f"{spec.name}: ok ({duration_ms}ms)",
             }
@@ -177,13 +263,32 @@ class ToolExecutor:
             duration_ms = int((time.time() - t0) * 1000)
             error_code = type(e).__name__
             logger.warning("工具 %s 执行失败: %s", spec.name, e)
+            input_summary = _summarize_inputs(inputs)
+            record_tool_call(
+                trace_id=str((state or {}).get("trace_id") or ""),
+                conversation_id=str((state or {}).get("conversation_id") or ""),
+                request_id=str((state or {}).get("request_id") or ""),
+                node_name="tool_executor",
+                tool_name=spec.name,
+                tool_risk_level=decision.risk_level,
+                intent=str((state or {}).get("intent") or ""),
+                query_fact_type=str((state or {}).get("query_fact_type") or ""),
+                allowed=True,
+                status="error",
+                error_type=error_code,
+                error_message=str(e),
+                latency_ms=duration_ms,
+                input_summary=input_summary,
+                entity_summary=entity_summary,
+            )
             return {"error": str(e)}, {
                 "node": "tool_executor",
                 "tool_name": spec.name,
                 "status": "error",
                 "duration_ms": duration_ms,
                 "provider": "tool_registry",
-                "input_summary": _summarize_inputs(inputs),
+                "input_summary": input_summary,
+                "policy_decision": policy_decision,
                 "error_code": error_code,
                 "summary": f"{spec.name}: {error_code}",
             }
@@ -199,7 +304,7 @@ def _summarize_inputs(inputs: dict) -> dict:
             summary[k] = v[:3]
         else:
             summary[k] = v
-    return summary
+    return sanitize_summary(summary)
 
 
 def _summarize_output(result: dict) -> dict:
@@ -216,7 +321,58 @@ def _summarize_output(result: dict) -> dict:
             summary[k] = f"{len(v)} items"
         else:
             summary[k] = v
-    return summary
+    return sanitize_summary(summary)
+
+
+def _build_tool_policy_trace(tool_traces: list[dict]) -> dict:
+    evaluated = []
+    allowed_tools = []
+    blocked_tools = []
+    skipped_tools = []
+    high_risk_called = False
+    call_count = 0
+
+    for trace in tool_traces or []:
+        tool_name = trace.get("tool_name", "")
+        status = trace.get("status", "")
+        decision = trace.get("policy_decision") or {}
+        if decision:
+            item = {
+                "tool_name": tool_name,
+                "allowed": bool(decision.get("allowed")),
+                "reason": decision.get("reason", ""),
+                "required_entities_missing": decision.get("required_entities_missing", []),
+                "risk_level": decision.get("risk_level", ""),
+                "status": status,
+                "duration_ms": trace.get("duration_ms", 0),
+            }
+            evaluated.append(item)
+            if decision.get("allowed"):
+                allowed_tools.append(tool_name)
+            if status == "blocked":
+                blocked_tools.append({
+                    "tool_name": tool_name,
+                    "reason": decision.get("reason", ""),
+                    "required_entities_missing": decision.get("required_entities_missing", []),
+                })
+            if status in {"success", "error", "no_handler"}:
+                call_count += 1
+                if decision.get("risk_level") == READ_ONLY_SENSITIVE:
+                    high_risk_called = True
+        elif status in {"skipped", "not_found"}:
+            skipped_tools.append({
+                "tool_name": tool_name,
+                "reason": trace.get("error_code") or status,
+            })
+
+    return {
+        "evaluated_tools": evaluated,
+        "allowed_tools": list(dict.fromkeys(allowed_tools)),
+        "blocked_tools": blocked_tools,
+        "skipped_tools": skipped_tools,
+        "tool_call_count": call_count,
+        "high_risk_tool_called": high_risk_called,
+    }
 
 
 # ========== Tool Planner ==========
@@ -441,6 +597,16 @@ def _build_default_inputs(state: dict) -> dict:
             "message": msg,
             "intent": intent,
         },
+        "media_asset_recommend_tool": {
+            "product_name": product_name,
+            "sku_name": sku_name,
+            "fact_type": state.get("query_fact_type", ""),
+        },
+        "activity_rule_lookup_tool": {
+            "product_name": product_name,
+            "sku_name": sku_name,
+            "fact_type": state.get("query_fact_type", ""),
+        },
     }
 
 
@@ -612,6 +778,7 @@ def tool_executor_node(state: dict) -> dict:
     result = {
         "tool_results": exec_result["tool_results"],
         "tool_traces": exec_result["tool_traces"],
+        "tool_policy_trace": exec_result.get("tool_policy_trace", {}),
         "trace_steps": state.get("trace_steps", []) + [trace] + exec_result["tool_traces"],
     }
 

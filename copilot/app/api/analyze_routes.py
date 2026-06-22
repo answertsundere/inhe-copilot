@@ -451,6 +451,8 @@ def api_analyze():
         except Exception:
             pass
 
+        _attach_tool_policy_trace(response)
+
         status_code = 500 if response.get("error") else 200
         return jsonify(response), status_code
     except Exception as e:
@@ -463,3 +465,17 @@ def api_analyze():
             "error": str(e),
             "debug_runtime": {"version": _VERSION, "pid": _PID},
         }), 500
+
+
+def _attach_tool_policy_trace(response: dict) -> None:
+    debug = response.setdefault("evidence_debug", {})
+    trace = response.get("tool_policy_trace") or debug.get("tool_policy_trace") or {}
+    if not isinstance(trace, dict):
+        trace = {}
+    trace.setdefault("evaluated_tools", [])
+    trace.setdefault("allowed_tools", [])
+    trace.setdefault("blocked_tools", [])
+    trace.setdefault("skipped_tools", [])
+    trace.setdefault("tool_call_count", 0)
+    trace.setdefault("high_risk_tool_called", False)
+    debug["tool_policy_trace"] = trace
