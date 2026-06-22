@@ -171,3 +171,26 @@ def test_phase10_api_rerank_trace_and_boundaries(phase10_api, message, expected_
         }
         if "load_capacity" in roles:
             assert roles["load_capacity"] == "supporting_evidence"
+
+
+def test_phase10_api_exposes_embedding_rerank_trace_fields(phase10_api, monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "EVIDENCE_EMBEDDING_RERANK_ENABLED", True)
+    monkeypatch.setattr(config, "EVIDENCE_EMBEDDING_RERANK_PROVIDER", "mock")
+
+    data = _analyze(phase10_api, "这个尺寸多大？")
+    reply = data.get("suggested_reply") or ""
+    trace = data.get("answer_trace") or {}
+
+    assert data.get("query_fact_type") == "dimensions"
+    assert trace.get("embedding_rerank_enabled") is True
+    assert trace.get("embedding_provider") == "mock"
+    assert "embedding_rerank_used" in trace
+    assert "embedding_fallback_used" in trace
+    assert isinstance(trace.get("rerank_trace"), list)
+    assert trace.get("rerank_trace")
+    assert all("embedding_score" in item for item in trace.get("rerank_trace", []))
+    assert "fact_type" not in reply
+    assert "query_fact_type" not in reply
+    assert "RAG" not in reply

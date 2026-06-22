@@ -118,6 +118,13 @@ RAG_VECTOR_WEIGHT = float(os.environ.get("COPILOT_RAG_VECTOR_WEIGHT", "0.55"))
 RAG_TEXT_WEIGHT = float(os.environ.get("COPILOT_RAG_TEXT_WEIGHT", "0.30"))
 RAG_SCOPE_WEIGHT = float(os.environ.get("COPILOT_RAG_SCOPE_WEIGHT", "0.15"))
 
+# ============ Evidence Embedding Rerank ============
+# Disabled by default. This is a scoring signal only; hard evidence boundaries
+# stay in evidence_rerank_service.
+EVIDENCE_EMBEDDING_RERANK_ENABLED = _env_bool("COPILOT_EVIDENCE_EMBEDDING_RERANK_ENABLED", False)
+EVIDENCE_EMBEDDING_RERANK_PROVIDER = os.environ.get("COPILOT_EVIDENCE_EMBEDDING_RERANK_PROVIDER", "disabled")
+EVIDENCE_EMBEDDING_RERANK_WEIGHT = float(os.environ.get("COPILOT_EVIDENCE_EMBEDDING_RERANK_WEIGHT", "0.15"))
+
 # ============ Parallel Understanding Phase 2 switches ============
 ENABLE_PARALLEL_FUSION_ROUTING = _env_bool("COPILOT_ENABLE_PARALLEL_FUSION_ROUTING", False)
 ENABLE_PARALLEL_SAFETY_CONTRACT = _env_bool("COPILOT_ENABLE_PARALLEL_SAFETY_CONTRACT", True)

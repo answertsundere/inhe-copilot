@@ -355,6 +355,7 @@ def evidence_filter_node(state: dict) -> dict:
             retrieved_evidence=knowledge_evidence,
             product_context_pack=state.get("product_context_pack", {}),
             query_fact_type=query_fact_type,
+            query_text=query,
             required_fact_types=(state.get("query_understanding") or {}).get("required_fact_types")
             or state.get("required_fact_types")
             or [query_fact_type],
@@ -407,6 +408,11 @@ def evidence_filter_node(state: dict) -> dict:
             "rejected_evidence_count": len(rerank_rejected),
             "evidence_origin_by_fact_type": rerank_result.get("evidence_origin_by_fact_type", {}),
             "rerank_trace": rerank_result.get("rerank_trace", [])[:8],
+            "embedding_rerank_enabled": rerank_result.get("embedding_rerank_enabled", False),
+            "embedding_rerank_used": rerank_result.get("embedding_rerank_used", False),
+            "embedding_provider": rerank_result.get("embedding_provider", "disabled"),
+            "embedding_fallback_used": rerank_result.get("embedding_fallback_used", False),
+            "embedding_error": rerank_result.get("embedding_error", ""),
         },
         "summary": f"过滤: 通过{len(filtered)}条, 拒绝{len(rejected)}条",
     }

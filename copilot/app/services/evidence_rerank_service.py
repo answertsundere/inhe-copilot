@@ -12,6 +12,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from app import config
+from app.services.evidence_embedding_rerank_service import score_evidence_semantic_similarity
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type
 
 
@@ -47,8 +49,10 @@ def rerank_evidence(
     retrieved_evidence: list[dict[str, Any]] | None = None,
     product_context_pack: dict[str, Any] | None = None,
     query_fact_type: str = "",
+    query_text: str = "",
     required_fact_types: list[str] | None = None,
     secondary_fact_types: list[str] | None = None,
+    embedding_context: dict[str, Any] | None = None,
     limit: int = 8,
 ) -> dict[str, Any]:
     primary = str(query_fact_type or "").strip()
@@ -59,7 +63,15 @@ def rerank_evidence(
         for item in candidates
         if isinstance(item, dict)
     ]
-    ranked.sort(key=lambda item: (-float(item.get("rank_score") or 0), item.get("rank_order", 999)))
+    embedding_result = score_evidence_semantic_similarity(
+        query_text=query_text,
+        query_fact_type=primary,
+        required_fact_types=required,
+        evidence_items=ranked,
+        context=embedding_context,
+    )
+    ranked = _apply_embedding_scores(ranked, embedding_result, embedding_context)
+    ranked.sort(key=lambda item: (_role_sort_order(item), -float(item.get("final_rank_score") or 0), item.get("rank_order", 999)))
 
     selected: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
@@ -115,6 +127,12 @@ def rerank_evidence(
         "required_fact_types": required,
         "primary_fact_type": primary,
         "selected_assets": _selected_assets(selected),
+        "embedding_rerank_enabled": bool(embedding_result.get("enabled")),
+        "embedding_rerank_used": bool(embedding_result.get("used")),
+        "embedding_provider": embedding_result.get("provider", "disabled"),
+        "embedding_fallback_used": bool(embedding_result.get("fallback_used")),
+        "embedding_error": embedding_result.get("error", ""),
+        "embedding_rerank_summary": _embedding_summary(embedding_result, embedding_context),
     }
 
 
@@ -161,13 +179,20 @@ def _rank_candidate(item: dict[str, Any], primary: str, required: list[str]) -> 
     primary_bonus = 30.0 if primary and evidence_fact_type and fact_type_matches(primary, evidence_fact_type) else 0.0
     required_bonus = 12.0 if evidence_fact_type in required else 0.0
     media_bonus = _media_direct_bonus(item, primary)
-    score = role_score + source_score + primary_bonus + required_bonus + media_bonus + base_score
+    deterministic_score = source_score + primary_bonus + required_bonus + media_bonus + base_score
+    score = role_score + deterministic_score
     return {
         **item,
         "evidence_fact_type": evidence_fact_type,
         "fact_type": item.get("fact_type") or evidence_fact_type,
         "requested_fact_type": primary,
         "rerank_key": rerank_key,
+        "role_score": round(role_score, 4),
+        "origin_score": round(source_score, 4),
+        "deterministic_score": round(deterministic_score, 4),
+        "embedding_score": None,
+        "embedding_reason": "",
+        "final_rank_score": round(score, 4),
         "rank_score": round(score, 4),
         "rank_reason": reason,
         "reject_reason": reject_reason,
@@ -349,11 +374,99 @@ def _trace_row(item: dict[str, Any], selected_keys: set[str]) -> dict[str, Any]:
         "evidence_fact_type": item.get("evidence_fact_type", ""),
         "requested_fact_type": item.get("requested_fact_type", ""),
         "rank_score": item.get("rank_score", 0),
+        "role_score": item.get("role_score", 0),
+        "origin_score": item.get("origin_score", 0),
+        "deterministic_score": item.get("deterministic_score", 0),
+        "embedding_score": item.get("embedding_score"),
+        "embedding_reason": item.get("embedding_reason", ""),
+        "final_rank_score": item.get("final_rank_score", item.get("rank_score", 0)),
+        "embedding_rerank_enabled": item.get("embedding_rerank_enabled", False),
+        "embedding_rerank_used": item.get("embedding_rerank_used", False),
+        "embedding_provider": item.get("embedding_provider", "disabled"),
+        "embedding_fallback_used": item.get("embedding_fallback_used", False),
+        "embedding_error": item.get("embedding_error", ""),
         "rank_reason": item.get("rank_reason", ""),
         "selected": key in selected_keys,
         "reject_reason": "" if key in selected_keys else item.get("reject_reason", ""),
         "role": item.get("role", ""),
     }
+
+
+def _apply_embedding_scores(
+    ranked: list[dict[str, Any]],
+    embedding_result: dict[str, Any],
+    embedding_context: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    scores = embedding_result.get("scores") if isinstance(embedding_result, dict) else {}
+    if not isinstance(scores, dict):
+        scores = {}
+    enabled = bool(embedding_result.get("enabled")) if isinstance(embedding_result, dict) else False
+    used = bool(embedding_result.get("used")) if isinstance(embedding_result, dict) else False
+    provider = str(embedding_result.get("provider") or "disabled") if isinstance(embedding_result, dict) else "disabled"
+    fallback_used = bool(embedding_result.get("fallback_used")) if isinstance(embedding_result, dict) else False
+    error = str(embedding_result.get("error") or "") if isinstance(embedding_result, dict) else ""
+    weight = _embedding_weight(embedding_context)
+
+    out: list[dict[str, Any]] = []
+    for item in ranked:
+        key = _evidence_key(item)
+        score_info = scores.get(key) if used else None
+        embedding_score = None
+        embedding_reason = ""
+        embedding_model = ""
+        if isinstance(score_info, dict):
+            embedding_score = _clamp_score(score_info.get("embedding_score"))
+            embedding_reason = str(score_info.get("embedding_reason") or "")
+            embedding_model = str(score_info.get("model") or "")
+        deterministic_score = _float(item.get("deterministic_score"))
+        role_score = _float(item.get("role_score"))
+        embedding_bonus = (embedding_score * 100.0 * weight) if embedding_score is not None else 0.0
+        final_score = role_score + deterministic_score + embedding_bonus
+        out.append({
+            **item,
+            "embedding_rerank_enabled": enabled,
+            "embedding_rerank_used": bool(used and embedding_score is not None),
+            "embedding_provider": provider,
+            "embedding_fallback_used": fallback_used,
+            "embedding_error": error,
+            "embedding_score": embedding_score,
+            "embedding_reason": embedding_reason,
+            "embedding_model": embedding_model,
+            "embedding_weight": weight,
+            "final_rank_score": round(final_score, 4),
+            "rank_score": round(final_score, 4),
+        })
+    return out
+
+
+def _embedding_weight(embedding_context: dict[str, Any] | None) -> float:
+    if isinstance(embedding_context, dict) and embedding_context.get("weight") is not None:
+        return max(0.0, min(1.0, _float(embedding_context.get("weight"))))
+    return max(0.0, min(1.0, _float(config.EVIDENCE_EMBEDDING_RERANK_WEIGHT)))
+
+
+def _embedding_summary(embedding_result: dict[str, Any], embedding_context: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "enabled": bool(embedding_result.get("enabled")) if isinstance(embedding_result, dict) else False,
+        "used": bool(embedding_result.get("used")) if isinstance(embedding_result, dict) else False,
+        "provider": str(embedding_result.get("provider") or "disabled") if isinstance(embedding_result, dict) else "disabled",
+        "fallback_used": bool(embedding_result.get("fallback_used")) if isinstance(embedding_result, dict) else False,
+        "error": str(embedding_result.get("error") or "") if isinstance(embedding_result, dict) else "",
+        "weight": _embedding_weight(embedding_context),
+    }
+
+
+def _role_sort_order(item: dict[str, Any]) -> int:
+    return {
+        "direct_answer": 0,
+        "supporting_evidence": 1,
+        "fallback": 2,
+        "rejected": 3,
+    }.get(str(item.get("role") or ""), 9)
+
+
+def _clamp_score(value: Any) -> float:
+    return max(0.0, min(1.0, _float(value)))
 
 
 def _origin_by_fact_type(items: list[dict[str, Any]]) -> dict[str, list[str]]:

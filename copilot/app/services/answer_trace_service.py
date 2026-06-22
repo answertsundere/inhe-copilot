@@ -9,10 +9,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from app import config
+
 
 def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") -> dict[str, Any]:
     response = normalize_answer_trace_inputs(response)
     debug = response.get("evidence_debug") or {}
+    existing_trace = (
+        response.get("answer_trace")
+        or debug.get("answer_trace")
+        or {}
+    )
     composition = (
         debug.get("answer_composition_trace")
         or response.get("answer_composition_trace")
@@ -115,6 +122,30 @@ def build_answer_trace(response: dict[str, Any], *, customer_message: str = "") 
         "selected_evidence_by_fact_type": _evidence_by_fact_type(selected_evidence_trace),
         "rejected_evidence_by_fact_type": _evidence_by_fact_type(rejected_evidence_trace),
         "rerank_trace": rerank_trace,
+        "embedding_rerank_enabled": (
+            bool(evidence_rerank.get("embedding_rerank_enabled")) if isinstance(evidence_rerank, dict) and evidence_rerank
+            else bool(debug.get("embedding_rerank_enabled") or existing_trace.get("embedding_rerank_enabled") or config.EVIDENCE_EMBEDDING_RERANK_ENABLED)
+        ),
+        "embedding_rerank_used": (
+            bool(evidence_rerank.get("embedding_rerank_used")) if isinstance(evidence_rerank, dict) and evidence_rerank
+            else bool(debug.get("embedding_rerank_used") or existing_trace.get("embedding_rerank_used"))
+        ),
+        "embedding_provider": (
+            evidence_rerank.get("embedding_provider", "disabled") if isinstance(evidence_rerank, dict) and evidence_rerank
+            else debug.get("embedding_provider", existing_trace.get("embedding_provider", config.EVIDENCE_EMBEDDING_RERANK_PROVIDER if config.EVIDENCE_EMBEDDING_RERANK_ENABLED else "disabled"))
+        ),
+        "embedding_fallback_used": (
+            bool(evidence_rerank.get("embedding_fallback_used")) if isinstance(evidence_rerank, dict) and evidence_rerank
+            else bool(debug.get("embedding_fallback_used") or existing_trace.get("embedding_fallback_used"))
+        ),
+        "embedding_error": (
+            evidence_rerank.get("embedding_error", "") if isinstance(evidence_rerank, dict) and evidence_rerank
+            else debug.get("embedding_error", existing_trace.get("embedding_error", ""))
+        ),
+        "evidence_rerank_summary": (
+            evidence_rerank.get("embedding_rerank_summary", {}) if isinstance(evidence_rerank, dict) and evidence_rerank
+            else existing_trace.get("evidence_rerank_summary", {})
+        ),
         "top_reject_reasons": _top_reject_reasons(rejected_evidence_trace),
         "evidence_origin_by_fact_type": (
             evidence_rerank.get("evidence_origin_by_fact_type", {}) if isinstance(evidence_rerank, dict)
@@ -455,6 +486,12 @@ def _evidence_trace_summaries(values: Any, *, selected_default: bool) -> list[di
             "evidence_fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
             "requested_fact_type": item.get("requested_fact_type") or item.get("query_fact_type") or "",
             "rank_score": item.get("rank_score", item.get("rerank_score", item.get("score", 0))),
+            "role_score": item.get("role_score", 0),
+            "origin_score": item.get("origin_score", 0),
+            "deterministic_score": item.get("deterministic_score", 0),
+            "embedding_score": item.get("embedding_score"),
+            "embedding_reason": item.get("embedding_reason", ""),
+            "final_rank_score": item.get("final_rank_score", item.get("rank_score", item.get("rerank_score", item.get("score", 0)))),
             "rank_reason": item.get("rank_reason") or _default_rank_reason(item),
             "selected": item.get("selected", selected_default),
             "reject_reason": item.get("reject_reason") or item.get("rejection_reasons") or item.get("mismatch_reason") or "",
@@ -477,6 +514,9 @@ def _fallback_rerank_trace(selected: list[dict[str, Any]], rejected: list[dict[s
             "evidence_fact_type": item.get("evidence_fact_type", ""),
             "requested_fact_type": item.get("requested_fact_type", ""),
             "rank_score": item.get("rank_score", 0),
+            "embedding_score": item.get("embedding_score"),
+            "embedding_reason": item.get("embedding_reason", ""),
+            "final_rank_score": item.get("final_rank_score", item.get("rank_score", 0)),
             "rank_reason": item.get("rank_reason") or _default_rank_reason(item),
             "selected": bool(item.get("selected", False)),
             "reject_reason": "" if item.get("selected", False) else item.get("reject_reason", ""),
