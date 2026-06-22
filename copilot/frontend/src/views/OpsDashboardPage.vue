@@ -29,7 +29,7 @@ const repairTasks = ref<any[]>([])
 const modelFilters = reactive({ alias: '', node_name: '', status: '', since: '' })
 const toolFilters = reactive({ tool_name: '', status: '', allowed: '', intent: '' })
 
-const currentRole = computed(() => localStorage.getItem('kb_user_role') || 'supervisor')
+const currentRole = computed(() => localStorage.getItem('kb_user_role') || 'operator')
 const isForbidden = computed(() => errorMessage.value.includes('forbidden') || errorMessage.value.includes('403'))
 const latestEvalFailed = computed(() => evalRuns.value[0]?.failed_cases ?? 0)
 const cards = computed(() => [
@@ -126,7 +126,22 @@ function handleError(e: any) {
   const status = e?.response?.status
   const code = e?.response?.data?.error || e?.message || '请求失败'
   errorMessage.value = status ? `${status}: ${code}` : code
+  if (status === 403) {
+    clearOpsData()
+    return
+  }
   ElMessage.error(errorMessage.value)
+}
+
+function clearOpsData() {
+  modelSummary.value = {}
+  toolSummary.value = {}
+  evalRuns.value = []
+  modelCalls.value = []
+  toolCalls.value = []
+  evalFailures.value = []
+  repairTasks.value = []
+  selectedRun.value = null
 }
 
 function formatCost(row: any) {

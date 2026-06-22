@@ -10,7 +10,7 @@ const apiClient = axios.create({
 
 // 请求拦截 - 附加用户信息
 apiClient.interceptors.request.use((config) => {
-  const role = localStorage.getItem('kb_user_role') || 'supervisor'
+  const role = localStorage.getItem('kb_user_role') || 'operator'
   const name = localStorage.getItem('kb_user_name') || 'admin'
   config.headers['X-User-Role'] = role
   config.headers['X-User-Name'] = name

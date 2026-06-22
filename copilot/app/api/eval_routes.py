@@ -60,11 +60,12 @@ def api_eval_create_run():
         return denied
     data = request.get_json(silent=True) or {}
     limit = _limit(data.get("limit"), default=30)
+    apply_changes = data.get("apply") is True
     result = EvalReplayService().run_replay(
         limit=limit,
         category=str(data.get("category") or ""),
         run_type=str(data.get("run_type") or "manual"),
-        apply=bool(data.get("apply", True)),
+        apply=apply_changes,
         config_snapshot={"api": True, "limit": limit, "category": data.get("category") or ""},
     )
     return jsonify(result), 201

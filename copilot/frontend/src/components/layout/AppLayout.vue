@@ -27,7 +27,7 @@ const roleOptions = [
   { value: 'admin', label: '管理员' },
 ]
 
-const currentRole = ref(localStorage.getItem('kb_user_role') || 'supervisor')
+const currentRole = ref(localStorage.getItem('kb_user_role') || 'operator')
 
 function onRoleChange(val: string) {
   currentRole.value = val

@@ -14,6 +14,19 @@ def test_require_supervisor_blocks_operator():
     assert body.get_json()["required_role"] == "supervisor"
 
 
+def test_require_supervisor_blocks_missing_role_header():
+    from app.api.admin_auth import get_user_role, require_supervisor
+
+    app = Flask(__name__)
+    with app.test_request_context("/"):
+        response = require_supervisor()
+        role = get_user_role()
+
+    assert role == "operator"
+    assert response is not None
+    assert response[1] == 403
+
+
 def test_require_supervisor_allows_supervisor_and_admin():
     from app.api.admin_auth import require_supervisor
 

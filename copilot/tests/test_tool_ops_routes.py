@@ -116,3 +116,13 @@ def test_tool_ops_summary_aggregates(monkeypatch):
     assert data["by_tool"] == {"jst_lookup_order_tool": 1, "rag_search_tool": 1}
     assert data["by_status"] == {"success": 1, "blocked": 1}
     assert data["avg_latency_ms"] == 200
+
+
+def test_tool_ops_allows_admin(monkeypatch):
+    client = _client(monkeypatch)
+    _seed_calls()
+
+    response = client.get("/api/tool-ops/calls", headers={"X-User-Role": "admin"})
+
+    assert response.status_code == 200
+    assert len(response.get_json()["items"]) == 2

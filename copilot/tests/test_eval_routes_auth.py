@@ -35,3 +35,40 @@ def test_eval_run_apply_true_requires_supervisor(monkeypatch):
 
     assert denied.status_code == 403
     assert allowed.status_code == 201
+
+
+def test_eval_run_apply_defaults_to_dry_run(monkeypatch):
+    client = _client(monkeypatch)
+    calls = []
+
+    class FakeReplayService:
+        def run_replay(self, **kwargs):
+            calls.append(kwargs)
+            return {"status": "applied" if kwargs["apply"] else "dry_run", "total_cases": 0}
+
+    monkeypatch.setattr("app.api.eval_routes.EvalReplayService", FakeReplayService)
+
+    missing = client.post("/api/eval/runs", json={"limit": 1}, headers={"X-User-Role": "supervisor"})
+    explicit_false = client.post(
+        "/api/eval/runs",
+        json={"limit": 1, "apply": False},
+        headers={"X-User-Role": "supervisor"},
+    )
+    explicit_true = client.post(
+        "/api/eval/runs",
+        json={"limit": 1, "apply": True},
+        headers={"X-User-Role": "supervisor"},
+    )
+    string_true = client.post(
+        "/api/eval/runs",
+        json={"limit": 1, "apply": "true"},
+        headers={"X-User-Role": "supervisor"},
+    )
+    denied = client.post("/api/eval/runs", json={"limit": 1, "apply": True}, headers={"X-User-Role": "operator"})
+
+    assert missing.status_code == 201
+    assert explicit_false.status_code == 201
+    assert explicit_true.status_code == 201
+    assert string_true.status_code == 201
+    assert denied.status_code == 403
+    assert [call["apply"] for call in calls] == [False, False, True, False]
