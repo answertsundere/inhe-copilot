@@ -19,6 +19,22 @@ from app.services.generic_service_rule_service import unsafe_promise_terms
 
 logger = logging.getLogger(__name__)
 
+
+def _client_model_configured(client: Any, alias: str) -> bool:
+    if hasattr(client, "is_configured"):
+        return bool(client.is_configured(alias))
+    return bool(getattr(client, "api_key", ""))
+
+
+def _chat_completion_alias_or_legacy(client: Any, **kwargs: Any):
+    if hasattr(client, "chat_completion"):
+        return client.chat_completion(**kwargs)
+    legacy_kwargs = dict(kwargs)
+    legacy_kwargs.pop("model_alias", None)
+    legacy_kwargs.pop("node_name", None)
+    legacy_kwargs["model"] = getattr(client, "model", "")
+    return client.client.chat.completions.create(**legacy_kwargs)
+
 _FACT_TOPIC = {
     "pinch_safety": "pinch_safety",
     "safety_small_parts": "small_parts_battery",
@@ -1145,7 +1161,7 @@ def _semantic_llm_audit(
         from app.llm.client import get_llm_client
 
         client = get_llm_client()
-        if not client.api_key:
+        if not _client_model_configured(client, "judge_model"):
             return None
 
         evidence_debug = response.get("evidence_debug") or {}
@@ -1166,8 +1182,10 @@ def _semantic_llm_audit(
                 "unknowns": (evidence_debug.get("unknowns") or [])[:5],
             },
         }
-        result = client.client.chat.completions.create(
-            model=client.model,
+        result = _chat_completion_alias_or_legacy(
+            client,
+            model_alias="judge_model",
+            node_name="final_answer_auditor",
             messages=[
                 {
                     "role": "system",
@@ -1232,7 +1250,7 @@ def _optional_llm_audit(
         from app.llm.client import get_llm_client
 
         client = get_llm_client()
-        if not client.api_key:
+        if not _client_model_configured(client, "judge_model"):
             return None
         payload = {
             "customer_message": customer_message,
@@ -1247,8 +1265,10 @@ def _optional_llm_audit(
                 "或把夹手安全答成电池/小零件/材质等其他主题，则 passed=false。"
             ),
         }
-        result = client.client.chat.completions.create(
-            model=client.model,
+        result = _chat_completion_alias_or_legacy(
+            client,
+            model_alias="judge_model",
+            node_name="final_answer_blocking_judge",
             messages=[
                 {
                     "role": "system",

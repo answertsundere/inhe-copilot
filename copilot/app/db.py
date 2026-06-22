@@ -25,6 +25,7 @@ def _register_models():
     """Import ORM models so Base.metadata is complete before create_all()."""
     import app.models.knowledge_base  # noqa: F401
     import app.models.kb_tables  # noqa: F401
+    import app.models.model_call_log  # noqa: F401
 
 
 def _migrate_add_columns():

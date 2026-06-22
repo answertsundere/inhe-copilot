@@ -1,52 +1,40 @@
-"""
-Embedding 服务 - 使用 OpenAI 兼容接口生成向量
-"""
+"""Embedding service using the central model alias router."""
 
-import json
+from __future__ import annotations
+
 import logging
 
-from app.config import EMBEDDING_API_BASE, EMBEDDING_API_KEY, EMBEDDING_MODEL
+from app.services.model_router_service import resolve_model, resolve_model_api_key
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
-    """Embedding 服务 - OpenAI 兼容 API"""
+    """OpenAI-compatible embedding service."""
 
     @staticmethod
     def get_embeddings(texts: list) -> list:
-        """
-        批量获取文本 embedding 向量
-
-        Args:
-            texts: 文本列表
-
-        Returns:
-            嵌入向量列表，每个元素是 float 列表。失败时返回空列表。
-        """
         if not texts:
             return []
 
-        if not EMBEDDING_API_BASE or not EMBEDDING_API_KEY:
-            logger.warning("Embedding API 未配置 (EMBEDDING_API_BASE/EMBEDDING_API_KEY)，跳过向量生成")
+        resolved = resolve_model("embedding_model")
+        api_key = resolve_model_api_key("embedding_model")
+        if not resolved.get("api_base") or not api_key or not resolved.get("model"):
+            logger.warning("Embedding model is not configured; skip embedding generation")
             return []
 
         try:
             from openai import OpenAI
 
             client = OpenAI(
-                base_url=EMBEDDING_API_BASE,
-                api_key=EMBEDDING_API_KEY,
+                base_url=resolved.get("api_base", ""),
+                api_key=api_key,
             )
-
             response = client.embeddings.create(
-                model=EMBEDDING_MODEL,
+                model=resolved.get("model", ""),
                 input=texts,
             )
-
-            embeddings = [item.embedding for item in response.data]
-            return embeddings
-
-        except Exception as e:
-            logger.error(f"Embedding 调用失败: {e}")
+            return [item.embedding for item in response.data]
+        except Exception as exc:
+            logger.error("Embedding call failed: %s", exc)
             return []

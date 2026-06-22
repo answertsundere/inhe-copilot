@@ -203,7 +203,10 @@ def _semantic_consistency_guard(
 
 def _classify_with_llm(state: dict[str, Any], message: str, intent: str) -> dict[str, Any] | None:
     client = get_llm_client()
-    if not client.api_key:
+    if hasattr(client, "is_configured"):
+        if not client.is_configured("fast_model"):
+            return None
+    elif not getattr(client, "api_key", ""):
         return None
 
     payload = {
@@ -219,16 +222,29 @@ def _classify_with_llm(state: dict[str, Any], message: str, intent: str) -> dict
     }
 
     try:
-        response = client.client.chat.completions.create(
-            model=client.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
-            temperature=0,
-            max_tokens=360,
-            response_format={"type": "json_object"},
-        )
+        if hasattr(client, "chat_completion"):
+            response = client.chat_completion(
+                model_alias="fast_model",
+                node_name="semantic_fact_type_classifier",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                temperature=0,
+                max_tokens=360,
+                response_format={"type": "json_object"},
+            )
+        else:
+            response = client.client.chat.completions.create(
+                model=client.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                temperature=0,
+                max_tokens=360,
+                response_format={"type": "json_object"},
+            )
         raw = response.choices[0].message.content.strip()
         parsed = json.loads(raw)
         return _sanitize_llm_result(parsed)

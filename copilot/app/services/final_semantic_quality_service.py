@@ -266,36 +266,50 @@ def _llm_semantic_fit_check(
         from app.llm.client import get_llm_client
 
         client = get_llm_client()
-        if not client.api_key:
+        if hasattr(client, "is_configured"):
+            if not client.is_configured("judge_model"):
+                return None
+        elif not getattr(client, "api_key", ""):
             return None
 
         payload = _semantic_payload(response, customer_message, copilot_context)
-        result = client.client.chat.completions.create(
-            model=client.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are the final semantic quality judge for a customer-service agent. "
-                        "Judge only whether final_reply can be sent as a coherent answer to customer_message. "
-                        "Use semantic_query and selected_evidence as ground truth. "
-                        "Do not require exact wording. Do not judge style unless it affects answerability. "
-                        "Fail if the reply answers a different fact type, asks for information already provided, "
-                        "turns to human review while direct evidence is available, or claims facts not supported by evidence. "
-                        "Pass if the reply gives a safe handoff because evidence is missing or risk requires review. "
-                        "You are a judge only. Never output a customer reply or rewrite text. "
-                        "Return strict JSON only with this schema: "
-                        "{\"passed\": boolean, \"issues\": string[], \"reason\": string, "
-                        "\"semantic_mismatch\": boolean, \"risk_level\": \"low|medium|high\", "
-                        "\"requires_human_review\": boolean}."
-                    ),
-                },
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
-            temperature=0,
-            max_tokens=240,
-            response_format={"type": "json_object"},
-        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are the final semantic quality judge for a customer-service agent. "
+                    "Judge only whether final_reply can be sent as a coherent answer to customer_message. "
+                    "Use semantic_query and selected_evidence as ground truth. "
+                    "Do not require exact wording. Do not judge style unless it affects answerability. "
+                    "Fail if the reply answers a different fact type, asks for information already provided, "
+                    "turns to human review while direct evidence is available, or claims facts not supported by evidence. "
+                    "Pass if the reply gives a safe handoff because evidence is missing or risk requires review. "
+                    "You are a judge only. Never output a customer reply or rewrite text. "
+                    "Return strict JSON only with this schema: "
+                    "{\"passed\": boolean, \"issues\": string[], \"reason\": string, "
+                    "\"semantic_mismatch\": boolean, \"risk_level\": \"low|medium|high\", "
+                    "\"requires_human_review\": boolean}."
+                ),
+            },
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
+        if hasattr(client, "chat_completion"):
+            result = client.chat_completion(
+                model_alias="judge_model",
+                node_name="final_semantic_quality_judge",
+                messages=messages,
+                temperature=0,
+                max_tokens=240,
+                response_format={"type": "json_object"},
+            )
+        else:
+            result = client.client.chat.completions.create(
+                model=client.model,
+                messages=messages,
+                temperature=0,
+                max_tokens=240,
+                response_format={"type": "json_object"},
+            )
         raw = result.choices[0].message.content
         parsed = json.loads(raw)
         return _normalize_llm_judge_result(parsed)

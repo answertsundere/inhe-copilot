@@ -12,6 +12,7 @@ from typing import Any
 from openai import OpenAI
 
 from app import config
+from app.services.model_router_service import resolve_model, resolve_model_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +85,7 @@ def analyze_customer_images(attachments: list[dict[str, Any]] | None) -> list[di
 
 
 def _vlm_ready() -> bool:
-    return bool(
-        config.COPILOT_VLM_ENABLED
-        and config.COPILOT_VLM_API_BASE
-        and config.COPILOT_VLM_API_KEY
-        and config.COPILOT_VLM_MODEL
-    )
+    return bool(config.COPILOT_VLM_ENABLED and resolve_model("vision_model").get("enabled"))
 
 
 def _extract_image_payload(attachment: dict[str, Any]) -> str:
@@ -114,18 +110,19 @@ def _extract_image_payload(attachment: dict[str, Any]) -> str:
 
 def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict[str, Any]:
     try:
+        resolved = resolve_model("vision_model")
         timeout_seconds = max(
             1,
-            min(config.COPILOT_VLM_TIMEOUT_SECONDS, CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS),
+            min(int(resolved.get("timeout_seconds") or config.COPILOT_VLM_TIMEOUT_SECONDS), CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS),
         )
         client = OpenAI(
-            api_key=config.COPILOT_VLM_API_KEY,
-            base_url=config.COPILOT_VLM_API_BASE,
-            max_retries=0,
+            api_key=resolve_model_api_key("vision_model"),
+            base_url=resolved.get("api_base", ""),
+            max_retries=int(resolved.get("max_retries") or 0),
             timeout=timeout_seconds,
         )
         response = client.chat.completions.create(
-            model=config.COPILOT_VLM_MODEL,
+            model=resolved.get("model", ""),
             messages=[
                 {"role": "system", "content": CUSTOMER_IMAGE_SYSTEM_PROMPT},
                 {
