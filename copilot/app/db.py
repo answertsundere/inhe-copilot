@@ -27,6 +27,7 @@ def _register_models():
     import app.models.kb_tables  # noqa: F401
     import app.models.model_call_log  # noqa: F401
     import app.models.tool_call_log  # noqa: F401
+    import app.models.eval_tables  # noqa: F401
 
 
 def _migrate_add_columns():
