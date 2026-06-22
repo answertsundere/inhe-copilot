@@ -10,6 +10,8 @@ import json
 from typing import Any
 from urllib.parse import urlparse
 
+from app.services.model_pricing_service import estimate_model_cost
+
 _TABLE_READY = False
 
 
@@ -93,11 +95,7 @@ def estimate_cost(provider: str, model: str, prompt_tokens: int, completion_toke
     Unknown provider/model prices are allowed and return zero with
     ``cost_unknown=true``. We do not invent prices.
     """
-    return {
-        "estimated_cost": 0.0,
-        "currency": "USD",
-        "cost_unknown": True,
-    }
+    return estimate_model_cost(provider, model, prompt_tokens, completion_tokens)
 
 
 def _ensure_table() -> None:
@@ -128,6 +126,7 @@ def _sanitize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     blocked = {
         "api_key", "apikey", "authorization", "access_token", "token", "secret", "app_secret",
         "base64", "image_b64", "data_url", "image_url", "url", "asset_url", "media_url",
+        "prompt", "messages", "message", "user_message", "customer_message", "input", "text",
     }
     for key, value in (metadata or {}).items():
         key_text = str(key)

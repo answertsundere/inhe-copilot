@@ -44,6 +44,10 @@ def test_record_model_call_sanitizes_key_and_url(monkeypatch):
         status="success",
         metadata={
             "api_key": "secret-key",
+            "authorization": "Bearer secret-token",
+            "prompt": "private prompt",
+            "messages": [{"role": "user", "content": "private text"}],
+            "customer_message": "private customer text",
             "base64": "data:image/png;base64,SECRET",
             "image_url": "https://oss.example/private.png?signature=SECRET",
             "safe": "ok",
@@ -62,9 +66,15 @@ def test_record_model_call_sanitizes_key_and_url(monkeypatch):
         metadata = json.loads(row.metadata_json)
         assert metadata["safe"] == "ok"
         assert "api_key" not in metadata
+        assert "authorization" not in metadata
+        assert "prompt" not in metadata
+        assert "messages" not in metadata
+        assert "customer_message" not in metadata
         assert "base64" not in metadata
         assert "image_url" not in metadata
         assert "secret-key" not in row.metadata_json
+        assert "private prompt" not in row.metadata_json
+        assert "private customer text" not in row.metadata_json
         assert "signature=SECRET" not in row.metadata_json
     finally:
         db.close()

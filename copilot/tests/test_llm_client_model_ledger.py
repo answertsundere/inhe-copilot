@@ -150,6 +150,7 @@ def test_failed_chat_completion_records_error(monkeypatch):
             messages=[{"role": "user", "content": "x"}],
             model_alias="fast_model",
             node_name="test_fast",
+            allow_fallback=False,
         )
         assert False, "expected provider error"
     except RuntimeError:

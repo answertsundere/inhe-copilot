@@ -71,38 +71,65 @@ class LLMClient:
         temperature: float = 0.3,
         max_tokens: int = 300,
         response_format: dict | None = None,
+        allow_fallback: bool = True,
+        max_fallback_attempts: int = 1,
         **kwargs,
     ):
         alias = model_alias or self.model_alias or "strong_model"
-        resolved = resolve_model(alias)
-        api_key = resolve_model_api_key(alias)
-        api_base = str(resolved.get("api_base") or self.api_base or "")
-        model = str(resolved.get("model") or self.model or "")
-        provider = str(resolved.get("provider") or self.provider or "")
-        fallback_available = bool(resolved.get("fallback_aliases"))
-        started = time.monotonic()
+        attempt_aliases = _attempt_aliases(alias, allow_fallback, max_fallback_attempts)
+        attempts: list[dict] = []
+        last_exc: Exception | None = None
 
-        if not api_key:
-            latency_ms = int((time.monotonic() - started) * 1000)
-            ledger = record_model_call(
-                trace_id=trace_id,
-                conversation_id=conversation_id,
-                request_id=request_id,
-                node_name=node_name,
-                alias=alias,
-                provider=provider,
-                model=model,
-                api_base=api_base,
-                latency_ms=latency_ms,
-                status="error",
-                error_type="UNCONFIGURED",
-                error_message=f"missing {resolved.get('api_key_env') or 'api key'}",
-                metadata={"fallback_available": fallback_available},
-            )
-            self.last_model_call_trace = _call_trace(resolved, ledger, latency_ms, fallback_available)
-            raise RuntimeError(f"Model alias {alias} is not configured")
+        for attempt_index, attempt_alias in enumerate(attempt_aliases):
+            resolved = resolve_model(attempt_alias)
+            api_key = resolve_model_api_key(attempt_alias)
+            api_base = str(resolved.get("api_base") or self.api_base or "")
+            model = str(resolved.get("model") or self.model or "")
+            provider = str(resolved.get("provider") or self.provider or "")
+            fallback_available = len(attempt_aliases) > 1
+            fallback_used = attempt_alias != alias
+            started = time.monotonic()
 
-        try:
+            metadata = {
+                "parent_alias": alias,
+                "fallback_of": alias if fallback_used else "",
+                "attempt_index": attempt_index,
+                "fallback_used": fallback_used,
+                "fallback_available": fallback_available,
+            }
+
+            if not api_key:
+                latency_ms = int((time.monotonic() - started) * 1000)
+                ledger = record_model_call(
+                    trace_id=trace_id,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    node_name=node_name,
+                    alias=attempt_alias,
+                    provider=provider,
+                    model=model,
+                    api_base=api_base,
+                    latency_ms=latency_ms,
+                    status="error",
+                    error_type="UNCONFIGURED",
+                    error_message=f"missing {resolved.get('api_key_env') or 'api key'}",
+                    metadata=metadata,
+                )
+                attempt_trace = _attempt_trace(resolved, ledger, latency_ms, "error")
+                attempt_trace["error_type"] = "UNCONFIGURED"
+                attempts.append(attempt_trace)
+                self.last_model_call_trace = _call_trace(
+                    primary_alias=alias,
+                    final_resolved=resolved,
+                    final_ledger=ledger,
+                    final_latency_ms=latency_ms,
+                    fallback_available=fallback_available,
+                    fallback_used=fallback_used,
+                    attempts=attempts,
+                )
+                last_exc = RuntimeError(f"Model alias {attempt_alias} is not configured")
+                continue
+
             request = {
                 "model": model,
                 "messages": messages,
@@ -118,49 +145,73 @@ class LLMClient:
                 max_retries=int(resolved.get("max_retries") or self.max_retries),
                 timeout=int(resolved.get("timeout_seconds") or self.timeout_seconds),
             )
-            response = call_client.chat.completions.create(**request)
-            latency_ms = int((time.monotonic() - started) * 1000)
-            usage = _usage_dict(getattr(response, "usage", None))
-            ledger = record_model_call(
-                trace_id=trace_id,
-                conversation_id=conversation_id,
-                request_id=request_id,
-                node_name=node_name,
-                alias=alias,
-                provider=provider,
-                model=model,
-                api_base=api_base,
-                prompt_tokens=usage["prompt_tokens"],
-                completion_tokens=usage["completion_tokens"],
-                total_tokens=usage["total_tokens"],
-                latency_ms=latency_ms,
-                status="success",
-                metadata={
-                    "fallback_available": fallback_available,
-                    "usage_missing": not bool(getattr(response, "usage", None)),
-                },
-            )
-            self.last_model_call_trace = _call_trace(resolved, ledger, latency_ms, fallback_available, usage)
-            return response
-        except Exception as exc:
-            latency_ms = int((time.monotonic() - started) * 1000)
-            ledger = record_model_call(
-                trace_id=trace_id,
-                conversation_id=conversation_id,
-                request_id=request_id,
-                node_name=node_name,
-                alias=alias,
-                provider=provider,
-                model=model,
-                api_base=api_base,
-                latency_ms=latency_ms,
-                status="error",
-                error_type=type(exc).__name__,
-                error_message=str(exc),
-                metadata={"fallback_available": fallback_available},
-            )
-            self.last_model_call_trace = _call_trace(resolved, ledger, latency_ms, fallback_available)
-            raise
+            try:
+                response = call_client.chat.completions.create(**request)
+                latency_ms = int((time.monotonic() - started) * 1000)
+                usage = _usage_dict(getattr(response, "usage", None))
+                ledger = record_model_call(
+                    trace_id=trace_id,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    node_name=node_name,
+                    alias=attempt_alias,
+                    provider=provider,
+                    model=model,
+                    api_base=api_base,
+                    prompt_tokens=usage["prompt_tokens"],
+                    completion_tokens=usage["completion_tokens"],
+                    total_tokens=usage["total_tokens"],
+                    latency_ms=latency_ms,
+                    status="success",
+                    metadata={**metadata, "usage_missing": not bool(getattr(response, "usage", None))},
+                )
+                attempts.append(_attempt_trace(resolved, ledger, latency_ms, "success", usage))
+                self.last_model_call_trace = _call_trace(
+                    primary_alias=alias,
+                    final_resolved=resolved,
+                    final_ledger=ledger,
+                    final_latency_ms=latency_ms,
+                    fallback_available=fallback_available,
+                    fallback_used=fallback_used,
+                    usage=usage,
+                    attempts=attempts,
+                )
+                return response
+            except Exception as exc:
+                latency_ms = int((time.monotonic() - started) * 1000)
+                ledger = record_model_call(
+                    trace_id=trace_id,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    node_name=node_name,
+                    alias=attempt_alias,
+                    provider=provider,
+                    model=model,
+                    api_base=api_base,
+                    latency_ms=latency_ms,
+                    status="error",
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    metadata=metadata,
+                )
+                attempt_trace = _attempt_trace(resolved, ledger, latency_ms, "error")
+                attempt_trace["error_type"] = type(exc).__name__
+                attempts.append(attempt_trace)
+                self.last_model_call_trace = _call_trace(
+                    primary_alias=alias,
+                    final_resolved=resolved,
+                    final_ledger=ledger,
+                    final_latency_ms=latency_ms,
+                    fallback_available=fallback_available,
+                    fallback_used=fallback_used,
+                    attempts=attempts,
+                )
+                last_exc = exc
+                continue
+
+        if last_exc:
+            raise last_exc
+        raise RuntimeError(f"Model alias {alias} is not configured")
 
     def chat(
         self,
@@ -277,11 +328,28 @@ def _usage_dict(usage) -> dict:
     }
 
 
-def _call_trace(
+def _attempt_aliases(alias: str, allow_fallback: bool, max_fallback_attempts: int) -> list[str]:
+    resolved = resolve_model(alias)
+    aliases = [str(resolved.get("alias") or alias)]
+    if not allow_fallback:
+        return aliases
+    remaining = max(0, int(max_fallback_attempts or 0))
+    for fallback_alias in resolved.get("fallback_aliases") or []:
+        fallback_alias = str(fallback_alias or "").strip()
+        if not fallback_alias or fallback_alias in aliases:
+            continue
+        aliases.append(fallback_alias)
+        remaining -= 1
+        if remaining <= 0:
+            break
+    return aliases
+
+
+def _attempt_trace(
     resolved: dict,
     ledger: dict,
     latency_ms: int,
-    fallback_available: bool,
+    status: str,
     usage: dict | None = None,
 ) -> dict:
     usage = usage or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -294,8 +362,39 @@ def _call_trace(
         "currency": ledger.get("currency", "USD"),
         "cost_unknown": bool(ledger.get("cost_unknown")),
         "latency_ms": latency_ms,
-        "fallback_available": fallback_available,
+        "status": status,
+        "ledger_id": ledger.get("ledger_id"),
         "ledger_recorded": bool(ledger.get("ledger_recorded")),
+    }
+
+
+def _call_trace(
+    *,
+    primary_alias: str,
+    final_resolved: dict,
+    final_ledger: dict,
+    final_latency_ms: int,
+    fallback_available: bool,
+    fallback_used: bool,
+    usage: dict | None = None,
+    attempts: list[dict] | None = None,
+) -> dict:
+    usage = usage or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    return {
+        "primary_alias": primary_alias,
+        "final_alias": final_resolved.get("alias", ""),
+        "model_alias": final_resolved.get("alias", ""),
+        "provider": final_resolved.get("provider", ""),
+        "model_name": final_resolved.get("model", ""),
+        "token_usage": usage,
+        "estimated_cost": final_ledger.get("estimated_cost", 0.0),
+        "currency": final_ledger.get("currency", "USD"),
+        "cost_unknown": bool(final_ledger.get("cost_unknown")),
+        "latency_ms": final_latency_ms,
+        "fallback_available": fallback_available,
+        "fallback_used": fallback_used,
+        "attempts": attempts or [],
+        "ledger_recorded": bool(final_ledger.get("ledger_recorded")),
     }
 
 
