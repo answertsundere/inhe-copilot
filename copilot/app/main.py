@@ -605,6 +605,7 @@ def create_app():
     from app.api.training_sample_routes import training_sample_bp
     from app.api.model_ops_routes import model_ops_bp
     from app.api.eval_routes import eval_bp
+    from app.api.tool_ops_routes import tool_ops_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(analyze_bp)
@@ -627,6 +628,7 @@ def create_app():
     app.register_blueprint(training_sample_bp)
     app.register_blueprint(model_ops_bp)
     app.register_blueprint(eval_bp)
+    app.register_blueprint(tool_ops_bp)
 
     # 让 /api/kb/knowledge/* 兼容 /api/knowledge/* 路由
     _clone_routes_under_prefix(app, "/api/knowledge/", "/api/kb/knowledge/")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
+from app.api.admin_auth import require_supervisor
 from app.models.eval_tables import EvalCase, EvalFailure, EvalRepairTask, EvalRun
 from app.services.eval_repair_task_service import task_to_dict
 from app.services.eval_replay_service import (
@@ -20,6 +21,9 @@ eval_bp = Blueprint("eval", __name__, url_prefix="/api/eval")
 
 @eval_bp.route("/cases", methods=["GET"])
 def api_eval_cases():
+    denied = require_supervisor()
+    if denied:
+        return denied
     ensure_eval_tables()
     limit = _limit(request.args.get("limit"), default=50)
     category = str(request.args.get("category") or "").strip()
@@ -39,6 +43,9 @@ def api_eval_cases():
 
 @eval_bp.route("/cases", methods=["POST"])
 def api_eval_create_case():
+    denied = require_supervisor()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     if not (data.get("customer_message") or data.get("customer_message_sanitized") or data.get("message")):
         return jsonify({"error": "customer_message_required"}), 400
@@ -48,6 +55,9 @@ def api_eval_create_case():
 
 @eval_bp.route("/runs", methods=["POST"])
 def api_eval_create_run():
+    denied = require_supervisor()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     limit = _limit(data.get("limit"), default=30)
     result = EvalReplayService().run_replay(
@@ -62,6 +72,9 @@ def api_eval_create_run():
 
 @eval_bp.route("/runs", methods=["GET"])
 def api_eval_runs():
+    denied = require_supervisor()
+    if denied:
+        return denied
     ensure_eval_tables()
     limit = _limit(request.args.get("limit"), default=50)
     db = _session()
@@ -74,6 +87,9 @@ def api_eval_runs():
 
 @eval_bp.route("/runs/<run_uid>", methods=["GET"])
 def api_eval_run_detail(run_uid: str):
+    denied = require_supervisor()
+    if denied:
+        return denied
     detail = get_run_detail(run_uid)
     if not detail:
         return jsonify({"error": "not_found"}), 404
@@ -82,6 +98,9 @@ def api_eval_run_detail(run_uid: str):
 
 @eval_bp.route("/failures", methods=["GET"])
 def api_eval_failures():
+    denied = require_supervisor()
+    if denied:
+        return denied
     ensure_eval_tables()
     limit = _limit(request.args.get("limit"), default=50)
     failure_type = str(request.args.get("failure_type") or "").strip()
@@ -98,6 +117,9 @@ def api_eval_failures():
 
 @eval_bp.route("/repair-tasks", methods=["GET"])
 def api_eval_repair_tasks():
+    denied = require_supervisor()
+    if denied:
+        return denied
     ensure_eval_tables()
     limit = _limit(request.args.get("limit"), default=50)
     db = _session()

@@ -8,6 +8,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
+from app.api.admin_auth import require_supervisor
 from app.db import SessionLocal
 from app.models.model_call_log import ModelCallLog
 from app.services.model_call_ledger_service import _sanitize_metadata
@@ -18,6 +19,9 @@ model_ops_bp = Blueprint("model_ops", __name__, url_prefix="/api/model-ops")
 
 @model_ops_bp.route("/calls")
 def api_model_ops_calls():
+    denied = require_supervisor()
+    if denied:
+        return denied
     limit = _limit(request.args.get("limit"))
     db = SessionLocal()
     try:
@@ -33,6 +37,9 @@ def api_model_ops_calls():
 
 @model_ops_bp.route("/summary")
 def api_model_ops_summary():
+    denied = require_supervisor()
+    if denied:
+        return denied
     db = SessionLocal()
     try:
         query = _filtered_query(db.query(ModelCallLog))

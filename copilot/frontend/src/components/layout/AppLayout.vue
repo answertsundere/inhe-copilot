@@ -15,6 +15,7 @@ import {
   Picture,
   Back,
   Collection,
+  Monitor,
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -45,6 +46,7 @@ const menuItems = [
   { index: '/service-rules', icon: Notebook, label: '服务规则' },
   { index: '/ai-updates', icon: DataAnalysis, label: 'AI 更新' },
   { index: '/traces', icon: Connection, label: '测试记录' },
+  { index: '/ops', icon: Monitor, label: '运营监控' },
 ]
 
 const bottomMenuItems = [

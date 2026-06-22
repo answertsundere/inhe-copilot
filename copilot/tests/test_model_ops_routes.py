@@ -80,7 +80,10 @@ def test_calls_api_returns_safe_metadata_and_filters(monkeypatch):
     client = _client(monkeypatch)
     _seed_calls()
 
-    resp = client.get("/api/model-ops/calls?alias=fast_model&status=success&node_name=node_a")
+    resp = client.get(
+        "/api/model-ops/calls?alias=fast_model&status=success&node_name=node_a",
+        headers={"X-User-Role": "supervisor"},
+    )
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -105,7 +108,7 @@ def test_summary_api_aggregates(monkeypatch):
     client = _client(monkeypatch)
     _seed_calls()
 
-    resp = client.get("/api/model-ops/summary")
+    resp = client.get("/api/model-ops/summary", headers={"X-User-Role": "supervisor"})
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -125,7 +128,7 @@ def test_limit_is_capped_and_status_filter_works(monkeypatch):
     client = _client(monkeypatch)
     _seed_calls()
 
-    resp = client.get("/api/model-ops/calls?limit=999&status=error")
+    resp = client.get("/api/model-ops/calls?limit=999&status=error", headers={"X-User-Role": "supervisor"})
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -138,7 +141,10 @@ def test_trace_and_conversation_filters_work(monkeypatch):
     client = _client(monkeypatch)
     _seed_calls()
 
-    resp = client.get("/api/model-ops/calls?trace_id=trace-2&conversation_id=conv-2")
+    resp = client.get(
+        "/api/model-ops/calls?trace_id=trace-2&conversation_id=conv-2",
+        headers={"X-User-Role": "supervisor"},
+    )
     assert resp.status_code == 200
     data = resp.get_json()
 

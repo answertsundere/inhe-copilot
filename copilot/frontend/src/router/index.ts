@@ -69,6 +69,12 @@ const router = createRouter({
           meta: { title: '测试记录' },
         },
         {
+          path: 'ops',
+          name: 'ops',
+          component: () => import('../views/OpsDashboardPage.vue'),
+          meta: { title: '运营监控' },
+        },
+        {
           path: 'rag',
           name: 'rag',
           component: () => import('../views/RAGKnowledgePage.vue'),
