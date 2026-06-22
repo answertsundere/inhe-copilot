@@ -12,6 +12,7 @@ from typing import Any
 from openai import OpenAI
 
 from app import config
+from app.services.model_call_ledger_service import record_model_call
 from app.services.model_router_service import resolve_model, resolve_model_api_key
 
 logger = logging.getLogger(__name__)
@@ -109,8 +110,9 @@ def _extract_image_payload(attachment: dict[str, Any]) -> str:
 
 
 def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict[str, Any]:
+    started = time.monotonic()
+    resolved = resolve_model("vision_model")
     try:
-        resolved = resolve_model("vision_model")
         timeout_seconds = max(
             1,
             min(int(resolved.get("timeout_seconds") or config.COPILOT_VLM_TIMEOUT_SECONDS), CUSTOMER_IMAGE_REQUEST_BUDGET_SECONDS),
@@ -138,11 +140,42 @@ def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict
             timeout=timeout_seconds,
             response_format={"type": "json_object"},
         )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        usage = _usage_dict(getattr(response, "usage", None))
+        record_model_call(
+            node_name="customer_image_vlm",
+            alias="vision_model",
+            provider=str(resolved.get("provider") or ""),
+            model=str(resolved.get("model") or ""),
+            api_base=str(resolved.get("api_base") or ""),
+            prompt_tokens=usage["prompt_tokens"],
+            completion_tokens=usage["completion_tokens"],
+            total_tokens=usage["total_tokens"],
+            latency_ms=latency_ms,
+            status="success",
+            metadata={
+                **_safe_attachment_metadata(attachment),
+                "usage_missing": not bool(getattr(response, "usage", None)),
+                "fallback_used": False,
+            },
+        )
         raw = response.choices[0].message.content or ""
         parsed = _parse_json(raw)
         return _normalize_vlm_result(parsed, attachment)
     except Exception as exc:
         logger.warning("customer image VLM failed: %s", exc)
+        record_model_call(
+            node_name="customer_image_vlm",
+            alias="vision_model",
+            provider=str(resolved.get("provider") or ""),
+            model=str(resolved.get("model") or ""),
+            api_base=str(resolved.get("api_base") or ""),
+            latency_ms=int((time.monotonic() - started) * 1000),
+            status="error",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+            metadata={**_safe_attachment_metadata(attachment), "fallback_used": True},
+        )
         is_timeout = "timeout" in exc.__class__.__name__.lower() or "timed out" in str(exc).lower()
         result = _metadata_only_result(
             attachment,
@@ -153,6 +186,30 @@ def _call_customer_image_vlm(image_url: str, attachment: dict[str, Any]) -> dict
             result["fallback_to_text"] = True
         result["error"] = str(exc)
         return result
+
+
+def _usage_dict(usage: Any) -> dict[str, int]:
+    if not usage:
+        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion = int(getattr(usage, "completion_tokens", 0) or 0)
+    total = int(getattr(usage, "total_tokens", prompt + completion) or 0)
+    return {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total}
+
+
+def _safe_attachment_metadata(attachment: dict[str, Any]) -> dict[str, Any]:
+    image_source_type = "none"
+    if attachment.get("data_url"):
+        image_source_type = "data_url"
+    elif attachment.get("image_url") or attachment.get("url"):
+        image_source_type = "remote_url"
+    elif attachment.get("base64") or attachment.get("image_b64"):
+        image_source_type = "base64"
+    return {
+        "image_source_type": image_source_type,
+        "attachment_type": str(attachment.get("kind") or attachment.get("type") or ""),
+        "mime_type": str(attachment.get("mime_type") or attachment.get("mime") or ""),
+    }
 
 
 def _call_with_hard_deadline(image_url: str, attachment: dict[str, Any], timeout_seconds: float | None = None) -> dict[str, Any]:

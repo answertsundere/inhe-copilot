@@ -99,6 +99,37 @@ def test_successful_chat_completion_records_usage(monkeypatch):
         db.close()
 
 
+def test_final_polish_style_node_name_is_recorded(monkeypatch):
+    session_factory = _isolated_db(monkeypatch)
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("COPILOT_STRONG_MODEL_NAME", "strong-test")
+    monkeypatch.setenv("COPILOT_STRONG_MODEL_API_BASE", "https://strong.example/v1")
+    monkeypatch.setenv("COPILOT_STRONG_MODEL_API_KEY", "strong-key")
+    _FakeOpenAI.next_response = _response_with_usage()
+    _FakeOpenAI.next_exc = None
+    _FakeOpenAI.instances = []
+    monkeypatch.setattr("app.llm.client.OpenAI", _FakeOpenAI)
+
+    from app.llm.client import LLMClient
+    from app.models.model_call_log import ModelCallLog
+
+    client = LLMClient()
+    client.chat_completion(
+        messages=[{"role": "user", "content": "polish"}],
+        model_alias="strong_model",
+        node_name="final_response_orchestrator_polish",
+    )
+
+    db = session_factory()
+    try:
+        row = db.query(ModelCallLog).one()
+        assert row.alias == "strong_model"
+        assert row.node_name == "final_response_orchestrator_polish"
+        assert row.status == "success"
+    finally:
+        db.close()
+
+
 def test_failed_chat_completion_records_error(monkeypatch):
     session_factory = _isolated_db(monkeypatch)
     _clear_env(monkeypatch)

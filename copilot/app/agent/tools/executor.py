@@ -484,8 +484,9 @@ def _try_llm_tool_selection(
 - 投诉选 sop_lookup_tool
 """
 
-        response = llm_client.client.chat.completions.create(
-            model=llm_client.model,
+        response = llm_client.chat_completion(
+            model_alias="fast_model",
+            node_name="agent_tool_selector",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps({

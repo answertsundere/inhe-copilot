@@ -125,7 +125,10 @@ def _api_base_host(api_base: str) -> str:
 
 def _sanitize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
-    blocked = {"api_key", "apikey", "authorization", "access_token", "token", "secret", "app_secret"}
+    blocked = {
+        "api_key", "apikey", "authorization", "access_token", "token", "secret", "app_secret",
+        "base64", "image_b64", "data_url", "image_url", "url", "asset_url", "media_url",
+    }
     for key, value in (metadata or {}).items():
         key_text = str(key)
         if key_text.lower() in blocked:

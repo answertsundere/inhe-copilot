@@ -128,8 +128,9 @@ def _llm_analyze(state: dict) -> dict:
         "conversation_context": state.get("conversation_context_summary", {}),
     }
     try:
-        response = client.client.chat.completions.create(
-            model=client.model,
+        response = client.chat_completion(
+            model_alias="fast_model",
+            node_name="customer_state_analyzer",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},

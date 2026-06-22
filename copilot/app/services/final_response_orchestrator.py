@@ -254,6 +254,25 @@ def _post_polish_redline_issues(reply: str) -> list[str]:
     return issues
 
 
+def _client_model_configured(client: Any, alias: str) -> bool:
+    if hasattr(client, "is_configured"):
+        return bool(client.is_configured(alias))
+    return bool(getattr(client, "api_key", ""))
+
+
+def _chat_completion_alias_or_legacy(client: Any, **kwargs: Any):
+    if hasattr(client, "chat_completion"):
+        kwargs.pop("model", None)
+        return client.chat_completion(**kwargs)
+    kwargs.pop("model_alias", None)
+    kwargs.pop("node_name", None)
+    kwargs.pop("trace_id", None)
+    kwargs.pop("conversation_id", None)
+    kwargs.pop("request_id", None)
+    kwargs["model"] = getattr(client, "model", "")
+    return client.client.chat.completions.create(**kwargs)
+
+
 def _optional_llm_language_polish(
     response: dict[str, Any],
     *,
@@ -269,7 +288,7 @@ def _optional_llm_language_polish(
         from app.llm.client import get_llm_client
 
         client = get_llm_client()
-        if not client.api_key:
+        if not _client_model_configured(client, "strong_model"):
             return None
 
         evidence_debug = response.get("evidence_debug") or {}
@@ -290,7 +309,13 @@ def _optional_llm_language_polish(
             "reply_blocks": response.get("reply_blocks", []),
             "recommended_assets": response.get("recommended_assets", []),
         }
-        result = client.client.chat.completions.create(
+        result = _chat_completion_alias_or_legacy(
+            client,
+            model_alias="strong_model",
+            node_name="final_response_orchestrator_polish",
+            trace_id=str(response.get("trace_id") or ""),
+            conversation_id=str(response.get("conversation_id") or ""),
+            request_id=str(response.get("request_id") or ""),
             model=client.model,
             messages=[
                 {

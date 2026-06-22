@@ -149,10 +149,10 @@ def api_update_llm_config():
 @config_bp.route("/api/config/llm-test")
 def api_llm_test():
     """Test the current LLM connection with a tiny request."""
-    from app.config import LLM_API_BASE, LLM_API_KEY, LLM_MODEL
     from app.llm.client import LLMClient
 
-    if not LLM_API_KEY:
+    client = LLMClient()
+    if not client.is_configured("strong_model"):
         return jsonify({
             "ok": False,
             "mode": "zero_config",
@@ -163,9 +163,9 @@ def api_llm_test():
 
     t0 = time.time()
     try:
-        client = LLMClient()
-        response = client.client.chat.completions.create(
-            model=LLM_MODEL,
+        response = client.chat_completion(
+            model_alias="strong_model",
+            node_name="config_test_llm",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "Hi, just testing connectivity. Reply with 'OK' only."},
@@ -180,8 +180,8 @@ def api_llm_test():
             "mode": "ai",
             "message": "LLM 连接正常",
             "latency_ms": latency,
-            "model": LLM_MODEL,
-            "api_base": LLM_API_BASE,
+            "model": client.last_model_call_trace.get("model_name") or client.model,
+            "api_base": client.api_base,
             "test_response": raw,
         })
     except Exception as e:
@@ -191,6 +191,6 @@ def api_llm_test():
             "mode": "ai_error",
             "message": f"LLM 连接失败: {str(e)}",
             "latency_ms": latency,
-            "model": LLM_MODEL,
-            "api_base": LLM_API_BASE,
+            "model": client.last_model_call_trace.get("model_name") or client.model,
+            "api_base": client.api_base,
         }), 502

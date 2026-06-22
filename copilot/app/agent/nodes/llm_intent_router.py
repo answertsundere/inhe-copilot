@@ -165,8 +165,9 @@ def llm_intent_router(state: dict) -> dict:
 
     try:
         _metrics_increment("llm_call_count")
-        response = llm_client.client.chat.completions.create(
-            model=llm_client.model,
+        response = llm_client.chat_completion(
+            model_alias="fast_model",
+            node_name="llm_intent_router",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},

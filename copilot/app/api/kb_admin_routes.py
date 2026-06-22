@@ -13,6 +13,18 @@ from sqlalchemy import func, Integer
 kb_admin_bp = Blueprint("kb_admin", __name__, url_prefix="/api/kb")
 
 
+def _chat_completion_alias_or_legacy(client, *, node_name: str, **kwargs):
+    if hasattr(client, "chat_completion"):
+        kwargs.pop("model", None)
+        return client.chat_completion(
+            model_alias="strong_model",
+            node_name=node_name,
+            **kwargs,
+        )
+    kwargs["model"] = getattr(client, "model", "")
+    return client.client.chat.completions.create(**kwargs)
+
+
 # ============ 权限检查 ============
 
 def _get_user_info():
@@ -3110,7 +3122,9 @@ def api_ai_optimize_tone():
             f"请将以下客服回复优化为{tone_desc}的语气，保持原意不变：\n\n{answer}"
         )
 
-        response = client.client.chat.completions.create(
+        response = _chat_completion_alias_or_legacy(
+            client,
+            node_name="kb_admin_optimize_answer",
             model=client.model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -3148,7 +3162,9 @@ def api_ai_generate_variants():
         system_prompt = f"你是一个客服对话数据增强专家。生成 {count} 种不同的口语化问法变体。以 JSON 数组格式返回，不要其他内容。"
         user_message = f"请为以下标准问法生成 {count} 种口语化变体：\n\n{question}"
 
-        response = client.client.chat.completions.create(
+        response = _chat_completion_alias_or_legacy(
+            client,
+            node_name="kb_admin_generate_variants",
             model=client.model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -3202,7 +3218,9 @@ def api_ai_check_violations():
         )
         user_message = f"请检查以下客服回复是否存在违规：\n\n{answer}"
 
-        response = client.client.chat.completions.create(
+        response = _chat_completion_alias_or_legacy(
+            client,
+            node_name="kb_admin_check_violations",
             model=client.model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -3252,7 +3270,9 @@ def api_ai_suggest_keywords():
         )
         user_message = f"问题：{question}\n\n回答：{answer}\n\n请推荐检索关键词。"
 
-        response = client.client.chat.completions.create(
+        response = _chat_completion_alias_or_legacy(
+            client,
+            node_name="kb_admin_suggest_keywords",
             model=client.model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -3311,7 +3331,9 @@ def api_ai_generate_versions():
             f"原始回复：{answer}"
         )
 
-        response = client.client.chat.completions.create(
+        response = _chat_completion_alias_or_legacy(
+            client,
+            node_name="kb_admin_generate_versions",
             model=client.model,
             messages=[
                 {"role": "system", "content": system_prompt},
