@@ -9,9 +9,43 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 eval_bp = Blueprint("eval", __name__)
 
 
+REVIEW_DECISION_FIX_AREAS = {
+    "correct": "",
+    "incorrect": "manual_triage",
+    "needs_knowledge": "knowledge_rag",
+    "needs_rule": "agent_rules",
+    "needs_media": "media_pipeline",
+    "needs_human_policy": "human_policy_risk_boundary",
+}
+
+
 def _db():
     from app.db import SessionLocal
     return SessionLocal()
+
+
+def _count_by(rows, attr: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        key = str(getattr(row, attr, "") or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _build_run_summary(run, traces, failures, reviews) -> dict:
+    total_turns = len(traces) or int(getattr(run, "total_turns", 0) or 0)
+    passed_turns = sum(1 for row in traces if row.passed)
+    if not traces:
+        passed_turns = int(getattr(run, "passed_turns", 0) or 0)
+    latency_values = [int(row.latency_ms or 0) for row in traces if row.latency_ms is not None]
+    avg_latency_ms = round(sum(latency_values) / len(latency_values), 2) if latency_values else 0
+    return {
+        "failure_counts_by_type": _count_by(failures, "failure_type"),
+        "review_counts_by_decision": _count_by(reviews, "decision"),
+        "avg_latency_ms": avg_latency_ms,
+        "requires_review_count": sum(1 for row in traces if row.requires_human_review),
+        "pass_rate": round(passed_turns / total_turns, 4) if total_turns else 0,
+    }
 
 
 @eval_bp.route("/api/eval/real-conversation/runs", methods=["GET"])
@@ -39,7 +73,7 @@ def list_real_conversation_runs():
 @eval_bp.route("/api/kb/eval/real-conversation/runs/<run_uid>", methods=["GET"])
 @require_supervisor
 def get_real_conversation_run(run_uid):
-    from app.models.eval_tables import EvalFailure, EvalRun, EvalTrace
+    from app.models.eval_tables import EvalFailure, EvalReview, EvalRun, EvalTrace
 
     db = _db()
     try:
@@ -58,10 +92,18 @@ def get_real_conversation_run(run_uid):
             .order_by(EvalFailure.id.asc())
             .all()
         )
+        reviews = (
+            db.query(EvalReview)
+            .filter(EvalReview.run_uid == run_uid)
+            .order_by(EvalReview.id.asc())
+            .all()
+        )
         return jsonify(sanitize_obj({
             "run": run.to_dict(),
             "turns": [row.to_dict() for row in traces],
             "failures": [row.to_dict() for row in failures],
+            "reviews": [row.to_dict() for row in reviews],
+            "summary": _build_run_summary(run, traces, failures, reviews),
         }))
     finally:
         db.close()
@@ -110,7 +152,7 @@ def create_real_conversation_review():
     case_uid = sanitize_text(data.get("case_uid"))
     turn_uid = sanitize_text(data.get("turn_uid"))
     decision = sanitize_text(data.get("decision"))
-    if not run_uid or not case_uid or not turn_uid or decision not in {"correct", "incorrect", "needs_review"}:
+    if not run_uid or not case_uid or not turn_uid or decision not in REVIEW_DECISION_FIX_AREAS:
         return jsonify({"error": "invalid review payload"}), 400
 
     db = _db()
@@ -121,7 +163,8 @@ def create_real_conversation_review():
             turn_uid=turn_uid,
             decision=decision,
             reason=sanitize_text(data.get("reason")),
-            reviewer=current_user_name(),
+            suggested_fix_area=REVIEW_DECISION_FIX_AREAS[decision],
+            reviewer=sanitize_text(current_user_name()),
         )
         row.set_metadata(sanitize_obj(data.get("metadata") or {}))
         db.add(row)

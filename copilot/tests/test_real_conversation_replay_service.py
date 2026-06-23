@@ -122,6 +122,11 @@ def test_replay_records_failure_when_agent_requires_review(monkeypatch):
         labels = [row.failure_type for row in failures]
         assert "needs_human_review" in labels
         assert "rag_miss" in labels
+        by_type = {row.failure_type: row for row in failures}
+        assert by_type["needs_human_review"].suggested_fix_area == "human_policy_risk_boundary"
+        assert by_type["rag_miss"].suggested_fix_area == "knowledge_rag"
+        assert by_type["rag_miss"].suggested_owner == "knowledge_ops"
+        assert by_type["rag_miss"].explanation
     finally:
         db.close()
 
@@ -140,3 +145,7 @@ def test_failure_classifier_covers_audit_policy_and_product_identity():
     assert "semantic_mismatch" in labels
     assert "tool_policy_blocked" in labels
     assert "no_product_identified" in labels
+    by_type = {item["failure_type"]: item for item in failures}
+    assert by_type["semantic_mismatch"]["suggested_fix_area"] == "final_audit_semantic_compiler"
+    assert by_type["tool_policy_blocked"]["suggested_owner"] == "agent_engineering"
+    assert by_type["no_product_identified"]["explanation"]

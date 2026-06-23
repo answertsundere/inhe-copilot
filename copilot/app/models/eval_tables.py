@@ -274,6 +274,9 @@ class EvalFailure(Base):
     turn_uid = Column(String(64), nullable=False, index=True)
     failure_type = Column(String(64), nullable=False, index=True)
     severity = Column(String(16), nullable=False, default="medium")
+    suggested_fix_area = Column(String(64), nullable=False, default="")
+    suggested_owner = Column(String(64), nullable=False, default="")
+    explanation = Column(Text, nullable=False, default="")
     message = Column(Text, nullable=False, default="")
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -292,6 +295,9 @@ class EvalFailure(Base):
             "turn_uid": self.turn_uid,
             "failure_type": self.failure_type,
             "severity": self.severity,
+            "suggested_fix_area": self.suggested_fix_area,
+            "suggested_owner": self.suggested_owner,
+            "explanation": self.explanation,
             "message": self.message,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -307,6 +313,7 @@ class EvalReview(Base):
     turn_uid = Column(String(64), nullable=False, index=True)
     decision = Column(String(32), nullable=False, default="")
     reason = Column(Text, nullable=False, default="")
+    suggested_fix_area = Column(String(64), nullable=False, default="")
     reviewer = Column(String(64), nullable=False, default="")
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -325,6 +332,7 @@ class EvalReview(Base):
             "turn_uid": self.turn_uid,
             "decision": self.decision,
             "reason": self.reason,
+            "suggested_fix_area": self.suggested_fix_area,
             "reviewer": self.reviewer,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,

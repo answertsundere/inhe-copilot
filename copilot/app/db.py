@@ -162,6 +162,27 @@ def _migrate_add_columns():
                 conn.execute(text(sql))
             conn.commit()
 
+    # eval replay tables - additive columns for QA review and repair routing.
+    eval_table_columns = {
+        "eval_failures": [
+            ("suggested_fix_area", "VARCHAR(64)", "''"),
+            ("suggested_owner", "VARCHAR(64)", "''"),
+            ("explanation", "TEXT", "''"),
+        ],
+        "eval_reviews": [
+            ("suggested_fix_area", "VARCHAR(64)", "''"),
+        ],
+    }
+    for table_name, new_columns in eval_table_columns.items():
+        if table_name not in inspector.get_table_names():
+            continue
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        with engine.connect() as conn:
+            for col_name, col_type, default in new_columns:
+                if col_name not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
+            conn.commit()
+
 
 def init_db():
     """创建所有表（如果不存在）并执行迁移"""

@@ -21,6 +21,70 @@ FAILURE_TYPES = {
     "api_error",
 }
 
+FAILURE_REPAIR_GUIDANCE = {
+    "rag_miss": {
+        "suggested_fix_area": "knowledge_rag",
+        "suggested_owner": "knowledge_ops",
+        "explanation": "No selected evidence was available for the current product fact question.",
+    },
+    "evidence_misuse": {
+        "suggested_fix_area": "evidence_rerank_answer_composition",
+        "suggested_owner": "agent_engineering",
+        "explanation": "The answer used evidence fact types that do not match the required fact types.",
+    },
+    "semantic_mismatch": {
+        "suggested_fix_area": "final_audit_semantic_compiler",
+        "suggested_owner": "agent_quality",
+        "explanation": "The final answer audit reported that the reply did not satisfy the customer question.",
+    },
+    "unsafe_claim": {
+        "suggested_fix_area": "risk_audit",
+        "suggested_owner": "risk_policy",
+        "explanation": "The reply contains an absolute or unsafe customer-facing claim.",
+    },
+    "unsupported_media_claim": {
+        "suggested_fix_area": "media_pipeline",
+        "suggested_owner": "media_ops",
+        "explanation": "The reply promised media without a deliverable approved asset.",
+    },
+    "no_product_identified": {
+        "suggested_fix_area": "product_identity_product_data",
+        "suggested_owner": "product_data",
+        "explanation": "The product identity was not resolved for the current turn.",
+    },
+    "tool_policy_blocked": {
+        "suggested_fix_area": "tool_policy",
+        "suggested_owner": "agent_engineering",
+        "explanation": "Tool policy blocked the turn before the agent could complete the workflow.",
+    },
+    "needs_human_review": {
+        "suggested_fix_area": "human_policy_risk_boundary",
+        "suggested_owner": "customer_service_lead",
+        "explanation": "The agent requested human review because the turn is outside the safe auto-reply boundary.",
+    },
+    "api_error": {
+        "suggested_fix_area": "system_stability",
+        "suggested_owner": "engineering",
+        "explanation": "The replay call failed at the API or service layer.",
+    },
+    "answer_incomplete": {
+        "suggested_fix_area": "answer_composition",
+        "suggested_owner": "agent_engineering",
+        "explanation": "The agent produced an empty or incomplete reply.",
+    },
+}
+
+
+def repair_guidance_for_failure(failure_type: str) -> dict[str, str]:
+    return dict(FAILURE_REPAIR_GUIDANCE.get(
+        failure_type,
+        {
+            "suggested_fix_area": "manual_triage",
+            "suggested_owner": "customer_service_lead",
+            "explanation": "The failure type is not mapped yet and needs manual triage.",
+        },
+    ))
+
 
 @dataclass
 class ReplayOptions:
@@ -129,7 +193,11 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     answered = set(str(x) for x in _json_list(answer_trace.get("evidence_answered_fact_types")) if x)
     if required and answered and not (required & answered):
         failures.append({"failure_type": "evidence_misuse", "severity": "medium", "message": "answered fact types do not overlap required fact types"})
-    return failures
+    enriched = []
+    for failure in failures:
+        failure_type = failure.get("failure_type", "api_error")
+        enriched.append({**repair_guidance_for_failure(failure_type), **failure})
+    return enriched
 
 
 class RealConversationReplayService:
@@ -260,6 +328,9 @@ class RealConversationReplayService:
                             turn_uid=turn.turn_uid,
                             failure_type=failure_type,
                             severity=failure.get("severity", "medium"),
+                            suggested_fix_area=failure.get("suggested_fix_area", ""),
+                            suggested_owner=failure.get("suggested_owner", ""),
+                            explanation=failure.get("explanation", ""),
                             message=sanitize_text(failure.get("message", "")),
                         )
                         row.set_metadata({"trace_turn_index": turn.turn_index})
