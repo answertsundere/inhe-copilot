@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  fetchEvalTrends,
   fetchRealConversationRun,
   fetchRealConversationRuns,
   fetchRepairTask,
@@ -9,6 +10,7 @@ import {
   generateRepairTasks,
   submitRealConversationReview,
   updateRepairTask,
+  type EvalTrends,
   type RealConversationFailure,
   type RealConversationRepairTask,
   type RealConversationRun,
@@ -46,6 +48,8 @@ const taskFixAreaFilter = ref('')
 const taskOwnerFilter = ref('')
 const taskAssignedTo = ref('')
 const taskResolutionNote = ref('')
+const trendDays = ref(7)
+const trends = ref<EvalTrends | null>(null)
 
 const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '全部', value: 'all' },
@@ -79,6 +83,12 @@ const taskPriorityOptions = [
   { label: 'low', value: 'low' },
   { label: 'medium', value: 'medium' },
   { label: 'high', value: 'high' },
+]
+
+const trendDayOptions = [
+  { label: '7 天', value: 7 },
+  { label: '14 天', value: 14 },
+  { label: '30 天', value: 30 },
 ]
 
 const failuresByTurn = computed(() => {
@@ -125,6 +135,17 @@ const taskOwnerOptions = computed(() => {
   return [{ label: '全部负责人', value: '' }, ...values.map((value) => ({ label: value, value }))]
 })
 
+const trendTotals = computed(() => {
+  const daily = trends.value?.daily || []
+  const totalTurns = daily.reduce((sum, item) => sum + (item.total_turns || 0), 0)
+  const failedTurns = daily.reduce((sum, item) => sum + (item.failed_turns || 0), 0)
+  return {
+    totalTurns,
+    failedTurns,
+    passRate: totalTurns ? (totalTurns - failedTurns) / totalTurns : 0,
+  }
+})
+
 function formatJson(value: unknown) {
   return JSON.stringify(value || {}, null, 2)
 }
@@ -142,6 +163,7 @@ async function loadRuns() {
   loading.value = true
   forbidden.value = false
   try {
+    await loadTrends()
     runs.value = await fetchRealConversationRuns()
     if (runs.value.length) {
       await loadRun(runs.value[0])
@@ -152,6 +174,13 @@ async function loadRuns() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadTrends() {
+  trends.value = await fetchEvalTrends({
+    days: trendDays.value,
+    source: 'real_conversation',
+  })
 }
 
 async function loadRun(run: RealConversationRun) {
@@ -270,6 +299,65 @@ onMounted(loadRuns)
 
       <main class="chat-panel">
         <div class="panel-title">真实长对话回放</div>
+
+        <section class="trend-panel">
+          <div class="trend-header">
+            <div class="sub-title">趋势报表</div>
+            <el-segmented v-model="trendDays" :options="trendDayOptions" size="small" @change="loadTrends" />
+          </div>
+          <div class="trend-cards">
+            <div>
+              <span>区间通过率</span>
+              <strong>{{ formatPercent(trendTotals.passRate) }}</strong>
+            </div>
+            <div>
+              <span>回放轮次</span>
+              <strong>{{ trendTotals.totalTurns }}</strong>
+            </div>
+            <div>
+              <span>失败轮次</span>
+              <strong>{{ trendTotals.failedTurns }}</strong>
+            </div>
+            <div>
+              <span>最近回放</span>
+              <strong>{{ trends?.latest_daily_replay?.status || '-' }}</strong>
+            </div>
+          </div>
+          <div class="trend-grid">
+            <div class="trend-box">
+              <div class="mini-title">每日通过率</div>
+              <div v-for="item in trends?.daily || []" :key="item.date" class="daily-row">
+                <span>{{ item.date }}</span>
+                <el-progress :percentage="Math.round((item.pass_rate || 0) * 100)" :stroke-width="8" />
+                <em>{{ item.total_turns }} 轮 / 失败 {{ item.failed_turns }}</em>
+              </div>
+            </div>
+            <div class="trend-box">
+              <div class="mini-title">Top 失败类型</div>
+              <div v-for="item in trends?.top_failure_types || []" :key="item.name" class="rank-row">
+                <span>{{ item.name }}</span>
+                <strong>{{ item.count }}</strong>
+              </div>
+              <div class="mini-title">Top 修复区域</div>
+              <div v-for="item in trends?.top_fix_areas || []" :key="item.name" class="rank-row">
+                <span>{{ item.name }}</span>
+                <strong>{{ item.count }}</strong>
+              </div>
+            </div>
+            <div class="trend-box">
+              <div class="mini-title">修复任务状态</div>
+              <div v-for="(count, status) in trends?.repair_task_status_counts || {}" :key="status" class="rank-row">
+                <span>{{ status }}</span>
+                <strong>{{ count }}</strong>
+              </div>
+              <div class="mini-title">修复区域分布</div>
+              <div v-for="(count, area) in trends?.suggested_fix_area_counts || {}" :key="area" class="rank-row">
+                <span>{{ area }}</span>
+                <strong>{{ count }}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section v-if="selectedRun" class="summary-strip">
           <div>
@@ -591,6 +679,84 @@ onMounted(loadRuns)
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.trend-panel {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  margin-bottom: 12px;
+}
+
+.trend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.trend-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.trend-cards div,
+.trend-box {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.trend-cards span,
+.daily-row span,
+.daily-row em,
+.rank-row span {
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+}
+
+.trend-cards strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--kb-text-primary);
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.2fr) 1fr 1fr;
+  gap: 8px;
+}
+
+.mini-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kb-text-primary);
+  margin-bottom: 6px;
+}
+
+.daily-row {
+  display: grid;
+  grid-template-columns: 82px minmax(80px, 1fr) 86px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.daily-row em {
+  font-style: normal;
+  text-align: right;
+}
+
+.rank-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
 }
 
 .summary-strip div,

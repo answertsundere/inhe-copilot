@@ -1,0 +1,133 @@
+import json
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+import app.db as db_module
+from app.db import Base
+from app.models.eval_tables import EvalCase, EvalFailure, EvalRepairTask, EvalRun, EvalTrace
+from app.services.real_conversation_daily_replay_service import (
+    DailyReplayOptions,
+    run_daily_real_conversation_replay,
+)
+from app.services.real_conversation_replay_service import RealConversationReplayService
+
+
+def _patch_test_db(monkeypatch):
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    return session_factory
+
+
+def _write_source(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    payload = {
+        "conversation_id": "daily-conv-1",
+        "messages": [
+            {"speaker": "buyer", "text": "install question phone 13812345678"},
+            {"speaker": "service", "text": "reference install reply"},
+            {"speaker": "buyer", "text": "material question order 123456789012345"},
+            {"speaker": "service", "text": "reference material reply"},
+            {"speaker": "buyer", "text": "video question"},
+            {"speaker": "service", "text": "reference video reply"},
+        ],
+    }
+    (source / "chat-2026-06-23.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return source
+
+
+def test_daily_replay_dry_run_does_not_write_db(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    source = _write_source(tmp_path)
+
+    report = run_daily_real_conversation_replay(DailyReplayOptions(
+        source_dir=str(source),
+        sample_limit=50,
+        run_date="2026-06-23",
+        apply=False,
+    ))
+
+    assert report["dry_run"] is True
+    assert report["import"]["sample_count"] == 1
+    assert report["replay"]["skipped"] is True
+    raw = json.dumps(report, ensure_ascii=False)
+    assert "13812345678" not in raw
+    assert "123456789012345" not in raw
+    db = session_factory()
+    try:
+        assert db.query(EvalCase).count() == 0
+        assert db.query(EvalRun).count() == 0
+    finally:
+        db.close()
+
+
+def test_daily_replay_apply_creates_run_traces_failures_and_schedule(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    source = _write_source(tmp_path)
+
+    def fake_call_agent(self, payload):
+        return {
+            "suggested_reply": "needs human review",
+            "requires_human_review": True,
+            "evidence_debug": {"query_fact_type": "material", "selected_evidence": []},
+            "answer_trace": {"query_fact_type": "material", "required_fact_types": ["material"]},
+            "final_answer_audit": {"passed": False},
+        }
+
+    monkeypatch.setattr(RealConversationReplayService, "_call_agent", fake_call_agent)
+
+    report = run_daily_real_conversation_replay(DailyReplayOptions(
+        source_dir=str(source),
+        sample_limit=50,
+        run_date="2026-06-23",
+        apply=True,
+    ))
+
+    assert report["status"] == "completed"
+    db = session_factory()
+    try:
+        run = db.query(EvalRun).one()
+        assert run.run_uid == report["run_uid"]
+        assert run.total_turns == 3
+        assert run.failed_turns == 3
+        assert db.query(EvalTrace).count() == 3
+        assert db.query(EvalFailure).count() >= 3
+        schedule = run.get_metadata()["daily_schedule"]
+        assert schedule["schedule_uid"] == report["schedule_uid"]
+        assert schedule["status"] == "completed"
+        assert schedule["pass_rate"] == 0
+    finally:
+        db.close()
+
+
+def test_daily_replay_apply_can_generate_repair_tasks(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    source = _write_source(tmp_path)
+
+    def fake_call_agent(self, payload):
+        return {
+            "suggested_reply": "needs human review",
+            "requires_human_review": True,
+            "evidence_debug": {"query_fact_type": "material", "selected_evidence": []},
+            "answer_trace": {"query_fact_type": "material", "required_fact_types": ["material"]},
+        }
+
+    monkeypatch.setattr(RealConversationReplayService, "_call_agent", fake_call_agent)
+
+    report = run_daily_real_conversation_replay(DailyReplayOptions(
+        source_dir=str(source),
+        sample_limit=50,
+        run_date="2026-06-23",
+        apply=True,
+        generate_repair_tasks=True,
+    ))
+
+    assert report["repair_tasks"]["generated"] >= 1
+    db = session_factory()
+    try:
+        assert db.query(EvalRepairTask).count() >= 1
+    finally:
+        db.close()

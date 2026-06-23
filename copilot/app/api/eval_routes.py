@@ -212,6 +212,26 @@ def list_repair_tasks():
         db.close()
 
 
+@eval_bp.route("/api/eval/trends", methods=["GET"])
+@eval_bp.route("/api/kb/eval/trends", methods=["GET"])
+@require_supervisor
+def get_eval_trends():
+    from app.services.real_conversation_daily_replay_service import build_real_conversation_trends
+
+    db = _db()
+    try:
+        trends = build_real_conversation_trends(
+            db,
+            days=int(request.args.get("days", 7)),
+            source=sanitize_text(request.args.get("source") or "real_conversation"),
+            suggested_fix_area=sanitize_text(request.args.get("suggested_fix_area")),
+            suggested_owner=sanitize_text(request.args.get("suggested_owner")),
+        )
+        return jsonify(sanitize_obj(trends))
+    finally:
+        db.close()
+
+
 @eval_bp.route("/api/eval/repair-tasks/generate", methods=["POST"])
 @eval_bp.route("/api/kb/eval/repair-tasks/generate", methods=["POST"])
 @require_supervisor

@@ -92,6 +92,31 @@ export interface RealConversationRepairTask {
   updated_at?: string
 }
 
+export interface EvalTrendItem {
+  date: string
+  pass_rate: number
+  total_turns: number
+  failed_turns: number
+}
+
+export interface EvalTrendTopItem {
+  name: string
+  count: number
+}
+
+export interface EvalTrends {
+  days: number
+  source: string
+  daily: EvalTrendItem[]
+  failure_type_counts: Record<string, number>
+  suggested_fix_area_counts: Record<string, number>
+  suggested_owner_counts: Record<string, number>
+  repair_task_status_counts: Record<string, number>
+  top_failure_types: EvalTrendTopItem[]
+  top_fix_areas: EvalTrendTopItem[]
+  latest_daily_replay?: Record<string, unknown>
+}
+
 export async function fetchRealConversationRuns() {
   const res = await apiClient.get('/eval/real-conversation/runs')
   return (res.data?.items || []) as RealConversationRun[]
@@ -151,4 +176,14 @@ export async function updateRepairTask(taskUid: string, payload: {
 }) {
   const res = await apiClient.patch(`/eval/repair-tasks/${taskUid}`, payload)
   return res.data as { task: RealConversationRepairTask }
+}
+
+export async function fetchEvalTrends(params?: {
+  days?: number
+  source?: string
+  suggested_fix_area?: string
+  suggested_owner?: string
+}) {
+  const res = await apiClient.get('/eval/trends', { params })
+  return res.data as EvalTrends
 }
