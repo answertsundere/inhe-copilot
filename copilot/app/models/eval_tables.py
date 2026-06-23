@@ -343,15 +343,40 @@ class EvalRepairTask(Base):
     __tablename__ = "eval_repair_tasks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    task_uid = Column(String(64), nullable=False, default="", index=True)
     run_uid = Column(String(64), nullable=False, index=True)
     case_uid = Column(String(64), nullable=False, index=True)
     turn_uid = Column(String(64), nullable=False, index=True)
     task_type = Column(String(64), nullable=False, default="manual_review", index=True)
+    failure_type = Column(String(64), nullable=False, default="", index=True)
+    suggested_fix_area = Column(String(64), nullable=False, default="", index=True)
+    suggested_owner = Column(String(64), nullable=False, default="", index=True)
+    title = Column(String(255), nullable=False, default="")
+    description = Column(Text, nullable=False, default="")
+    sample_count = Column(Integer, nullable=False, default=0)
+    related_case_uids_json = Column(Text, nullable=False, default="[]")
+    related_turn_uids_json = Column(Text, nullable=False, default="[]")
     status = Column(String(32), nullable=False, default="open", index=True)
+    priority = Column(String(16), nullable=False, default="medium", index=True)
+    created_by = Column(String(64), nullable=False, default="")
+    assigned_to = Column(String(64), nullable=False, default="")
+    resolution_note = Column(Text, nullable=False, default="")
     note = Column(Text, nullable=False, default="")
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def get_related_case_uids(self):
+        return _json_load(self.related_case_uids_json, [])
+
+    def set_related_case_uids(self, value):
+        self.related_case_uids_json = _json_dump(value, [])
+
+    def get_related_turn_uids(self):
+        return _json_load(self.related_turn_uids_json, [])
+
+    def set_related_turn_uids(self, value):
+        self.related_turn_uids_json = _json_dump(value, [])
 
     def get_metadata(self):
         return _json_load(self.metadata_json, {})
@@ -362,11 +387,24 @@ class EvalRepairTask(Base):
     def to_dict(self):
         return {
             "id": self.id,
+            "task_uid": self.task_uid,
             "run_uid": self.run_uid,
             "case_uid": self.case_uid,
             "turn_uid": self.turn_uid,
             "task_type": self.task_type,
+            "failure_type": self.failure_type,
+            "suggested_fix_area": self.suggested_fix_area,
+            "suggested_owner": self.suggested_owner,
+            "title": self.title,
+            "description": self.description,
+            "sample_count": self.sample_count,
+            "related_case_uids": self.get_related_case_uids(),
+            "related_turn_uids": self.get_related_turn_uids(),
             "status": self.status,
+            "priority": self.priority,
+            "created_by": self.created_by,
+            "assigned_to": self.assigned_to,
+            "resolution_note": self.resolution_note,
             "note": self.note,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,

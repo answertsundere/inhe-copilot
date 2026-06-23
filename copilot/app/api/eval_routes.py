@@ -18,6 +18,9 @@ REVIEW_DECISION_FIX_AREAS = {
     "needs_human_policy": "human_policy_risk_boundary",
 }
 
+REPAIR_TASK_STATUSES = {"open", "in_progress", "resolved", "ignored"}
+REPAIR_TASK_PRIORITIES = {"low", "medium", "high"}
+
 
 def _db():
     from app.db import SessionLocal
@@ -46,6 +49,25 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
         "requires_review_count": sum(1 for row in traces if row.requires_human_review),
         "pass_rate": round(passed_turns / total_turns, 4) if total_turns else 0,
     }
+
+
+def _repair_task_query(db):
+    from app.models.eval_tables import EvalRepairTask
+
+    query = db.query(EvalRepairTask).order_by(EvalRepairTask.updated_at.desc(), EvalRepairTask.id.desc())
+    status = sanitize_text(request.args.get("status"))
+    fix_area = sanitize_text(request.args.get("suggested_fix_area"))
+    owner = sanitize_text(request.args.get("suggested_owner"))
+    run_uid = sanitize_text(request.args.get("run_uid"))
+    if status:
+        query = query.filter(EvalRepairTask.status == status)
+    if fix_area:
+        query = query.filter(EvalRepairTask.suggested_fix_area == fix_area)
+    if owner:
+        query = query.filter(EvalRepairTask.suggested_owner == owner)
+    if run_uid:
+        query = query.filter(EvalRepairTask.run_uid == run_uid)
+    return query
 
 
 @eval_bp.route("/api/eval/real-conversation/runs", methods=["GET"])
@@ -170,6 +192,119 @@ def create_real_conversation_review():
         db.add(row)
         db.commit()
         return jsonify({"ok": True, "review": row.to_dict()}), 201
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/repair-tasks", methods=["GET"])
+@eval_bp.route("/api/kb/eval/repair-tasks", methods=["GET"])
+@require_supervisor
+def list_repair_tasks():
+    db = _db()
+    try:
+        limit = min(max(int(request.args.get("limit", 50)), 1), 200)
+        rows = _repair_task_query(db).limit(limit).all()
+        return jsonify({"items": [sanitize_obj(row.to_dict()) for row in rows]})
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/repair-tasks/generate", methods=["POST"])
+@eval_bp.route("/api/kb/eval/repair-tasks/generate", methods=["POST"])
+@require_supervisor
+def generate_repair_tasks():
+    from app.services.real_conversation_repair_task_service import RealConversationRepairTaskService
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        result = RealConversationRepairTaskService().generate_for_run(
+            db,
+            run_uid=sanitize_text(data.get("run_uid")),
+            created_by=sanitize_text(current_user_name()),
+        )
+        return jsonify(sanitize_obj({"ok": True, **result.to_dict()})), 201
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/repair-tasks/<task_uid>", methods=["GET"])
+@eval_bp.route("/api/kb/eval/repair-tasks/<task_uid>", methods=["GET"])
+@require_supervisor
+def get_repair_task(task_uid):
+    from app.models.eval_tables import EvalFailure, EvalRepairTask, EvalTrace
+
+    db = _db()
+    try:
+        task = (
+            db.query(EvalRepairTask)
+            .filter(EvalRepairTask.task_uid == sanitize_text(task_uid))
+            .one_or_none()
+        )
+        if task is None:
+            return jsonify({"error": "repair task not found"}), 404
+        turn_uids = task.get_related_turn_uids()
+        failures = (
+            db.query(EvalFailure)
+            .filter(EvalFailure.run_uid == task.run_uid, EvalFailure.turn_uid.in_(turn_uids))
+            .order_by(EvalFailure.id.asc())
+            .all()
+            if turn_uids else []
+        )
+        traces = (
+            db.query(EvalTrace)
+            .filter(EvalTrace.run_uid == task.run_uid, EvalTrace.turn_uid.in_(turn_uids))
+            .order_by(EvalTrace.case_uid.asc(), EvalTrace.turn_index.asc())
+            .all()
+            if turn_uids else []
+        )
+        return jsonify(sanitize_obj({
+            "task": task.to_dict(),
+            "failures": [row.to_dict() for row in failures],
+            "traces": [row.to_dict() for row in traces],
+        }))
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/repair-tasks/<task_uid>", methods=["PATCH"])
+@eval_bp.route("/api/kb/eval/repair-tasks/<task_uid>", methods=["PATCH"])
+@require_supervisor
+def update_repair_task(task_uid):
+    from app.models.eval_tables import EvalRepairTask
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        task = (
+            db.query(EvalRepairTask)
+            .filter(EvalRepairTask.task_uid == sanitize_text(task_uid))
+            .one_or_none()
+        )
+        if task is None:
+            return jsonify({"error": "repair task not found"}), 404
+        status = sanitize_text(data.get("status"))
+        priority = sanitize_text(data.get("priority"))
+        if status:
+            if status not in REPAIR_TASK_STATUSES:
+                return jsonify({"error": "invalid repair task status"}), 400
+            task.status = status
+        if priority:
+            if priority not in REPAIR_TASK_PRIORITIES:
+                return jsonify({"error": "invalid repair task priority"}), 400
+            task.priority = priority
+        if "assigned_to" in data:
+            task.assigned_to = sanitize_text(data.get("assigned_to"))
+        if "resolution_note" in data:
+            task.resolution_note = sanitize_text(data.get("resolution_note"))
+        db.commit()
+        return jsonify(sanitize_obj({"ok": True, "task": task.to_dict()}))
     except Exception:
         db.rollback()
         raise

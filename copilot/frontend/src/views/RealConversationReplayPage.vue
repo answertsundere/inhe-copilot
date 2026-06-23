@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchRealConversationRun,
   fetchRealConversationRuns,
+  fetchRepairTask,
+  fetchRepairTasks,
+  generateRepairTasks,
   submitRealConversationReview,
+  updateRepairTask,
   type RealConversationFailure,
+  type RealConversationRepairTask,
   type RealConversationRun,
   type RealConversationRunSummary,
   type RealConversationTurnTrace,
@@ -32,6 +37,15 @@ const failures = ref<RealConversationFailure[]>([])
 const selectedTurn = ref<RealConversationTurnTrace | null>(null)
 const reviewReason = ref('')
 const activeFilter = ref<TurnFilter>('all')
+const repairTasks = ref<RealConversationRepairTask[]>([])
+const selectedTask = ref<RealConversationRepairTask | null>(null)
+const selectedTaskTraces = ref<RealConversationTurnTrace[]>([])
+const selectedTaskFailures = ref<RealConversationFailure[]>([])
+const taskStatusFilter = ref('')
+const taskFixAreaFilter = ref('')
+const taskOwnerFilter = ref('')
+const taskAssignedTo = ref('')
+const taskResolutionNote = ref('')
 
 const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '全部', value: 'all' },
@@ -51,6 +65,20 @@ const reviewActions: Array<{ label: string; decision: ReviewDecision; type?: 'su
   { label: '需要改规则', decision: 'needs_rule', type: 'warning' },
   { label: '需要补素材', decision: 'needs_media' },
   { label: '需要人工策略', decision: 'needs_human_policy' },
+]
+
+const taskStatusOptions = [
+  { label: '全部状态', value: '' },
+  { label: 'open', value: 'open' },
+  { label: 'in_progress', value: 'in_progress' },
+  { label: 'resolved', value: 'resolved' },
+  { label: 'ignored', value: 'ignored' },
+]
+
+const taskPriorityOptions = [
+  { label: 'low', value: 'low' },
+  { label: 'medium', value: 'medium' },
+  { label: 'high', value: 'high' },
 ]
 
 const failuresByTurn = computed(() => {
@@ -85,6 +113,16 @@ const groupedTurns = computed(() => {
 const selectedFailures = computed(() => {
   if (!selectedTurn.value) return []
   return failuresByTurn.value.get(selectedTurn.value.turn_uid) || []
+})
+
+const taskFixAreaOptions = computed(() => {
+  const values = Array.from(new Set(repairTasks.value.map((task) => task.suggested_fix_area).filter(Boolean))).sort()
+  return [{ label: '全部修复区域', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
+const taskOwnerOptions = computed(() => {
+  const values = Array.from(new Set(repairTasks.value.map((task) => task.suggested_owner).filter(Boolean))).sort()
+  return [{ label: '全部负责人', value: '' }, ...values.map((value) => ({ label: value, value }))]
 })
 
 function formatJson(value: unknown) {
@@ -127,6 +165,7 @@ async function loadRun(run: RealConversationRun) {
     failures.value = data.failures || []
     runSummary.value = data.summary || null
     selectedTurn.value = turns.value[0] || null
+    await loadRepairTasks()
   } catch (error: any) {
     if (error?.response?.status === 403) forbidden.value = true
     else ElMessage.error(error?.response?.data?.error || '加载回放详情失败')
@@ -146,6 +185,55 @@ async function review(decision: ReviewDecision) {
   })
   reviewReason.value = ''
   ElMessage.success('复核结果已保存')
+}
+
+async function loadRepairTasks() {
+  const items = await fetchRepairTasks({
+    run_uid: selectedRun.value?.run_uid,
+    status: taskStatusFilter.value || undefined,
+    suggested_fix_area: taskFixAreaFilter.value || undefined,
+    suggested_owner: taskOwnerFilter.value || undefined,
+  })
+  repairTasks.value = items
+  if (selectedTask.value && !items.some((task) => task.task_uid === selectedTask.value?.task_uid)) {
+    selectedTask.value = null
+    selectedTaskTraces.value = []
+    selectedTaskFailures.value = []
+  }
+}
+
+async function generateTasksForCurrentRun() {
+  if (!selectedRun.value) return
+  await ElMessageBox.confirm('只会生成质检修复任务，不会自动修改知识库或 Agent 规则。确认继续？', '生成修复任务', {
+    confirmButtonText: '生成',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+  const result = await generateRepairTasks(selectedRun.value.run_uid)
+  await loadRepairTasks()
+  ElMessage.success(`已生成 ${result.generated} 个任务，更新 ${result.updated} 个任务`)
+}
+
+async function openRepairTask(task: RealConversationRepairTask) {
+  const detail = await fetchRepairTask(task.task_uid)
+  selectedTask.value = detail.task
+  selectedTaskTraces.value = detail.traces || []
+  selectedTaskFailures.value = detail.failures || []
+  taskAssignedTo.value = detail.task.assigned_to || ''
+  taskResolutionNote.value = detail.task.resolution_note || ''
+}
+
+async function saveRepairTask(status?: RealConversationRepairTask['status'], priority?: RealConversationRepairTask['priority']) {
+  if (!selectedTask.value) return
+  const result = await updateRepairTask(selectedTask.value.task_uid, {
+    status,
+    priority,
+    assigned_to: taskAssignedTo.value,
+    resolution_note: taskResolutionNote.value,
+  })
+  selectedTask.value = result.task
+  await loadRepairTasks()
+  ElMessage.success('修复任务已更新')
 }
 
 onMounted(loadRuns)
@@ -318,6 +406,107 @@ onMounted(loadRuns)
             </el-button>
           </div>
         </template>
+        <section class="repair-task-panel">
+          <div class="task-header">
+            <div class="sub-title">修复任务队列</div>
+            <el-button size="small" type="primary" :disabled="!selectedRun" @click="generateTasksForCurrentRun">
+              从当前批次生成
+            </el-button>
+          </div>
+          <div class="task-filters">
+            <el-select v-model="taskStatusFilter" size="small" @change="loadRepairTasks">
+              <el-option
+                v-for="option in taskStatusOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="taskFixAreaFilter" size="small" @change="loadRepairTasks">
+              <el-option
+                v-for="option in taskFixAreaOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="taskOwnerFilter" size="small" @change="loadRepairTasks">
+              <el-option
+                v-for="option in taskOwnerOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </div>
+          <el-empty v-if="!repairTasks.length" description="暂无修复任务" />
+          <div v-else class="task-list">
+            <button
+              v-for="task in repairTasks"
+              :key="task.task_uid"
+              class="task-item"
+              :class="{ active: selectedTask?.task_uid === task.task_uid }"
+              @click="openRepairTask(task)"
+            >
+              <strong>{{ task.title || task.failure_type }}</strong>
+              <span>{{ task.status }} / {{ task.priority }} / 样本 {{ task.sample_count }}</span>
+              <span>{{ task.suggested_fix_area }} / {{ task.suggested_owner }}</span>
+            </button>
+          </div>
+          <section v-if="selectedTask" class="task-detail">
+            <div class="sub-title">任务详情</div>
+            <p>{{ selectedTask.description }}</p>
+            <div class="task-controls">
+              <el-select v-model="selectedTask.status" size="small">
+                <el-option
+                  v-for="option in taskStatusOptions.filter((item) => item.value)"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <el-select v-model="selectedTask.priority" size="small">
+                <el-option
+                  v-for="option in taskPriorityOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </div>
+            <el-input v-model="taskAssignedTo" size="small" placeholder="assigned_to" />
+            <el-input
+              v-model="taskResolutionNote"
+              type="textarea"
+              :rows="2"
+              placeholder="处理备注，不会自动写知识库"
+            />
+            <el-button
+              size="small"
+              type="primary"
+              @click="saveRepairTask(selectedTask.status, selectedTask.priority)"
+            >
+              保存任务状态
+            </el-button>
+            <div class="task-samples">
+              <div v-if="selectedTaskFailures.length" class="task-failure-tags">
+                <el-tag
+                  v-for="failure in selectedTaskFailures"
+                  :key="`${failure.turn_uid}-${failure.failure_type}`"
+                  size="small"
+                  type="danger"
+                >
+                  {{ failure.failure_type }}
+                </el-tag>
+              </div>
+              <div v-for="trace in selectedTaskTraces" :key="trace.turn_uid" class="task-sample">
+                <strong>{{ trace.turn_uid }}</strong>
+                <span>{{ trace.query_fact_type || '-' }} / {{ trace.latency_ms }} ms</span>
+                <p>{{ trace.buyer_message }}</p>
+              </div>
+            </div>
+          </section>
+        </section>
       </aside>
     </template>
   </div>
@@ -519,6 +708,102 @@ onMounted(loadRuns)
 .fix-panel,
 .trace-collapse {
   margin-bottom: 12px;
+}
+
+.repair-task-panel {
+  border-top: 1px solid var(--kb-border);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.task-header,
+.task-filters,
+.task-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.task-header {
+  justify-content: space-between;
+}
+
+.task-filters,
+.task-controls {
+  flex-wrap: wrap;
+}
+
+.task-filters .el-select,
+.task-controls .el-select {
+  width: 132px;
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.task-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.task-item.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.task-item strong,
+.task-item span,
+.task-sample strong,
+.task-sample span {
+  display: block;
+}
+
+.task-item span,
+.task-sample span {
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.task-detail {
+  margin-top: 12px;
+}
+
+.task-detail .el-input {
+  margin-bottom: 8px;
+}
+
+.task-samples {
+  margin-top: 10px;
+}
+
+.task-failure-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.task-sample {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.task-sample p {
+  margin: 4px 0 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .fix-item {

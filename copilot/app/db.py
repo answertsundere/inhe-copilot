@@ -172,6 +172,21 @@ def _migrate_add_columns():
         "eval_reviews": [
             ("suggested_fix_area", "VARCHAR(64)", "''"),
         ],
+        "eval_repair_tasks": [
+            ("task_uid", "VARCHAR(64)", "''"),
+            ("failure_type", "VARCHAR(64)", "''"),
+            ("suggested_fix_area", "VARCHAR(64)", "''"),
+            ("suggested_owner", "VARCHAR(64)", "''"),
+            ("title", "VARCHAR(255)", "''"),
+            ("description", "TEXT", "''"),
+            ("sample_count", "INTEGER", "0"),
+            ("related_case_uids_json", "TEXT", "'[]'"),
+            ("related_turn_uids_json", "TEXT", "'[]'"),
+            ("priority", "VARCHAR(16)", "'medium'"),
+            ("created_by", "VARCHAR(64)", "''"),
+            ("assigned_to", "VARCHAR(64)", "''"),
+            ("resolution_note", "TEXT", "''"),
+        ],
     }
     for table_name, new_columns in eval_table_columns.items():
         if table_name not in inspector.get_table_names():
