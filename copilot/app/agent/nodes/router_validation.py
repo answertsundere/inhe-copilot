@@ -48,6 +48,24 @@ SIGNED_NOT_RECEIVED_TERMS = (
 GIFT_TERMS = ("赠品", "礼品", "赠送")
 GIFT_MISSING_TERMS = ("没有", "没收到", "未收到", "漏发", "少发", "没给")
 NON_BUSINESS_ADDRESS_TERMS = ("你", "你们", "客服")
+SIGNED_STATUS_TERMS = (
+    "\u7b7e\u6536",
+    "\u5df2\u7b7e\u6536",
+    "\u663e\u793a\u7b7e\u6536",
+    "\u672c\u4eba\u7b7e\u6536",
+    "\u4ee3\u7b7e",
+    "\u5feb\u9012\u8bf4\u7b7e\u6536",
+)
+SIGNED_DISPUTE_TERMS = (
+    "\u6ca1\u6536\u5230",
+    "\u672a\u6536\u5230",
+    "\u6ca1\u6709\u6536\u5230",
+    "\u6ca1\u62ff\u5230",
+    "\u4e0d\u662f\u6211\u7b7e",
+    "\u4e0d\u662f\u6211\u7b7e\u7684",
+    "\u8c01\u7b7e\u7684",
+)
+
 PROTECTED_PRODUCT_POLICY_INTENTS = {
     "gift_missing",
     "cleaning_care",
@@ -115,6 +133,13 @@ def _looks_like_product_followup(msg: str) -> bool:
     return len(msg) <= 30 and any(marker in msg for marker in question_markers)
 
 
+def _looks_like_signed_not_received(msg: str) -> bool:
+    text = msg or ""
+    return any(term in text for term in SIGNED_STATUS_TERMS) and any(
+        term in text for term in SIGNED_DISPUTE_TERMS
+    )
+
+
 def router_validation(state: dict) -> dict:
     t0 = time.time()
     msg = state.get("normalized_message", state.get("customer_message", "")) or ""
@@ -138,7 +163,10 @@ def router_validation(state: dict) -> dict:
     has_aftersales_terms = any(term in msg for term in AFTERSALES_TERMS)
     has_complaint_terms = any(term in msg for term in COMPLAINT_TERMS)
     has_intercept_operation = any(term in msg for term in ("拦截", "改地址", "收货地址", "改收货", "拒收"))
-    signed_not_received = any(term in msg for term in SIGNED_NOT_RECEIVED_TERMS)
+    signed_not_received = (
+        any(term in msg for term in SIGNED_NOT_RECEIVED_TERMS)
+        or _looks_like_signed_not_received(msg)
+    )
     has_gift_missing_terms = (
         any(term in msg for term in GIFT_TERMS)
         and any(term in msg for term in GIFT_MISSING_TERMS)

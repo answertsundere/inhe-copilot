@@ -15,7 +15,7 @@ const router = createRouter({
           meta: { title: '总览' },
         },
         {
-          path: 'real-test',
+          path: 'quality-replay',
           name: 'real-conversation-test',
           component: () => import('../views/RealConversationReplayPage.vue'),
           meta: { title: '真实回放质检' },

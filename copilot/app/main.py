@@ -634,14 +634,7 @@ def create_app():
     @app.route("/real-test")
     def real_test_panel():
         import json
-        from flask import render_template, make_response, send_file
-
-        kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")
-        index_html = os.path.join(kb_dir, "index.html")
-        if os.path.exists(index_html):
-            resp = make_response(send_file(index_html))
-            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            return resp
+        from flask import render_template, make_response
 
         cases_path = os.path.join(BASE_DIR, "data", "premium_manual_cases.json")
         fallback_path = os.path.abspath(os.path.join(
@@ -684,6 +677,7 @@ def create_app():
     @app.route("/training-samples")
     @app.route("/service-rules")
     @app.route("/ai-updates")
+    @app.route("/quality-replay")
     @app.route("/sop")
     @app.route("/cases")
     @app.route("/traces")

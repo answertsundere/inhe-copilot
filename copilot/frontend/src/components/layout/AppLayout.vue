@@ -40,7 +40,7 @@ const pageTitle = computed(() => {
 const activeMenu = computed(() => route.path)
 
 const menuItems = [
-  { index: '/real-test', icon: Checked, label: '真实回放质检' },
+  { index: '/quality-replay', icon: Checked, label: '真实回放质检' },
   { index: '/', icon: DataAnalysis, label: '总览' },
   { index: '/products', icon: Goods, label: '商品资料' },
   { index: '/service-rules', icon: Notebook, label: '服务规则' },

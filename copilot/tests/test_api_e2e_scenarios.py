@@ -179,6 +179,16 @@ class TestSignedNotReceived:
         data = _analyze(client, "显示签收了，但是我没收到", order_id="202501010002")
         assert data["intent"] == "delivery_not_received"
 
+    def test_delivery_not_received_intent_variants(self, client):
+        messages = [
+            "物流显示已签收，但是我没拿到",
+            "快递说签收了，可我没收到",
+            "显示本人签收但不是我签的",
+        ]
+        for message in messages:
+            data = _analyze(client, message, order_id="202501010002")
+            assert data["intent"] == "delivery_not_received"
+
     def test_reply_has_verification_guidance(self, client):
         data = _analyze(client, "显示签收了，但是我没收到", order_id="202501010002")
         reply = data["suggested_reply"]

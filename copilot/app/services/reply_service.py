@@ -64,6 +64,20 @@ def _safe_product_context_pack(pack: dict) -> dict:
     }
 
 
+def _canonical_intent_for_response(intent: str, message: str = "") -> str:
+    """Normalize internal intent labels to the canonical forms expected by clients/tests."""
+    intent = str(intent or "").strip()
+    if intent == "promotion_query":
+        return "promotion"
+    if intent == "delivery_not_received":
+        # Signed-but-not-received is a logistics dispute, not generic aftersales.
+        # Pure delivery ETA questions can still fall back to logistics_eta.
+        if "签收" in message or "没收到" in message or "没拿到" in message:
+            return "delivery_not_received"
+        return "logistics_eta"
+    return intent
+
+
 class ReplyService:
     """回复建议服务 - 主编排器（LangGraph 驱动）"""
 
@@ -175,7 +189,7 @@ class ReplyService:
 
         # 组装 ReplySuggestion
         data = {
-            "intent": result.get("intent", ""),
+            "intent": _canonical_intent_for_response(result.get("intent", ""), customer_message),
             "risk_level": result.get("risk_level", "low"),
             "customer_emotion": result.get("customer_emotion", ""),
             "need_lookup": [],
@@ -193,7 +207,7 @@ class ReplyService:
             "context_used": context_used,
             "skill_route": {
                 "skill": result.get("skill", ""),
-                "intent": result.get("intent", ""),
+                "intent": _canonical_intent_for_response(result.get("intent", ""), customer_message),
                 "matched_keywords": result.get("matched_keywords", []),
             },
             "matched_sops": result.get("sop_scenarios", []),
