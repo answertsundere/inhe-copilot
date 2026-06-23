@@ -10,6 +10,7 @@ import {
   generateRepairTasks,
   submitRealConversationReview,
   updateRepairTask,
+  verifyRepairTask,
   type EvalTrends,
   type RealConversationFailure,
   type RealConversationRepairTask,
@@ -263,6 +264,31 @@ async function saveRepairTask(status?: RealConversationRepairTask['status'], pri
   selectedTask.value = result.task
   await loadRepairTasks()
   ElMessage.success('修复任务已更新')
+}
+
+async function previewRepairVerification() {
+  if (!selectedTask.value) return
+  const result = await verifyRepairTask(selectedTask.value.task_uid, { dry_run: true })
+  ElMessage.info(`将验证 ${result.checked_turn_uids?.length || 0} 个关联轮次`)
+}
+
+async function runRepairVerification() {
+  if (!selectedTask.value) return
+  await ElMessageBox.confirm('会重新回放该任务关联样本，不会自动修改知识库或 Agent 规则。确认继续？', '回归验证', {
+    confirmButtonText: '验证',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+  const result = await verifyRepairTask(selectedTask.value.task_uid, { apply: true })
+  if (result.task) {
+    selectedTask.value = result.task
+  }
+  await loadRepairTasks()
+  if (selectedTask.value) {
+    await openRepairTask(selectedTask.value)
+  }
+  const status = result.task?.verification_status || 'unknown'
+  ElMessage.success(`回归验证完成：${status}`)
 }
 
 onMounted(loadRuns)
@@ -538,12 +564,41 @@ onMounted(loadRuns)
             >
               <strong>{{ task.title || task.failure_type }}</strong>
               <span>{{ task.status }} / {{ task.priority }} / 样本 {{ task.sample_count }}</span>
+              <span>验证 {{ task.verification_status }} / 通过率 {{ formatPercent(task.verification_summary?.pass_rate) }}</span>
               <span>{{ task.suggested_fix_area }} / {{ task.suggested_owner }}</span>
             </button>
           </div>
           <section v-if="selectedTask" class="task-detail">
             <div class="sub-title">任务详情</div>
             <p>{{ selectedTask.description }}</p>
+            <div class="verification-panel">
+              <div class="verification-line">
+                <span>验证状态</span>
+                <strong>{{ selectedTask.verification_status }}</strong>
+              </div>
+              <div class="verification-line">
+                <span>上次验证</span>
+                <strong>{{ selectedTask.last_verified_at || '-' }}</strong>
+              </div>
+              <div class="verification-line">
+                <span>验证通过率</span>
+                <strong>{{ formatPercent(selectedTask.verification_summary?.pass_rate) }}</strong>
+              </div>
+              <div v-if="selectedTask.verification_summary?.remaining_failure_types?.length" class="task-failure-tags">
+                <el-tag
+                  v-for="failureType in selectedTask.verification_summary.remaining_failure_types"
+                  :key="failureType"
+                  size="small"
+                  type="danger"
+                >
+                  {{ failureType }}
+                </el-tag>
+              </div>
+              <div class="task-controls">
+                <el-button size="small" @click="previewRepairVerification">仅预览验证范围</el-button>
+                <el-button size="small" type="warning" @click="runRepairVerification">回归验证</el-button>
+              </div>
+            </div>
             <div class="task-controls">
               <el-select v-model="selectedTask.status" size="small">
                 <el-option
@@ -941,6 +996,30 @@ onMounted(loadRuns)
 
 .task-detail {
   margin-top: 12px;
+}
+
+.verification-panel {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.verification-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.verification-line span {
+  color: var(--kb-text-secondary);
+}
+
+.verification-line strong {
+  color: var(--kb-text-primary);
 }
 
 .task-detail .el-input {

@@ -361,6 +361,11 @@ class EvalRepairTask(Base):
     created_by = Column(String(64), nullable=False, default="")
     assigned_to = Column(String(64), nullable=False, default="")
     resolution_note = Column(Text, nullable=False, default="")
+    last_verified_at = Column(DateTime, nullable=True)
+    verification_status = Column(String(32), nullable=False, default="not_verified", index=True)
+    verification_run_uid = Column(String(64), nullable=False, default="", index=True)
+    verification_summary_json = Column(Text, nullable=False, default="{}")
+    verified_by = Column(String(64), nullable=False, default="")
     note = Column(Text, nullable=False, default="")
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -377,6 +382,12 @@ class EvalRepairTask(Base):
 
     def set_related_turn_uids(self, value):
         self.related_turn_uids_json = _json_dump(value, [])
+
+    def get_verification_summary(self):
+        return _json_load(self.verification_summary_json, {})
+
+    def set_verification_summary(self, value):
+        self.verification_summary_json = _json_dump(value, {})
 
     def get_metadata(self):
         return _json_load(self.metadata_json, {})
@@ -405,6 +416,11 @@ class EvalRepairTask(Base):
             "created_by": self.created_by,
             "assigned_to": self.assigned_to,
             "resolution_note": self.resolution_note,
+            "last_verified_at": self.last_verified_at.isoformat() if self.last_verified_at else None,
+            "verification_status": self.verification_status,
+            "verification_run_uid": self.verification_run_uid,
+            "verification_summary": self.get_verification_summary(),
+            "verified_by": self.verified_by,
             "note": self.note,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,

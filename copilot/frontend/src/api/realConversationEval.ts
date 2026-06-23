@@ -88,6 +88,21 @@ export interface RealConversationRepairTask {
   created_by?: string
   assigned_to?: string
   resolution_note?: string
+  last_verified_at?: string | null
+  verification_status: 'not_verified' | 'running' | 'verified_passed' | 'retest_failed' | 'error'
+  verification_run_uid?: string
+  verification_summary?: {
+    total_turns?: number
+    passed_turns?: number
+    failed_turns?: number
+    pass_rate?: number
+    remaining_failure_types?: string[]
+    checked_turn_uids?: string[]
+    started_at?: string
+    finished_at?: string
+    error_message?: string
+  }
+  verified_by?: string
   created_at?: string
   updated_at?: string
 }
@@ -173,9 +188,21 @@ export async function updateRepairTask(taskUid: string, payload: {
   priority?: RealConversationRepairTask['priority']
   assigned_to?: string
   resolution_note?: string
+  verify_after_resolve?: boolean
 }) {
   const res = await apiClient.patch(`/eval/repair-tasks/${taskUid}`, payload)
-  return res.data as { task: RealConversationRepairTask }
+  return res.data as { task: RealConversationRepairTask; verification?: RealConversationRepairTask['verification_summary'] }
+}
+
+export async function verifyRepairTask(taskUid: string, payload?: { dry_run?: boolean; apply?: boolean }) {
+  const res = await apiClient.post(`/eval/repair-tasks/${taskUid}/verify`, payload || {})
+  return res.data as {
+    ok?: boolean
+    dry_run?: boolean
+    task?: RealConversationRepairTask
+    verification?: RealConversationRepairTask['verification_summary']
+    checked_turn_uids?: string[]
+  }
 }
 
 export async function fetchEvalTrends(params?: {

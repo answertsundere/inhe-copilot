@@ -27,6 +27,14 @@ def _db():
     return SessionLocal()
 
 
+def _truthy(value) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return False
+
+
 def _count_by(rows, attr: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in rows:
@@ -254,6 +262,24 @@ def generate_repair_tasks():
         db.close()
 
 
+@eval_bp.route("/api/eval/repair-tasks/<task_uid>/verify", methods=["POST"])
+@eval_bp.route("/api/kb/eval/repair-tasks/<task_uid>/verify", methods=["POST"])
+@require_supervisor
+def verify_repair_task(task_uid):
+    from app.services.real_conversation_repair_verification_service import RealConversationRepairVerificationService
+
+    data = request.get_json(silent=True) or {}
+    dry_run = _truthy(data.get("dry_run")) or data.get("apply") is False
+    service = RealConversationRepairVerificationService()
+    try:
+        if dry_run:
+            return jsonify(sanitize_obj(service.preview_task(task_uid)))
+        result = service.verify_task(task_uid, verified_by=sanitize_text(current_user_name()))
+        return jsonify(sanitize_obj(result))
+    except ValueError as exc:
+        return jsonify({"error": sanitize_text(str(exc))}), 404
+
+
 @eval_bp.route("/api/eval/repair-tasks/<task_uid>", methods=["GET"])
 @eval_bp.route("/api/kb/eval/repair-tasks/<task_uid>", methods=["GET"])
 @require_supervisor
@@ -298,8 +324,10 @@ def get_repair_task(task_uid):
 @require_supervisor
 def update_repair_task(task_uid):
     from app.models.eval_tables import EvalRepairTask
+    from app.services.real_conversation_repair_verification_service import RealConversationRepairVerificationService
 
     data = request.get_json(silent=True) or {}
+    verify_after_resolve = _truthy(data.get("verify_after_resolve"))
     db = _db()
     try:
         task = (
@@ -324,6 +352,12 @@ def update_repair_task(task_uid):
         if "resolution_note" in data:
             task.resolution_note = sanitize_text(data.get("resolution_note"))
         db.commit()
+        if status == "resolved" and verify_after_resolve:
+            result = RealConversationRepairVerificationService().verify_task(
+                task.task_uid,
+                verified_by=sanitize_text(current_user_name()),
+            )
+            return jsonify(sanitize_obj({"ok": True, **result}))
         return jsonify(sanitize_obj({"ok": True, "task": task.to_dict()}))
     except Exception:
         db.rollback()

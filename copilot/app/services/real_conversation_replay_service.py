@@ -91,6 +91,10 @@ class ReplayOptions:
     limit_cases: int | None = None
     run_uid: str | None = None
     sample_only: bool = False
+    case_uids: list[str] | None = None
+    turn_uids: list[str] | None = None
+    source_type: str = "real_conversation"
+    run_metadata: dict[str, Any] | None = None
 
 
 def _new_run_uid() -> str:
@@ -223,6 +227,8 @@ class RealConversationReplayService:
 
         options = options or ReplayOptions()
         run_uid = options.run_uid or _new_run_uid()
+        case_uid_filter = set(options.case_uids or [])
+        turn_uid_filter = set(options.turn_uids or [])
         db = SessionLocal()
         try:
             query = (
@@ -230,12 +236,17 @@ class RealConversationReplayService:
                 .filter(EvalCase.source_type == "real_conversation", EvalCase.status == "active")
                 .order_by(EvalCase.id.asc())
             )
+            if case_uid_filter:
+                query = query.filter(EvalCase.case_uid.in_(case_uid_filter))
             if options.limit_cases:
                 query = query.limit(options.limit_cases)
             cases = query.all()
-            run = EvalRun(run_uid=run_uid, source_type="real_conversation", status="running")
+            run = EvalRun(run_uid=run_uid, source_type=options.source_type or "real_conversation", status="running")
             run.total_cases = len(cases)
-            run.set_metadata({"sample_only": options.sample_only})
+            run.set_metadata({
+                "sample_only": options.sample_only,
+                **sanitize_obj(options.run_metadata or {}),
+            })
             db.add(run)
             db.commit()
 
@@ -257,6 +268,8 @@ class RealConversationReplayService:
                 for turn in turns:
                     history.append({"speaker": turn.speaker, "text": turn.sanitized_text})
                     if turn.speaker != "buyer":
+                        continue
+                    if turn_uid_filter and turn.turn_uid not in turn_uid_filter:
                         continue
                     totals["turns"] += 1
                     payload = {

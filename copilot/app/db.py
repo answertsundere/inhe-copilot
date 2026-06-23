@@ -186,6 +186,11 @@ def _migrate_add_columns():
             ("created_by", "VARCHAR(64)", "''"),
             ("assigned_to", "VARCHAR(64)", "''"),
             ("resolution_note", "TEXT", "''"),
+            ("last_verified_at", "DATETIME", "NULL"),
+            ("verification_status", "VARCHAR(32)", "'not_verified'"),
+            ("verification_run_uid", "VARCHAR(64)", "''"),
+            ("verification_summary_json", "TEXT", "'{}'"),
+            ("verified_by", "VARCHAR(64)", "''"),
         ],
     }
     for table_name, new_columns in eval_table_columns.items():
