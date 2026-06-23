@@ -15,6 +15,12 @@ const router = createRouter({
           meta: { title: '总览' },
         },
         {
+          path: 'real-test',
+          name: 'real-conversation-test',
+          component: () => import('../views/RealConversationReplayPage.vue'),
+          meta: { title: '真实回放质检' },
+        },
+        {
           path: 'products',
           name: 'products',
           component: () => import('../views/ProductKnowledgePage.vue'),

@@ -518,6 +518,7 @@ def get_sop_repo():
 def _init_db():
     """初始化知识库数据库"""
     from app.db import init_db
+    import app.models.eval_tables  # noqa: F401 - register evaluation replay tables
     import app.models.kb_tables  # noqa: F401 - 注册新表
     db_dir = os.path.dirname(KNOWLEDGE_DB_PATH)
     if db_dir and not os.path.exists(db_dir):
@@ -602,6 +603,7 @@ def create_app():
     from app.api.simulation_routes import simulation_bp
     from app.api.media_routes import media_bp
     from app.api.training_sample_routes import training_sample_bp
+    from app.api.eval_routes import eval_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(analyze_bp)
@@ -622,6 +624,7 @@ def create_app():
     app.register_blueprint(simulation_bp)
     app.register_blueprint(media_bp)
     app.register_blueprint(training_sample_bp)
+    app.register_blueprint(eval_bp)
 
     # 让 /api/kb/knowledge/* 兼容 /api/knowledge/* 路由
     _clone_routes_under_prefix(app, "/api/knowledge/", "/api/kb/knowledge/")
@@ -631,7 +634,14 @@ def create_app():
     @app.route("/real-test")
     def real_test_panel():
         import json
-        from flask import render_template, make_response
+        from flask import render_template, make_response, send_file
+
+        kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")
+        index_html = os.path.join(kb_dir, "index.html")
+        if os.path.exists(index_html):
+            resp = make_response(send_file(index_html))
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp
 
         cases_path = os.path.join(BASE_DIR, "data", "premium_manual_cases.json")
         fallback_path = os.path.abspath(os.path.join(
