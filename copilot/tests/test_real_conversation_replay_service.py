@@ -5,6 +5,7 @@ import app.db as db_module
 from app.db import Base
 from app.models.eval_tables import EvalCase, EvalConversationTurn, EvalFailure, EvalRun, EvalTrace
 from app.services.real_conversation_replay_service import RealConversationReplayService, ReplayOptions
+from app.services.real_conversation_replay_service import classify_turn_failures
 
 
 def _patch_test_db(monkeypatch):
@@ -123,3 +124,19 @@ def test_replay_records_failure_when_agent_requires_review(monkeypatch):
         assert "rag_miss" in labels
     finally:
         db.close()
+
+
+def test_failure_classifier_covers_audit_policy_and_product_identity():
+    failures = classify_turn_failures({
+        "suggested_reply": "我先核实后回复。",
+        "query_fact_type": "dimensions",
+        "tool_policy_blocked": True,
+        "product_identified": False,
+        "final_answer_audit": {"passed": False},
+        "evidence_debug": {"selected_evidence": []},
+    })
+
+    labels = {item["failure_type"] for item in failures}
+    assert "semantic_mismatch" in labels
+    assert "tool_policy_blocked" in labels
+    assert "no_product_identified" in labels

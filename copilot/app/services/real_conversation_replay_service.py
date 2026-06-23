@@ -99,8 +99,20 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     query_fact_type = _extract_query_fact_type(response)
     selected, _ = _extract_evidence(response)
     answer_trace = response.get("answer_trace") or {}
+    final_audit = response.get("final_answer_audit") or response.get("final_audit") or {}
+    evidence_debug = response.get("evidence_debug") or {}
     if response.get("error"):
         failures.append({"failure_type": "api_error", "severity": "high", "message": sanitize_text(response.get("error"))})
+    if response.get("tool_policy_blocked") or response.get("policy_blocked"):
+        failures.append({"failure_type": "tool_policy_blocked", "severity": "medium", "message": "tool policy blocked the turn"})
+    if isinstance(final_audit, dict) and final_audit.get("passed") is False:
+        failures.append({"failure_type": "semantic_mismatch", "severity": "high", "message": "final answer audit did not pass"})
+    if (
+        response.get("product_identified") is False
+        or evidence_debug.get("product_identified") is False
+        or str(evidence_debug.get("product_resolution_status") or "") == "not_found"
+    ):
+        failures.append({"failure_type": "no_product_identified", "severity": "medium", "message": "product identity was not resolved"})
     if response.get("requires_human_review"):
         failures.append({"failure_type": "needs_human_review", "severity": "medium", "message": "agent requested human review"})
     if not reply.strip():
