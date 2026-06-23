@@ -685,8 +685,8 @@ def create_app():
     @app.route("/health")
     @app.route("/media")
     @app.route("/guide")
-    def kb_admin_spa():
-        """Serve INHE knowledge library SPA at /ask/."""
+    def ask_spa():
+        """Serve Vue SPA routes under /ask/."""
         from flask import make_response, send_file
 
         kb_dir = os.path.join(BASE_DIR, "web", "static", "kb-admin")

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '../components/layout/AppLayout.vue'
+import WorkbenchLayout from '../components/layout/WorkbenchLayout.vue'
 
 const router = createRouter({
   history: createWebHistory('/ask/'),
@@ -13,12 +14,6 @@ const router = createRouter({
           name: 'dashboard',
           component: () => import('../views/KnowledgeDashboardPage.vue'),
           meta: { title: '总览' },
-        },
-        {
-          path: 'quality-replay',
-          name: 'real-conversation-test',
-          component: () => import('../views/RealConversationReplayPage.vue'),
-          meta: { title: '真实回放质检' },
         },
         {
           path: 'products',
@@ -97,6 +92,18 @@ const router = createRouter({
           name: 'guide',
           component: () => import('../views/UsageGuidePage.vue'),
           meta: { title: '使用说明' },
+        },
+      ],
+    },
+    {
+      path: '/quality-replay',
+      component: WorkbenchLayout,
+      children: [
+        {
+          path: '',
+          name: 'quality-replay',
+          component: () => import('../views/RealConversationReplayPage.vue'),
+          meta: { title: '真实回放质检' },
         },
       ],
     },
