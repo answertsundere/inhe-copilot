@@ -39,6 +39,12 @@ def _seed_run(session_factory):
         trace.set_selected_evidence([{"content": "安装说明", "url": "https://demo.oss-cn/a.jpg/[SIGNED_URL_REDACTED:abc]"}])
         trace.set_rejected_evidence([])
         trace.set_answer_trace({"query_fact_type": "installation"})
+        trace.set_turn_understanding({
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "reply_strategy": "normal_agent",
+        })
         trace.set_final_audit({"passed": True})
         trace.set_semantic_compiler({"blocks": 1})
         db.add(trace)
@@ -95,6 +101,8 @@ def test_real_conversation_eval_run_detail_is_sanitized(monkeypatch):
     data = response.get_json()
     assert data["run"]["run_uid"] == "real_run_api"
     assert data["turns"][0]["query_fact_type"] == "installation"
+    assert data["turns"][0]["turn_understanding"]["turn_actionability"] == "actionable_question"
+    assert data["turns"][0]["turn_understanding"]["needs_rag"] is True
     assert data["failures"][0]["failure_type"] == "needs_human_review"
     assert data["failures"][0]["suggested_fix_area"] == "human_policy_risk_boundary"
     assert data["failures"][0]["suggested_owner"] == "customer_service_lead"

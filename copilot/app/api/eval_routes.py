@@ -44,17 +44,21 @@ def _count_by(rows, attr: str) -> dict[str, int]:
 
 
 def _build_run_summary(run, traces, failures, reviews) -> dict:
-    total_turns = len(traces) or int(getattr(run, "total_turns", 0) or 0)
-    passed_turns = sum(1 for row in traces if row.passed)
-    if not traces:
+    scored_traces = [
+        row for row in traces
+        if (row.get_turn_understanding() or {}).get("should_score") is not False
+    ]
+    total_turns = len(scored_traces) or int(getattr(run, "total_turns", 0) or 0)
+    passed_turns = sum(1 for row in scored_traces if row.passed)
+    if not scored_traces:
         passed_turns = int(getattr(run, "passed_turns", 0) or 0)
-    latency_values = [int(row.latency_ms or 0) for row in traces if row.latency_ms is not None]
+    latency_values = [int(row.latency_ms or 0) for row in scored_traces if row.latency_ms is not None]
     avg_latency_ms = round(sum(latency_values) / len(latency_values), 2) if latency_values else 0
     return {
         "failure_counts_by_type": _count_by(failures, "failure_type"),
         "review_counts_by_decision": _count_by(reviews, "decision"),
         "avg_latency_ms": avg_latency_ms,
-        "requires_review_count": sum(1 for row in traces if row.requires_human_review),
+        "requires_review_count": sum(1 for row in scored_traces if row.requires_human_review),
         "pass_rate": round(passed_turns / total_turns, 4) if total_turns else 0,
     }
 

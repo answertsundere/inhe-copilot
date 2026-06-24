@@ -29,6 +29,11 @@ type TurnFilter =
   | 'semantic_mismatch'
   | 'unsafe_claim'
   | 'tool_policy_blocked'
+  | 'wrong_topic_reply'
+  | 'context_insufficient'
+  | 'unnecessary_rag_call'
+  | 'query_fact_type_missing'
+  | 'not_scored'
 
 const loading = ref(false)
 const forbidden = ref(false)
@@ -61,6 +66,11 @@ const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '语义不匹配', value: 'semantic_mismatch' },
   { label: '不安全承诺', value: 'unsafe_claim' },
   { label: '工具策略拦截', value: 'tool_policy_blocked' },
+  { label: '答非所问', value: 'wrong_topic_reply' },
+  { label: '上下文不足', value: 'context_insufficient' },
+  { label: '不该查 RAG', value: 'unnecessary_rag_call' },
+  { label: '意图为空', value: 'query_fact_type_missing' },
+  { label: '跳过不评分', value: 'not_scored' },
 ]
 
 const reviewActions: Array<{ label: string; decision: ReviewDecision; type?: 'success' | 'danger' | 'warning' | 'primary' }> = [
@@ -107,6 +117,7 @@ const filteredTurns = computed(() => {
     const turnFailures = failuresByTurn.value.get(turn.turn_uid) || []
     if (activeFilter.value === 'failed') return !turn.passed || turnFailures.length > 0
     if (activeFilter.value === 'human_review') return turn.requires_human_review
+    if (activeFilter.value === 'not_scored') return turn.turn_understanding?.should_score === false
     return turnFailures.some((failure) => failure.failure_type === activeFilter.value)
   })
 })
@@ -423,6 +434,11 @@ onMounted(loadRuns)
               </el-tag>
               <el-tag v-if="turn.requires_human_review" size="small" type="warning">需人工复核</el-tag>
               <el-tag v-if="turn.query_fact_type" size="small">{{ turn.query_fact_type }}</el-tag>
+              <el-tag v-if="turn.turn_understanding?.turn_actionability" size="small" type="info">
+                {{ turn.turn_understanding.turn_actionability }}
+              </el-tag>
+              <el-tag v-if="turn.turn_understanding?.should_score === false" size="small">跳过不评分</el-tag>
+              <el-tag v-if="turn.turn_understanding?.needs_rag === false" size="small">无需 RAG</el-tag>
               <span>{{ turn.latency_ms }} ms</span>
             </div>
             <div class="bubble buyer">
@@ -472,7 +488,25 @@ onMounted(loadRuns)
               <span>拒绝证据</span>
               <strong>{{ selectedTurn.rejected_evidence.length }}</strong>
             </div>
+            <div>
+              <span>turn_actionability</span>
+              <strong>{{ selectedTurn.turn_understanding?.turn_actionability || '-' }}</strong>
+            </div>
+            <div>
+              <span>reply_strategy</span>
+              <strong>{{ selectedTurn.turn_understanding?.reply_strategy || '-' }}</strong>
+            </div>
           </div>
+          <section v-if="selectedTurn.turn_understanding" class="fix-panel">
+            <div class="sub-title">Turn Understanding</div>
+            <div class="fix-item">
+              <span>needs_rag：{{ selectedTurn.turn_understanding.needs_rag }}</span>
+              <span>should_score：{{ selectedTurn.turn_understanding.should_score }}</span>
+              <span>skip_reason：{{ selectedTurn.turn_understanding.skip_reason || '-' }}</span>
+              <span>forbidden_reply_topics：{{ selectedTurn.turn_understanding.forbidden_reply_topics?.join(', ') || '-' }}</span>
+              <p>{{ selectedTurn.turn_understanding.reason || '-' }}</p>
+            </div>
+          </section>
 
           <section v-if="selectedFailures.length" class="fix-panel">
             <div class="sub-title">失败归因与修复建议</div>
@@ -491,6 +525,9 @@ onMounted(loadRuns)
             </el-collapse-item>
             <el-collapse-item title="rejected_evidence" name="rejected_evidence">
               <pre>{{ formatJson(selectedTurn.rejected_evidence) }}</pre>
+            </el-collapse-item>
+            <el-collapse-item title="turn_understanding" name="turn_understanding">
+              <pre>{{ formatJson(selectedTurn.turn_understanding) }}</pre>
             </el-collapse-item>
             <el-collapse-item title="answer_trace" name="answer_trace">
               <pre>{{ formatJson(selectedTurn.answer_trace) }}</pre>

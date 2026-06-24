@@ -192,6 +192,9 @@ def _migrate_add_columns():
             ("verification_summary_json", "TEXT", "'{}'"),
             ("verified_by", "VARCHAR(64)", "''"),
         ],
+        "eval_traces": [
+            ("turn_understanding_json", "TEXT", "'{}'"),
+        ],
     }
     for table_name, new_columns in eval_table_columns.items():
         if table_name not in inspector.get_table_names():

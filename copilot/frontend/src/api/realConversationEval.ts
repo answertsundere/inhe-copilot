@@ -24,6 +24,19 @@ export interface RealConversationTurnTrace {
   required_fact_types: string[]
   selected_evidence: unknown[]
   rejected_evidence: unknown[]
+  turn_understanding?: {
+    turn_actionability?: string
+    needs_agent_reply?: boolean
+    needs_rag?: boolean
+    needs_tool?: boolean
+    should_score?: boolean
+    reply_strategy?: string
+    context_dependency?: string
+    forbidden_reply_topics?: string[]
+    reason?: string
+    query_fact_type?: string
+    skip_reason?: string
+  }
   answer_trace: Record<string, unknown>
   final_audit: Record<string, unknown>
   semantic_compiler: Record<string, unknown>

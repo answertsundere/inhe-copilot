@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.real_conversation_turn_understanding_service import (
+    RealConversationTurnUnderstandingService,
+    detect_reply_topics,
+)
 
 
 FAILURE_TYPES = {
@@ -19,6 +23,13 @@ FAILURE_TYPES = {
     "needs_human_review",
     "tool_policy_blocked",
     "api_error",
+    "turn_understanding_missing",
+    "context_insufficient",
+    "wrong_topic_reply",
+    "unrequested_product_fact",
+    "query_fact_type_missing",
+    "unnecessary_rag_call",
+    "encoding_corruption",
 }
 
 FAILURE_REPAIR_GUIDANCE = {
@@ -71,6 +82,41 @@ FAILURE_REPAIR_GUIDANCE = {
         "suggested_fix_area": "answer_composition",
         "suggested_owner": "agent_engineering",
         "explanation": "The agent produced an empty or incomplete reply.",
+    },
+    "turn_understanding_missing": {
+        "suggested_fix_area": "eval_replay_understanding",
+        "suggested_owner": "agent_quality",
+        "explanation": "The replay turn could not be classified before scoring.",
+    },
+    "context_insufficient": {
+        "suggested_fix_area": "conversation_context",
+        "suggested_owner": "agent_quality",
+        "explanation": "The buyer turn depends on missing prior text, product, or media context.",
+    },
+    "wrong_topic_reply": {
+        "suggested_fix_area": "final_audit_semantic_compiler",
+        "suggested_owner": "agent_quality",
+        "explanation": "The reply expands a product topic that the current buyer turn did not ask for.",
+    },
+    "unrequested_product_fact": {
+        "suggested_fix_area": "answer_composition",
+        "suggested_owner": "agent_engineering",
+        "explanation": "The answer includes product facts that were not requested by the current turn.",
+    },
+    "query_fact_type_missing": {
+        "suggested_fix_area": "query_understanding",
+        "suggested_owner": "agent_engineering",
+        "explanation": "The turn was scored while query_fact_type was empty despite a product-fact reply.",
+    },
+    "unnecessary_rag_call": {
+        "suggested_fix_area": "replay_turn_routing",
+        "suggested_owner": "agent_quality",
+        "explanation": "The replay turn did not require RAG, but evidence was still selected.",
+    },
+    "encoding_corruption": {
+        "suggested_fix_area": "data_import_encoding",
+        "suggested_owner": "data_pipeline",
+        "explanation": "The buyer turn appears to contain corrupted text and cannot be scored reliably.",
     },
 }
 
@@ -204,7 +250,121 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     return enriched
 
 
+def evaluate_replay_turn_result(
+    turn_understanding: dict[str, Any] | None,
+    response: dict[str, Any],
+    failures: list[dict[str, str]],
+    exception: Exception | None = None,
+) -> tuple[bool, list[dict[str, str]]]:
+    """Apply replay-specific scoring rules on top of Agent failures."""
+    all_failures = list(failures or [])
+    understanding = turn_understanding or {}
+    if not understanding:
+        all_failures.append({
+            "failure_type": "turn_understanding_missing",
+            "severity": "high",
+            "message": "turn understanding is missing",
+        })
+    if exception is not None:
+        return False, _enrich_failures(all_failures)
+
+    should_score = bool(understanding.get("should_score"))
+    if not should_score:
+        return False, _enrich_failures(all_failures)
+
+    reply = str(response.get("suggested_reply") or response.get("reply") or "")
+    reply_topics = set(detect_reply_topics(reply))
+    query_fact_type = _extract_query_fact_type(response)
+    required_fact_types = set(str(item) for item in _extract_required_fact_types(response) if item)
+    selected, _ = _extract_evidence(response)
+    actionability = str(understanding.get("turn_actionability") or "")
+    forbidden_topics = set(str(item) for item in (understanding.get("forbidden_reply_topics") or []) if item)
+    skip_reason = str(understanding.get("skip_reason") or "")
+
+    if skip_reason == "encoding_corruption":
+        all_failures.append({
+            "failure_type": "encoding_corruption",
+            "severity": "high",
+            "message": "buyer message appears encoding-corrupted",
+        })
+    elif skip_reason == "context_insufficient":
+        all_failures.append({
+            "failure_type": "context_insufficient",
+            "severity": "medium",
+            "message": "turn requires prior context that is unavailable",
+        })
+
+    if not bool(understanding.get("needs_rag")) and selected:
+        all_failures.append({
+            "failure_type": "unnecessary_rag_call",
+            "severity": "medium",
+            "message": "selected evidence exists for a turn that should not use RAG",
+        })
+
+    if not bool(understanding.get("needs_rag")) and reply_topics & forbidden_topics:
+        all_failures.append({
+            "failure_type": "wrong_topic_reply",
+            "severity": "high",
+            "message": "reply expands forbidden product topics for this turn",
+        })
+
+    if actionability != "actionable_question" and reply_topics:
+        final_audit = response.get("final_answer_audit") or response.get("final_audit") or {}
+        expected_topics = final_audit.get("expected_topics") if isinstance(final_audit, dict) else []
+        if not expected_topics:
+            all_failures.append({
+                "failure_type": "wrong_topic_reply",
+                "severity": "high",
+                "message": "final audit had no expected topics but reply contains product topics",
+            })
+
+    if not query_fact_type and reply_topics:
+        all_failures.append({
+            "failure_type": "query_fact_type_missing",
+            "severity": "high",
+            "message": "query_fact_type is empty while reply contains product fact topics",
+        })
+        all_failures.append({
+            "failure_type": "unrequested_product_fact",
+            "severity": "high",
+            "message": "reply contains product facts not grounded in the current turn intent",
+        })
+
+    if bool(understanding.get("needs_rag")) and not selected and not response.get("requires_human_review"):
+        all_failures.append({
+            "failure_type": "rag_miss",
+            "severity": "medium",
+            "message": "turn needs RAG but no selected evidence or human-review fallback exists",
+        })
+
+    if required_fact_types and reply_topics and query_fact_type and not (reply_topics & required_fact_types):
+        all_failures.append({
+            "failure_type": "evidence_misuse",
+            "severity": "medium",
+            "message": "reply product topics do not overlap required fact types",
+        })
+
+    enriched = _enrich_failures(all_failures)
+    return not enriched, enriched
+
+
+def _enrich_failures(failures: list[dict[str, str]]) -> list[dict[str, str]]:
+    enriched = []
+    seen = set()
+    for failure in failures:
+        failure_type = failure.get("failure_type", "api_error")
+        key = (failure_type, failure.get("message", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        enriched.append({**repair_guidance_for_failure(failure_type), **failure})
+    return enriched
+
+
 class RealConversationReplayService:
+    def __init__(self, turn_understanding_service: RealConversationTurnUnderstandingService | None = None):
+        self.turn_understanding_service = turn_understanding_service or RealConversationTurnUnderstandingService()
+
     def _call_agent(self, payload: dict[str, Any]) -> dict[str, Any]:
         from app.main import get_reply_service
         from app.services.analysis_execution_service import execute_analysis
@@ -271,32 +431,57 @@ class RealConversationReplayService:
                         continue
                     if turn_uid_filter and turn.turn_uid not in turn_uid_filter:
                         continue
-                    totals["turns"] += 1
+                    conversation_history = history[:-1]
+                    turn_understanding = self.turn_understanding_service.understand(
+                        turn.sanitized_text,
+                        history=conversation_history,
+                        message_type=turn.message_type,
+                        product_hint=turn.product_hint,
+                    )
+                    should_score = bool(turn_understanding.get("should_score"))
+                    if should_score:
+                        totals["turns"] += 1
                     payload = {
                         "message": turn.sanitized_text,
                         "conversation_id": f"real_eval_{case.case_uid}",
                         "product_name": turn.product_hint,
                         "copilot_context": {
-                            "conversation_history": history[:-1],
+                            "conversation_history": conversation_history,
                             "eval_case_uid": case.case_uid,
                             "eval_turn_uid": turn.turn_uid,
                             "source_type": "real_conversation",
+                            "turn_understanding": turn_understanding,
                         },
                     }
                     started = time.time()
                     exception = None
                     response: dict[str, Any] = {}
-                    try:
-                        response = self._call_agent(payload) or {}
-                    except Exception as exc:
-                        exception = exc
-                        response = {"error": str(exc)}
+                    if turn_understanding.get("needs_agent_reply"):
+                        try:
+                            response = self._call_agent(payload) or {}
+                        except Exception as exc:
+                            exception = exc
+                            response = {"error": str(exc)}
+                    else:
+                        response = {
+                            "suggested_reply": "",
+                            "requires_human_review": False,
+                            "query_fact_type": turn_understanding.get("query_fact_type", ""),
+                            "answer_trace": {
+                                "turn_actionability": turn_understanding.get("turn_actionability"),
+                                "reply_strategy": turn_understanding.get("reply_strategy"),
+                                "skip_reason": turn_understanding.get("skip_reason", ""),
+                            },
+                        }
                     latency_ms = int((time.time() - started) * 1000)
-                    failures = classify_turn_failures(response, exception)
+                    base_failures = classify_turn_failures(response, exception) if should_score else []
+                    passed, failures = evaluate_replay_turn_result(turn_understanding, response, base_failures, exception)
                     labels = [f["failure_type"] for f in failures]
-                    if response.get("requires_human_review"):
+                    if should_score and response.get("requires_human_review"):
                         totals["requires_review"] += 1
-                    if labels:
+                    if not should_score:
+                        pass
+                    elif labels:
                         totals["failed"] += 1
                     else:
                         totals["passed"] += 1
@@ -314,8 +499,9 @@ class RealConversationReplayService:
                         requires_human_review=bool(response.get("requires_human_review")),
                         latency_ms=latency_ms,
                         order_identity_hash=turn.order_hint_hash,
-                        passed=not labels,
+                        passed=passed,
                     )
+                    trace.set_turn_understanding(sanitize_obj(turn_understanding))
                     trace.set_required_fact_types(_extract_required_fact_types(response))
                     trace.set_selected_evidence(selected)
                     trace.set_rejected_evidence(rejected)
@@ -329,6 +515,7 @@ class RealConversationReplayService:
                         "trace_id": response.get("trace_id"),
                         "evidence_debug": response.get("evidence_debug") or {},
                         "debug_runtime": response.get("debug_runtime") or {},
+                        "turn_understanding": turn_understanding,
                     }))
                     db.add(trace)
                     for failure in failures:

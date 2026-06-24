@@ -168,6 +168,7 @@ class EvalTrace(Base):
     required_fact_types_json = Column(Text, nullable=False, default="[]")
     selected_evidence_json = Column(Text, nullable=False, default="[]")
     rejected_evidence_json = Column(Text, nullable=False, default="[]")
+    turn_understanding_json = Column(Text, nullable=False, default="{}")
     answer_trace_json = Column(Text, nullable=False, default="{}")
     final_audit_json = Column(Text, nullable=False, default="{}")
     semantic_compiler_json = Column(Text, nullable=False, default="{}")
@@ -201,6 +202,12 @@ class EvalTrace(Base):
 
     def set_rejected_evidence(self, value):
         self.rejected_evidence_json = _json_dump(value, [])
+
+    def get_turn_understanding(self):
+        return _json_load(self.turn_understanding_json, {})
+
+    def set_turn_understanding(self, value):
+        self.turn_understanding_json = _json_dump(value, {})
 
     def get_answer_trace(self):
         return _json_load(self.answer_trace_json, {})
@@ -252,6 +259,7 @@ class EvalTrace(Base):
             "required_fact_types": self.get_required_fact_types(),
             "selected_evidence": self.get_selected_evidence(),
             "rejected_evidence": self.get_rejected_evidence(),
+            "turn_understanding": self.get_turn_understanding(),
             "answer_trace": self.get_answer_trace(),
             "final_audit": self.get_final_audit(),
             "semantic_compiler": self.get_semantic_compiler(),
