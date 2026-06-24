@@ -101,6 +101,92 @@ def test_replay_keeps_history_out_of_current_message_and_stores_trace(monkeypatc
         db.close()
 
 
+def test_replay_passes_structured_real_context_to_agent_and_trace(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        real_context = {
+            "conversation_type": "mixed",
+            "source_page": "order_detail",
+            "product": {
+                "item_id": "123456789",
+                "item_id_hash": "hash-item",
+                "item_id_masked": "123***6789",
+                "product_url": "https://item.taobao.com/item.htm?id=123456789",
+                "product_title": "儿童书架收纳柜",
+                "sku_code": "SKU-A1",
+            },
+            "order": {
+                "order_id": "123***2345",
+                "order_id_hash": "hash-order",
+                "order_id_masked": "123***2345",
+                "order_product_title": "儿童书架收纳柜",
+                "order_sku_code": "SKU-A1",
+            },
+            "media": {
+                "image_urls": [],
+                "video_urls": ["https://demo.example.com/install.mp4"],
+            },
+            "raw_context_sources": ["product_url", "order_id", "media_url:video"],
+        }
+        case = EvalCase(case_uid="case_ctx_1", source_type="real_conversation", message="这个视频不一样")
+        case.set_metadata({"real_context": real_context})
+        turn = EvalConversationTurn(
+            case_uid="case_ctx_1",
+            conversation_uid="conv_ctx_1",
+            turn_uid="turn_ctx_1",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="这个视频和我买的不一样",
+            reference_human_reply="我帮您核对",
+        )
+        turn.set_metadata({"real_context": real_context})
+        db.add(case)
+        db.add(turn)
+        db.commit()
+    finally:
+        db.close()
+
+    payloads = []
+
+    class ContextReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            payloads.append(payload)
+            return {
+                "suggested_reply": "这个需要人工核对资料和实物是否一致。",
+                "requires_human_review": True,
+                "query_fact_type": "aftersales",
+                "evidence_debug": {"query_fact_type": "aftersales", "selected_evidence": []},
+                "answer_trace": {"query_fact_type": "aftersales", "required_fact_types": ["aftersales"]},
+            }
+
+    ContextReplayService().replay_cases(ReplayOptions(run_uid="run_ctx_1"))
+
+    assert len(payloads) == 1
+    payload = payloads[0]
+    assert payload["product_name"] == "儿童书架收纳柜"
+    assert payload["product_candidates"][0]["item_id"] == "123456789"
+    assert payload["copilot_context"]["source_page"] == "order_detail"
+    assert payload["copilot_context"]["conversation_type"] == "mixed"
+    assert payload["copilot_context"]["item_id"] == "123456789"
+    assert payload["copilot_context"]["order_id_hash"] == "hash-order"
+    assert payload["copilot_context"]["media_context"]["video_urls"] == ["https://demo.example.com/install.mp4"]
+    assert "123456789012345" not in str(payload)
+
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        context_summary = trace.get_answer_trace()["real_context"]
+        assert context_summary["source_page"] == "order_detail"
+        assert context_summary["conversation_type"] == "mixed"
+        assert context_summary["has_product_context"] is True
+        assert context_summary["has_order_context"] is True
+        assert context_summary["has_media_context"] is True
+        assert context_summary["product_title_preview"] == "儿童书架收纳柜"
+    finally:
+        db.close()
+
+
 def test_replay_records_failure_when_agent_requires_review(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _seed_case(session_factory)

@@ -10,6 +10,12 @@ from app.services.real_conversation_turn_understanding_service import (
     RealConversationTurnUnderstandingService,
     detect_reply_topics,
 )
+from app.services.real_conversation_context_extractor import (
+    build_agent_context_from_real_context,
+    merge_real_context,
+    product_candidates_from_real_context,
+    summarize_real_context,
+)
 
 
 FAILURE_TYPES = {
@@ -295,6 +301,18 @@ def _extract_product_identity(response: dict[str, Any]) -> dict:
     })
 
 
+def _real_context_for_turn(case, turn) -> dict[str, Any]:
+    try:
+        case_context = (case.get_metadata() or {}).get("real_context") or {}
+    except Exception:
+        case_context = {}
+    try:
+        turn_context = (turn.get_metadata() or {}).get("real_context") or {}
+    except Exception:
+        turn_context = {}
+    return merge_real_context(case_context, turn_context)
+
+
 def _is_generic_fallback_reply(reply: str) -> bool:
     value = str(reply or "")
     return any(term in value for term in GENERIC_FALLBACK_REPLY_TERMS)
@@ -565,11 +583,16 @@ class RealConversationReplayService:
                     if turn_uid_filter and turn.turn_uid not in turn_uid_filter:
                         continue
                     conversation_history = history[:-1]
+                    real_context = _real_context_for_turn(case, turn)
+                    agent_real_context = build_agent_context_from_real_context(real_context)
+                    product_name = turn.product_hint or agent_real_context.get("product_name", "")
+                    product_candidates = product_candidates_from_real_context(real_context)
+                    real_context_summary = summarize_real_context(real_context)
                     turn_understanding = self.turn_understanding_service.understand(
                         turn.sanitized_text,
                         history=conversation_history,
                         message_type=turn.message_type,
-                        product_hint=turn.product_hint,
+                        product_hint=product_name,
                     )
                     should_score = bool(turn_understanding.get("should_score"))
                     if should_score:
@@ -577,13 +600,17 @@ class RealConversationReplayService:
                     payload = {
                         "message": turn.sanitized_text,
                         "conversation_id": f"real_eval_{case.case_uid}",
-                        "product_name": turn.product_hint,
+                        "product_name": product_name,
+                        "product_candidates": product_candidates,
+                        "order_id": agent_real_context.get("order_id", ""),
+                        "tracking_no": agent_real_context.get("tracking_no", ""),
                         "copilot_context": {
                             "conversation_history": conversation_history,
                             "eval_case_uid": case.case_uid,
                             "eval_turn_uid": turn.turn_uid,
                             "source_type": "real_conversation",
                             "turn_understanding": turn_understanding,
+                            **agent_real_context,
                         },
                     }
                     started = time.time()
@@ -645,10 +672,16 @@ class RealConversationReplayService:
                     trace.set_required_fact_types(_extract_required_fact_types(response))
                     trace.set_selected_evidence(selected)
                     trace.set_rejected_evidence(rejected)
-                    trace.set_answer_trace(sanitize_obj({**(response.get("answer_trace") or {}), **intent_contract}))
+                    trace.set_answer_trace(sanitize_obj({
+                        **(response.get("answer_trace") or {}),
+                        **intent_contract,
+                        "real_context": real_context_summary,
+                    }))
                     trace.set_final_audit(sanitize_obj(response.get("final_answer_audit") or response.get("final_audit") or {}))
                     trace.set_semantic_compiler(sanitize_obj(response.get("semantic_compiler") or response.get("semantic_compiler_debug") or {}))
-                    trace.set_product_identity(_extract_product_identity(response))
+                    product_identity = _extract_product_identity(response)
+                    product_identity["real_context"] = real_context_summary
+                    trace.set_product_identity(product_identity)
                     trace.set_failure_labels(labels)
                     trace.set_raw_response(sanitize_obj({
                         "request_id": response.get("request_id"),
@@ -657,6 +690,7 @@ class RealConversationReplayService:
                         "debug_runtime": response.get("debug_runtime") or {},
                         "turn_understanding": turn_understanding,
                         "intent_contract": intent_contract,
+                        "real_context": real_context_summary,
                     }))
                     db.add(trace)
                     for failure in failures:

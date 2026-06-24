@@ -11,10 +11,27 @@ from pathlib import Path
 from typing import Any
 
 from app.services.eval_sanitizer_service import hash_sensitive, sanitize_obj, sanitize_text
+from app.services.real_conversation_context_extractor import (
+    empty_real_context,
+    extract_real_context,
+    merge_real_context,
+)
 
 
-BUYER_SPEAKERS = {"buyer", "customer", "user", "client", "买家", "客户", "用户", "顾客"}
-SERVICE_SPEAKERS = {"seller", "service", "agent", "csr", "客服", "商家", "店铺"}
+BUYER_SPEAKERS = {"buyer", "customer", "user", "client", "买家", "客户", "用户", "顾客", "消费者"}
+SERVICE_SPEAKERS = {"seller", "service", "agent", "csr", "客服", "商家", "店铺", "卖家"}
+SYSTEM_SPEAKERS = {"system", "系统", "平台", "机器人"}
+
+SKIP_DIR_NAMES = {
+    ".git", ".github", ".claude", ".pytest_cache", ".playwright-mcp", ".playwright-cli",
+    "node_modules", "htmlcov", "logs", "log", "config", "policy_backups", "docs", "nginx",
+    "客服报表", "backend",
+}
+SKIP_FILE_NAME_TERMS = {
+    "duplicate_report", "compare_report", "report_output", "daily_quality", "coverage",
+    "readme", "quickstart", "terms", "models", "snapshot", "report", "统计",
+}
+CHAT_DIR_HINTS = {"聊天记录", "chat", "conversation", "messages", "records"}
 
 
 @dataclass
@@ -54,6 +71,12 @@ def _normalize_speaker(value: str) -> str:
         return "buyer"
     if low in SERVICE_SPEAKERS or text in SERVICE_SPEAKERS:
         return "service"
+    if low in SYSTEM_SPEAKERS or text in SYSTEM_SPEAKERS:
+        return "system"
+    if "客户" in text or "买家" in text or "用户" in text:
+        return "buyer"
+    if "客服" in text or "商家" in text or "店铺" in text:
+        return "service"
     if "客" in text and "服" not in text:
         return "buyer"
     if "客服" in text or "商家" in text:
@@ -62,7 +85,7 @@ def _normalize_speaker(value: str) -> str:
 
 
 def _text_from_record(record: dict[str, Any]) -> str:
-    for key in ("text", "content", "message", "msg", "body", "raw_text"):
+    for key in ("text", "content", "message", "msg", "body", "raw_text", "消息内容", "内容", "msg_content"):
         value = record.get(key)
         if value:
             return str(value)
@@ -126,6 +149,58 @@ def _parse_jsonl_file(path: Path) -> list[tuple[list[dict[str, Any]], dict[str, 
 
 
 _TEXT_LINE_RE = re.compile(r"^\s*(买家|客户|用户|顾客|客服|商家|店铺|buyer|customer|service|seller|agent)\s*[:：]\s*(.+?)\s*$", re.I)
+_REPORT_LINE_RE = re.compile(
+    r"(发现\s*\d+\s*组|重复|报告|统计|→\s*\d+\s*个会话|chat[_:]|business_session|capture_batch)",
+    re.I,
+)
+
+
+def _looks_like_report_or_summary(text: str) -> bool:
+    value = str(text or "").strip()
+    if not value:
+        return True
+    if value.startswith("=") or value.startswith("----"):
+        return True
+    if _REPORT_LINE_RE.search(value):
+        return True
+    if "unknown" in value.lower() and "客服" in value and "个会话" in value:
+        return True
+    return False
+
+
+def _is_context_only_text(text: str, message_type: str = "") -> bool:
+    value = str(text or "").strip()
+    msg_type = str(message_type or "").strip().lower()
+    if not value:
+        return True
+    if msg_type in {"图片", "图像", "image", "product_link", "商品链接", "系统提示"}:
+        return True
+    if re.fullmatch(r"https?://\S+", value):
+        return True
+    if value.startswith("当前用户来自 "):
+        return True
+    if re.search(r"订单号[:：].*(交易时间|合计|件商品)", value):
+        return True
+    if value.startswith("若您需要开发票"):
+        return True
+    return False
+
+
+def _is_non_actionable_buyer_text(text: str) -> bool:
+    """Return True for buyer acknowledgements/greetings that should stay in history only."""
+    value = re.sub(r"[\s~～!！?？.。…]+", "", str(text or ""))
+    if not value:
+        return True
+    acknowledgements = {
+        "好", "好的", "嗯", "恩", "可以", "行", "收到", "知道了",
+        "谢谢", "谢谢你", "好的谢谢", "嗯嗯", "ok", "OK",
+    }
+    if value in acknowledgements:
+        return True
+    greetings = {"你好", "您好", "在吗", "有人吗", "客服在吗"}
+    if value in greetings:
+        return True
+    return False
 
 
 def _parse_text_file(path: Path) -> list[tuple[list[dict[str, Any]], dict[str, Any]]]:
@@ -138,7 +213,10 @@ def _parse_text_file(path: Path) -> list[tuple[list[dict[str, Any]], dict[str, A
         match = _TEXT_LINE_RE.match(line)
         if not match:
             continue
-        turns.append({"speaker": match.group(1), "text": match.group(2), "message_type": "text"})
+        text = match.group(2)
+        if _looks_like_report_or_summary(text):
+            continue
+        turns.append({"speaker": match.group(1), "text": text, "message_type": "text"})
     return [(turns, {})] if turns else []
 
 
@@ -155,12 +233,120 @@ def _parse_csv_file(path: Path) -> list[tuple[list[dict[str, Any]], dict[str, An
     return [(turns, {"conversation_id_hash": hash_sensitive(key)}) for key, turns in groups.items()]
 
 
+def _normalize_header(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip().lower())
+
+
+def _first_present(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row and row[key] not in (None, ""):
+            return row[key]
+    return ""
+
+
+def _parse_xlsx_file(path: Path) -> list[tuple[list[dict[str, Any]], dict[str, Any]]]:
+    try:
+        import openpyxl
+    except Exception:
+        return []
+    try:
+        workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except Exception:
+        return []
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    metadata: dict[str, Any] = {"source_format": "xlsx"}
+    try:
+        for worksheet in workbook.worksheets:
+            rows = worksheet.iter_rows(values_only=True)
+            header_values = next(rows, None)
+            if not header_values:
+                continue
+            headers = [_normalize_header(item) for item in header_values]
+            if not any(h in {"会话id", "conversation_id", "chat_id", "session_id"} for h in headers):
+                continue
+            if not any(h in {"说话类型", "说话人类型", "speaker_type", "role", "speaker"} for h in headers):
+                continue
+            if not any(h in {"消息内容", "content", "text", "message", "msg"} for h in headers):
+                continue
+
+            for raw_row in rows:
+                row = {
+                    headers[index]: raw_row[index]
+                    for index in range(min(len(headers), len(raw_row)))
+                    if headers[index]
+                }
+                conv = str(_first_present(row, "会话id", "conversation_id", "chat_id", "session_id") or path.stem)
+                speaker = _first_present(row, "说话类型", "说话人类型", "speaker_type", "role", "speaker", "说话人")
+                text = _first_present(row, "消息内容", "content", "text", "message", "msg")
+                if not text:
+                    text = _first_present(row, "图片链接", "image_url", "media_url")
+                if not text:
+                    continue
+                if _looks_like_report_or_summary(str(text)):
+                    continue
+                groups.setdefault(conv, []).append({
+                    "speaker": speaker,
+                    "text": text,
+                    "context_blob": " ".join(str(value or "") for value in row.values()),
+                    "message_type": _first_present(row, "消息类型", "message_type", "type") or "text",
+                    "timestamp": _first_present(row, "说话时间", "timestamp", "time", "created_at"),
+                    "product_hint": _first_present(row, "商品名称", "商品", "product_name", "item_title"),
+                    "raw_speaker": _first_present(row, "说话人", "sender", "from"),
+                })
+    finally:
+        workbook.close()
+
+    return [
+        (turns, {**metadata, "conversation_id_hash": hash_sensitive(key)})
+        for key, turns in groups.items()
+    ]
+
+
+def _should_skip_source_file(path: Path) -> bool:
+    if any(part in SKIP_DIR_NAMES for part in path.parts):
+        return True
+    name = path.name.lower()
+    stem = path.stem.lower()
+    if any(term in name or term in stem for term in SKIP_FILE_NAME_TERMS):
+        return True
+    if path.suffix.lower() in {".log", ".md", ".yml", ".yaml"}:
+        return True
+    return False
+
+
+def _file_priority(path: Path) -> tuple[int, int, float, str]:
+    in_chat_dir = any(part in CHAT_DIR_HINTS for part in path.parts)
+    suffix_priority = {
+        ".xlsx": 0,
+        ".csv": 1,
+        ".jsonl": 2,
+        ".json": 3,
+        ".txt": 4,
+    }.get(path.suffix.lower(), 9)
+    try:
+        modified_rank = -path.stat().st_mtime
+    except OSError:
+        modified_rank = 0
+    return (0 if in_chat_dir else 1, suffix_priority, modified_rank, str(path))
+
+
 def iter_conversation_files(source_dir: str) -> list[Path]:
     root = Path(source_dir)
     if not root.exists():
         return []
-    suffixes = {".json", ".jsonl", ".txt", ".csv"}
-    return sorted(path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in suffixes)
+    suffixes = {".json", ".jsonl", ".txt", ".csv", ".xlsx"}
+    files = [
+        path for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in suffixes
+        and not _should_skip_source_file(path)
+    ]
+    return sorted(files, key=_file_priority)
+
+
+def case_uid_for_conversation(conversation_uid: str) -> str:
+    return _stable_uid(conversation_uid, prefix="case")
 
 
 def parse_source_file(path: Path) -> list[ImportedConversation]:
@@ -171,12 +357,15 @@ def parse_source_file(path: Path) -> list[ImportedConversation]:
         raw_groups = _parse_jsonl_file(path)
     elif suffix == ".csv":
         raw_groups = _parse_csv_file(path)
+    elif suffix == ".xlsx":
+        raw_groups = _parse_xlsx_file(path)
     else:
         raw_groups = _parse_text_file(path)
 
     conversations: list[ImportedConversation] = []
     for group_index, (records, meta) in enumerate(raw_groups):
         turns: list[ImportedTurn] = []
+        rolling_context = empty_real_context()
         for idx, record in enumerate(records):
             speaker = _normalize_speaker(
                 record.get("speaker") or record.get("role") or record.get("sender") or record.get("from") or ""
@@ -185,6 +374,33 @@ def parse_source_file(path: Path) -> list[ImportedConversation]:
             sanitized = sanitize_text(raw_text)
             if not sanitized:
                 continue
+            if _looks_like_report_or_summary(sanitized):
+                continue
+            message_type = sanitize_text(record.get("message_type") or record.get("type") or "text") or "text"
+            context_text = "\n".join(
+                str(value or "")
+                for value in (
+                    raw_text,
+                    record.get("context_blob"),
+                    record.get("product_url"),
+                    record.get("item_url"),
+                    record.get("url"),
+                    record.get("link"),
+                    record.get("media_url"),
+                    record.get("image_url"),
+                    record.get("video_url"),
+                )
+                if value
+            )
+            record_context = extract_real_context(context_text, {
+                **record,
+                "message_type": message_type,
+                "product_hint": record.get("product_hint") or record.get("product_name") or record.get("item_title") or "",
+            })
+            rolling_context = merge_real_context(rolling_context, record_context)
+            if speaker == "buyer":
+                if _is_context_only_text(sanitized, message_type) or _is_non_actionable_buyer_text(sanitized):
+                    speaker = "context"
             order_hash = ""
             raw_order = record.get("order_id") or record.get("tid") or record.get("tracking_no") or ""
             if raw_order:
@@ -193,13 +409,14 @@ def parse_source_file(path: Path) -> list[ImportedConversation]:
                 turn_index=len(turns),
                 speaker=speaker,
                 sanitized_text=sanitized,
-                message_type=sanitize_text(record.get("message_type") or record.get("type") or "text") or "text",
+                message_type=message_type,
                 timestamp=sanitize_text(record.get("timestamp") or record.get("time") or record.get("created_at") or ""),
                 product_hint=sanitize_text(record.get("product_hint") or record.get("product_name") or record.get("item_title") or ""),
                 order_hint_hash=order_hash,
                 metadata=sanitize_obj({
                     "source_row_index": idx,
                     "raw_speaker": record.get("speaker") or record.get("role") or record.get("sender") or "",
+                    "real_context": rolling_context,
                 }),
             ))
         if not turns:
@@ -216,7 +433,7 @@ def parse_source_file(path: Path) -> list[ImportedConversation]:
             shop_name=str(meta.get("shop_name") or ""),
             extracted_at=datetime.utcnow().isoformat(),
             turns=turns,
-            metadata=sanitize_obj(meta),
+            metadata=sanitize_obj({**meta, "real_context": rolling_context}),
         ))
     return conversations
 
@@ -249,7 +466,7 @@ def write_samples_to_db(samples: list[ImportedConversation]) -> dict[str, int]:
     stats = {"cases_created": 0, "cases_updated": 0, "turns_created": 0, "turns_updated": 0}
     try:
         for conv in samples:
-            case_uid = _stable_uid(conv.conversation_uid, prefix="case")
+            case_uid = case_uid_for_conversation(conv.conversation_uid)
             first_buyer = next((t for t in conv.turns if t.speaker == "buyer"), conv.turns[0])
             case = db.query(EvalCase).filter(EvalCase.case_uid == case_uid).one_or_none()
             if case is None:
