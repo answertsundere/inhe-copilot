@@ -41,15 +41,51 @@ def test_deictic_followup_without_context_is_context_insufficient():
     assert result["skip_reason"] == "context_insufficient"
 
 
+def test_short_elliptical_followups_are_deictic_not_actionable_questions():
+    for message in ("抽屉的也可以", "单门的", "7也行", "为什么", "为何"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "deictic_followup"
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["skip_reason"] == "context_insufficient"
+
+
 def test_installation_video_and_dimension_questions_are_actionable():
     video = _understand("请发安装视频")
     size = _understand("最窄是什么尺寸")
+    deictic_size = _understand("这个尺寸多少")
+    install = _understand("这个怎么装")
 
     assert video["turn_actionability"] == "actionable_question"
     assert video["needs_rag"] is True
     assert video["query_fact_type"] == "installation"
     assert size["turn_actionability"] == "actionable_question"
     assert size["query_fact_type"] == "dimensions"
+    assert deictic_size["turn_actionability"] == "actionable_question"
+    assert deictic_size["query_fact_type"] == "dimensions"
+    assert install["turn_actionability"] == "actionable_question"
+    assert install["query_fact_type"] == "installation"
+
+
+def test_can_only_becomes_actionable_with_business_action_or_question_marker():
+    elliptical = _understand("抽屉的也可以")
+    refund = _understand("可以退吗")
+    deictic_refund = _understand("这个可以退吗")
+
+    assert elliptical["turn_actionability"] == "deictic_followup"
+    for result in (refund, deictic_refund):
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "aftersales"
+
+
+def test_aftersales_mismatch_beats_installation_or_media_terms():
+    manual = _understand("发过来的说明书和物品不对")
+    video = _understand("你发给我的这个视频和我买的不太一样啊")
+
+    for result in (manual, video):
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "aftersales"
+        assert result["needs_rag"] is False
 
 
 def test_reply_topic_detection_is_fact_type_based():

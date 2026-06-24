@@ -244,6 +244,89 @@ def test_acknowledgement_is_traced_but_not_scored_or_sent_to_agent(monkeypatch):
         db.close()
 
 
+def test_deictic_followup_without_context_fails_context_insufficient_without_agent(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_deictic_1", source_type="real_conversation", message="deictic"))
+        db.add(EvalConversationTurn(
+            case_uid="case_deictic_1",
+            conversation_uid="conv_deictic_1",
+            turn_uid="turn_deictic_1",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="抽屉的也可以",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class DeicticReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            raise AssertionError("context-insufficient deictic turn should not call agent")
+
+    result = DeicticReplayService().replay_cases(ReplayOptions(run_uid="run_deictic_context_missing"))
+
+    assert result["failed"] == 1
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        understanding = trace.get_turn_understanding()
+        assert understanding["turn_actionability"] == "deictic_followup"
+        assert understanding["needs_rag"] is False
+        assert trace.passed is False
+        assert "context_insufficient" in trace.get_failure_labels()
+        assert trace.get_selected_evidence() == []
+    finally:
+        db.close()
+
+
+def test_aftersales_refund_question_is_actionable_without_query_fact_type_missing(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_refund_1", source_type="real_conversation", message="refund"))
+        db.add(EvalConversationTurn(
+            case_uid="case_refund_1",
+            conversation_uid="conv_refund_1",
+            turn_uid="turn_refund_1",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="可以退吗",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    payloads = []
+
+    class RefundReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            payloads.append(payload)
+            return {
+                "suggested_reply": "可以帮您核实售后退换规则，请先提供订单信息。",
+                "requires_human_review": False,
+                "query_fact_type": "aftersales",
+                "answer_trace": {"query_fact_type": "aftersales", "required_fact_types": ["aftersales"]},
+                "final_answer_audit": {"passed": True, "expected_topics": ["aftersales"]},
+            }
+
+    result = RefundReplayService().replay_cases(ReplayOptions(run_uid="run_refund_actionable"))
+
+    assert len(payloads) == 1
+    assert payloads[0]["copilot_context"]["turn_understanding"]["query_fact_type"] == "aftersales"
+    assert result["passed"] == 1
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        assert trace.get_turn_understanding()["turn_actionability"] == "actionable_question"
+        assert trace.query_fact_type == "aftersales"
+        assert "query_fact_type_missing" not in trace.get_failure_labels()
+        assert "rag_miss" not in trace.get_failure_labels()
+    finally:
+        db.close()
+
+
 def test_replay_result_fails_empty_query_fact_type_with_product_reply():
     passed, failures = evaluate_replay_turn_result(
         {

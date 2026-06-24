@@ -22,7 +22,11 @@ PRODUCT_FACT_TOPICS = {
     "installation": ("安装", "组装", "装", "教程", "说明书", "视频", "打孔", "螺丝", "install", "installation", "video"),
     "age_range": ("适合几岁", "适合多大", "年龄", "月龄", "宝宝", "儿童", "孩子"),
     "stock_shipping": ("发货", "现货", "库存", "几天到", "物流", "快递", "签收", "没收到"),
-    "aftersales": ("退货", "退款", "换货", "补发", "漏发", "缺件", "少件", "破损", "售后"),
+    "aftersales": (
+        "退", "退款", "退货", "换", "换货", "补发", "漏发", "缺件", "少件",
+        "少了", "没有", "破损", "售后", "发错", "不对", "对不上", "不一样",
+        "不太一样", "物品", "wrong item",
+    ),
 }
 
 FORBIDDEN_TOPICS_BY_ACTIONABILITY = {
@@ -33,11 +37,11 @@ FORBIDDEN_TOPICS_BY_ACTIONABILITY = {
     "media_reference": ["dimensions", "space_fit", "load_capacity", "material", "installation", "age_range"],
 }
 
-QUESTION_MARKERS = ("?", "？", "吗", "么", "呢", "怎么", "怎样", "如何", "多少", "几", "有没有", "能不能", "可以", "是否", "question")
+QUESTION_MARKERS = ("?", "？", "吗", "么", "呢", "怎么", "怎样", "如何", "多少", "几", "有没有", "能不能", "是否", "question")
 REQUEST_MARKERS = ("请", "发", "给我", "帮我", "麻烦", "需要", "要", "想要", "看看", "处理", "补发", "退", "换")
 STATUS_TERMS = ("收到", "收到了", "到货", "到了", "拿到", "装好", "装好了", "装完", "安装好", "安装好了", "处理好", "解决了")
 ACK_TERMS = {"好", "好的", "嗯", "恩", "嗯嗯", "哦", "噢", "行", "可以", "知道了", "收到", "谢谢", "谢了", "ok", "OK"}
-DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "单门的", "抽屉的", "也行")
+DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "单门的", "抽屉的", "也行", "也可以", "为什么", "为何", "咋回事", "怎么回事")
 MEDIA_TERMS = ("图里", "图片", "照片", "视频", "圈出来", "拍的", "这里", "这个位置")
 
 
@@ -101,36 +105,6 @@ class RealConversationTurnUnderstandingService:
                 skip_reason="empty_message",
             ).to_dict()
 
-        fact_type = infer_query_fact_type(text)
-        if _is_actionable_question(text, fact_type):
-            needs_media = "视频" in text or "图片" in text or "图" in text
-            return TurnUnderstanding(
-                turn_actionability="actionable_question",
-                needs_agent_reply=True,
-                needs_rag=fact_type not in {"stock_shipping", "aftersales"} or needs_media,
-                needs_tool=fact_type in {"stock_shipping", "aftersales"},
-                should_score=True,
-                reply_strategy="normal_agent",
-                context_dependency="low" if product_hint or fact_type in {"stock_shipping", "aftersales"} else "medium",
-                forbidden_reply_topics=[],
-                reason="Buyer turn contains a question or request that needs an answer.",
-                query_fact_type=fact_type,
-            ).to_dict()
-
-        if message_type_text in {"image", "图片", "video", "视频"} or _contains_any(text, MEDIA_TERMS):
-            return TurnUnderstanding(
-                turn_actionability="media_reference",
-                needs_agent_reply=bool(history),
-                needs_rag=False,
-                needs_tool=False,
-                should_score=bool(history),
-                reply_strategy="clarify_context" if not history else "normal_agent",
-                context_dependency="high",
-                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["media_reference"],
-                reason="Buyer turn depends on media or visual context.",
-                skip_reason="" if history else "context_insufficient",
-            ).to_dict()
-
         if _is_acknowledgement(normalized):
             return TurnUnderstanding(
                 turn_actionability="acknowledgement",
@@ -158,7 +132,8 @@ class RealConversationTurnUnderstandingService:
                 reason="Buyer is reporting receipt, installation, or handling status rather than asking a product fact.",
             ).to_dict()
 
-        if _is_deictic_followup(text):
+        fact_type = infer_query_fact_type(text)
+        if _is_deictic_followup(text, fact_type):
             has_context = bool(history or product_hint)
             return TurnUnderstanding(
                 turn_actionability="deictic_followup",
@@ -171,6 +146,36 @@ class RealConversationTurnUnderstandingService:
                 forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["deictic_followup"],
                 reason="Buyer turn is an elliptical follow-up that requires prior context.",
                 skip_reason="" if has_context else "context_insufficient",
+            ).to_dict()
+
+        if (message_type_text in {"image", "图片", "video", "视频"} or _contains_any(text, MEDIA_TERMS)) and not _is_actionable_question(text, fact_type):
+            return TurnUnderstanding(
+                turn_actionability="media_reference",
+                needs_agent_reply=bool(history),
+                needs_rag=False,
+                needs_tool=False,
+                should_score=bool(history),
+                reply_strategy="clarify_context" if not history else "normal_agent",
+                context_dependency="high",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["media_reference"],
+                reason="Buyer turn depends on media or visual context.",
+                skip_reason="" if history else "context_insufficient",
+            ).to_dict()
+
+        if _is_actionable_question(text, fact_type):
+            needs_media = "视频" in text or "图片" in text or "图" in text
+            needs_rag = False if fact_type in {"stock_shipping", "aftersales"} else (bool(fact_type) or needs_media)
+            return TurnUnderstanding(
+                turn_actionability="actionable_question",
+                needs_agent_reply=True,
+                needs_rag=needs_rag,
+                needs_tool=fact_type in {"stock_shipping", "aftersales"},
+                should_score=True,
+                reply_strategy="normal_agent",
+                context_dependency="low" if product_hint or fact_type in {"stock_shipping", "aftersales"} else "medium",
+                forbidden_reply_topics=[],
+                reason="Buyer turn contains a question or request that needs an answer.",
+                query_fact_type=fact_type,
             ).to_dict()
 
         return TurnUnderstanding(
@@ -189,6 +194,8 @@ class RealConversationTurnUnderstandingService:
 
 def infer_query_fact_type(text: str) -> str:
     value = str(text or "")
+    if _is_aftersales_or_mismatch(value):
+        return "aftersales"
     if any(term in value for term in ("视频", "教程", "说明书", "怎么装", "如何装", "安装")):
         return "installation"
     for fact_type, cues in PRODUCT_FACT_TOPICS.items():
@@ -224,8 +231,12 @@ def _is_context_update(text: str) -> bool:
     return not _has_question_or_request(text)
 
 
-def _is_deictic_followup(text: str) -> bool:
+def _is_deictic_followup(text: str, fact_type: str = "") -> bool:
     stripped = _normalize(text)
+    if fact_type:
+        return False
+    if stripped in {"为什么", "为何", "咋回事", "怎么回事"}:
+        return True
     if stripped in {re.sub(r"[\s~～!！?？.。,…，、；;：:]+", "", item) for item in DEICTIC_TERMS}:
         return True
     return len(stripped) <= 8 and _contains_any(text, DEICTIC_TERMS) and not _has_question_or_request(text)
@@ -239,6 +250,15 @@ def _is_actionable_question(text: str, fact_type: str) -> bool:
 
 def _has_question_or_request(text: str) -> bool:
     return _contains_any(text, QUESTION_MARKERS) or _contains_any(text, REQUEST_MARKERS)
+
+
+def _is_aftersales_or_mismatch(text: str) -> bool:
+    value = str(text or "")
+    if any(term in value for term in ("退", "退款", "退货", "换", "换货", "补发", "少件", "缺件", "漏发", "发错", "破损", "售后")):
+        return True
+    mismatch_terms = ("不对", "对不上", "不一样", "不太一样", "不匹配", "不符合")
+    sent_material_terms = ("说明书", "视频", "发过来", "发来的", "发给我", "物品", "东西", "买的")
+    return any(term in value for term in mismatch_terms) and any(term in value for term in sent_material_terms)
 
 
 def _looks_corrupted(text: str) -> bool:

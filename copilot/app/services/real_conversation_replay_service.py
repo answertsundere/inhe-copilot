@@ -238,7 +238,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     if any(term in reply for term in media_terms) and not response.get("recommended_assets"):
         failures.append({"failure_type": "unsupported_media_claim", "severity": "medium", "message": "reply promises media without attached asset"})
     required = set(str(x) for x in _extract_required_fact_types(response) if x)
-    if query_fact_type and query_fact_type not in {"logistics", "order_status", "after_sales"} and not selected:
+    if query_fact_type and query_fact_type not in {"logistics", "order_status", "after_sales", "aftersales", "aftersales_policy"} and not selected:
         failures.append({"failure_type": "rag_miss", "severity": "medium", "message": "product question has no selected evidence"})
     answered = set(str(x) for x in _json_list(answer_trace.get("evidence_answered_fact_types")) if x)
     if required and answered and not (required & answered):
