@@ -78,6 +78,141 @@ def _canonical_intent_for_response(intent: str, message: str = "") -> str:
     return intent
 
 
+def _turn_understanding_from_context(copilot_context: dict | None) -> dict:
+    if not isinstance(copilot_context, dict):
+        return {}
+    value = copilot_context.get("turn_understanding") or {}
+    return value if isinstance(value, dict) else {}
+
+
+def _apply_turn_understanding_contract_to_state(state: dict, copilot_context: dict | None) -> None:
+    understanding = _turn_understanding_from_context(copilot_context)
+    if not understanding:
+        return
+    state["turn_understanding"] = understanding
+    expected_fact_type = str(
+        understanding.get("expected_query_fact_type")
+        or understanding.get("query_fact_type")
+        or ""
+    ).strip()
+    if expected_fact_type:
+        state["query_fact_type"] = expected_fact_type
+        state["required_fact_types"] = [expected_fact_type]
+        state.setdefault("evidence_debug", {})["expected_query_fact_type"] = expected_fact_type
+    state["turn_actionability"] = str(understanding.get("turn_actionability") or "")
+    state["turn_reply_strategy"] = str(understanding.get("reply_strategy") or "")
+
+
+def _selected_evidence_count(result: dict) -> int:
+    debug = result.get("evidence_debug") or {}
+    selected = (
+        debug.get("selected_evidence")
+        or debug.get("evidence_selected")
+        or result.get("selected_evidence")
+        or result.get("evidence")
+        or []
+    )
+    return len(selected) if isinstance(selected, list) else int(bool(selected))
+
+
+def _apply_turn_understanding_contract_to_result(result: dict, copilot_context: dict | None) -> dict:
+    understanding = _turn_understanding_from_context(copilot_context)
+    if not understanding:
+        return result
+    result = dict(result or {})
+    expected_fact_type = str(
+        understanding.get("expected_query_fact_type")
+        or understanding.get("query_fact_type")
+        or ""
+    ).strip()
+    actionability = str(understanding.get("turn_actionability") or "")
+    reply = str(result.get("suggested_reply") or "")
+    debug = dict(result.get("evidence_debug") or {})
+    answer_trace = dict(result.get("answer_trace") or {})
+    actual_fact_type = str(result.get("query_fact_type") or debug.get("query_fact_type") or answer_trace.get("query_fact_type") or "")
+    selected_count = _selected_evidence_count(result)
+
+    if expected_fact_type:
+        result["query_fact_type"] = expected_fact_type
+        result["required_fact_types"] = [expected_fact_type]
+        debug["query_fact_type"] = expected_fact_type
+        debug["required_fact_types"] = [expected_fact_type]
+        debug["expected_query_fact_type"] = expected_fact_type
+        answer_trace["query_fact_type"] = expected_fact_type
+        if not answer_trace.get("required_fact_types"):
+            answer_trace["required_fact_types"] = [expected_fact_type]
+
+    should_control = False
+    reason = ""
+    if actionability in {"context_update", "deictic_followup"}:
+        should_control = _reply_has_product_fact_topic(reply) or bool(actual_fact_type)
+        reason = f"turn_{actionability}_should_not_expand_product_fact"
+    elif expected_fact_type and actual_fact_type and actual_fact_type != expected_fact_type and not _fact_types_compatible(expected_fact_type, actual_fact_type):
+        should_control = True
+        reason = "turn_contract_fact_type_mismatch"
+    elif expected_fact_type and not selected_count and not result.get("requires_human_review"):
+        should_control = True
+        reason = "actionable_turn_without_evidence_needs_review"
+
+    if should_control:
+        result["suggested_reply"] = _controlled_turn_contract_reply(expected_fact_type, actionability)
+        result["requires_human_review"] = True
+        result["reason_for_review"] = reason
+        result["review_reason"] = reason
+        result["generation_mode"] = "turn_contract_controlled_handoff"
+        debug["turn_contract_controlled"] = True
+        debug["turn_contract_control_reason"] = reason
+
+    result["evidence_debug"] = debug
+    result["answer_trace"] = answer_trace
+    result.setdefault("trace_steps", []).append({
+        "node": "turn_understanding_contract",
+        "status": "applied",
+        "summary": f"expected_query_fact_type={expected_fact_type or '-'}, actionability={actionability or '-'}",
+    })
+    return result
+
+
+def _fact_types_compatible(expected: str, actual: str) -> bool:
+    groups = (
+        {"aftersales", "aftersales_policy", "after_sales"},
+        {"installation", "accessory_usage"},
+        {"logistics", "order_status", "delivery_not_received"},
+    )
+    if expected == actual:
+        return True
+    return any(expected in group and actual in group for group in groups)
+
+
+def _reply_has_product_fact_topic(reply: str) -> bool:
+    try:
+        from app.services.real_conversation_turn_understanding_service import detect_reply_topics
+        return bool(detect_reply_topics(reply))
+    except Exception:
+        product_terms = ("尺寸", "材质", "承重", "安装", "组装", "发货", "物流")
+        return any(term in str(reply or "") for term in product_terms)
+
+
+def _controlled_turn_contract_reply(expected_fact_type: str, actionability: str) -> str:
+    if actionability == "context_update":
+        return "亲，收到，我先记录这个情况。后续如果还有具体问题，您把对应位置或情况发我，我再帮您核对。"
+    if actionability == "deictic_followup":
+        return "亲，这句需要结合上文、图片或具体位置才能准确判断。麻烦您把对应位置或款式再发一下，我帮您核对，避免说错。"
+    if expected_fact_type in {"aftersales", "after_sales", "aftersales_policy"}:
+        return (
+            "亲，您反馈的资料或实物可能不一致，我先按售后核对处理。\n"
+            "麻烦您发一下对应资料截图和实物照片，我这边需要人工确认后，再给您准确的补发或处理方案。"
+        )
+    if expected_fact_type in {"installation", "accessory_usage"}:
+        return (
+            "亲，这个部件的位置或用途需要按具体款式核对。\n"
+            "麻烦您发一下部件照片或对应页面截图，我这边人工确认后再回复，避免把配件说错。"
+        )
+    if expected_fact_type in {"dimensions", "space_fit"}:
+        return "亲，这个需要结合具体款式和尺寸图核对。麻烦您发一下商品链接、截图或预留位置尺寸，我再帮您确认。"
+    return "亲，这个细节需要结合具体商品资料核对。我先转人工确认后再回复您，避免给您说错。"
+
+
 class ReplyService:
     """回复建议服务 - 主编排器（LangGraph 驱动）"""
 
@@ -150,6 +285,7 @@ class ReplyService:
                     slots[key] = value
                     if key == "product_name" and not state.get("matched_product_name"):
                         state["matched_product_name"] = value
+        _apply_turn_understanding_contract_to_state(state, copilot_context)
         for candidate in product_candidates or []:
             if not isinstance(candidate, dict):
                 continue
@@ -178,6 +314,7 @@ class ReplyService:
             logger.error("LangGraph 执行失败: %s", e, exc_info=True)
             # 极端降级：返回安全回复
             result = self._extreme_fallback(customer_message, order_id, str(e))
+        result = _apply_turn_understanding_contract_to_result(result, copilot_context)
 
         # 构建白名单 context_used
         context_used = self._build_context_used(result)

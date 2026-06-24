@@ -34,7 +34,7 @@ def _seed_task(session_factory, related_turns=None):
                 turn_uid="turn_buyer_1",
                 turn_index=0,
                 speaker="buyer",
-                sanitized_text="first question phone 13812345678",
+                sanitized_text="材质安全吗 phone 13812345678",
                 reference_human_reply="first reference",
             ),
             EvalConversationTurn(
@@ -51,7 +51,7 @@ def _seed_task(session_factory, related_turns=None):
                 turn_uid="turn_buyer_2",
                 turn_index=2,
                 speaker="buyer",
-                sanitized_text="second question order 123456789012345",
+                sanitized_text="材质会不会受潮 order 123456789012345",
                 reference_human_reply="second reference",
             ),
             EvalConversationTurn(

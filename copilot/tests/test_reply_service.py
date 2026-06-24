@@ -397,3 +397,138 @@ class TestProductKnowledgeInContext:
         builder = ContextBuilder(order_repo, product_repo, knowledge_repo)
         context = builder.build("你们有书桌吗")
         assert "product_knowledge" not in context
+
+
+class _FakeGraph:
+    def __init__(self, response):
+        self.response = response
+        self.state = None
+
+    def invoke(self, state):
+        self.state = dict(state)
+        return dict(self.response)
+
+
+def _reply_service():
+    from app.services.reply_service import ReplyService
+
+    return ReplyService(None, None, None)
+
+
+def test_reply_service_promotes_turn_understanding_fact_type_to_graph_state(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "general",
+        "risk_level": "low",
+        "suggested_reply": "我先帮您核对一下。",
+        "requires_human_review": True,
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "资料和实物不一致",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "aftersales",
+            }
+        },
+    )
+
+    assert fake.state["query_fact_type"] == "aftersales"
+    assert fake.state["required_fact_types"] == ["aftersales"]
+    assert suggestion.evidence_debug["query_fact_type"] == "aftersales"
+    assert suggestion.evidence_debug["required_fact_types"] == ["aftersales"]
+
+
+def test_reply_service_controls_deictic_followup_that_expands_product_fact(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "product_question",
+        "risk_level": "low",
+        "suggested_reply": "这款尺寸是宽80厘米，材质为PP。",
+        "query_fact_type": "dimensions",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "dimensions"},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "这样的可以吗",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "deictic_followup",
+                "should_score": True,
+            }
+        },
+    )
+
+    assert suggestion.requires_human_review is True
+    assert suggestion.reason_for_review == "turn_deictic_followup_should_not_expand_product_fact"
+    assert "尺寸" not in suggestion.suggested_reply
+    assert suggestion.evidence_debug["turn_contract_controlled"] is True
+
+
+def test_reply_service_controls_aftersales_mismatch_not_installation(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "installation_question",
+        "risk_level": "low",
+        "suggested_reply": "您可以按安装说明把配件装好。",
+        "query_fact_type": "installation",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "installation"},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "资料和实物不一致",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "aftersales",
+            }
+        },
+    )
+
+    assert suggestion.requires_human_review is True
+    assert suggestion.reason_for_review == "turn_contract_fact_type_mismatch"
+    assert suggestion.evidence_debug["query_fact_type"] == "aftersales"
+    assert "售后" in suggestion.suggested_reply
+    assert "安装说明" not in suggestion.suggested_reply
+
+
+def test_reply_service_controls_accessory_usage_without_evidence(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "installation_question",
+        "risk_level": "low",
+        "suggested_reply": "亲~我在处理，您可以直接说具体问题。",
+        "requires_human_review": False,
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "这个部件怎么用",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "installation",
+            }
+        },
+    )
+
+    assert suggestion.requires_human_review is True
+    assert suggestion.evidence_debug["query_fact_type"] == "installation"
+    assert "我在处理" not in suggestion.suggested_reply
+    assert "部件" in suggestion.suggested_reply
