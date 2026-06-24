@@ -1,0 +1,417 @@
+"""Controlled customer-facing replies when evidence is missing.
+
+This service does not create product facts. It turns the current turn contract,
+real conversation context, and media availability into a safe next customer
+service action.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+MEDIA_PROMISE_TERMS = (
+    "我把视频发您",
+    "我把安装视频发您",
+    "我把图片发您",
+    "下面发您",
+    "已发您",
+    "可以发安装视频",
+    "发您参考",
+    "图片发您",
+)
+
+PRODUCT_CONTEXT_REQUEST_TERMS = (
+    "请提供商品链接",
+    "提供商品链接",
+    "发一下商品链接",
+    "发一个商品链接",
+    "发一下商品截图",
+    "提供SKU",
+    "提供 SKU",
+)
+
+ORDER_CONTEXT_REQUEST_TERMS = (
+    "请提供订单号",
+    "提供订单号",
+    "发一下订单号",
+)
+
+INSTALLATION_FACT_TYPES = {"installation", "visual_asset", "media_reference"}
+ACCESSORY_FACT_TYPES = {"accessory_usage", "accessories", "packaging"}
+AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
+PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy"}
+DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
+ACCESSORY_MESSAGE_TERMS = (
+    "部件",
+    "配件",
+    "防倒器",
+    "双面贴",
+    "顶板",
+    "底板",
+    "背板",
+    "侧板",
+    "干啥用",
+    "什么用",
+    "哪个",
+    "哪块",
+    "位置",
+)
+
+
+def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Build a deterministic safe reply for evidence-missing states."""
+    fact_type = str(inputs.get("query_fact_type") or "").strip()
+    actionability = str(inputs.get("turn_actionability") or "").strip()
+    has_product_context = bool(inputs.get("has_product_context"))
+    has_order_context = bool(inputs.get("has_order_context"))
+    has_media_context = bool(inputs.get("has_media_context"))
+    has_sendable_media_asset = bool(inputs.get("has_sendable_media_asset"))
+    missing_reason = str(inputs.get("missing_reason") or "")
+
+    forbidden_claims = list(MEDIA_PROMISE_TERMS)
+    if actionability == "context_update":
+        return {
+            "reply": "亲，收到，我先记录这个情况。后续如果还有具体问题，您把对应位置或情况发我，我再帮您核对。",
+            "requires_human_review": False,
+            "needs_followup": False,
+            "reply_strategy": "acknowledge_context_update",
+            "reason": missing_reason or "context_update_without_question",
+            "forbidden_claims": forbidden_claims,
+        }
+    if actionability == "deictic_followup":
+        return {
+            "reply": "亲，这句需要结合上文、图片或具体位置才能准确判断。您可以把对应位置圈一下，或再发一张图，我帮您确认。",
+            "requires_human_review": False,
+            "needs_followup": True,
+            "reply_strategy": "clarify_context",
+            "reason": missing_reason or "context_insufficient",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in INSTALLATION_FACT_TYPES and _looks_like_accessory_question(inputs):
+        return {
+            "reply": "亲，这个部件要按您这款的配件图确认。我这边先转人工核对，您也可以把配件和说明书位置拍一下，我帮您确认具体装在哪个位置；如果确认是少件或配件不匹配，我这边按售后给您核实补发或处理方案。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "verify_accessory_usage_with_photo",
+            "reason": missing_reason or "accessory_evidence_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in INSTALLATION_FACT_TYPES:
+        if has_sendable_media_asset:
+            return {
+                "reply": "亲，我把这款对应的安装视频/说明书发您参考，您可以先按步骤看一下；如果卡在某一步，把当前位置拍给我，我继续帮您看。",
+                "requires_human_review": False,
+                "needs_followup": False,
+                "reply_strategy": "send_supported_installation_asset",
+                "reason": "sendable_media_asset_available",
+                "forbidden_claims": [],
+            }
+        if has_product_context or has_order_context:
+            return {
+                "reply": "亲，这个需要按您这款商品核对对应安装资料。我先帮您转人工确认对应款式的视频/说明书，防止资料和款式不对应；如果您卡在某一步，也可以把当前位置拍给我，我一起帮您看。",
+                "requires_human_review": True,
+                "needs_followup": True,
+                "reply_strategy": "verify_installation_asset_before_send",
+                "reason": missing_reason or "no_sendable_installation_asset",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，麻烦您发一下商品链接、订单截图或款式图，我帮您核对对应安装资料，防止资料和款式不对应。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_minimal_product_context_for_installation",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in ACCESSORY_FACT_TYPES:
+        return {
+            "reply": "亲，这个部件要按您这款的配件图确认。我这边先转人工核对，您也可以把配件和说明书位置拍一下，我帮您确认具体装在哪个位置；如果确认是少件或配件不匹配，我这边按售后给您核实补发或处理方案。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "verify_accessory_usage_with_photo",
+            "reason": missing_reason or "accessory_evidence_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in AFTERSALES_FACT_TYPES:
+        return {
+            "reply": "亲，您反馈的资料和实物可能不一致，我先按售后核对处理。麻烦您发一下对应资料截图和实物照片，我这边确认后给您补正确资料或处理方案。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "aftersales_mismatch_check",
+            "reason": missing_reason or "aftersales_mismatch_requires_evidence",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in PROMOTION_FACT_TYPES:
+        if has_product_context or has_order_context:
+            return {
+                "reply": "亲，我先帮您按这款商品核对当前活动/福利。不同活动会按下单时间和页面规则变化，我这边确认后给您说准确口径。",
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_current_activity_rule",
+                "reason": missing_reason or "promotion_rule_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，麻烦您发一下商品链接或订单截图，我帮您看这款当前是否有活动或福利。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_product_context_for_activity_rule",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type == "space_fit":
+        if has_product_context:
+            return {
+                "reply": "亲，我已经看到当前商品信息了，但能不能放得下还需要对照这款尺寸和您家预留位置的宽度、进深、高度。我先帮您核对，避免不同款式尺寸说混；您也可以把预留位置尺寸发我，我一起帮您判断。",
+                "requires_human_review": True,
+                "needs_followup": True,
+                "reply_strategy": "verify_space_fit_for_known_product",
+                "reason": missing_reason or "space_fit_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，麻烦您发一下商品链接、截图或SKU，再把预留位置的宽度、进深、高度发我，我帮您判断这款能不能放得下。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_context_for_space_fit",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in DIMENSION_FACT_TYPES:
+        if has_product_context:
+            return {
+                "reply": "亲，我已经看到当前商品信息了，但这款具体尺寸还需要对照尺寸图/商品资料确认。我先帮您核对，避免不同款式尺寸说混。",
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_dimensions_for_known_product",
+                "reason": missing_reason or "dimension_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，麻烦您发一下商品链接、截图或SKU，我帮您核对这款的具体尺寸。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_product_context_for_dimensions",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    return {
+        "reply": "亲，这个细节需要结合对应商品资料核对。我先帮您确认清楚后再回复，避免给您说错。",
+        "requires_human_review": True,
+        "needs_followup": False,
+        "reply_strategy": "generic_fact_verification",
+        "reason": missing_reason or "no_evidence_for_fact_type",
+        "forbidden_claims": forbidden_claims,
+    }
+
+
+def apply_no_evidence_reply_policy(result: dict[str, Any], copilot_context: dict[str, Any] | None) -> dict[str, Any]:
+    """Apply no-evidence policy to a graph result when a controlled reply is needed."""
+    response = dict(result or {})
+    inputs = build_policy_inputs(response, copilot_context)
+    if not should_apply_no_evidence_policy(response, inputs):
+        return response
+
+    policy = build_no_evidence_reply_policy(inputs)
+    response["suggested_reply"] = policy["reply"]
+    response["requires_human_review"] = bool(response.get("requires_human_review")) or bool(policy.get("requires_human_review"))
+    response["needs_clarification"] = bool(policy.get("needs_followup"))
+    existing_reason = response.get("reason_for_review") or response.get("review_reason") or ""
+    response["reason_for_review"] = existing_reason or policy.get("reason", "")
+    response["review_reason"] = existing_reason or policy.get("reason", "")
+    response["generation_mode"] = "no_evidence_reply_policy"
+    response["answer_mode"] = "no_evidence_controlled_reply"
+
+    debug = dict(response.get("evidence_debug") or {})
+    debug["no_evidence_reply_policy"] = policy
+    debug["no_evidence_reply_policy_inputs"] = inputs
+    response["evidence_debug"] = debug
+
+    trace = dict(response.get("answer_trace") or {})
+    trace["no_evidence_reply_policy"] = {
+        "reply_strategy": policy.get("reply_strategy"),
+        "reason": policy.get("reason"),
+        "requires_human_review": policy.get("requires_human_review"),
+    }
+    response["answer_trace"] = trace
+    response.setdefault("trace_steps", []).append({
+        "node": "no_evidence_reply_policy",
+        "status": "applied",
+        "summary": f"{inputs.get('query_fact_type') or '-'}:{policy.get('reply_strategy')}",
+    })
+    return response
+
+
+def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any] | None) -> dict[str, Any]:
+    context = copilot_context if isinstance(copilot_context, dict) else {}
+    understanding = context.get("turn_understanding") if isinstance(context.get("turn_understanding"), dict) else {}
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    answer_trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    fact_type = str(
+        understanding.get("expected_query_fact_type")
+        or understanding.get("query_fact_type")
+        or response.get("query_fact_type")
+        or debug.get("query_fact_type")
+        or answer_trace.get("query_fact_type")
+        or ""
+    ).strip()
+    summary = context.get("real_context_summary") if isinstance(context.get("real_context_summary"), dict) else {}
+    identity = context.get("real_context_product_identity") if isinstance(context.get("real_context_product_identity"), dict) else {}
+    media_context = context.get("media_context") if isinstance(context.get("media_context"), dict) else {}
+    pack = _product_context_pack(response)
+    stats = pack.get("stats") if isinstance(pack.get("stats"), dict) else {}
+    return {
+        "query_fact_type": fact_type,
+        "turn_actionability": str(understanding.get("turn_actionability") or response.get("turn_actionability") or ""),
+        "conversation_type": str(context.get("conversation_type") or summary.get("conversation_type") or ""),
+        "source_page": str(context.get("source_page") or summary.get("source_page") or ""),
+        "has_product_context": bool(
+            summary.get("has_product_context")
+            or identity.get("has_resolved_product_context")
+            or context.get("product_name")
+            or context.get("sku_code")
+            or context.get("i_id")
+            or context.get("product_candidates")
+        ),
+        "has_order_context": bool(
+            summary.get("has_order_context")
+            or context.get("order_id")
+            or context.get("order_id_hash")
+            or context.get("platform_order_id")
+            or context.get("platform_trade_id")
+        ),
+        "has_media_context": bool(
+            summary.get("has_media_context")
+            or media_context.get("image_urls")
+            or media_context.get("video_urls")
+            or stats.get("media_context_count")
+        ),
+        "has_sendable_media_asset": has_sendable_media_asset(response),
+        "missing_reason": str(stats.get("conversation_media_rejected_reason") or debug.get("missing_reason") or ""),
+        "real_context_summary": summary,
+        "customer_message": str(response.get("customer_message") or ""),
+    }
+
+
+def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, Any]) -> bool:
+    fact_type = str(inputs.get("query_fact_type") or "")
+    actionability = str(inputs.get("turn_actionability") or "")
+    reply = str(response.get("suggested_reply") or "")
+    selected_count = _selected_evidence_count(response)
+
+    if contains_unsupported_media_promise(reply, has_sendable_media_asset(response)):
+        return True
+    if _asks_for_known_context(reply, inputs):
+        return True
+    if actionability in {"context_update", "deictic_followup"}:
+        return True
+    if response.get("generation_mode") == "turn_contract_controlled_handoff":
+        return True
+    if (
+        fact_type in INSTALLATION_FACT_TYPES
+        and not inputs.get("has_sendable_media_asset")
+        and (not selected_count or inputs.get("has_media_context"))
+    ):
+        return True
+    if fact_type in ACCESSORY_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in AFTERSALES_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in PROMOTION_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in DIMENSION_FACT_TYPES and not selected_count:
+        return True
+    return False
+
+
+def has_sendable_media_asset(response: dict[str, Any]) -> bool:
+    if _has_media_blocks(response.get("reply_blocks")):
+        return True
+    if _has_auto_send_asset(response.get("recommended_assets")):
+        return True
+    pack = _product_context_pack(response)
+    stats = pack.get("stats") if isinstance(pack.get("stats"), dict) else {}
+    try:
+        if int(stats.get("sendable_media_asset_count") or 0) > 0:
+            return True
+    except Exception:
+        pass
+    if _has_auto_send_asset(pack.get("recommended_assets")):
+        return True
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    summary = debug.get("product_context_pack_summary") if isinstance(debug.get("product_context_pack_summary"), dict) else {}
+    stats = summary.get("stats") if isinstance(summary.get("stats"), dict) else {}
+    try:
+        return int(stats.get("sendable_media_asset_count") or 0) > 0
+    except Exception:
+        return False
+
+
+def contains_unsupported_media_promise(reply: str, has_sendable: bool) -> bool:
+    if has_sendable:
+        return False
+    value = str(reply or "")
+    return any(term in value for term in MEDIA_PROMISE_TERMS)
+
+
+def _selected_evidence_count(response: dict[str, Any]) -> int:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    selected = debug.get("selected_evidence") or debug.get("evidence_selected") or response.get("selected_evidence") or []
+    return len(selected) if isinstance(selected, list) else int(bool(selected))
+
+
+def _asks_for_known_context(reply: str, inputs: dict[str, Any]) -> bool:
+    value = str(reply or "")
+    if inputs.get("has_product_context") and any(term in value for term in PRODUCT_CONTEXT_REQUEST_TERMS):
+        return True
+    if inputs.get("has_order_context") and any(term in value for term in ORDER_CONTEXT_REQUEST_TERMS):
+        return True
+    return False
+
+
+def _looks_like_accessory_question(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    return any(term in message for term in ACCESSORY_MESSAGE_TERMS)
+
+
+def _has_media_blocks(blocks: Any) -> bool:
+    if not isinstance(blocks, list):
+        return False
+    return any(isinstance(block, dict) and block.get("type") in {"image", "video"} for block in blocks)
+
+
+def _has_auto_send_asset(assets: Any) -> bool:
+    if not isinstance(assets, list):
+        return False
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        if not (asset.get("asset_url") or asset.get("url")):
+            continue
+        auto_level = str(asset.get("auto_send_level") or asset.get("send_mode") or "auto")
+        if auto_level in {"auto", "auto_when_platform_connected"}:
+            return True
+    return False
+
+
+def _product_context_pack(response: dict[str, Any]) -> dict[str, Any]:
+    context_used = response.get("context_used") if isinstance(response.get("context_used"), dict) else {}
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    candidates = (
+        response.get("product_context_pack"),
+        context_used.get("product_context_pack"),
+        debug.get("product_context_pack_summary"),
+    )
+    for pack in candidates:
+        if isinstance(pack, dict) and pack:
+            return pack
+    return {}

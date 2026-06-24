@@ -156,7 +156,7 @@ def _apply_turn_understanding_contract_to_result(result: dict, copilot_context: 
         reason = "actionable_turn_without_evidence_needs_review"
 
     if should_control:
-        result["suggested_reply"] = _controlled_turn_contract_reply(expected_fact_type, actionability)
+        result["suggested_reply"] = _controlled_turn_contract_reply(expected_fact_type, actionability, copilot_context)
         result["requires_human_review"] = True
         result["reason_for_review"] = reason
         result["review_reason"] = reason
@@ -171,6 +171,11 @@ def _apply_turn_understanding_contract_to_result(result: dict, copilot_context: 
         "status": "applied",
         "summary": f"expected_query_fact_type={expected_fact_type or '-'}, actionability={actionability or '-'}",
     })
+    try:
+        from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
+        result = apply_no_evidence_reply_policy(result, copilot_context)
+    except Exception as exc:
+        logger.warning("no_evidence_reply_policy failed: %s", exc)
     return result
 
 
@@ -194,11 +199,15 @@ def _reply_has_product_fact_topic(reply: str) -> bool:
         return any(term in str(reply or "") for term in product_terms)
 
 
-def _controlled_turn_contract_reply(expected_fact_type: str, actionability: str) -> str:
+def _controlled_turn_contract_reply(
+    expected_fact_type: str,
+    actionability: str,
+    copilot_context: dict | None = None,
+) -> str:
     if actionability == "context_update":
         return "亲，收到，我先记录这个情况。后续如果还有具体问题，您把对应位置或情况发我，我再帮您核对。"
     if actionability == "deictic_followup":
-        return "亲，这句需要结合上文、图片或具体位置才能准确判断。麻烦您把对应位置或款式再发一下，我帮您核对，避免说错。"
+        return "亲，这句需要结合上文、图片或具体位置才能准确判断。您可以把对应位置圈一下，或再发一张图，我帮您确认。"
     if expected_fact_type in {"aftersales", "after_sales", "aftersales_policy"}:
         return (
             "亲，您反馈的资料或实物可能不一致，我先按售后核对处理。\n"
@@ -210,8 +219,25 @@ def _controlled_turn_contract_reply(expected_fact_type: str, actionability: str)
             "麻烦您发一下部件照片或对应页面截图，我这边人工确认后再回复，避免把配件说错。"
         )
     if expected_fact_type in {"dimensions", "space_fit"}:
+        if _has_product_context_for_policy(copilot_context):
+            return "亲，我已经看到当前商品信息了，但这款具体尺寸还需要对照尺寸图/商品资料确认。我先帮您核对，避免不同款式尺寸说混。"
         return "亲，这个需要结合具体款式和尺寸图核对。麻烦您发一下商品链接、截图或预留位置尺寸，我再帮您确认。"
     return "亲，这个细节需要结合具体商品资料核对。我先转人工确认后再回复您，避免给您说错。"
+
+
+def _has_product_context_for_policy(copilot_context: dict | None) -> bool:
+    if not isinstance(copilot_context, dict):
+        return False
+    summary = copilot_context.get("real_context_summary") or {}
+    identity = copilot_context.get("real_context_product_identity") or {}
+    return bool(
+        (isinstance(summary, dict) and summary.get("has_product_context"))
+        or (isinstance(identity, dict) and identity.get("has_resolved_product_context"))
+        or copilot_context.get("product_name")
+        or copilot_context.get("sku_code")
+        or copilot_context.get("i_id")
+        or copilot_context.get("product_candidates")
+    )
 
 
 class ReplyService:
@@ -331,6 +357,8 @@ class ReplyService:
             logger.error("LangGraph 执行失败: %s", e, exc_info=True)
             # 极端降级：返回安全回复
             result = self._extreme_fallback(customer_message, order_id, str(e))
+        if isinstance(result, dict):
+            result.setdefault("customer_message", customer_message)
         result = _apply_turn_understanding_contract_to_result(result, copilot_context)
 
         # 构建白名单 context_used

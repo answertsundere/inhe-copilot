@@ -532,3 +532,72 @@ def test_reply_service_controls_accessory_usage_without_evidence(monkeypatch):
     assert suggestion.evidence_debug["query_fact_type"] == "installation"
     assert "我在处理" not in suggestion.suggested_reply
     assert "部件" in suggestion.suggested_reply
+
+
+def test_reply_service_no_evidence_policy_does_not_request_known_product_context(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "product_question",
+        "risk_level": "low",
+        "suggested_reply": "亲，这个需要结合具体款式和尺寸图核对。麻烦您发一下商品链接、截图或预留位置尺寸，我再帮您确认。",
+        "query_fact_type": "dimensions",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "dimensions", "selected_evidence": []},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "最窄是什么尺寸",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "dimensions",
+            },
+            "real_context_summary": {"has_product_context": True},
+            "real_context_product_identity": {"has_resolved_product_context": True},
+            "i_id": "DEMO_ITEM_ID",
+        },
+    )
+
+    assert suggestion.requires_human_review is True
+    assert "已经看到当前商品信息" in suggestion.suggested_reply
+    assert "商品链接" not in suggestion.suggested_reply
+    assert "SKU" not in suggestion.suggested_reply
+    assert suggestion.evidence_debug["no_evidence_reply_policy"]["reply_strategy"] == "verify_dimensions_for_known_product"
+
+
+def test_reply_service_no_evidence_policy_blocks_installation_media_promise_without_asset(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "installation_question",
+        "risk_level": "low",
+        "suggested_reply": "亲，我把视频发您参考，您先看一下。",
+        "query_fact_type": "installation",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "installation", "selected_evidence": []},
+        "recommended_assets": [],
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "需要安装资料",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "installation",
+            },
+            "real_context_summary": {"has_product_context": True, "has_media_context": True},
+            "media_context": {"video_urls": ["https://chat.example.com/old.mp4"]},
+        },
+    )
+
+    assert suggestion.requires_human_review is True
+    assert "对应安装资料" in suggestion.suggested_reply
+    assert "防止资料和款式不对应" in suggestion.suggested_reply
+    assert "我把视频发您" not in suggestion.suggested_reply
+    assert "发您参考" not in suggestion.suggested_reply
+    assert suggestion.evidence_debug["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
