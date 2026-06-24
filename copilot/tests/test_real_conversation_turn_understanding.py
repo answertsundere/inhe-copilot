@@ -42,11 +42,12 @@ def test_deictic_followup_without_context_is_context_insufficient():
 
 
 def test_short_elliptical_followups_are_deictic_not_actionable_questions():
-    for message in ("抽屉的也可以", "单门的", "7也行", "为什么", "为何"):
+    for message in ("抽屉的也可以", "单门的", "7也行", "为什么", "为啥", "为何", "咋回事", "怎么回事"):
         result = _understand(message)
         assert result["turn_actionability"] == "deictic_followup"
         assert result["needs_agent_reply"] is False
         assert result["needs_rag"] is False
+        assert result["should_score"] is True
         assert result["skip_reason"] == "context_insufficient"
 
 
@@ -86,6 +87,17 @@ def test_aftersales_mismatch_beats_installation_or_media_terms():
         assert result["turn_actionability"] == "actionable_question"
         assert result["query_fact_type"] == "aftersales"
         assert result["needs_rag"] is False
+
+
+def test_accessory_component_usage_questions_are_actionable_installation_questions():
+    for message in ("防倒器和这个双面贴干啥用的", "哪个是顶板", "螺丝装哪里"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["needs_agent_reply"] is True
+        assert result["needs_rag"] is True
+        assert result["should_score"] is True
+        assert result["query_fact_type"] in {"installation", "accessory_usage"}
+        assert "accessory" in result["reason"]
 
 
 def test_reply_topic_detection_is_fact_type_based():

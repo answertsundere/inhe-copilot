@@ -30,6 +30,9 @@ FAILURE_TYPES = {
     "query_fact_type_missing",
     "unnecessary_rag_call",
     "encoding_corruption",
+    "intent_contract_mismatch",
+    "generic_reply_to_actionable_issue",
+    "accessory_usage_missed",
 }
 
 FAILURE_REPAIR_GUIDANCE = {
@@ -118,6 +121,42 @@ FAILURE_REPAIR_GUIDANCE = {
         "suggested_owner": "data_pipeline",
         "explanation": "The buyer turn appears to contain corrupted text and cannot be scored reliably.",
     },
+    "intent_contract_mismatch": {
+        "suggested_fix_area": "query_understanding_final_trace_contract",
+        "suggested_owner": "agent_engineering",
+        "explanation": "The Agent final trace query_fact_type does not match the replay turn-understanding contract.",
+    },
+    "generic_reply_to_actionable_issue": {
+        "suggested_fix_area": "answer_composition",
+        "suggested_owner": "agent_quality",
+        "explanation": "The Agent returned a generic fallback instead of answering an actionable buyer issue.",
+    },
+    "accessory_usage_missed": {
+        "suggested_fix_area": "query_understanding",
+        "suggested_owner": "agent_engineering",
+        "explanation": "The buyer asked how to identify or use an accessory/component, but the turn was not routed to installation support.",
+    },
+}
+
+FACT_TYPE_COMPATIBILITY_GROUPS = {
+    "aftersales": {"aftersales", "aftersales_policy", "after_sales"},
+    "installation": {"installation", "accessory_usage"},
+    "logistics": {"logistics", "order_status", "delivery_not_received"},
+}
+
+GENERIC_FALLBACK_REPLY_TERMS = (
+    "我在处理",
+    "直接说具体问题",
+    "重新按事实",
+    "稍等确认",
+    "核实后回复",
+    "没帮到您",
+)
+
+SERVICE_ACTION_TERMS_BY_GROUP = {
+    "aftersales": ("退款", "退货", "换货", "补发", "售后", "订单", "凭证", "照片", "寄回", "重新发", "少件", "缺件", "错发", "破损"),
+    "installation": ("安装", "组装", "配件", "螺丝", "防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "固定", "贴", "装"),
+    "logistics": ("物流", "快递", "签收", "派送", "单号", "订单", "驿站", "网点"),
 }
 
 
@@ -166,6 +205,57 @@ def _extract_query_fact_type(response: dict[str, Any]) -> str:
     )
 
 
+def _fact_type_group(fact_type: str) -> str:
+    value = str(fact_type or "")
+    for group_name, aliases in FACT_TYPE_COMPATIBILITY_GROUPS.items():
+        if value in aliases:
+            return group_name
+    return value
+
+
+def _fact_types_compatible(expected: str, actual: str) -> bool:
+    if not expected or not actual:
+        return False
+    return expected == actual or _fact_type_group(expected) == _fact_type_group(actual)
+
+
+def _has_compatible_fact_type_overlap(left: set[str], right: set[str]) -> bool:
+    return any(_fact_types_compatible(a, b) for a in left for b in right)
+
+
+def get_query_fact_type_contract(
+    response: dict[str, Any],
+    turn_understanding: dict[str, Any] | None,
+) -> dict[str, str]:
+    understanding = turn_understanding or {}
+    expected = str(understanding.get("expected_query_fact_type") or understanding.get("query_fact_type") or "")
+    actual = str(understanding.get("actual_query_fact_type") or _extract_query_fact_type(response) or "")
+    effective = expected or actual
+    if not expected:
+        status = "no_expected"
+    elif not actual:
+        status = "actual_missing"
+    elif _fact_types_compatible(expected, actual):
+        status = "matched"
+    else:
+        status = "mismatch"
+    return {
+        "expected_query_fact_type": expected,
+        "actual_query_fact_type": actual,
+        "effective_query_fact_type": effective,
+        "intent_contract_status": status,
+    }
+
+
+def enrich_turn_understanding_with_contract(
+    response: dict[str, Any],
+    turn_understanding: dict[str, Any] | None,
+) -> dict[str, Any]:
+    enriched = dict(turn_understanding or {})
+    enriched.update(get_query_fact_type_contract(response, enriched))
+    return enriched
+
+
 def _extract_required_fact_types(response: dict[str, Any]) -> list:
     answer_trace = response.get("answer_trace") or {}
     evidence_debug = response.get("evidence_debug") or {}
@@ -205,6 +295,18 @@ def _extract_product_identity(response: dict[str, Any]) -> dict:
     })
 
 
+def _is_generic_fallback_reply(reply: str) -> bool:
+    value = str(reply or "")
+    return any(term in value for term in GENERIC_FALLBACK_REPLY_TERMS)
+
+
+def _has_explicit_service_action(reply: str, expected_query_fact_type: str) -> bool:
+    value = str(reply or "")
+    group = _fact_type_group(expected_query_fact_type)
+    terms = SERVICE_ACTION_TERMS_BY_GROUP.get(group, ())
+    return any(term in value for term in terms)
+
+
 def classify_turn_failures(response: dict[str, Any], exception: Exception | None = None) -> list[dict[str, str]]:
     if exception is not None:
         return [{"failure_type": "api_error", "severity": "high", "message": sanitize_text(str(exception))}]
@@ -241,7 +343,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     if query_fact_type and query_fact_type not in {"logistics", "order_status", "after_sales", "aftersales", "aftersales_policy"} and not selected:
         failures.append({"failure_type": "rag_miss", "severity": "medium", "message": "product question has no selected evidence"})
     answered = set(str(x) for x in _json_list(answer_trace.get("evidence_answered_fact_types")) if x)
-    if required and answered and not (required & answered):
+    if required and answered and not _has_compatible_fact_type_overlap(required, answered):
         failures.append({"failure_type": "evidence_misuse", "severity": "medium", "message": "answered fact types do not overlap required fact types"})
     enriched = []
     for failure in failures:
@@ -274,7 +376,10 @@ def evaluate_replay_turn_result(
 
     reply = str(response.get("suggested_reply") or response.get("reply") or "")
     reply_topics = set(detect_reply_topics(reply))
-    query_fact_type = _extract_query_fact_type(response)
+    contract = get_query_fact_type_contract(response, understanding)
+    expected_query_fact_type = contract["expected_query_fact_type"]
+    actual_query_fact_type = contract["actual_query_fact_type"]
+    query_fact_type = contract["effective_query_fact_type"]
     required_fact_types = set(str(item) for item in _extract_required_fact_types(response) if item)
     selected, _ = _extract_evidence(response)
     actionability = str(understanding.get("turn_actionability") or "")
@@ -318,7 +423,35 @@ def evaluate_replay_turn_result(
                 "message": "final audit had no expected topics but reply contains product topics",
             })
 
-    if not query_fact_type and reply_topics:
+    if expected_query_fact_type and not actual_query_fact_type and not _has_explicit_service_action(reply, expected_query_fact_type) and not response.get("requires_human_review"):
+        all_failures.append({
+            "failure_type": "query_fact_type_missing",
+            "severity": "high",
+            "message": "Agent final trace dropped query_fact_type required by turn understanding",
+        })
+
+    if contract["intent_contract_status"] == "mismatch":
+        all_failures.append({
+            "failure_type": "intent_contract_mismatch",
+            "severity": "high",
+            "message": f"expected {expected_query_fact_type}, actual {actual_query_fact_type}",
+        })
+
+    if (
+        actionability == "actionable_question"
+        and expected_query_fact_type
+        and _is_generic_fallback_reply(reply)
+        and not selected
+        and not _has_explicit_service_action(reply, expected_query_fact_type)
+        and not response.get("requires_human_review")
+    ):
+        all_failures.append({
+            "failure_type": "generic_reply_to_actionable_issue",
+            "severity": "high",
+            "message": "generic fallback reply was used for an actionable buyer issue",
+        })
+
+    if not actual_query_fact_type and reply_topics and not expected_query_fact_type:
         all_failures.append({
             "failure_type": "query_fact_type_missing",
             "severity": "high",
@@ -337,7 +470,7 @@ def evaluate_replay_turn_result(
             "message": "turn needs RAG but no selected evidence or human-review fallback exists",
         })
 
-    if required_fact_types and reply_topics and query_fact_type and not (reply_topics & required_fact_types):
+    if required_fact_types and reply_topics and query_fact_type and not _has_compatible_fact_type_overlap(reply_topics, required_fact_types):
         all_failures.append({
             "failure_type": "evidence_misuse",
             "severity": "medium",
@@ -474,6 +607,13 @@ class RealConversationReplayService:
                             },
                         }
                     latency_ms = int((time.time() - started) * 1000)
+                    turn_understanding = enrich_turn_understanding_with_contract(response, turn_understanding)
+                    intent_contract = {
+                        "expected_query_fact_type": turn_understanding.get("expected_query_fact_type", ""),
+                        "actual_query_fact_type": turn_understanding.get("actual_query_fact_type", ""),
+                        "effective_query_fact_type": turn_understanding.get("effective_query_fact_type", ""),
+                        "intent_contract_status": turn_understanding.get("intent_contract_status", ""),
+                    }
                     base_failures = classify_turn_failures(response, exception) if should_score else []
                     passed, failures = evaluate_replay_turn_result(turn_understanding, response, base_failures, exception)
                     labels = [f["failure_type"] for f in failures]
@@ -495,7 +635,7 @@ class RealConversationReplayService:
                         buyer_message=turn.sanitized_text,
                         reference_human_reply=turn.reference_human_reply,
                         agent_reply=sanitize_text(response.get("suggested_reply") or response.get("reply") or ""),
-                        query_fact_type=_extract_query_fact_type(response),
+                        query_fact_type=turn_understanding.get("effective_query_fact_type") or _extract_query_fact_type(response),
                         requires_human_review=bool(response.get("requires_human_review")),
                         latency_ms=latency_ms,
                         order_identity_hash=turn.order_hint_hash,
@@ -505,7 +645,7 @@ class RealConversationReplayService:
                     trace.set_required_fact_types(_extract_required_fact_types(response))
                     trace.set_selected_evidence(selected)
                     trace.set_rejected_evidence(rejected)
-                    trace.set_answer_trace(sanitize_obj(response.get("answer_trace") or {}))
+                    trace.set_answer_trace(sanitize_obj({**(response.get("answer_trace") or {}), **intent_contract}))
                     trace.set_final_audit(sanitize_obj(response.get("final_answer_audit") or response.get("final_audit") or {}))
                     trace.set_semantic_compiler(sanitize_obj(response.get("semantic_compiler") or response.get("semantic_compiler_debug") or {}))
                     trace.set_product_identity(_extract_product_identity(response))
@@ -516,6 +656,7 @@ class RealConversationReplayService:
                         "evidence_debug": response.get("evidence_debug") or {},
                         "debug_runtime": response.get("debug_runtime") or {},
                         "turn_understanding": turn_understanding,
+                        "intent_contract": intent_contract,
                     }))
                     db.add(trace)
                     for failure in failures:

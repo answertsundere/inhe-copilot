@@ -41,8 +41,11 @@ QUESTION_MARKERS = ("?", "？", "吗", "么", "呢", "怎么", "怎样", "如何
 REQUEST_MARKERS = ("请", "发", "给我", "帮我", "麻烦", "需要", "要", "想要", "看看", "处理", "补发", "退", "换")
 STATUS_TERMS = ("收到", "收到了", "到货", "到了", "拿到", "装好", "装好了", "装完", "安装好", "安装好了", "处理好", "解决了")
 ACK_TERMS = {"好", "好的", "嗯", "恩", "嗯嗯", "哦", "噢", "行", "可以", "知道了", "收到", "谢谢", "谢了", "ok", "OK"}
-DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "单门的", "抽屉的", "也行", "也可以", "为什么", "为何", "咋回事", "怎么回事")
+REASON_FOLLOWUP_TERMS = ("为什么", "为啥", "为何", "咋回事", "怎么回事")
+DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "单门的", "抽屉的", "也行", "也可以", *REASON_FOLLOWUP_TERMS)
 MEDIA_TERMS = ("图里", "图片", "照片", "视频", "圈出来", "拍的", "这里", "这个位置")
+ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "螺丝", "配件", "卡扣", "固定件", "垫片")
+ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里")
 
 
 @dataclass
@@ -165,6 +168,7 @@ class RealConversationTurnUnderstandingService:
         if _is_actionable_question(text, fact_type):
             needs_media = "视频" in text or "图片" in text or "图" in text
             needs_rag = False if fact_type in {"stock_shipping", "aftersales"} else (bool(fact_type) or needs_media)
+            reason = "Buyer asks accessory or component usage/identification." if _is_accessory_usage_question(text) else "Buyer turn contains a question or request that needs an answer."
             return TurnUnderstanding(
                 turn_actionability="actionable_question",
                 needs_agent_reply=True,
@@ -174,7 +178,7 @@ class RealConversationTurnUnderstandingService:
                 reply_strategy="normal_agent",
                 context_dependency="low" if product_hint or fact_type in {"stock_shipping", "aftersales"} else "medium",
                 forbidden_reply_topics=[],
-                reason="Buyer turn contains a question or request that needs an answer.",
+                reason=reason,
                 query_fact_type=fact_type,
             ).to_dict()
 
@@ -196,6 +200,8 @@ def infer_query_fact_type(text: str) -> str:
     value = str(text or "")
     if _is_aftersales_or_mismatch(value):
         return "aftersales"
+    if _is_accessory_usage_question(value):
+        return "installation"
     if any(term in value for term in ("视频", "教程", "说明书", "怎么装", "如何装", "安装")):
         return "installation"
     for fact_type, cues in PRODUCT_FACT_TOPICS.items():
@@ -221,6 +227,11 @@ def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term in text for term in terms)
 
 
+def _is_accessory_usage_question(text: str) -> bool:
+    value = str(text or "")
+    return _contains_any(value, ACCESSORY_COMPONENT_TERMS) and _contains_any(value, ACCESSORY_USAGE_TERMS)
+
+
 def _is_acknowledgement(normalized: str) -> bool:
     return normalized in ACK_TERMS or (len(normalized) <= 4 and normalized.lower() in {item.lower() for item in ACK_TERMS})
 
@@ -235,7 +246,7 @@ def _is_deictic_followup(text: str, fact_type: str = "") -> bool:
     stripped = _normalize(text)
     if fact_type:
         return False
-    if stripped in {"为什么", "为何", "咋回事", "怎么回事"}:
+    if stripped in REASON_FOLLOWUP_TERMS:
         return True
     if stripped in {re.sub(r"[\s~～!！?？.。,…，、；;：:]+", "", item) for item in DEICTIC_TERMS}:
         return True

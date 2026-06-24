@@ -348,3 +348,139 @@ def test_replay_result_fails_empty_query_fact_type_with_product_reply():
     assert "wrong_topic_reply" in labels
     assert "query_fact_type_missing" in labels
     assert "unrequested_product_fact" in labels
+
+
+def test_actionable_aftersales_turn_fails_generic_reply_with_missing_agent_fact_type():
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": False,
+            "should_score": True,
+            "query_fact_type": "aftersales",
+            "forbidden_reply_topics": [],
+        },
+        {
+            "suggested_reply": "亲~我在处理，刚才的回复如果没帮到您，可以直接说具体问题，我会重新按事实查。",
+            "query_fact_type": "",
+            "answer_trace": {"query_fact_type": ""},
+            "final_answer_audit": {"passed": True, "expected_topics": ["aftersales"]},
+        },
+        [],
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "query_fact_type_missing" in labels
+    assert "generic_reply_to_actionable_issue" in labels
+
+
+def test_actionable_aftersales_turn_fails_when_agent_trace_switches_to_installation():
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": False,
+            "should_score": True,
+            "query_fact_type": "aftersales",
+            "forbidden_reply_topics": [],
+        },
+        {
+            "suggested_reply": "可以按安装说明书把配件装好。",
+            "query_fact_type": "installation",
+            "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
+            "final_answer_audit": {"passed": True, "expected_topics": ["installation"]},
+        },
+        [],
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "intent_contract_mismatch" in labels
+
+
+def test_replay_intent_contract_allows_fact_type_aliases():
+    aftersales_passed, aftersales_failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": False,
+            "should_score": True,
+            "query_fact_type": "aftersales",
+            "forbidden_reply_topics": [],
+        },
+        {
+            "suggested_reply": "可以按售后规则先核对订单和凭证。",
+            "query_fact_type": "after_sales",
+            "answer_trace": {"query_fact_type": "after_sales", "required_fact_types": ["after_sales"]},
+            "final_answer_audit": {"passed": True, "expected_topics": ["aftersales"]},
+        },
+        [],
+    )
+    installation_passed, installation_failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "accessory_usage",
+            "forbidden_reply_topics": [],
+        },
+        {
+            "suggested_reply": "防倒器用于辅助固定，安装时按配件说明确认位置。",
+            "query_fact_type": "installation",
+            "evidence_debug": {"selected_evidence": [{"fact_type": "installation", "content": "配件安装说明"}]},
+            "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
+            "final_answer_audit": {"passed": True, "expected_topics": ["installation"]},
+        },
+        [],
+    )
+
+    assert aftersales_passed is True
+    assert {item["failure_type"] for item in aftersales_failures} == set()
+    assert installation_passed is True
+    assert {item["failure_type"] for item in installation_failures} == set()
+
+
+def test_replay_stores_expected_actual_and_effective_query_fact_type_contract(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_contract_1", source_type="real_conversation", message="contract"))
+        db.add(EvalConversationTurn(
+            case_uid="case_contract_1",
+            conversation_uid="conv_contract_1",
+            turn_uid="turn_contract_1",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="发过来的说明书和物品不对",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class MismatchReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            return {
+                "suggested_reply": "请按安装说明书确认配件安装位置。",
+                "requires_human_review": False,
+                "query_fact_type": "installation",
+                "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
+                "final_answer_audit": {"passed": True, "expected_topics": ["installation"]},
+            }
+
+    result = MismatchReplayService().replay_cases(ReplayOptions(run_uid="run_contract_mismatch"))
+
+    assert result["failed"] == 1
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        understanding = trace.get_turn_understanding()
+        answer_trace = trace.get_answer_trace()
+        labels = set(trace.get_failure_labels())
+        assert trace.query_fact_type == "aftersales"
+        assert understanding["expected_query_fact_type"] == "aftersales"
+        assert understanding["actual_query_fact_type"] == "installation"
+        assert understanding["effective_query_fact_type"] == "aftersales"
+        assert understanding["intent_contract_status"] == "mismatch"
+        assert answer_trace["expected_query_fact_type"] == "aftersales"
+        assert answer_trace["actual_query_fact_type"] == "installation"
+        assert "intent_contract_mismatch" in labels
+    finally:
+        db.close()
