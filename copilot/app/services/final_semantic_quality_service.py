@@ -19,6 +19,7 @@ import json
 from typing import Any
 
 from app import config
+from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
 
 
 def audit_customer_reply_semantic_fit(
@@ -35,6 +36,30 @@ def audit_customer_reply_semantic_fit(
     if structural["issues"]:
         return _result(False, structural["issues"], structural["reason"], "deterministic")
 
+    evidence_pack = _evidence_pack(response)
+    query_fact_type = _query_fact_type(response, evidence_pack)
+
+    # Visual/installation questions can be answered by attached media assets.
+    # Accept the reply deterministically when it references the attached asset.
+    if _is_visual_media_answer(response):
+        return _result(
+            True,
+            [],
+            "Visual/installation question answered with an attached image/video asset.",
+            "deterministic",
+        )
+
+    # Generic-rule fallbacks are intentionally conservative policy replies.
+    # When a matching generic rule exists and the reply avoids forbidden claims,
+    # accept it without calling the LLM judge.
+    if _generic_rule_fallback_acceptable(response, evidence_pack, query_fact_type):
+        return _result(
+            True,
+            [],
+            "Generic rule fallback reply accepted deterministically.",
+            "deterministic",
+        )
+
     llm_result = _llm_semantic_fit_check(
         response,
         customer_message=customer_message,
@@ -46,7 +71,12 @@ def audit_customer_reply_semantic_fit(
     return _result(True, [], "No structural semantic issue detected.", "deterministic")
 
 
-def apply_semantic_fit_result(response: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+def apply_semantic_fit_result(
+    response: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    copilot_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     response["final_semantic_fit_audit"] = result
     response.setdefault("evidence_debug", {})["final_semantic_fit_audit"] = result
     if result.get("passed", True):
@@ -71,6 +101,7 @@ def apply_semantic_fit_result(response: dict[str, Any], result: dict[str, Any]) 
     })
     result["fallback_used"] = True
     result["original_reply"] = original
+    response = apply_no_evidence_reply_policy(response, copilot_context)
     return response
 
 
@@ -82,6 +113,11 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
 
     answerability = str(evidence_pack.get("answerability") or "")
     if answerability in {"missing_product_fact", "no_product_profile", "no_product_identity"}:
+        # If upstream already determined the reply is relevant and on-topic,
+        # do not let a stale "missing product fact" pack force a fallback.
+        debug = response.get("evidence_debug") or {}
+        if bool(debug.get("answer_relevance_passed")) or bool(debug.get("direct_answer_supported")):
+            return {"issues": [], "reason": ""}
         if not bool(response.get("requires_human_review")):
             return {
                 "issues": ["missing_evidence_without_human_review"],
@@ -90,6 +126,11 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
 
     matched_facts = evidence_pack.get("matched_facts") or []
     if answerability == "direct_answer" and not matched_facts:
+        # A direct-answer pack may have been promoted from a generic-rule or
+        # template-supported reply. Accept it when such supporting evidence is
+        # present and matches the query fact type.
+        if _generic_or_template_supports_fact_type(response, evidence_pack, query_fact_type):
+            return {"issues": [], "reason": ""}
         return {
             "issues": ["direct_answer_without_matched_fact"],
             "reason": "Evidence pack claims direct answer but no matched fact is attached.",
@@ -208,6 +249,97 @@ def _semantic_payload(
     }
 
 
+def _is_visual_media_answer(response: dict[str, Any]) -> bool:
+    """Return True when the reply includes a media asset for a visual fact type."""
+    fact_type = str(
+        ((response.get("evidence_debug") or {}).get("query_fact_type"))
+        or (response.get("query_fact_type"))
+        or ""
+    )
+    visual_fact_types = {"dimensions", "space_fit", "installation", "detachable", "accessories", "packaging"}
+    if fact_type not in visual_fact_types:
+        return False
+    has_media = bool(
+        (response.get("recommended_assets") or [])
+        or [b for b in (response.get("reply_blocks") or []) if isinstance(b, dict) and b.get("type") in {"image", "video"}]
+    )
+    if not has_media:
+        return False
+    reply = str(response.get("suggested_reply") or "").lower()
+    return any(term in reply for term in (
+        "图", "图片", "尺寸图", "视频", "安装视频", "参考下面", "下面发您",
+    ))
+
+
+def _generic_rule_fallback_acceptable(
+    response: dict[str, Any],
+    evidence_pack: dict[str, Any],
+    query_fact_type: str,
+) -> bool:
+    """Return True when the reply is a policy-grounded generic-rule fallback."""
+    if str(evidence_pack.get("answerability") or "") != "generic_rule_fallback":
+        return False
+    if not query_fact_type:
+        return False
+    matched_rules = [
+        rule
+        for rule in (evidence_pack.get("matched_generic_rules") or [])
+        if isinstance(rule, dict) and str(rule.get("fact_type") or "") == query_fact_type
+    ]
+    if not matched_rules:
+        return False
+
+    # Look up the full rule definition to check risk and auto-reply flags.
+    debug = response.get("evidence_debug") or {}
+    product_pack = (
+        response.get("product_context_pack")
+        or debug.get("product_context_pack_summary")
+        or {}
+    )
+    full_rules = {
+        str(rule.get("rule_key") or ""): rule
+        for rule in (product_pack.get("generic_rules") or [])
+        if isinstance(rule, dict)
+    }
+    for rule in matched_rules:
+        full = full_rules.get(str(rule.get("rule_key") or "")) or {}
+        if full.get("auto_reply_allowed") is False:
+            return False
+        if str(full.get("risk_level") or "low").lower() not in {"low", "medium"}:
+            return False
+
+    # Do not accept replies that repeat forbidden claims from the rule.
+    reply = str(response.get("suggested_reply") or "").lower()
+    for rule in matched_rules:
+        for claim in rule.get("forbidden_claims") or []:
+            if claim and claim.lower() in reply:
+                return False
+    return True
+
+
+def _generic_or_template_supports_fact_type(
+    response: dict[str, Any],
+    evidence_pack: dict[str, Any],
+    query_fact_type: str,
+) -> bool:
+    """Return True when generic rules or template evidence support query_fact_type."""
+    matched_generic = [
+        rule
+        for rule in (evidence_pack.get("matched_generic_rules") or [])
+        if isinstance(rule, dict) and str(rule.get("fact_type") or "") == query_fact_type
+    ]
+    if matched_generic:
+        return True
+    debug = response.get("evidence_debug") or {}
+    for item in (debug.get("template_evidence") or []):
+        if not isinstance(item, dict):
+            continue
+        ev_ft = str(item.get("evidence_fact_type") or item.get("fact_type") or "")
+        if ev_ft == query_fact_type:
+            return True
+    return False
+
+
 def _evidence_pack(response: dict[str, Any]) -> dict[str, Any]:
     debug = response.get("evidence_debug") or {}
     summary = debug.get("product_context_pack_summary") or {}
@@ -243,9 +375,8 @@ def _semantic_fit_fallback(response: dict[str, Any]) -> str:
     display_name = str(response.get("display_product_name") or "").strip()
     product = f"「{display_name}」" if display_name else "这款商品"
     return (
-        f"亲～{product}这个问题我先帮您按当前商品信息再核对一下，"
-        "避免给您说错影响使用或选择。\n"
-        "您稍等一下，我这边确认清楚后再回复您。"
+        f"亲～{product}这个问题需要结合对应资料复核，避免口径不准确。\n"
+        "我先转人工确认后，再给您准确处理建议。"
     )
 
 

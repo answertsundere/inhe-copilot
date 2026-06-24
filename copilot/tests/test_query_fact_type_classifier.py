@@ -21,10 +21,26 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u4ea7\u54c1\u6709\u6c14\u5473\u5417": "odor",
         "\u8fd9\u4e2a\u6709\u5473\u513f\u5417": "odor",
         "\u6750\u8d28\u6709\u6c14\u5473\u5417": "odor",
+        "\u652f\u4ed8\u5b9d\u6253\u6b3e\u591a\u4e45\u80fd\u5230\u8d26": "aftersales_policy",
+        "\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\u4e00\u822c\u591a\u4e45": "aftersales_policy",
     }
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")
         assert result["query_fact_type"] == expected
+
+
+def test_promotion_terms_are_not_misrouted_to_aftersales():
+    for message in ("有没有福利", "有什么优惠", "晒图返多少"):
+        result = classify_query_fact_type(message, "product_question")
+        assert result["query_fact_type"] == "promotion_policy"
+        assert result.get("secondary_fact_types", []) == []
+
+
+def test_aftersales_promotion_multi_intent_keeps_promotion_secondary():
+    result = classify_query_fact_type("退货后晒图福利还给吗", "product_question")
+
+    assert result["query_fact_type"] == "aftersales_policy"
+    assert "promotion_policy" in result.get("secondary_fact_types", [])
 
 
 def test_api_exposes_query_fact_type_debug():

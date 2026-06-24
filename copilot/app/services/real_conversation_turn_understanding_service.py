@@ -29,6 +29,44 @@ PRODUCT_FACT_TOPICS = {
     ),
 }
 
+PROMOTION_TERMS = (
+    "福利",
+    "优惠",
+    "活动",
+    "优惠券",
+    "券",
+    "红包",
+    "返现",
+    "晒图",
+    "好评",
+    "赠品",
+    "买赠",
+    "满减",
+    "立减",
+    "折扣",
+    "返多少",
+    "有没有送",
+    "有什么送",
+)
+AFTERSALES_STRONG_TERMS = (
+    "退货",
+    "退款",
+    "换货",
+    "补发",
+    "少件",
+    "缺件",
+    "漏发",
+    "发错",
+    "不一致",
+    "不对",
+    "对不上",
+    "不一样",
+    "破损",
+    "投诉",
+    "赔偿",
+)
+
+
 FORBIDDEN_TOPICS_BY_ACTIONABILITY = {
     "context_update": ["dimensions", "space_fit", "load_capacity", "material", "age_range"],
     "acknowledgement": ["dimensions", "space_fit", "load_capacity", "material", "installation", "age_range"],
@@ -61,6 +99,7 @@ class TurnUnderstanding:
     forbidden_reply_topics: list[str] = field(default_factory=list)
     reason: str = ""
     query_fact_type: str = ""
+    secondary_fact_types: list[str] = field(default_factory=list)
     skip_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,7 +175,7 @@ class RealConversationTurnUnderstandingService:
                 reason="Buyer is reporting receipt, installation, or handling status rather than asking a product fact.",
             ).to_dict()
 
-        fact_type = infer_query_fact_type(text)
+        fact_type, secondary_fact_types = infer_query_fact_types(text)
         if _is_deictic_followup(text, fact_type):
             has_context = bool(history or product_hint)
             return TurnUnderstanding(
@@ -181,6 +220,7 @@ class RealConversationTurnUnderstandingService:
                 forbidden_reply_topics=[],
                 reason=reason,
                 query_fact_type=fact_type,
+                secondary_fact_types=secondary_fact_types,
             ).to_dict()
 
         return TurnUnderstanding(
@@ -198,6 +238,7 @@ class RealConversationTurnUnderstandingService:
 
 
 def infer_query_fact_type(text: str) -> str:
+    return infer_query_fact_types(text)[0]
     value = str(text or "")
     if _is_aftersales_or_mismatch(value):
         return "aftersales"
@@ -211,9 +252,31 @@ def infer_query_fact_type(text: str) -> str:
     return ""
 
 
+def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
+    value = str(text or "")
+    has_promotion = _is_promotion_query(value)
+    has_aftersales = _is_aftersales_or_mismatch(value)
+    if has_aftersales and has_promotion:
+        return "aftersales", ["promotion"]
+    if has_promotion:
+        return "promotion", []
+    if has_aftersales:
+        return "aftersales", []
+    if _is_accessory_usage_question(value):
+        return "installation", []
+    if any(term in value for term in ("视频", "教程", "说明书", "怎么装", "如何装", "安装")):
+        return "installation", []
+    for fact_type, cues in PRODUCT_FACT_TOPICS.items():
+        if any(cue in value for cue in cues):
+            return fact_type, []
+    return "", []
+
+
 def detect_reply_topics(text: str) -> list[str]:
     value = str(text or "")
     topics = []
+    if _is_promotion_query(value):
+        topics.append("promotion")
     for fact_type, cues in PRODUCT_FACT_TOPICS.items():
         if any(cue in value for cue in cues):
             topics.append(fact_type)
@@ -279,8 +342,15 @@ def _has_question_or_request(text: str) -> bool:
     return _contains_any(text, QUESTION_MARKERS) or _contains_any(text, REQUEST_MARKERS)
 
 
+def _is_promotion_query(text: str) -> bool:
+    value = str(text or "")
+    return any(term in value for term in PROMOTION_TERMS)
+
+
 def _is_aftersales_or_mismatch(text: str) -> bool:
     value = str(text or "")
+    if any(term in value for term in AFTERSALES_STRONG_TERMS):
+        return True
     if any(term in value for term in ("退", "退款", "退货", "换", "换货", "补发", "少件", "缺件", "漏发", "发错", "破损", "售后")):
         return True
     mismatch_terms = ("不对", "对不上", "不一样", "不太一样", "不匹配", "不符合")

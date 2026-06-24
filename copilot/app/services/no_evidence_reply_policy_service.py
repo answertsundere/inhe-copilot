@@ -57,6 +57,41 @@ ACCESSORY_MESSAGE_TERMS = (
     "哪块",
     "位置",
 )
+MEDIA_REQUEST_TERMS = (
+    "视频",
+    "安装视频",
+    "说明书",
+    "安装资料",
+    "教程",
+    "图片",
+)
+MISMATCH_MESSAGE_TERMS = (
+    "不对",
+    "对不上",
+    "不一致",
+    "不一样",
+    "不太一样",
+    "不匹配",
+)
+MISMATCH_CONTEXT_TERMS = (
+    "说明书",
+    "视频",
+    "资料",
+    "物品",
+    "实物",
+    "东西",
+    "买的",
+    "发来的",
+    "发过来",
+    "发给我",
+)
+_POLICY_FACT_TYPES = (
+    INSTALLATION_FACT_TYPES
+    | ACCESSORY_FACT_TYPES
+    | AFTERSALES_FACT_TYPES
+    | PROMOTION_FACT_TYPES
+    | DIMENSION_FACT_TYPES
+)
 
 
 def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -264,7 +299,8 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
         or answer_trace.get("query_fact_type")
         or ""
     ).strip()
-    summary = context.get("real_context_summary") if isinstance(context.get("real_context_summary"), dict) else {}
+    response_summary = response.get("real_context") if isinstance(response.get("real_context"), dict) else {}
+    summary = context.get("real_context_summary") if isinstance(context.get("real_context_summary"), dict) else response_summary
     identity = context.get("real_context_product_identity") if isinstance(context.get("real_context_product_identity"), dict) else {}
     media_context = context.get("media_context") if isinstance(context.get("media_context"), dict) else {}
     pack = _product_context_pack(response)
@@ -312,6 +348,8 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
         return True
     if _asks_for_known_context(reply, inputs):
         return True
+    if _looks_like_generic_handoff(reply) and fact_type in _POLICY_FACT_TYPES:
+        return True
     if actionability in {"context_update", "deictic_followup"}:
         return True
     if response.get("generation_mode") == "turn_contract_controlled_handoff":
@@ -319,12 +357,12 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if (
         fact_type in INSTALLATION_FACT_TYPES
         and not inputs.get("has_sendable_media_asset")
-        and (not selected_count or inputs.get("has_media_context"))
+        and (not selected_count or inputs.get("has_media_context") or _looks_like_media_request(inputs))
     ):
         return True
     if fact_type in ACCESSORY_FACT_TYPES and not selected_count:
         return True
-    if fact_type in AFTERSALES_FACT_TYPES and not selected_count:
+    if fact_type in AFTERSALES_FACT_TYPES and (not selected_count or _looks_like_mismatch_question(inputs)):
         return True
     if fact_type in PROMOTION_FACT_TYPES and not selected_count:
         return True
@@ -381,6 +419,26 @@ def _asks_for_known_context(reply: str, inputs: dict[str, Any]) -> bool:
 def _looks_like_accessory_question(inputs: dict[str, Any]) -> bool:
     message = str(inputs.get("customer_message") or "")
     return any(term in message for term in ACCESSORY_MESSAGE_TERMS)
+
+
+def _looks_like_media_request(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    return any(term in message for term in MEDIA_REQUEST_TERMS)
+
+
+def _looks_like_mismatch_question(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    return (
+        any(term in message for term in MISMATCH_MESSAGE_TERMS)
+        and any(term in message for term in MISMATCH_CONTEXT_TERMS)
+    )
+
+
+def _looks_like_generic_handoff(reply: str) -> bool:
+    value = str(reply or "")
+    if "按这款商品" in value and "核对" in value and "再回复" in value:
+        return True
+    return "稍等" in value and "确认" in value and "再回复" in value
 
 
 def _has_media_blocks(blocks: Any) -> bool:

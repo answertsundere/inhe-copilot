@@ -15,7 +15,7 @@ import json
 from typing import Any
 
 from app import config
-from app.services.customer_reply_polisher import polish_customer_reply
+from app.services.customer_reply_polisher import polish_customer_reply, _polish_text
 from app.services.final_answer_auditor import audit_final_answer
 from app.services.final_semantic_quality_service import (
     apply_semantic_fit_result,
@@ -101,6 +101,12 @@ def orchestrate_final_response(
             "reason": llm_polish.get("reason", ""),
         }
         response.setdefault("evidence_debug", {})["llm_customer_language_polish"] = response["llm_customer_language_polish"]
+
+    # The LLM polish may reintroduce deterministic blocked phrases or handoff
+    # wording that the first polish removed. Run the deterministic polish again
+    # before the final redline checks.
+    response["suggested_reply"] = _polish_text(str(response.get("suggested_reply") or ""))
+
     pipeline.append({
         "stage": "llm_customer_language_polish",
         "enabled": bool(config.COPILOT_FINAL_POLISH_LLM_ENABLED),
@@ -112,7 +118,7 @@ def orchestrate_final_response(
         customer_message=customer_message,
         copilot_context=copilot_context,
     )
-    response = apply_semantic_fit_result(response, semantic_fit)
+    response = apply_semantic_fit_result(response, semantic_fit, copilot_context=copilot_context)
     pipeline.append({
         "stage": "final_semantic_fit_audit",
         "passed": bool(semantic_fit.get("passed", True)),
@@ -150,6 +156,15 @@ def orchestrate_final_response(
     })
 
     _sync_text_reply_block(response)
+
+    # Align the upstream answer_relevance flag with the actual semantic audits.
+    # If both final semantic judges agree the reply is on-topic, the upstream
+    # evidence-sufficiency gate should not keep reporting a relevance failure.
+    final_answer_passed = bool((response.get("final_answer_audit") or {}).get("passed", True))
+    semantic_fit_passed = bool((response.get("final_semantic_fit_audit") or {}).get("passed", True))
+    if final_answer_passed and semantic_fit_passed:
+        response.setdefault("evidence_debug", {})["answer_relevance_passed"] = True
+
     response["final_response_pipeline"] = {
         "version": "final-response-orchestrator-v1",
         "order": [

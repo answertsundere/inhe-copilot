@@ -153,3 +153,60 @@ def test_apply_policy_replaces_unsupported_media_promise_after_rewrite():
     assert "对应安装资料" in result["suggested_reply"]
     assert "我把视频发您" not in result["suggested_reply"]
     assert "发您参考" not in result["suggested_reply"]
+
+
+def test_installation_media_request_without_sendable_asset_applies_even_with_selected_evidence():
+    response = {
+        "suggested_reply": "亲～这个问题我先帮您按这款商品核对一下，您稍等一下，我这边确认后再回复您。",
+        "query_fact_type": "installation",
+        "customer_message": "麻烦发下安装资料",
+        "evidence_debug": {"selected_evidence": [{"fact_type": "installation", "content": "暂无安装视频"}]},
+        "recommended_assets": [],
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "real_context_summary": {"has_product_context": True, "has_media_context": False},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["requires_human_review"] is True
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert "按这款商品核对一下" not in result["suggested_reply"]
+    assert "确认后再回复" not in result["suggested_reply"]
+
+
+def test_aftersales_mismatch_request_applies_even_with_selected_evidence():
+    response = {
+        "suggested_reply": "亲～这个问题我先帮您按这款商品核对一下，您稍等一下，我这边确认后再回复您。",
+        "query_fact_type": "aftersales",
+        "customer_message": "资料和实物不一致",
+        "evidence_debug": {"selected_evidence": [{"fact_type": "installation", "content": "安装资料"}]},
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "aftersales"},
+        "real_context_summary": {"has_product_context": True, "has_media_context": True},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "aftersales_mismatch_check"
+    assert "按这款商品核对一下" not in result["suggested_reply"]
+
+
+def test_final_fallback_policy_recovers_order_context_from_response():
+    response = {
+        "suggested_reply": "亲～这款商品这个问题我先帮您按这款商品核对一下，您稍等一下，我这边确认后再回复您。",
+        "query_fact_type": "installation",
+        "evidence_debug": {"query_fact_type": "installation", "selected_evidence": []},
+        "real_context": {"has_order_context": True, "has_product_context": False, "has_media_context": True},
+        "recommended_assets": [],
+    }
+
+    result = apply_no_evidence_reply_policy(response, None)
+
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert "商品链接" not in result["suggested_reply"]

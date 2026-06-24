@@ -133,6 +133,40 @@ _SAFETY_OVERRIDE_BLOCKERS = (
     "防夹", "夹手", "夹到", "被夹", "夹住", "误吞", "吞了", "卡喉",
     "窒息", "电池", "小零件", "安全隐患",
 )
+_PROMOTION_STRONG_MARKERS = (
+    "福利",
+    "优惠",
+    "活动",
+    "优惠券",
+    "券",
+    "红包",
+    "返现",
+    "晒图",
+    "好评",
+    "赠品",
+    "买赠",
+    "满减",
+    "立减",
+    "折扣",
+    "返多少",
+    "有没有送",
+    "有什么送",
+)
+_AFTERSALES_PROMOTION_BOUNDARY_MARKERS = (
+    "退货",
+    "退款",
+    "换货",
+    "补发",
+    "少件",
+    "缺件",
+    "漏发",
+    "发错",
+    "不一致",
+    "不对",
+    "破损",
+    "投诉",
+    "赔偿",
+)
 
 
 _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
@@ -180,13 +214,52 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("detachable", ("\u53ef\u62c6", "\u62c6\u5378", "\u62c6\u5f00", "\u62c6\u4e0b\u6765", "\u80fd\u62c6", "\u62c6\u88c5")),
     ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f")),
     ("material", ("\u6750\u8d28", "\u6750\u6599", "\u4ec0\u4e48\u6599", "\u7528\u6599", "\u677f\u6750", "\u5b9e\u6728", "\u5b89\u5168\u5417", "\u53d7\u6f6e", "\u9632\u6f6e", "\u751f\u9508")),
-    ("aftersales_policy", ("\u9000\u8d27", "\u9000\u6b3e", "\u6362\u8d27", "\u8865\u53d1", "\u552e\u540e", "\u7834\u635f", "\u574f\u4e86", "\u5c11\u4ef6", "\u53d1\u9519")),
+    ("aftersales_policy", (
+        "\u9000\u8d27",
+        "\u9000\u6b3e",
+        "\u6362\u8d27",
+        "\u8865\u53d1",
+        "\u552e\u540e",
+        "\u7834\u635f",
+        "\u574f\u4e86",
+        "\u5c11\u4ef6",
+        "\u53d1\u9519",
+        "\u6253\u6b3e",
+        "\u652f\u4ed8\u5b9d\u6253\u6b3e",
+        "\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e",
+        "\u5c0f\u989d\u6253\u6b3e",
+        "\u5230\u8d26",
+        "\u6536\u6b3e\u8d26\u53f7",
+        "\u6536\u6b3e\u4eba\u59d3\u540d",
+        "\u8d54\u4ed8",
+        "\u8865\u507f\u6b3e",
+    )),
 ]
 
 
 def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
     """Classify the business fact field a customer is asking about."""
     msg = message or ""
+    promotion_hits = [kw for kw in _PROMOTION_STRONG_MARKERS if kw in msg]
+    aftersales_promotion_boundary_hits = [kw for kw in _AFTERSALES_PROMOTION_BOUNDARY_MARKERS if kw in msg]
+    if promotion_hits and aftersales_promotion_boundary_hits:
+        return {
+            "query_fact_type": "aftersales_policy",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("aftersales_policy", "aftersales_policy"),
+            "confidence": 0.86,
+            "matched_terms": aftersales_promotion_boundary_hits[:5],
+            "secondary_fact_types": ["promotion_policy"],
+            "source": "unicode_rule",
+        }
+    if promotion_hits:
+        return {
+            "query_fact_type": "promotion_policy",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("promotion_policy", "promotion_policy"),
+            "confidence": 0.86 if len(promotion_hits) > 1 else 0.8,
+            "matched_terms": promotion_hits[:5],
+            "secondary_fact_types": [],
+            "source": "unicode_rule",
+        }
     # Aftersales补发/少件 wins over the generic installation 螺丝/配件 keyword
     # (e.g. "少了一个螺丝，能补发不？" → aftersales_policy). Explicit installation
     # verbs or safety markers still take precedence.

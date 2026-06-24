@@ -99,6 +99,23 @@ def test_aftersales_mismatch_beats_installation_or_media_terms():
         assert result["needs_rag"] is False
 
 
+def test_promotion_questions_are_actionable_promotion_not_aftersales():
+    for message in ("有没有福利", "有什么优惠", "晒图返多少"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "promotion"
+        assert result["needs_rag"] is True
+        assert result.get("secondary_fact_types", []) == []
+
+
+def test_aftersales_and_promotion_multi_intent_keeps_promotion_secondary():
+    result = _understand("退货后晒图福利还给吗")
+
+    assert result["turn_actionability"] == "actionable_question"
+    assert result["query_fact_type"] == "aftersales"
+    assert "promotion" in result.get("secondary_fact_types", [])
+
+
 def test_accessory_component_usage_questions_are_actionable_installation_questions():
     for message in ("防倒器和这个双面贴干啥用的", "哪个是顶板", "螺丝装哪里", "有安全带吗", "有没有防倒器"):
         result = _understand(message)
