@@ -165,12 +165,14 @@ def test_replay_passes_structured_real_context_to_agent_and_trace(monkeypatch):
     assert len(payloads) == 1
     payload = payloads[0]
     assert payload["product_name"] == "儿童书架收纳柜"
-    assert payload["product_candidates"][0]["item_id"] == "123456789"
+    assert any(candidate.get("item_id") == "123456789" for candidate in payload["product_candidates"])
     assert payload["copilot_context"]["source_page"] == "order_detail"
     assert payload["copilot_context"]["conversation_type"] == "mixed"
     assert payload["copilot_context"]["item_id"] == "123456789"
     assert payload["copilot_context"]["order_id_hash"] == "hash-order"
     assert payload["copilot_context"]["media_context"]["video_urls"] == ["https://demo.example.com/install.mp4"]
+    assert payload["copilot_context"]["real_context_summary"]["has_product_context"] is True
+    assert payload["copilot_context"]["real_context_product_identity"]["has_resolved_product_context"] is True
     assert "123456789012345" not in str(payload)
 
     db = session_factory()
@@ -182,6 +184,9 @@ def test_replay_passes_structured_real_context_to_agent_and_trace(monkeypatch):
         assert context_summary["has_product_context"] is True
         assert context_summary["has_order_context"] is True
         assert context_summary["has_media_context"] is True
+        answer_trace = trace.get_answer_trace()
+        assert answer_trace["real_context_product_identity"]["has_resolved_product_context"] is True
+        assert answer_trace["conversation_media_reference"]["media_context_count"] == 1
         assert context_summary["product_title_preview"] == "儿童书架收纳柜"
     finally:
         db.close()

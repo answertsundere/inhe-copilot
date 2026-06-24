@@ -21,6 +21,10 @@ from app.services.media_asset_service import (
     get_auto_send_level,
     get_media_purpose,
 )
+from app.services.real_context_product_identity_service import (
+    augment_state_with_real_context_identity,
+    build_conversation_media_reference,
+)
 
 
 def build_product_context_pack(
@@ -31,9 +35,16 @@ def build_product_context_pack(
     query_fact_type: str = "",
     top_k: int = 8,
 ) -> dict[str, Any]:
+    state = dict(state or {})
+    if state.get("copilot_context"):
+        augment_state_with_real_context_identity(state)
     identity = _state_identity(state)
+    conversation_media_reference = build_conversation_media_reference(state.get("copilot_context") or {})
     if not (identity["sku"] or identity["i_id"] or identity["product_name"]):
-        return _empty_pack(identity, "no_product_identity")
+        return _attach_media_context_trace(
+            _empty_pack(identity, "no_product_identity"),
+            conversation_media_reference,
+        )
 
     try:
         from app.db import SessionLocal
@@ -269,7 +280,7 @@ def build_product_context_pack(
             query_fact_type=query_fact_type,
             top_k=top_k,
         )
-        return {
+        return _attach_media_context_trace({
             "identity": identity,
             "structured_profile": structured_profile,
             "facts": returned_facts,
@@ -289,7 +300,7 @@ def build_product_context_pack(
                 "query_fact_type": query_fact_type,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
             },
-        }
+        }, conversation_media_reference)
     finally:
         db.close()
 
@@ -316,6 +327,47 @@ def _empty_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
             "evidence_pack_answerability": evidence_pack.get("answerability", ""),
         },
     }
+
+
+def _attach_media_context_trace(pack: dict[str, Any], conversation_media_reference: dict[str, Any]) -> dict[str, Any]:
+    media_ref = conversation_media_reference if isinstance(conversation_media_reference, dict) else {}
+    media_context_count = int(media_ref.get("media_context_count") or 0)
+    media_assets = pack.get("media_assets") or []
+    recommended_assets = pack.get("recommended_assets") or []
+    sendable_assets = [
+        item for item in recommended_assets
+        if item.get("asset_url") and item.get("auto_send_level", "auto") == "auto"
+    ]
+    rejected_reason = ""
+    if media_context_count and not media_assets:
+        rejected_reason = "no_approved_usable_media_asset_matched"
+    elif media_context_count and media_assets and not recommended_assets:
+        rejected_reason = "approved_media_asset_not_relevant_to_query"
+    elif media_context_count and recommended_assets and not sendable_assets:
+        rejected_reason = "matched_media_asset_requires_manual_review"
+    elif media_context_count:
+        rejected_reason = media_ref.get("rejected_media_reason", "")
+
+    pack["conversation_media_reference"] = media_ref
+    stats = pack.setdefault("stats", {})
+    stats["media_context_count"] = media_context_count
+    stats["matched_media_asset_count"] = len(media_assets)
+    stats["sendable_media_asset_count"] = len(sendable_assets)
+    stats["conversation_media_rejected_reason"] = rejected_reason
+    evidence_pack = pack.setdefault("evidence_pack", {})
+    evidence_pack["conversation_media_reference"] = {
+        "evidence_role": "conversation_media_reference",
+        "sendable": False,
+        "media_context_count": media_context_count,
+        "rejected_media_reason": media_ref.get("rejected_media_reason", "") if media_context_count else "",
+    }
+    evidence_pack["media_trace"] = {
+        "media_context_count": media_context_count,
+        "matched_media_asset_count": len(media_assets),
+        "sendable_media_asset_count": len(sendable_assets),
+        "rejected_media_reason": rejected_reason,
+    }
+    return pack
 
 
 def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
@@ -1097,10 +1149,20 @@ def _state_identity(state: dict) -> dict[str, str]:
     identity = state.get("order_product_identity") or {}
     slots = state.get("slots") or {}
     ctx = state.get("copilot_context") or {}
-    candidates = state.get("product_candidates") or []
+    real_identity = (
+        state.get("real_context_product_identity")
+        or ctx.get("real_context_product_identity")
+        or {}
+    )
+    candidates = [
+        *(state.get("product_candidates") or []),
+        *(ctx.get("product_candidates") or []),
+        *(real_identity.get("product_candidates") or []),
+    ]
     sku = (
         slots.get("sku_code")
         or ctx.get("sku_code")
+        or real_identity.get("sku_code")
         or identity.get("sku_id")
         or identity.get("internal_sku_code")
         or state.get("sku_code")
@@ -1110,6 +1172,7 @@ def _state_identity(state: dict) -> dict[str, str]:
         identity.get("i_id")
         or identity.get("internal_product_code")
         or ctx.get("i_id")
+        or real_identity.get("i_id")
         or _sku_family(sku)
         or state.get("i_id")
         or ""
@@ -1119,6 +1182,9 @@ def _state_identity(state: dict) -> dict[str, str]:
         or identity.get("matched_product_name")
         or identity.get("internal_product_name")
         or ctx.get("product_name")
+        or real_identity.get("display_product_name")
+        or real_identity.get("product_title")
+        or real_identity.get("order_product_title")
         or state.get("product_name")
         or slots.get("product_name")
         or ""

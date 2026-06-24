@@ -285,7 +285,9 @@ class KnowledgeChunkRepository:
                         c_products = set(json.loads(c.product_scope_json or "[]"))
                     except Exception:
                         pass
-                    if c_products and not any(p in cp or cp in p for cp in c_products for p in product_scope):
+                    c_products = set(_scope_text_list(c_products))
+                    product_terms = _scope_text_list(product_scope)
+                    if c_products and not any(p in cp or cp in p for cp in c_products for p in product_terms):
                         continue
 
                 # sku_scope 过滤（大小写统一）
@@ -296,7 +298,7 @@ class KnowledgeChunkRepository:
                         c_skus = {str(s).upper() for s in json.loads(c.sku_scope_json or "[]") if s}
                     except Exception:
                         pass
-                    norm_sku_scope = {str(s).upper() for s in sku_scope if s}
+                    norm_sku_scope = {str(s).upper() for s in _scope_text_list(sku_scope) if s}
                     if c_skus and not any(s in c_skus for s in norm_sku_scope):
                         continue
 
@@ -587,6 +589,21 @@ def _parse_json_list(text: str) -> list:
         return []
 
 
+def _scope_text_list(values) -> list[str]:
+    texts: list[str] = []
+    for item in values or []:
+        if isinstance(item, dict):
+            for key in ("value", "product_name", "title", "name", "sku_code", "sku_id", "i_id"):
+                text = str(item.get(key) or "").strip()
+                if text and text not in texts:
+                    texts.append(text)
+        else:
+            text = str(item or "").strip()
+            if text and text not in texts:
+                texts.append(text)
+    return texts
+
+
 def _normalize_score(score: float) -> float:
     """将 BM25 原始分数归一化到 0~1 范围"""
     if score <= 0:
@@ -609,8 +626,8 @@ def _compute_scope_score(chunk: dict, sku_name: str = "", product_name: str = ""
     score = 0.0
 
     # 从返回结果中读取 sku_scope / product_scope
-    chunk_skus = chunk.get("sku_scope", [])
-    chunk_products = chunk.get("product_scope", [])
+    chunk_skus = _scope_text_list(chunk.get("sku_scope", []))
+    chunk_products = _scope_text_list(chunk.get("product_scope", []))
 
     # 如果没有指定 sku_name/product_name，不做范围打分
     if not sku_name and not product_name:

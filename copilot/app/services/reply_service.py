@@ -48,6 +48,7 @@ def _safe_product_context_pack(pack: dict) -> dict:
         ],
         "media_assets": (pack.get("media_assets") or [])[:12],
         "recommended_assets": (pack.get("recommended_assets") or [])[:5],
+        "conversation_media_reference": pack.get("conversation_media_reference", {}),
         "generic_rules": [
             {
                 "rule_key": item.get("rule_key", ""),
@@ -255,6 +256,11 @@ class ReplyService:
         normalize -> detect_intent -> risk_check -> build_context -> route -> query -> reply -> guard -> review
         """
         from app.agent.graph import customer_service_graph
+        from app.services.real_context_product_identity_service import (
+            augment_copilot_context_with_real_identity,
+            augment_state_with_real_context_identity,
+            merge_product_candidates,
+        )
 
         # 构造初始状态（每次全新，不复用旧 state）
         state = {
@@ -272,6 +278,15 @@ class ReplyService:
         except Exception:
             pass
         slots = {}
+        if copilot_context:
+            copilot_context = augment_copilot_context_with_real_identity(copilot_context)
+            product_candidates = merge_product_candidates(
+                product_candidates or [],
+                copilot_context.get("product_candidates") or [],
+            )
+            if not product_name:
+                product_name = str(copilot_context.get("display_product_name") or copilot_context.get("product_name") or "").strip()
+
         if product_name:
             state["matched_product_name"] = product_name
             slots["product_name"] = product_name
@@ -302,6 +317,8 @@ class ReplyService:
                     state.setdefault("matched_product_name", name)
         if slots:
             state["slots"] = slots
+        if copilot_context:
+            augment_state_with_real_context_identity(state)
         if image_attachments:
             state["image_attachments"] = image_attachments
             state.setdefault("copilot_context", {})["image_attachments"] = image_attachments

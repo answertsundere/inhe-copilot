@@ -16,6 +16,7 @@ from app.services.real_conversation_context_extractor import (
     product_candidates_from_real_context,
     summarize_real_context,
 )
+from app.services.real_context_product_identity_service import build_conversation_media_reference
 
 
 FAILURE_TYPES = {
@@ -588,6 +589,8 @@ class RealConversationReplayService:
                     product_name = turn.product_hint or agent_real_context.get("product_name", "")
                     product_candidates = product_candidates_from_real_context(real_context)
                     real_context_summary = summarize_real_context(real_context)
+                    real_context_identity = agent_real_context.get("real_context_product_identity") or {}
+                    conversation_media_reference = build_conversation_media_reference(agent_real_context)
                     turn_understanding = self.turn_understanding_service.understand(
                         turn.sanitized_text,
                         history=conversation_history,
@@ -676,11 +679,14 @@ class RealConversationReplayService:
                         **(response.get("answer_trace") or {}),
                         **intent_contract,
                         "real_context": real_context_summary,
+                        "real_context_product_identity": real_context_identity,
+                        "conversation_media_reference": conversation_media_reference,
                     }))
                     trace.set_final_audit(sanitize_obj(response.get("final_answer_audit") or response.get("final_audit") or {}))
                     trace.set_semantic_compiler(sanitize_obj(response.get("semantic_compiler") or response.get("semantic_compiler_debug") or {}))
                     product_identity = _extract_product_identity(response)
                     product_identity["real_context"] = real_context_summary
+                    product_identity["real_context_product_identity"] = real_context_identity
                     trace.set_product_identity(product_identity)
                     trace.set_failure_labels(labels)
                     trace.set_raw_response(sanitize_obj({
@@ -691,6 +697,8 @@ class RealConversationReplayService:
                         "turn_understanding": turn_understanding,
                         "intent_contract": intent_contract,
                         "real_context": real_context_summary,
+                        "real_context_product_identity": real_context_identity,
+                        "conversation_media_reference": conversation_media_reference,
                     }))
                     db.add(trace)
                     for failure in failures:

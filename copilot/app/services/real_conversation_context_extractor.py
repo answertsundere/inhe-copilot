@@ -8,6 +8,9 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from app.services.eval_sanitizer_service import hash_sensitive, sanitize_obj, sanitize_text
+from app.services.real_context_product_identity_service import (
+    build_real_context_product_identity,
+)
 
 
 URL_RE = re.compile(r"https?://[^\s\"'<>，。；、]+", re.I)
@@ -160,10 +163,12 @@ def build_agent_context_from_real_context(context: dict[str, Any] | None) -> dic
     order = value.get("order") or {}
     media = value.get("media") or {}
     summary = summarize_real_context(value)
-    return sanitize_obj({
+    agent_context = {
         "conversation_type": value.get("conversation_type") or "unknown",
         "source_page": value.get("source_page") or "unknown",
+        "real_context": value,
         "product_name": product.get("product_title") or order.get("order_product_title") or "",
+        "product_title": product.get("product_title") or "",
         "item_id": product.get("item_id") or "",
         "item_id_hash": product.get("item_id_hash") or "",
         "product_url": product.get("product_url") or "",
@@ -182,22 +187,15 @@ def build_agent_context_from_real_context(context: dict[str, Any] | None) -> dic
             "video_urls": list(media.get("video_urls") or []),
         },
         "real_context_summary": summary,
-    })
+    }
+    agent_context["real_context_product_identity"] = build_real_context_product_identity(agent_context)
+    return sanitize_obj(agent_context)
 
 
 def product_candidates_from_real_context(context: dict[str, Any] | None) -> list[dict[str, Any]]:
     agent_context = build_agent_context_from_real_context(context)
-    if not (agent_context.get("product_name") or agent_context.get("item_id") or agent_context.get("product_url")):
-        return []
-    return [sanitize_obj({
-        "product_name": agent_context.get("product_name", ""),
-        "title": agent_context.get("product_name", ""),
-        "item_id": agent_context.get("item_id", ""),
-        "item_id_hash": agent_context.get("item_id_hash", ""),
-        "product_url": agent_context.get("product_url", ""),
-        "sku_code": agent_context.get("sku_code", ""),
-        "source": "real_conversation_context",
-    })]
+    identity = agent_context.get("real_context_product_identity") or {}
+    return list(identity.get("product_candidates") or [])
 
 
 def _apply_url_context(context: dict[str, Any], url: str, sources: list[str], message_type: str = "") -> None:
