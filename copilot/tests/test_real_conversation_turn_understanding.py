@@ -41,6 +41,16 @@ def test_deictic_followup_without_context_is_context_insufficient():
     assert result["skip_reason"] == "context_insufficient"
 
 
+def test_short_context_dependent_questions_are_deictic_followups():
+    for message in ("这样的床可以吗", "这种可以吗", "柜子的有吗"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "deictic_followup"
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["should_score"] is True
+        assert result["skip_reason"] == "context_insufficient"
+
+
 def test_short_elliptical_followups_are_deictic_not_actionable_questions():
     for message in ("抽屉的也可以", "单门的", "7也行", "为什么", "为啥", "为何", "咋回事", "怎么回事"):
         result = _understand(message)
@@ -90,7 +100,7 @@ def test_aftersales_mismatch_beats_installation_or_media_terms():
 
 
 def test_accessory_component_usage_questions_are_actionable_installation_questions():
-    for message in ("防倒器和这个双面贴干啥用的", "哪个是顶板", "螺丝装哪里"):
+    for message in ("防倒器和这个双面贴干啥用的", "哪个是顶板", "螺丝装哪里", "有安全带吗", "有没有防倒器"):
         result = _understand(message)
         assert result["turn_actionability"] == "actionable_question"
         assert result["needs_agent_reply"] is True

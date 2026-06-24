@@ -42,10 +42,11 @@ REQUEST_MARKERS = ("请", "发", "给我", "帮我", "麻烦", "需要", "要", 
 STATUS_TERMS = ("收到", "收到了", "到货", "到了", "拿到", "装好", "装好了", "装完", "安装好", "安装好了", "处理好", "解决了")
 ACK_TERMS = {"好", "好的", "嗯", "恩", "嗯嗯", "哦", "噢", "行", "可以", "知道了", "收到", "谢谢", "谢了", "ok", "OK"}
 REASON_FOLLOWUP_TERMS = ("为什么", "为啥", "为何", "咋回事", "怎么回事")
-DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "单门的", "抽屉的", "也行", "也可以", *REASON_FOLLOWUP_TERMS)
+DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "这样的", "这种", "单门的", "抽屉的", "也行", "也可以", *REASON_FOLLOWUP_TERMS)
 MEDIA_TERMS = ("图里", "图片", "照片", "视频", "圈出来", "拍的", "这里", "这个位置")
-ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "螺丝", "配件", "卡扣", "固定件", "垫片")
+ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带")
 ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里")
+ACCESSORY_PRESENCE_TERMS = ("有吗", "有没有", "带吗", "配吗", "含吗", "送吗")
 
 
 @dataclass
@@ -168,7 +169,7 @@ class RealConversationTurnUnderstandingService:
         if _is_actionable_question(text, fact_type):
             needs_media = "视频" in text or "图片" in text or "图" in text
             needs_rag = False if fact_type in {"stock_shipping", "aftersales"} else (bool(fact_type) or needs_media)
-            reason = "Buyer asks accessory or component usage/identification." if _is_accessory_usage_question(text) else "Buyer turn contains a question or request that needs an answer."
+            reason = "Buyer asks accessory or component usage, identification, or presence." if _is_accessory_usage_question(text) else "Buyer turn contains a question or request that needs an answer."
             return TurnUnderstanding(
                 turn_actionability="actionable_question",
                 needs_agent_reply=True,
@@ -229,7 +230,10 @@ def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
 
 def _is_accessory_usage_question(text: str) -> bool:
     value = str(text or "")
-    return _contains_any(value, ACCESSORY_COMPONENT_TERMS) and _contains_any(value, ACCESSORY_USAGE_TERMS)
+    return _contains_any(value, ACCESSORY_COMPONENT_TERMS) and (
+        _contains_any(value, ACCESSORY_USAGE_TERMS)
+        or _contains_any(value, ACCESSORY_PRESENCE_TERMS)
+    )
 
 
 def _is_acknowledgement(normalized: str) -> bool:
@@ -250,7 +254,19 @@ def _is_deictic_followup(text: str, fact_type: str = "") -> bool:
         return True
     if stripped in {re.sub(r"[\s~～!！?？.。,…，、；;：:]+", "", item) for item in DEICTIC_TERMS}:
         return True
+    if _is_context_dependent_short_question(stripped):
+        return True
     return len(stripped) <= 8 and _contains_any(text, DEICTIC_TERMS) and not _has_question_or_request(text)
+
+
+def _is_context_dependent_short_question(stripped: str) -> bool:
+    if not stripped or len(stripped) > 10:
+        return False
+    if any(term in stripped for term in ("尺寸", "材质", "材料", "安装", "物流", "发货", "退", "换")):
+        return False
+    if any(term in stripped for term in ("这个", "那个", "这样的", "这种", "这里")) and any(term in stripped for term in ("可以吗", "行吗", "能吗", "有吗")):
+        return True
+    return bool(re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9]{1,6}的有吗", stripped))
 
 
 def _is_actionable_question(text: str, fact_type: str) -> bool:
