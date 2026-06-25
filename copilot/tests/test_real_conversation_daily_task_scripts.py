@@ -53,6 +53,7 @@ def test_daily_replay_setup_script_registers_task_without_running_replay():
     assert "ProjectDir" in content
     assert "SourceDir" in content
     assert "Time" in content
+    assert '[string]$Time = "13:00"' in content
     assert "SampleLimit" in content
     assert "MinTurns" in content
     assert "WhatIfMode" in content

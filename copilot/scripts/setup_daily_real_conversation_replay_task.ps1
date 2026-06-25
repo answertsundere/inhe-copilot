@@ -2,7 +2,7 @@ param(
     [string]$TaskName = "INHE Copilot Daily Real Conversation Replay",
     [string]$ProjectDir = "",
     [string]$SourceDir = "",
-    [string]$Time = "09:30",
+    [string]$Time = "13:00",
     [int]$SampleLimit = 50,
     [int]$MinTurns = 6,
     [switch]$WhatIfMode
