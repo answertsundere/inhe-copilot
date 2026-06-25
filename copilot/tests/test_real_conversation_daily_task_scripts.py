@@ -57,6 +57,7 @@ def test_daily_replay_setup_script_registers_task_without_running_replay():
     assert "SampleLimit" in content
     assert "MinTurns" in content
     assert "WhatIfMode" in content
+    assert "WorkingDirectory" in content
     assert "schtasks /Run" in content
     assert "--apply" not in content
     assert "run_daily_real_conversation_replay.py" not in content

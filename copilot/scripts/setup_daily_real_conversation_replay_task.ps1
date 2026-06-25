@@ -33,7 +33,7 @@ $ActionArguments = @(
     "-MinTurns", $MinTurns
 ) -join " "
 
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $ActionArguments
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $ActionArguments -WorkingDirectory $ProjectDir
 $Trigger = New-ScheduledTaskTrigger -Daily -At $Time
 $Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $Principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
