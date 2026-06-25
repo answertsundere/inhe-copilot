@@ -380,10 +380,10 @@ async function rejectKnowledgeGap() {
 async function verifyKnowledgeGap() {
   if (!selectedKnowledgeGap.value) return
   await ElMessageBox.confirm(
-    'Mark this knowledge gap as verified only after manual review or replay verification. Continue?',
-    'Verify knowledge gap',
+    'This only records a manual staging check. It will not run automatic replay or publish to the formal knowledge base. Continue?',
+    'Manual verification',
     {
-      confirmButtonText: 'Verify',
+      confirmButtonText: 'Confirm verified',
       cancelButtonText: 'Cancel',
       type: 'warning',
     },
@@ -942,7 +942,7 @@ onMounted(loadRuns)
               <el-button size="small" type="primary" @click="saveKnowledgeGapTask">保存</el-button>
               <el-button size="small" @click="generateDraftForKnowledgeGap">生成待审草稿</el-button>
               <el-button size="small" type="success" @click="approveKnowledgeGap">审核通过</el-button>
-              <el-button size="small" type="warning" @click="verifyKnowledgeGap">标记已验证</el-button>
+              <el-button size="small" type="warning" @click="verifyKnowledgeGap">人工确认已验证</el-button>
             </div>
             <el-input
               v-model="knowledgeGapRejectReason"

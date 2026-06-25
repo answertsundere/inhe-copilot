@@ -120,7 +120,9 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
         headers={"X-User-Role": "admin", "X-User-Name": "lead"},
     )
     assert verify.status_code == 200
-    assert verify.get_json()["task"]["status"] == "verified"
+    verified_task = verify.get_json()["task"]
+    assert verified_task["status"] == "verified"
+    assert verified_task["metadata"]["verification"]["verification_mode"] == "manual_staging_check"
 
     db = session_factory()
     try:

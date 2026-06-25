@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -49,16 +55,18 @@ def _joined(values: list[str]) -> str:
 
 def _suggested_content(task: KnowledgeGapTask) -> str:
     if task.gap_type == "media_asset_gap":
-        return f"补充并审核 {task.media_needed_type or '图片/视频/说明书'}，确认适用商品和可发送范围。"
+        media_type = task.media_needed_type or "图片/视频/说明书"
+        return f"补充并审核 {media_type}，确认适用商品和可发送范围。"
     if task.gap_type == "activity_rule_gap":
-        return "补充活动/福利规则，包含活动时间、参与条件、退货后的处理口径。"
+        return "补充活动/福利规则，包括活动时间、参与条件、售后后的处理口径。"
     if task.gap_type == "service_rule_gap":
-        return "补充售后/服务规则，包含触发条件、客户需提供材料和处理边界。"
+        return "补充售后/服务规则，包括触发条件、客户需提供材料和处理边界。"
     if task.gap_type == "human_policy_gap":
         return "补充人工复核策略，说明哪些问题必须人工确认。"
     if task.gap_type == "agent_logic_gap":
         return "补充 Agent 规则或审核任务，避免同类样本答非所问。"
-    return f"补充 {task.query_fact_type or '商品资料'} 的可核验证据，发布前人工审核。"
+    fact_type = task.query_fact_type or "商品资料"
+    return f"补充 {fact_type} 的可核验证据，发布前人工审核。"
 
 
 def export_knowledge_gap_tasks(output: str | None = None, status: str = "open") -> dict:

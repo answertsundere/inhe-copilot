@@ -419,7 +419,8 @@ def verify_knowledge_gap(task_uid):
         metadata = task.get_metadata()
         metadata["verification"] = {
             "verified_by": sanitize_text(current_user_name()),
-            "note": "Knowledge gap task marked verified after manual review/staging check.",
+            "verification_mode": "manual_staging_check",
+            "note": "Knowledge gap task was manually confirmed after staging review; no automatic replay was executed.",
         }
         task.set_metadata(sanitize_obj(metadata))
         task.status = "verified"
