@@ -39,6 +39,9 @@ def test_daily_replay_wrapper_has_dynamic_date_and_apply_flow():
     assert "--apply" in content
     assert "--generate-repair-tasks" in content
     assert "--json-output" in content
+    assert "Start-Process" in content
+    assert "RedirectStandardOutput" in content
+    assert "RedirectStandardError" in content
     assert 'Get-Date -Format "yy-M-d"' in content
     assert 'Get-Date -Format "yyyyMMdd"' in content
     assert "26-6-25" not in content

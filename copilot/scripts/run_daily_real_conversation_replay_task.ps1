@@ -27,6 +27,8 @@ $ReplayDate = Get-Date -Format "yy-M-d"
 $OutputDate = Get-Date -Format "yyyyMMdd"
 $OutputPath = Join-Path $OutputDir "real_conversation_daily_$OutputDate.json"
 $LogPath = Join-Path $OutputDir "real_conversation_daily_$OutputDate.log"
+$StdoutPath = Join-Path $OutputDir "real_conversation_daily_$OutputDate.stdout.tmp"
+$StderrPath = Join-Path $OutputDir "real_conversation_daily_$OutputDate.stderr.tmp"
 
 $Arguments = @(
     "scripts\run_daily_real_conversation_replay.py",
@@ -40,13 +42,35 @@ $Arguments = @(
 )
 
 try {
-    & $PythonExe @Arguments *>&1 | Tee-Object -FilePath $LogPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Daily real conversation replay failed with exit code $LASTEXITCODE"
+    Remove-Item -LiteralPath $StdoutPath, $StderrPath -ErrorAction SilentlyContinue
+    $Process = Start-Process `
+        -FilePath $PythonExe `
+        -ArgumentList $Arguments `
+        -WorkingDirectory $ProjectDir `
+        -NoNewWindow `
+        -Wait `
+        -PassThru `
+        -RedirectStandardOutput $StdoutPath `
+        -RedirectStandardError $StderrPath
+
+    $OutputLines = @()
+    if (Test-Path -LiteralPath $StdoutPath) {
+        $OutputLines += Get-Content -LiteralPath $StdoutPath
+    }
+    if (Test-Path -LiteralPath $StderrPath) {
+        $OutputLines += Get-Content -LiteralPath $StderrPath
+    }
+    $OutputLines | Tee-Object -FilePath $LogPath
+
+    if ($Process.ExitCode -ne 0) {
+        throw "Daily real conversation replay failed with exit code $($Process.ExitCode)"
     }
     Write-Output "success output=$OutputPath log=$LogPath"
 }
 catch {
     "failed $($_.Exception.Message)" | Tee-Object -FilePath $LogPath -Append
     throw
+}
+finally {
+    Remove-Item -LiteralPath $StdoutPath, $StderrPath -ErrorAction SilentlyContinue
 }
