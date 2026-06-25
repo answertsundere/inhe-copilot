@@ -434,3 +434,184 @@ class EvalRepairTask(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class KnowledgeGapTask(Base):
+    __tablename__ = "knowledge_gap_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_uid = Column(String(64), nullable=False, unique=True, index=True)
+    gap_type = Column(String(64), nullable=False, default="", index=True)
+    product_title = Column(String(255), nullable=False, default="")
+    item_id = Column(String(64), nullable=False, default="", index=True)
+    sku_code = Column(String(64), nullable=False, default="", index=True)
+    query_fact_type = Column(String(64), nullable=False, default="", index=True)
+    failure_type = Column(String(64), nullable=False, default="", index=True)
+    suggested_fix_area = Column(String(64), nullable=False, default="", index=True)
+    suggested_owner = Column(String(64), nullable=False, default="", index=True)
+    missing_evidence_type = Column(String(64), nullable=False, default="")
+    media_needed_type = Column(String(64), nullable=False, default="")
+    risk_level = Column(String(16), nullable=False, default="medium", index=True)
+    sample_count = Column(Integer, nullable=False, default=0)
+    priority = Column(String(16), nullable=False, default="medium", index=True)
+    status = Column(String(32), nullable=False, default="open", index=True)
+    summary = Column(Text, nullable=False, default="")
+    related_case_uids_json = Column(Text, nullable=False, default="[]")
+    related_turn_uids_json = Column(Text, nullable=False, default="[]")
+    latest_buyer_questions_json = Column(Text, nullable=False, default="[]")
+    latest_agent_replies_json = Column(Text, nullable=False, default="[]")
+    latest_original_cs_replies_json = Column(Text, nullable=False, default="[]")
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def get_related_case_uids(self):
+        return _json_load(self.related_case_uids_json, [])
+
+    def set_related_case_uids(self, value):
+        self.related_case_uids_json = _json_dump(value, [])
+
+    def get_related_turn_uids(self):
+        return _json_load(self.related_turn_uids_json, [])
+
+    def set_related_turn_uids(self, value):
+        self.related_turn_uids_json = _json_dump(value, [])
+
+    def get_latest_buyer_questions(self):
+        return _json_load(self.latest_buyer_questions_json, [])
+
+    def set_latest_buyer_questions(self, value):
+        self.latest_buyer_questions_json = _json_dump(value, [])
+
+    def get_latest_agent_replies(self):
+        return _json_load(self.latest_agent_replies_json, [])
+
+    def set_latest_agent_replies(self, value):
+        self.latest_agent_replies_json = _json_dump(value, [])
+
+    def get_latest_original_cs_replies(self):
+        return _json_load(self.latest_original_cs_replies_json, [])
+
+    def set_latest_original_cs_replies(self, value):
+        self.latest_original_cs_replies_json = _json_dump(value, [])
+
+    def get_metadata(self):
+        return _json_load(self.metadata_json, {})
+
+    def set_metadata(self, value):
+        self.metadata_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "task_uid": self.task_uid,
+            "gap_type": self.gap_type,
+            "product_title": self.product_title,
+            "item_id": self.item_id,
+            "sku_code": self.sku_code,
+            "query_fact_type": self.query_fact_type,
+            "failure_type": self.failure_type,
+            "suggested_fix_area": self.suggested_fix_area,
+            "suggested_owner": self.suggested_owner,
+            "missing_evidence_type": self.missing_evidence_type,
+            "media_needed_type": self.media_needed_type,
+            "risk_level": self.risk_level,
+            "sample_count": self.sample_count,
+            "priority": self.priority,
+            "status": self.status,
+            "summary": self.summary,
+            "related_case_uids": self.get_related_case_uids(),
+            "related_turn_uids": self.get_related_turn_uids(),
+            "latest_buyer_questions": self.get_latest_buyer_questions(),
+            "latest_agent_replies": self.get_latest_agent_replies(),
+            "latest_original_cs_replies": self.get_latest_original_cs_replies(),
+            "metadata": self.get_metadata(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class KnowledgeGapTaskSample(Base):
+    __tablename__ = "knowledge_gap_task_samples"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_uid = Column(String(64), nullable=False, index=True)
+    run_uid = Column(String(64), nullable=False, index=True)
+    case_uid = Column(String(64), nullable=False, index=True)
+    turn_uid = Column(String(64), nullable=False, index=True)
+    buyer_message = Column(Text, nullable=False, default="")
+    agent_reply = Column(Text, nullable=False, default="")
+    reference_human_reply = Column(Text, nullable=False, default="")
+    failure_type = Column(String(64), nullable=False, default="")
+    query_fact_type = Column(String(64), nullable=False, default="")
+    trace_summary_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_knowledge_gap_sample_task_turn", "task_uid", "turn_uid"),
+    )
+
+    def get_trace_summary(self):
+        return _json_load(self.trace_summary_json, {})
+
+    def set_trace_summary(self, value):
+        self.trace_summary_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "task_uid": self.task_uid,
+            "run_uid": self.run_uid,
+            "case_uid": self.case_uid,
+            "turn_uid": self.turn_uid,
+            "buyer_message": self.buyer_message,
+            "agent_reply": self.agent_reply,
+            "reference_human_reply": self.reference_human_reply,
+            "failure_type": self.failure_type,
+            "query_fact_type": self.query_fact_type,
+            "trace_summary": self.get_trace_summary(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class KnowledgeGapDraft(Base):
+    __tablename__ = "knowledge_gap_drafts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    draft_uid = Column(String(64), nullable=False, unique=True, index=True)
+    task_uid = Column(String(64), nullable=False, index=True)
+    draft_type = Column(String(64), nullable=False, default="", index=True)
+    draft_content_json = Column(Text, nullable=False, default="{}")
+    generated_by = Column(String(32), nullable=False, default="ai")
+    review_status = Column(String(32), nullable=False, default="pending_review", index=True)
+    reviewer = Column(String(64), nullable=False, default="")
+    reviewed_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=False, default="")
+    publish_target = Column(String(64), nullable=False, default="staging")
+    published_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def get_draft_content(self):
+        return _json_load(self.draft_content_json, {})
+
+    def set_draft_content(self, value):
+        self.draft_content_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "draft_uid": self.draft_uid,
+            "task_uid": self.task_uid,
+            "draft_type": self.draft_type,
+            "draft_content": self.get_draft_content(),
+            "generated_by": self.generated_by,
+            "review_status": self.review_status,
+            "reviewer": self.reviewer,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "rejection_reason": self.rejection_reason,
+            "publish_target": self.publish_target,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

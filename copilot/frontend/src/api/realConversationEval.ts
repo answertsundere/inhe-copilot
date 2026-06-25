@@ -145,6 +145,64 @@ export interface EvalTrends {
   latest_daily_replay?: Record<string, unknown>
 }
 
+export interface KnowledgeGapTask {
+  task_uid: string
+  gap_type: string
+  product_title: string
+  item_id: string
+  sku_code: string
+  query_fact_type: string
+  failure_type: string
+  suggested_fix_area: string
+  suggested_owner: string
+  missing_evidence_type: string
+  media_needed_type: string
+  risk_level: 'low' | 'medium' | 'high'
+  sample_count: number
+  priority: 'low' | 'medium' | 'high'
+  status: 'open' | 'drafting' | 'pending_review' | 'approved' | 'rejected' | 'published' | 'verified'
+  summary: string
+  latest_buyer_questions: string[]
+  latest_agent_replies: string[]
+  latest_original_cs_replies: string[]
+  draft_count?: number
+}
+
+export interface KnowledgeGapSample {
+  task_uid: string
+  run_uid: string
+  case_uid: string
+  turn_uid: string
+  buyer_message: string
+  agent_reply: string
+  reference_human_reply: string
+  failure_type: string
+  query_fact_type: string
+  trace_summary?: Record<string, unknown>
+}
+
+export interface KnowledgeGapDraft {
+  draft_uid: string
+  task_uid: string
+  draft_type: string
+  draft_content: Record<string, unknown>
+  generated_by: string
+  review_status: string
+  reviewer?: string
+  publish_target: string
+  rejection_reason?: string
+}
+
+export interface KnowledgeGapSummary {
+  open_count: number
+  high_risk_count: number
+  media_gap_count: number
+  product_fact_gap_count: number
+  draft_count: number
+  pending_review_count: number
+  verified_count: number
+}
+
 export async function fetchRealConversationRuns() {
   const res = await apiClient.get('/eval/real-conversation/runs')
   return (res.data?.items || []) as RealConversationRun[]
@@ -226,4 +284,61 @@ export async function fetchEvalTrends(params?: {
 }) {
   const res = await apiClient.get('/eval/trends', { params })
   return res.data as EvalTrends
+}
+
+export async function fetchKnowledgeGapTasks(params?: {
+  status?: string
+  gap_type?: string
+  query_fact_type?: string
+  suggested_fix_area?: string
+  suggested_owner?: string
+  risk_level?: string
+  product?: string
+}) {
+  const res = await apiClient.get('/eval/knowledge-gaps', { params })
+  return res.data as { items: KnowledgeGapTask[]; summary: KnowledgeGapSummary }
+}
+
+export async function generateKnowledgeGapTasks(runUid?: string) {
+  const res = await apiClient.post('/eval/knowledge-gaps/generate', { run_uid: runUid })
+  return res.data as { tasks: KnowledgeGapTask[]; generated: number; updated: number }
+}
+
+export async function fetchKnowledgeGapTask(taskUid: string) {
+  const res = await apiClient.get(`/eval/knowledge-gaps/${taskUid}`)
+  return res.data as {
+    task: KnowledgeGapTask
+    samples: KnowledgeGapSample[]
+    drafts: KnowledgeGapDraft[]
+  }
+}
+
+export async function generateKnowledgeGapDraft(taskUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/draft`)
+  return res.data as { draft: KnowledgeGapDraft }
+}
+
+export async function updateKnowledgeGapTask(taskUid: string, payload: {
+  status?: KnowledgeGapTask['status']
+  priority?: KnowledgeGapTask['priority']
+  suggested_owner?: string
+  summary?: string
+}) {
+  const res = await apiClient.patch(`/eval/knowledge-gaps/${taskUid}`, payload)
+  return res.data as { task: KnowledgeGapTask }
+}
+
+export async function approveKnowledgeGapTask(taskUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/approve`)
+  return res.data as { task: KnowledgeGapTask; drafts: KnowledgeGapDraft[] }
+}
+
+export async function rejectKnowledgeGapTask(taskUid: string, reason?: string) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/reject`, { reason })
+  return res.data as { task: KnowledgeGapTask; drafts: KnowledgeGapDraft[] }
+}
+
+export async function verifyKnowledgeGapTask(taskUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/verify`)
+  return res.data as { task: KnowledgeGapTask }
 }

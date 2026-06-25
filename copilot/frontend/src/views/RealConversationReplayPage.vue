@@ -2,16 +2,28 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  approveKnowledgeGapTask,
   fetchEvalTrends,
+  fetchKnowledgeGapTask,
+  fetchKnowledgeGapTasks,
   fetchRealConversationRun,
   fetchRealConversationRuns,
   fetchRepairTask,
   fetchRepairTasks,
+  generateKnowledgeGapDraft,
+  generateKnowledgeGapTasks,
   generateRepairTasks,
+  rejectKnowledgeGapTask,
   submitRealConversationReview,
+  updateKnowledgeGapTask,
   updateRepairTask,
+  verifyKnowledgeGapTask,
   verifyRepairTask,
   type EvalTrends,
+  type KnowledgeGapDraft,
+  type KnowledgeGapSample,
+  type KnowledgeGapSummary,
+  type KnowledgeGapTask,
   type RealConversationFailure,
   type RealConversationRepairTask,
   type RealConversationRun,
@@ -56,6 +68,16 @@ const taskAssignedTo = ref('')
 const taskResolutionNote = ref('')
 const trendDays = ref(7)
 const trends = ref<EvalTrends | null>(null)
+const knowledgeGapTasks = ref<KnowledgeGapTask[]>([])
+const knowledgeGapSummary = ref<KnowledgeGapSummary | null>(null)
+const selectedKnowledgeGap = ref<KnowledgeGapTask | null>(null)
+const selectedKnowledgeGapSamples = ref<KnowledgeGapSample[]>([])
+const selectedKnowledgeGapDrafts = ref<KnowledgeGapDraft[]>([])
+const knowledgeGapStatusFilter = ref('open')
+const knowledgeGapTypeFilter = ref('')
+const knowledgeGapRiskFilter = ref('')
+const knowledgeGapOwner = ref('')
+const knowledgeGapRejectReason = ref('')
 
 const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '全部', value: 'all' },
@@ -100,6 +122,23 @@ const trendDayOptions = [
   { label: '7 天', value: 7 },
   { label: '14 天', value: 14 },
   { label: '30 天', value: 30 },
+]
+
+const knowledgeGapStatusOptions = [
+  { label: 'all status', value: '' },
+  { label: 'open', value: 'open' },
+  { label: 'drafting', value: 'drafting' },
+  { label: 'pending_review', value: 'pending_review' },
+  { label: 'approved', value: 'approved' },
+  { label: 'rejected', value: 'rejected' },
+  { label: 'verified', value: 'verified' },
+]
+
+const knowledgeGapRiskOptions = [
+  { label: 'all risk', value: '' },
+  { label: 'high', value: 'high' },
+  { label: 'medium', value: 'medium' },
+  { label: 'low', value: 'low' },
 ]
 
 const failuresByTurn = computed(() => {
@@ -158,6 +197,11 @@ const trendTotals = computed(() => {
   }
 })
 
+const knowledgeGapTypeOptions = computed(() => {
+  const values = Array.from(new Set(knowledgeGapTasks.value.map((task) => task.gap_type).filter(Boolean))).sort()
+  return [{ label: 'all gap types', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
 function formatJson(value: unknown) {
   return JSON.stringify(value || {}, null, 2)
 }
@@ -207,6 +251,7 @@ async function loadRun(run: RealConversationRun) {
     runSummary.value = data.summary || null
     selectedTurn.value = turns.value[0] || null
     await loadRepairTasks()
+    await loadKnowledgeGaps()
   } catch (error: any) {
     if (error?.response?.status === 403) forbidden.value = true
     else ElMessage.error(error?.response?.data?.error || '加载回放详情失败')
@@ -241,6 +286,111 @@ async function loadRepairTasks() {
     selectedTaskTraces.value = []
     selectedTaskFailures.value = []
   }
+}
+
+async function loadKnowledgeGaps() {
+  const result = await fetchKnowledgeGapTasks({
+    status: knowledgeGapStatusFilter.value || undefined,
+    gap_type: knowledgeGapTypeFilter.value || undefined,
+    risk_level: knowledgeGapRiskFilter.value || undefined,
+    suggested_owner: knowledgeGapOwner.value || undefined,
+  })
+  knowledgeGapTasks.value = result.items || []
+  knowledgeGapSummary.value = result.summary || null
+  if (
+    selectedKnowledgeGap.value &&
+    !knowledgeGapTasks.value.some((task) => task.task_uid === selectedKnowledgeGap.value?.task_uid)
+  ) {
+    selectedKnowledgeGap.value = null
+    selectedKnowledgeGapSamples.value = []
+    selectedKnowledgeGapDrafts.value = []
+  }
+}
+
+async function generateKnowledgeGapsForCurrentRun() {
+  await ElMessageBox.confirm(
+    'Only creates review tasks and drafts. It will not write product facts, media assets, or Agent rules. Continue?',
+    'Generate knowledge gaps',
+    {
+      confirmButtonText: 'Generate',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const result = await generateKnowledgeGapTasks(selectedRun.value?.run_uid)
+  await loadKnowledgeGaps()
+  ElMessage.success(`Generated ${result.generated} gap tasks, updated ${result.updated}`)
+}
+
+async function openKnowledgeGapTask(task: KnowledgeGapTask) {
+  const detail = await fetchKnowledgeGapTask(task.task_uid)
+  selectedKnowledgeGap.value = detail.task
+  selectedKnowledgeGapSamples.value = detail.samples || []
+  selectedKnowledgeGapDrafts.value = detail.drafts || []
+  knowledgeGapOwner.value = detail.task.suggested_owner || knowledgeGapOwner.value
+}
+
+async function generateDraftForKnowledgeGap() {
+  if (!selectedKnowledgeGap.value) return
+  const result = await generateKnowledgeGapDraft(selectedKnowledgeGap.value.task_uid)
+  selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value]
+  await loadKnowledgeGaps()
+  ElMessage.success('Draft created for review. It was not published to the formal knowledge base.')
+}
+
+async function saveKnowledgeGapTask() {
+  if (!selectedKnowledgeGap.value) return
+  const result = await updateKnowledgeGapTask(selectedKnowledgeGap.value.task_uid, {
+    status: selectedKnowledgeGap.value.status,
+    priority: selectedKnowledgeGap.value.priority,
+    suggested_owner: selectedKnowledgeGap.value.suggested_owner,
+    summary: selectedKnowledgeGap.value.summary,
+  })
+  selectedKnowledgeGap.value = result.task
+  await loadKnowledgeGaps()
+  ElMessage.success('Knowledge gap task updated')
+}
+
+async function approveKnowledgeGap() {
+  if (!selectedKnowledgeGap.value) return
+  await ElMessageBox.confirm(
+    'Approve this staged draft for ops handoff only? This will not publish to the formal knowledge base.',
+    'Approve staged draft',
+    {
+      confirmButtonText: 'Approve',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const result = await approveKnowledgeGapTask(selectedKnowledgeGap.value.task_uid)
+  selectedKnowledgeGap.value = result.task
+  selectedKnowledgeGapDrafts.value = result.drafts || []
+  await loadKnowledgeGaps()
+}
+
+async function rejectKnowledgeGap() {
+  if (!selectedKnowledgeGap.value) return
+  const result = await rejectKnowledgeGapTask(selectedKnowledgeGap.value.task_uid, knowledgeGapRejectReason.value)
+  selectedKnowledgeGap.value = result.task
+  selectedKnowledgeGapDrafts.value = result.drafts || []
+  knowledgeGapRejectReason.value = ''
+  await loadKnowledgeGaps()
+}
+
+async function verifyKnowledgeGap() {
+  if (!selectedKnowledgeGap.value) return
+  await ElMessageBox.confirm(
+    'Mark this knowledge gap as verified only after manual review or replay verification. Continue?',
+    'Verify knowledge gap',
+    {
+      confirmButtonText: 'Verify',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const result = await verifyKnowledgeGapTask(selectedKnowledgeGap.value.task_uid)
+  selectedKnowledgeGap.value = result.task
+  await loadKnowledgeGaps()
 }
 
 async function generateTasksForCurrentRun() {
@@ -687,6 +837,137 @@ onMounted(loadRuns)
             </div>
           </section>
         </section>
+        <section class="knowledge-gap-panel">
+          <div class="task-header">
+            <div>
+              <div class="sub-title">知识缺口治理</div>
+              <p class="panel-hint">把真实回放失败沉淀为待补资料、素材、规则或人工策略任务。</p>
+            </div>
+            <el-button size="small" type="primary" @click="generateKnowledgeGapsForCurrentRun">
+              生成缺口任务
+            </el-button>
+          </div>
+
+          <div v-if="knowledgeGapSummary" class="gap-cards">
+            <div>
+              <span>open</span>
+              <strong>{{ knowledgeGapSummary.open_count }}</strong>
+            </div>
+            <div>
+              <span>high risk</span>
+              <strong>{{ knowledgeGapSummary.high_risk_count }}</strong>
+            </div>
+            <div>
+              <span>media</span>
+              <strong>{{ knowledgeGapSummary.media_gap_count }}</strong>
+            </div>
+            <div>
+              <span>drafts</span>
+              <strong>{{ knowledgeGapSummary.draft_count }}</strong>
+            </div>
+          </div>
+
+          <div class="task-filters">
+            <el-select v-model="knowledgeGapStatusFilter" size="small" @change="loadKnowledgeGaps">
+              <el-option
+                v-for="option in knowledgeGapStatusOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="knowledgeGapTypeFilter" size="small" @change="loadKnowledgeGaps">
+              <el-option
+                v-for="option in knowledgeGapTypeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="knowledgeGapRiskFilter" size="small" @change="loadKnowledgeGaps">
+              <el-option
+                v-for="option in knowledgeGapRiskOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </div>
+
+          <el-empty v-if="!knowledgeGapTasks.length" description="暂无知识缺口任务" />
+          <div v-else class="gap-list">
+            <button
+              v-for="task in knowledgeGapTasks"
+              :key="task.task_uid"
+              class="gap-item"
+              :class="{ active: selectedKnowledgeGap?.task_uid === task.task_uid }"
+              @click="openKnowledgeGapTask(task)"
+            >
+              <strong>{{ task.gap_type }} / {{ task.query_fact_type || '-' }}</strong>
+              <span>{{ task.status }} / {{ task.priority }} / {{ task.risk_level }} / samples {{ task.sample_count }}</span>
+              <span>{{ task.product_title || task.item_id || task.sku_code || 'unknown product' }}</span>
+              <span>{{ task.suggested_fix_area }} / {{ task.suggested_owner }}</span>
+            </button>
+          </div>
+
+          <section v-if="selectedKnowledgeGap" class="gap-detail">
+            <div class="sub-title">缺口详情</div>
+            <p>{{ selectedKnowledgeGap.summary }}</p>
+            <div class="task-controls">
+              <el-select v-model="selectedKnowledgeGap.status" size="small">
+                <el-option
+                  v-for="option in knowledgeGapStatusOptions.filter((item) => item.value)"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <el-select v-model="selectedKnowledgeGap.priority" size="small">
+                <el-option
+                  v-for="option in taskPriorityOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </div>
+            <el-input v-model="selectedKnowledgeGap.suggested_owner" size="small" placeholder="suggested_owner" />
+            <el-input
+              v-model="selectedKnowledgeGap.summary"
+              type="textarea"
+              :rows="2"
+              placeholder="任务摘要，不会自动写入正式知识库"
+            />
+            <div class="gap-actions">
+              <el-button size="small" type="primary" @click="saveKnowledgeGapTask">保存</el-button>
+              <el-button size="small" @click="generateDraftForKnowledgeGap">生成待审草稿</el-button>
+              <el-button size="small" type="success" @click="approveKnowledgeGap">审核通过</el-button>
+              <el-button size="small" type="warning" @click="verifyKnowledgeGap">标记已验证</el-button>
+            </div>
+            <el-input
+              v-model="knowledgeGapRejectReason"
+              size="small"
+              placeholder="驳回原因"
+              class="gap-reject-input"
+            />
+            <el-button size="small" type="danger" @click="rejectKnowledgeGap">驳回草稿</el-button>
+
+            <div class="task-samples">
+              <div v-for="sample in selectedKnowledgeGapSamples" :key="sample.turn_uid" class="gap-sample">
+                <strong>{{ sample.failure_type }} / {{ sample.query_fact_type || '-' }}</strong>
+                <span>{{ sample.turn_uid }}</span>
+                <p>{{ sample.buyer_message }}</p>
+              </div>
+            </div>
+
+            <div v-if="selectedKnowledgeGapDrafts.length" class="gap-drafts">
+              <div v-for="draft in selectedKnowledgeGapDrafts" :key="draft.draft_uid" class="gap-draft">
+                <strong>{{ draft.draft_type }} / {{ draft.review_status }} / {{ draft.publish_target }}</strong>
+                <pre>{{ formatJson(draft.draft_content) }}</pre>
+              </div>
+            </div>
+          </section>
+        </section>
       </aside>
     </template>
   </div>
@@ -968,10 +1249,18 @@ onMounted(loadRuns)
   margin-bottom: 12px;
 }
 
-.repair-task-panel {
+.repair-task-panel,
+.knowledge-gap-panel {
   border-top: 1px solid var(--kb-border);
   margin-top: 14px;
   padding-top: 14px;
+}
+
+.panel-hint {
+  margin: 0;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .task-header,
@@ -1002,7 +1291,14 @@ onMounted(loadRuns)
   gap: 8px;
 }
 
-.task-item {
+.task-list,
+.gap-list {
+  display: grid;
+  gap: 8px;
+}
+
+.task-item,
+.gap-item {
   width: 100%;
   text-align: left;
   border: 1px solid var(--kb-border);
@@ -1012,27 +1308,65 @@ onMounted(loadRuns)
   cursor: pointer;
 }
 
-.task-item.active {
+.task-item.active,
+.gap-item.active {
   border-color: #3b82f6;
   background: #eff6ff;
 }
 
 .task-item strong,
 .task-item span,
+.gap-item strong,
+.gap-item span,
 .task-sample strong,
-.task-sample span {
+.task-sample span,
+.gap-sample strong,
+.gap-sample span {
   display: block;
 }
 
 .task-item span,
-.task-sample span {
+.gap-item span,
+.task-sample span,
+.gap-sample span {
   color: var(--kb-text-secondary);
   font-size: 12px;
   margin-top: 4px;
 }
 
-.task-detail {
+.task-detail,
+.gap-detail {
   margin-top: 12px;
+}
+
+.gap-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.gap-cards div {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.gap-cards span,
+.gap-cards strong {
+  display: block;
+}
+
+.gap-cards span {
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+}
+
+.gap-cards strong {
+  color: var(--kb-text-primary);
+  font-size: 18px;
+  margin-top: 3px;
 }
 
 .verification-panel {
@@ -1059,7 +1393,8 @@ onMounted(loadRuns)
   color: var(--kb-text-primary);
 }
 
-.task-detail .el-input {
+.task-detail .el-input,
+.gap-detail .el-input {
   margin-bottom: 8px;
 }
 
@@ -1074,7 +1409,9 @@ onMounted(loadRuns)
   margin-bottom: 8px;
 }
 
-.task-sample {
+.task-sample,
+.gap-sample,
+.gap-draft {
   border: 1px solid var(--kb-border);
   border-radius: 8px;
   padding: 8px;
@@ -1082,10 +1419,26 @@ onMounted(loadRuns)
   margin-bottom: 8px;
 }
 
-.task-sample p {
+.task-sample p,
+.gap-sample p {
   margin: 4px 0 0;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.gap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.gap-reject-input {
+  margin-top: 4px;
+}
+
+.gap-drafts {
+  margin-top: 10px;
 }
 
 .fix-item {

@@ -20,6 +20,8 @@ REVIEW_DECISION_FIX_AREAS = {
 
 REPAIR_TASK_STATUSES = {"open", "in_progress", "resolved", "ignored"}
 REPAIR_TASK_PRIORITIES = {"low", "medium", "high"}
+KNOWLEDGE_GAP_STATUSES = {"open", "drafting", "pending_review", "approved", "rejected", "published", "verified"}
+KNOWLEDGE_GAP_PRIORITIES = {"low", "medium", "high"}
 
 
 def _db():
@@ -240,6 +242,192 @@ def get_eval_trends():
             suggested_owner=sanitize_text(request.args.get("suggested_owner")),
         )
         return jsonify(sanitize_obj(trends))
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps", methods=["GET"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps", methods=["GET"])
+def list_knowledge_gaps():
+    from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
+
+    db = _db()
+    try:
+        result = KnowledgeGapTaskService().list_tasks(
+            db,
+            filters={
+                "status": request.args.get("status") or "",
+                "gap_type": request.args.get("gap_type") or "",
+                "query_fact_type": request.args.get("query_fact_type") or "",
+                "suggested_fix_area": request.args.get("suggested_fix_area") or "",
+                "suggested_owner": request.args.get("suggested_owner") or "",
+                "risk_level": request.args.get("risk_level") or "",
+                "product": request.args.get("product") or "",
+            },
+            limit=int(request.args.get("limit", 100)),
+        )
+        return jsonify(sanitize_obj(result))
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/generate", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/generate", methods=["POST"])
+@require_supervisor
+def generate_knowledge_gaps():
+    from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        result = KnowledgeGapTaskService().generate_for_run(
+            db,
+            run_uid=sanitize_text(data.get("run_uid")),
+            created_by=sanitize_text(current_user_name()),
+        )
+        return jsonify(sanitize_obj({"ok": True, **result.to_dict()})), 201
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>", methods=["GET"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>", methods=["GET"])
+def get_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
+
+    db = _db()
+    try:
+        detail = KnowledgeGapTaskService().get_task_detail(db, sanitize_text(task_uid))
+        if detail is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj(detail))
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>", methods=["PATCH"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>", methods=["PATCH"])
+@require_supervisor
+def update_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
+
+    data = request.get_json(silent=True) or {}
+    status = sanitize_text(data.get("status"))
+    priority = sanitize_text(data.get("priority"))
+    if status and status not in KNOWLEDGE_GAP_STATUSES:
+        return jsonify({"error": "invalid knowledge gap status"}), 400
+    if priority and priority not in KNOWLEDGE_GAP_PRIORITIES:
+        return jsonify({"error": "invalid knowledge gap priority"}), 400
+    db = _db()
+    try:
+        task = KnowledgeGapTaskService().update_task(db, sanitize_text(task_uid), data)
+        if task is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, "task": task}))
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/draft", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/draft", methods=["POST"])
+@require_supervisor
+def draft_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_draft_service import KnowledgeGapDraftService
+
+    db = _db()
+    try:
+        draft = KnowledgeGapDraftService().generate_draft(
+            db,
+            sanitize_text(task_uid),
+            generated_by="ai",
+        )
+        if draft is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, "draft": draft})), 201
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/approve", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/approve", methods=["POST"])
+@require_supervisor
+def approve_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_draft_service import KnowledgeGapDraftService
+
+    db = _db()
+    try:
+        result = KnowledgeGapDraftService().approve(
+            db,
+            sanitize_text(task_uid),
+            reviewer=sanitize_text(current_user_name()),
+        )
+        if result is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/reject", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/reject", methods=["POST"])
+@require_supervisor
+def reject_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_draft_service import KnowledgeGapDraftService
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        result = KnowledgeGapDraftService().reject(
+            db,
+            sanitize_text(task_uid),
+            reviewer=sanitize_text(current_user_name()),
+            reason=sanitize_text(data.get("reason")),
+        )
+        if result is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/verify", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/verify", methods=["POST"])
+@require_supervisor
+def verify_knowledge_gap(task_uid):
+    from app.models.eval_tables import KnowledgeGapTask
+
+    db = _db()
+    try:
+        task = db.query(KnowledgeGapTask).filter(KnowledgeGapTask.task_uid == sanitize_text(task_uid)).one_or_none()
+        if task is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        metadata = task.get_metadata()
+        metadata["verification"] = {
+            "verified_by": sanitize_text(current_user_name()),
+            "note": "Knowledge gap task marked verified after manual review/staging check.",
+        }
+        task.set_metadata(sanitize_obj(metadata))
+        task.status = "verified"
+        db.commit()
+        return jsonify(sanitize_obj({"ok": True, "task": task.to_dict()}))
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
