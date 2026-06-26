@@ -508,6 +508,18 @@ function renderEmpty(html: string) {
   return html || '<span class="empty">无内容</span>'
 }
 
+function isEvalSetSample(item: TrainingSample) {
+  return item.review_status === '评测集' || item.review_status === '璇勬祴闆?'
+}
+
+function evalCustomerSaid(item: TrainingSample) {
+  return item.eval_contract?.customer_said || ''
+}
+
+function evalSuggestedAnswer(item: TrainingSample) {
+  return item.eval_contract?.suggested_answer || ''
+}
+
 onMounted(async () => {
   await fetchList()
   nextTick(setupSectionObserver)
@@ -842,7 +854,14 @@ onMounted(async () => {
                   <el-tag size="small" type="info">{{ item.question_type || '未分类' }}</el-tag>
                   <span class="row-date">{{ formatDate(item.created_at) }}</span>
                 </div>
-                <div class="row-quote" v-html="renderEmpty(item.customer_quote)"></div>
+                <div
+                  v-if="isEvalSetSample(item) && (evalCustomerSaid(item) || evalSuggestedAnswer(item))"
+                  class="row-eval-contract"
+                >
+                  <p><strong>客户说：</strong>{{ evalCustomerSaid(item) || '-' }}</p>
+                  <p><strong>建议回答：</strong>{{ evalSuggestedAnswer(item) || '-' }}</p>
+                </div>
+                <div v-else class="row-quote" v-html="renderEmpty(item.customer_quote)"></div>
                 <div class="row-meta">
                   <span v-if="item.shop_platform"><el-icon><Shop /></el-icon> {{ item.shop_platform }}</span>
                   <span v-if="item.sku">SKU {{ item.sku }}</span>
@@ -1577,6 +1596,25 @@ onMounted(async () => {
 
   :deep(img) { display: none; }
   :deep(.empty) { color: var(--at-muted); }
+}
+
+.row-eval-contract {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--at-fg);
+
+  p {
+    margin: 0;
+  }
+
+  strong {
+    color: var(--at-muted);
+    font-weight: 700;
+  }
 }
 
 .row-meta {
