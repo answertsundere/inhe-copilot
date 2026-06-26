@@ -26,8 +26,6 @@ import {
   getTrainingSamples,
   getTrainingSample,
   updateTrainingSample,
-  buildTrainingSampleEvalSet,
-  convertTrainingSampleToEvalSet,
   deleteTrainingSample,
   deleteTrainingSampleAttachment,
   getTrainingSampleAttachmentUrl,
@@ -382,50 +380,6 @@ async function deleteSample(item: TrainingSample) {
   } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error(e?.response?.data?.error || '删除失败')
-    }
-  }
-}
-
-async function convertOneToEvalSet(item: TrainingSample) {
-  try {
-    await ElMessageBox.confirm(
-      `确认把样本 #${item.id} 转入评测集吗？转入后会从“已审核”移动到“评测集”，不会写入知识库。`,
-      '转入评测集',
-      { confirmButtonText: '转入评测集', cancelButtonText: '取消', type: 'warning' }
-    )
-    const { data } = await convertTrainingSampleToEvalSet(item.id)
-    if (data?.converted) {
-      ElMessage.success('已转入评测集')
-      fetchList()
-      if (detail.value?.id === item.id) {
-        detail.value = { ...detail.value, review_status: '评测集', eval_contract: data.contract }
-      }
-    } else {
-      ElMessage.warning(`暂不能转入评测集：${data?.reason || '样本信息不足'}`)
-    }
-  } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error(e?.response?.data?.reason || e?.response?.data?.error || '转入评测集失败')
-    }
-  }
-}
-
-async function buildEvalSetFromReviewed() {
-  try {
-    await ElMessageBox.confirm(
-      '将当前已审核样本中可形成评测契约的记录转入“评测集”。纯截图或缺少主管评价的样本会保留在已审核中等待补充。',
-      '批量制作评测集',
-      { confirmButtonText: '开始制作', cancelButtonText: '取消', type: 'warning' }
-    )
-    const { data } = await buildTrainingSampleEvalSet()
-    ElMessage.success(`已转入 ${data?.converted || 0} 条，跳过 ${data?.skipped || 0} 条`)
-    listGroupFilter.value = 'evalset'
-    filters.value.review_status = ''
-    filters.value.page = 1
-    fetchList()
-  } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error(e?.response?.data?.error || '制作评测集失败')
     }
   }
 }
@@ -854,7 +808,6 @@ onMounted(async () => {
             </el-input>
             <el-button type="primary" @click="handleSearch">查询</el-button>
             <el-button @click="handleReset">重置</el-button>
-            <el-button type="success" @click="buildEvalSetFromReviewed">制作评测集</el-button>
           </div>
         </div>
 
@@ -901,15 +854,6 @@ onMounted(async () => {
                 <div class="row-risk-badge" :class="'risk-' + item.risk_level">{{ item.risk_level }}风险</div>
                 <div class="row-auto">{{ item.auto_reply_type }}</div>
                 <div class="row-actions" @click.stop>
-                  <el-button
-                    v-if="item.review_status === '已确认'"
-                    link
-                    type="success"
-                    :icon="DataLine"
-                    @click="convertOneToEvalSet(item)"
-                  >
-                    转评测集
-                  </el-button>
                   <el-button link type="primary" :icon="Edit" @click="editSample(item)">编辑</el-button>
                   <el-button link type="danger" :icon="Delete" @click="deleteSample(item)">删除</el-button>
                 </div>

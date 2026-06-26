@@ -145,7 +145,7 @@ def _can_convert(contract: dict[str, Any]) -> tuple[bool, str]:
 class TrainingSampleEvalSetService:
     """Convert reviewed training samples into evaluation-set contracts."""
 
-    def convert_sample(self, sample_id: int, *, db=None, dry_run: bool = False) -> dict[str, Any]:
+    def preview_sample(self, sample_id: int, *, db=None) -> dict[str, Any]:
         own_db = db is None
         session = db or SessionLocal()
         try:
@@ -154,26 +154,56 @@ class TrainingSampleEvalSetService:
                 return {"sample_id": sample_id, "converted": False, "reason": "not_found"}
             contract = build_eval_contract(sample)
             can_convert, reason = _can_convert(contract)
+            return {
+                "sample_id": sample.id,
+                "converted": False,
+                "reason": "" if can_convert else reason,
+                "contract": contract,
+            }
+        finally:
+            if own_db:
+                session.close()
+
+    def convert_curated_sample(
+        self,
+        sample_id: int,
+        *,
+        contract: dict[str, Any],
+        db=None,
+    ) -> dict[str, Any]:
+        own_db = db is None
+        session = db or SessionLocal()
+        try:
+            sample = session.query(KBTrainingSample).filter(KBTrainingSample.id == int(sample_id)).one_or_none()
+            if not sample:
+                return {"sample_id": sample_id, "converted": False, "reason": "not_found"}
+            curated_contract = sanitize_obj({
+                **contract,
+                "source": "training_sample_manual_eval_curation",
+                "source_sample_id": sample.id,
+                "original_review_status": sanitize_text(sample.review_status),
+                "curated_at": datetime.utcnow().isoformat(),
+            })
+            can_convert, reason = _can_convert(curated_contract)
             if not can_convert:
                 return {
                     "sample_id": sample.id,
                     "converted": False,
                     "reason": reason,
-                    "contract": contract,
+                    "contract": curated_contract,
                 }
-            if not dry_run:
-                sample.review_status = EVAL_SET_STATUS
-                sample.eval_created_at = datetime.utcnow()
-                sample.set_eval_contract(contract)
-                session.add(sample)
-                if own_db:
-                    session.commit()
+            sample.review_status = EVAL_SET_STATUS
+            sample.eval_created_at = datetime.utcnow()
+            sample.set_eval_contract(curated_contract)
+            session.add(sample)
+            if own_db:
+                session.commit()
             return {
                 "sample_id": sample.id,
                 "converted": True,
                 "reason": "",
                 "review_status": EVAL_SET_STATUS,
-                "contract": contract,
+                "contract": curated_contract,
             }
         finally:
             if own_db:
@@ -200,14 +230,9 @@ class TrainingSampleEvalSetService:
             converted = 0
             skipped = 0
             for sample in query.all():
-                result = self.convert_sample(sample.id, db=db, dry_run=dry_run)
+                result = self.preview_sample(sample.id, db=db)
                 items.append(result)
-                if result.get("converted"):
-                    converted += 1
-                else:
-                    skipped += 1
-            if not dry_run:
-                db.commit()
+                skipped += 1
             return EvalSetConversionResult(converted=converted, skipped=skipped, items=items)
         except Exception:
             db.rollback()

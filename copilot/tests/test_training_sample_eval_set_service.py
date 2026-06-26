@@ -53,7 +53,7 @@ def test_build_eval_contract_uses_supervisor_review_as_contract_not_knowledge():
     assert contract["can_auto_score"] is True
 
 
-def test_convert_reviewed_sample_moves_it_to_eval_set(monkeypatch):
+def test_convert_reviewed_only_previews_and_does_not_move_status(monkeypatch):
     factory = _session_factory(monkeypatch)
     db = factory()
     db.add(_sample())
@@ -62,10 +62,40 @@ def test_convert_reviewed_sample_moves_it_to_eval_set(monkeypatch):
 
     result = TrainingSampleEvalSetService().convert_reviewed()
 
-    assert result.converted == 1
+    assert result.converted == 0
+    assert result.skipped == 1
+    assert result.items[0]["contract"]["must_do"]
+    db = factory()
+    row = db.query(KBTrainingSample).one()
+    assert row.review_status == REVIEWED_STATUS
+    assert row.get_eval_contract() == {}
+    assert row.eval_created_at is None
+    db.close()
+
+
+def test_convert_curated_sample_moves_it_to_eval_set(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample())
+    db.commit()
+    db.close()
+
+    contract = {
+        "customer_message": "customer asks how to handle mismatch",
+        "expected_fact_type": "aftersales_policy",
+        "supervisor_evaluation": "ask for manual screenshot and item photo before giving solution",
+        "must_do": ["ask for manual screenshot and item photo before giving solution"],
+        "must_not_do": ["do not copy the wrong customer service reply"],
+        "can_auto_score": True,
+        "curated_by": "codex",
+    }
+    result = TrainingSampleEvalSetService().convert_curated_sample(1, contract=contract)
+
+    assert result["converted"] is True
     db = factory()
     row = db.query(KBTrainingSample).one()
     assert row.review_status == EVAL_SET_STATUS
+    assert row.get_eval_contract()["source"] == "training_sample_manual_eval_curation"
     assert row.get_eval_contract()["must_do"]
     assert row.eval_created_at is not None
     db.close()

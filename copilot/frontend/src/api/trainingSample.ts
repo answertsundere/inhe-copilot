@@ -84,14 +84,6 @@ export function updateTrainingSample(id: number, data: UpdateTrainingSamplePaylo
   return apiClient.patch(`/training-samples/${id}`, data)
 }
 
-export function buildTrainingSampleEvalSet(data: { sample_ids?: number[]; limit?: number; dry_run?: boolean } = {}) {
-  return apiClient.post('/training-samples/eval-set/build', data)
-}
-
-export function convertTrainingSampleToEvalSet(id: number, data: { dry_run?: boolean } = {}) {
-  return apiClient.post(`/training-samples/${id}/eval-set`, data)
-}
-
 export function deleteTrainingSampleAttachment(sampleId: number, attachmentId: number) {
   return apiClient.delete(`/training-samples/${sampleId}/attachments/${attachmentId}`)
 }

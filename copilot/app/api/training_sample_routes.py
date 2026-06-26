@@ -209,18 +209,23 @@ def api_list_training_samples():
 
 @training_sample_bp.route("/training-samples/eval-set/build", methods=["POST"])
 def api_build_training_sample_eval_set():
-    """Convert reviewed training samples into evaluation-set contracts."""
+    """Preview reviewed samples for manual evaluation-set curation."""
     from app.services.training_sample_eval_set_service import TrainingSampleEvalSetService
 
     data = request.get_json(silent=True) or {}
     sample_ids = _json_field(data, "sample_ids", None)
     limit = data.get("limit")
     dry_run = bool(data.get("dry_run", False))
+    if not dry_run:
+        return jsonify({
+            "error": "batch_eval_set_conversion_disabled",
+            "message": "评测集必须逐条人工阅读并提供策展后的 eval_contract，禁止批量自动转入。",
+        }), 400
     try:
         result = TrainingSampleEvalSetService().convert_reviewed(
             sample_ids=sample_ids if isinstance(sample_ids, list) else None,
             limit=int(limit) if limit else None,
-            dry_run=dry_run,
+            dry_run=True,
         )
         return jsonify(result.to_dict())
     except Exception as e:
@@ -229,13 +234,19 @@ def api_build_training_sample_eval_set():
 
 @training_sample_bp.route("/training-samples/<int:sample_id>/eval-set", methods=["POST"])
 def api_convert_training_sample_to_eval_set(sample_id):
-    """Convert one reviewed sample into an evaluation-set contract."""
+    """Convert one manually curated sample into an evaluation-set contract."""
     from app.services.training_sample_eval_set_service import TrainingSampleEvalSetService
 
     data = request.get_json(silent=True) or {}
-    dry_run = bool(data.get("dry_run", False))
+    contract = data.get("eval_contract")
+    if not isinstance(contract, dict):
+        return jsonify({
+            "converted": False,
+            "reason": "missing_curated_eval_contract",
+            "message": "转入评测集前必须由人工/Agent 逐条阅读并提交 eval_contract。",
+        }), 422
     try:
-        result = TrainingSampleEvalSetService().convert_sample(sample_id, dry_run=dry_run)
+        result = TrainingSampleEvalSetService().convert_curated_sample(sample_id, contract=contract)
         return jsonify(result), 200 if result.get("converted") else 422
     except Exception as e:
         return jsonify({"error": str(e)}), 500
