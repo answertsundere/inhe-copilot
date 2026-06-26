@@ -219,6 +219,10 @@ def test_replay_records_failure_when_agent_requires_review(monkeypatch):
         assert by_type["rag_miss"].suggested_fix_area == "knowledge_rag"
         assert by_type["rag_miss"].suggested_owner == "knowledge_ops"
         assert by_type["rag_miss"].explanation
+        trace = db.query(EvalTrace).order_by(EvalTrace.id).first()
+        bucket = trace.get_quality_bucket()
+        assert bucket["quality_bucket"] == "knowledge_gap"
+        assert bucket["is_knowledge_gap"] is True
     finally:
         db.close()
 

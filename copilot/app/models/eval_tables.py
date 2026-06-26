@@ -245,7 +245,16 @@ class EvalTrace(Base):
     def set_raw_response(self, value):
         self.raw_response_json = _json_dump(value, {})
 
+    def get_quality_bucket(self):
+        raw = self.get_raw_response()
+        if isinstance(raw, dict):
+            value = raw.get("quality_bucket")
+            if isinstance(value, dict):
+                return value
+        return {}
+
     def to_dict(self):
+        quality_bucket = self.get_quality_bucket()
         return {
             "id": self.id,
             "run_uid": self.run_uid,
@@ -269,6 +278,7 @@ class EvalTrace(Base):
             "order_identity_hash": self.order_identity_hash,
             "passed": self.passed,
             "failure_labels": self.get_failure_labels(),
+            **quality_bucket,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

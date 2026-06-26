@@ -26,7 +26,7 @@ def _seed_repair_task_run(session_factory):
         run.total_cases = 3
         run.total_turns = 4
         db.add(run)
-        for index, turn_uid in enumerate(["turn_a", "turn_b", "turn_correct"]):
+        for index, turn_uid in enumerate(["turn_a", "turn_b", "turn_agent", "turn_correct"]):
             trace = EvalTrace(
                 run_uid="repair_run_1",
                 case_uid=f"case_{index}",
@@ -70,6 +70,16 @@ def _seed_repair_task_run(session_factory):
             EvalFailure(
                 run_uid="repair_run_1",
                 case_uid="case_2",
+                turn_uid="turn_agent",
+                failure_type="semantic_mismatch",
+                severity="high",
+                suggested_fix_area="final_audit_semantic_compiler",
+                suggested_owner="agent_quality",
+                message="agent answer mismatched buyer intent",
+            ),
+            EvalFailure(
+                run_uid="repair_run_1",
+                case_uid="case_3",
                 turn_uid="turn_correct",
                 failure_type="semantic_mismatch",
                 severity="high",
@@ -89,7 +99,7 @@ def _seed_repair_task_run(session_factory):
             ),
             EvalReview(
                 run_uid="repair_run_1",
-                case_uid="case_2",
+                case_uid="case_3",
                 turn_uid="turn_correct",
                 decision="correct",
                 suggested_fix_area="",
@@ -112,12 +122,14 @@ def test_repair_task_generation_groups_failures_and_skips_correct_review(monkeyp
         assert result.skipped_correct == 1
 
         task = db.query(EvalRepairTask).one()
-        assert task.failure_type == "rag_miss"
-        assert task.suggested_fix_area == "knowledge_rag"
-        assert task.suggested_owner == "knowledge_ops"
-        assert task.sample_count == 2
+        assert task.failure_type == "semantic_mismatch"
+        assert task.suggested_fix_area == "final_audit_semantic_compiler"
+        assert task.suggested_owner == "agent_quality"
+        assert task.sample_count == 1
         assert task.priority == "high"
-        assert sorted(task.get_related_turn_uids()) == ["turn_a", "turn_b"]
+        assert sorted(task.get_related_turn_uids()) == ["turn_agent"]
+        assert "turn_a" not in task.get_related_turn_uids()
+        assert "turn_b" not in task.get_related_turn_uids()
         assert "turn_correct" not in task.get_related_turn_uids()
     finally:
         db.close()
@@ -134,7 +146,7 @@ def test_repair_task_generation_updates_existing_task_instead_of_duplicating(mon
         assert second.generated == 0
         assert second.updated == 1
         assert db.query(EvalRepairTask).count() == 1
-        assert db.query(EvalRepairTask).one().sample_count == 2
+        assert db.query(EvalRepairTask).one().sample_count == 1
     finally:
         db.close()
 
@@ -153,11 +165,11 @@ def test_repair_task_routes_list_detail_generate_update_and_sanitize(monkeypatch
     task_uid = generated["tasks"][0]["task_uid"]
 
     list_response = client.get(
-        "/api/eval/repair-tasks?suggested_fix_area=knowledge_rag&status=open",
+        "/api/eval/repair-tasks?suggested_fix_area=final_audit_semantic_compiler&status=open",
         headers={"X-User-Role": "supervisor"},
     )
     assert list_response.status_code == 200
-    assert list_response.get_json()["items"][0]["sample_count"] == 2
+    assert list_response.get_json()["items"][0]["sample_count"] == 1
 
     detail_response = client.get(
         f"/api/eval/repair-tasks/{task_uid}",
@@ -169,8 +181,8 @@ def test_repair_task_routes_list_detail_generate_update_and_sanitize(monkeypatch
     assert "Signature=secret" not in raw_detail
     detail = detail_response.get_json()
     assert detail["task"]["task_uid"] == task_uid
-    assert len(detail["traces"]) == 2
-    assert len(detail["failures"]) == 2
+    assert len(detail["traces"]) == 1
+    assert len(detail["failures"]) == 1
 
     update_response = client.patch(
         f"/api/eval/repair-tasks/{task_uid}",

@@ -45,6 +45,26 @@ def _count_by(rows, attr: str) -> dict[str, int]:
     return counts
 
 
+def _failures_by_turn(failures) -> dict[str, list]:
+    grouped: dict[str, list] = {}
+    for failure in failures:
+        grouped.setdefault(getattr(failure, "turn_uid", ""), []).append(failure)
+    return grouped
+
+
+def _trace_quality_bucket(trace, failures_by_turn: dict[str, list]) -> dict:
+    from app.services.real_conversation_quality_bucket_service import bucket_from_trace
+
+    return bucket_from_trace(trace, failures_by_turn.get(trace.turn_uid, []))
+
+
+def _trace_to_dict_with_quality_bucket(trace, failures_by_turn: dict[str, list]) -> dict:
+    data = trace.to_dict()
+    bucket = _trace_quality_bucket(trace, failures_by_turn)
+    data.update(bucket)
+    return data
+
+
 def _build_run_summary(run, traces, failures, reviews) -> dict:
     scored_traces = [
         row for row in traces
@@ -56,12 +76,41 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
         passed_turns = int(getattr(run, "passed_turns", 0) or 0)
     latency_values = [int(row.latency_ms or 0) for row in scored_traces if row.latency_ms is not None]
     avg_latency_ms = round(sum(latency_values) / len(latency_values), 2) if latency_values else 0
+    failures_by_turn = _failures_by_turn(failures)
+    bucket_counts = {
+        "auto_sendable": 0,
+        "safe_handoff": 0,
+        "knowledge_gap": 0,
+        "agent_error": 0,
+        "unscored_or_noise": 0,
+    }
+    quality_denominator = 0
+    for trace in traces:
+        bucket = _trace_quality_bucket(trace, failures_by_turn)
+        bucket_name = str(bucket.get("quality_bucket") or "agent_error")
+        if bucket_name not in bucket_counts:
+            bucket_name = "agent_error"
+        bucket_counts[bucket_name] += 1
+        if bucket.get("should_count_in_quality_rate") is not False:
+            quality_denominator += 1
+    def _rate(count: int) -> float:
+        return round(count / quality_denominator, 4) if quality_denominator else 0
     return {
         "failure_counts_by_type": _count_by(failures, "failure_type"),
         "review_counts_by_decision": _count_by(reviews, "decision"),
         "avg_latency_ms": avg_latency_ms,
         "requires_review_count": sum(1 for row in scored_traces if row.requires_human_review),
         "pass_rate": round(passed_turns / total_turns, 4) if total_turns else 0,
+        "auto_sendable_turns": bucket_counts["auto_sendable"],
+        "safe_handoff_turns": bucket_counts["safe_handoff"],
+        "knowledge_gap_turns": bucket_counts["knowledge_gap"],
+        "agent_error_turns": bucket_counts["agent_error"],
+        "unscored_turns": bucket_counts["unscored_or_noise"],
+        "auto_sendable_rate": _rate(bucket_counts["auto_sendable"]),
+        "safe_handoff_rate": _rate(bucket_counts["safe_handoff"]),
+        "knowledge_gap_rate": _rate(bucket_counts["knowledge_gap"]),
+        "agent_error_rate": _rate(bucket_counts["agent_error"]),
+        "quality_denominator": quality_denominator,
     }
 
 
@@ -134,9 +183,10 @@ def get_real_conversation_run(run_uid):
             .order_by(EvalReview.id.asc())
             .all()
         )
+        failures_by_turn = _failures_by_turn(failures)
         return jsonify(sanitize_obj({
             "run": run.to_dict(),
-            "turns": [row.to_dict() for row in traces],
+            "turns": [_trace_to_dict_with_quality_bucket(row, failures_by_turn) for row in traces],
             "failures": [row.to_dict() for row in failures],
             "reviews": [row.to_dict() for row in reviews],
             "summary": _build_run_summary(run, traces, failures, reviews),
@@ -168,9 +218,10 @@ def get_real_conversation_turn(turn_uid):
             .order_by(EvalFailure.id.asc())
             .all()
         )
+        failures_by_turn = _failures_by_turn(failures)
         return jsonify(sanitize_obj({
             "turn": turn.to_dict(),
-            "traces": [row.to_dict() for row in traces],
+            "traces": [_trace_to_dict_with_quality_bucket(row, failures_by_turn) for row in traces],
             "failures": [row.to_dict() for row in failures],
         }))
     finally:

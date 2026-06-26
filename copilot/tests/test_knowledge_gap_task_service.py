@@ -113,11 +113,10 @@ def test_knowledge_gap_generation_maps_failure_types_and_skips_correct_review():
     try:
         result = KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
 
-        assert result.generated == 4
+        assert result.generated == 3
         assert result.skipped_correct == 1
         gap_types = {task.gap_type for task in db.query(KnowledgeGapTask).all()}
         assert "product_fact_gap" in gap_types
-        assert "media_asset_gap" in gap_types
         assert "activity_rule_gap" in gap_types
         assert "service_rule_gap" in gap_types
         assert not any("turn_correct" in task.get_related_turn_uids() for task in db.query(KnowledgeGapTask).all())
@@ -133,10 +132,10 @@ def test_knowledge_gap_generation_updates_existing_task_instead_of_duplicating()
         first = KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
         second = KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
 
-        assert first.generated == 4
+        assert first.generated == 3
         assert second.generated == 0
-        assert second.updated == 4
-        assert db.query(KnowledgeGapTask).count() == 4
+        assert second.updated == 3
+        assert db.query(KnowledgeGapTask).count() == 3
     finally:
         db.close()
 
@@ -158,7 +157,7 @@ def test_knowledge_gap_export_excel_is_sanitized(monkeypatch, tmp_path):
     output = tmp_path / "knowledge_gap.xlsx"
     result = export_knowledge_gap_tasks(output=str(output), status="open")
 
-    assert result["count"] == 4
+    assert result["count"] == 3
     workbook = load_workbook(output)
     sheet = workbook.active
     assert sheet.title == "知识缺口任务"

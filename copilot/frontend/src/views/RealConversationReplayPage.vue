@@ -46,6 +46,11 @@ type TurnFilter =
   | 'unnecessary_rag_call'
   | 'query_fact_type_missing'
   | 'not_scored'
+  | 'bucket_auto_sendable'
+  | 'bucket_safe_handoff'
+  | 'bucket_knowledge_gap'
+  | 'bucket_agent_error'
+  | 'bucket_unscored_or_noise'
 
 const loading = ref(false)
 const forbidden = ref(false)
@@ -94,6 +99,14 @@ const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '意图为空', value: 'query_fact_type_missing' },
   { label: '跳过不评分', value: 'not_scored' },
 ]
+
+filterOptions.push(
+  { label: '自动可发', value: 'bucket_auto_sendable' },
+  { label: '安全转人工', value: 'bucket_safe_handoff' },
+  { label: '知识/素材缺口', value: 'bucket_knowledge_gap' },
+  { label: 'Agent 错误', value: 'bucket_agent_error' },
+  { label: '未评分/噪声', value: 'bucket_unscored_or_noise' },
+)
 
 const reviewActions: Array<{ label: string; decision: ReviewDecision; type?: 'success' | 'danger' | 'warning' | 'primary' }> = [
   { label: '通过', decision: 'correct', type: 'success' },
@@ -157,6 +170,9 @@ const filteredTurns = computed(() => {
     if (activeFilter.value === 'failed') return !turn.passed || turnFailures.length > 0
     if (activeFilter.value === 'human_review') return turn.requires_human_review
     if (activeFilter.value === 'not_scored') return turn.turn_understanding?.should_score === false
+    if (activeFilter.value.startsWith('bucket_')) {
+      return turn.quality_bucket === activeFilter.value.replace('bucket_', '')
+    }
     return turnFailures.some((failure) => failure.failure_type === activeFilter.value)
   })
 })
@@ -548,6 +564,26 @@ onMounted(loadRuns)
 
         <section v-if="selectedRun" class="summary-strip">
           <div>
+            <span>自动可发</span>
+            <strong>{{ runSummary?.auto_sendable_turns || 0 }}</strong>
+          </div>
+          <div>
+            <span>安全转人工</span>
+            <strong>{{ runSummary?.safe_handoff_turns || 0 }}</strong>
+          </div>
+          <div>
+            <span>知识/素材缺口</span>
+            <strong>{{ runSummary?.knowledge_gap_turns || 0 }}</strong>
+          </div>
+          <div>
+            <span>Agent 错误</span>
+            <strong>{{ runSummary?.agent_error_turns || 0 }}</strong>
+          </div>
+          <div>
+            <span>未评分/噪声</span>
+            <strong>{{ runSummary?.unscored_turns || 0 }}</strong>
+          </div>
+          <div>
             <span>通过率</span>
             <strong>{{ formatPercent(runSummary?.pass_rate) }}</strong>
           </div>
@@ -582,6 +618,7 @@ onMounted(loadRuns)
               <el-tag size="small" :type="turn.passed ? 'success' : 'danger'">
                 {{ turn.passed ? '通过' : '失败' }}
               </el-tag>
+              <el-tag v-if="turn.quality_bucket" size="small" type="primary">{{ turn.quality_bucket }}</el-tag>
               <el-tag v-if="turn.requires_human_review" size="small" type="warning">需人工复核</el-tag>
               <el-tag v-if="turn.query_fact_type" size="small">{{ turn.query_fact_type }}</el-tag>
               <el-tag v-if="turn.turn_understanding?.turn_actionability" size="small" type="info">
@@ -590,6 +627,9 @@ onMounted(loadRuns)
               <el-tag v-if="turn.turn_understanding?.should_score === false" size="small">跳过不评分</el-tag>
               <el-tag v-if="turn.turn_understanding?.needs_rag === false" size="small">无需 RAG</el-tag>
               <span>{{ turn.latency_ms }} ms</span>
+            </div>
+            <div v-if="turn.quality_bucket_reason" class="quality-reason">
+              {{ turn.quality_bucket_reason }}
             </div>
             <div class="bubble buyer">
               <span class="bubble-label">买家原话</span>
@@ -612,6 +652,11 @@ onMounted(loadRuns)
               >
                 {{ failure.failure_type }} / {{ failure.suggested_fix_area || 'manual_triage' }}
               </el-tag>
+            </div>
+            <div v-if="turn.is_knowledge_gap || turn.is_agent_error || turn.is_safe_handoff" class="quality-advice">
+              <span v-if="turn.is_knowledge_gap">建议补资料/素材</span>
+              <span v-else-if="turn.is_agent_error">建议修 Agent</span>
+              <span v-else-if="turn.is_safe_handoff">安全转人工，不等同错答</span>
             </div>
           </article>
         </section>
@@ -1235,6 +1280,18 @@ onMounted(loadRuns)
 
 .failure-tags {
   margin-top: 8px;
+}
+
+.quality-reason,
+.quality-advice {
+  margin: 6px 0;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.quality-advice {
+  color: #b45309;
 }
 
 .metric-grid {

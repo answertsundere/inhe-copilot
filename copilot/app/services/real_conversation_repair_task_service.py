@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.real_conversation_quality_bucket_service import bucket_from_trace, should_generate_repair_task
 
 
 REVIEW_DECISION_FIX_AREAS = {
@@ -108,7 +109,7 @@ def _description_for(failure_type: str, fix_area: str, sample_count: int) -> str
 
 class RealConversationRepairTaskService:
     def generate_for_run(self, db, run_uid: str | None = None, created_by: str = "") -> RepairTaskGenerationResult:
-        from app.models.eval_tables import EvalFailure, EvalRepairTask, EvalReview
+        from app.models.eval_tables import EvalFailure, EvalRepairTask, EvalReview, EvalTrace
 
         target_run_uid = sanitize_text(run_uid) or _latest_run_uid(db)
         if not target_run_uid:
@@ -126,6 +127,13 @@ class RealConversationRepairTaskService:
             .order_by(EvalReview.id.asc())
             .all()
         )
+        failures_by_turn: dict[str, list] = {}
+        for failure in failures:
+            failures_by_turn.setdefault(failure.turn_uid, []).append(failure)
+        traces = {
+            trace.turn_uid: trace
+            for trace in db.query(EvalTrace).filter(EvalTrace.run_uid == target_run_uid).all()
+        }
         latest_reviews = _latest_reviews_by_turn(reviews)
         correct_turns = {
             turn_uid
@@ -140,6 +148,10 @@ class RealConversationRepairTaskService:
             failure_turns.add(failure.turn_uid)
             if failure.turn_uid in correct_turns:
                 skipped_correct += 1
+                continue
+            trace = traces.get(failure.turn_uid)
+            bucket = bucket_from_trace(trace, failures_by_turn.get(failure.turn_uid, [])) if trace else {}
+            if not should_generate_repair_task(str(bucket.get("quality_bucket") or "")):
                 continue
             review = latest_reviews.get(failure.turn_uid)
             fix_area = sanitize_text(getattr(review, "suggested_fix_area", "")) if review else ""

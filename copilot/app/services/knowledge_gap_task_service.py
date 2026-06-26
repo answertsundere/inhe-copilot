@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.real_conversation_quality_bucket_service import bucket_from_trace, should_generate_knowledge_gap_task
 
 
 MEDIA_FACT_TYPES = {"installation", "visual_asset", "media_reference", "dimensions", "space_fit", "detachable"}
@@ -200,11 +201,17 @@ class KnowledgeGapTaskService:
 
         grouped: dict[tuple[str, str, str, str, str, str, str, str], dict[str, Any]] = {}
         skipped_correct = 0
+        failures_by_turn: dict[str, list] = {}
+        for failure in failures:
+            failures_by_turn.setdefault(failure.turn_uid, []).append(failure)
         for failure in failures:
             if failure.turn_uid in correct_turns:
                 skipped_correct += 1
                 continue
             trace = traces.get(failure.turn_uid)
+            bucket = bucket_from_trace(trace, failures_by_turn.get(failure.turn_uid, [])) if trace else {}
+            if not should_generate_knowledge_gap_task(str(bucket.get("quality_bucket") or "")):
+                continue
             query_fact_type = _query_fact_type(failure, trace)
             fix_area = sanitize_text(failure.suggested_fix_area) or "manual_triage"
             owner = sanitize_text(failure.suggested_owner) or "knowledge_ops"

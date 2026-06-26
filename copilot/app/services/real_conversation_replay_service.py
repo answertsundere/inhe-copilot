@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.real_conversation_quality_bucket_service import classify_quality_bucket
 from app.services.real_conversation_turn_understanding_service import (
     RealConversationTurnUnderstandingService,
     detect_reply_topics,
@@ -647,6 +648,13 @@ class RealConversationReplayService:
                     base_failures = classify_turn_failures(response, exception) if should_score else []
                     passed, failures = evaluate_replay_turn_result(turn_understanding, response, base_failures, exception)
                     labels = [f["failure_type"] for f in failures]
+                    quality_bucket = classify_quality_bucket(
+                        passed=passed,
+                        requires_human_review=bool(response.get("requires_human_review")),
+                        failure_labels=labels,
+                        failures=failures,
+                        turn_understanding=turn_understanding,
+                    ).to_dict()
                     if should_score and response.get("requires_human_review"):
                         totals["requires_review"] += 1
                     if not should_score:
@@ -696,6 +704,7 @@ class RealConversationReplayService:
                         "debug_runtime": response.get("debug_runtime") or {},
                         "turn_understanding": turn_understanding,
                         "intent_contract": intent_contract,
+                        "quality_bucket": quality_bucket,
                         "real_context": real_context_summary,
                         "real_context_product_identity": real_context_identity,
                         "conversation_media_reference": conversation_media_reference,

@@ -101,6 +101,8 @@ def test_real_conversation_eval_run_detail_is_sanitized(monkeypatch):
     data = response.get_json()
     assert data["run"]["run_uid"] == "real_run_api"
     assert data["turns"][0]["query_fact_type"] == "installation"
+    assert data["turns"][0]["quality_bucket"] == "safe_handoff"
+    assert data["turns"][0]["is_safe_handoff"] is True
     assert data["turns"][0]["turn_understanding"]["turn_actionability"] == "actionable_question"
     assert data["turns"][0]["turn_understanding"]["needs_rag"] is True
     assert data["failures"][0]["failure_type"] == "needs_human_review"
@@ -112,6 +114,9 @@ def test_real_conversation_eval_run_detail_is_sanitized(monkeypatch):
     assert data["summary"]["avg_latency_ms"] == 12
     assert data["summary"]["requires_review_count"] == 0
     assert data["summary"]["pass_rate"] == 1
+    assert data["summary"]["safe_handoff_turns"] == 1
+    assert data["summary"]["quality_denominator"] == 1
+    assert data["summary"]["agent_error_turns"] == 0
 
 
 def test_real_conversation_review_writes_only_review(monkeypatch):

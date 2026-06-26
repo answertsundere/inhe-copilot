@@ -44,6 +44,15 @@ export interface RealConversationTurnTrace {
   latency_ms: number
   passed: boolean
   failure_labels: string[]
+  quality_bucket?: string
+  quality_bucket_reason?: string
+  quality_bucket_priority?: number
+  secondary_buckets?: string[]
+  is_auto_sendable?: boolean
+  is_safe_handoff?: boolean
+  is_knowledge_gap?: boolean
+  is_agent_error?: boolean
+  should_count_in_quality_rate?: boolean
 }
 
 export interface RealConversationFailure {
@@ -75,6 +84,16 @@ export interface RealConversationRunSummary {
   avg_latency_ms: number
   requires_review_count: number
   pass_rate: number
+  auto_sendable_turns?: number
+  safe_handoff_turns?: number
+  knowledge_gap_turns?: number
+  agent_error_turns?: number
+  unscored_turns?: number
+  auto_sendable_rate?: number
+  safe_handoff_rate?: number
+  knowledge_gap_rate?: number
+  agent_error_rate?: number
+  quality_denominator?: number
 }
 
 export type ReviewDecision =
