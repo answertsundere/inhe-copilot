@@ -915,6 +915,11 @@ onMounted(async () => {
         <div v-if="detail.eval_contract && Object.keys(detail.eval_contract).length" class="detail-section">
           <h4>评测契约</h4>
           <div class="contract-preview">
+            <template v-if="detail.eval_contract.customer_said || detail.eval_contract.suggested_answer">
+              <p><strong>客户说：</strong>{{ detail.eval_contract.customer_said || '-' }}</p>
+              <p><strong>建议回答：</strong>{{ detail.eval_contract.suggested_answer || '-' }}</p>
+            </template>
+            <template v-else>
             <p><strong>契约版本：</strong>{{ detail.eval_contract.schema_version || detail.eval_contract.source || '-' }}</p>
             <p><strong>预期类型：</strong>{{ detail.eval_contract.expected_question_type || '-' }}</p>
             <p><strong>可自动评分：</strong>{{ detail.eval_contract.can_auto_score ? '是' : '否' }}</p>
@@ -933,6 +938,7 @@ onMounted(async () => {
                 <p><strong>不能做：</strong>{{ (turn.must_not_do || []).join('；') || '-' }}</p>
               </div>
             </div>
+            </template>
           </div>
         </div>
       </div>
