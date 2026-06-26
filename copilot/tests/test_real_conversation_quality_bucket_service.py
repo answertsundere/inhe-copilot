@@ -58,7 +58,49 @@ def test_agent_error_labels_win_over_safe_handoff_and_gap():
         assert result["is_agent_error"] is True
 
 
-def test_should_score_false_is_unscored_or_noise():
+def test_context_update_with_unrequested_product_fact_is_agent_error():
+    result = _bucket(
+        failure_labels=["unrequested_product_fact"],
+        turn_understanding={"should_score": True, "turn_actionability": "context_update"},
+    )
+
+    assert result["quality_bucket"] == AGENT_ERROR
+    assert result["is_agent_error"] is True
+    assert result["should_count_in_quality_rate"] is True
+
+
+def test_acknowledgement_with_wrong_topic_reply_is_agent_error():
+    result = _bucket(
+        failure_labels=["wrong_topic_reply"],
+        turn_understanding={"should_score": False, "turn_actionability": "acknowledgement"},
+    )
+
+    assert result["quality_bucket"] == AGENT_ERROR
+    assert result["is_agent_error"] is True
+    assert result["should_count_in_quality_rate"] is True
+
+
+def test_clean_acknowledgement_remains_unscored():
+    result = _bucket(
+        failure_labels=[],
+        turn_understanding={"should_score": False, "turn_actionability": "acknowledgement"},
+    )
+
+    assert result["quality_bucket"] == UNSCORED_OR_NOISE
+    assert result["should_count_in_quality_rate"] is False
+
+
+def test_context_update_without_failure_remains_unscored():
+    result = _bucket(
+        failure_labels=[],
+        turn_understanding={"should_score": True, "turn_actionability": "context_update"},
+    )
+
+    assert result["quality_bucket"] == UNSCORED_OR_NOISE
+    assert result["should_count_in_quality_rate"] is False
+
+
+def test_should_score_false_without_agent_error_is_unscored_or_noise():
     result = _bucket(
         turn_understanding={"should_score": False, "turn_actionability": "noise"},
         failure_labels=["rag_miss"],
@@ -66,6 +108,16 @@ def test_should_score_false_is_unscored_or_noise():
 
     assert result["quality_bucket"] == UNSCORED_OR_NOISE
     assert result["should_count_in_quality_rate"] is False
+
+
+def test_rag_miss_still_knowledge_gap():
+    result = _bucket(
+        failure_labels=["rag_miss"],
+        failures=[{"failure_type": "rag_miss", "suggested_fix_area": "knowledge_rag"}],
+    )
+
+    assert result["quality_bucket"] == KNOWLEDGE_GAP
+    assert result["is_knowledge_gap"] is True
 
 
 def test_pure_needs_human_review_is_safe_handoff():

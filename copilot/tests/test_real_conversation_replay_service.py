@@ -297,6 +297,10 @@ def test_context_update_with_product_fact_reply_is_failed(monkeypatch):
         assert "query_fact_type_missing" in labels
         assert "unrequested_product_fact" in labels
         assert "unnecessary_rag_call" in labels
+        bucket = trace.get_quality_bucket()
+        assert bucket["quality_bucket"] == "agent_error"
+        assert bucket["is_agent_error"] is True
+        assert bucket["should_count_in_quality_rate"] is True
     finally:
         db.close()
 

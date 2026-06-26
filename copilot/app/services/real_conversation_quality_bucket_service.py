@@ -130,13 +130,6 @@ def classify_quality_bucket(
     actionability = sanitize_text(understanding.get("turn_actionability"))
     should_score = understanding.get("should_score")
 
-    if should_score is False or actionability in UNSCORED_ACTIONABILITY:
-        return QualityBucketResult(
-            quality_bucket=UNSCORED_OR_NOISE,
-            quality_bucket_reason="turn_understanding marks this turn as not scoreable",
-            quality_bucket_priority=BUCKET_PRIORITY[UNSCORED_OR_NOISE],
-        )
-
     if labels & AGENT_ERROR_LABELS:
         matched = sorted(labels & AGENT_ERROR_LABELS)
         return QualityBucketResult(
@@ -144,6 +137,13 @@ def classify_quality_bucket(
             quality_bucket_reason=f"agent error label(s): {', '.join(matched)}",
             quality_bucket_priority=BUCKET_PRIORITY[AGENT_ERROR],
             secondary_buckets=tuple(sorted(_secondary_buckets(labels, fix_areas, requires_human_review))),
+        )
+
+    if should_score is False or actionability in UNSCORED_ACTIONABILITY:
+        return QualityBucketResult(
+            quality_bucket=UNSCORED_OR_NOISE,
+            quality_bucket_reason="turn_understanding marks this turn as not scoreable",
+            quality_bucket_priority=BUCKET_PRIORITY[UNSCORED_OR_NOISE],
         )
 
     if labels & KNOWLEDGE_GAP_LABELS or fix_areas & KNOWLEDGE_GAP_FIX_AREAS:
