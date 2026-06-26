@@ -513,11 +513,11 @@ function isEvalSetSample(item: TrainingSample) {
 }
 
 function evalCustomerSaid(item: TrainingSample) {
-  return item.eval_contract?.customer_said || ''
+  return item.eval_contract?.customer_said || (isEvalSetSample(item) ? htmlToPlainText(item.customer_quote || '') : '')
 }
 
 function evalSuggestedAnswer(item: TrainingSample) {
-  return item.eval_contract?.suggested_answer || ''
+  return item.eval_contract?.suggested_answer || (isEvalSetSample(item) ? htmlToPlainText(item.correct_answer || '') : '')
 }
 
 onMounted(async () => {
@@ -915,23 +915,37 @@ onMounted(async () => {
           <el-descriptions-item label="负责人">{{ detail.owner || '-' }}</el-descriptions-item>
         </el-descriptions>
 
-        <div class="detail-section">
+        <div
+          v-if="isEvalSetSample(detail) && (evalCustomerSaid(detail) || evalSuggestedAnswer(detail))"
+          class="detail-section"
+        >
+          <h4>评测集文本</h4>
+          <div class="contract-preview">
+            <p><strong>客户说：</strong>{{ evalCustomerSaid(detail) || '-' }}</p>
+            <p><strong>建议回答：</strong>{{ evalSuggestedAnswer(detail) || '-' }}</p>
+          </div>
+        </div>
+
+        <div v-if="!(isEvalSetSample(detail) && (evalCustomerSaid(detail) || evalSuggestedAnswer(detail)))" class="detail-section">
           <h4>客户原话</h4>
           <div class="rich-preview" v-html="renderEmpty(detail.customer_quote)"></div>
         </div>
-        <div class="detail-section">
+        <div v-if="!(isEvalSetSample(detail) && (evalCustomerSaid(detail) || evalSuggestedAnswer(detail)))" class="detail-section">
           <h4>完整上下文</h4>
           <div class="rich-preview" v-html="renderEmpty(detail.full_context)"></div>
         </div>
-        <div class="detail-section">
+        <div v-if="!(isEvalSetSample(detail) && (evalCustomerSaid(detail) || evalSuggestedAnswer(detail)))" class="detail-section">
           <h4>客服实际回复</h4>
           <div class="rich-preview" v-html="renderEmpty(detail.csr_actual_reply)"></div>
         </div>
-        <div class="detail-section">
+        <div v-if="!(isEvalSetSample(detail) && (evalCustomerSaid(detail) || evalSuggestedAnswer(detail)))" class="detail-section">
           <h4>标准答案批注</h4>
           <div class="rich-preview" v-html="renderEmpty(detail.correct_answer)"></div>
         </div>
-        <div v-if="detail.eval_contract && Object.keys(detail.eval_contract).length" class="detail-section">
+        <div
+          v-if="detail.eval_contract && Object.keys(detail.eval_contract).length && !(evalCustomerSaid(detail) || evalSuggestedAnswer(detail))"
+          class="detail-section"
+        >
           <h4>评测契约</h4>
           <div class="contract-preview">
             <template v-if="detail.eval_contract.customer_said || detail.eval_contract.suggested_answer">
