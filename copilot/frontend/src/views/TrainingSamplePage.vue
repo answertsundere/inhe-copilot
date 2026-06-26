@@ -1623,6 +1623,7 @@ onMounted(async () => {
 
   p {
     margin: 0;
+    white-space: pre-wrap;
   }
 
   strong {
@@ -1780,6 +1781,7 @@ onMounted(async () => {
 
   p {
     margin: 0 0 8px;
+    white-space: pre-wrap;
   }
 }
 
