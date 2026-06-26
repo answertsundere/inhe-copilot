@@ -26,6 +26,8 @@ import {
   getTrainingSamples,
   getTrainingSample,
   updateTrainingSample,
+  buildTrainingSampleEvalSet,
+  convertTrainingSampleToEvalSet,
   deleteTrainingSample,
   deleteTrainingSampleAttachment,
   getTrainingSampleAttachmentUrl,
@@ -78,7 +80,7 @@ const filters = ref({
   page: 1,
   page_size: 10,
 })
-const listGroupFilter = ref<'all' | 'pending' | 'reviewed'>('all')
+const listGroupFilter = ref<'all' | 'pending' | 'reviewed' | 'evalset'>('all')
 
 const shopPlatforms = ['天猫', '淘宝', '拼多多', '抖音', '京东', '快手', '小红书', '其他']
 const questionTypes = ['材质安全', '安装', '尺寸', '配件', '物流', '售后', '活动', '质检', '年龄适配', '其他']
@@ -86,7 +88,7 @@ const difficultyReasons = ['知识库没有', '图片看不清', '商品不确�
 const knowledgeTargets = ['RAG知识', '商品属性', '安装说明', '素材图片', '售后规则', '物流规则']
 const riskLevels = ['低', '中', '高']
 const autoReplyTypes = ['可自动', '需人工确认', '禁止自动']
-const reviewStatuses = ['待处理', '已确认', '已入库', '已上线']
+const reviewStatuses = ['待处理', '已确认', '评测集', '已入库', '已上线']
 
 const sections = [
   { id: 'basic', label: '基础信息', icon: Calendar },
@@ -103,6 +105,7 @@ const stats = computed(() => {
     total: total.value,
     today: list.value.filter((i) => (i.collected_at || i.created_at || '').startsWith(todayStr)).length,
     pending: list.value.filter((i) => i.review_status === '待处理').length,
+    evalSet: list.value.filter((i) => i.review_status === '评测集').length,
     needKb: list.value.filter((i) => i.need_knowledge_base).length,
   }
 })
@@ -112,16 +115,22 @@ const listGroups = computed(() => {
   if (listGroupFilter.value === 'pending') {
     source = list.value.filter((i) => i.review_status === '待处理')
   } else if (listGroupFilter.value === 'reviewed') {
-    source = list.value.filter((i) => i.review_status !== '待处理')
+    source = list.value.filter((i) => i.review_status === '已确认')
+  } else if (listGroupFilter.value === 'evalset') {
+    source = list.value.filter((i) => i.review_status === '评测集')
   }
   const pending = source.filter((i) => i.review_status === '待处理')
-  const confirmed = source.filter((i) => i.review_status !== '待处理')
+  const confirmed = source.filter((i) => i.review_status === '已确认')
+  const evalSet = source.filter((i) => i.review_status === '评测集')
   const groups = []
   if (pending.length) {
     groups.push({ title: '未审核', key: 'pending', items: pending, count: pending.length })
   }
   if (confirmed.length) {
     groups.push({ title: '已审核', key: 'confirmed', items: confirmed, count: confirmed.length })
+  }
+  if (evalSet.length) {
+    groups.push({ title: '评测集', key: 'evalset', items: evalSet, count: evalSet.length })
   }
   return groups
 })
@@ -377,6 +386,50 @@ async function deleteSample(item: TrainingSample) {
   }
 }
 
+async function convertOneToEvalSet(item: TrainingSample) {
+  try {
+    await ElMessageBox.confirm(
+      `确认把样本 #${item.id} 转入评测集吗？转入后会从“已审核”移动到“评测集”，不会写入知识库。`,
+      '转入评测集',
+      { confirmButtonText: '转入评测集', cancelButtonText: '取消', type: 'warning' }
+    )
+    const { data } = await convertTrainingSampleToEvalSet(item.id)
+    if (data?.converted) {
+      ElMessage.success('已转入评测集')
+      fetchList()
+      if (detail.value?.id === item.id) {
+        detail.value = { ...detail.value, review_status: '评测集', eval_contract: data.contract }
+      }
+    } else {
+      ElMessage.warning(`暂不能转入评测集：${data?.reason || '样本信息不足'}`)
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.response?.data?.reason || e?.response?.data?.error || '转入评测集失败')
+    }
+  }
+}
+
+async function buildEvalSetFromReviewed() {
+  try {
+    await ElMessageBox.confirm(
+      '将当前已审核样本中可形成评测契约的记录转入“评测集”。纯截图或缺少主管评价的样本会保留在已审核中等待补充。',
+      '批量制作评测集',
+      { confirmButtonText: '开始制作', cancelButtonText: '取消', type: 'warning' }
+    )
+    const { data } = await buildTrainingSampleEvalSet()
+    ElMessage.success(`已转入 ${data?.converted || 0} 条，跳过 ${data?.skipped || 0} 条`)
+    listGroupFilter.value = 'evalset'
+    filters.value.review_status = ''
+    filters.value.page = 1
+    fetchList()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.response?.data?.error || '制作评测集失败')
+    }
+  }
+}
+
 async function viewDetail(item: TrainingSample) {
   drawerVisible.value = true
   try {
@@ -554,6 +607,13 @@ onMounted(async () => {
           <div class="stat-body">
             <div class="stat-value">{{ stats.pending }}</div>
             <div class="stat-label">待处理</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon kb"><el-icon><DataLine /></el-icon></div>
+          <div class="stat-body">
+            <div class="stat-value">{{ stats.evalSet }}</div>
+            <div class="stat-label">评测集</div>
           </div>
         </div>
         <div class="stat-card">
@@ -794,6 +854,7 @@ onMounted(async () => {
             </el-input>
             <el-button type="primary" @click="handleSearch">查询</el-button>
             <el-button @click="handleReset">重置</el-button>
+            <el-button type="success" @click="buildEvalSetFromReviewed">制作评测集</el-button>
           </div>
         </div>
 
@@ -801,7 +862,8 @@ onMounted(async () => {
           <el-radio-group v-model="listGroupFilter" size="small" fill="#1b61c9">
             <el-radio-button label="all">全部 ({{ total }})</el-radio-button>
             <el-radio-button label="pending">未审核 ({{ list.filter(i => i.review_status === '待处理').length }})</el-radio-button>
-            <el-radio-button label="reviewed">已审核 ({{ list.filter(i => i.review_status !== '待处理').length }})</el-radio-button>
+            <el-radio-button label="reviewed">已审核 ({{ list.filter(i => i.review_status === '已确认').length }})</el-radio-button>
+            <el-radio-button label="evalset">评测集 ({{ list.filter(i => i.review_status === '评测集').length }})</el-radio-button>
           </el-radio-group>
         </div>
 
@@ -839,6 +901,15 @@ onMounted(async () => {
                 <div class="row-risk-badge" :class="'risk-' + item.risk_level">{{ item.risk_level }}风险</div>
                 <div class="row-auto">{{ item.auto_reply_type }}</div>
                 <div class="row-actions" @click.stop>
+                  <el-button
+                    v-if="item.review_status === '已确认'"
+                    link
+                    type="success"
+                    :icon="DataLine"
+                    @click="convertOneToEvalSet(item)"
+                  >
+                    转评测集
+                  </el-button>
                   <el-button link type="primary" :icon="Edit" @click="editSample(item)">编辑</el-button>
                   <el-button link type="danger" :icon="Delete" @click="deleteSample(item)">删除</el-button>
                 </div>
@@ -896,6 +967,17 @@ onMounted(async () => {
         <div class="detail-section">
           <h4>标准答案批注</h4>
           <div class="rich-preview" v-html="renderEmpty(detail.correct_answer)"></div>
+        </div>
+        <div v-if="detail.eval_contract && Object.keys(detail.eval_contract).length" class="detail-section">
+          <h4>评测契约</h4>
+          <div class="contract-preview">
+            <p><strong>预期类型：</strong>{{ detail.eval_contract.expected_question_type || '-' }}</p>
+            <p><strong>可自动评分：</strong>{{ detail.eval_contract.can_auto_score ? '是' : '否' }}</p>
+            <p><strong>需要图片说明：</strong>{{ detail.eval_contract.needs_image_description ? '是' : '否' }}</p>
+            <p><strong>主管评价：</strong>{{ detail.eval_contract.supervisor_evaluation || '-' }}</p>
+            <p><strong>必须做到：</strong>{{ (detail.eval_contract.must_do || []).join('；') || '-' }}</p>
+            <p><strong>不能做：</strong>{{ (detail.eval_contract.must_not_do || []).join('；') || '-' }}</p>
+          </div>
         </div>
       </div>
     </el-drawer>
@@ -1674,6 +1756,19 @@ onMounted(async () => {
 }
 
 // Element Plus 组件在本页内的 Airtable 风格微调
+.contract-preview {
+  background: #f8fbff;
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-md);
+  padding: var(--at-space-4);
+  font-size: 14px;
+  line-height: 1.7;
+
+  p {
+    margin: 0 0 8px;
+  }
+}
+
 :deep(.el-button--primary) {
   --el-button-bg-color: var(--at-accent);
   --el-button-border-color: var(--at-accent);

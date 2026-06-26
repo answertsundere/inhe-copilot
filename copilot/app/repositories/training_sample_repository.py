@@ -143,6 +143,8 @@ class TrainingSampleRepository:
                 "review_status",
                 "owner",
                 "notes",
+                "eval_contract_json",
+                "eval_created_at",
             }
             for key, value in kwargs.items():
                 if key in allowed:

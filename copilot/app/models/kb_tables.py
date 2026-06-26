@@ -982,6 +982,11 @@ class KBTrainingSample(Base):
     # 备注
     notes = Column(Text, nullable=False, default="")
 
+    # Evaluation contract converted from reviewed samples. It is used only for
+    # replay/evaluation and must not be treated as published knowledge.
+    eval_contract_json = Column(Text, nullable=False, default="{}")
+    eval_created_at = Column(DateTime, nullable=True)
+
     created_by = Column(String(64), nullable=False, default="")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -998,6 +1003,12 @@ class KBTrainingSample(Base):
 
     def set_media_links(self, value):
         self.media_links_json = _json_set(value, True)
+
+    def get_eval_contract(self):
+        return _json_get(self.eval_contract_json, {})
+
+    def set_eval_contract(self, value):
+        self.eval_contract_json = _json_set(value, False)
 
     def to_dict(self):
         return {
@@ -1023,6 +1034,8 @@ class KBTrainingSample(Base):
             "review_status": self.review_status,
             "owner": self.owner,
             "notes": self.notes,
+            "eval_contract": self.get_eval_contract(),
+            "eval_created_at": self.eval_created_at.isoformat() if self.eval_created_at else None,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

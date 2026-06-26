@@ -23,6 +23,8 @@ export interface TrainingSample {
   review_status: string
   owner: string
   notes: string
+  eval_contract?: Record<string, any>
+  eval_created_at?: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -80,6 +82,14 @@ export function getTrainingSample(id: number) {
 
 export function updateTrainingSample(id: number, data: UpdateTrainingSamplePayload) {
   return apiClient.patch(`/training-samples/${id}`, data)
+}
+
+export function buildTrainingSampleEvalSet(data: { sample_ids?: number[]; limit?: number; dry_run?: boolean } = {}) {
+  return apiClient.post('/training-samples/eval-set/build', data)
+}
+
+export function convertTrainingSampleToEvalSet(id: number, data: { dry_run?: boolean } = {}) {
+  return apiClient.post(`/training-samples/${id}/eval-set`, data)
 }
 
 export function deleteTrainingSampleAttachment(sampleId: number, attachmentId: number) {

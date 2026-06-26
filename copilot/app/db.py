@@ -206,6 +206,19 @@ def _migrate_add_columns():
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
             conn.commit()
 
+    # Training samples - evaluation set contract fields.
+    if "kb_training_sample" in inspector.get_table_names():
+        existing_cols = {c["name"] for c in inspector.get_columns("kb_training_sample")}
+        new_columns = [
+            ("eval_contract_json", "TEXT", "'{}'"),
+            ("eval_created_at", "DATETIME", "NULL"),
+        ]
+        with engine.connect() as conn:
+            for col_name, col_type, default in new_columns:
+                if col_name not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE kb_training_sample ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
+            conn.commit()
+
 
 def init_db():
     """创建所有表（如果不存在）并执行迁移"""
