@@ -47,6 +47,9 @@ def test_build_eval_contract_uses_supervisor_review_as_contract_not_knowledge():
     assert contract["source"] == "training_sample_review"
     assert contract["expected_fact_type"] == "aftersales_policy"
     assert contract["supervisor_evaluation"]
+    assert contract["conversation_context_text"]
+    assert contract["conversation_turns"] == []
+    assert contract["expected_agent_turns"] == []
     assert contract["must_do"]
     assert contract["needs_order_context"] is True
     assert contract["needs_media_understanding"] is True
@@ -98,6 +101,46 @@ def test_convert_curated_sample_moves_it_to_eval_set(monkeypatch):
     assert row.get_eval_contract()["source"] == "training_sample_manual_eval_curation"
     assert row.get_eval_contract()["must_do"]
     assert row.eval_created_at is not None
+    db.close()
+
+
+def test_convert_curated_conversation_eval_set_does_not_require_supervisor_field(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample(correct_answer="", notes=""))
+    db.commit()
+    db.close()
+
+    contract = {
+        "conversation_context_text": "buyer: package is wrong\nagent: please send label\nbuyer: label is gone",
+        "conversation_turns": [
+            {"role": "buyer", "text": "package is wrong"},
+            {"role": "agent", "text": "please send label"},
+            {"role": "buyer", "text": "label is gone"},
+        ],
+        "expected_agent_turns": [
+            {
+                "after_customer_turn": 3,
+                "customer_said": "label is gone",
+                "expected_reply": "ask buyer to photograph all received items and then verify mismatch",
+                "must_do": ["ask for photos of all received items", "verify before offering solution"],
+            }
+        ],
+        "media_references": [
+            {"kind": "attachment", "attachment_id": 1, "role": "conversation_evidence_for_vision_eval"}
+        ],
+    }
+
+    result = TrainingSampleEvalSetService().convert_curated_sample(1, contract=contract)
+
+    assert result["converted"] is True
+    db = factory()
+    row = db.query(KBTrainingSample).one()
+    saved = row.get_eval_contract()
+    assert row.review_status == EVAL_SET_STATUS
+    assert saved["source"] == "training_sample_manual_eval_curation"
+    assert saved["expected_agent_turns"][0]["expected_reply"]
+    assert saved["media_references"][0]["role"] == "conversation_evidence_for_vision_eval"
     db.close()
 
 

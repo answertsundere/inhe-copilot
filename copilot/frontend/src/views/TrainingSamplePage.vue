@@ -915,12 +915,24 @@ onMounted(async () => {
         <div v-if="detail.eval_contract && Object.keys(detail.eval_contract).length" class="detail-section">
           <h4>评测契约</h4>
           <div class="contract-preview">
+            <p><strong>契约版本：</strong>{{ detail.eval_contract.schema_version || detail.eval_contract.source || '-' }}</p>
             <p><strong>预期类型：</strong>{{ detail.eval_contract.expected_question_type || '-' }}</p>
             <p><strong>可自动评分：</strong>{{ detail.eval_contract.can_auto_score ? '是' : '否' }}</p>
             <p><strong>需要图片说明：</strong>{{ detail.eval_contract.needs_image_description ? '是' : '否' }}</p>
-            <p><strong>主管评价：</strong>{{ detail.eval_contract.supervisor_evaluation || '-' }}</p>
-            <p><strong>必须做到：</strong>{{ (detail.eval_contract.must_do || []).join('；') || '-' }}</p>
-            <p><strong>不能做：</strong>{{ (detail.eval_contract.must_not_do || []).join('；') || '-' }}</p>
+            <p><strong>完整上下文：</strong>{{ detail.eval_contract.conversation_context_text ? '已保留' : '-' }}</p>
+            <p><strong>媒体引用：</strong>{{ (detail.eval_contract.media_references || []).length }} 个</p>
+            <div v-if="(detail.eval_contract.expected_agent_turns || []).length" class="expected-turns">
+              <div
+                v-for="(turn, idx) in detail.eval_contract.expected_agent_turns"
+                :key="idx"
+                class="expected-turn"
+              >
+                <p><strong>客户说：</strong>{{ turn.customer_said || '-' }}</p>
+                <p><strong>应该回答：</strong>{{ turn.expected_reply || '-' }}</p>
+                <p><strong>必须做到：</strong>{{ (turn.must_do || []).join('；') || '-' }}</p>
+                <p><strong>不能做：</strong>{{ (turn.must_not_do || []).join('；') || '-' }}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1711,6 +1723,20 @@ onMounted(async () => {
   p {
     margin: 0 0 8px;
   }
+}
+
+.expected-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.expected-turn {
+  background: #fff;
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-sm);
+  padding: var(--at-space-3);
 }
 
 :deep(.el-button--primary) {

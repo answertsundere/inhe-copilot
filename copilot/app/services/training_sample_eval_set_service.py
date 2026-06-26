@@ -84,6 +84,20 @@ def _contains_image_reference(sample: KBTrainingSample) -> bool:
     return any("\u56fe\u7247" in (value or "") or "<img" in (value or "").lower() for value in values)
 
 
+def build_media_references(sample: KBTrainingSample) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    for attachment in sample.attachments or []:
+        refs.append({
+            "kind": "attachment",
+            "attachment_id": attachment.id,
+            "field_name": sanitize_text(attachment.field_name),
+            "filename": sanitize_text(attachment.original_filename),
+            "mime_type": sanitize_text(attachment.mime_type),
+            "role": "conversation_evidence_for_vision_eval",
+        })
+    return refs
+
+
 def build_eval_contract(sample: KBTrainingSample) -> dict[str, Any]:
     customer_quote = _plain_text(sample.customer_quote)
     supervisor_evaluation = _plain_text(sample.correct_answer or sample.notes)
@@ -111,6 +125,10 @@ def build_eval_contract(sample: KBTrainingSample) -> dict[str, Any]:
         "full_context_preview": full_context[:500],
         "original_csr_reply": csr_actual_reply,
         "supervisor_evaluation": supervisor_evaluation,
+        "conversation_context_text": full_context,
+        "conversation_turns": [],
+        "expected_agent_turns": [],
+        "media_references": build_media_references(sample),
         "expected_question_type": sanitize_text(sample.question_type),
         "expected_fact_type": QUESTION_TYPE_TO_FACT_TYPE.get(sanitize_text(sample.question_type), ""),
         "must_do": must_do,
@@ -133,6 +151,16 @@ def build_eval_contract(sample: KBTrainingSample) -> dict[str, Any]:
 
 
 def _can_convert(contract: dict[str, Any]) -> tuple[bool, str]:
+    conversation_turns = contract.get("conversation_turns")
+    expected_turns = contract.get("expected_agent_turns")
+    has_conversation_contract = isinstance(conversation_turns, list) and isinstance(expected_turns, list) and bool(expected_turns)
+    if has_conversation_contract:
+        for turn in expected_turns:
+            if not isinstance(turn, dict):
+                return False, "invalid_expected_turn"
+            if not turn.get("expected_reply"):
+                return False, "missing_expected_reply"
+        return True, ""
     if not contract.get("customer_message"):
         return False, "missing_customer_message"
     if not contract.get("supervisor_evaluation"):
