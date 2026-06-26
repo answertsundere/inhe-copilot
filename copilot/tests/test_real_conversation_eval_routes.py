@@ -75,6 +75,48 @@ def _seed_run(session_factory):
         db.close()
 
 
+def _seed_quality_task_run(session_factory):
+    db = session_factory()
+    try:
+        db.add(EvalRun(run_uid="quality_task_api", source_type="real_conversation", status="completed"))
+        for index, (turn_uid, fact_type, failure_type, fix_area, owner) in enumerate([
+            ("turn_gap", "material", "rag_miss", "knowledge_rag", "knowledge_ops"),
+            ("turn_agent", "dimensions", "semantic_mismatch", "final_audit_semantic_compiler", "agent_quality"),
+        ]):
+            trace = EvalTrace(
+                run_uid="quality_task_api",
+                case_uid=f"case_{turn_uid}",
+                turn_uid=turn_uid,
+                turn_index=index,
+                buyer_message=f"buyer 13812345678 asks {fact_type}",
+                reference_human_reply="reference",
+                agent_reply="agent https://demo.oss-cn/a.jpg?Signature=secret&Expires=999",
+                query_fact_type=fact_type,
+                latency_ms=20 + index,
+                passed=False,
+            )
+            trace.set_turn_understanding({
+                "turn_actionability": "actionable_question",
+                "should_score": True,
+                "query_fact_type": fact_type,
+            })
+            trace.set_product_identity({"item_id": "ITEM-API", "sku_code": "SKU-API"})
+            db.add(trace)
+            db.add(EvalFailure(
+                run_uid="quality_task_api",
+                case_uid=f"case_{turn_uid}",
+                turn_uid=turn_uid,
+                failure_type=failure_type,
+                severity="high" if turn_uid == "turn_agent" else "medium",
+                suggested_fix_area=fix_area,
+                suggested_owner=owner,
+                message="contains phone 13812345678",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_real_conversation_eval_routes_require_supervisor(monkeypatch):
     client, session_factory = _make_client(monkeypatch)
     _seed_run(session_factory)
@@ -176,3 +218,57 @@ def test_real_conversation_review_rejects_legacy_needs_review(monkeypatch):
     )
 
     assert response.status_code == 400
+
+
+def test_real_conversation_quality_tasks_routes_group_generate_and_dedupe(monkeypatch):
+    client, session_factory = _make_client(monkeypatch)
+    _seed_quality_task_run(session_factory)
+
+    get_response = client.get(
+        "/api/eval/real-conversation/runs/quality_task_api/quality-tasks",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert get_response.status_code == 200
+    raw = get_response.get_data(as_text=True)
+    assert "13812345678" not in raw
+    assert "Signature=secret" not in raw
+    data = get_response.get_json()
+    assert data["summary"]["knowledge_gap"] == 1
+    assert data["summary"]["agent_error"] == 1
+    assert data["task_group_count"] == 2
+    assert {item["next_step"] for item in data["task_groups"]} == {
+        "generate_knowledge_gap_task",
+        "generate_repair_task",
+    }
+
+    first = client.post(
+        "/api/eval/real-conversation/runs/quality_task_api/quality-tasks/generate",
+        headers={"X-User-Role": "admin", "X-User-Name": "lead"},
+    )
+    assert first.status_code == 201
+    first_data = first.get_json()
+    assert first_data["generated"] == 2
+    assert first_data["updated"] == 0
+
+    second = client.post(
+        "/api/eval/real-conversation/runs/quality_task_api/quality-tasks/generate",
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    )
+    assert second.status_code == 201
+    second_data = second.get_json()
+    assert second_data["generated"] == 0
+    assert second_data["updated"] == 2
+
+
+def test_real_conversation_quality_tasks_routes_reject_operator(monkeypatch):
+    client, session_factory = _make_client(monkeypatch)
+    _seed_quality_task_run(session_factory)
+
+    assert client.get(
+        "/api/eval/real-conversation/runs/quality_task_api/quality-tasks",
+        headers={"X-User-Role": "operator"},
+    ).status_code == 403
+    assert client.post(
+        "/api/eval/real-conversation/runs/quality_task_api/quality-tasks/generate",
+        headers={"X-User-Role": "operator"},
+    ).status_code == 403

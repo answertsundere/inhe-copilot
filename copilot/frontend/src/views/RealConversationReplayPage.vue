@@ -6,10 +6,12 @@ import {
   fetchEvalTrends,
   fetchKnowledgeGapTask,
   fetchKnowledgeGapTasks,
+  fetchRealConversationQualityTasks,
   fetchRealConversationRun,
   fetchRealConversationRuns,
   fetchRepairTask,
   fetchRepairTasks,
+  generateRealConversationQualityTasks,
   generateKnowledgeGapDraft,
   generateKnowledgeGapTasks,
   generateRepairTasks,
@@ -25,6 +27,8 @@ import {
   type KnowledgeGapSummary,
   type KnowledgeGapTask,
   type RealConversationFailure,
+  type RealConversationQualityTaskGroup,
+  type RealConversationQualityTasks,
   type RealConversationRepairTask,
   type RealConversationRun,
   type RealConversationRunSummary,
@@ -66,6 +70,11 @@ const repairTasks = ref<RealConversationRepairTask[]>([])
 const selectedTask = ref<RealConversationRepairTask | null>(null)
 const selectedTaskTraces = ref<RealConversationTurnTrace[]>([])
 const selectedTaskFailures = ref<RealConversationFailure[]>([])
+const qualityTasks = ref<RealConversationQualityTasks | null>(null)
+const qualityTaskBucketFilter = ref('')
+const qualityTaskOwnerFilter = ref('')
+const qualityTaskFixAreaFilter = ref('')
+const qualityTaskPriorityFilter = ref('')
 const taskStatusFilter = ref('')
 const taskFixAreaFilter = ref('')
 const taskOwnerFilter = ref('')
@@ -202,6 +211,32 @@ const taskOwnerOptions = computed(() => {
   return [{ label: '全部负责人', value: '' }, ...values.map((value) => ({ label: value, value }))]
 })
 
+const qualityTaskGroups = computed<RealConversationQualityTaskGroup[]>(() => {
+  const items = qualityTasks.value?.task_groups || []
+  return items.filter((group) => {
+    if (qualityTaskBucketFilter.value && group.quality_bucket !== qualityTaskBucketFilter.value) return false
+    if (qualityTaskOwnerFilter.value && group.suggested_owner !== qualityTaskOwnerFilter.value) return false
+    if (qualityTaskFixAreaFilter.value && group.suggested_fix_area !== qualityTaskFixAreaFilter.value) return false
+    if (qualityTaskPriorityFilter.value && group.priority !== qualityTaskPriorityFilter.value) return false
+    return true
+  })
+})
+
+const qualityTaskBucketOptions = computed(() => {
+  const values = Object.keys(qualityTasks.value?.summary || {}).sort()
+  return [{ label: 'all buckets', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
+const qualityTaskOwnerOptions = computed(() => {
+  const values = Array.from(new Set((qualityTasks.value?.task_groups || []).map((task) => task.suggested_owner).filter(Boolean))).sort()
+  return [{ label: 'all owners', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
+const qualityTaskFixAreaOptions = computed(() => {
+  const values = Array.from(new Set((qualityTasks.value?.task_groups || []).map((task) => task.suggested_fix_area).filter(Boolean))).sort()
+  return [{ label: 'all fix areas', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
 const trendTotals = computed(() => {
   const daily = trends.value?.daily || []
   const totalTurns = daily.reduce((sum, item) => sum + (item.total_turns || 0), 0)
@@ -266,6 +301,7 @@ async function loadRun(run: RealConversationRun) {
     failures.value = data.failures || []
     runSummary.value = data.summary || null
     selectedTurn.value = turns.value[0] || null
+    await loadQualityTasks()
     await loadRepairTasks()
     await loadKnowledgeGaps()
   } catch (error: any) {
@@ -274,6 +310,14 @@ async function loadRun(run: RealConversationRun) {
   } finally {
     loading.value = false
   }
+}
+
+async function loadQualityTasks() {
+  if (!selectedRun.value) {
+    qualityTasks.value = null
+    return
+  }
+  qualityTasks.value = await fetchRealConversationQualityTasks(selectedRun.value.run_uid)
 }
 
 async function review(decision: ReviewDecision) {
@@ -407,6 +451,24 @@ async function verifyKnowledgeGap() {
   const result = await verifyKnowledgeGapTask(selectedKnowledgeGap.value.task_uid)
   selectedKnowledgeGap.value = result.task
   await loadKnowledgeGaps()
+}
+
+async function generateQualityTasksForCurrentRun() {
+  if (!selectedRun.value) return
+  await ElMessageBox.confirm(
+    'Generate dispatch tasks from quality buckets. This will not change product facts, media assets, or Agent rules. Continue?',
+    'Generate quality tasks',
+    {
+      confirmButtonText: 'Generate',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const result = await generateRealConversationQualityTasks(selectedRun.value.run_uid)
+  await loadQualityTasks()
+  await loadRepairTasks()
+  await loadKnowledgeGaps()
+  ElMessage.success(`Generated ${result.generated}, updated ${result.updated}, skipped ${result.skipped}`)
 }
 
 async function generateTasksForCurrentRun() {
@@ -752,6 +814,73 @@ onMounted(loadRuns)
             </el-button>
           </div>
         </template>
+        <section class="repair-task-panel quality-task-panel">
+          <div class="task-header">
+            <div class="sub-title">Quality task groups</div>
+            <el-button size="small" type="primary" :disabled="!selectedRun" @click="generateQualityTasksForCurrentRun">
+              Generate dispatch tasks
+            </el-button>
+          </div>
+          <div class="gap-cards">
+            <div v-for="(count, bucket) in qualityTasks?.summary || {}" :key="bucket">
+              <span>{{ bucket }}</span>
+              <strong>{{ count }}</strong>
+            </div>
+          </div>
+          <div class="task-filters">
+            <el-select v-model="qualityTaskBucketFilter" size="small">
+              <el-option
+                v-for="option in qualityTaskBucketOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="qualityTaskOwnerFilter" size="small">
+              <el-option
+                v-for="option in qualityTaskOwnerOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="qualityTaskFixAreaFilter" size="small">
+              <el-option
+                v-for="option in qualityTaskFixAreaOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="qualityTaskPriorityFilter" size="small">
+              <el-option label="all priorities" value="" />
+              <el-option
+                v-for="option in taskPriorityOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </div>
+          <el-empty v-if="!qualityTaskGroups.length" description="No quality task groups" />
+          <div v-else class="task-list">
+            <article v-for="group in qualityTaskGroups" :key="group.task_group_uid" class="task-item">
+              <strong>{{ group.quality_bucket }} / {{ group.primary_failure_type }}</strong>
+              <span>{{ group.suggested_fix_area }} / {{ group.suggested_owner }} / {{ group.priority }}</span>
+              <span>{{ group.query_fact_type || '-' }} / samples {{ group.sample_count }}</span>
+              <span>{{ group.recommended_action }}</span>
+              <div class="task-samples">
+                <div v-for="sample in group.representative_samples" :key="sample.turn_uid" class="task-sample">
+                  <strong>{{ sample.turn_uid }} / {{ sample.query_fact_type || '-' }}</strong>
+                  <span>{{ sample.failure_labels.join(', ') || '-' }}</span>
+                  <p>{{ sample.buyer_message_preview }}</p>
+                  <p>{{ sample.agent_reply_preview }}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <section class="repair-task-panel">
           <div class="task-header">
             <div class="sub-title">修复任务队列</div>

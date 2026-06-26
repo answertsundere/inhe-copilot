@@ -195,6 +195,46 @@ def get_real_conversation_run(run_uid):
         db.close()
 
 
+@eval_bp.route("/api/eval/real-conversation/runs/<run_uid>/quality-tasks", methods=["GET"])
+@eval_bp.route("/api/kb/eval/real-conversation/runs/<run_uid>/quality-tasks", methods=["GET"])
+@require_supervisor
+def get_real_conversation_quality_tasks(run_uid):
+    from app.services.real_conversation_quality_task_service import RealConversationQualityTaskService
+
+    db = _db()
+    try:
+        result = RealConversationQualityTaskService().build_for_run(db, sanitize_text(run_uid))
+        return jsonify(sanitize_obj(result))
+    except ValueError as exc:
+        return jsonify({"error": sanitize_text(str(exc))}), 404
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/real-conversation/runs/<run_uid>/quality-tasks/generate", methods=["POST"])
+@eval_bp.route("/api/kb/eval/real-conversation/runs/<run_uid>/quality-tasks/generate", methods=["POST"])
+@require_supervisor
+def generate_real_conversation_quality_tasks(run_uid):
+    from app.services.real_conversation_quality_task_service import RealConversationQualityTaskService
+
+    db = _db()
+    try:
+        result = RealConversationQualityTaskService().generate_for_run(
+            db,
+            sanitize_text(run_uid),
+            created_by=sanitize_text(current_user_name()),
+        )
+        return jsonify(sanitize_obj({"ok": True, **result.to_dict()})), 201
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 404
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @eval_bp.route("/api/eval/real-conversation/turns/<turn_uid>", methods=["GET"])
 @eval_bp.route("/api/kb/eval/real-conversation/turns/<turn_uid>", methods=["GET"])
 @require_supervisor

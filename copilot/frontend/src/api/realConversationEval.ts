@@ -222,6 +222,43 @@ export interface KnowledgeGapSummary {
   verified_count: number
 }
 
+export interface RealConversationQualityTaskSample {
+  case_uid: string
+  turn_uid: string
+  buyer_message_preview: string
+  agent_reply_preview: string
+  query_fact_type: string
+  failure_labels: string[]
+  latency_ms?: number
+  requires_human_review?: boolean
+}
+
+export interface RealConversationQualityTaskGroup {
+  task_group_uid: string
+  run_uid: string
+  quality_bucket: string
+  primary_failure_type: string
+  suggested_fix_area: string
+  suggested_owner: string
+  query_fact_type: string
+  product_group_key?: string
+  priority: 'low' | 'medium' | 'high'
+  sample_count: number
+  representative_samples: RealConversationQualityTaskSample[]
+  recommended_action: string
+  next_step: string
+}
+
+export interface RealConversationQualityTasks {
+  run_uid: string
+  summary: Record<string, number>
+  counts_by_bucket: Record<string, number>
+  counts_by_owner: Record<string, number>
+  counts_by_fix_area: Record<string, number>
+  task_group_count: number
+  task_groups: RealConversationQualityTaskGroup[]
+}
+
 export async function fetchRealConversationRuns() {
   const res = await apiClient.get('/eval/real-conversation/runs')
   return (res.data?.items || []) as RealConversationRun[]
@@ -235,6 +272,22 @@ export async function fetchRealConversationRun(runUid: string) {
     failures: RealConversationFailure[]
     reviews?: RealConversationReview[]
     summary?: RealConversationRunSummary
+  }
+}
+
+export async function fetchRealConversationQualityTasks(runUid: string) {
+  const res = await apiClient.get(`/eval/real-conversation/runs/${runUid}/quality-tasks`)
+  return res.data as RealConversationQualityTasks
+}
+
+export async function generateRealConversationQualityTasks(runUid: string) {
+  const res = await apiClient.post(`/eval/real-conversation/runs/${runUid}/quality-tasks/generate`)
+  return res.data as {
+    generated: number
+    updated: number
+    skipped: number
+    repair_tasks?: Record<string, unknown>
+    knowledge_gap_tasks?: Record<string, unknown>
   }
 }
 
