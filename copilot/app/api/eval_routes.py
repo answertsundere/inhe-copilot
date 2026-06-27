@@ -569,16 +569,44 @@ def update_knowledge_gap_status(task_uid):
 def draft_knowledge_gap(task_uid):
     from app.services.knowledge_gap_draft_service import KnowledgeGapDraftService
 
+    data = request.get_json(silent=True) or {}
     db = _db()
     try:
         draft = KnowledgeGapDraftService().generate_draft(
             db,
             sanitize_text(task_uid),
             generated_by="ai",
+            force_regenerate=data.get("force_regenerate") is True,
         )
         if draft is None:
             return jsonify({"error": "knowledge gap task not found"}), 404
         return jsonify(sanitize_obj({"ok": True, "draft": draft})), 201
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/draft/mark-ready", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/draft/mark-ready", methods=["POST"])
+@require_supervisor
+def mark_ready_knowledge_gap_draft(task_uid):
+    from app.services.knowledge_gap_draft_service import KnowledgeGapDraftService
+
+    db = _db()
+    try:
+        result = KnowledgeGapDraftService().mark_ready(
+            db,
+            sanitize_text(task_uid),
+            reviewer=sanitize_text(current_user_name()),
+        )
+        if result is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, **result}))
     except ValueError as exc:
         db.rollback()
         return jsonify({"error": sanitize_text(str(exc))}), 400

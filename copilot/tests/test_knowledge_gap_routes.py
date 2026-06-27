@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 import app.db as db_module
 from app.api.eval_routes import eval_bp
 from app.db import Base
-from app.models.eval_tables import EvalFailure, EvalRun, EvalTrace, KnowledgeGapTask
+from app.models.eval_tables import EvalFailure, EvalRun, EvalTrace, KnowledgeGapDraft, KnowledgeGapTask
 
 
 def _make_client(monkeypatch):
@@ -131,11 +131,49 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert draft.get_json()["draft"]["review_status"] == "pending_review"
     assert draft.get_json()["draft"]["publish_target"] == "staging"
     assert draft.get_json()["draft"]["draft_type"] == "media_asset_request"
+    draft_content = draft.get_json()["draft"]["draft_content"]
+    assert draft_content["publish_readiness"] == "needs_media_upload"
+    assert draft_content["publish_payload"]["required_status"] == "approved"
+    assert draft_content["publish_payload"]["required_usable"] is True
+    assert draft_content["reviewer_checklist"]
+    assert "http" not in str(draft_content["publish_payload"]).lower()
+
+    duplicate_draft = client.post(
+        f"/api/eval/knowledge-gaps/{task_uid}/draft",
+        headers={"X-User-Role": "admin", "X-User-Name": "qa"},
+    )
+    assert duplicate_draft.status_code == 201
+    assert duplicate_draft.get_json()["draft"]["draft_uid"] == draft.get_json()["draft"]["draft_uid"]
+
+    forced_draft = client.post(
+        f"/api/eval/knowledge-gaps/{task_uid}/draft",
+        json={"force_regenerate": True},
+        headers={"X-User-Role": "admin", "X-User-Name": "qa"},
+    )
+    assert forced_draft.status_code == 201
+    assert forced_draft.get_json()["draft"]["draft_uid"] != draft.get_json()["draft"]["draft_uid"]
+
+    db = session_factory()
+    try:
+        assert db.query(KnowledgeGapDraft).filter(KnowledgeGapDraft.task_uid == task_uid).count() == 2
+    finally:
+        db.close()
+
+    mark_ready = client.post(
+        f"/api/eval/knowledge-gaps/{task_uid}/draft/mark-ready",
+        headers={"X-User-Role": "supervisor", "X-User-Name": "qa"},
+    )
+    assert mark_ready.status_code == 400
+    assert "not ready" in mark_ready.get_json()["error"]
 
     detail_after_draft = client.get(f"/api/eval/knowledge-gaps/{task_uid}", headers={"X-User-Role": "operator"})
     assert detail_after_draft.status_code == 200
     assert detail_after_draft.get_json()["task"]["status"] == "draft_ready"
     assert detail_after_draft.get_json()["drafts"]
+    detail_draft_content = detail_after_draft.get_json()["drafts"][0]["draft_content"]
+    assert detail_draft_content["publish_readiness"] == "needs_media_upload"
+    assert detail_draft_content["publish_payload"]
+    assert detail_draft_content["reviewer_checklist"]
 
 
 def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
@@ -230,3 +268,50 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
         assert db.query(KnowledgeGapTask).one().status == "resolved_pending_retest"
     finally:
         db.close()
+
+
+def test_knowledge_gap_mark_ready_allows_verified_product_field_draft(monkeypatch):
+    client, session_factory = _make_client(monkeypatch)
+    db = session_factory()
+    try:
+        task = KnowledgeGapTask(
+            task_uid="kgap_verified_product",
+            gap_type="product_field_gap",
+            query_fact_type="dimensions",
+            missing_evidence_type="product_dimensions",
+            status="open",
+            sample_count=1,
+            summary="verified product field gap",
+        )
+        task.set_metadata({
+            "gap_category": "product_field_gap",
+            "required_evidence_type": "product_dimensions",
+            "target_system": "product_profile",
+            "missing_fields": ["dimensions"],
+            "evidence_status": "verified",
+        })
+        db.add(task)
+        db.commit()
+    finally:
+        db.close()
+
+    draft = client.post(
+        "/api/eval/knowledge-gaps/kgap_verified_product/draft",
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    )
+    assert draft.status_code == 201
+    assert draft.get_json()["draft"]["draft_content"]["publish_readiness"] == "ready_for_review"
+
+    mark_ready = client.post(
+        "/api/eval/knowledge-gaps/kgap_verified_product/draft/mark-ready",
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    )
+    assert mark_ready.status_code == 200
+    assert mark_ready.get_json()["task"]["status"] == "pending_review"
+    assert mark_ready.get_json()["draft"]["review_status"] == "ready_for_review"
+
+    forbidden = client.post(
+        "/api/eval/knowledge-gaps/kgap_verified_product/draft/mark-ready",
+        headers={"X-User-Role": "operator"},
+    )
+    assert forbidden.status_code == 403

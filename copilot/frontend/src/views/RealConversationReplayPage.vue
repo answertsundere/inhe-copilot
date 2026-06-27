@@ -14,6 +14,7 @@ import {
   generateRealConversationQualityTasks,
   generateKnowledgeGapDraft,
   generateKnowledgeGapTasks,
+  markKnowledgeGapDraftReady,
   generateRepairTasks,
   previewKnowledgeGapRetest,
   rejectKnowledgeGapTask,
@@ -296,6 +297,12 @@ const knowledgeGapTargetSystemOptions = computed(() => {
   return [{ label: 'all target systems', value: '' }, ...values.map((value) => ({ label: value, value }))]
 })
 
+const latestKnowledgeGapDraft = computed(() => selectedKnowledgeGapDrafts.value[0] || null)
+const latestKnowledgeGapDraftContent = computed(() => latestKnowledgeGapDraft.value?.draft_content || {})
+const canMarkKnowledgeGapDraftReady = computed(
+  () => latestKnowledgeGapDraftContent.value.publish_readiness === 'ready_for_review',
+)
+
 function formatJson(value: unknown) {
   return JSON.stringify(value || {}, null, 2)
 }
@@ -459,13 +466,45 @@ function formatStringList(value: unknown) {
   return Array.isArray(value) ? value.join(', ') : ''
 }
 
+function formatUnknownList(value: unknown) {
+  if (!Array.isArray(value)) return ''
+  return value.map((item) => String(item)).join(', ')
+}
+
 async function generateDraftForKnowledgeGap() {
   if (!selectedKnowledgeGap.value) return
-  const result = await generateKnowledgeGapDraft(selectedKnowledgeGap.value.task_uid)
+  const result = await generateKnowledgeGapDraft(selectedKnowledgeGap.value.task_uid, { force_regenerate: false })
   selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value]
   await loadKnowledgeGaps()
   if (selectedKnowledgeGap.value) await openKnowledgeGapTask(selectedKnowledgeGap.value)
   ElMessage.success('Draft created for review. It was not published to the formal knowledge base.')
+}
+
+async function regenerateDraftForKnowledgeGap() {
+  if (!selectedKnowledgeGap.value) return
+  await ElMessageBox.confirm(
+    'Regenerate the staging draft from the current task data? This will not publish anything.',
+    'Regenerate staging draft',
+    {
+      confirmButtonText: 'Regenerate',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const result = await generateKnowledgeGapDraft(selectedKnowledgeGap.value.task_uid, { force_regenerate: true })
+  selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value]
+  await loadKnowledgeGaps()
+  if (selectedKnowledgeGap.value) await openKnowledgeGapTask(selectedKnowledgeGap.value)
+  ElMessage.success('Draft regenerated for review.')
+}
+
+async function markSelectedKnowledgeGapDraftReady() {
+  if (!selectedKnowledgeGap.value) return
+  const result = await markKnowledgeGapDraftReady(selectedKnowledgeGap.value.task_uid)
+  selectedKnowledgeGap.value = result.task
+  selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value.filter((draft) => draft.draft_uid !== result.draft.draft_uid)]
+  await loadKnowledgeGaps()
+  ElMessage.success('Draft marked ready for supervisor review.')
 }
 
 async function triageKnowledgeGap() {
@@ -1363,7 +1402,16 @@ onMounted(loadRuns)
             />
             <div class="gap-actions">
               <el-button size="small" type="primary" @click="saveKnowledgeGapTask">淇濆瓨</el-button>
-              <el-button size="small" @click="generateDraftForKnowledgeGap">鐢熸垚寰呭鑽夌</el-button>
+              <el-button size="small" @click="generateDraftForKnowledgeGap">生成待审草稿</el-button>
+              <el-button size="small" @click="regenerateDraftForKnowledgeGap">重新生成草稿</el-button>
+              <el-button
+                v-if="canMarkKnowledgeGapDraftReady"
+                size="small"
+                type="success"
+                @click="markSelectedKnowledgeGapDraftReady"
+              >
+                标记待审核
+              </el-button>
               <el-button size="small" type="success" @click="approveKnowledgeGap">瀹℃牳閫氳繃</el-button>
               <el-button size="small" type="warning" @click="verifyKnowledgeGap">人工确认已验证</el-button>
             </div>
@@ -1385,7 +1433,22 @@ onMounted(loadRuns)
 
             <div v-if="selectedKnowledgeGapDrafts.length" class="gap-drafts">
               <div v-for="draft in selectedKnowledgeGapDrafts" :key="draft.draft_uid" class="gap-draft">
-                <strong>{{ draft.draft_type }} / {{ draft.review_status }} / {{ draft.publish_target }}</strong>
+                <strong>
+                  {{ draft.draft_type }} / {{ draft.review_status }} / staging={{ draft.publish_target }}
+                </strong>
+                <div class="draft-fields">
+                  <span>publish_readiness：{{ draft.draft_content.publish_readiness || '-' }}</span>
+                  <span>
+                    business target：{{ draft.draft_content.business_publish_target || draft.draft_content.target_system || '-' }}
+                  </span>
+                  <span>blocked reason：{{ draft.draft_content.publish_blocked_reason || '-' }}</span>
+                  <span>required fields：{{ formatUnknownList(draft.draft_content.required_review_fields) || '-' }}</span>
+                  <span>checklist：{{ formatUnknownList(draft.draft_content.reviewer_checklist) || '-' }}</span>
+                </div>
+                <details>
+                  <summary>view publish candidate</summary>
+                  <pre>{{ formatJson(draft.draft_content.publish_payload) }}</pre>
+                </details>
                 <pre>{{ formatJson(draft.draft_content) }}</pre>
               </div>
             </div>
@@ -1927,6 +1990,14 @@ onMounted(loadRuns)
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.draft-fields {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
 }
 
 .gap-reject-input {

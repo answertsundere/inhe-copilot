@@ -458,9 +458,14 @@ export async function fetchKnowledgeGapTask(taskUid: string) {
   }
 }
 
-export async function generateKnowledgeGapDraft(taskUid: string) {
-  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/draft`)
+export async function generateKnowledgeGapDraft(taskUid: string, payload?: { force_regenerate?: boolean }) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/draft`, payload || {})
   return res.data as { draft: KnowledgeGapDraft }
+}
+
+export async function markKnowledgeGapDraftReady(taskUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/draft/mark-ready`)
+  return res.data as { task: KnowledgeGapTask; draft: KnowledgeGapDraft }
 }
 
 export async function updateKnowledgeGapTask(taskUid: string, payload: {
