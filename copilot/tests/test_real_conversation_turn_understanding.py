@@ -73,6 +73,11 @@ def test_logistics_and_aftersales_short_questions_get_fact_type():
         "怎么补偿": "aftersales",
         "残次品吗": "aftersales",
         "还没到一年呢": "aftersales",
+        "这个断了": "aftersales",
+        "板子裂了": "aftersales",
+        "配件坏了怎么办": "aftersales",
+        "收到的配件只有两个": "aftersales",
+        "配件只有两个": "aftersales",
     }
     for message, fact_type in cases.items():
         result = _understand(message)
@@ -131,6 +136,29 @@ def test_installation_video_and_dimension_questions_are_actionable():
     assert deictic_size["query_fact_type"] == "dimensions"
     assert install["turn_actionability"] == "actionable_question"
     assert install["query_fact_type"] == "installation"
+
+
+def test_structure_function_questions_are_not_space_or_scene_questions():
+    cases = (
+        "这个一边能放下来吗",
+        "侧板可以翻下来吗",
+        "护栏能不能放下",
+    )
+    for message in cases:
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "structure_function"
+        assert result["query_fact_type"] not in {"placement_scene", "space_fit", "dimensions"}
+
+
+def test_structure_function_does_not_steal_scene_or_space_fit_questions():
+    bedroom = _understand("这个放阳台可以吗")
+    small_space = _understand("空间小能放下吗")
+
+    assert bedroom["turn_actionability"] == "actionable_question"
+    assert bedroom["query_fact_type"] == "placement_scene"
+    assert small_space["turn_actionability"] == "actionable_question"
+    assert small_space["query_fact_type"] == "space_fit"
 
 
 def test_can_only_becomes_actionable_with_business_action_or_question_marker():

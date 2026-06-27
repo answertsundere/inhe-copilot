@@ -43,6 +43,7 @@ ACCESSORY_AVAILABILITY_FACT_TYPES = {"accessory_availability"}
 AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy"}
 DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
+STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
 ACCESSORY_MESSAGE_TERMS = (
     "部件",
@@ -87,12 +88,29 @@ MISMATCH_CONTEXT_TERMS = (
     "发过来",
     "发给我",
 )
+DAMAGED_ITEM_TERMS = (
+    "断了",
+    "裂了",
+    "破了",
+    "坏了",
+    "掉了",
+    "碎了",
+    "开裂",
+    "变形",
+    "缺角",
+    "断裂",
+    "损坏",
+    "破损",
+    "压坏",
+    "磕坏",
+)
 _POLICY_FACT_TYPES = (
     INSTALLATION_FACT_TYPES
     | ACCESSORY_FACT_TYPES
     | AFTERSALES_FACT_TYPES
     | PROMOTION_FACT_TYPES
     | DIMENSION_FACT_TYPES
+    | STRUCTURE_FUNCTION_FACT_TYPES
     | GROSS_WEIGHT_FACT_TYPES
     | ACCESSORY_AVAILABILITY_FACT_TYPES
 )
@@ -215,12 +233,49 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
         }
 
     if fact_type in AFTERSALES_FACT_TYPES:
+        if _looks_like_damaged_item_question(inputs):
+            if has_product_context or has_order_context:
+                return {
+                    "reply": "亲，收到，先别担心。麻烦您拍一下断裂/破损位置、配件整体和外包装，我这边按订单核实后给您处理补发、换件或售后方案。",
+                    "requires_human_review": True,
+                    "needs_followup": True,
+                    "reply_strategy": "aftersales_damaged_item_check",
+                    "reason": missing_reason or "damaged_item_requires_aftersales_check",
+                    "forbidden_claims": forbidden_claims,
+                }
+            return {
+                "reply": "亲，收到。麻烦您补充一下订单信息、商品信息，并拍一下断裂/破损位置和配件整体，我这边核实后给您处理补发、换件或售后方案。",
+                "requires_human_review": True,
+                "needs_followup": True,
+                "reply_strategy": "request_context_for_damaged_aftersales",
+                "reason": missing_reason or "order_or_product_context_missing",
+                "forbidden_claims": forbidden_claims,
+            }
         return {
             "reply": "亲，您反馈的资料和实物可能不一致，我先按售后核对处理。麻烦您发一下对应资料截图和实物照片，我这边确认后给您补正确资料或处理方案。",
             "requires_human_review": True,
             "needs_followup": True,
             "reply_strategy": "aftersales_mismatch_check",
             "reason": missing_reason or "aftersales_mismatch_requires_evidence",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in STRUCTURE_FUNCTION_FACT_TYPES:
+        if has_product_context:
+            return {
+                "reply": "亲，这个需要按您这款的结构确认，尤其是侧板、护栏、挡板等位置是否支持放下、翻起或调节，不能直接按其他款式判断。您可以拍一下对应位置，我这边帮您核对，或转人工确认后再回复您。",
+                "requires_human_review": True,
+                "needs_followup": True,
+                "reply_strategy": "verify_structure_function_for_known_product",
+                "reason": missing_reason or "structure_function_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，这个结构功能需要先确认具体商品、款式或对应位置截图，我才能核对是否支持放下、翻起或调节，避免按其他款式说错。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_context_for_structure_function",
+            "reason": missing_reason or "product_context_missing",
             "forbidden_claims": forbidden_claims,
         }
 
@@ -416,6 +471,10 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
         return True
     if fact_type in AFTERSALES_FACT_TYPES and (not selected_count or _looks_like_mismatch_question(inputs)):
         return True
+    if fact_type in AFTERSALES_FACT_TYPES and _looks_like_damaged_item_question(inputs):
+        return True
+    if fact_type in STRUCTURE_FUNCTION_FACT_TYPES and not selected_count:
+        return True
     if fact_type in PROMOTION_FACT_TYPES and not selected_count:
         return True
     if fact_type in DIMENSION_FACT_TYPES and not selected_count:
@@ -488,6 +547,11 @@ def _looks_like_mismatch_question(inputs: dict[str, Any]) -> bool:
         any(term in message for term in MISMATCH_MESSAGE_TERMS)
         and any(term in message for term in MISMATCH_CONTEXT_TERMS)
     )
+
+
+def _looks_like_damaged_item_question(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    return any(term in message for term in DAMAGED_ITEM_TERMS)
 
 
 def _looks_like_generic_handoff(reply: str) -> bool:

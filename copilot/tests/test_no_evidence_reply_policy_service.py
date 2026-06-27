@@ -122,6 +122,47 @@ def test_space_fit_with_known_product_context_mentions_reserved_space():
     assert "商品链接" not in result["reply"]
 
 
+def test_structure_function_with_known_product_context_safe_handoff():
+    result = _policy(query_fact_type="structure_function", has_product_context=True)
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_structure_function_for_known_product"
+    assert "结构" in result["reply"]
+    assert "放下" in result["reply"] or "调节" in result["reply"]
+    assert "卧室" not in result["reply"]
+    assert "客厅" not in result["reply"]
+    assert "预留位置" not in result["reply"]
+
+
+def test_damaged_aftersales_with_order_context_asks_for_damage_photos_not_product_link():
+    result = _policy(
+        query_fact_type="aftersales",
+        has_product_context=True,
+        has_order_context=True,
+        customer_message="板子裂了",
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "aftersales_damaged_item_check"
+    assert "破损位置" in result["reply"] or "断裂" in result["reply"]
+    assert "补发" in result["reply"] or "换件" in result["reply"]
+    assert "商品链接" not in result["reply"]
+
+
+def test_damaged_aftersales_without_context_requests_order_or_product_info():
+    result = _policy(
+        query_fact_type="aftersales",
+        has_product_context=False,
+        has_order_context=False,
+        customer_message="配件坏了怎么办",
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "request_context_for_damaged_aftersales"
+    assert "订单" in result["reply"]
+    assert "商品" in result["reply"]
+
+
 def test_dimensions_without_product_context_can_request_minimal_product_identity():
     result = _policy(query_fact_type="dimensions", has_product_context=False)
 

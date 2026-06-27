@@ -225,6 +225,10 @@ def _controlled_turn_contract_reply(
         if _has_product_context_for_policy(copilot_context):
             return "亲，我已经看到当前商品信息了，但这款具体尺寸还需要对照尺寸图/商品资料确认。我先帮您核对，避免不同款式尺寸说混。"
         return "亲，这个需要结合具体款式和尺寸图核对。麻烦您发一下商品链接、截图或预留位置尺寸，我再帮您确认。"
+    if expected_fact_type == "structure_function":
+        if _has_product_context_for_policy(copilot_context):
+            return "亲，这个需要按您这款的结构确认，尤其是侧板、护栏、挡板等位置是否支持放下、翻起或调节。我先帮您核对，避免按其他款式说错。"
+        return "亲，这个结构功能需要先确认具体商品、款式或对应位置截图，我再帮您核对是否支持放下、翻起或调节。"
     return "亲，这个细节需要结合具体商品资料核对。我先转人工确认后再回复您，避免给您说错。"
 
 

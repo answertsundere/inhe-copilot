@@ -659,6 +659,56 @@ def test_replay_intent_contract_allows_fact_type_aliases():
     assert {item["failure_type"] for item in installation_failures} == set()
 
 
+def test_structure_function_replay_fails_scene_or_space_answer():
+    response = {
+        "suggested_reply": "亲，这款可以放在卧室或客厅，建议留出走动空间。",
+        "query_fact_type": "placement_scene",
+        "answer_trace": {"query_fact_type": "placement_scene", "required_fact_types": ["placement_scene"]},
+        "final_answer_audit": {"passed": False, "issues": ["wrong_topic:structure_function->placement_scene"]},
+    }
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "structure_function",
+            "forbidden_reply_topics": [],
+        },
+        response,
+        classify_turn_failures(response),
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "intent_contract_mismatch" in labels
+    assert "semantic_mismatch" in labels
+
+
+def test_damaged_aftersales_handoff_is_not_semantic_mismatch():
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": False,
+            "should_score": True,
+            "query_fact_type": "aftersales",
+            "forbidden_reply_topics": [],
+        },
+        {
+            "suggested_reply": "亲，收到。麻烦您拍一下断裂/破损位置、配件整体和外包装，我这边按订单核实后给您处理补发、换件或售后方案。",
+            "query_fact_type": "aftersales_policy",
+            "answer_trace": {"query_fact_type": "aftersales_policy", "required_fact_types": ["aftersales_policy"]},
+            "final_answer_audit": {"passed": True, "expected_topics": ["aftersales"]},
+            "requires_human_review": True,
+        },
+        [],
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is True
+    assert "semantic_mismatch" not in labels
+    assert "intent_contract_mismatch" not in labels
+
+
 def test_replay_stores_expected_actual_and_effective_query_fact_type_contract(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()

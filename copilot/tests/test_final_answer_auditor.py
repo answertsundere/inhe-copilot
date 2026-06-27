@@ -78,6 +78,38 @@ def test_final_answer_auditor_allows_no_evidence_controlled_accessory_handoff():
     assert audited.get("generation_mode") != "final_answer_audit_fallback"
 
 
+def test_final_answer_auditor_blocks_structure_function_answered_as_scene():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "亲，这款可以放在卧室或客厅，建议摆在干燥平整的位置。",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "structure_function"},
+    }
+
+    audited = audit_final_answer(response, customer_message="侧板可以翻下来吗")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert any(
+        issue in audited["final_answer_audit"]["issues"]
+        for issue in ("wrong_topic:structure_function->placement_scene", "answer_not_about_customer_question")
+    )
+    assert audited["requires_human_review"] is True
+
+
+def test_final_answer_auditor_allows_damaged_aftersales_handoff():
+    response = {
+        "intent": "aftersales",
+        "suggested_reply": "亲，收到。麻烦您拍一下破损位置、配件整体和外包装，我这边按订单核实后给您处理补发、换件或售后方案。",
+        "requires_human_review": True,
+        "evidence_debug": {"query_fact_type": "aftersales_policy"},
+    }
+
+    audited = audit_final_answer(response, customer_message="板子裂了")
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["suggested_reply"] == response["suggested_reply"]
+
+
 def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
     from app import config
     from app.llm import client as llm_client

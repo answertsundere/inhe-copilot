@@ -181,6 +181,18 @@ def _strict_product_fact_boundary_issues(response: dict[str, Any], query_fact_ty
         installation_terms = ("\u5b89\u88c5\u8d44\u6599", "\u8bf4\u660e\u4e66", "\u600e\u4e48\u88c5", "\u5b89\u88c5\u89c6\u9891", "\u5b89\u88c5\u8bf4\u660e")
         if any(term in reply for term in installation_terms) and not any(term in reply for term in availability_terms):
             issues.append("accessory_availability_answered_with_installation")
+    if query_fact_type == "structure_function":
+        structure_terms = ("结构", "侧板", "护栏", "围栏", "挡板", "板子", "放下", "翻下", "翻起", "打开", "收起", "折叠", "调节", "核对", "确认")
+        scene_or_space_terms = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "预留位置", "走动空间", "宽度", "进深", "高度", "空间小")
+        has_structure_context = any(term in reply for term in structure_terms)
+        if any(term in reply for term in scene_or_space_terms) and not has_structure_context:
+            issues.append("structure_function_answered_with_scene_or_space")
+    if query_fact_type in {"aftersales", "aftersales_policy", "after_sales"}:
+        aftersales_terms = ("售后", "补发", "换件", "换货", "破损", "断裂", "裂了", "损坏", "核实", "订单")
+        wrong_fact_terms = ("安装步骤", "怎么装", "尺寸", "材质", "卧室", "客厅", "预留位置")
+        has_aftersales_context = any(term in reply for term in aftersales_terms)
+        if any(term in reply for term in wrong_fact_terms) and not has_aftersales_context:
+            issues.append("aftersales_answered_with_product_fact")
     return issues
 
 

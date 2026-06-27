@@ -169,6 +169,43 @@ def test_final_semantic_fit_blocks_accessory_availability_answered_with_installa
     assert "accessory_availability_answered_with_installation" in result["issues"]
 
 
+def test_final_semantic_fit_blocks_structure_function_answered_with_scene(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲，这款可以放卧室、客厅，建议旁边留出走动空间。",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "structure_function"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="侧板可以翻下来吗？",
+    )
+
+    assert result["passed"] is False
+    assert "structure_function_answered_with_scene_or_space" in result["issues"]
+
+
+def test_final_semantic_fit_allows_damaged_aftersales_handoff(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲，收到。麻烦您拍一下断裂/破损位置、配件整体和外包装，我这边核实后给您处理补发、换件或售后方案。",
+        "requires_human_review": True,
+        "evidence_debug": {"query_fact_type": "aftersales_policy"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="这个断了",
+    )
+
+    assert result["passed"] is True
+
+
 def test_apply_semantic_fit_result_replaces_bad_reply():
     response = {
         "suggested_reply": "bad answer",

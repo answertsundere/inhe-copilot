@@ -20,6 +20,7 @@ PRODUCT_FACT_TOPICS = {
     "load_capacity": ("承重", "载重", "多重", "压弯", "压塌", "结实", "放很多书", "容量"),
     "material": ("材质", "材料", "板材", "环保", "防潮", "受潮", "防水", "甲醛", "气味", "material"),
     "installation": ("安装", "组装", "装", "教程", "说明书", "视频", "打孔", "螺丝", "install", "installation", "video"),
+    "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
     "age_range": ("适合几岁", "适合多大", "年龄", "月龄", "宝宝", "儿童", "孩子"),
     "stock_shipping": (
         "发货", "现货", "库存", "几天到", "什么时候到", "明天能到", "能到吗", "到吗",
@@ -58,6 +59,12 @@ AFTERSALES_STRONG_TERMS = (
     "补发",
     "少件",
     "缺件",
+    "少了",
+    "只有",
+    "只发",
+    "只收到",
+    "差一个",
+    "还差",
     "漏发",
     "发错",
     "不一致",
@@ -65,6 +72,19 @@ AFTERSALES_STRONG_TERMS = (
     "对不上",
     "不一样",
     "破损",
+    "断了",
+    "裂了",
+    "破了",
+    "坏了",
+    "掉了",
+    "碎了",
+    "开裂",
+    "变形",
+    "缺角",
+    "断裂",
+    "损坏",
+    "压坏",
+    "磕坏",
     "投诉",
     "赔偿",
     "补偿",
@@ -102,6 +122,13 @@ PREFERENCE_UPDATE_TERMS = ("我要白色", "要白色", "我要大号", "要大�
 ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "层板", "板件", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带")
 ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里")
 ACCESSORY_PRESENCE_TERMS = ("有吗", "有没有", "带吗", "配吗", "含吗", "送吗")
+MISSING_QUANTITY_OBJECT_TERMS = ("配件", "零件", "部件", "螺丝", "板子", "面板", "层板", "抽屉", "件")
+MISSING_QUANTITY_TERMS = ("只有", "只发", "只收到", "少了", "少", "缺", "差一个", "还差")
+STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背")
+STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动")
+STRUCTURE_CONFIRM_TERMS = ("不是可以", "可以吗", "能不能", "是不是", "怎么", "有吗", "吗", "呢")
+STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间")
+STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
 
 
 @dataclass
@@ -207,7 +234,7 @@ class RealConversationTurnUnderstandingService:
                 skip_reason="non_actionable_acknowledgement",
             ).to_dict()
 
-        if _is_context_update(text) or _is_preference_update(text):
+        if (_is_context_update(text) or _is_preference_update(text)) and not _is_aftersales_or_mismatch(text):
             return TurnUnderstanding(
                 turn_actionability="context_update",
                 needs_agent_reply=True,
@@ -311,6 +338,8 @@ def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
         return "aftersales", []
     if _is_logistics_query(value):
         return "stock_shipping", []
+    if _is_structure_function_query(value):
+        return "structure_function", []
     if _is_accessory_usage_question(value):
         return "installation", []
     if any(term in value for term in ("视频", "教程", "说明书", "怎么装", "如何装", "安装")):
@@ -393,7 +422,7 @@ def _is_contextual_dimension_short_question(text: str) -> bool:
 def _is_actionable_question(text: str, fact_type: str) -> bool:
     if _has_question_or_request(text):
         return True
-    return bool(fact_type and not _is_context_update(text))
+    return bool(fact_type and (fact_type in {"aftersales", "stock_shipping"} or not _is_context_update(text)))
 
 
 def _has_question_or_request(text: str) -> bool:
@@ -410,9 +439,23 @@ def _is_logistics_query(text: str) -> bool:
     return any(term in value for term in PRODUCT_FACT_TOPICS["stock_shipping"])
 
 
+def _is_structure_function_query(text: str) -> bool:
+    value = str(text or "")
+    if any(term in value for term in STRUCTURE_SCENE_BLOCKERS):
+        return False
+    if any(term in value for term in STRUCTURE_SPACE_BLOCKERS):
+        return False
+    has_object = any(term in value for term in STRUCTURE_OBJECT_TERMS)
+    has_action = any(term in value for term in STRUCTURE_ACTION_TERMS)
+    has_confirm = any(term in value for term in STRUCTURE_CONFIRM_TERMS) or _has_question_or_request(value)
+    return has_object and has_action and has_confirm
+
+
 def _is_aftersales_or_mismatch(text: str) -> bool:
     value = str(text or "")
     if any(term in value for term in AFTERSALES_STRONG_TERMS):
+        return True
+    if any(term in value for term in MISSING_QUANTITY_TERMS) and any(term in value for term in MISSING_QUANTITY_OBJECT_TERMS):
         return True
     if any(term in value for term in ("退", "退款", "退货", "换", "换货", "补发", "少件", "缺件", "漏发", "发错", "破损", "售后")):
         return True

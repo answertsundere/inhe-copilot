@@ -18,6 +18,7 @@ FACT_TYPE_LABELS = {
     "dimensions": "尺寸",
     "space_fit": "空间适配",
     "placement_scene": "摆放场景",
+    "structure_function": "结构功能/可调节",
     "age_range": "适用年龄",
     "cleaning_care": "清洁保养",
     "odor": "气味",
@@ -285,6 +286,11 @@ _ACCESSORY_USAGE_BLOCKERS = (
     "用法",
     "装哪里",
 )
+_STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背")
+_STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动")
+_STRUCTURE_CONFIRM_TERMS = ("不是可以", "可以吗", "能不能", "是不是", "怎么", "有吗", "吗", "呢")
+_STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间")
+_STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
 
 
 def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
@@ -314,7 +320,28 @@ def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
             "matched_terms": matched[:5],
             "source": "product_fact_boundary_rule",
         }
+    if _is_structure_function_query(msg):
+        matched = [term for term in (*_STRUCTURE_OBJECT_TERMS, *_STRUCTURE_ACTION_TERMS, *_STRUCTURE_CONFIRM_TERMS) if term in msg]
+        return {
+            "query_fact_type": "structure_function",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("structure_function", "structure_function"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
     return None
+
+
+def _is_structure_function_query(msg: str) -> bool:
+    value = str(msg or "")
+    if any(term in value for term in _STRUCTURE_SCENE_BLOCKERS):
+        return False
+    if any(term in value for term in _STRUCTURE_SPACE_BLOCKERS):
+        return False
+    has_object = any(term in value for term in _STRUCTURE_OBJECT_TERMS)
+    has_action = any(term in value for term in _STRUCTURE_ACTION_TERMS)
+    has_confirm = any(term in value for term in _STRUCTURE_CONFIRM_TERMS)
+    return has_object and has_action and has_confirm
 
 
 def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
@@ -487,6 +514,7 @@ def is_strict_fact_type(query_fact_type: str) -> bool:
         "dimensions",
         "space_fit",
         "placement_scene",
+        "structure_function",
         "detachable",
         "variant_compare",
         "invoice_policy",
