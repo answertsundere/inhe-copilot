@@ -559,6 +559,41 @@ def test_reply_service_clears_sendable_when_gate_blocks(monkeypatch):
     assert output["block_reasons"] == ["final_audit_failed"]
 
 
+def test_reply_service_blocks_product_fact_when_query_fact_type_missing(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "product_question",
+        "risk_level": "low",
+        "suggested_reply": "这款尺寸是宽80厘米，材质为PP。",
+        "requires_human_review": False,
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze(
+        "这个呢",
+        copilot_context={
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "",
+                "should_score": True,
+            },
+            "real_context_summary": {"has_product_context": True},
+        },
+    )
+    output = suggestion.to_dict()
+
+    assert suggestion.requires_human_review is True
+    assert suggestion.reason_for_review == "query_fact_type_missing_should_not_expand_product_fact"
+    assert "宽80厘米" not in suggestion.suggested_reply
+    assert "PP" not in suggestion.suggested_reply
+    assert output["can_send"] is False
+    assert output["sendable_reply"] == ""
+    assert suggestion.evidence_debug["turn_contract_controlled"] is True
+
+
 def test_reply_service_promotes_turn_understanding_fact_type_to_graph_state(monkeypatch):
     import app.agent.graph as graph
 

@@ -425,6 +425,44 @@ def test_acknowledgement_is_traced_but_not_scored_or_sent_to_agent(monkeypatch):
         db.close()
 
 
+def test_url_only_turn_is_traced_but_not_sent_to_agent(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_url_1", source_type="real_conversation", message="url"))
+        db.add(EvalConversationTurn(
+            case_uid="case_url_1",
+            conversation_uid="conv_url_1",
+            turn_uid="turn_url_1",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="https://img.alicdn.com/imgextra/demo.jpg",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class UrlReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            raise AssertionError("URL-only media reference should not call agent")
+
+    result = UrlReplayService().replay_cases(ReplayOptions(run_uid="run_url_skip"))
+
+    assert result["turns"] == 0
+    assert result["passed"] == 0
+    assert result["failed"] == 0
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        understanding = trace.get_turn_understanding()
+        assert understanding["turn_actionability"] == "media_reference"
+        assert understanding["should_score"] is False
+        assert trace.agent_reply == ""
+        assert trace.get_failure_labels() == []
+    finally:
+        db.close()
+
+
 def test_deictic_followup_without_context_fails_context_insufficient_without_agent(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()

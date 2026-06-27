@@ -51,6 +51,61 @@ def test_short_context_dependent_questions_are_deictic_followups():
         assert result["skip_reason"] == "context_insufficient"
 
 
+def test_url_links_and_service_boilerplate_are_not_product_fact_questions():
+    for message in (
+        "https://item.taobao.com/item.htm?id=123456789",
+        "https://img.alicdn.com/imgextra/demo.jpg",
+        "您好~欢迎光临本小店，您看中哪些宝贝？",
+        "客服已接入，请稍等",
+    ):
+        result = _understand(message)
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["should_score"] is False
+        assert result["query_fact_type"] == ""
+
+
+def test_logistics_and_aftersales_short_questions_get_fact_type():
+    cases = {
+        "明天能到吗": "stock_shipping",
+        "还没发出呢吧": "stock_shipping",
+        "单号没给我呀": "stock_shipping",
+        "怎么补偿": "aftersales",
+        "残次品吗": "aftersales",
+        "还没到一年呢": "aftersales",
+    }
+    for message, fact_type in cases.items():
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == fact_type
+
+
+def test_short_deictic_dimension_needs_context_before_fact_type():
+    without_context = _understand("这个多大")
+    with_product_context = _understand("这个多大", product_hint="children cabinet")
+
+    assert without_context["turn_actionability"] == "deictic_followup"
+    assert without_context["needs_agent_reply"] is False
+    assert without_context["skip_reason"] == "context_insufficient"
+    assert without_context["query_fact_type"] == ""
+
+    assert with_product_context["turn_actionability"] == "actionable_question"
+    assert with_product_context["query_fact_type"] == "dimensions"
+
+
+def test_preference_update_and_fragment_do_not_trigger_product_facts():
+    preference = _understand("我要白色的")
+    fragment = _understand("吗", history=[{"speaker": "service", "text": "您好"}])
+
+    assert preference["turn_actionability"] == "context_update"
+    assert preference["needs_rag"] is False
+    assert "dimensions" in preference["forbidden_reply_topics"]
+
+    assert fragment["turn_actionability"] == "deictic_followup"
+    assert fragment["needs_agent_reply"] is False
+    assert fragment["skip_reason"] == "context_insufficient"
+
+
 def test_short_elliptical_followups_are_deictic_not_actionable_questions():
     for message in ("抽屉的也可以", "单门的", "7也行", "为什么", "为啥", "为何", "咋回事", "怎么回事"):
         result = _understand(message)

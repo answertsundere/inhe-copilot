@@ -21,7 +21,10 @@ PRODUCT_FACT_TOPICS = {
     "material": ("材质", "材料", "板材", "环保", "防潮", "受潮", "防水", "甲醛", "气味", "material"),
     "installation": ("安装", "组装", "装", "教程", "说明书", "视频", "打孔", "螺丝", "install", "installation", "video"),
     "age_range": ("适合几岁", "适合多大", "年龄", "月龄", "宝宝", "儿童", "孩子"),
-    "stock_shipping": ("发货", "现货", "库存", "几天到", "物流", "快递", "签收", "没收到"),
+    "stock_shipping": (
+        "发货", "现货", "库存", "几天到", "什么时候到", "明天能到", "能到吗", "到吗",
+        "物流", "快递", "签收", "没收到", "发出", "发出来", "揽收", "单号", "运单号", "取件",
+    ),
     "aftersales": (
         "退", "退款", "退货", "换", "换货", "补发", "漏发", "缺件", "少件",
         "少了", "没有", "破损", "售后", "发错", "不对", "对不上", "不一样",
@@ -64,6 +67,14 @@ AFTERSALES_STRONG_TERMS = (
     "破损",
     "投诉",
     "赔偿",
+    "补偿",
+    "残次",
+    "残次品",
+    "质保",
+    "保修",
+    "没到一年",
+    "对不上号",
+    "对上号",
 )
 
 
@@ -80,9 +91,15 @@ REQUEST_MARKERS = ("请", "发", "给我", "帮我", "麻烦", "需要", "要", 
 STATUS_TERMS = ("收到", "收到了", "到货", "到了", "拿到", "装好", "装好了", "装完", "安装好", "安装好了", "处理好", "解决了")
 ACK_TERMS = {"好", "好的", "嗯", "恩", "嗯嗯", "哦", "噢", "行", "可以", "知道了", "收到", "谢谢", "谢了", "ok", "OK"}
 REASON_FOLLOWUP_TERMS = ("为什么", "为啥", "为何", "咋回事", "怎么回事")
-DEICTIC_TERMS = ("这个", "这个呢", "这一块", "这块", "这里", "那个", "那这个", "这样的", "这种", "单门的", "抽屉的", "也行", "也可以", *REASON_FOLLOWUP_TERMS)
+DEICTIC_TERMS = ("这个", "这个呢", "这款", "这款呢", "这一块", "这块", "这里", "那个", "那这个", "这样的", "这种", "单门的", "抽屉的", "也行", "也可以", *REASON_FOLLOWUP_TERMS)
 MEDIA_TERMS = ("图里", "图片", "照片", "视频", "圈出来", "拍的", "这里", "这个位置")
-ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带")
+URL_OR_LINK_RE = re.compile(r"(https?://|www\.|item\.(taobao|tmall)\.com|img\.alicdn\.com|\.jpg|\.jpeg|\.png|\.mp4)", re.I)
+SERVICE_OR_SYSTEM_TERMS = (
+    "欢迎光临", "您好~欢迎", "自动回复", "转人工", "人工客服", "客服已接入", "请稍等",
+    "咨询量大", "不是有意怠慢", "看到消息后", "为您服务",
+)
+PREFERENCE_UPDATE_TERMS = ("我要白色", "要白色", "我要大号", "要大号", "再买一个", "备注", "换成白色", "换白色")
+ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "层板", "板件", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带")
 ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里")
 ACCESSORY_PRESENCE_TERMS = ("有吗", "有没有", "带吗", "配吗", "含吗", "送吗")
 
@@ -148,6 +165,34 @@ class RealConversationTurnUnderstandingService:
                 skip_reason="empty_message",
             ).to_dict()
 
+        if _is_url_or_link_only(text):
+            return TurnUnderstanding(
+                turn_actionability="media_reference",
+                needs_agent_reply=False,
+                needs_rag=False,
+                needs_tool=False,
+                should_score=False,
+                reply_strategy="skip",
+                context_dependency="high",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["media_reference"],
+                reason="Buyer turn is only a URL or media link, not a product-fact question.",
+                skip_reason="link_or_media_only",
+            ).to_dict()
+
+        if _is_service_or_system_fragment(text):
+            return TurnUnderstanding(
+                turn_actionability="noise",
+                needs_agent_reply=False,
+                needs_rag=False,
+                needs_tool=False,
+                should_score=False,
+                reply_strategy="skip",
+                context_dependency="high",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["noise"],
+                reason="Turn looks like service/system boilerplate rather than a buyer question.",
+                skip_reason="service_or_system_fragment",
+            ).to_dict()
+
         if _is_acknowledgement(normalized):
             return TurnUnderstanding(
                 turn_actionability="acknowledgement",
@@ -162,7 +207,7 @@ class RealConversationTurnUnderstandingService:
                 skip_reason="non_actionable_acknowledgement",
             ).to_dict()
 
-        if _is_context_update(text):
+        if _is_context_update(text) or _is_preference_update(text):
             return TurnUnderstanding(
                 turn_actionability="context_update",
                 needs_agent_reply=True,
@@ -176,19 +221,21 @@ class RealConversationTurnUnderstandingService:
             ).to_dict()
 
         fact_type, secondary_fact_types = infer_query_fact_types(text)
+        if not fact_type and _is_contextual_dimension_short_question(text) and (history or product_hint):
+            fact_type = "dimensions"
         if _is_deictic_followup(text, fact_type):
             has_context = bool(history or product_hint)
             return TurnUnderstanding(
                 turn_actionability="deictic_followup",
-                needs_agent_reply=has_context,
+                needs_agent_reply=has_context and not _is_fragment_only(text),
                 needs_rag=False,
                 needs_tool=False,
                 should_score=True,
-                reply_strategy="normal_agent" if has_context else "clarify_context",
+                reply_strategy="clarify_context",
                 context_dependency="high",
                 forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["deictic_followup"],
                 reason="Buyer turn is an elliptical follow-up that requires prior context.",
-                skip_reason="" if has_context else "context_insufficient",
+                skip_reason="" if has_context and not _is_fragment_only(text) else "context_insufficient",
             ).to_dict()
 
         if (message_type_text in {"image", "图片", "video", "视频"} or _contains_any(text, MEDIA_TERMS)) and not _is_actionable_question(text, fact_type):
@@ -262,6 +309,8 @@ def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
         return "promotion", []
     if has_aftersales:
         return "aftersales", []
+    if _is_logistics_query(value):
+        return "stock_shipping", []
     if _is_accessory_usage_question(value):
         return "installation", []
     if any(term in value for term in ("视频", "教程", "说明书", "怎么装", "如何装", "安装")):
@@ -313,6 +362,8 @@ def _is_deictic_followup(text: str, fact_type: str = "") -> bool:
     stripped = _normalize(text)
     if fact_type:
         return False
+    if _is_fragment_only(text):
+        return True
     if stripped in REASON_FOLLOWUP_TERMS:
         return True
     if stripped in {re.sub(r"[\s~～!！?？.。,…，、；;：:]+", "", item) for item in DEICTIC_TERMS}:
@@ -327,9 +378,16 @@ def _is_context_dependent_short_question(stripped: str) -> bool:
         return False
     if any(term in stripped for term in ("尺寸", "材质", "材料", "安装", "物流", "发货", "退", "换")):
         return False
-    if any(term in stripped for term in ("这个", "那个", "这样的", "这种", "这里")) and any(term in stripped for term in ("可以吗", "行吗", "能吗", "有吗")):
+    if any(term in stripped for term in ("这个", "那个", "这样的", "这种", "这里", "这款")) and any(term in stripped for term in ("可以吗", "行吗", "能吗", "有吗", "是吗", "对吗", "呢", "多大")):
+        return True
+    if any(term in stripped for term in ("哪个", "哪一个", "哪块", "哪边")):
         return True
     return bool(re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9]{1,6}的有吗", stripped))
+
+
+def _is_contextual_dimension_short_question(text: str) -> bool:
+    stripped = _normalize(text)
+    return bool(re.fullmatch(r"(这个|这款|那个|那款)?(多大|多高|多宽|多长|几层|几格)", stripped))
 
 
 def _is_actionable_question(text: str, fact_type: str) -> bool:
@@ -347,6 +405,11 @@ def _is_promotion_query(text: str) -> bool:
     return any(term in value for term in PROMOTION_TERMS)
 
 
+def _is_logistics_query(text: str) -> bool:
+    value = str(text or "")
+    return any(term in value for term in PRODUCT_FACT_TOPICS["stock_shipping"])
+
+
 def _is_aftersales_or_mismatch(text: str) -> bool:
     value = str(text or "")
     if any(term in value for term in AFTERSALES_STRONG_TERMS):
@@ -356,6 +419,34 @@ def _is_aftersales_or_mismatch(text: str) -> bool:
     mismatch_terms = ("不对", "对不上", "不一样", "不太一样", "不匹配", "不符合")
     sent_material_terms = ("说明书", "视频", "发过来", "发来的", "发给我", "物品", "东西", "买的")
     return any(term in value for term in mismatch_terms) and any(term in value for term in sent_material_terms)
+
+
+def _is_url_or_link_only(text: str) -> bool:
+    value = str(text or "").strip()
+    if not URL_OR_LINK_RE.search(value):
+        return False
+    without_urls = re.sub(
+        r"https?://\S+|www\.\S+|\S*(?:item\.taobao\.com|item\.tmall\.com|img\.alicdn\.com)\S*|\S+\.(?:jpg|jpeg|png|mp4)\S*",
+        "",
+        value,
+        flags=re.I,
+    )
+    return len(_normalize(without_urls)) <= 2
+
+
+def _is_service_or_system_fragment(text: str) -> bool:
+    value = str(text or "")
+    return any(term in value for term in SERVICE_OR_SYSTEM_TERMS)
+
+
+def _is_preference_update(text: str) -> bool:
+    value = str(text or "")
+    return any(term in value for term in PREFERENCE_UPDATE_TERMS)
+
+
+def _is_fragment_only(text: str) -> bool:
+    stripped = _normalize(text)
+    return stripped in {"吗", "呢", "啊", "这个", "这个呢", "这款", "这款呢", "哪个", "哪一个"}
 
 
 def _looks_corrupted(text: str) -> bool:

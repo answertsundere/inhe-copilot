@@ -148,6 +148,9 @@ def _apply_turn_understanding_contract_to_result(result: dict, copilot_context: 
     if actionability in {"context_update", "deictic_followup"}:
         should_control = _reply_has_product_fact_topic(reply) or bool(actual_fact_type)
         reason = f"turn_{actionability}_should_not_expand_product_fact"
+    elif actionability == "actionable_question" and not expected_fact_type and _reply_has_product_fact_topic(reply):
+        should_control = True
+        reason = "query_fact_type_missing_should_not_expand_product_fact"
     elif expected_fact_type and actual_fact_type and actual_fact_type != expected_fact_type and not _fact_types_compatible(expected_fact_type, actual_fact_type):
         should_control = True
         reason = "turn_contract_fact_type_mismatch"
