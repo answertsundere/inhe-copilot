@@ -332,6 +332,76 @@ def test_product_context_pack_turns_exact_profile_field_into_fact(product_contex
     assert pack["evidence_pack"]["matched_facts"][0]["fact_type"] == "installation"
 
 
+def test_product_context_pack_answers_gross_weight_from_product_card(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_WEIGHT_001",
+            product_name="\u6d4b\u8bd5\u7f6e\u7269\u67b6",
+            sku_list_json=json.dumps([{"sku_code": "TEST_WEIGHT_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"size": "80*40*90cm", "load_capacity": "20kg"}, ensure_ascii=False),
+            logistics_json=json.dumps({"package_weight": "7.5kg"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_WEIGHT_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u7f6e\u7269\u67b6"},
+        query="\u8fd9\u4e2a\u591a\u91cd",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="gross_weight",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "gross_weight"
+    assert "7.5kg" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+    assert "gross_weight" in pack["evidence_pack"]["matched_fields"]
+    assert "load_capacity" not in pack["evidence_pack"]["matched_fields"]
+
+
+def test_product_context_pack_answers_accessory_availability_from_product_card(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_ACCESSORY_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_ACCESSORY_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "install_method": "\u5361\u6263\u5f0f\u7ec4\u88c5",
+                "accessory_availability": "\u914d\u4ef6\u9700\u6309\u5f53\u524dSKU\u4eba\u5de5\u6838\u5bf9\u662f\u5426\u53ef\u8865\u8d2d",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_ACCESSORY_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u914d\u4ef6\u80fd\u5355\u72ec\u4e70\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="accessory_availability",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "accessory_availability"
+    assert "\u8865\u8d2d" in pack["facts"][0]["chunk_text"]
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+    assert "accessory_availability" in pack["evidence_pack"]["matched_fields"]
+    assert "installation" not in pack["evidence_pack"]["matched_fields"]
+
+
 def test_product_context_pack_does_not_infer_pinch_safety_from_profile(product_context_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack

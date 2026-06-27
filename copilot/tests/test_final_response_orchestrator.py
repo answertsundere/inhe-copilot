@@ -220,3 +220,36 @@ def test_final_response_orchestrator_rejects_llm_polish_that_shortens_display_na
 
     assert "llm_customer_language_polish" not in result
     assert result["suggested_reply"] == original
+
+
+def test_final_response_orchestrator_exposes_blocked_sendable_contract(monkeypatch):
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_polish(response, *, customer_message="", copilot_context=None):
+        response["customer_reply_polish"] = {"checked": True, "applied": False, "mode": "fake"}
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", fake_polish)
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5355\u5c42\u627f\u91cd\u7ea620kg\uff0c\u653e\u4e66\u548c\u73a9\u5177\u90fd\u591f\u7528\u3002",
+            "requires_human_review": False,
+            "evidence_debug": {
+                "query_fact_type": "gross_weight",
+                "selected_evidence": [{"fact_type": "gross_weight", "content": "\u6bdb\u91cd\u8bc1\u636e"}],
+            },
+            "reply_delivery": {"auto_send_ready": True},
+        },
+        customer_message="\u8fd9\u4e2a\u591a\u91cd\uff1f",
+    )
+
+    assert result["draft_reply"] == result["suggested_reply"]
+    assert result["sendable_reply"] == ""
+    assert result["can_send"] is False
+    assert result["reply_status"] == "needs_human_review"
+    assert "gross_weight_answered_with_load_capacity" in result["block_reasons"]
+    assert result["reply_delivery"]["auto_send_ready"] is False

@@ -22,6 +22,7 @@ from app.services.final_semantic_quality_service import (
     audit_customer_reply_semantic_fit,
 )
 from app.services.generic_service_rule_service import unsafe_promise_terms
+from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
 
 
 _POST_POLISH_INTERNAL_TERMS = (
@@ -60,6 +61,8 @@ def orchestrate_final_response(
     API handlers; doing so makes the final node order ambiguous.
     """
     pipeline: list[dict[str, Any]] = []
+
+    response = apply_no_evidence_reply_policy(response, copilot_context)
 
     response = audit_final_answer(
         response,
@@ -184,7 +187,44 @@ def orchestrate_final_response(
         "summary": "final semantic audit, redline, polish and block sync completed",
         "stages": pipeline,
     })
+    _apply_sendable_reply_contract(response, post_issues=post_issues)
     return response
+
+
+def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: list[str]) -> None:
+    draft_reply = str(response.get("suggested_reply") or "")
+    final_answer = response.get("final_answer_audit") or {}
+    semantic_fit = response.get("final_semantic_fit_audit") or {}
+    block_reasons: list[str] = []
+    if not bool(final_answer.get("passed", True)):
+        block_reasons.extend(str(item) for item in (final_answer.get("issues") or []))
+        if final_answer.get("reason"):
+            block_reasons.append(str(final_answer.get("reason")))
+    if not bool(semantic_fit.get("passed", True)):
+        block_reasons.extend(str(item) for item in (semantic_fit.get("issues") or []))
+        if semantic_fit.get("reason"):
+            block_reasons.append(str(semantic_fit.get("reason")))
+    block_reasons.extend(str(item) for item in (post_issues or []))
+    if response.get("requires_human_review"):
+        block_reasons.append(str(response.get("reason_for_review") or response.get("review_reason") or "requires_human_review"))
+    block_reasons = [item for item in dict.fromkeys(block_reasons) if item]
+    can_send = bool(draft_reply) and not block_reasons
+    response["draft_reply"] = draft_reply
+    response["can_send"] = can_send
+    response["reply_status"] = "sendable" if can_send else ("needs_human_review" if response.get("requires_human_review") else "blocked")
+    response["sendable_reply"] = draft_reply if can_send else ""
+    response["block_reasons"] = block_reasons
+    delivery = response.get("reply_delivery")
+    if isinstance(delivery, dict):
+        delivery["auto_send_ready"] = bool(delivery.get("auto_send_ready")) and can_send
+        if not can_send:
+            delivery["reason"] = "final_sendable_contract_blocked"
+        response["reply_delivery"] = delivery
+    response.setdefault("evidence_debug", {})["sendable_reply_contract"] = {
+        "can_send": can_send,
+        "reply_status": response["reply_status"],
+        "block_reasons": block_reasons,
+    }
 
 
 def _post_polish_redline_issues(reply: str) -> list[str]:

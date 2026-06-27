@@ -87,6 +87,30 @@ def test_dimensions_with_known_product_context_does_not_request_product_link_aga
     assert "SKU" not in result["reply"]
 
 
+def test_gross_weight_with_known_product_context_does_not_answer_dimensions_or_capacity():
+    result = _policy(query_fact_type="gross_weight", has_product_context=True)
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_gross_weight_for_known_product"
+    assert "\u6bdb\u91cd" in result["reply"]
+    assert "\u5305\u88c5\u91cd\u91cf" in result["reply"]
+    assert "\u5c3a\u5bf8" not in result["reply"]
+    assert "\u627f\u91cd" not in result["reply"]
+    assert "\u5546\u54c1\u94fe\u63a5" not in result["reply"]
+
+
+def test_accessory_availability_with_known_product_context_does_not_answer_installation():
+    result = _policy(query_fact_type="accessory_availability", has_product_context=True)
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_accessory_availability_for_known_product"
+    assert "\u914d\u4ef6" in result["reply"]
+    assert any(term in result["reply"] for term in ("\u5355\u72ec", "\u8865\u4e70", "\u552e\u5356"))
+    assert "\u5b89\u88c5\u8d44\u6599" not in result["reply"]
+    assert "\u600e\u4e48\u88c5" not in result["reply"]
+    assert "\u5546\u54c1\u94fe\u63a5" not in result["reply"]
+
+
 def test_space_fit_with_known_product_context_mentions_reserved_space():
     result = _policy(query_fact_type="space_fit", has_product_context=True)
 

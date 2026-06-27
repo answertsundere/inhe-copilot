@@ -1,4 +1,4 @@
-from app.services.final_answer_auditor import audit_final_answer
+from app.services.final_answer_auditor import _expected_topics, audit_final_answer
 
 
 class _FakeMessage:
@@ -35,6 +35,47 @@ class _FakeClient:
 
     def __init__(self, content):
         self.client = type("Client", (), {"chat": _FakeChat(content)})()
+
+
+def test_expected_topics_prefer_explicit_accessory_availability_over_stale_installation_intent():
+    topics = _expected_topics(
+        "\u8fd9\u4e2a\u914d\u4ef6\u6709\u5356\u5417",
+        {
+            "intent": "installation",
+            "evidence_debug": {"query_fact_type": "accessory_availability"},
+        },
+    )
+
+    assert "accessory_availability" in topics
+    assert "installation" not in topics
+
+
+def test_final_answer_auditor_allows_no_evidence_controlled_accessory_handoff():
+    response = {
+        "intent": "installation",
+        "suggested_reply": "\u4eb2\uff0c\u6211\u6309\u8fd9\u6b3e\u5e2e\u60a8\u6838\u5bf9\u8fd9\u4e2a\u914d\u4ef6\u662f\u5426\u80fd\u5355\u72ec\u8865\u4e70/\u552e\u5356\u3002",
+        "requires_human_review": True,
+        "answer_mode": "no_evidence_controlled_reply",
+        "evidence_debug": {
+            "answer_mode": "no_evidence_clarification",
+            "query_fact_type": "accessory_availability",
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "query_fact_type": "accessory_availability",
+                    "answerability": "missing_product_fact",
+                    "missing_fields": ["accessory_availability"],
+                }
+            },
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="\u8fd9\u4e2a\u914d\u4ef6\u6709\u5356\u5417",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited.get("generation_mode") != "final_answer_audit_fallback"
 
 
 def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):

@@ -111,6 +111,13 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
     if not query_fact_type:
         return {"issues": [], "reason": ""}
 
+    product_fact_issues = _strict_product_fact_boundary_issues(response, query_fact_type)
+    if product_fact_issues:
+        return {
+            "issues": product_fact_issues,
+            "reason": "Final reply answers a different product fact type than the customer asked.",
+        }
+
     answerability = str(evidence_pack.get("answerability") or "")
     if answerability in {"missing_product_fact", "no_product_profile", "no_product_identity"}:
         # If upstream already determined the reply is relevant and on-topic,
@@ -145,6 +152,36 @@ def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
             }
 
     return {"issues": [], "reason": ""}
+
+
+def _strict_product_fact_boundary_issues(response: dict[str, Any], query_fact_type: str) -> list[str]:
+    reply = str(response.get("suggested_reply") or "")
+    issues: list[str] = []
+    if query_fact_type == "gross_weight":
+        weight_terms = ("\u6bdb\u91cd", "\u5305\u88c5\u91cd\u91cf", "\u5546\u54c1\u91cd\u91cf", "\u91cd\u91cf", "\u6838\u5bf9")
+        load_terms = ("\u627f\u91cd", "\u8f7d\u91cd", "\u5bb9\u91cf")
+        dimension_terms = ("\u5bbd", "\u6df1", "\u9ad8", "\u5c3a\u5bf8", "\u9884\u7559", "\u7a7a\u95f4", "\u653e\u5f97\u4e0b", "\u653e\u7684\u4e0b")
+        has_weight_context = any(term in reply for term in weight_terms)
+        if any(term in reply for term in load_terms) and not has_weight_context:
+            issues.append("gross_weight_answered_with_load_capacity")
+        if any(term in reply for term in dimension_terms) and not has_weight_context:
+            issues.append("gross_weight_answered_with_dimensions_or_capacity")
+    if query_fact_type == "accessory_availability":
+        availability_terms = (
+            "\u6709\u5356",
+            "\u552e\u5356",
+            "\u5355\u72ec\u4e70",
+            "\u5355\u72ec\u8d2d\u4e70",
+            "\u8865\u4e70",
+            "\u8865\u8d2d",
+            "\u53ef\u552e",
+            "\u80fd\u4e70",
+            "\u6838\u5bf9",
+        )
+        installation_terms = ("\u5b89\u88c5\u8d44\u6599", "\u8bf4\u660e\u4e66", "\u600e\u4e48\u88c5", "\u5b89\u88c5\u89c6\u9891", "\u5b89\u88c5\u8bf4\u660e")
+        if any(term in reply for term in installation_terms) and not any(term in reply for term in availability_terms):
+            issues.append("accessory_availability_answered_with_installation")
+    return issues
 
 
 def _llm_semantic_fit_check(

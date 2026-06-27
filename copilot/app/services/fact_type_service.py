@@ -34,6 +34,11 @@ FACT_TYPE_LABELS = {
     "aftersales_policy": "售后政策",
 }
 
+FACT_TYPE_LABELS.update({
+    "gross_weight": "商品毛重/包装重量",
+    "accessory_availability": "配件售卖/补购",
+})
+
 
 _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("safety_small_parts", ("误吞", "吞了", "吞到", "卡喉", "窒息", "电池盖", "电池仓", "小零件", "零件松", "宝宝受伤", "孩子受伤", "夹到手", "夹手", "被夹", "夹到", "夹到了", "夹住")),
@@ -237,9 +242,87 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 
+_GROSS_WEIGHT_TERMS = (
+    "毛重",
+    "包装重量",
+    "商品重量",
+    "重量多少",
+    "多重",
+    "几斤",
+    "几公斤",
+    "多少斤",
+    "多少公斤",
+    "package_weight",
+    "gross_weight",
+    "gross_weight_kg",
+    "product weight",
+)
+_LOAD_CAPACITY_BLOCKERS_FOR_WEIGHT = ("承重", "载重", "能放多重", "放多重", "压弯", "放多少")
+_ACCESSORY_OBJECT_TERMS = ("配件", "小篮子", "篮子", "零件", "部件", "防倒器", "双面贴")
+_ACCESSORY_AVAILABILITY_TERMS = (
+    "有卖",
+    "卖吗",
+    "卖不卖",
+    "单独买",
+    "单独购买",
+    "单卖",
+    "补买",
+    "补购",
+    "可售",
+    "售卖",
+    "另购",
+    "有没有卖",
+    "能不能买",
+    "能买",
+)
+_ACCESSORY_USAGE_BLOCKERS = (
+    "怎么装",
+    "安装",
+    "说明书",
+    "安装视频",
+    "干啥用",
+    "什么用",
+    "用法",
+    "装哪里",
+)
+
+
+def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
+    text = str(msg or "").lower()
+    if (
+        any(term.lower() in text for term in _GROSS_WEIGHT_TERMS)
+        and not any(term in msg for term in _LOAD_CAPACITY_BLOCKERS_FOR_WEIGHT)
+    ):
+        matched = [term for term in _GROSS_WEIGHT_TERMS if term.lower() in text]
+        return {
+            "query_fact_type": "gross_weight",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("gross_weight", "gross_weight"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
+    if (
+        any(term in msg for term in _ACCESSORY_OBJECT_TERMS)
+        and any(term in msg for term in _ACCESSORY_AVAILABILITY_TERMS)
+        and not any(term in msg for term in _ACCESSORY_USAGE_BLOCKERS)
+    ):
+        matched = [term for term in (*_ACCESSORY_OBJECT_TERMS, *_ACCESSORY_AVAILABILITY_TERMS) if term in msg]
+        return {
+            "query_fact_type": "accessory_availability",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("accessory_availability", "accessory_availability"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
+    return None
+
+
 def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
     """Classify the business fact field a customer is asking about."""
     msg = message or ""
+    product_fact_boundary = _classify_product_fact_boundary(msg)
+    if product_fact_boundary:
+        return product_fact_boundary
     promotion_hits = [kw for kw in _PROMOTION_STRONG_MARKERS if kw in msg]
     aftersales_promotion_boundary_hits = [kw for kw in _AFTERSALES_PROMOTION_BOUNDARY_MARKERS if kw in msg]
     if promotion_hits and aftersales_promotion_boundary_hits:
@@ -333,6 +416,9 @@ def infer_evidence_fact_type(item: dict | None = None, text: str = "") -> str:
         item.get("matched_title", ""),
         item.get("question", ""),
     ))
+    boundary_from_title = _classify_product_fact_boundary(title_text)
+    if boundary_from_title:
+        return str(boundary_from_title.get("query_fact_type") or "")
     if any(kw in title_text for kw in ("承重", "载重", "能放", "放多重", "多少kg", "多少斤", "结实", "稳固")):
         return "load_capacity"
     if any(kw in title_text for kw in ("尺寸", "高度", "宽度", "长度", "多高", "多宽", "多长", "规格")):
@@ -360,6 +446,9 @@ def infer_evidence_fact_type(item: dict | None = None, text: str = "") -> str:
         item.get("category_l3", ""),
         item.get("issue_type", ""),
     ))
+    boundary_from_text = _classify_product_fact_boundary(haystack)
+    if boundary_from_text:
+        return str(boundary_from_text.get("query_fact_type") or "")
     for fact_type, keywords in _UNICODE_QUERY_RULES:
         if any(kw in haystack for kw in keywords):
             return fact_type
@@ -402,4 +491,6 @@ def is_strict_fact_type(query_fact_type: str) -> bool:
         "variant_compare",
         "invoice_policy",
         "price_protection",
+        "gross_weight",
+        "accessory_availability",
     }

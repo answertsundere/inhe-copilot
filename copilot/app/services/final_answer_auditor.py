@@ -26,6 +26,7 @@ _FACT_TOPIC = {
     "material": "material",
     "certification_report": "certification",
     "load_capacity": "load_capacity",
+    "gross_weight": "gross_weight",
     "stability": "stability",
     "dimensions": "dimensions",
     "space_fit": "space_fit",
@@ -39,6 +40,7 @@ _FACT_TOPIC = {
     "price_protection": "price_protection",
     "promotion_policy": "promotion",
     "aftersales_policy": "aftersales",
+    "accessory_availability": "accessory_availability",
 }
 
 _INTENT_TOPIC = {
@@ -63,6 +65,7 @@ _TOPIC_CUES = {
     "material": ("材质", "材料", "什么料", "用料", "板材", "环保", "受潮", "防潮", "生锈"),
     "certification": ("甲醛", "检测报告", "质检", "认证", "合格证", "环保报告"),
     "load_capacity": ("承重", "放多重", "放多少", "多少本", "压弯", "结实"),
+    "gross_weight": ("毛重", "包装重量", "商品重量", "重量", "多重", "几斤", "几公斤"),
     "stability": ("会不会倒", "防倾倒", "倾倒", "倒塌", "稳不稳", "稳定", "稳固"),
     "dimensions": ("尺寸", "多高", "多宽", "多长", "长宽高", "占地", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
@@ -79,6 +82,7 @@ _TOPIC_CUES = {
         "补发", "漏发", "发错", "发漏", "少件", "少了", "缺件", "缺配件",
         "破损", "坏了", "退货", "退款", "换货", "售后", "退换",
     ),
+    "accessory_availability": ("配件有卖", "篮子有卖", "零件有卖", "单独买", "单独购买", "补买", "补购", "售卖", "可售"),
 }
 
 _UNICODE_TOPIC_CUES = {
@@ -89,6 +93,7 @@ _UNICODE_TOPIC_CUES = {
     "material": ("材质", "材料", "什么料", "用料", "板材", "环保", "受潮", "防潮", "生锈", "食品级", "PP", "HDPE"),
     "certification": ("甲醛", "检测报告", "质检", "认证", "合格证", "环保证书", "3C"),
     "load_capacity": ("承重", "载重", "放多重", "放多少", "多少本", "压弯", "结实"),
+    "gross_weight": ("毛重", "包装重量", "商品重量", "重量", "多重", "几斤", "几公斤"),
     "stability": ("会不会倒", "防倾倒", "倾倒", "倒塌", "稳不稳", "稳定", "稳固"),
     "dimensions": ("尺寸", "多高", "多宽", "多长", "长宽高", "占地", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
@@ -102,6 +107,7 @@ _UNICODE_TOPIC_CUES = {
     "price_protection": ("价保", "保价", "降价", "补差"),
     "promotion": ("优惠", "活动", "满减", "折扣", "券"),
     "aftersales": ("补发", "漏发", "发错", "少件", "少了", "缺件", "破损", "坏了", "退货", "退款", "换货", "售后"),
+    "accessory_availability": ("配件有卖", "篮子有卖", "零件有卖", "单独买", "单独购买", "补买", "补购", "售卖", "可售"),
 }
 
 _MESSAGE_REQUIRED_TOPICS = {
@@ -111,6 +117,7 @@ _MESSAGE_REQUIRED_TOPICS = {
     "detachable",
     "certification",
     "load_capacity",
+    "gross_weight",
     "stability",
     "dimensions",
     "space_fit",
@@ -122,6 +129,7 @@ _MESSAGE_REQUIRED_TOPICS = {
     "price_protection",
     "promotion",
     "aftersales",
+    "accessory_availability",
 }
 
 _PRODUCT_CARD_REQUIRED_FACT_TYPES = {
@@ -136,9 +144,11 @@ _PRODUCT_CARD_REQUIRED_FACT_TYPES = {
     "space_fit",
     "placement_scene",
     "load_capacity",
+    "gross_weight",
     "stability",
     "age_range",
     "cleaning_care",
+    "accessory_availability",
 }
 
 # Cues that are ambiguous between installation guidance and an aftersales
@@ -155,11 +165,13 @@ _CONFLICTS = {
     "material": {"cleaning", "installation", "load_capacity", "gift", "invoice"},
     "certification": {"installation", "load_capacity", "cleaning", "gift", "invoice"},
     "load_capacity": {"installation", "cleaning", "gift", "invoice"},
+    "gross_weight": {"installation", "dimensions", "space_fit", "load_capacity", "cleaning", "gift", "invoice"},
     "dimensions": {"installation", "cleaning", "gift", "invoice"},
     "space_fit": {"load_capacity", "material", "cleaning", "gift", "invoice"},
     "placement_scene": {"load_capacity", "material", "gift", "invoice"},
     "gift": {"installation", "material", "load_capacity", "dimensions"},
     "invoice": {"installation", "material", "load_capacity", "dimensions"},
+    "accessory_availability": {"installation", "dimensions", "space_fit", "load_capacity", "cleaning", "gift", "invoice"},
 }
 
 _INTERNAL_PHRASES = (
@@ -280,7 +292,7 @@ def _expected_topics(message: str, response: dict[str, Any]) -> set[str]:
     if mapped:
         topics.add(mapped)
     intent_topic = _INTENT_TOPIC.get(str(response.get("intent") or ""))
-    if intent_topic:
+    if intent_topic and not (mapped and intent_topic in _CONFLICTS.get(mapped, set())):
         topics.add(intent_topic)
     return topics
 
@@ -389,6 +401,9 @@ def _is_generic_handoff(reply: str) -> bool:
 
 def _product_card_missing_fact_but_reply_answers(response: dict[str, Any], reply: str) -> bool:
     debug = response.get("evidence_debug") or {}
+    answer_mode = str(debug.get("answer_mode") or response.get("answer_mode") or "")
+    if answer_mode in {"no_evidence_controlled_reply", "no_evidence_clarification"}:
+        return False
     if debug.get("evidence_sufficient") is True:
         return False
     evidence_pack = _product_card_evidence_pack(response)

@@ -39,9 +39,11 @@ ORDER_CONTEXT_REQUEST_TERMS = (
 
 INSTALLATION_FACT_TYPES = {"installation", "visual_asset", "media_reference"}
 ACCESSORY_FACT_TYPES = {"accessory_usage", "accessories", "packaging"}
+ACCESSORY_AVAILABILITY_FACT_TYPES = {"accessory_availability"}
 AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy"}
 DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
+GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
 ACCESSORY_MESSAGE_TERMS = (
     "部件",
     "配件",
@@ -91,6 +93,8 @@ _POLICY_FACT_TYPES = (
     | AFTERSALES_FACT_TYPES
     | PROMOTION_FACT_TYPES
     | DIMENSION_FACT_TYPES
+    | GROSS_WEIGHT_FACT_TYPES
+    | ACCESSORY_AVAILABILITY_FACT_TYPES
 )
 
 
@@ -121,6 +125,44 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
             "needs_followup": True,
             "reply_strategy": "clarify_context",
             "reason": missing_reason or "context_insufficient",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in GROSS_WEIGHT_FACT_TYPES:
+        if has_product_context or has_order_context:
+            return {
+                "reply": "\u4eb2\uff0c\u8fd9\u6b3e\u7684\u6bdb\u91cd/\u5305\u88c5\u91cd\u91cf\u9700\u8981\u6309\u5bf9\u5e94 SKU \u6838\u5bf9\u51c6\u786e\u8d44\u6599\uff0c\u6211\u5148\u5e2e\u60a8\u6838\u5b9e\u3002",
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_gross_weight_for_known_product",
+                "reason": missing_reason or "gross_weight_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，需要先确认具体商品或 SKU，我才能核对毛重/包装重量。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_product_context_for_gross_weight",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES:
+        if has_product_context or has_order_context:
+            return {
+                "reply": "亲，我按这款帮您核对这个配件是否能单独补买/售卖，避免和其他款式配件混用。",
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_accessory_availability_for_known_product",
+                "reason": missing_reason or "accessory_availability_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，需要先确认具体商品或 SKU，我才能核对对应配件是否能单独购买。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_product_context_for_accessory_availability",
+            "reason": missing_reason or "product_context_missing",
             "forbidden_claims": forbidden_claims,
         }
 
@@ -258,6 +300,9 @@ def apply_no_evidence_reply_policy(result: dict[str, Any], copilot_context: dict
 
     policy = build_no_evidence_reply_policy(inputs)
     response["suggested_reply"] = policy["reply"]
+    if inputs.get("query_fact_type"):
+        response["query_fact_type"] = inputs["query_fact_type"]
+        response["required_fact_types"] = [inputs["query_fact_type"]]
     response["requires_human_review"] = bool(response.get("requires_human_review")) or bool(policy.get("requires_human_review"))
     response["needs_clarification"] = bool(policy.get("needs_followup"))
     existing_reason = response.get("reason_for_review") or response.get("review_reason") or ""
@@ -267,11 +312,18 @@ def apply_no_evidence_reply_policy(result: dict[str, Any], copilot_context: dict
     response["answer_mode"] = "no_evidence_controlled_reply"
 
     debug = dict(response.get("evidence_debug") or {})
+    debug["answer_mode"] = "no_evidence_controlled_reply"
+    if inputs.get("query_fact_type"):
+        debug["query_fact_type"] = inputs["query_fact_type"]
+        debug["required_fact_types"] = [inputs["query_fact_type"]]
     debug["no_evidence_reply_policy"] = policy
     debug["no_evidence_reply_policy_inputs"] = inputs
     response["evidence_debug"] = debug
 
     trace = dict(response.get("answer_trace") or {})
+    if inputs.get("query_fact_type"):
+        trace["query_fact_type"] = inputs["query_fact_type"]
+        trace["required_fact_types"] = [inputs["query_fact_type"]]
     trace["no_evidence_reply_policy"] = {
         "reply_strategy": policy.get("reply_strategy"),
         "reason": policy.get("reason"),
@@ -367,6 +419,10 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if fact_type in PROMOTION_FACT_TYPES and not selected_count:
         return True
     if fact_type in DIMENSION_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in GROSS_WEIGHT_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES and not selected_count:
         return True
     return False
 

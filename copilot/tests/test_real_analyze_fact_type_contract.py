@@ -57,6 +57,23 @@ def _post(client, message: str) -> dict:
     }).get_json()
 
 
+def _assert_sendable_contract(result: dict) -> None:
+    assert "draft_reply" in result
+    assert "sendable_reply" in result
+    assert "can_send" in result
+    assert "reply_status" in result
+    assert "block_reasons" in result
+    assert isinstance(result["can_send"], bool)
+    assert isinstance(result["block_reasons"], list)
+    assert result["draft_reply"] == result["suggested_reply"]
+    if result["can_send"]:
+        assert result["sendable_reply"] == result["draft_reply"]
+        assert result["reply_status"] == "sendable"
+    else:
+        assert result["sendable_reply"] == ""
+        assert result["reply_status"] in {"blocked", "needs_human_review"}
+
+
 # ---------------------------------------------------------------------------
 # Unit-level: fact_type classifier aftersales/installation disambiguation
 # ---------------------------------------------------------------------------
@@ -169,3 +186,15 @@ def test_aftersales_missing_screw_does_not_drift_to_installation():
     assert any(token in reply for token in ("补发", "少件", "缺配件", "漏发", "发错", "售后"))
     assert "安装视频" not in reply
     assert "安装方式" not in reply
+
+
+def test_analyze_response_exposes_sendable_contract(monkeypatch):
+    monkeypatch.setattr(
+        semantic_fact_type_service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True
+    )
+    monkeypatch.setattr(
+        semantic_fact_type_service, "_classify_with_llm", _stub_llm_misclassify
+    )
+    result = _post(create_app().test_client(), "\u5546\u54c1\u6bdb\u91cd\u591a\u5c11\uff1f")
+
+    _assert_sendable_contract(result)

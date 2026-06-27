@@ -44,6 +44,7 @@ Allowed query_fact_type values:
 - material: material, material safety, environmental material, water resistance
 - certification_report: test report, certificate, 3C, formaldehyde, compliance proof
 - load_capacity: load bearing, how much weight it can hold, whether shelves bend
+- gross_weight: product gross weight, package weight, product weight for shipping/handling
 - stability: anti-tip, whether it will fall, stability when children touch it
 - dimensions: exact size, length/width/height, specification image
 - space_fit: whether it fits a room/space, how much space is needed, small bedroom, square meters, reserved width/depth/height
@@ -52,6 +53,7 @@ Allowed query_fact_type values:
 - cleaning_care: cleaning, washing, wiping, maintenance
 - odor: smell, odor, new-product smell, pungent smell, ventilation
 - installation: installation, assembly, drilling, instruction manual, installation video
+- accessory_availability: whether an accessory/part can be sold separately, repurchased, or supplemented
 - detachable: detachable, can be disassembled, removable
 - variant_compare: difference between versions/styles, which version is better
 - stock_shipping: stock, shipping time, dispatch
@@ -65,6 +67,8 @@ Allowed query_fact_type values:
 
 Semantic boundaries:
 - If the customer asks "can it fit", "is my room enough", "small bedroom", or "how much space is needed", classify as space_fit. Do not classify as load_capacity.
+- If the customer asks product/package weight or gross weight, classify as gross_weight. Do not classify as load_capacity, dimensions, or space_fit.
+- If the customer asks whether an accessory can be bought/sold/replaced separately, classify as accessory_availability. Do not classify as installation unless they ask how to install/use it.
 - If the customer asks "can it be used/placed in bedroom/living room/study/etc.", classify as placement_scene. Do not classify as material just because an evidence sentence mentions material.
 - If the customer asks "material has smell?" or "does it smell?", classify as odor, with material as secondary if useful.
 - If the customer asks about safety promises, formaldehyde, certificates, baby injury, pinching, swallowing, aftersales, invoice, or price protection, keep the high-risk/compliance boundary clear.
@@ -171,6 +175,8 @@ def _semantic_consistency_guard(
         "material": {"load_capacity", "installation", "dimensions"},
         "installation": {"load_capacity", "material", "dimensions"},
         "dimensions": {"load_capacity", "material", "installation"},
+        "gross_weight": {"load_capacity", "dimensions", "space_fit", "installation"},
+        "accessory_availability": {"installation", "accessory_usage", "dimensions", "space_fit", "load_capacity"},
         "space_fit": {"load_capacity", "material", "installation", "placement_scene"},
         "placement_scene": {"load_capacity", "material", "installation"},
         "odor": {"load_capacity", "installation", "dimensions"},

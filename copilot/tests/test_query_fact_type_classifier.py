@@ -23,10 +23,22 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u6750\u8d28\u6709\u6c14\u5473\u5417": "odor",
         "\u652f\u4ed8\u5b9d\u6253\u6b3e\u591a\u4e45\u80fd\u5230\u8d26": "aftersales_policy",
         "\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\u4e00\u822c\u591a\u4e45": "aftersales_policy",
+        "\u6bdb\u91cd\u591a\u5c11": "gross_weight",
+        "\u5546\u54c1\u6bdb\u91cd\u591a\u5c11": "gross_weight",
+        "\u8fd9\u4e2a\u591a\u91cd": "gross_weight",
+        "\u5c0f\u7bee\u5b50\u914d\u4ef6\u6709\u5356\u5417": "accessory_availability",
+        "\u914d\u4ef6\u80fd\u5355\u72ec\u4e70\u5417": "accessory_availability",
     }
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")
         assert result["query_fact_type"] == expected
+
+
+def test_accessory_installation_question_is_not_availability():
+    result = classify_query_fact_type("\u8fd9\u4e2a\u914d\u4ef6\u600e\u4e48\u88c5", "product_question")
+
+    assert result["query_fact_type"] in {"installation", "accessory_usage"}
+    assert result["query_fact_type"] != "accessory_availability"
 
 
 def test_promotion_terms_are_not_misrouted_to_aftersales():

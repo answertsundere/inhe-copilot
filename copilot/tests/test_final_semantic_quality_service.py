@@ -112,6 +112,63 @@ def test_final_semantic_fit_blocks_missing_evidence_without_human_review(monkeyp
     assert "missing_evidence_without_human_review" in result["issues"]
 
 
+def test_final_semantic_fit_blocks_gross_weight_answered_with_capacity(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5355\u5c42\u627f\u91cd\u7ea620kg\uff0c\u653e\u4e66\u548c\u73a9\u5177\u90fd\u591f\u7528\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "gross_weight"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u8fd9\u4e2a\u591a\u91cd\uff1f",
+    )
+
+    assert result["passed"] is False
+    assert "gross_weight_answered_with_load_capacity" in result["issues"]
+
+
+def test_final_semantic_fit_blocks_gross_weight_answered_with_dimensions(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5bbd80cm\u3001\u6df140cm\u3001\u9ad890cm\uff0c\u60a8\u53ef\u4ee5\u5148\u91cf\u4e00\u4e0b\u9884\u7559\u4f4d\u7f6e\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "gross_weight"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u5546\u54c1\u6bdb\u91cd\u591a\u5c11\uff1f",
+    )
+
+    assert result["passed"] is False
+    assert "gross_weight_answered_with_dimensions_or_capacity" in result["issues"]
+
+
+def test_final_semantic_fit_blocks_accessory_availability_answered_with_installation(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u4e2a\u914d\u4ef6\u6309\u8bf4\u660e\u4e66\u7684\u5b89\u88c5\u6b65\u9aa4\u5148\u5361\u4e0a\u4fa7\u677f\u5c31\u53ef\u4ee5\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "accessory_availability"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u914d\u4ef6\u80fd\u5355\u72ec\u4e70\u5417\uff1f",
+    )
+
+    assert result["passed"] is False
+    assert "accessory_availability_answered_with_installation" in result["issues"]
+
+
 def test_apply_semantic_fit_result_replaces_bad_reply():
     response = {
         "suggested_reply": "bad answer",
