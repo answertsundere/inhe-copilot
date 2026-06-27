@@ -360,6 +360,8 @@ class ReplyService:
         if isinstance(result, dict):
             result.setdefault("customer_message", customer_message)
         result = _apply_turn_understanding_contract_to_result(result, copilot_context)
+        from app.services.final_response_orchestrator import ensure_sendable_reply_contract
+        result = ensure_sendable_reply_contract(result)
 
         # 构建白名单 context_used
         context_used = self._build_context_used(result)
@@ -376,6 +378,11 @@ class ReplyService:
             "customer_emotion": result.get("customer_emotion", ""),
             "need_lookup": [],
             "suggested_reply": result.get("suggested_reply", ""),
+            "draft_reply": result.get("draft_reply", ""),
+            "sendable_reply": result.get("sendable_reply", ""),
+            "can_send": result.get("can_send", False),
+            "reply_status": result.get("reply_status", "blocked"),
+            "block_reasons": result.get("block_reasons", []),
             "reply_style": result.get("reply_style", ""),
             "policy_warnings": result.get("policy_warnings", []),
             "action_proposal": result.get("action_proposal", {}),

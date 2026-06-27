@@ -140,6 +140,11 @@ def _to_copilot_response(
         "trace_id": response.get("trace_id", ""),
         "conversation_id": context.get("conversation_id", ""),
         "suggested_reply": response.get("suggested_reply", ""),
+        "draft_reply": response.get("draft_reply", response.get("suggested_reply", "")),
+        "sendable_reply": response.get("sendable_reply", ""),
+        "can_send": bool(response.get("can_send", False)),
+        "reply_status": response.get("reply_status", "blocked"),
+        "block_reasons": response.get("block_reasons", []),
         "recommended_assets": recommended_assets or [],
         "reply_blocks": reply_blocks or [],
         "reply_delivery": reply_delivery or {"mode": "blocks", "auto_send_ready": False, "reason": "not_built"},
@@ -171,6 +176,25 @@ def _to_copilot_response(
             "customer_message_source": context.get("customer_message_source", ""),
         },
     }
+
+
+def _validate_sendable_feedback(payload: dict, action: str):
+    if action == "accepted":
+        sendable_reply = str(payload.get("sendable_reply") or "")
+        final_reply = str(payload.get("final_reply") or "")
+        if not bool(payload.get("can_send")) or not sendable_reply:
+            return jsonify({
+                "ok": False,
+                "error": "accepted requires can_send=true and non-empty sendable_reply",
+            }), 400
+        if final_reply and final_reply != sendable_reply:
+            return jsonify({
+                "ok": False,
+                "error": "accepted final_reply must match sendable_reply; use edited for manual changes",
+            }), 400
+    if action == "edited" and not str(payload.get("final_reply") or "").strip():
+        return jsonify({"ok": False, "error": "edited requires final_reply"}), 400
+    return None
 
 
 @copilot_bp.route("/api/copilot/context", methods=["POST"])
@@ -322,6 +346,10 @@ def api_copilot_feedback():
     reject_reason = payload.get("reject_reason", "")
     if action == "rejected" and not reject_reason:
         return jsonify({"ok": False, "error": "reject_reason is required when action=rejected"}), 400
+
+    validation_error = _validate_sendable_feedback(payload, action)
+    if validation_error is not None:
+        return validation_error
 
     # Look up server-side snapshot if message_id provided
     message_id = payload.get("message_id", "")

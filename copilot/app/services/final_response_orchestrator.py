@@ -227,6 +227,41 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
     }
 
 
+def ensure_sendable_reply_contract(response: dict[str, Any]) -> dict[str, Any]:
+    """Ensure legacy graph/API results expose a conservative sendable contract."""
+    response = dict(response or {})
+    response["draft_reply"] = str(response.get("draft_reply") or response.get("suggested_reply") or "")
+    requested_can_send = bool(response.get("can_send"))
+    response["sendable_reply"] = str(response.get("sendable_reply") or "")
+    reasons = response.get("block_reasons")
+    if not isinstance(reasons, list):
+        reasons = []
+    if not reasons and response.get("requires_human_review"):
+        reasons.append(str(response.get("reason_for_review") or response.get("review_reason") or "requires_human_review"))
+    if not reasons and response.get("suggested_reply") and not requested_can_send:
+        reasons.append("sendable_contract_missing")
+    response["block_reasons"] = [str(item) for item in reasons if str(item)]
+    can_send = requested_can_send and bool(response["sendable_reply"]) and not response["block_reasons"] and not response.get("requires_human_review")
+    if requested_can_send and not can_send:
+        response["block_reasons"] = response["block_reasons"] or ["sendable_contract_invalid"]
+    if not can_send:
+        response["sendable_reply"] = ""
+    response["can_send"] = can_send
+    response["reply_status"] = "sendable" if can_send else (
+        "needs_human_review" if response.get("requires_human_review") else "blocked"
+    )
+    evidence_debug = response.get("evidence_debug")
+    if not isinstance(evidence_debug, dict):
+        evidence_debug = {}
+        response["evidence_debug"] = evidence_debug
+    evidence_debug["sendable_reply_contract"] = {
+        "can_send": bool(response.get("can_send")),
+        "reply_status": response.get("reply_status", "blocked"),
+        "block_reasons": response.get("block_reasons", []),
+    }
+    return response
+
+
 def _post_polish_redline_issues(reply: str) -> list[str]:
     issues: list[str] = []
     lowered = reply.lower()

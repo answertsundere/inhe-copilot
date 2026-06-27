@@ -42,6 +42,11 @@ class ReplySuggestion(BaseModel):
     evidence_used: str = ""
     tools_to_call: list[str] = Field(default_factory=list)
     error: str = ""
+    draft_reply: str = ""
+    sendable_reply: str = ""
+    can_send: bool = False
+    reply_status: str = "blocked"
+    block_reasons: list[str] = Field(default_factory=list)
     guard_warnings: list[str] = Field(default_factory=list)
     review_id: str = ""
     context_used: dict = Field(default_factory=dict)
@@ -66,6 +71,9 @@ class ReplySuggestion(BaseModel):
     used_fact_tools: list = Field(default_factory=list)
     product_context_validation: dict = Field(default_factory=dict)
     generic_service_rule_used: dict = Field(default_factory=dict)
+
+    def model_post_init(self, __context) -> None:
+        _normalize_sendable_contract(self)
 
     def to_dict(self) -> dict:
         """转为字典（API 响应用）"""
@@ -163,6 +171,11 @@ class ReplySuggestion(BaseModel):
             evidence_used=data.get("evidence_used", ""),
             tools_to_call=data.get("tools_to_call", []),
             error=data.get("error", ""),
+            draft_reply=data.get("draft_reply", ""),
+            sendable_reply=data.get("sendable_reply", ""),
+            can_send=data.get("can_send", False),
+            reply_status=data.get("reply_status", "blocked"),
+            block_reasons=data.get("block_reasons", []),
             guard_warnings=data.get("guard_warnings", []),
             review_id=data.get("review_id", ""),
             context_used=data.get("context_used", {}),
@@ -186,6 +199,32 @@ class ReplySuggestion(BaseModel):
             product_context_validation=data.get("product_context_validation", {}),
             generic_service_rule_used=data.get("generic_service_rule_used", {}),
         )
+
+
+def _normalize_sendable_contract(suggestion: ReplySuggestion) -> None:
+    """Keep draft and sendable replies separate for all legacy/new callers."""
+    if not suggestion.draft_reply:
+        suggestion.draft_reply = suggestion.suggested_reply or ""
+
+    reasons = [str(item) for item in (suggestion.block_reasons or []) if str(item)]
+    if suggestion.requires_human_review and not reasons:
+        reasons.append(suggestion.reason_for_review or "requires_human_review")
+
+    can_send = bool(suggestion.can_send)
+    if can_send and (not suggestion.sendable_reply or suggestion.requires_human_review):
+        can_send = False
+        if not reasons:
+            reasons.append("sendable_contract_invalid")
+    if not can_send:
+        suggestion.sendable_reply = ""
+        if not reasons and suggestion.suggested_reply:
+            reasons.append("sendable_contract_missing")
+
+    suggestion.can_send = can_send
+    suggestion.reply_status = "sendable" if can_send else (
+        "needs_human_review" if suggestion.requires_human_review else "blocked"
+    )
+    suggestion.block_reasons = reasons
 
 
 class FeedbackRecord(BaseModel):

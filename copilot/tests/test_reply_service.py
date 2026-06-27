@@ -204,6 +204,71 @@ class TestReplySuggestionModel:
         d = result.to_dict()
         assert "guard_warnings" in d
 
+    def test_sendable_contract_preserved_from_dict(self):
+        data = {
+            "intent": "product_question",
+            "risk_level": "low",
+            "suggested_reply": "draft reply",
+            "draft_reply": "draft reply",
+            "sendable_reply": "sendable reply",
+            "can_send": True,
+            "reply_status": "sendable",
+            "block_reasons": [],
+        }
+
+        result = ReplySuggestion.from_dict(data)
+        output = result.to_dict()
+
+        assert result.can_send is True
+        assert result.sendable_reply == "sendable reply"
+        assert output["draft_reply"] == "draft reply"
+        assert output["sendable_reply"] == "sendable reply"
+        assert output["can_send"] is True
+        assert output["reply_status"] == "sendable"
+        assert output["block_reasons"] == []
+
+    def test_missing_sendable_contract_defaults_to_blocked(self):
+        result = ReplySuggestion.from_dict({
+            "intent": "product_question",
+            "risk_level": "low",
+            "suggested_reply": "draft only",
+        })
+        output = result.to_dict()
+
+        assert output["draft_reply"] == "draft only"
+        assert output["can_send"] is False
+        assert output["sendable_reply"] == ""
+        assert output["reply_status"] == "blocked"
+        assert "sendable_contract_missing" in output["block_reasons"]
+
+    def test_invalid_can_send_without_sendable_reply_is_blocked(self):
+        result = ReplySuggestion.from_dict({
+            "intent": "product_question",
+            "risk_level": "low",
+            "suggested_reply": "draft only",
+            "can_send": True,
+            "sendable_reply": "",
+        })
+
+        assert result.can_send is False
+        assert result.sendable_reply == ""
+        assert result.reply_status == "blocked"
+        assert "sendable_contract_invalid" in result.block_reasons
+
+    def test_blocked_contract_clears_sendable_reply(self):
+        result = ReplySuggestion.from_dict({
+            "intent": "product_question",
+            "risk_level": "low",
+            "suggested_reply": "draft only",
+            "can_send": False,
+            "sendable_reply": "must not leak",
+            "block_reasons": ["needs_review"],
+        })
+
+        assert result.can_send is False
+        assert result.sendable_reply == ""
+        assert result.block_reasons == ["needs_review"]
+
 
 class TestNoKnowledgeBaseFallback:
     """无完整知识库时的降级测试"""
@@ -413,6 +478,85 @@ def _reply_service():
     from app.services.reply_service import ReplyService
 
     return ReplyService(None, None, None)
+
+
+def test_reply_service_preserves_graph_sendable_contract(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "general",
+        "risk_level": "low",
+        "suggested_reply": "draft reply",
+        "draft_reply": "draft reply",
+        "sendable_reply": "sendable reply",
+        "can_send": True,
+        "reply_status": "sendable",
+        "block_reasons": [],
+        "requires_human_review": False,
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze("hello")
+    output = suggestion.to_dict()
+
+    assert output["suggested_reply"] == "draft reply"
+    assert output["draft_reply"] == "draft reply"
+    assert output["sendable_reply"] == "sendable reply"
+    assert output["can_send"] is True
+    assert output["reply_status"] == "sendable"
+    assert output["block_reasons"] == []
+    assert suggestion.evidence_debug["sendable_reply_contract"]["can_send"] is True
+
+
+def test_reply_service_defaults_legacy_graph_result_to_blocked(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "general",
+        "risk_level": "low",
+        "suggested_reply": "draft reply",
+        "requires_human_review": False,
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze("hello")
+    output = suggestion.to_dict()
+
+    assert output["draft_reply"] == "draft reply"
+    assert output["can_send"] is False
+    assert output["sendable_reply"] == ""
+    assert output["reply_status"] == "blocked"
+    assert "sendable_contract_missing" in output["block_reasons"]
+    assert suggestion.evidence_debug["sendable_reply_contract"]["reply_status"] == "blocked"
+
+
+def test_reply_service_clears_sendable_when_gate_blocks(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "general",
+        "risk_level": "low",
+        "suggested_reply": "draft reply",
+        "sendable_reply": "must not leak",
+        "can_send": False,
+        "reply_status": "blocked",
+        "block_reasons": ["final_audit_failed"],
+        "requires_human_review": False,
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    suggestion = _reply_service().analyze("hello")
+    output = suggestion.to_dict()
+
+    assert output["can_send"] is False
+    assert output["sendable_reply"] == ""
+    assert output["block_reasons"] == ["final_audit_failed"]
 
 
 def test_reply_service_promotes_turn_understanding_fact_type_to_graph_state(monkeypatch):

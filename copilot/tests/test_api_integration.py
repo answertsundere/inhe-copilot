@@ -185,6 +185,37 @@ class TestReviewAPI:
         assert resp.status_code == 400
 
 
+class TestFeedbackAPI:
+    def test_feedback_rejects_accepted_without_sendable_contract(self, client):
+        resp = client.post("/api/feedback", json={
+            "action": "accepted",
+            "customer_message": "hello",
+            "suggested_reply": "draft reply",
+            "can_send": False,
+            "sendable_reply": "",
+            "final_reply": "",
+        })
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "sendable_reply" in data["error"]
+
+    def test_feedback_accepts_sendable_contract(self, client):
+        resp = client.post("/api/feedback", json={
+            "action": "accepted",
+            "customer_message": "hello",
+            "suggested_reply": "draft reply",
+            "can_send": True,
+            "sendable_reply": "sendable reply",
+            "final_reply": "sendable reply",
+        })
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["ok"] is True
+        assert data["record"]["action"] == "accepted"
+
+
 class TestFeedbackStatsAPI:
     """反馈统计接口"""
 

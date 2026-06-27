@@ -66,6 +66,26 @@ class TestCopilotPanelPage:
         assert "conversation_history:latestConversationHistory" in script
         assert "setConversationHistory(data.latest_messages" in script
 
+    def test_panel_uses_sendable_contract_for_final_reply(self, client):
+        resp = client.get("/copilot-panel")
+        html = resp.data.decode("utf-8")
+
+        assert 'finalReply").value = data.suggested_reply' not in html
+        assert "sendable_reply" in html
+        assert "can_send" in html
+        assert "block_reasons" in html
+        assert 'data.can_send ? (data.sendable_reply || "") : ""' in html
+        assert 'var text = $("finalReply").value;' in html
+
+    def test_real_test_panel_copy_uses_sendable_reply_not_draft(self, client):
+        resp = client.get("/real-test")
+        html = resp.data.decode("utf-8")
+
+        assert "sendableTextFromLastResponse" in html
+        assert "lastResponse.sendable_reply" in html
+        assert "lastResponse.can_send" in html
+        assert "replyBlocksToClipboardText(lastResponse)||$('reply').textContent" not in html
+
 
 class TestCopilotContextAPI:
     def test_missing_message_returns_400(self, client):
@@ -121,6 +141,8 @@ class TestCopilotFeedbackAPI:
                 "action": "accepted",
                 "customer_message": "你好",
                 "suggested_reply": "您好",
+                "sendable_reply": "您好",
+                "can_send": True,
                 "final_reply": "您好",
                 "source": "copilot_panel",
             },
@@ -130,6 +152,25 @@ class TestCopilotFeedbackAPI:
         data = resp.get_json()
         assert data["ok"] is True
         assert data["record"]["action"] == "accepted"
+
+    def test_feedback_rejects_accepted_when_not_sendable(self, client):
+        resp = client.post(
+            "/api/copilot/feedback",
+            json={
+                "action": "accepted",
+                "customer_message": "你好",
+                "suggested_reply": "您好",
+                "sendable_reply": "",
+                "can_send": False,
+                "final_reply": "",
+                "source": "copilot_panel",
+            },
+        )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["ok"] is False
+        assert "sendable_reply" in data["error"]
 
     def test_feedback_accepts_edited(self, client):
         resp = client.post(

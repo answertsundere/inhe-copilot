@@ -1112,8 +1112,11 @@ function updateInlineImageThumbnails(){
   count.className=currentImages.length?'inline-image-status has-image':'inline-image-status';
   thumbs.innerHTML='';
 }
+function sendableTextFromLastResponse(){
+  return lastResponse && lastResponse.can_send ? (lastResponse.sendable_reply || '') : '';
+}
 async function copyReply(){
-  const text=replyBlocksToClipboardText(lastResponse)||$('reply').textContent||'';
+  const text=sendableTextFromLastResponse();
   if(!text.trim()||text.trim()==='先填写左边买家的问题，再点“生成回复”。'||text.trim()==='正在生成建议回复...')return;
   await navigator.clipboard.writeText(text);
   const btn=event&&event.target;
@@ -1299,7 +1302,7 @@ async function copyImageToClipboard(url,btn){
   }
 }
 async function copyReply(){
-  const text=replyBlocksToClipboardText(lastResponse)||$('reply').textContent||'';
+  const text=sendableTextFromLastResponse();
   if(!text.trim()||text.trim()==='先填写左边买家的问题，再点“生成回复”。'||text.trim()==='正在生成建议回复...')return;
   await navigator.clipboard.writeText(text);
   const btn=event&&event.target;
@@ -1838,8 +1841,11 @@ function exportReviews(){
 }
 async function submitFeedback(){
   const record=currentReviewPayload();if(!record.status){$('reviewSaved').textContent='请先选择“这条回复好不好”';return}
-  saveReview();const actionMap={pass:'accepted',partial:'edited',fail:'rejected',knowledge_gap:'edited',needs_review:'escalated'};
-  const res=await fetch('/ask/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_message:record.message,suggested_reply:record.suggested_reply,action:actionMap[record.status]||'edited',order_id:record.order_id,final_reply:record.final_reply,risk_level:record.risk_level,source:'real_test_panel'})});
+  saveReview();
+  const canAcceptAi=!!(lastResponse&&lastResponse.can_send&&lastResponse.sendable_reply);
+  const actionMap={pass:(canAcceptAi?'accepted':'edited'),partial:'edited',fail:'rejected',knowledge_gap:'edited',needs_review:'escalated'};
+  const feedbackAction=actionMap[record.status]||'edited';
+  const res=await fetch('/ask/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_message:record.message,suggested_reply:record.suggested_reply,action:feedbackAction,order_id:record.order_id,final_reply:record.final_reply,risk_level:record.risk_level,source:'real_test_panel',sendable_reply:lastResponse?.sendable_reply||'',can_send:!!lastResponse?.can_send,reply_status:lastResponse?.reply_status||'blocked',block_reasons:lastResponse?.block_reasons||[]})});
   if(!res.ok){$('reviewSaved').textContent='提交失败';return}
   if(record.failure_type && record.status !== 'pass'){
     const badCaseRes=await createBadCase(false);
@@ -2087,9 +2093,10 @@ function showResult(data,status,ms){
   $('mRisk').textContent=requiresReview?(reviewReason?`需人工确认：${reviewReason}`:'需人工确认'):(hasError?'生成失败':'暂时不需要');
   $('mIdentity').textContent=id.status?`${id.matched_product_name||id.i_id||id.sku_id||id.status}`:'-';
   if(!renderReplyBlocks(data)){
-    $('reply').textContent=data.suggested_reply||data.error||'';
-    $('reply').classList.toggle('empty',!data.suggested_reply&&!data.error);
+    $('reply').textContent=data.draft_reply||data.suggested_reply||data.error||'';
+    $('reply').classList.toggle('empty',!data.draft_reply&&!data.suggested_reply&&!data.error);
   }
+  if($('finalReply'))$('finalReply').value=data.can_send?(data.sendable_reply||''):'';
 
   // 建议发送素材：只展示已审核素材，客服确认后手动发送（不自动发送）
   const replyBlocks=Array.isArray(data.reply_blocks)?data.reply_blocks:[];

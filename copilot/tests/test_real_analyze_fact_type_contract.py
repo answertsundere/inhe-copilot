@@ -198,3 +198,38 @@ def test_analyze_response_exposes_sendable_contract(monkeypatch):
     result = _post(create_app().test_client(), "\u5546\u54c1\u6bdb\u91cd\u591a\u5c11\uff1f")
 
     _assert_sendable_contract(result)
+
+
+def test_gross_weight_without_evidence_returns_draft_but_not_sendable(monkeypatch):
+    monkeypatch.setattr(
+        semantic_fact_type_service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True
+    )
+    monkeypatch.setattr(
+        semantic_fact_type_service, "_classify_with_llm", _stub_llm_misclassify
+    )
+    result = _post(create_app().test_client(), "商品毛重多少？")
+
+    assert result["suggested_reply"]
+    assert result["draft_reply"] == result["suggested_reply"]
+    assert result["can_send"] is False
+    assert result["sendable_reply"] == ""
+    assert result["block_reasons"]
+    assert result["reply_status"] in {"blocked", "needs_human_review"}
+
+
+def test_accessory_availability_without_evidence_is_not_installation_fallback(monkeypatch):
+    monkeypatch.setattr(
+        semantic_fact_type_service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True
+    )
+    monkeypatch.setattr(
+        semantic_fact_type_service, "_classify_with_llm", _stub_llm_misclassify
+    )
+    result = _post(create_app().test_client(), "这个小篮子配件有卖吗")
+
+    assert result["can_send"] is False
+    assert result["sendable_reply"] == ""
+    reply = result["suggested_reply"]
+    assert reply
+    assert "安装资料" not in reply
+    assert "安装视频" not in reply
+    assert "说明书" not in reply

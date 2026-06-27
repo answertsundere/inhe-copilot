@@ -442,6 +442,7 @@
     $("evidenceBlockedBanner").style.display = "none";
     $("mediaSection").style.display = "none";
     $("mediaList").innerHTML = "";
+    updateSendableControls({ can_send: false, sendable_reply: "", block_reasons: [] });
     latestConversationHistory = [];
     renderHistory();
     lastResult = null;
@@ -481,10 +482,27 @@
     }
   }
 
+  function updateSendableControls(data) {
+    data = data || {};
+    var final = $("finalReply");
+    var finalText = final ? final.value.trim() : "";
+    var canSend = !!data.can_send && !!data.sendable_reply;
+    if ($("acceptBtn")) $("acceptBtn").disabled = !canSend;
+    if ($("copyBtn")) $("copyBtn").disabled = !finalText;
+    if ($("editAcceptBtn")) $("editAcceptBtn").disabled = !finalText;
+    var reasons = Array.isArray(data.block_reasons) ? data.block_reasons : [];
+    var humanReviewText = $("humanReviewText");
+    if (!canSend && reasons.length && humanReviewText) {
+      humanReviewText.textContent = "不可直接发送：" + reasons.join("；");
+      $("humanReviewBanner").style.display = "";
+    }
+  }
+
   function renderResult(data) {
     // AI Reply
-    $("aiReply").textContent = data.suggested_reply || data.error || "无建议";
-    $("finalReply").value = data.suggested_reply || "";
+    var draftReply = data.draft_reply || data.suggested_reply || "";
+    $("aiReply").textContent = draftReply || data.error || "无建议";
+    $("finalReply").value = data.can_send ? (data.sendable_reply || "") : "";
 
     // Risk badge
     var risk = data.risk_level || "low";
@@ -504,6 +522,7 @@
       $("reviewBadge").style.display = "none";
       $("humanReviewBanner").style.display = "none";
     }
+    updateSendableControls(data);
 
     // Evidence quality gate
     var eq = (data.evidence_debug || {}).evidence_quality || {};
@@ -590,7 +609,8 @@
 
   // --- Copy ---
   $("copyBtn").addEventListener("click", function() {
-    var text = $("finalReply").value || $("aiReply").textContent;
+    var text = $("finalReply").value;
+    if (!text) return;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
     } else {
@@ -611,6 +631,10 @@
       source: "copilot_panel",
       customer_message: (lastResult.context_echo || {}).customer_message || $("customerMessage").value,
       suggested_reply: lastResult.suggested_reply || "",
+      sendable_reply: lastResult.sendable_reply || "",
+      can_send: !!lastResult.can_send,
+      reply_status: lastResult.reply_status || "blocked",
+      block_reasons: lastResult.block_reasons || [],
       final_reply: $("finalReply").value,
       risk_level: lastResult.risk_level || "",
       need_human_review: lastResult.requires_human_review || false,
@@ -630,10 +654,14 @@
   }
 
   // --- Accept ---
-  $("acceptBtn").addEventListener("click", function() { sendFeedback("accepted"); });
+  $("acceptBtn").addEventListener("click", function() {
+    if (!lastResult || !lastResult.can_send || !lastResult.sendable_reply) return;
+    sendFeedback("accepted");
+  });
 
   // --- Edit + Accept ---
   $("editAcceptBtn").addEventListener("click", function() { sendFeedback("edited"); });
+  $("finalReply").addEventListener("input", function() { updateSendableControls(lastResult || {}); });
 
   // --- Reject flow ---
   $("rejectBtn").addEventListener("click", function() {
