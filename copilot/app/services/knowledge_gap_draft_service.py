@@ -13,15 +13,25 @@ FACT_DRAFT_TYPES = {
     "product_fact_gap": "product_field_draft",
     "product_field_gap": "product_field_draft",
     "media_asset_gap": "media_asset_request",
-    "activity_rule_gap": "policy_rule_draft",
-    "promotion_policy_gap": "policy_rule_draft",
-    "service_rule_gap": "policy_rule_draft",
-    "aftersales_policy_gap": "policy_rule_draft",
-    "human_policy_gap": "policy_rule_draft",
+    "activity_rule_gap": "promotion_policy_draft",
+    "promotion_policy_gap": "promotion_policy_draft",
+    "service_rule_gap": "aftersales_policy_draft",
+    "aftersales_policy_gap": "aftersales_policy_draft",
+    "human_policy_gap": "aftersales_policy_draft",
     "context_extraction_gap": "context_extraction_issue",
     "evidence_routing_gap": "context_extraction_issue",
     "agent_logic_gap": "context_extraction_issue",
 }
+
+REVIEW_DECISION_DRAFT_TYPES = {
+    "fill_product_field": "product_field_draft",
+    "upload_media_asset": "media_asset_request",
+    "write_aftersales_policy": "aftersales_policy_draft",
+    "write_promotion_policy": "promotion_policy_draft",
+    "fix_context_extraction": "context_extraction_issue",
+    "improve_evidence_mapping": "context_extraction_issue",
+}
+POLICY_DRAFT_TYPES = {"policy_rule_draft", "aftersales_policy_draft", "promotion_policy_draft"}
 
 
 def _new_draft_uid() -> str:
@@ -29,7 +39,14 @@ def _new_draft_uid() -> str:
 
 
 def _draft_type_for(task) -> str:
-    return FACT_DRAFT_TYPES.get(sanitize_text(task.gap_type), "context_extraction_issue")
+    metadata = task.get_metadata()
+    review_decision = sanitize_text(metadata.get("review_decision"))
+    if review_decision == "ignore_false_positive":
+        raise ValueError("ignored knowledge gap tasks do not need staging drafts")
+    return REVIEW_DECISION_DRAFT_TYPES.get(
+        review_decision,
+        FACT_DRAFT_TYPES.get(sanitize_text(task.gap_type), "context_extraction_issue"),
+    )
 
 
 def _safe_sample_list(samples) -> list[dict[str, str]]:
@@ -62,7 +79,7 @@ def _suggested_content(task, draft_type: str) -> str:
             f"请上传并审核 {required_evidence_type or 'approved media asset'}，标注适用商品、SKU、版本和可发送范围。"
             "未审核前不能承诺可直接发送，不生成临时视频链接。"
         )
-    if draft_type == "policy_rule_draft":
+    if draft_type in POLICY_DRAFT_TYPES:
         return (
             f"请补充 {required_evidence_type or fact_type} 的待审规则草稿，包含触发条件、客户需提供的信息、"
             "处理边界和人工复核条件。不得编造承诺。"
@@ -93,7 +110,7 @@ def _publish_blocked_reason(draft_type: str) -> str:
         return "product field drafts require verified evidence before publishing"
     if draft_type == "media_asset_request":
         return "media assets must be uploaded and approved before use"
-    if draft_type == "policy_rule_draft":
+    if draft_type in POLICY_DRAFT_TYPES:
         return "policy drafts require supervisor review before publishing"
     return "context or evidence mapping issues require engineering review"
 
@@ -122,7 +139,7 @@ class KnowledgeGapDraftService:
             "draft_type": draft_type,
             "proposed_title": f"{task.gap_type}: {task.query_fact_type or task.missing_evidence_type}",
             "proposed_answer": "" if draft_type == "media_asset_request" else suggested_content,
-            "proposed_rule": suggested_content if draft_type == "policy_rule_draft" else "",
+            "proposed_rule": suggested_content if draft_type in POLICY_DRAFT_TYPES else "",
             "required_review_fields": metadata.get("missing_fields") or [],
             "evidence_requirements": {
                 "required_evidence_type": _required_evidence_type(task),
@@ -156,7 +173,15 @@ class KnowledgeGapDraftService:
         )
         draft.set_draft_content(content)
         db.add(draft)
-        task.status = "drafting"
+        from app.services.knowledge_gap_task_service import _metadata_with_status_history
+
+        task.status = "draft_ready"
+        task.set_metadata(sanitize_obj(_metadata_with_status_history(
+            task,
+            status="draft_ready",
+            changed_by=sanitize_text(generated_by) or "ai",
+            note="staging draft generated",
+        )))
         db.commit()
         return sanitize_obj(draft.to_dict())
 

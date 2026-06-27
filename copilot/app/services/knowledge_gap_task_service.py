@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
@@ -43,6 +44,31 @@ PRODUCT_FIELD_FACT_TYPES = set(PRODUCT_FIELD_EVIDENCE_BY_FACT_TYPE)
 HIGH_RISK_FACT_TYPES = {"certification_report", "pinch_safety", "safety_small_parts", "material", "aftersales_policy"}
 HIGH_RISK_FAILURES = {"unsafe_claim", "unsupported_media_claim", "tool_policy_blocked"}
 KNOWLEDGE_TASK_AGENT_ERROR_FIX_AREAS = {"media_pipeline", "media_ops", "evidence_rerank"}
+KNOWLEDGE_GAP_REVIEW_DECISIONS = {
+    "fill_product_field",
+    "upload_media_asset",
+    "write_aftersales_policy",
+    "write_promotion_policy",
+    "fix_context_extraction",
+    "improve_evidence_mapping",
+    "ignore_false_positive",
+    "needs_more_samples",
+}
+KNOWLEDGE_GAP_STATUSES = {
+    "open",
+    "triaged",
+    "assigned",
+    "draft_ready",
+    "waiting_data",
+    "rejected",
+    "resolved_pending_retest",
+    "verified",
+    "closed",
+    "drafting",
+    "pending_review",
+    "approved",
+    "published",
+}
 
 
 @dataclass
@@ -65,6 +91,25 @@ class KnowledgeGapGenerationResult:
 
 def _new_task_uid() -> str:
     return f"kgap_{uuid.uuid4().hex[:12]}"
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat()
+
+
+def _metadata_with_status_history(task, *, status: str, changed_by: str = "", note: str = "") -> dict[str, Any]:
+    metadata = task.get_metadata()
+    history = metadata.get("status_history")
+    if not isinstance(history, list):
+        history = []
+    history.append(sanitize_obj({
+        "status": status,
+        "changed_by": changed_by,
+        "note": note,
+        "changed_at": _now_iso(),
+    }))
+    metadata["status_history"] = history
+    return metadata
 
 
 def _latest_run_uid(db) -> str:
@@ -664,10 +709,30 @@ class KnowledgeGapTaskService:
             .order_by(KnowledgeGapDraft.created_at.desc(), KnowledgeGapDraft.id.desc())
             .all()
         )
+        metadata = task.get_metadata()
         return sanitize_obj({
             "task": task.to_dict(),
             "samples": [row.to_dict() for row in samples],
             "drafts": [row.to_dict() for row in drafts],
+            "review_metadata": {
+                "review_decision": sanitize_text(metadata.get("review_decision")),
+                "reviewer": sanitize_text(metadata.get("reviewer")),
+                "review_note": sanitize_text(metadata.get("review_note")),
+                "assigned_to": sanitize_text(metadata.get("assigned_to")),
+                "assigned_team": sanitize_text(metadata.get("assigned_team")),
+                "due_date": sanitize_text(metadata.get("due_date")),
+                "reviewed_at": sanitize_text(metadata.get("reviewed_at")),
+                "triage_reason": sanitize_text(metadata.get("triage_reason")),
+                "next_action": sanitize_text(metadata.get("next_action")),
+                "source_run_uid": sanitize_text(metadata.get("source_run_uid")),
+            },
+            "status_history": metadata.get("status_history") if isinstance(metadata.get("status_history"), list) else [],
+            "recommended_next_action": sanitize_text(
+                metadata.get("next_action")
+                or metadata.get("recommended_action")
+                or task.suggested_fix_area
+                or task.gap_type
+            ),
         })
 
     def update_task(self, db, task_uid: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -679,6 +744,102 @@ class KnowledgeGapTaskService:
         for field in ["status", "priority", "suggested_owner", "summary"]:
             if field in payload:
                 setattr(task, field, sanitize_text(payload.get(field)))
+        if "status" in payload:
+            metadata = _metadata_with_status_history(
+                task,
+                status=sanitize_text(payload.get("status")),
+                changed_by=sanitize_text(payload.get("changed_by") or payload.get("reviewer")),
+                note=sanitize_text(payload.get("review_note") or payload.get("note")),
+            )
+            task.set_metadata(sanitize_obj(metadata))
+        db.commit()
+        return sanitize_obj(task.to_dict())
+
+    def triage_task(self, db, task_uid: str, payload: dict[str, Any], *, reviewer: str = "") -> dict[str, Any] | None:
+        from app.models.eval_tables import KnowledgeGapTask
+
+        task = db.query(KnowledgeGapTask).filter(KnowledgeGapTask.task_uid == sanitize_text(task_uid)).one_or_none()
+        if task is None:
+            return None
+        decision = sanitize_text(payload.get("review_decision"))
+        if decision not in KNOWLEDGE_GAP_REVIEW_DECISIONS:
+            raise ValueError("invalid knowledge gap review decision")
+
+        status = sanitize_text(payload.get("status"))
+        if not status:
+            status = "rejected" if decision == "ignore_false_positive" else "triaged"
+        if status not in KNOWLEDGE_GAP_STATUSES:
+            raise ValueError("invalid knowledge gap status")
+
+        priority = sanitize_text(payload.get("priority"))
+        if priority:
+            task.priority = priority
+        assigned_to = sanitize_text(payload.get("assigned_to"))
+        assigned_team = sanitize_text(payload.get("assigned_team"))
+        if assigned_to:
+            task.suggested_owner = assigned_to
+        elif assigned_team:
+            task.suggested_owner = assigned_team
+
+        metadata = _metadata_with_status_history(
+            task,
+            status=status,
+            changed_by=sanitize_text(reviewer),
+            note=sanitize_text(payload.get("review_note") or payload.get("triage_reason")),
+        )
+        metadata.update(sanitize_obj({
+            "review_decision": decision,
+            "reviewer": sanitize_text(reviewer),
+            "review_note": sanitize_text(payload.get("review_note")),
+            "assigned_to": assigned_to,
+            "assigned_team": assigned_team,
+            "due_date": sanitize_text(payload.get("due_date")),
+            "reviewed_at": _now_iso(),
+            "triage_reason": sanitize_text(payload.get("triage_reason")),
+            "next_action": sanitize_text(payload.get("next_action")),
+            "source_run_uid": sanitize_text(payload.get("source_run_uid") or metadata.get("source_run_uid")),
+        }))
+        task.status = status
+        task.set_metadata(sanitize_obj(metadata))
+        db.commit()
+        return sanitize_obj(task.to_dict())
+
+    def update_status(
+        self,
+        db,
+        task_uid: str,
+        payload: dict[str, Any],
+        *,
+        changed_by: str = "",
+    ) -> dict[str, Any] | None:
+        from app.models.eval_tables import KnowledgeGapTask
+
+        task = db.query(KnowledgeGapTask).filter(KnowledgeGapTask.task_uid == sanitize_text(task_uid)).one_or_none()
+        if task is None:
+            return None
+        status = sanitize_text(payload.get("status"))
+        if status not in KNOWLEDGE_GAP_STATUSES:
+            raise ValueError("invalid knowledge gap status")
+        priority = sanitize_text(payload.get("priority"))
+        if priority:
+            task.priority = priority
+        assigned_to = sanitize_text(payload.get("assigned_to"))
+        assigned_team = sanitize_text(payload.get("assigned_team"))
+        if assigned_to:
+            task.suggested_owner = assigned_to
+        elif assigned_team:
+            task.suggested_owner = assigned_team
+        metadata = _metadata_with_status_history(
+            task,
+            status=status,
+            changed_by=sanitize_text(changed_by),
+            note=sanitize_text(payload.get("review_note") or payload.get("note")),
+        )
+        for key in ["assigned_to", "assigned_team", "due_date", "review_note", "next_action"]:
+            if key in payload:
+                metadata[key] = sanitize_text(payload.get(key))
+        task.status = status
+        task.set_metadata(sanitize_obj(metadata))
         db.commit()
         return sanitize_obj(task.to_dict())
 

@@ -2,6 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -236,6 +237,89 @@ def test_knowledge_gap_list_filters_by_run_uid_and_falls_back_for_legacy_tasks()
         assert legacy_filtered["summary"]["total"] == 1
         assert all_rows["summary"]["filtered_by_run_uid"] is False
         assert all_rows["summary"]["total"] == 5
+    finally:
+        db.close()
+
+
+def test_knowledge_gap_triage_updates_review_metadata_and_status_history():
+    session_factory = _session_factory()
+    _seed_gap_run(session_factory)
+    db = session_factory()
+    try:
+        KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
+        task = db.query(KnowledgeGapTask).filter(KnowledgeGapTask.gap_type == "media_asset_gap").one()
+
+        updated = KnowledgeGapTaskService().triage_task(
+            db,
+            task.task_uid,
+            {
+                "review_decision": "upload_media_asset",
+                "assigned_team": "media_ops",
+                "assigned_to": "media_lead",
+                "priority": "high",
+                "due_date": "2026-07-01",
+                "review_note": "phone 13812345678 should be masked",
+                "next_action": "collect approved installation media",
+            },
+            reviewer="supervisor_a",
+        )
+
+        assert updated["status"] == "triaged"
+        assert updated["priority"] == "high"
+        assert updated["suggested_owner"] == "media_lead"
+        assert updated["review_decision"] == "upload_media_asset"
+        assert updated["assigned_team"] == "media_ops"
+        assert updated["assigned_to"] == "media_lead"
+        assert "13812345678" not in updated["review_note"]
+        assert updated["status_history"][-1]["status"] == "triaged"
+        assert updated["status_history"][-1]["changed_by"] == "supervisor_a"
+    finally:
+        db.close()
+
+
+def test_knowledge_gap_triage_rejects_illegal_review_decision():
+    session_factory = _session_factory()
+    _seed_gap_run(session_factory)
+    db = session_factory()
+    try:
+        KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
+        task = db.query(KnowledgeGapTask).first()
+
+        with pytest.raises(ValueError):
+            KnowledgeGapTaskService().triage_task(
+                db,
+                task.task_uid,
+                {"review_decision": "publish_to_formal_kb"},
+                reviewer="lead",
+            )
+    finally:
+        db.close()
+
+
+def test_knowledge_gap_status_update_records_history_and_resolved_pending_retest_is_not_verified():
+    session_factory = _session_factory()
+    _seed_gap_run(session_factory)
+    db = session_factory()
+    try:
+        KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
+        task = db.query(KnowledgeGapTask).first()
+
+        updated = KnowledgeGapTaskService().update_status(
+            db,
+            task.task_uid,
+            {
+                "status": "resolved_pending_retest",
+                "assigned_to": "knowledge_lead",
+                "review_note": "staging evidence prepared",
+            },
+            changed_by="lead",
+        )
+
+        assert updated["status"] == "resolved_pending_retest"
+        assert updated["status"] != "verified"
+        assert updated["assigned_to"] == "knowledge_lead"
+        assert updated["status_history"][-1]["status"] == "resolved_pending_retest"
+        assert updated["status_history"][-1]["changed_by"] == "lead"
     finally:
         db.close()
 

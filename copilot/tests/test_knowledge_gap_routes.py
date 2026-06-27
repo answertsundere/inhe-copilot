@@ -130,6 +130,12 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert draft.status_code == 201
     assert draft.get_json()["draft"]["review_status"] == "pending_review"
     assert draft.get_json()["draft"]["publish_target"] == "staging"
+    assert draft.get_json()["draft"]["draft_type"] == "media_asset_request"
+
+    detail_after_draft = client.get(f"/api/eval/knowledge-gaps/{task_uid}", headers={"X-User-Role": "operator"})
+    assert detail_after_draft.status_code == 200
+    assert detail_after_draft.get_json()["task"]["status"] == "draft_ready"
+    assert detail_after_draft.get_json()["drafts"]
 
 
 def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
@@ -150,7 +156,59 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
     assert update.status_code == 200
     assert update.get_json()["task"]["suggested_owner"] == "media_lead"
 
+    forbidden_triage = client.patch(
+        f"/api/eval/knowledge-gaps/{task_uid}/triage",
+        json={"review_decision": "upload_media_asset"},
+        headers={"X-User-Role": "operator"},
+    )
+    assert forbidden_triage.status_code == 403
+
+    triage = client.patch(
+        f"/api/eval/knowledge-gaps/{task_uid}/triage",
+        json={
+            "review_decision": "upload_media_asset",
+            "assigned_team": "media_ops",
+            "assigned_to": "media_lead",
+            "priority": "high",
+            "due_date": "2026-07-01",
+            "review_note": "phone 13812345678 must stay masked",
+            "next_action": "collect approved media",
+        },
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    )
+    assert triage.status_code == 200
+    triaged_task = triage.get_json()["task"]
+    assert triaged_task["status"] == "triaged"
+    assert triaged_task["review_decision"] == "upload_media_asset"
+    assert triaged_task["assigned_team"] == "media_ops"
+    assert triaged_task["assigned_to"] == "media_lead"
+    assert "13812345678" not in triaged_task["review_note"]
+    assert triaged_task["status_history"][-1]["status"] == "triaged"
+
+    bad_triage = client.patch(
+        f"/api/eval/knowledge-gaps/{task_uid}/triage",
+        json={"review_decision": "publish_to_formal_kb"},
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert bad_triage.status_code == 400
+
+    status_update = client.patch(
+        f"/api/eval/knowledge-gaps/{task_uid}/status",
+        json={"status": "waiting_data", "review_note": "need source file"},
+        headers={"X-User-Role": "admin", "X-User-Name": "ops"},
+    )
+    assert status_update.status_code == 200
+    assert status_update.get_json()["task"]["status"] == "waiting_data"
+
     client.post(f"/api/eval/knowledge-gaps/{task_uid}/draft", headers={"X-User-Role": "supervisor"})
+    detail = client.get(f"/api/eval/knowledge-gaps/{task_uid}", headers={"X-User-Role": "operator"})
+    assert detail.status_code == 200
+    detail_data = detail.get_json()
+    assert detail_data["review_metadata"]["review_decision"] == "upload_media_asset"
+    assert detail_data["status_history"]
+    assert detail_data["drafts"]
+    assert detail_data["recommended_next_action"]
+
     approve = client.post(
         f"/api/eval/knowledge-gaps/{task_uid}/approve",
         headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},

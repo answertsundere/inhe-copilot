@@ -204,11 +204,35 @@ export interface KnowledgeGapTask {
   risk_level: 'low' | 'medium' | 'high'
   sample_count: number
   priority: 'low' | 'medium' | 'high'
-  status: 'open' | 'drafting' | 'pending_review' | 'approved' | 'rejected' | 'published' | 'verified'
+  status:
+    | 'open'
+    | 'triaged'
+    | 'assigned'
+    | 'draft_ready'
+    | 'waiting_data'
+    | 'rejected'
+    | 'resolved_pending_retest'
+    | 'verified'
+    | 'closed'
+    | 'drafting'
+    | 'pending_review'
+    | 'approved'
+    | 'published'
   summary: string
   latest_buyer_questions: string[]
   latest_agent_replies: string[]
   latest_original_cs_replies: string[]
+  review_decision?: string
+  reviewer?: string
+  review_note?: string
+  assigned_to?: string
+  assigned_team?: string
+  due_date?: string
+  reviewed_at?: string
+  triage_reason?: string
+  next_action?: string
+  status_history?: Array<Record<string, unknown>>
+  metadata?: Record<string, unknown>
   draft_count?: number
 }
 
@@ -422,6 +446,9 @@ export async function fetchKnowledgeGapTask(taskUid: string) {
     task: KnowledgeGapTask
     samples: KnowledgeGapSample[]
     drafts: KnowledgeGapDraft[]
+    review_metadata?: Record<string, unknown>
+    status_history?: Array<Record<string, unknown>>
+    recommended_next_action?: string
   }
 }
 
@@ -437,6 +464,35 @@ export async function updateKnowledgeGapTask(taskUid: string, payload: {
   summary?: string
 }) {
   const res = await apiClient.patch(`/eval/knowledge-gaps/${taskUid}`, payload)
+  return res.data as { task: KnowledgeGapTask }
+}
+
+export async function triageKnowledgeGapTask(taskUid: string, payload: {
+  review_decision: string
+  status?: KnowledgeGapTask['status']
+  assigned_team?: string
+  assigned_to?: string
+  priority?: KnowledgeGapTask['priority']
+  due_date?: string
+  review_note?: string
+  triage_reason?: string
+  next_action?: string
+  source_run_uid?: string
+}) {
+  const res = await apiClient.patch(`/eval/knowledge-gaps/${taskUid}/triage`, payload)
+  return res.data as { task: KnowledgeGapTask }
+}
+
+export async function updateKnowledgeGapStatus(taskUid: string, payload: {
+  status: KnowledgeGapTask['status']
+  priority?: KnowledgeGapTask['priority']
+  assigned_team?: string
+  assigned_to?: string
+  due_date?: string
+  review_note?: string
+  next_action?: string
+}) {
+  const res = await apiClient.patch(`/eval/knowledge-gaps/${taskUid}/status`, payload)
   return res.data as { task: KnowledgeGapTask }
 }
 

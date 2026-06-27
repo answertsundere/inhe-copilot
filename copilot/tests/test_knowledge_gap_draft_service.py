@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -73,6 +74,9 @@ def test_product_field_draft_is_staging_and_publish_blocked_without_verified_evi
         assert "material" in content["required_review_fields"]
         assert any("不得把原客服回复直接当作事实证据" in item for item in content["uncertain_items"])
         assert db.query(KnowledgeGapDraft).count() == 1
+        task = db.query(KnowledgeGapTask).one()
+        assert task.status == "draft_ready"
+        assert task.get_metadata()["status_history"][-1]["status"] == "draft_ready"
     finally:
         db.close()
 
@@ -105,7 +109,7 @@ def test_media_gap_generates_media_asset_request_not_fake_url():
         db.close()
 
 
-def test_policy_gap_generates_policy_rule_draft_staging_only():
+def test_aftersales_policy_gap_generates_aftersales_policy_draft_staging_only():
     session_factory = _session_factory()
     _seed_task(session_factory, gap_type="aftersales_policy_gap", risk_level="high")
     db = session_factory()
@@ -124,10 +128,80 @@ def test_policy_gap_generates_policy_rule_draft_staging_only():
 
         draft = KnowledgeGapDraftService().generate_draft(db, "kgap_draft_1")
         content = draft["draft_content"]
-        assert draft["draft_type"] == "policy_rule_draft"
+        assert draft["draft_type"] == "aftersales_policy_draft"
         assert draft["publish_target"] == "staging"
         assert content["proposed_rule"]
         assert "不得编造承诺" in content["proposed_rule"]
+    finally:
+        db.close()
+
+
+def test_promotion_policy_gap_generates_promotion_policy_draft_staging_only():
+    session_factory = _session_factory()
+    _seed_task(session_factory, gap_type="promotion_policy_gap", risk_level="medium")
+    db = session_factory()
+    try:
+        task = db.query(KnowledgeGapTask).one()
+        task.query_fact_type = "promotion_policy"
+        task.missing_evidence_type = "promotion_rule"
+        task.set_metadata({
+            "gap_category": "promotion_policy_gap",
+            "required_evidence_type": "promotion_rule",
+            "target_system": "promotion_policy",
+            "recommended_action": "write_promotion_policy",
+            "missing_fields": ["promotion_rule"],
+        })
+        db.commit()
+
+        draft = KnowledgeGapDraftService().generate_draft(db, "kgap_draft_1")
+
+        assert draft["draft_type"] == "promotion_policy_draft"
+        assert draft["publish_target"] == "staging"
+        assert draft["draft_content"]["proposed_rule"]
+    finally:
+        db.close()
+
+
+def test_context_extraction_gap_generates_context_extraction_issue():
+    session_factory = _session_factory()
+    _seed_task(session_factory, gap_type="context_extraction_gap", risk_level="medium")
+    db = session_factory()
+    try:
+        task = db.query(KnowledgeGapTask).one()
+        task.query_fact_type = ""
+        task.missing_evidence_type = "sku_context"
+        task.set_metadata({
+            "gap_category": "context_extraction_gap",
+            "required_evidence_type": "sku_context",
+            "target_system": "context_extractor",
+            "recommended_action": "fix_context_extraction",
+            "missing_fields": ["sku_code"],
+        })
+        db.commit()
+
+        draft = KnowledgeGapDraftService().generate_draft(db, "kgap_draft_1")
+
+        assert draft["draft_type"] == "context_extraction_issue"
+        assert draft["publish_target"] == "staging"
+    finally:
+        db.close()
+
+
+def test_ignore_false_positive_review_decision_does_not_generate_draft():
+    session_factory = _session_factory()
+    _seed_task(session_factory, risk_level="medium")
+    db = session_factory()
+    try:
+        task = db.query(KnowledgeGapTask).one()
+        metadata = task.get_metadata()
+        metadata["review_decision"] = "ignore_false_positive"
+        task.set_metadata(metadata)
+        db.commit()
+
+        with pytest.raises(ValueError):
+            KnowledgeGapDraftService().generate_draft(db, "kgap_draft_1")
+
+        assert db.query(KnowledgeGapDraft).count() == 0
     finally:
         db.close()
 

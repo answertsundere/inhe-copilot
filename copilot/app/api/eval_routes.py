@@ -20,8 +20,32 @@ REVIEW_DECISION_FIX_AREAS = {
 
 REPAIR_TASK_STATUSES = {"open", "in_progress", "resolved", "ignored"}
 REPAIR_TASK_PRIORITIES = {"low", "medium", "high"}
-KNOWLEDGE_GAP_STATUSES = {"open", "drafting", "pending_review", "approved", "rejected", "published", "verified"}
+KNOWLEDGE_GAP_STATUSES = {
+    "open",
+    "triaged",
+    "assigned",
+    "draft_ready",
+    "waiting_data",
+    "rejected",
+    "resolved_pending_retest",
+    "verified",
+    "closed",
+    "drafting",
+    "pending_review",
+    "approved",
+    "published",
+}
 KNOWLEDGE_GAP_PRIORITIES = {"low", "medium", "high"}
+KNOWLEDGE_GAP_REVIEW_DECISIONS = {
+    "fill_product_field",
+    "upload_media_asset",
+    "write_aftersales_policy",
+    "write_promotion_policy",
+    "fix_context_extraction",
+    "improve_evidence_mapping",
+    "ignore_false_positive",
+    "needs_more_samples",
+}
 
 
 def _db():
@@ -440,6 +464,77 @@ def update_knowledge_gap(task_uid):
         db.close()
 
 
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/triage", methods=["PATCH"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/triage", methods=["PATCH"])
+@require_supervisor
+def triage_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
+
+    data = request.get_json(silent=True) or {}
+    decision = sanitize_text(data.get("review_decision"))
+    status = sanitize_text(data.get("status"))
+    priority = sanitize_text(data.get("priority"))
+    if decision not in KNOWLEDGE_GAP_REVIEW_DECISIONS:
+        return jsonify({"error": "invalid knowledge gap review decision"}), 400
+    if status and status not in KNOWLEDGE_GAP_STATUSES:
+        return jsonify({"error": "invalid knowledge gap status"}), 400
+    if priority and priority not in KNOWLEDGE_GAP_PRIORITIES:
+        return jsonify({"error": "invalid knowledge gap priority"}), 400
+    db = _db()
+    try:
+        task = KnowledgeGapTaskService().triage_task(
+            db,
+            sanitize_text(task_uid),
+            data,
+            reviewer=sanitize_text(current_user_name()),
+        )
+        if task is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, "task": task}))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/status", methods=["PATCH"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/status", methods=["PATCH"])
+@require_supervisor
+def update_knowledge_gap_status(task_uid):
+    from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
+
+    data = request.get_json(silent=True) or {}
+    status = sanitize_text(data.get("status"))
+    priority = sanitize_text(data.get("priority"))
+    if status not in KNOWLEDGE_GAP_STATUSES:
+        return jsonify({"error": "invalid knowledge gap status"}), 400
+    if priority and priority not in KNOWLEDGE_GAP_PRIORITIES:
+        return jsonify({"error": "invalid knowledge gap priority"}), 400
+    db = _db()
+    try:
+        task = KnowledgeGapTaskService().update_status(
+            db,
+            sanitize_text(task_uid),
+            data,
+            changed_by=sanitize_text(current_user_name()),
+        )
+        if task is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, "task": task}))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/draft", methods=["POST"])
 @eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/draft", methods=["POST"])
 @require_supervisor
@@ -456,6 +551,9 @@ def draft_knowledge_gap(task_uid):
         if draft is None:
             return jsonify({"error": "knowledge gap task not found"}), 404
         return jsonify(sanitize_obj({"ok": True, "draft": draft})), 201
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
     except Exception:
         db.rollback()
         raise

@@ -17,7 +17,9 @@ import {
   generateRepairTasks,
   rejectKnowledgeGapTask,
   submitRealConversationReview,
+  triageKnowledgeGapTask,
   updateKnowledgeGapTask,
+  updateKnowledgeGapStatus,
   updateRepairTask,
   verifyKnowledgeGapTask,
   verifyRepairTask,
@@ -95,6 +97,15 @@ const knowledgeGapTargetSystemFilter = ref('')
 const knowledgeGapRiskFilter = ref('')
 const knowledgeGapOwner = ref('')
 const knowledgeGapRejectReason = ref('')
+const knowledgeGapTriage = ref({
+  review_decision: 'fill_product_field',
+  assigned_team: '',
+  assigned_to: '',
+  priority: 'medium' as KnowledgeGapTask['priority'],
+  due_date: '',
+  review_note: '',
+  next_action: '',
+})
 
 const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '全部', value: 'all' },
@@ -153,11 +164,27 @@ const trendDayOptions = [
 const knowledgeGapStatusOptions = [
   { label: 'all status', value: '' },
   { label: 'open', value: 'open' },
-  { label: 'drafting', value: 'drafting' },
+  { label: 'triaged', value: 'triaged' },
+  { label: 'assigned', value: 'assigned' },
+  { label: 'draft_ready', value: 'draft_ready' },
+  { label: 'waiting_data', value: 'waiting_data' },
   { label: 'pending_review', value: 'pending_review' },
   { label: 'approved', value: 'approved' },
   { label: 'rejected', value: 'rejected' },
+  { label: 'resolved_pending_retest', value: 'resolved_pending_retest' },
   { label: 'verified', value: 'verified' },
+  { label: 'closed', value: 'closed' },
+]
+
+const knowledgeGapReviewDecisionOptions = [
+  { label: '补商品字段', value: 'fill_product_field' },
+  { label: '补素材', value: 'upload_media_asset' },
+  { label: '补售后规则', value: 'write_aftersales_policy' },
+  { label: '补活动规则', value: 'write_promotion_policy' },
+  { label: '修上下文抽取', value: 'fix_context_extraction' },
+  { label: '修证据映射', value: 'improve_evidence_mapping' },
+  { label: '忽略误报', value: 'ignore_false_positive' },
+  { label: '需要更多样本', value: 'needs_more_samples' },
 ]
 
 const knowledgeGapRiskOptions = [
@@ -405,6 +432,25 @@ async function openKnowledgeGapTask(task: KnowledgeGapTask) {
   selectedKnowledgeGapSamples.value = detail.samples || []
   selectedKnowledgeGapDrafts.value = detail.drafts || []
   knowledgeGapOwner.value = detail.task.suggested_owner || knowledgeGapOwner.value
+  knowledgeGapTriage.value = {
+    review_decision: detail.task.review_decision || reviewDecisionForGap(detail.task),
+    assigned_team: detail.task.assigned_team || detail.task.suggested_owner || '',
+    assigned_to: detail.task.assigned_to || '',
+    priority: detail.task.priority || 'medium',
+    due_date: detail.task.due_date || '',
+    review_note: detail.task.review_note || '',
+    next_action: detail.task.next_action || detail.recommended_next_action || detail.task.recommended_action || '',
+  }
+}
+
+function reviewDecisionForGap(task: KnowledgeGapTask) {
+  const gap = task.gap_category || task.gap_type
+  if (gap === 'media_asset_gap') return 'upload_media_asset'
+  if (gap === 'aftersales_policy_gap') return 'write_aftersales_policy'
+  if (gap === 'promotion_policy_gap') return 'write_promotion_policy'
+  if (gap === 'context_extraction_gap') return 'fix_context_extraction'
+  if (gap === 'evidence_routing_gap') return 'improve_evidence_mapping'
+  return 'fill_product_field'
 }
 
 async function generateDraftForKnowledgeGap() {
@@ -412,7 +458,43 @@ async function generateDraftForKnowledgeGap() {
   const result = await generateKnowledgeGapDraft(selectedKnowledgeGap.value.task_uid)
   selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value]
   await loadKnowledgeGaps()
+  if (selectedKnowledgeGap.value) await openKnowledgeGapTask(selectedKnowledgeGap.value)
   ElMessage.success('Draft created for review. It was not published to the formal knowledge base.')
+}
+
+async function triageKnowledgeGap() {
+  if (!selectedKnowledgeGap.value) return
+  const result = await triageKnowledgeGapTask(selectedKnowledgeGap.value.task_uid, {
+    review_decision: knowledgeGapTriage.value.review_decision,
+    assigned_team: knowledgeGapTriage.value.assigned_team,
+    assigned_to: knowledgeGapTriage.value.assigned_to,
+    priority: knowledgeGapTriage.value.priority,
+    due_date: knowledgeGapTriage.value.due_date,
+    review_note: knowledgeGapTriage.value.review_note,
+    next_action: knowledgeGapTriage.value.next_action,
+    source_run_uid: selectedRun.value?.run_uid,
+  })
+  selectedKnowledgeGap.value = result.task
+  await loadKnowledgeGaps()
+  await openKnowledgeGapTask(result.task)
+  ElMessage.success('Knowledge gap triage saved')
+}
+
+async function setKnowledgeGapStatus(status: KnowledgeGapTask['status']) {
+  if (!selectedKnowledgeGap.value) return
+  const result = await updateKnowledgeGapStatus(selectedKnowledgeGap.value.task_uid, {
+    status,
+    priority: selectedKnowledgeGap.value.priority,
+    assigned_team: knowledgeGapTriage.value.assigned_team,
+    assigned_to: knowledgeGapTriage.value.assigned_to,
+    due_date: knowledgeGapTriage.value.due_date,
+    review_note: knowledgeGapTriage.value.review_note,
+    next_action: knowledgeGapTriage.value.next_action,
+  })
+  selectedKnowledgeGap.value = result.task
+  await loadKnowledgeGaps()
+  await openKnowledgeGapTask(result.task)
+  ElMessage.success(`Task status changed to ${status}`)
 }
 
 async function saveKnowledgeGapTask() {
@@ -1124,6 +1206,10 @@ onMounted(loadRuns)
               <span>补到：{{ task.target_system || '-' }} / {{ task.recommended_action || '-' }}</span>
               <span>{{ task.product_title_preview || task.product_title || task.item_id_masked || task.sku_code || 'unknown product' }}</span>
               <span>{{ task.suggested_fix_area }} / {{ task.suggested_owner }}</span>
+              <span v-if="task.review_decision">review: {{ task.review_decision }}</span>
+              <span v-if="task.assigned_to || task.assigned_team">
+                assigned: {{ task.assigned_to || task.assigned_team }}
+              </span>
             </button>
           </div>
 
@@ -1136,12 +1222,54 @@ onMounted(loadRuns)
               <span>补到：{{ selectedKnowledgeGap.target_system || '-' }}</span>
               <span>动作：{{ selectedKnowledgeGap.recommended_action || '-' }}</span>
               <span>缺失字段：{{ (selectedKnowledgeGap.missing_fields || []).join(', ') || '-' }}</span>
+              <span>review_decision：{{ selectedKnowledgeGap.review_decision || '-' }}</span>
+              <span>assigned：{{ selectedKnowledgeGap.assigned_to || selectedKnowledgeGap.assigned_team || '-' }}</span>
+              <span>due：{{ selectedKnowledgeGap.due_date || '-' }}</span>
+              <span>next：{{ selectedKnowledgeGap.next_action || '-' }}</span>
               <span>
                 上下文：
                 product={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_product_context) ? 'yes' : 'no' }},
                 order={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_order_context) ? 'yes' : 'no' }},
                 media={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_media_context) ? 'yes' : 'no' }}
               </span>
+            </div>
+            <div class="gap-triage-panel">
+              <div class="mini-title">人工流转</div>
+              <p class="safe-note">草稿只进入 staging 待审；这里不会写入正式知识库，也不会发布素材。</p>
+              <div class="triage-grid">
+                <el-select v-model="knowledgeGapTriage.review_decision" size="small">
+                  <el-option
+                    v-for="option in knowledgeGapReviewDecisionOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-input v-model="knowledgeGapTriage.assigned_team" size="small" placeholder="assigned_team" />
+                <el-input v-model="knowledgeGapTriage.assigned_to" size="small" placeholder="assigned_to" />
+                <el-select v-model="knowledgeGapTriage.priority" size="small">
+                  <el-option
+                    v-for="option in taskPriorityOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-input v-model="knowledgeGapTriage.due_date" size="small" placeholder="due date" />
+                <el-input v-model="knowledgeGapTriage.next_action" size="small" placeholder="next action" />
+              </div>
+              <el-input
+                v-model="knowledgeGapTriage.review_note"
+                type="textarea"
+                :rows="2"
+                placeholder="review note"
+              />
+              <div class="gap-actions">
+                <el-button size="small" type="primary" @click="triageKnowledgeGap">保存分派</el-button>
+                <el-button size="small" @click="setKnowledgeGapStatus('waiting_data')">标记待补资料</el-button>
+                <el-button size="small" @click="setKnowledgeGapStatus('resolved_pending_retest')">标记待复测</el-button>
+                <el-button size="small" type="warning" @click="setKnowledgeGapStatus('rejected')">忽略/驳回</el-button>
+              </div>
             </div>
             <div class="task-controls">
               <el-select v-model="selectedKnowledgeGap.status" size="small">
@@ -1194,6 +1322,14 @@ onMounted(loadRuns)
               <div v-for="draft in selectedKnowledgeGapDrafts" :key="draft.draft_uid" class="gap-draft">
                 <strong>{{ draft.draft_type }} / {{ draft.review_status }} / {{ draft.publish_target }}</strong>
                 <pre>{{ formatJson(draft.draft_content) }}</pre>
+              </div>
+            </div>
+            <div v-if="selectedKnowledgeGap.status_history?.length" class="gap-history">
+              <div class="mini-title">状态历史</div>
+              <div v-for="(item, index) in selectedKnowledgeGap.status_history" :key="index" class="history-row">
+                <span>{{ item.status || '-' }}</span>
+                <span>{{ item.changed_by || '-' }}</span>
+                <span>{{ item.changed_at || '-' }}</span>
               </div>
             </div>
           </section>
@@ -1591,6 +1727,38 @@ onMounted(loadRuns)
   background: #f8fafc;
   color: var(--kb-text-secondary);
   font-size: 12px;
+}
+
+.gap-triage-panel,
+.gap-history {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.safe-note {
+  margin: 0 0 8px;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.triage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  gap: 8px;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  padding: 3px 0;
 }
 
 .gap-cards {
