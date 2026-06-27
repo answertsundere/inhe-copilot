@@ -17,6 +17,7 @@ import {
   generateKnowledgeGapTasks,
   markKnowledgeGapDraftReady,
   generateRepairTasks,
+  dryRunKnowledgeGapPublishQueue,
   previewKnowledgeGapPublishExport,
   previewKnowledgeGapRetest,
   rejectKnowledgeGapTask,
@@ -594,6 +595,37 @@ async function previewPublishQueueItem(item: KnowledgeGapPublishQueueItem) {
   ElMessageBox.alert(formatJson(result.payload_preview), 'Export preview', {
     confirmButtonText: 'Close',
   })
+}
+
+function queueDryRunResult(item: KnowledgeGapPublishQueueItem) {
+  return (item.publish_dry_run_result || {}) as Record<string, unknown>
+}
+
+function queueDryRunList(item: KnowledgeGapPublishQueueItem, key: string) {
+  const value = queueDryRunResult(item)[key]
+  return Array.isArray(value) ? value.map((entry) => String(entry)) : []
+}
+
+async function dryRunPublishQueueItem(item: KnowledgeGapPublishQueueItem) {
+  await ElMessageBox.confirm(
+    '本阶段只做发布前模拟校验，不写正式库。继续执行 dry-run？',
+    '发布前 Dry-run',
+    {
+      confirmButtonText: '执行 Dry-run',
+      cancelButtonText: '取消',
+      type: 'warning',
+    },
+  )
+  const result = await dryRunKnowledgeGapPublishQueue(item.queue_uid)
+  knowledgeGapPublishQueue.value = knowledgeGapPublishQueue.value.map((row) =>
+    row.queue_uid === item.queue_uid ? result.queue_item : row,
+  )
+  const ready = result.queue_item.ready_for_publish
+  if (ready) {
+    ElMessage.success('Dry-run passed. Ready for publish handoff.')
+  } else {
+    ElMessage.warning('Dry-run failed. Check block reasons.')
+  }
 }
 
 async function updatePublishQueueItemStatus(item: KnowledgeGapPublishQueueItem, status: 'exported' | 'rejected' | 'cancelled') {
@@ -1613,10 +1645,39 @@ onMounted(loadRuns)
                 <span>{{ item.queue_uid }}</span>
                 <span>fingerprint: {{ item.payload_fingerprint || '-' }}</span>
                 <span>risk: {{ item.risk_level }} / reviewer: {{ item.reviewer || '-' }}</span>
+                <span>
+                  dry-run: {{ item.publish_dry_run_status || 'not_run' }} /
+                  ready_for_publish: {{ item.ready_for_publish ? 'yes' : 'no' }}
+                </span>
+                <span v-if="item.last_dry_run_at">
+                  last dry-run: {{ item.last_dry_run_at }} / by {{ item.dry_run_by || '-' }}
+                </span>
+                <span v-if="item.publish_block_reasons?.length">
+                  block reasons: {{ item.publish_block_reasons.join('; ') }}
+                </span>
                 <span v-if="item.superseded_reason">
                   superseded: {{ item.superseded_reason }} / by {{ item.superseded_by || '-' }} / at {{ item.superseded_at || '-' }}
                 </span>
+                <details v-if="Object.keys(queueDryRunResult(item)).length">
+                  <summary>dry-run diff / checks</summary>
+                  <div class="draft-fields">
+                    <span>adapter: {{ queueDryRunResult(item).adapter || '-' }}</span>
+                    <span>schema_valid: {{ queueDryRunResult(item).schema_valid }}</span>
+                    <span>writes_formal_tables: {{ queueDryRunResult(item).writes_formal_tables }}</span>
+                    <span>manual checks: {{ queueDryRunList(item, 'required_manual_checks').join('; ') || '-' }}</span>
+                    <span>warnings: {{ queueDryRunList(item, 'warnings').join('; ') || '-' }}</span>
+                  </div>
+                  <pre>{{ formatJson(queueDryRunResult(item).diff_preview) }}</pre>
+                </details>
                 <div class="gap-actions">
+                  <el-button
+                    v-if="item.status === 'queued' || item.status === 'exported'"
+                    size="small"
+                    type="primary"
+                    @click="dryRunPublishQueueItem(item)"
+                  >
+                    发布前 Dry-run
+                  </el-button>
                   <el-button size="small" @click="previewPublishQueueItem(item)">导出预览</el-button>
                   <el-button
                     v-if="item.status !== 'superseded'"

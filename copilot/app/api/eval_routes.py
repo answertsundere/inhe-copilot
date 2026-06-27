@@ -688,6 +688,32 @@ def preview_knowledge_gap_publish_export(queue_uid):
         db.close()
 
 
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>/dry-run", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>/dry-run", methods=["POST"])
+@require_supervisor
+def dry_run_knowledge_gap_publish_queue(queue_uid):
+    from app.services.knowledge_gap_publish_adapter_service import PublishAdapterDryRunService
+
+    db = _db()
+    try:
+        result = PublishAdapterDryRunService().dry_run(
+            db,
+            sanitize_text(queue_uid),
+            operator=sanitize_text(current_user_name()),
+        )
+        if result is None:
+            return jsonify({"error": "publish queue item not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])
 @eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])
 @require_supervisor

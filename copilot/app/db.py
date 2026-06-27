@@ -201,6 +201,12 @@ def _migrate_add_columns():
             ("superseded_reason", "TEXT", "''"),
             ("superseded_at", "DATETIME", "NULL"),
             ("superseded_by_reviewer", "VARCHAR(64)", "''"),
+            ("publish_dry_run_status", "VARCHAR(32)", "'not_run'"),
+            ("publish_dry_run_result_json", "TEXT", "'{}'"),
+            ("publish_block_reasons_json", "TEXT", "'[]'"),
+            ("ready_for_publish", "BOOLEAN", "0"),
+            ("last_dry_run_at", "DATETIME", "NULL"),
+            ("dry_run_by", "VARCHAR(64)", "''"),
         ],
     }
     for table_name, new_columns in eval_table_columns.items():

@@ -211,6 +211,16 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert queue_list.get_json()["summary"]["total"] == 1
     assert queue_list.get_json()["items"][0]["queue_uid"] == queue_item["queue_uid"]
 
+    dry_run = client.post(
+        f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}/dry-run",
+        headers={"X-User-Role": "supervisor", "X-User-Name": "qa"},
+    )
+    assert dry_run.status_code == 200
+    assert dry_run.get_json()["dry_run"]["writes_formal_tables"] is False
+    assert dry_run.get_json()["queue_item"]["publish_dry_run_status"] == "failed"
+    assert dry_run.get_json()["queue_item"]["ready_for_publish"] is False
+    assert any("needs_media_upload" in reason for reason in dry_run.get_json()["queue_item"]["publish_block_reasons"])
+
     export_preview = client.post(
         f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}/export-preview",
         headers={"X-User-Role": "supervisor"},
@@ -218,6 +228,8 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert export_preview.status_code == 200
     assert export_preview.get_json()["dry_run"] is True
     assert export_preview.get_json()["writes_formal_tables"] is False
+    assert export_preview.get_json()["publish_dry_run_status"] == "failed"
+    assert export_preview.get_json()["ready_for_publish"] is False
 
     mark_exported = client.patch(
         f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}",
@@ -475,6 +487,12 @@ def test_publish_queue_routes_hide_and_block_superseded_items(monkeypatch):
     )
     assert preview.status_code == 200
     assert preview.get_json()["blocked_reason"] == "superseded queue items cannot be exported"
+
+    dry_run = client.post(
+        f"/api/eval/knowledge-gap-publish-queue/{first_queue_uid}/dry-run",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert dry_run.status_code == 400
 
     exported = client.patch(
         f"/api/eval/knowledge-gap-publish-queue/{first_queue_uid}",

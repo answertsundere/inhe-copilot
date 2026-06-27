@@ -681,6 +681,12 @@ class KnowledgeGapPublishQueue(Base):
     superseded_reason = Column(Text, nullable=False, default="")
     superseded_at = Column(DateTime, nullable=True)
     superseded_by_reviewer = Column(String(64), nullable=False, default="")
+    publish_dry_run_status = Column(String(32), nullable=False, default="not_run", index=True)
+    publish_dry_run_result_json = Column(Text, nullable=False, default="{}")
+    publish_block_reasons_json = Column(Text, nullable=False, default="[]")
+    ready_for_publish = Column(Boolean, nullable=False, default=False, index=True)
+    last_dry_run_at = Column(DateTime, nullable=True)
+    dry_run_by = Column(String(64), nullable=False, default="")
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -703,6 +709,18 @@ class KnowledgeGapPublishQueue(Base):
     def set_metadata(self, value):
         self.metadata_json = _json_dump(value, {})
 
+    def get_publish_dry_run_result(self):
+        return _json_load(self.publish_dry_run_result_json, {})
+
+    def set_publish_dry_run_result(self, value):
+        self.publish_dry_run_result_json = _json_dump(value, {})
+
+    def get_publish_block_reasons(self):
+        return _json_load(self.publish_block_reasons_json, [])
+
+    def set_publish_block_reasons(self, value):
+        self.publish_block_reasons_json = _json_dump(value, [])
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -724,6 +742,12 @@ class KnowledgeGapPublishQueue(Base):
             "superseded_reason": self.superseded_reason,
             "superseded_at": self.superseded_at.isoformat() if self.superseded_at else None,
             "superseded_by_reviewer": self.superseded_by_reviewer,
+            "publish_dry_run_status": self.publish_dry_run_status,
+            "publish_dry_run_result": self.get_publish_dry_run_result(),
+            "publish_block_reasons": self.get_publish_block_reasons(),
+            "ready_for_publish": bool(self.ready_for_publish),
+            "last_dry_run_at": self.last_dry_run_at.isoformat() if self.last_dry_run_at else None,
+            "dry_run_by": self.dry_run_by,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

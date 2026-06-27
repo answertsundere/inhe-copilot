@@ -423,12 +423,18 @@ class KnowledgeGapPublishQueueService:
                 "dry_run": True,
                 "writes_formal_tables": False,
                 "blocked_reason": "superseded queue items cannot be exported",
+                "publish_dry_run_status": item.publish_dry_run_status,
+                "ready_for_publish": bool(item.ready_for_publish),
+                "publish_block_reasons": item.get_publish_block_reasons(),
             })
         return sanitize_obj({
             "queue_item": item.to_dict(),
             "payload_preview": item.get_payload(),
             "dry_run": True,
             "writes_formal_tables": False,
+            "publish_dry_run_status": item.publish_dry_run_status,
+            "ready_for_publish": bool(item.ready_for_publish),
+            "publish_block_reasons": item.get_publish_block_reasons(),
         })
 
     def update_queue_item(self, db, queue_uid: str, payload: dict[str, Any], *, operator: str = "") -> dict[str, Any] | None:

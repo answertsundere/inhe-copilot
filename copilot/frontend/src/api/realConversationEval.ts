@@ -286,6 +286,12 @@ export interface KnowledgeGapPublishQueueItem {
   superseded_reason?: string
   superseded_at?: string
   superseded_by_reviewer?: string
+  publish_dry_run_status?: 'not_run' | 'passed' | 'failed'
+  publish_dry_run_result?: Record<string, unknown>
+  publish_block_reasons?: string[]
+  ready_for_publish?: boolean
+  last_dry_run_at?: string
+  dry_run_by?: string
   metadata?: Record<string, unknown>
   created_at?: string
   updated_at?: string
@@ -533,6 +539,17 @@ export async function previewKnowledgeGapPublishExport(queueUid: string) {
     payload_preview: Record<string, unknown>
     dry_run: boolean
     writes_formal_tables: boolean
+    publish_dry_run_status?: string
+    ready_for_publish?: boolean
+    publish_block_reasons?: string[]
+  }
+}
+
+export async function dryRunKnowledgeGapPublishQueue(queueUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gap-publish-queue/${queueUid}/dry-run`)
+  return res.data as {
+    queue_item: KnowledgeGapPublishQueueItem
+    dry_run: Record<string, unknown>
   }
 }
 
