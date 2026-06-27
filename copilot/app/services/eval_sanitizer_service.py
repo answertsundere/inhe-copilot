@@ -21,6 +21,15 @@ _ADDRESS_RE = re.compile(
     r"[\u4e00-\u9fff]{2,}(省|市|区|县|镇|乡|街道|路|巷|小区|村|号楼|单元|室)[\u4e00-\u9fff0-9A-Za-z#\-]{2,}"
 )
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+_SAFE_INTERNAL_ID_KEYS = {
+    "task_uid",
+    "draft_uid",
+    "queue_uid",
+    "run_uid",
+    "case_uid",
+    "turn_uid",
+    "conversation_uid",
+}
 
 
 def stable_hash(value: str, length: int = 16) -> str:
@@ -83,6 +92,8 @@ def sanitize_obj(value):
             key_text = str(key)
             if key_text.lower() in {"token", "secret", "password", "api_key", "apikey", "signature"}:
                 sanitized[key_text] = "[SECRET_REDACTED]"
+            elif key_text.lower() in _SAFE_INTERNAL_ID_KEYS:
+                sanitized[key_text] = str(item or "")
             else:
                 sanitized[key_text] = sanitize_obj(item)
         return sanitized

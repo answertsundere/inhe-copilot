@@ -668,6 +668,7 @@ class KnowledgeGapPublishQueue(Base):
     draft_uid = Column(String(64), nullable=False, index=True)
     source_run_uid = Column(String(64), nullable=False, default="", index=True)
     publish_target = Column(String(64), nullable=False, default="", index=True)
+    payload_fingerprint = Column(String(64), nullable=False, default="", index=True)
     payload_json = Column(Text, nullable=False, default="{}")
     readiness_snapshot_json = Column(Text, nullable=False, default="{}")
     reviewer = Column(String(64), nullable=False, default="", index=True)
@@ -676,6 +677,10 @@ class KnowledgeGapPublishQueue(Base):
     status = Column(String(32), nullable=False, default="queued", index=True)
     export_status = Column(String(32), nullable=False, default="not_exported", index=True)
     exported_at = Column(DateTime, nullable=True)
+    superseded_by = Column(String(64), nullable=False, default="", index=True)
+    superseded_reason = Column(Text, nullable=False, default="")
+    superseded_at = Column(DateTime, nullable=True)
+    superseded_by_reviewer = Column(String(64), nullable=False, default="")
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -706,6 +711,7 @@ class KnowledgeGapPublishQueue(Base):
             "draft_uid": self.draft_uid,
             "source_run_uid": self.source_run_uid,
             "publish_target": self.publish_target,
+            "payload_fingerprint": self.payload_fingerprint,
             "payload": self.get_payload(),
             "readiness_snapshot": self.get_readiness_snapshot(),
             "reviewer": self.reviewer,
@@ -714,6 +720,10 @@ class KnowledgeGapPublishQueue(Base):
             "status": self.status,
             "export_status": self.export_status,
             "exported_at": self.exported_at.isoformat() if self.exported_at else None,
+            "superseded_by": self.superseded_by,
+            "superseded_reason": self.superseded_reason,
+            "superseded_at": self.superseded_at.isoformat() if self.superseded_at else None,
+            "superseded_by_reviewer": self.superseded_by_reviewer,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

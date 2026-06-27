@@ -101,6 +101,7 @@ const selectedKnowledgeGapDrafts = ref<KnowledgeGapDraft[]>([])
 const knowledgeGapPublishQueue = ref<KnowledgeGapPublishQueueItem[]>([])
 const knowledgeGapPublishQueueSummary = ref<Record<string, unknown> | null>(null)
 const knowledgeGapPublishQueueStatusFilter = ref('queued')
+const knowledgeGapPublishQueueIncludeSuperseded = ref(false)
 const knowledgeGapReviewNote = ref('')
 const knowledgeGapVerifiedPayloadText = ref('')
 const knowledgeGapQueueNote = ref('')
@@ -435,6 +436,7 @@ async function loadKnowledgeGaps() {
 async function loadKnowledgeGapPublishQueue() {
   const result = await fetchKnowledgeGapPublishQueue({
     status: knowledgeGapPublishQueueStatusFilter.value || undefined,
+    include_superseded: knowledgeGapPublishQueueIncludeSuperseded.value,
   })
   knowledgeGapPublishQueue.value = result.items || []
   knowledgeGapPublishQueueSummary.value = result.summary || null
@@ -1592,21 +1594,36 @@ onMounted(loadRuns)
                   <el-option label="exported" value="exported" />
                   <el-option label="rejected" value="rejected" />
                   <el-option label="cancelled" value="cancelled" />
+                  <el-option label="superseded" value="superseded" />
                   <el-option label="all" value="" />
                 </el-select>
                 <el-input v-model="knowledgeGapQueueNote" size="small" placeholder="queue note" />
               </div>
+              <el-checkbox v-model="knowledgeGapPublishQueueIncludeSuperseded" @change="loadKnowledgeGapPublishQueue">
+                显示已作废候选
+              </el-checkbox>
               <div class="queue-summary">
-                total: {{ knowledgeGapPublishQueueSummary?.total ?? knowledgeGapPublishQueue.length }}
+                total: {{ knowledgeGapPublishQueueSummary?.total ?? knowledgeGapPublishQueue.length }},
+                active: {{ knowledgeGapPublishQueueSummary?.active_count ?? '-' }},
+                superseded: {{ knowledgeGapPublishQueueSummary?.superseded_count ?? '-' }}
               </div>
               <el-empty v-if="!knowledgeGapPublishQueue.length" description="暂无发布队列候选" />
               <div v-for="item in knowledgeGapPublishQueue" :key="item.queue_uid" class="queue-item">
                 <strong>{{ item.publish_target }} / {{ item.status }} / {{ item.export_status }}</strong>
                 <span>{{ item.queue_uid }}</span>
+                <span>fingerprint: {{ item.payload_fingerprint || '-' }}</span>
                 <span>risk: {{ item.risk_level }} / reviewer: {{ item.reviewer || '-' }}</span>
+                <span v-if="item.superseded_reason">
+                  superseded: {{ item.superseded_reason }} / by {{ item.superseded_by || '-' }} / at {{ item.superseded_at || '-' }}
+                </span>
                 <div class="gap-actions">
                   <el-button size="small" @click="previewPublishQueueItem(item)">导出预览</el-button>
-                  <el-button size="small" type="success" @click="updatePublishQueueItemStatus(item, 'exported')">
+                  <el-button
+                    v-if="item.status !== 'superseded'"
+                    size="small"
+                    type="success"
+                    @click="updatePublishQueueItemStatus(item, 'exported')"
+                  >
                     标记已导出
                   </el-button>
                   <el-button size="small" @click="updatePublishQueueItemStatus(item, 'cancelled')">取消</el-button>

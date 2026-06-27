@@ -7,6 +7,9 @@ knowledge, media, policy, or rule tables.
 from __future__ import annotations
 
 import uuid
+import hashlib
+import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -14,7 +17,8 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.knowledge_gap_task_service import _metadata_with_status_history
 
 
-QUEUE_STATUSES = {"queued", "exported", "rejected", "cancelled"}
+ACTIVE_QUEUE_STATUSES = {"queued", "exported"}
+QUEUE_STATUSES = {"queued", "exported", "rejected", "cancelled", "superseded"}
 QUEUE_EXPORT_STATUSES = {"not_exported", "exported"}
 REVIEW_DECISIONS = {"approve_for_queue", "reject", "request_changes"}
 PUBLISHABLE_TARGETS = {
@@ -28,6 +32,60 @@ PUBLISHABLE_TARGETS = {
 
 def _new_queue_uid() -> str:
     return f"kgpub_{uuid.uuid4().hex[:12]}"
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lowered = sanitize_text(key).lower()
+    return any(marker in lowered for marker in (
+        "phone",
+        "mobile",
+        "tel",
+        "order",
+        "tracking",
+        "address",
+        "token",
+        "secret",
+        "signature",
+        "expires",
+        "base64",
+        "authorization",
+    ))
+
+
+def _normalize_for_fingerprint(value: Any) -> Any:
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key in sorted(value):
+            clean_key = sanitize_text(key)
+            if not clean_key:
+                continue
+            if _is_sensitive_key(clean_key):
+                result[clean_key] = "[REDACTED]"
+            else:
+                result[clean_key] = _normalize_for_fingerprint(value.get(key))
+        return result
+    if isinstance(value, list):
+        return [_normalize_for_fingerprint(item) for item in value]
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    text = sanitize_text(value)
+    text = re.sub(r"https?://\S+", "[URL]", text)
+    text = re.sub(r"\b1[3-9]\d{9}\b", "[PHONE]", text)
+    text = re.sub(r"\b\d{10,}\b", "[NUMBER]", text)
+    if len(text) > 512 and re.fullmatch(r"[A-Za-z0-9+/=\\s]+", text):
+        return "[BASE64]"
+    return text
+
+
+def payload_fingerprint(publish_target: str, payload: dict[str, Any]) -> str:
+    normalized = {
+        "publish_target": sanitize_text(publish_target),
+        "payload": _normalize_for_fingerprint(sanitize_obj(payload)),
+    }
+    raw = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _truthy(value) -> bool:
@@ -211,7 +269,7 @@ class KnowledgeGapPublishQueueService:
         decision = sanitize_text(payload.get("decision"))
         if decision not in REVIEW_DECISIONS:
             raise ValueError("invalid draft review decision")
-        reviewer_name = sanitize_text(payload.get("reviewer") or reviewer)
+        reviewer_name = sanitize_text(reviewer or payload.get("reviewer"))
         review_note = sanitize_text(payload.get("review_note"))
 
         if decision in {"reject", "request_changes"}:
@@ -250,36 +308,59 @@ class KnowledgeGapPublishQueueService:
         if isinstance(verified_payload, dict) and verified_payload:
             payload = {**payload, "verified_payload": verified_payload}
 
-        existing = (
+        final_payload = _queue_payload_from_review(content, payload)
+        fingerprint = payload_fingerprint(publish_target, final_payload)
+        active_items = (
             db.query(KnowledgeGapPublishQueue)
             .filter(
                 KnowledgeGapPublishQueue.task_uid == task.task_uid,
-                KnowledgeGapPublishQueue.draft_uid == draft.draft_uid,
-                KnowledgeGapPublishQueue.status.in_(["queued", "exported"]),
+                KnowledgeGapPublishQueue.publish_target == publish_target,
+                KnowledgeGapPublishQueue.status.in_(sorted(ACTIVE_QUEUE_STATUSES)),
             )
             .order_by(KnowledgeGapPublishQueue.id.asc())
-            .first()
+            .all()
         )
-        if existing is not None:
-            draft.review_status = "approved_for_queue"
-            task.status = "queued_for_publish"
-            db.commit()
-            return sanitize_obj({"task": task.to_dict(), "draft": draft.to_dict(), "queue_item": existing.to_dict()})
+        for existing in active_items:
+            if sanitize_text(existing.payload_fingerprint) == fingerprint:
+                draft.review_status = "approved_for_queue"
+                task.status = "queued_for_publish"
+                db.commit()
+                return sanitize_obj({"task": task.to_dict(), "draft": draft.to_dict(), "queue_item": existing.to_dict()})
+
+        new_queue_uid = _new_queue_uid()
+        now = datetime.utcnow()
+        for existing in active_items:
+            existing.status = "superseded"
+            existing.superseded_by = new_queue_uid
+            existing.superseded_reason = "replaced by a newer reviewed payload for the same task and target"
+            existing.superseded_at = now
+            existing.superseded_by_reviewer = reviewer_name
+            existing_metadata = existing.get_metadata()
+            existing_metadata.setdefault("status_history", [])
+            existing_metadata["status_history"].append(sanitize_obj({
+                "status": "superseded",
+                "operator": reviewer_name,
+                "note": existing.superseded_reason,
+                "changed_at": now.isoformat(),
+                "superseded_by": new_queue_uid,
+            }))
+            existing.set_metadata(existing_metadata)
 
         metadata = task.get_metadata()
         queue_item = KnowledgeGapPublishQueue(
-            queue_uid=_new_queue_uid(),
+            queue_uid=new_queue_uid,
             task_uid=task.task_uid,
             draft_uid=draft.draft_uid,
             source_run_uid=sanitize_text(metadata.get("source_run_uid")),
             publish_target=publish_target,
+            payload_fingerprint=fingerprint,
             reviewer=reviewer_name,
             review_note=review_note,
             risk_level=sanitize_text(task.risk_level) or "medium",
             status="queued",
             export_status="not_exported",
         )
-        queue_item.set_payload(_queue_payload_from_review(content, payload))
+        queue_item.set_payload(final_payload)
         queue_item.set_readiness_snapshot(_readiness_snapshot(content, payload))
         queue_item.set_metadata({
             "decision": decision,
@@ -305,10 +386,13 @@ class KnowledgeGapPublishQueueService:
         from app.models.eval_tables import KnowledgeGapPublishQueue
 
         filters = filters or {}
+        include_superseded = _truthy(filters.get("include_superseded"))
         query = db.query(KnowledgeGapPublishQueue).order_by(
             KnowledgeGapPublishQueue.created_at.desc(),
             KnowledgeGapPublishQueue.id.desc(),
         )
+        if not include_superseded:
+            query = query.filter(KnowledgeGapPublishQueue.status != "superseded")
         for attr in ["status", "publish_target", "risk_level", "reviewer", "task_uid"]:
             value = sanitize_text(filters.get(attr))
             if value:
@@ -321,6 +405,8 @@ class KnowledgeGapPublishQueueService:
                 "by_status": self._count(rows, "status"),
                 "by_publish_target": self._count(rows, "publish_target"),
                 "by_export_status": self._count(rows, "export_status"),
+                "active_count": sum(1 for row in rows if row.status in ACTIVE_QUEUE_STATUSES),
+                "superseded_count": sum(1 for row in rows if row.status == "superseded"),
             },
         })
 
@@ -330,6 +416,14 @@ class KnowledgeGapPublishQueueService:
         item = db.query(KnowledgeGapPublishQueue).filter(KnowledgeGapPublishQueue.queue_uid == sanitize_text(queue_uid)).one_or_none()
         if item is None:
             return None
+        if item.status == "superseded":
+            return sanitize_obj({
+                "queue_item": item.to_dict(),
+                "payload_preview": {},
+                "dry_run": True,
+                "writes_formal_tables": False,
+                "blocked_reason": "superseded queue items cannot be exported",
+            })
         return sanitize_obj({
             "queue_item": item.to_dict(),
             "payload_preview": item.get_payload(),
@@ -348,6 +442,8 @@ class KnowledgeGapPublishQueueService:
             raise ValueError("formal publish is not supported by this queue")
         if status not in QUEUE_STATUSES:
             raise ValueError("invalid publish queue status")
+        if item.status == "superseded" and status == "exported":
+            raise ValueError("superseded queue items cannot be exported")
         item.status = status
         metadata = item.get_metadata()
         metadata.setdefault("status_history", [])

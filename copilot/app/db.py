@@ -195,6 +195,13 @@ def _migrate_add_columns():
         "eval_traces": [
             ("turn_understanding_json", "TEXT", "'{}'"),
         ],
+        "knowledge_gap_publish_queue": [
+            ("payload_fingerprint", "VARCHAR(64)", "''"),
+            ("superseded_by", "VARCHAR(64)", "''"),
+            ("superseded_reason", "TEXT", "''"),
+            ("superseded_at", "DATETIME", "NULL"),
+            ("superseded_by_reviewer", "VARCHAR(64)", "''"),
+        ],
     }
     for table_name, new_columns in eval_table_columns.items():
         if table_name not in inspector.get_table_names():

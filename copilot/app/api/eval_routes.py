@@ -663,6 +663,7 @@ def list_knowledge_gap_publish_queue():
                 "risk_level": sanitize_text(request.args.get("risk_level")),
                 "reviewer": sanitize_text(request.args.get("reviewer")),
                 "task_uid": sanitize_text(request.args.get("task_uid")),
+                "include_superseded": sanitize_text(request.args.get("include_superseded")),
             },
             limit=int(request.args.get("limit") or 100),
         )

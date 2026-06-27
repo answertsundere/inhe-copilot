@@ -382,3 +382,103 @@ def test_knowledge_gap_mark_ready_allows_verified_product_field_draft(monkeypatc
         headers={"X-User-Role": "operator"},
     )
     assert forbidden.status_code == 403
+
+
+def test_publish_queue_routes_hide_and_block_superseded_items(monkeypatch):
+    client, session_factory = _make_client(monkeypatch)
+    db = session_factory()
+    try:
+        task = KnowledgeGapTask(
+            task_uid="kgap_route_superseded",
+            gap_type="product_field_gap",
+            query_fact_type="dimensions",
+            missing_evidence_type="product_dimensions",
+            status="open",
+            sample_count=1,
+            summary="verified product field gap",
+        )
+        task.set_metadata({
+            "gap_category": "product_field_gap",
+            "required_evidence_type": "product_dimensions",
+            "target_system": "product_profile",
+            "missing_fields": ["dimensions"],
+        })
+        db.add(task)
+        db.commit()
+    finally:
+        db.close()
+
+    first_draft = client.post(
+        "/api/eval/knowledge-gaps/kgap_route_superseded/draft",
+        json={"force_regenerate": True},
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    ).get_json()["draft"]
+    first_review = client.post(
+        f"/api/eval/knowledge-gaps/kgap_route_superseded/draft/{first_draft['draft_uid']}/review",
+        json={
+            "decision": "approve_for_queue",
+            "verified_payload": {
+                "product_identity": {"item_id": "item-001", "sku_code": "sku-001"},
+                "fields": {"dimensions": "100x40x120cm"},
+                "source_reference": "product manual page 3",
+                "sku_scope": "sku-001 only",
+                "reviewer_confirmation": True,
+            },
+            "review_checklist": {"product_verified": True, "source_attached": True},
+        },
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    )
+    assert first_review.status_code == 200
+    first_queue_uid = first_review.get_json()["queue_item"]["queue_uid"]
+
+    second_draft = client.post(
+        "/api/eval/knowledge-gaps/kgap_route_superseded/draft",
+        json={"force_regenerate": True},
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    ).get_json()["draft"]
+    second_review = client.post(
+        f"/api/eval/knowledge-gaps/kgap_route_superseded/draft/{second_draft['draft_uid']}/review",
+        json={
+            "decision": "approve_for_queue",
+            "verified_payload": {
+                "product_identity": {"item_id": "item-001", "sku_code": "sku-001"},
+                "fields": {"dimensions": "120x45x160cm"},
+                "source_reference": "product manual page 3",
+                "sku_scope": "sku-001 only",
+                "reviewer_confirmation": True,
+            },
+            "review_checklist": {"product_verified": True, "source_attached": True},
+        },
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead2"},
+    )
+    assert second_review.status_code == 200
+    second_queue_uid = second_review.get_json()["queue_item"]["queue_uid"]
+
+    default_list = client.get("/api/eval/knowledge-gap-publish-queue", headers={"X-User-Role": "supervisor"})
+    assert default_list.status_code == 200
+    assert [item["queue_uid"] for item in default_list.get_json()["items"]] == [second_queue_uid]
+    assert default_list.get_json()["summary"]["active_count"] == 1
+    assert default_list.get_json()["summary"]["superseded_count"] == 0
+
+    included = client.get(
+        "/api/eval/knowledge-gap-publish-queue?include_superseded=true",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert included.status_code == 200
+    assert {item["queue_uid"] for item in included.get_json()["items"]} == {first_queue_uid, second_queue_uid}
+    assert included.get_json()["summary"]["active_count"] == 1
+    assert included.get_json()["summary"]["superseded_count"] == 1
+
+    preview = client.post(
+        f"/api/eval/knowledge-gap-publish-queue/{first_queue_uid}/export-preview",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert preview.status_code == 200
+    assert preview.get_json()["blocked_reason"] == "superseded queue items cannot be exported"
+
+    exported = client.patch(
+        f"/api/eval/knowledge-gap-publish-queue/{first_queue_uid}",
+        json={"status": "exported"},
+        headers={"X-User-Role": "admin"},
+    )
+    assert exported.status_code == 400

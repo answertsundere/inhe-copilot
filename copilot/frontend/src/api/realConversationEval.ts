@@ -273,14 +273,19 @@ export interface KnowledgeGapPublishQueueItem {
   draft_uid: string
   source_run_uid?: string
   publish_target: string
+  payload_fingerprint?: string
   payload: Record<string, unknown>
   readiness_snapshot?: Record<string, unknown>
   reviewer: string
   review_note?: string
   risk_level: string
-  status: 'queued' | 'exported' | 'rejected' | 'cancelled'
+  status: 'queued' | 'exported' | 'rejected' | 'cancelled' | 'superseded'
   export_status: 'not_exported' | 'exported'
   exported_at?: string
+  superseded_by?: string
+  superseded_reason?: string
+  superseded_at?: string
+  superseded_by_reviewer?: string
   metadata?: Record<string, unknown>
   created_at?: string
   updated_at?: string
@@ -512,6 +517,7 @@ export async function fetchKnowledgeGapPublishQueue(params?: {
   risk_level?: string
   reviewer?: string
   task_uid?: string
+  include_superseded?: boolean
 }) {
   const res = await apiClient.get('/eval/knowledge-gap-publish-queue', { params })
   return res.data as {

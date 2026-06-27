@@ -7,7 +7,7 @@ from app.db import Base
 from app.models.eval_tables import KnowledgeGapDraft, KnowledgeGapPublishQueue, KnowledgeGapTask
 from app.models.kb_tables import KBMediaAsset
 from app.services.knowledge_gap_draft_service import KnowledgeGapDraftService
-from app.services.knowledge_gap_publish_queue_service import KnowledgeGapPublishQueueService
+from app.services.knowledge_gap_publish_queue_service import KnowledgeGapPublishQueueService, payload_fingerprint
 
 
 def _session_factory():
@@ -64,6 +64,17 @@ def _review_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def _verified_product_payload(field_value="100x40x120cm"):
+    return {
+        "product_identity": {"item_id": "item-001", "sku_code": "sku-001"},
+        "fields": {"dimensions": field_value},
+        "source_reference": "product manual page 3",
+        "sku_scope": "sku-001 only",
+        "reviewer_confirmation": True,
+        "review_checklist": {"product_verified": True, "source_attached": True},
+    }
 
 
 def test_approve_ready_for_review_draft_creates_queue_item():
@@ -324,6 +335,99 @@ def test_duplicate_approve_does_not_create_duplicate_queue_item():
         db.close()
 
 
+def test_same_task_target_same_payload_reuses_active_queue_across_drafts():
+    session_factory = _session_factory()
+    db = session_factory()
+    try:
+        _seed_task(db)
+        service = KnowledgeGapPublishQueueService()
+        first_draft = _draft(db)
+        first = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=first_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload()),
+            reviewer="lead",
+        )
+        second_draft = _draft(db, force_regenerate=True)
+        second = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=second_draft["draft_uid"],
+            payload=_review_payload(verified_payload={
+                "review_checklist": {"source_attached": True, "product_verified": True},
+                "reviewer_confirmation": True,
+                "source_reference": "product manual page 3",
+                "sku_scope": "sku-001 only",
+                "fields": {"dimensions": "100x40x120cm"},
+                "product_identity": {"sku_code": "sku-001", "item_id": "item-001"},
+            }),
+            reviewer="lead",
+        )
+
+        assert second["queue_item"]["queue_uid"] == first["queue_item"]["queue_uid"]
+        assert db.query(KnowledgeGapPublishQueue).count() == 1
+    finally:
+        db.close()
+
+
+def test_same_task_target_different_payload_supersedes_old_queue_item():
+    session_factory = _session_factory()
+    db = session_factory()
+    try:
+        _seed_task(db)
+        service = KnowledgeGapPublishQueueService()
+        first_draft = _draft(db)
+        first = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=first_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload("100x40x120cm")),
+            reviewer="lead",
+        )
+        second_draft = _draft(db, force_regenerate=True)
+        second = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=second_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload("120x45x160cm")),
+            reviewer="lead_2",
+        )
+
+        assert second["queue_item"]["queue_uid"] != first["queue_item"]["queue_uid"]
+        old = db.query(KnowledgeGapPublishQueue).filter(KnowledgeGapPublishQueue.queue_uid == first["queue_item"]["queue_uid"]).one()
+        new = db.query(KnowledgeGapPublishQueue).filter(KnowledgeGapPublishQueue.queue_uid == second["queue_item"]["queue_uid"]).one()
+        assert old.status == "superseded"
+        assert old.superseded_by == new.queue_uid
+        assert old.superseded_reason
+        assert old.superseded_at
+        assert old.superseded_by_reviewer == "lead_2"
+        assert new.status == "queued"
+    finally:
+        db.close()
+
+
+def test_payload_fingerprint_is_order_stable_and_value_sensitive():
+    left = {
+        "fields": {"dimensions": "100x40x120cm"},
+        "product_identity": {"item_id": "item-001", "sku_code": "sku-001"},
+        "source_reference": "manual page 3",
+    }
+    right = {
+        "source_reference": "manual page 3",
+        "product_identity": {"sku_code": "sku-001", "item_id": "item-001"},
+        "fields": {"dimensions": "100x40x120cm"},
+    }
+    changed = {
+        "source_reference": "manual page 3",
+        "product_identity": {"sku_code": "sku-001", "item_id": "item-001"},
+        "fields": {"dimensions": "120x45x160cm"},
+    }
+
+    assert payload_fingerprint("product_profile", left) == payload_fingerprint("product_profile", right)
+    assert payload_fingerprint("product_profile", left) != payload_fingerprint("product_profile", changed)
+
+
 def test_export_preview_and_mark_exported_do_not_publish():
     session_factory = _session_factory()
     db = session_factory()
@@ -355,5 +459,50 @@ def test_export_preview_and_mark_exported_do_not_publish():
 
         with pytest.raises(ValueError):
             service.update_queue_item(db, queued["queue_item"]["queue_uid"], {"status": "published"}, operator="lead")
+    finally:
+        db.close()
+
+
+def test_superseded_queue_item_cannot_be_exported_and_is_hidden_by_default():
+    session_factory = _session_factory()
+    db = session_factory()
+    try:
+        _seed_task(db)
+        service = KnowledgeGapPublishQueueService()
+        first_draft = _draft(db)
+        first = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=first_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload("100x40x120cm")),
+            reviewer="lead",
+        )
+        second_draft = _draft(db, force_regenerate=True)
+        second = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=second_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload("120x45x160cm")),
+            reviewer="lead",
+        )
+
+        hidden = service.list_queue(db)
+        assert [item["queue_uid"] for item in hidden["items"]] == [second["queue_item"]["queue_uid"]]
+        assert hidden["summary"]["active_count"] == 1
+        assert hidden["summary"]["superseded_count"] == 0
+
+        included = service.list_queue(db, filters={"include_superseded": "true"})
+        assert {item["queue_uid"] for item in included["items"]} == {
+            first["queue_item"]["queue_uid"],
+            second["queue_item"]["queue_uid"],
+        }
+        assert included["summary"]["active_count"] == 1
+        assert included["summary"]["superseded_count"] == 1
+
+        preview = service.export_preview(db, first["queue_item"]["queue_uid"])
+        assert preview["blocked_reason"] == "superseded queue items cannot be exported"
+        assert preview["writes_formal_tables"] is False
+        with pytest.raises(ValueError):
+            service.update_queue_item(db, first["queue_item"]["queue_uid"], {"status": "exported"}, operator="lead")
     finally:
         db.close()
