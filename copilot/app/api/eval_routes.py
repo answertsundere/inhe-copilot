@@ -357,6 +357,7 @@ def list_knowledge_gaps():
             db,
             filters={
                 "status": request.args.get("status") or "",
+                "run_uid": request.args.get("run_uid") or "",
                 "gap_type": request.args.get("gap_type") or "",
                 "gap_category": request.args.get("gap_category") or "",
                 "query_fact_type": request.args.get("query_fact_type") or "",

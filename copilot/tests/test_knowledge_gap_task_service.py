@@ -151,6 +151,95 @@ def test_knowledge_gap_list_filters_new_operational_fields():
         db.close()
 
 
+def test_knowledge_gap_list_filters_by_run_uid_and_falls_back_for_legacy_tasks():
+    session_factory = _session_factory()
+    db = session_factory()
+    try:
+        db.add(EvalRun(run_uid="run_a", source_type="real_conversation", status="completed"))
+        db.add(EvalRun(run_uid="run_b", source_type="real_conversation", status="completed"))
+        db.add(EvalRun(run_uid="run_legacy", source_type="real_conversation", status="completed"))
+        for run_uid, turn_uid in [("run_a", "turn_a"), ("run_b", "turn_b"), ("run_legacy", "turn_legacy")]:
+            trace = EvalTrace(
+                run_uid=run_uid,
+                case_uid=f"case_{turn_uid}",
+                turn_uid=turn_uid,
+                turn_index=1,
+                buyer_message="buyer",
+                agent_reply="agent",
+                query_fact_type="material",
+                passed=False,
+            )
+            db.add(trace)
+
+        task_a = KnowledgeGapTask(
+            task_uid="kgap_run_a",
+            gap_type="product_field_gap",
+            query_fact_type="material",
+            missing_evidence_type="product_material",
+            status="open",
+            sample_count=1,
+        )
+        task_a.set_metadata({"source_run_uid": "run_a", "gap_category": "product_field_gap"})
+        task_a.set_related_turn_uids(["turn_a"])
+        task_b = KnowledgeGapTask(
+            task_uid="kgap_run_b",
+            gap_type="media_asset_gap",
+            query_fact_type="installation",
+            missing_evidence_type="installation_video",
+            status="open",
+            sample_count=1,
+        )
+        task_b.set_metadata({"source_run_uid": "run_b", "gap_category": "media_asset_gap"})
+        task_b.set_related_turn_uids(["turn_b"])
+        legacy_a = KnowledgeGapTask(
+            task_uid="kgap_legacy_a",
+            gap_type="context_extraction_gap",
+            query_fact_type="",
+            missing_evidence_type="sku_context",
+            status="open",
+            sample_count=1,
+        )
+        legacy_a.set_metadata({"gap_category": "context_extraction_gap"})
+        legacy_a.set_related_turn_uids(["turn_a"])
+        legacy_run = KnowledgeGapTask(
+            task_uid="kgap_legacy_run",
+            gap_type="context_extraction_gap",
+            query_fact_type="",
+            missing_evidence_type="sku_context",
+            status="open",
+            sample_count=1,
+        )
+        legacy_run.set_metadata({"gap_category": "context_extraction_gap"})
+        legacy_run.set_related_turn_uids(["turn_legacy"])
+        legacy_other = KnowledgeGapTask(
+            task_uid="kgap_legacy_other",
+            gap_type="promotion_policy_gap",
+            query_fact_type="promotion",
+            missing_evidence_type="promotion_rule",
+            status="open",
+            sample_count=1,
+        )
+        legacy_other.set_related_turn_uids(["turn_unknown"])
+        db.add_all([task_a, task_b, legacy_a, legacy_run, legacy_other])
+        db.commit()
+
+        filtered = KnowledgeGapTaskService().list_tasks(db, filters={"run_uid": "run_a"})
+        legacy_filtered = KnowledgeGapTaskService().list_tasks(db, filters={"run_uid": "run_legacy"})
+        all_rows = KnowledgeGapTaskService().list_tasks(db, filters={})
+
+        assert {item["task_uid"] for item in filtered["items"]} == {"kgap_run_a"}
+        assert filtered["summary"]["run_uid"] == "run_a"
+        assert filtered["summary"]["filtered_by_run_uid"] is True
+        assert filtered["summary"]["total"] == 1
+        assert filtered["summary"]["by_gap_category"] == {"product_field_gap": 1}
+        assert {item["task_uid"] for item in legacy_filtered["items"]} == {"kgap_legacy_run"}
+        assert legacy_filtered["summary"]["total"] == 1
+        assert all_rows["summary"]["filtered_by_run_uid"] is False
+        assert all_rows["summary"]["total"] == 5
+    finally:
+        db.close()
+
+
 def test_knowledge_gap_export_excel_is_sanitized(monkeypatch, tmp_path):
     import app.db as db_module
 

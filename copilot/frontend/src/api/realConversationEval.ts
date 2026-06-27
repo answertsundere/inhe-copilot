@@ -238,6 +238,12 @@ export interface KnowledgeGapDraft {
 }
 
 export interface KnowledgeGapSummary {
+  run_uid?: string
+  filtered_by_run_uid?: boolean
+  total?: number
+  by_gap_category?: Record<string, number>
+  by_required_evidence_type?: Record<string, number>
+  by_target_system?: Record<string, number>
   open_count: number
   high_risk_count: number
   media_gap_count: number
@@ -388,6 +394,7 @@ export async function fetchEvalTrends(params?: {
 }
 
 export async function fetchKnowledgeGapTasks(params?: {
+  run_uid?: string
   status?: string
   gap_type?: string
   gap_category?: string

@@ -364,6 +364,7 @@ async function loadRepairTasks() {
 
 async function loadKnowledgeGaps() {
   const result = await fetchKnowledgeGapTasks({
+    run_uid: selectedRun.value?.run_uid || undefined,
     status: knowledgeGapStatusFilter.value || undefined,
     gap_category: knowledgeGapTypeFilter.value || undefined,
     required_evidence_type: knowledgeGapEvidenceFilter.value || undefined,
@@ -1043,6 +1044,10 @@ onMounted(loadRuns)
           </div>
 
           <div v-if="knowledgeGapSummary" class="gap-cards">
+            <div>
+              <span>{{ knowledgeGapSummary.filtered_by_run_uid ? 'current run tasks' : 'all tasks' }}</span>
+              <strong>{{ knowledgeGapSummary.total ?? knowledgeGapTasks.length }}</strong>
+            </div>
             <div>
               <span>open</span>
               <strong>{{ knowledgeGapSummary.open_count }}</strong>

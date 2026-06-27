@@ -304,6 +304,48 @@ def _context_summary(identity: dict[str, str], trace, evidence_state: dict[str, 
     }
 
 
+def _run_turn_uids(db, run_uid: str) -> set[str]:
+    from app.models.eval_tables import EvalTrace
+
+    target_run_uid = sanitize_text(run_uid)
+    if not target_run_uid:
+        return set()
+    return {
+        sanitize_text(row[0])
+        for row in db.query(EvalTrace.turn_uid).filter(EvalTrace.run_uid == target_run_uid).all()
+    }
+
+
+def _task_matches_run(task, run_uid: str, turn_uids: set[str]) -> bool:
+    target_run_uid = sanitize_text(run_uid)
+    if not target_run_uid:
+        return True
+    metadata = task.get_metadata()
+    if sanitize_text(metadata.get("source_run_uid")) == target_run_uid:
+        return True
+    return bool(set(task.get_related_turn_uids()) & turn_uids)
+
+
+def filter_tasks_by_run(db, tasks: list[Any], run_uid: str) -> list[Any]:
+    """Filter knowledge gap tasks by source replay run.
+
+    New tasks use metadata.source_run_uid. Older tasks may not have that field,
+    so we fall back to related_turn_uids intersecting EvalTrace.turn_uid for the
+    requested run.
+    """
+    target_run_uid = sanitize_text(run_uid)
+    if not target_run_uid:
+        return tasks
+    tagged = [
+        task for task in tasks
+        if sanitize_text(task.get_metadata().get("source_run_uid")) == target_run_uid
+    ]
+    if tagged:
+        return tagged
+    turn_uids = _run_turn_uids(db, target_run_uid)
+    return [task for task in tasks if _task_matches_run(task, target_run_uid, turn_uids)]
+
+
 def _risk_level(failure_type: str, query_fact_type: str, severities: list[str]) -> str:
     if "high" in severities or failure_type in HIGH_RISK_FAILURES or query_fact_type in HIGH_RISK_FACT_TYPES:
         return "high"
@@ -558,6 +600,7 @@ class KnowledgeGapTaskService:
         from app.models.eval_tables import KnowledgeGapDraft, KnowledgeGapTask
 
         filters = filters or {}
+        run_uid = sanitize_text(filters.get("run_uid"))
         query = db.query(KnowledgeGapTask).order_by(KnowledgeGapTask.updated_at.desc(), KnowledgeGapTask.id.desc())
         gap_category = sanitize_text(filters.get("gap_category"))
         if gap_category and not sanitize_text(filters.get("gap_type")):
@@ -580,7 +623,7 @@ class KnowledgeGapTaskService:
         product = sanitize_text(filters.get("product"))
         if product:
             query = query.filter(KnowledgeGapTask.product_title.like(f"%{product}%"))
-        rows = query.limit(max(1, min(int(limit or 100), 500))).all()
+        rows = query.all()
         target_system = sanitize_text(filters.get("target_system"))
         recommended_action = sanitize_text(filters.get("recommended_action"))
         if target_system or recommended_action:
@@ -593,12 +636,14 @@ class KnowledgeGapTaskService:
                     continue
                 filtered_rows.append(row)
             rows = filtered_rows
+        rows = filter_tasks_by_run(db, rows, run_uid)
+        rows = rows[:max(1, min(int(limit or 100), 500))]
         draft_counts: dict[str, int] = {}
         for task_uid, count in db.query(KnowledgeGapDraft.task_uid, KnowledgeGapDraft.id).all():
             draft_counts[task_uid] = draft_counts.get(task_uid, 0) + 1
         return {
             "items": [sanitize_obj({**row.to_dict(), "draft_count": draft_counts.get(row.task_uid, 0)}) for row in rows],
-            "summary": self.summary(db),
+            "summary": self.summary(db, tasks=rows, run_uid=run_uid),
         }
 
     def get_task_detail(self, db, task_uid: str) -> dict[str, Any] | None:
@@ -637,21 +682,46 @@ class KnowledgeGapTaskService:
         db.commit()
         return sanitize_obj(task.to_dict())
 
-    def summary(self, db) -> dict[str, int]:
+    def summary(self, db, *, tasks: list[Any] | None = None, run_uid: str = "") -> dict[str, Any]:
         from app.models.eval_tables import KnowledgeGapDraft, KnowledgeGapTask
 
-        tasks = db.query(KnowledgeGapTask).all()
-        drafts = db.query(KnowledgeGapDraft).all()
+        selected_tasks = list(tasks) if tasks is not None else db.query(KnowledgeGapTask).all()
+        task_uids = {row.task_uid for row in selected_tasks}
+        if task_uids:
+            drafts = db.query(KnowledgeGapDraft).filter(KnowledgeGapDraft.task_uid.in_(task_uids)).all()
+        else:
+            drafts = []
+
+        def _count_by_metadata(key: str) -> dict[str, int]:
+            counts: dict[str, int] = {}
+            for row in selected_tasks:
+                metadata = row.get_metadata()
+                value = sanitize_text(metadata.get(key))
+                if not value and key == "gap_category":
+                    value = sanitize_text(row.gap_type)
+                if not value and key == "required_evidence_type":
+                    value = sanitize_text(row.missing_evidence_type)
+                if not value:
+                    value = "unknown"
+                counts[value] = counts.get(value, 0) + 1
+            return counts
+
         return {
-            "open_count": sum(1 for row in tasks if row.status == "open"),
-            "high_risk_count": sum(1 for row in tasks if row.risk_level == "high"),
-            "media_gap_count": sum(1 for row in tasks if row.gap_type == "media_asset_gap"),
-            "product_fact_gap_count": sum(1 for row in tasks if row.gap_type in {"product_fact_gap", "product_field_gap"}),
-            "product_field_gap_count": sum(1 for row in tasks if row.gap_type == "product_field_gap"),
-            "aftersales_policy_gap_count": sum(1 for row in tasks if row.gap_type == "aftersales_policy_gap"),
-            "promotion_policy_gap_count": sum(1 for row in tasks if row.gap_type == "promotion_policy_gap"),
-            "context_extraction_gap_count": sum(1 for row in tasks if row.gap_type == "context_extraction_gap"),
+            "run_uid": sanitize_text(run_uid),
+            "filtered_by_run_uid": bool(sanitize_text(run_uid)),
+            "total": len(selected_tasks),
+            "by_gap_category": _count_by_metadata("gap_category"),
+            "by_required_evidence_type": _count_by_metadata("required_evidence_type"),
+            "by_target_system": _count_by_metadata("target_system"),
+            "open_count": sum(1 for row in selected_tasks if row.status == "open"),
+            "high_risk_count": sum(1 for row in selected_tasks if row.risk_level == "high"),
+            "media_gap_count": sum(1 for row in selected_tasks if row.gap_type == "media_asset_gap"),
+            "product_fact_gap_count": sum(1 for row in selected_tasks if row.gap_type in {"product_fact_gap", "product_field_gap"}),
+            "product_field_gap_count": sum(1 for row in selected_tasks if row.gap_type == "product_field_gap"),
+            "aftersales_policy_gap_count": sum(1 for row in selected_tasks if row.gap_type == "aftersales_policy_gap"),
+            "promotion_policy_gap_count": sum(1 for row in selected_tasks if row.gap_type == "promotion_policy_gap"),
+            "context_extraction_gap_count": sum(1 for row in selected_tasks if row.gap_type == "context_extraction_gap"),
             "draft_count": len(drafts),
             "pending_review_count": sum(1 for row in drafts if row.review_status == "pending_review"),
-            "verified_count": sum(1 for row in tasks if row.status == "verified"),
+            "verified_count": sum(1 for row in selected_tasks if row.status == "verified"),
         }

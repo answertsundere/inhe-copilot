@@ -77,6 +77,39 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert data["tasks"][0]["required_evidence_type"] == "installation_video"
     assert data["tasks"][0]["target_system"] == "kb_media_asset"
 
+    db = session_factory()
+    try:
+        other = KnowledgeGapTask(
+            task_uid="kgap_other_run",
+            gap_type="product_field_gap",
+            query_fact_type="material",
+            missing_evidence_type="product_material",
+            status="open",
+            sample_count=1,
+        )
+        other.set_metadata({"source_run_uid": "other_run", "gap_category": "product_field_gap"})
+        db.add(other)
+        db.commit()
+    finally:
+        db.close()
+
+    run_filtered = client.get(
+        "/api/eval/knowledge-gaps?run_uid=kgap_route_run",
+        headers={"X-User-Role": "operator"},
+    )
+    assert run_filtered.status_code == 200
+    run_data = run_filtered.get_json()
+    assert [item["task_uid"] for item in run_data["items"]] == [task_uid]
+    assert run_data["summary"]["run_uid"] == "kgap_route_run"
+    assert run_data["summary"]["filtered_by_run_uid"] is True
+    assert run_data["summary"]["total"] == 1
+    assert run_data["summary"]["by_gap_category"] == {"media_asset_gap": 1}
+
+    unfiltered = client.get("/api/eval/knowledge-gaps", headers={"X-User-Role": "operator"})
+    assert unfiltered.status_code == 200
+    assert unfiltered.get_json()["summary"]["filtered_by_run_uid"] is False
+    assert unfiltered.get_json()["summary"]["total"] == 2
+
     filtered = client.get(
         "/api/eval/knowledge-gaps?gap_category=media_asset_gap&required_evidence_type=installation_video&target_system=kb_media_asset",
         headers={"X-User-Role": "operator"},

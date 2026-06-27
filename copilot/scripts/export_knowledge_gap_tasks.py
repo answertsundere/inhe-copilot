@@ -17,8 +17,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from app.db import SessionLocal, init_db
-from app.models.eval_tables import EvalTrace, KnowledgeGapTask
+from app.models.eval_tables import KnowledgeGapTask
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.knowledge_gap_task_service import filter_tasks_by_run
 
 
 HEADERS = [
@@ -82,13 +83,6 @@ def _context_summary_text(task: KnowledgeGapTask) -> str:
     return "; ".join(parts)
 
 
-def _matches_run(task: KnowledgeGapTask, run_uid: str, turn_uids: set[str]) -> bool:
-    metadata = task.get_metadata()
-    if sanitize_text(metadata.get("source_run_uid")) == run_uid:
-        return True
-    return bool(set(task.get_related_turn_uids()) & turn_uids)
-
-
 def export_knowledge_gap_tasks(output: str | None = None, status: str = "open", run_uid: str = "") -> dict:
     init_db()
     path = Path(output or default_output_path())
@@ -102,18 +96,7 @@ def export_knowledge_gap_tasks(output: str | None = None, status: str = "open", 
         tasks = query.all()
         target_run_uid = sanitize_text(run_uid)
         if target_run_uid:
-            tagged_tasks = [
-                task for task in tasks
-                if sanitize_text(task.get_metadata().get("source_run_uid")) == target_run_uid
-            ]
-            if tagged_tasks:
-                tasks = tagged_tasks
-            else:
-                turn_uids = {
-                    sanitize_text(row[0])
-                    for row in db.query(EvalTrace.turn_uid).filter(EvalTrace.run_uid == target_run_uid).all()
-                }
-                tasks = [task for task in tasks if _matches_run(task, target_run_uid, turn_uids)]
+            tasks = filter_tasks_by_run(db, tasks, target_run_uid)
 
         workbook = Workbook()
         sheet = workbook.active
