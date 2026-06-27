@@ -335,6 +335,11 @@ class KnowledgeGapPublishQueueService:
             existing.superseded_reason = "replaced by a newer reviewed payload for the same task and target"
             existing.superseded_at = now
             existing.superseded_by_reviewer = reviewer_name
+            existing.approved_to_publish = False
+            existing.approval_status = "invalidated"
+            existing.set_pre_publish_block_reasons([
+                "publish approval invalidated because this queue item was superseded by a newer payload"
+            ])
             existing_metadata = existing.get_metadata()
             existing_metadata.setdefault("status_history", [])
             existing_metadata["status_history"].append(sanitize_obj({
@@ -426,6 +431,10 @@ class KnowledgeGapPublishQueueService:
                 "publish_dry_run_status": item.publish_dry_run_status,
                 "ready_for_publish": bool(item.ready_for_publish),
                 "publish_block_reasons": item.get_publish_block_reasons(),
+                "pre_publish_retest_status": item.pre_publish_retest_status,
+                "approved_to_publish": bool(item.approved_to_publish),
+                "approval_status": item.approval_status,
+                "locked_payload_fingerprint": item.locked_payload_fingerprint,
             })
         return sanitize_obj({
             "queue_item": item.to_dict(),
@@ -435,6 +444,10 @@ class KnowledgeGapPublishQueueService:
             "publish_dry_run_status": item.publish_dry_run_status,
             "ready_for_publish": bool(item.ready_for_publish),
             "publish_block_reasons": item.get_publish_block_reasons(),
+            "pre_publish_retest_status": item.pre_publish_retest_status,
+            "approved_to_publish": bool(item.approved_to_publish),
+            "approval_status": item.approval_status,
+            "locked_payload_fingerprint": item.locked_payload_fingerprint,
         })
 
     def update_queue_item(self, db, queue_uid: str, payload: dict[str, Any], *, operator: str = "") -> dict[str, Any] | None:
@@ -451,6 +464,12 @@ class KnowledgeGapPublishQueueService:
         if item.status == "superseded" and status == "exported":
             raise ValueError("superseded queue items cannot be exported")
         item.status = status
+        if status in {"rejected", "cancelled"}:
+            item.approved_to_publish = False
+            item.approval_status = "invalidated"
+            item.set_pre_publish_block_reasons([
+                f"publish approval invalidated because queue item was {status}"
+            ])
         metadata = item.get_metadata()
         metadata.setdefault("status_history", [])
         metadata["status_history"].append(sanitize_obj({

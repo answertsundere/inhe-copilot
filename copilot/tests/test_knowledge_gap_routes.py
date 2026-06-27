@@ -230,6 +230,9 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert export_preview.get_json()["writes_formal_tables"] is False
     assert export_preview.get_json()["publish_dry_run_status"] == "failed"
     assert export_preview.get_json()["ready_for_publish"] is False
+    assert export_preview.get_json()["pre_publish_retest_status"] == "not_run"
+    assert export_preview.get_json()["approved_to_publish"] is False
+    assert export_preview.get_json()["approval_status"] in {"not_ready", "dry_run_required"}
 
     mark_exported = client.patch(
         f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}",

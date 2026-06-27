@@ -402,7 +402,48 @@ def test_same_task_target_different_payload_supersedes_old_queue_item():
         assert old.superseded_reason
         assert old.superseded_at
         assert old.superseded_by_reviewer == "lead_2"
+        assert old.approved_to_publish is False
+        assert old.approval_status == "invalidated"
+        assert old.get_pre_publish_block_reasons()
         assert new.status == "queued"
+    finally:
+        db.close()
+
+
+def test_supersede_invalidates_existing_publish_approval():
+    session_factory = _session_factory()
+    db = session_factory()
+    try:
+        _seed_task(db)
+        service = KnowledgeGapPublishQueueService()
+        first_draft = _draft(db)
+        first = service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=first_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload("100x40x120cm")),
+            reviewer="lead",
+        )
+        old = db.query(KnowledgeGapPublishQueue).filter(KnowledgeGapPublishQueue.queue_uid == first["queue_item"]["queue_uid"]).one()
+        old.approved_to_publish = True
+        old.approval_status = "approved_to_publish"
+        old.locked_payload_fingerprint = old.payload_fingerprint
+        db.commit()
+
+        second_draft = _draft(db, force_regenerate=True)
+        service.review_draft(
+            db,
+            task_uid="kgap_queue_1",
+            draft_uid=second_draft["draft_uid"],
+            payload=_review_payload(verified_payload=_verified_product_payload("120x45x160cm")),
+            reviewer="lead_2",
+        )
+
+        old = db.query(KnowledgeGapPublishQueue).filter(KnowledgeGapPublishQueue.queue_uid == first["queue_item"]["queue_uid"]).one()
+        assert old.status == "superseded"
+        assert old.approved_to_publish is False
+        assert old.approval_status == "invalidated"
+        assert old.locked_payload_fingerprint
     finally:
         db.close()
 

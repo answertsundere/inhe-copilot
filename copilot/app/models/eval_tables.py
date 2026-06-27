@@ -687,6 +687,15 @@ class KnowledgeGapPublishQueue(Base):
     ready_for_publish = Column(Boolean, nullable=False, default=False, index=True)
     last_dry_run_at = Column(DateTime, nullable=True)
     dry_run_by = Column(String(64), nullable=False, default="")
+    pre_publish_retest_status = Column(String(32), nullable=False, default="not_run", index=True)
+    pre_publish_retest_run_uid = Column(String(64), nullable=False, default="", index=True)
+    pre_publish_retest_summary_json = Column(Text, nullable=False, default="{}")
+    pre_publish_block_reasons_json = Column(Text, nullable=False, default="[]")
+    approved_to_publish = Column(Boolean, nullable=False, default=False, index=True)
+    approved_to_publish_at = Column(DateTime, nullable=True)
+    approved_to_publish_by = Column(String(64), nullable=False, default="")
+    locked_payload_fingerprint = Column(String(64), nullable=False, default="", index=True)
+    approval_status = Column(String(32), nullable=False, default="not_ready", index=True)
     metadata_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -721,6 +730,18 @@ class KnowledgeGapPublishQueue(Base):
     def set_publish_block_reasons(self, value):
         self.publish_block_reasons_json = _json_dump(value, [])
 
+    def get_pre_publish_retest_summary(self):
+        return _json_load(self.pre_publish_retest_summary_json, {})
+
+    def set_pre_publish_retest_summary(self, value):
+        self.pre_publish_retest_summary_json = _json_dump(value, {})
+
+    def get_pre_publish_block_reasons(self):
+        return _json_load(self.pre_publish_block_reasons_json, [])
+
+    def set_pre_publish_block_reasons(self, value):
+        self.pre_publish_block_reasons_json = _json_dump(value, [])
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -748,6 +769,15 @@ class KnowledgeGapPublishQueue(Base):
             "ready_for_publish": bool(self.ready_for_publish),
             "last_dry_run_at": self.last_dry_run_at.isoformat() if self.last_dry_run_at else None,
             "dry_run_by": self.dry_run_by,
+            "pre_publish_retest_status": self.pre_publish_retest_status,
+            "pre_publish_retest_run_uid": self.pre_publish_retest_run_uid,
+            "pre_publish_retest_summary": self.get_pre_publish_retest_summary(),
+            "pre_publish_block_reasons": self.get_pre_publish_block_reasons(),
+            "approved_to_publish": bool(self.approved_to_publish),
+            "approved_to_publish_at": self.approved_to_publish_at.isoformat() if self.approved_to_publish_at else None,
+            "approved_to_publish_by": self.approved_to_publish_by,
+            "locked_payload_fingerprint": self.locked_payload_fingerprint,
+            "approval_status": self.approval_status,
             "metadata": self.get_metadata(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

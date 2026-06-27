@@ -207,6 +207,15 @@ def _migrate_add_columns():
             ("ready_for_publish", "BOOLEAN", "0"),
             ("last_dry_run_at", "DATETIME", "NULL"),
             ("dry_run_by", "VARCHAR(64)", "''"),
+            ("pre_publish_retest_status", "VARCHAR(32)", "'not_run'"),
+            ("pre_publish_retest_run_uid", "VARCHAR(64)", "''"),
+            ("pre_publish_retest_summary_json", "TEXT", "'{}'"),
+            ("pre_publish_block_reasons_json", "TEXT", "'[]'"),
+            ("approved_to_publish", "BOOLEAN", "0"),
+            ("approved_to_publish_at", "DATETIME", "NULL"),
+            ("approved_to_publish_by", "VARCHAR(64)", "''"),
+            ("locked_payload_fingerprint", "VARCHAR(64)", "''"),
+            ("approval_status", "VARCHAR(32)", "'not_ready'"),
         ],
     }
     for table_name, new_columns in eval_table_columns.items():

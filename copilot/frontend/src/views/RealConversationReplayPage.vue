@@ -19,9 +19,11 @@ import {
   generateRepairTasks,
   dryRunKnowledgeGapPublishQueue,
   previewKnowledgeGapPublishExport,
+  previewKnowledgeGapPrePublishRetest,
   previewKnowledgeGapRetest,
   rejectKnowledgeGapTask,
   reviewKnowledgeGapDraft,
+  runKnowledgeGapPrePublishRetest,
   retestKnowledgeGapTask,
   submitRealConversationReview,
   triageKnowledgeGapTask,
@@ -625,6 +627,42 @@ async function dryRunPublishQueueItem(item: KnowledgeGapPublishQueueItem) {
     ElMessage.success('Dry-run passed. Ready for publish handoff.')
   } else {
     ElMessage.warning('Dry-run failed. Check block reasons.')
+  }
+}
+
+function canRunPrePublishRetest(item: KnowledgeGapPublishQueueItem) {
+  return (
+    (item.status === 'queued' || item.status === 'exported') &&
+    item.publish_dry_run_status === 'passed' &&
+    item.ready_for_publish === true
+  )
+}
+
+async function previewPrePublishRetest(item: KnowledgeGapPublishQueueItem) {
+  const result = await previewKnowledgeGapPrePublishRetest(item.queue_uid)
+  ElMessageBox.alert(formatJson(result), 'Pre-publish retest preview', {
+    confirmButtonText: 'Close',
+  })
+}
+
+async function runPrePublishRetest(item: KnowledgeGapPublishQueueItem) {
+  await ElMessageBox.confirm(
+    '复测只验证关联真实样本，不写正式库。approved_to_publish 仍不是正式发布。继续？',
+    '发布前复测',
+    {
+      confirmButtonText: '执行复测',
+      cancelButtonText: '取消',
+      type: 'warning',
+    },
+  )
+  const result = await runKnowledgeGapPrePublishRetest(item.queue_uid)
+  knowledgeGapPublishQueue.value = knowledgeGapPublishQueue.value.map((row) =>
+    row.queue_uid === item.queue_uid ? result.queue_item : row,
+  )
+  if (result.queue_item.approved_to_publish) {
+    ElMessage.success('Pre-publish retest passed. Candidate is approved for publish handoff only.')
+  } else {
+    ElMessage.warning('Pre-publish retest failed. Check remaining failures and block reasons.')
   }
 }
 
@@ -1649,6 +1687,17 @@ onMounted(loadRuns)
                   dry-run: {{ item.publish_dry_run_status || 'not_run' }} /
                   ready_for_publish: {{ item.ready_for_publish ? 'yes' : 'no' }}
                 </span>
+                <span>
+                  pre-publish retest: {{ item.pre_publish_retest_status || 'not_run' }} /
+                  approval: {{ item.approval_status || 'not_ready' }} /
+                  approved_to_publish: {{ item.approved_to_publish ? 'yes' : 'no' }}
+                </span>
+                <span v-if="item.locked_payload_fingerprint">
+                  locked fingerprint: {{ item.locked_payload_fingerprint }}
+                </span>
+                <span v-if="item.pre_publish_block_reasons?.length">
+                  retest block reasons: {{ item.pre_publish_block_reasons.join('; ') }}
+                </span>
                 <span v-if="item.last_dry_run_at">
                   last dry-run: {{ item.last_dry_run_at }} / by {{ item.dry_run_by || '-' }}
                 </span>
@@ -1669,6 +1718,10 @@ onMounted(loadRuns)
                   </div>
                   <pre>{{ formatJson(queueDryRunResult(item).diff_preview) }}</pre>
                 </details>
+                <details v-if="Object.keys(item.pre_publish_retest_summary || {}).length">
+                  <summary>pre-publish retest summary</summary>
+                  <pre>{{ formatJson(item.pre_publish_retest_summary) }}</pre>
+                </details>
                 <div class="gap-actions">
                   <el-button
                     v-if="item.status === 'queued' || item.status === 'exported'"
@@ -1677,6 +1730,21 @@ onMounted(loadRuns)
                     @click="dryRunPublishQueueItem(item)"
                   >
                     发布前 Dry-run
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :disabled="!canRunPrePublishRetest(item)"
+                    @click="previewPrePublishRetest(item)"
+                  >
+                    复测预览
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="warning"
+                    :disabled="!canRunPrePublishRetest(item)"
+                    @click="runPrePublishRetest(item)"
+                  >
+                    发布前复测
                   </el-button>
                   <el-button size="small" @click="previewPublishQueueItem(item)">导出预览</el-button>
                   <el-button

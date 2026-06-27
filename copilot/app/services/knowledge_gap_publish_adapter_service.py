@@ -198,6 +198,12 @@ class PublishAdapterDryRunService:
         item.set_publish_dry_run_result(result)
         item.set_publish_block_reasons(result.get("block_reasons") or [])
         item.ready_for_publish = bool(result.get("ready_for_publish"))
+        item.approved_to_publish = False
+        item.approved_to_publish_at = None
+        item.approved_to_publish_by = ""
+        item.approval_status = "retest_required" if item.ready_for_publish else "dry_run_required"
+        if not item.ready_for_publish:
+            item.locked_payload_fingerprint = ""
         item.last_dry_run_at = datetime.utcnow()
         item.dry_run_by = sanitize_text(operator)
         metadata = item.get_metadata()

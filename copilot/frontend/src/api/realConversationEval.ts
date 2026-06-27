@@ -292,6 +292,15 @@ export interface KnowledgeGapPublishQueueItem {
   ready_for_publish?: boolean
   last_dry_run_at?: string
   dry_run_by?: string
+  pre_publish_retest_status?: 'not_run' | 'running' | 'passed' | 'failed' | 'skipped'
+  pre_publish_retest_run_uid?: string
+  pre_publish_retest_summary?: Record<string, unknown>
+  pre_publish_block_reasons?: string[]
+  approved_to_publish?: boolean
+  approved_to_publish_at?: string
+  approved_to_publish_by?: string
+  locked_payload_fingerprint?: string
+  approval_status?: 'not_ready' | 'dry_run_required' | 'retest_required' | 'approved_to_publish' | 'invalidated'
   metadata?: Record<string, unknown>
   created_at?: string
   updated_at?: string
@@ -542,6 +551,10 @@ export async function previewKnowledgeGapPublishExport(queueUid: string) {
     publish_dry_run_status?: string
     ready_for_publish?: boolean
     publish_block_reasons?: string[]
+    pre_publish_retest_status?: string
+    approved_to_publish?: boolean
+    approval_status?: string
+    locked_payload_fingerprint?: string
   }
 }
 
@@ -550,6 +563,28 @@ export async function dryRunKnowledgeGapPublishQueue(queueUid: string) {
   return res.data as {
     queue_item: KnowledgeGapPublishQueueItem
     dry_run: Record<string, unknown>
+  }
+}
+
+export async function previewKnowledgeGapPrePublishRetest(queueUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gap-publish-queue/${queueUid}/pre-publish-retest-preview`)
+  return res.data as {
+    dry_run: boolean
+    queue_uid: string
+    task_uid: string
+    case_uids: string[]
+    checked_turn_uids: string[]
+    sample_count: number
+    samples?: Array<Record<string, unknown>>
+  }
+}
+
+export async function runKnowledgeGapPrePublishRetest(queueUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gap-publish-queue/${queueUid}/pre-publish-retest`)
+  return res.data as {
+    queue_item: KnowledgeGapPublishQueueItem
+    summary: Record<string, unknown>
+    block_reasons?: string[]
   }
 }
 

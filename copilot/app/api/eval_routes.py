@@ -714,6 +714,43 @@ def dry_run_knowledge_gap_publish_queue(queue_uid):
         db.close()
 
 
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>/pre-publish-retest-preview", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>/pre-publish-retest-preview", methods=["POST"])
+@require_supervisor
+def preview_knowledge_gap_publish_retest(queue_uid):
+    from app.services.knowledge_gap_pre_publish_retest_service import KnowledgeGapPrePublishRetestService
+
+    data = request.get_json(silent=True) or {}
+    try:
+        result = KnowledgeGapPrePublishRetestService().preview(
+            sanitize_text(queue_uid),
+            max_turns=int(data.get("max_turns")) if data.get("max_turns") else None,
+        )
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except ValueError as exc:
+        message = sanitize_text(str(exc))
+        return jsonify({"error": message}), 404 if "not found" in message else 400
+
+
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>/pre-publish-retest", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>/pre-publish-retest", methods=["POST"])
+@require_supervisor
+def run_knowledge_gap_publish_retest(queue_uid):
+    from app.services.knowledge_gap_pre_publish_retest_service import KnowledgeGapPrePublishRetestService
+
+    data = request.get_json(silent=True) or {}
+    try:
+        result = KnowledgeGapPrePublishRetestService().run(
+            sanitize_text(queue_uid),
+            max_turns=int(data.get("max_turns")) if data.get("max_turns") else None,
+            triggered_by=sanitize_text(data.get("triggered_by") or current_user_name()),
+        )
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except ValueError as exc:
+        message = sanitize_text(str(exc))
+        return jsonify({"error": message}), 404 if "not found" in message else 400
+
+
 @eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])
 @eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])
 @require_supervisor
