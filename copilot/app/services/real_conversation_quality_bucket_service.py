@@ -12,6 +12,7 @@ AUTO_SENDABLE = "auto_sendable"
 SAFE_HANDOFF = "safe_handoff"
 KNOWLEDGE_GAP = "knowledge_gap"
 AGENT_ERROR = "agent_error"
+CONTEXT_GAP = "context_gap"
 UNSCORED_OR_NOISE = "unscored_or_noise"
 
 AGENT_ERROR_LABELS = {
@@ -31,9 +32,13 @@ AGENT_ERROR_LABELS = {
 }
 
 KNOWLEDGE_GAP_LABELS = {
+    "rag_miss",
+}
+
+CONTEXT_GAP_LABELS = {
+    "context_gap",
     "context_insufficient",
     "no_product_identified",
-    "rag_miss",
 }
 
 KNOWLEDGE_GAP_FIX_AREAS = {
@@ -61,6 +66,7 @@ UNSCORED_ACTIONABILITY = {
 BUCKET_PRIORITY = {
     AUTO_SENDABLE: 10,
     SAFE_HANDOFF: 20,
+    CONTEXT_GAP: 25,
     KNOWLEDGE_GAP: 30,
     AGENT_ERROR: 40,
     UNSCORED_OR_NOISE: 0,
@@ -83,9 +89,10 @@ class QualityBucketResult:
             "secondary_buckets": list(self.secondary_buckets),
             "is_auto_sendable": bucket == AUTO_SENDABLE,
             "is_safe_handoff": bucket == SAFE_HANDOFF,
+            "is_context_gap": bucket == CONTEXT_GAP,
             "is_knowledge_gap": bucket == KNOWLEDGE_GAP,
             "is_agent_error": bucket == AGENT_ERROR,
-            "should_count_in_quality_rate": bucket != UNSCORED_OR_NOISE,
+            "should_count_in_quality_rate": bucket not in {UNSCORED_OR_NOISE, CONTEXT_GAP},
         })
 
 
@@ -129,6 +136,16 @@ def classify_quality_bucket(
     fix_areas = _fix_areas(failures)
     actionability = sanitize_text(understanding.get("turn_actionability"))
     should_score = understanding.get("should_score")
+    context_sufficiency = understanding.get("context_sufficiency") if isinstance(understanding.get("context_sufficiency"), dict) else {}
+
+    if (labels & CONTEXT_GAP_LABELS) or context_sufficiency.get("is_sufficient") is False:
+        matched = sorted(labels & CONTEXT_GAP_LABELS) or list(context_sufficiency.get("missing_context_fields") or [])
+        return QualityBucketResult(
+            quality_bucket=CONTEXT_GAP,
+            quality_bucket_reason=f"source conversation lacks required context: {', '.join(matched)}",
+            quality_bucket_priority=BUCKET_PRIORITY[CONTEXT_GAP],
+            secondary_buckets=tuple(sorted(_secondary_buckets(labels, fix_areas, requires_human_review))),
+        )
 
     if labels & AGENT_ERROR_LABELS:
         matched = sorted(labels & AGENT_ERROR_LABELS)
@@ -178,6 +195,10 @@ def classify_quality_bucket(
 
 def _secondary_buckets(labels: set[str], fix_areas: set[str], requires_human_review: bool) -> set[str]:
     buckets = set()
+    if labels & AGENT_ERROR_LABELS:
+        buckets.add(AGENT_ERROR)
+    if labels & CONTEXT_GAP_LABELS:
+        buckets.add(CONTEXT_GAP)
     if (labels & KNOWLEDGE_GAP_LABELS) or (fix_areas & KNOWLEDGE_GAP_FIX_AREAS):
         buckets.add(KNOWLEDGE_GAP)
     if requires_human_review or labels & SAFE_HANDOFF_LABELS:

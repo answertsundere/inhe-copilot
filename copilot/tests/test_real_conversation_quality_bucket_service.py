@@ -1,6 +1,7 @@
 from app.services.real_conversation_quality_bucket_service import (
     AGENT_ERROR,
     AUTO_SENDABLE,
+    CONTEXT_GAP,
     KNOWLEDGE_GAP,
     SAFE_HANDOFF,
     UNSCORED_OR_NOISE,
@@ -108,6 +109,26 @@ def test_should_score_false_without_agent_error_is_unscored_or_noise():
 
     assert result["quality_bucket"] == UNSCORED_OR_NOISE
     assert result["should_count_in_quality_rate"] is False
+
+
+def test_context_gap_is_separate_from_knowledge_gap_and_accuracy_denominator():
+    result = _bucket(
+        failure_labels=["context_gap", "rag_miss"],
+        failures=[
+            {"failure_type": "context_gap", "suggested_fix_area": "sample_context_extraction"},
+            {"failure_type": "rag_miss", "suggested_fix_area": "knowledge_rag"},
+        ],
+        turn_understanding={
+            "should_score": True,
+            "turn_actionability": "actionable_question",
+            "context_sufficiency": {"is_sufficient": False, "missing_context_fields": ["product"]},
+        },
+    )
+
+    assert result["quality_bucket"] == CONTEXT_GAP
+    assert result["is_context_gap"] is True
+    assert result["should_count_in_quality_rate"] is False
+    assert KNOWLEDGE_GAP in result["secondary_buckets"]
 
 
 def test_rag_miss_still_knowledge_gap():

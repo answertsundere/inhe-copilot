@@ -9,6 +9,7 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text, sta
 from app.services.real_conversation_quality_bucket_service import (
     AGENT_ERROR,
     AUTO_SENDABLE,
+    CONTEXT_GAP,
     KNOWLEDGE_GAP,
     SAFE_HANDOFF,
     UNSCORED_OR_NOISE,
@@ -17,7 +18,7 @@ from app.services.real_conversation_quality_bucket_service import (
 
 
 ACTIONABLE_BUCKETS = {KNOWLEDGE_GAP, AGENT_ERROR, SAFE_HANDOFF}
-BUCKETS = (AUTO_SENDABLE, SAFE_HANDOFF, KNOWLEDGE_GAP, AGENT_ERROR, UNSCORED_OR_NOISE)
+BUCKETS = (AUTO_SENDABLE, SAFE_HANDOFF, CONTEXT_GAP, KNOWLEDGE_GAP, AGENT_ERROR, UNSCORED_OR_NOISE)
 
 AGENT_ERROR_OWNER_BY_FAILURE = {
     "query_fact_type_missing": "query_understanding",
@@ -164,6 +165,8 @@ def _recommended_action(bucket: str) -> str:
         return "Fix Agent understanding, answer composition, evidence use, or final audit logic, then run repair verification."
     if bucket == SAFE_HANDOFF:
         return "Clarify human handoff policy or risk boundary; this is not automatically treated as a wrong answer."
+    if bucket == CONTEXT_GAP:
+        return "Improve source conversation context extraction or mark the sample as not valid for Agent accuracy scoring."
     return "No task is generated for this bucket."
 
 
@@ -174,6 +177,8 @@ def _next_step(bucket: str) -> str:
         return "generate_repair_task"
     if bucket == SAFE_HANDOFF:
         return "review_human_policy"
+    if bucket == CONTEXT_GAP:
+        return "fix_sample_context"
     return "none"
 
 

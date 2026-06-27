@@ -80,11 +80,13 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
     bucket_counts = {
         "auto_sendable": 0,
         "safe_handoff": 0,
+        "context_gap": 0,
         "knowledge_gap": 0,
         "agent_error": 0,
         "unscored_or_noise": 0,
     }
     quality_denominator = 0
+    quality_passed = 0
     for trace in traces:
         bucket = _trace_quality_bucket(trace, failures_by_turn)
         bucket_name = str(bucket.get("quality_bucket") or "agent_error")
@@ -93,6 +95,8 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
         bucket_counts[bucket_name] += 1
         if bucket.get("should_count_in_quality_rate") is not False:
             quality_denominator += 1
+            if trace.passed:
+                quality_passed += 1
     def _rate(count: int) -> float:
         return round(count / quality_denominator, 4) if quality_denominator else 0
     return {
@@ -100,17 +104,22 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
         "review_counts_by_decision": _count_by(reviews, "decision"),
         "avg_latency_ms": avg_latency_ms,
         "requires_review_count": sum(1 for row in scored_traces if row.requires_human_review),
-        "pass_rate": round(passed_turns / total_turns, 4) if total_turns else 0,
+        "pass_rate": round(quality_passed / quality_denominator, 4) if quality_denominator else 0,
+        "legacy_scored_pass_rate": round(passed_turns / total_turns, 4) if total_turns else 0,
         "auto_sendable_turns": bucket_counts["auto_sendable"],
         "safe_handoff_turns": bucket_counts["safe_handoff"],
+        "context_gap_turns": bucket_counts["context_gap"],
         "knowledge_gap_turns": bucket_counts["knowledge_gap"],
         "agent_error_turns": bucket_counts["agent_error"],
         "unscored_turns": bucket_counts["unscored_or_noise"],
         "auto_sendable_rate": _rate(bucket_counts["auto_sendable"]),
         "safe_handoff_rate": _rate(bucket_counts["safe_handoff"]),
+        "context_gap_rate": round(bucket_counts["context_gap"] / len(traces), 4) if traces else 0,
         "knowledge_gap_rate": _rate(bucket_counts["knowledge_gap"]),
         "agent_error_rate": _rate(bucket_counts["agent_error"]),
         "quality_denominator": quality_denominator,
+        "agent_accuracy_denominator": quality_denominator,
+        "agent_accuracy_passed": quality_passed,
     }
 
 

@@ -8,6 +8,7 @@ from typing import Any
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.real_conversation_import_service import (
     build_import_report,
+    case_uid_for_conversation,
     collect_real_conversation_samples,
     default_source_dir,
     write_samples_to_db,
@@ -59,6 +60,8 @@ def _daily_metadata(
     total_turns = int(replay.get("turns") or replay.get("total_turns") or 0)
     failed_turns = int(replay.get("failed") or replay.get("failed_turns") or 0)
     passed_turns = int(replay.get("passed") or replay.get("passed_turns") or 0)
+    agent_accuracy_turns = int(replay.get("agent_accuracy_turns") or total_turns)
+    agent_accuracy_passed = int(replay.get("agent_accuracy_passed") or passed_turns)
     return sanitize_obj({
         "daily_schedule": {
             "schedule_uid": schedule_uid,
@@ -71,7 +74,11 @@ def _daily_metadata(
             "total_cases": int(replay.get("total_cases") or 0),
             "total_turns": total_turns,
             "failed_turns": failed_turns,
-            "pass_rate": _pass_rate(passed_turns, total_turns),
+            "pass_rate": _pass_rate(agent_accuracy_passed, agent_accuracy_turns),
+            "legacy_scored_pass_rate": _pass_rate(passed_turns, total_turns),
+            "agent_accuracy_turns": agent_accuracy_turns,
+            "agent_accuracy_passed": agent_accuracy_passed,
+            "context_gap_turns": int(replay.get("context_gap") or 0),
             "error_message": sanitize_text(error_message),
             "created_by": sanitize_text(options.created_by),
             "generate_repair_tasks": bool(options.generate_repair_tasks),
@@ -135,9 +142,11 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
             min_turns=options.min_turns,
             date=options.run_date or None,
         )
+        imported_case_uids = [case_uid_for_conversation(sample.conversation_uid) for sample in samples]
         stats = write_samples_to_db(samples) if options.apply else {}
         report["import"] = build_import_report(samples, apply=options.apply, stats=stats)
     else:
+        imported_case_uids = []
         report["import"] = {"skipped": True}
 
     if not options.apply:
@@ -153,7 +162,11 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
             replay = {"skipped": True, "reason": "sample-only", "run_uid": run_uid, "status": "sampled"}
         else:
             replay = RealConversationReplayService().replay_cases(
-                ReplayOptions(limit_cases=options.sample_limit, run_uid=run_uid)
+                ReplayOptions(
+                    limit_cases=options.sample_limit,
+                    run_uid=run_uid,
+                    case_uids=imported_case_uids or None,
+                )
             )
         report["replay"] = replay
         repair_result = None
@@ -242,17 +255,24 @@ def build_real_conversation_trends(
     daily: dict[str, dict[str, Any]] = {}
     for offset in range(safe_days):
         day = (since + timedelta(days=offset)).date().isoformat()
-        daily[day] = {"date": day, "pass_rate": 0, "total_turns": 0, "failed_turns": 0}
+        daily[day] = {"date": day, "pass_rate": 0, "total_turns": 0, "failed_turns": 0, "agent_accuracy_turns": 0, "context_gap_turns": 0}
     for run in runs:
         day = _date_key(run.created_at)
         if day not in daily:
-            daily[day] = {"date": day, "pass_rate": 0, "total_turns": 0, "failed_turns": 0}
+            daily[day] = {"date": day, "pass_rate": 0, "total_turns": 0, "failed_turns": 0, "agent_accuracy_turns": 0, "context_gap_turns": 0}
+        schedule = (run.get_metadata() or {}).get("daily_schedule") or {}
         daily[day]["total_turns"] += int(run.total_turns or 0)
         daily[day]["failed_turns"] += int(run.failed_turns or 0)
-        passed = int(run.passed_turns or 0)
-        total = int(run.total_turns or 0)
-        daily[day]["pass_rate"] = _pass_rate(daily[day].get("_passed", 0) + passed, daily[day]["total_turns"])
-        daily[day]["_passed"] = daily[day].get("_passed", 0) + passed
+        agent_accuracy_turns = int(schedule.get("agent_accuracy_turns") or run.total_turns or 0)
+        agent_accuracy_passed = int(schedule.get("agent_accuracy_passed") or run.passed_turns or 0)
+        context_gap_turns = int(schedule.get("context_gap_turns") or 0)
+        daily[day]["agent_accuracy_turns"] += agent_accuracy_turns
+        daily[day]["context_gap_turns"] += context_gap_turns
+        daily[day]["pass_rate"] = _pass_rate(
+            daily[day].get("_agent_accuracy_passed", 0) + agent_accuracy_passed,
+            daily[day]["agent_accuracy_turns"],
+        )
+        daily[day]["_agent_accuracy_passed"] = daily[day].get("_agent_accuracy_passed", 0) + agent_accuracy_passed
 
     failure_type_counts: dict[str, int] = {}
     fix_area_counts: dict[str, int] = {}
@@ -280,7 +300,7 @@ def build_real_conversation_trends(
     recent_schedule = recent_run.get_metadata().get("daily_schedule", {}) if recent_run else {}
     daily_items = []
     for item in daily.values():
-        item.pop("_passed", None)
+        item.pop("_agent_accuracy_passed", None)
         daily_items.append(item)
     return sanitize_obj({
         "days": safe_days,

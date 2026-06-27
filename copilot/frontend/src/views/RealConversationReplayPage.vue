@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -52,6 +52,7 @@ type TurnFilter =
   | 'not_scored'
   | 'bucket_auto_sendable'
   | 'bucket_safe_handoff'
+  | 'bucket_context_gap'
   | 'bucket_knowledge_gap'
   | 'bucket_agent_error'
   | 'bucket_unscored_or_noise'
@@ -104,7 +105,7 @@ const filterOptions: Array<{ label: string; value: TurnFilter }> = [
   { label: '工具策略拦截', value: 'tool_policy_blocked' },
   { label: '答非所问', value: 'wrong_topic_reply' },
   { label: '上下文不足', value: 'context_insufficient' },
-  { label: '不该查 RAG', value: 'unnecessary_rag_call' },
+  { label: '不应查 RAG', value: 'unnecessary_rag_call' },
   { label: '意图为空', value: 'query_fact_type_missing' },
   { label: '跳过不评分', value: 'not_scored' },
 ]
@@ -112,6 +113,7 @@ const filterOptions: Array<{ label: string; value: TurnFilter }> = [
 filterOptions.push(
   { label: '自动可发', value: 'bucket_auto_sendable' },
   { label: '安全转人工', value: 'bucket_safe_handoff' },
+  { label: '上下文缺口', value: 'bucket_context_gap' },
   { label: '知识/素材缺口', value: 'bucket_knowledge_gap' },
   { label: 'Agent 错误', value: 'bucket_agent_error' },
   { label: '未评分/噪声', value: 'bucket_unscored_or_noise' },
@@ -141,9 +143,9 @@ const taskPriorityOptions = [
 ]
 
 const trendDayOptions = [
-  { label: '7 天', value: 7 },
-  { label: '14 天', value: 14 },
-  { label: '30 天', value: 30 },
+  { label: '7 ?', value: 7 },
+  { label: '14 ?', value: 14 },
+  { label: '30 ?', value: 30 },
 ]
 
 const knowledgeGapStatusOptions = [
@@ -277,7 +279,7 @@ async function loadRuns() {
     }
   } catch (error: any) {
     if (error?.response?.status === 403) forbidden.value = true
-    else ElMessage.error(error?.response?.data?.error || '加载真实回放批次失败')
+    else ElMessage.error(error?.response?.data?.error || '鍔犺浇鐪熷疄鍥炴斁鎵规澶辫触')
   } finally {
     loading.value = false
   }
@@ -306,7 +308,7 @@ async function loadRun(run: RealConversationRun) {
     await loadKnowledgeGaps()
   } catch (error: any) {
     if (error?.response?.status === 403) forbidden.value = true
-    else ElMessage.error(error?.response?.data?.error || '加载回放详情失败')
+    else ElMessage.error(error?.response?.data?.error || '鍔犺浇鍥炴斁璇︽儏澶辫触')
   } finally {
     loading.value = false
   }
@@ -473,9 +475,9 @@ async function generateQualityTasksForCurrentRun() {
 
 async function generateTasksForCurrentRun() {
   if (!selectedRun.value) return
-  await ElMessageBox.confirm('只会生成质检修复任务，不会自动修改知识库或 Agent 规则。确认继续？', '生成修复任务', {
-    confirmButtonText: '生成',
-    cancelButtonText: '取消',
+  await ElMessageBox.confirm('鍙細鐢熸垚璐ㄦ淇浠诲姟锛屼笉浼氳嚜鍔ㄤ慨鏀圭煡璇嗗簱鎴?Agent 瑙勫垯銆傜‘璁ょ户缁紵', '鐢熸垚淇浠诲姟', {
+    confirmButtonText: '鐢熸垚',
+    cancelButtonText: '鍙栨秷',
     type: 'warning',
   })
   const result = await generateRepairTasks(selectedRun.value.run_uid)
@@ -513,9 +515,9 @@ async function previewRepairVerification() {
 
 async function runRepairVerification() {
   if (!selectedTask.value) return
-  await ElMessageBox.confirm('会重新回放该任务关联样本，不会自动修改知识库或 Agent 规则。确认继续？', '回归验证', {
-    confirmButtonText: '验证',
-    cancelButtonText: '取消',
+  await ElMessageBox.confirm('浼氶噸鏂板洖鏀捐浠诲姟鍏宠仈鏍锋湰锛屼笉浼氳嚜鍔ㄤ慨鏀圭煡璇嗗簱鎴?Agent 瑙勫垯銆傜‘璁ょ户缁紵', '鍥炲綊楠岃瘉', {
+    confirmButtonText: '楠岃瘉',
+    cancelButtonText: '鍙栨秷',
     type: 'warning',
   })
   const result = await verifyRepairTask(selectedTask.value.task_uid, { apply: true })
@@ -527,7 +529,7 @@ async function runRepairVerification() {
     await openRepairTask(selectedTask.value)
   }
   const status = result.task?.verification_status || 'unknown'
-  ElMessage.success(`回归验证完成：${status}`)
+  ElMessage.success(`鍥炲綊楠岃瘉瀹屾垚锛?{status}`)
 }
 
 onMounted(loadRuns)
@@ -537,7 +539,7 @@ onMounted(loadRuns)
   <div class="real-replay-page" v-loading="loading">
     <el-alert
       v-if="forbidden"
-      title="当前角色无权访问运营监控"
+      title="褰撳墠瑙掕壊鏃犳潈璁块棶杩愯惀鐩戞帶"
       type="warning"
       show-icon
       :closable="false"
@@ -546,8 +548,8 @@ onMounted(loadRuns)
 
     <template v-else>
       <aside class="run-list">
-        <div class="panel-title">每日回放批次</div>
-        <el-empty v-if="!runs.length" description="暂无回放批次" />
+        <div class="panel-title">姣忔棩鍥炴斁鎵规</div>
+        <el-empty v-if="!runs.length" description="鏆傛棤鍥炴斁鎵规" />
         <button
           v-for="run in runs"
           :key="run.run_uid"
@@ -556,9 +558,9 @@ onMounted(loadRuns)
           @click="loadRun(run)"
         >
           <span class="run-id">{{ run.run_uid }}</span>
-          <span class="run-meta">{{ run.status }} / 样本 {{ run.total_cases }} / 轮次 {{ run.total_turns }}</span>
-          <span class="run-score">通过 {{ run.passed_turns }} / 失败 {{ run.failed_turns }} / 复核 {{ run.requires_review_turns }}</span>
-          <span class="run-rate">通过率 {{ runPassRate(run) }}</span>
+          <span class="run-meta">{{ run.status }} / 鏍锋湰 {{ run.total_cases }} / 杞 {{ run.total_turns }}</span>
+          <span class="run-score">閫氳繃 {{ run.passed_turns }} / 澶辫触 {{ run.failed_turns }} / 澶嶆牳 {{ run.requires_review_turns }}</span>
+          <span class="run-rate">閫氳繃鐜?{{ runPassRate(run) }}</span>
         </button>
       </aside>
 
@@ -567,7 +569,7 @@ onMounted(loadRuns)
 
         <section class="trend-panel">
           <div class="trend-header">
-            <div class="sub-title">趋势报表</div>
+            <div class="sub-title">瓒嬪娍鎶ヨ〃</div>
             <el-segmented v-model="trendDays" :options="trendDayOptions" size="small" @change="loadTrends" />
           </div>
           <div class="trend-cards">
@@ -576,11 +578,11 @@ onMounted(loadRuns)
               <strong>{{ formatPercent(trendTotals.passRate) }}</strong>
             </div>
             <div>
-              <span>回放轮次</span>
+              <span>鍥炴斁杞</span>
               <strong>{{ trendTotals.totalTurns }}</strong>
             </div>
             <div>
-              <span>失败轮次</span>
+              <span>澶辫触杞</span>
               <strong>{{ trendTotals.failedTurns }}</strong>
             </div>
             <div>
@@ -594,16 +596,16 @@ onMounted(loadRuns)
               <div v-for="item in trends?.daily || []" :key="item.date" class="daily-row">
                 <span>{{ item.date }}</span>
                 <el-progress :percentage="Math.round((item.pass_rate || 0) * 100)" :stroke-width="8" />
-                <em>{{ item.total_turns }} 轮 / 失败 {{ item.failed_turns }}</em>
+                <em>{{ item.total_turns }} 轮 / 失败 {{ item.failed_turns }} / 上下文 {{ item.context_gap_turns || 0 }}</em>
               </div>
             </div>
             <div class="trend-box">
-              <div class="mini-title">Top 失败类型</div>
+              <div class="mini-title">Top 澶辫触绫诲瀷</div>
               <div v-for="item in trends?.top_failure_types || []" :key="item.name" class="rank-row">
                 <span>{{ item.name }}</span>
                 <strong>{{ item.count }}</strong>
               </div>
-              <div class="mini-title">Top 修复区域</div>
+              <div class="mini-title">Top 淇鍖哄煙</div>
               <div v-for="item in trends?.top_fix_areas || []" :key="item.name" class="rank-row">
                 <span>{{ item.name }}</span>
                 <strong>{{ item.count }}</strong>
@@ -615,7 +617,7 @@ onMounted(loadRuns)
                 <span>{{ status }}</span>
                 <strong>{{ count }}</strong>
               </div>
-              <div class="mini-title">修复区域分布</div>
+              <div class="mini-title">淇鍖哄煙鍒嗗竷</div>
               <div v-for="(count, area) in trends?.suggested_fix_area_counts || {}" :key="area" class="rank-row">
                 <span>{{ area }}</span>
                 <strong>{{ count }}</strong>
@@ -626,7 +628,7 @@ onMounted(loadRuns)
 
         <section v-if="selectedRun" class="summary-strip">
           <div>
-            <span>自动可发</span>
+            <span>鑷姩鍙彂</span>
             <strong>{{ runSummary?.auto_sendable_turns || 0 }}</strong>
           </div>
           <div>
@@ -634,15 +636,19 @@ onMounted(loadRuns)
             <strong>{{ runSummary?.safe_handoff_turns || 0 }}</strong>
           </div>
           <div>
-            <span>知识/素材缺口</span>
+            <span>上下文缺口</span>
+            <strong>{{ runSummary?.context_gap_turns || 0 }}</strong>
+          </div>
+          <div>
+            <span>鐭ヨ瘑/绱犳潗缂哄彛</span>
             <strong>{{ runSummary?.knowledge_gap_turns || 0 }}</strong>
           </div>
           <div>
-            <span>Agent 错误</span>
+            <span>Agent 閿欒</span>
             <strong>{{ runSummary?.agent_error_turns || 0 }}</strong>
           </div>
           <div>
-            <span>未评分/噪声</span>
+            <span>鏈瘎鍒?鍣０</span>
             <strong>{{ runSummary?.unscored_turns || 0 }}</strong>
           </div>
           <div>
@@ -650,23 +656,23 @@ onMounted(loadRuns)
             <strong>{{ formatPercent(runSummary?.pass_rate) }}</strong>
           </div>
           <div>
-            <span>平均耗时</span>
+            <span>骞冲潎鑰楁椂</span>
             <strong>{{ runSummary?.avg_latency_ms || 0 }} ms</strong>
           </div>
           <div>
-            <span>人工复核</span>
+            <span>浜哄伐澶嶆牳</span>
             <strong>{{ runSummary?.requires_review_count || 0 }}</strong>
           </div>
           <div>
-            <span>失败类型</span>
+            <span>澶辫触绫诲瀷</span>
             <strong>{{ Object.keys(runSummary?.failure_counts_by_type || {}).length }}</strong>
           </div>
         </section>
 
         <el-segmented v-model="activeFilter" :options="filterOptions" class="filter-bar" />
 
-        <el-empty v-if="!turns.length" description="选择左侧批次查看逐轮回放" />
-        <el-empty v-else-if="!filteredTurns.length" description="当前筛选条件下没有样本" />
+        <el-empty v-if="!turns.length" description="閫夋嫨宸︿晶鎵规鏌ョ湅閫愯疆鍥炴斁" />
+        <el-empty v-else-if="!filteredTurns.length" description="褰撳墠绛涢€夋潯浠朵笅娌℃湁鏍锋湰" />
         <section v-for="group in groupedTurns" v-else :key="group.caseUid" class="conversation-group">
           <div class="case-title">{{ group.caseUid }}</div>
           <article
@@ -678,23 +684,23 @@ onMounted(loadRuns)
           >
             <div class="turn-meta">
               <el-tag size="small" :type="turn.passed ? 'success' : 'danger'">
-                {{ turn.passed ? '通过' : '失败' }}
+                {{ turn.passed ? '閫氳繃' : '澶辫触' }}
               </el-tag>
               <el-tag v-if="turn.quality_bucket" size="small" type="primary">{{ turn.quality_bucket }}</el-tag>
-              <el-tag v-if="turn.requires_human_review" size="small" type="warning">需人工复核</el-tag>
+              <el-tag v-if="turn.requires_human_review" size="small" type="warning">闇€浜哄伐澶嶆牳</el-tag>
               <el-tag v-if="turn.query_fact_type" size="small">{{ turn.query_fact_type }}</el-tag>
               <el-tag v-if="turn.turn_understanding?.turn_actionability" size="small" type="info">
                 {{ turn.turn_understanding.turn_actionability }}
               </el-tag>
               <el-tag v-if="turn.turn_understanding?.should_score === false" size="small">跳过不评分</el-tag>
-              <el-tag v-if="turn.turn_understanding?.needs_rag === false" size="small">无需 RAG</el-tag>
+              <el-tag v-if="turn.turn_understanding?.needs_rag === false" size="small">鏃犻渶 RAG</el-tag>
               <span>{{ turn.latency_ms }} ms</span>
             </div>
             <div v-if="turn.quality_bucket_reason" class="quality-reason">
               {{ turn.quality_bucket_reason }}
             </div>
             <div class="bubble buyer">
-              <span class="bubble-label">买家原话</span>
+              <span class="bubble-label">涔板鍘熻瘽</span>
               <p>{{ turn.buyer_message }}</p>
             </div>
             <div class="bubble reference">
@@ -702,7 +708,7 @@ onMounted(loadRuns)
               <p>{{ turn.reference_human_reply || '-' }}</p>
             </div>
             <div class="bubble agent">
-              <span class="bubble-label">Agent 回复</span>
+              <span class="bubble-label">Agent 鍥炲</span>
               <p>{{ turn.agent_reply || '未生成回复' }}</p>
             </div>
             <div v-if="failuresByTurn.get(turn.turn_uid)?.length" class="failure-tags">
@@ -716,8 +722,8 @@ onMounted(loadRuns)
               </el-tag>
             </div>
             <div v-if="turn.is_knowledge_gap || turn.is_agent_error || turn.is_safe_handoff" class="quality-advice">
-              <span v-if="turn.is_knowledge_gap">建议补资料/素材</span>
-              <span v-else-if="turn.is_agent_error">建议修 Agent</span>
+              <span v-if="turn.is_knowledge_gap">寤鸿琛ヨ祫鏂?绱犳潗</span>
+              <span v-else-if="turn.is_agent_error">寤鸿淇?Agent</span>
               <span v-else-if="turn.is_safe_handoff">安全转人工，不等同错答</span>
             </div>
           </article>
@@ -725,8 +731,8 @@ onMounted(loadRuns)
       </main>
 
       <aside class="trace-panel">
-        <div class="panel-title">RAG 命中与审核</div>
-        <el-empty v-if="!selectedTurn" description="点击一轮对话查看 trace" />
+        <div class="panel-title">RAG 命中与复核</div>
+        <el-empty v-if="!selectedTurn" description="鐐瑰嚮涓€杞璇濇煡鐪?trace" />
         <template v-else>
           <div class="metric-grid">
             <div>
@@ -734,15 +740,15 @@ onMounted(loadRuns)
               <strong>{{ selectedTurn.query_fact_type || '-' }}</strong>
             </div>
             <div>
-              <span>耗时</span>
+              <span>鑰楁椂</span>
               <strong>{{ selectedTurn.latency_ms }} ms</strong>
             </div>
             <div>
-              <span>选中证据</span>
+              <span>閫変腑璇佹嵁</span>
               <strong>{{ selectedTurn.selected_evidence.length }}</strong>
             </div>
             <div>
-              <span>拒绝证据</span>
+              <span>鎷掔粷璇佹嵁</span>
               <strong>{{ selectedTurn.rejected_evidence.length }}</strong>
             </div>
             <div>
@@ -757,10 +763,10 @@ onMounted(loadRuns)
           <section v-if="selectedTurn.turn_understanding" class="fix-panel">
             <div class="sub-title">Turn Understanding</div>
             <div class="fix-item">
-              <span>needs_rag：{{ selectedTurn.turn_understanding.needs_rag }}</span>
-              <span>should_score：{{ selectedTurn.turn_understanding.should_score }}</span>
-              <span>skip_reason：{{ selectedTurn.turn_understanding.skip_reason || '-' }}</span>
-              <span>forbidden_reply_topics：{{ selectedTurn.turn_understanding.forbidden_reply_topics?.join(', ') || '-' }}</span>
+              <span>needs_rag锛歿{ selectedTurn.turn_understanding.needs_rag }}</span>
+              <span>should_score锛歿{ selectedTurn.turn_understanding.should_score }}</span>
+              <span>skip_reason锛歿{ selectedTurn.turn_understanding.skip_reason || '-' }}</span>
+              <span>forbidden_reply_topics锛歿{ selectedTurn.turn_understanding.forbidden_reply_topics?.join(', ') || '-' }}</span>
               <p>{{ selectedTurn.turn_understanding.reason || '-' }}</p>
             </div>
           </section>
@@ -769,9 +775,9 @@ onMounted(loadRuns)
             <div class="sub-title">失败归因与修复建议</div>
             <div v-for="failure in selectedFailures" :key="failure.failure_type" class="fix-item">
               <strong>{{ failure.failure_type }}</strong>
-              <span>严重度：{{ failure.severity }}</span>
-              <span>修复区域：{{ failure.suggested_fix_area || 'manual_triage' }}</span>
-              <span>建议负责人：{{ failure.suggested_owner || '-' }}</span>
+              <span>涓ラ噸搴︼細{{ failure.severity }}</span>
+              <span>淇鍖哄煙锛歿{ failure.suggested_fix_area || 'manual_triage' }}</span>
+              <span>寤鸿璐熻矗浜猴細{{ failure.suggested_owner || '-' }}</span>
               <p>{{ failure.explanation || failure.message }}</p>
             </div>
           </section>
@@ -883,9 +889,9 @@ onMounted(loadRuns)
 
         <section class="repair-task-panel">
           <div class="task-header">
-            <div class="sub-title">修复任务队列</div>
+            <div class="sub-title">淇浠诲姟闃熷垪</div>
             <el-button size="small" type="primary" :disabled="!selectedRun" @click="generateTasksForCurrentRun">
-              从当前批次生成
+              浠庡綋鍓嶆壒娆＄敓鎴?
             </el-button>
           </div>
           <div class="task-filters">
@@ -914,7 +920,7 @@ onMounted(loadRuns)
               />
             </el-select>
           </div>
-          <el-empty v-if="!repairTasks.length" description="暂无修复任务" />
+          <el-empty v-if="!repairTasks.length" description="鏆傛棤淇浠诲姟" />
           <div v-else class="task-list">
             <button
               v-for="task in repairTasks"
@@ -924,13 +930,13 @@ onMounted(loadRuns)
               @click="openRepairTask(task)"
             >
               <strong>{{ task.title || task.failure_type }}</strong>
-              <span>{{ task.status }} / {{ task.priority }} / 样本 {{ task.sample_count }}</span>
-              <span>验证 {{ task.verification_status }} / 通过率 {{ formatPercent(task.verification_summary?.pass_rate) }}</span>
+              <span>{{ task.status }} / {{ task.priority }} / 鏍锋湰 {{ task.sample_count }}</span>
+              <span>楠岃瘉 {{ task.verification_status }} / 閫氳繃鐜?{{ formatPercent(task.verification_summary?.pass_rate) }}</span>
               <span>{{ task.suggested_fix_area }} / {{ task.suggested_owner }}</span>
             </button>
           </div>
           <section v-if="selectedTask" class="task-detail">
-            <div class="sub-title">任务详情</div>
+            <div class="sub-title">浠诲姟璇︽儏</div>
             <p>{{ selectedTask.description }}</p>
             <div class="verification-panel">
               <div class="verification-line">
@@ -938,7 +944,7 @@ onMounted(loadRuns)
                 <strong>{{ selectedTask.verification_status }}</strong>
               </div>
               <div class="verification-line">
-                <span>上次验证</span>
+                <span>涓婃楠岃瘉</span>
                 <strong>{{ selectedTask.last_verified_at || '-' }}</strong>
               </div>
               <div class="verification-line">
@@ -957,7 +963,7 @@ onMounted(loadRuns)
               </div>
               <div class="task-controls">
                 <el-button size="small" @click="previewRepairVerification">仅预览验证范围</el-button>
-                <el-button size="small" type="warning" @click="runRepairVerification">回归验证</el-button>
+                <el-button size="small" type="warning" @click="runRepairVerification">鍥炲綊楠岃瘉</el-button>
               </div>
             </div>
             <div class="task-controls">
@@ -1014,11 +1020,11 @@ onMounted(loadRuns)
         <section class="knowledge-gap-panel">
           <div class="task-header">
             <div>
-              <div class="sub-title">知识缺口治理</div>
+              <div class="sub-title">鐭ヨ瘑缂哄彛娌荤悊</div>
               <p class="panel-hint">把真实回放失败沉淀为待补资料、素材、规则或人工策略任务。</p>
             </div>
             <el-button size="small" type="primary" @click="generateKnowledgeGapsForCurrentRun">
-              生成缺口任务
+              鐢熸垚缂哄彛浠诲姟
             </el-button>
           </div>
 
@@ -1068,7 +1074,7 @@ onMounted(loadRuns)
             </el-select>
           </div>
 
-          <el-empty v-if="!knowledgeGapTasks.length" description="暂无知识缺口任务" />
+          <el-empty v-if="!knowledgeGapTasks.length" description="鏆傛棤鐭ヨ瘑缂哄彛浠诲姟" />
           <div v-else class="gap-list">
             <button
               v-for="task in knowledgeGapTasks"
@@ -1085,7 +1091,7 @@ onMounted(loadRuns)
           </div>
 
           <section v-if="selectedKnowledgeGap" class="gap-detail">
-            <div class="sub-title">缺口详情</div>
+            <div class="sub-title">缂哄彛璇︽儏</div>
             <p>{{ selectedKnowledgeGap.summary }}</p>
             <div class="task-controls">
               <el-select v-model="selectedKnowledgeGap.status" size="small">
@@ -1110,21 +1116,21 @@ onMounted(loadRuns)
               v-model="selectedKnowledgeGap.summary"
               type="textarea"
               :rows="2"
-              placeholder="任务摘要，不会自动写入正式知识库"
+              placeholder="浠诲姟鎽樿锛屼笉浼氳嚜鍔ㄥ啓鍏ユ寮忕煡璇嗗簱"
             />
             <div class="gap-actions">
-              <el-button size="small" type="primary" @click="saveKnowledgeGapTask">保存</el-button>
-              <el-button size="small" @click="generateDraftForKnowledgeGap">生成待审草稿</el-button>
-              <el-button size="small" type="success" @click="approveKnowledgeGap">审核通过</el-button>
+              <el-button size="small" type="primary" @click="saveKnowledgeGapTask">淇濆瓨</el-button>
+              <el-button size="small" @click="generateDraftForKnowledgeGap">鐢熸垚寰呭鑽夌</el-button>
+              <el-button size="small" type="success" @click="approveKnowledgeGap">瀹℃牳閫氳繃</el-button>
               <el-button size="small" type="warning" @click="verifyKnowledgeGap">人工确认已验证</el-button>
             </div>
             <el-input
               v-model="knowledgeGapRejectReason"
               size="small"
-              placeholder="驳回原因"
+              placeholder="椹冲洖鍘熷洜"
               class="gap-reject-input"
             />
-            <el-button size="small" type="danger" @click="rejectKnowledgeGap">驳回草稿</el-button>
+            <el-button size="small" type="danger" @click="rejectKnowledgeGap">椹冲洖鑽夌</el-button>
 
             <div class="task-samples">
               <div v-for="sample in selectedKnowledgeGapSamples" :key="sample.turn_uid" class="gap-sample">
@@ -1651,3 +1657,6 @@ pre {
   margin-top: 10px;
 }
 </style>
+
+
+

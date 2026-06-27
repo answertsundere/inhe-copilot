@@ -17,6 +17,7 @@ from app.services.real_conversation_context_extractor import (
     product_candidates_from_real_context,
     summarize_real_context,
 )
+from app.services.real_conversation_context_sufficiency_service import assess_context_sufficiency
 from app.services.real_context_product_identity_service import build_conversation_media_reference
 
 
@@ -33,6 +34,7 @@ FAILURE_TYPES = {
     "api_error",
     "turn_understanding_missing",
     "context_insufficient",
+    "context_gap",
     "wrong_topic_reply",
     "unrequested_product_fact",
     "query_fact_type_missing",
@@ -103,6 +105,11 @@ FAILURE_REPAIR_GUIDANCE = {
         "suggested_fix_area": "conversation_context",
         "suggested_owner": "agent_quality",
         "explanation": "The buyer turn depends on missing prior text, product, or media context.",
+    },
+    "context_gap": {
+        "suggested_fix_area": "sample_context_extraction",
+        "suggested_owner": "data_pipeline",
+        "explanation": "The source conversation lacks the order, SKU, or product identity required to score this turn.",
     },
     "wrong_topic_reply": {
         "suggested_fix_area": "final_audit_semantic_compiler",
@@ -563,7 +570,16 @@ class RealConversationReplayService:
             db.add(run)
             db.commit()
 
-            totals = {"passed": 0, "failed": 0, "requires_review": 0, "turns": 0}
+            totals = {
+                "passed": 0,
+                "failed": 0,
+                "requires_review": 0,
+                "turns": 0,
+                "agent_accuracy_turns": 0,
+                "agent_accuracy_passed": 0,
+                "agent_accuracy_failed": 0,
+                "context_gap": 0,
+            }
             if options.sample_only:
                 run.status = "sampled"
                 run.total_turns = 0
@@ -598,6 +614,12 @@ class RealConversationReplayService:
                         message_type=turn.message_type,
                         product_hint=product_name,
                     )
+                    context_sufficiency = assess_context_sufficiency(
+                        turn_understanding=turn_understanding,
+                        real_context_summary=real_context_summary,
+                        real_context_identity=real_context_identity,
+                    ).to_dict()
+                    turn_understanding["context_sufficiency"] = context_sufficiency
                     should_score = bool(turn_understanding.get("should_score"))
                     if should_score:
                         totals["turns"] += 1
@@ -647,6 +669,16 @@ class RealConversationReplayService:
                     }
                     base_failures = classify_turn_failures(response, exception) if should_score else []
                     passed, failures = evaluate_replay_turn_result(turn_understanding, response, base_failures, exception)
+                    if should_score and context_sufficiency.get("is_sufficient") is False:
+                        failures = _enrich_failures([
+                            *failures,
+                            {
+                                "failure_type": "context_gap",
+                                "severity": "medium",
+                                "message": context_sufficiency.get("reason") or "source conversation lacks required context",
+                            },
+                        ])
+                        passed = False
                     labels = [f["failure_type"] for f in failures]
                     quality_bucket = classify_quality_bucket(
                         passed=passed,
@@ -657,6 +689,14 @@ class RealConversationReplayService:
                     ).to_dict()
                     if should_score and response.get("requires_human_review"):
                         totals["requires_review"] += 1
+                    if quality_bucket.get("quality_bucket") == "context_gap":
+                        totals["context_gap"] += 1
+                    if quality_bucket.get("should_count_in_quality_rate") is not False:
+                        totals["agent_accuracy_turns"] += 1
+                        if labels:
+                            totals["agent_accuracy_failed"] += 1
+                        else:
+                            totals["agent_accuracy_passed"] += 1
                     if not should_score:
                         pass
                     elif labels:

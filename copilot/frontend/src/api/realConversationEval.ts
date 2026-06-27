@@ -36,6 +36,16 @@ export interface RealConversationTurnTrace {
     reason?: string
     query_fact_type?: string
     skip_reason?: string
+    context_sufficiency?: {
+      is_sufficient?: boolean
+      reason?: string
+      required_context_fields?: string[]
+      missing_context_fields?: string[]
+      has_product_context?: boolean
+      has_order_context?: boolean
+      has_media_context?: boolean
+      should_count_in_agent_accuracy?: boolean
+    }
   }
   answer_trace: Record<string, unknown>
   final_audit: Record<string, unknown>
@@ -50,6 +60,7 @@ export interface RealConversationTurnTrace {
   secondary_buckets?: string[]
   is_auto_sendable?: boolean
   is_safe_handoff?: boolean
+  is_context_gap?: boolean
   is_knowledge_gap?: boolean
   is_agent_error?: boolean
   should_count_in_quality_rate?: boolean
@@ -86,14 +97,18 @@ export interface RealConversationRunSummary {
   pass_rate: number
   auto_sendable_turns?: number
   safe_handoff_turns?: number
+  context_gap_turns?: number
   knowledge_gap_turns?: number
   agent_error_turns?: number
   unscored_turns?: number
   auto_sendable_rate?: number
   safe_handoff_rate?: number
+  context_gap_rate?: number
   knowledge_gap_rate?: number
   agent_error_rate?: number
   quality_denominator?: number
+  agent_accuracy_denominator?: number
+  agent_accuracy_passed?: number
 }
 
 export type ReviewDecision =
@@ -144,6 +159,8 @@ export interface EvalTrendItem {
   pass_rate: number
   total_turns: number
   failed_turns: number
+  agent_accuracy_turns?: number
+  context_gap_turns?: number
 }
 
 export interface EvalTrendTopItem {

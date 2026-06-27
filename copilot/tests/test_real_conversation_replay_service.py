@@ -17,10 +17,43 @@ def _patch_test_db(monkeypatch):
     return session_factory
 
 
+def _product_real_context():
+    return {
+        "conversation_type": "presales",
+        "source_page": "product_detail",
+        "product": {
+            "product_title": "children storage cabinet",
+            "sku_code": "SKU-TEST",
+        },
+        "order": {},
+        "media": {"image_urls": [], "video_urls": []},
+        "raw_context_sources": ["product_title", "sku_code"],
+    }
+
+
+def _order_real_context():
+    return {
+        "conversation_type": "aftersales",
+        "source_page": "order_detail",
+        "product": {
+            "product_title": "children storage cabinet",
+            "sku_code": "SKU-TEST",
+        },
+        "order": {
+            "order_id_hash": "hash-order",
+            "order_id_masked": "123***7890",
+            "order_product_title": "children storage cabinet",
+            "order_sku_code": "SKU-TEST",
+        },
+        "media": {"image_urls": [], "video_urls": []},
+        "raw_context_sources": ["order_id", "order_product_title", "sku_code"],
+    }
+
 def _seed_case(session_factory):
     db = session_factory()
     try:
         case = EvalCase(case_uid="case_real_1", source_type="real_conversation", message="材质安全吗")
+        case.set_metadata({"real_context": _product_real_context()})
         db.add(case)
         db.add_all([
             EvalConversationTurn(
@@ -223,6 +256,55 @@ def test_replay_records_failure_when_agent_requires_review(monkeypatch):
         bucket = trace.get_quality_bucket()
         assert bucket["quality_bucket"] == "knowledge_gap"
         assert bucket["is_knowledge_gap"] is True
+        assert bucket["should_count_in_quality_rate"] is True
+    finally:
+        db.close()
+
+
+def test_replay_context_gap_is_not_agent_accuracy_denominator(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_context_gap", source_type="real_conversation", message="missing product"))
+        db.add(EvalConversationTurn(
+            case_uid="case_context_gap",
+            conversation_uid="conv_context_gap",
+            turn_uid="turn_context_gap",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="发一下安装视频",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class ContextGapReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            return {
+                "suggested_reply": "亲，这个需要人工核对对应款式后再发安装资料。",
+                "requires_human_review": True,
+                "query_fact_type": "installation",
+                "evidence_debug": {"query_fact_type": "installation", "selected_evidence": []},
+                "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
+            }
+
+    result = ContextGapReplayService().replay_cases(ReplayOptions(run_uid="run_context_gap"))
+
+    assert result["turns"] == 1
+    assert result["context_gap"] == 1
+    assert result["agent_accuracy_turns"] == 0
+    assert result["agent_accuracy_passed"] == 0
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        bucket = trace.get_quality_bucket()
+        assert bucket["quality_bucket"] == "context_gap"
+        assert bucket["should_count_in_quality_rate"] is False
+        assert trace.get_turn_understanding()["context_sufficiency"]["missing_context_fields"] == ["product"]
+        labels = set(trace.get_failure_labels())
+        assert "context_gap" in labels
+        run = db.query(EvalRun).one()
+        assert run.total_turns == 1
     finally:
         db.close()
 
@@ -384,7 +466,9 @@ def test_aftersales_refund_question_is_actionable_without_query_fact_type_missin
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()
     try:
-        db.add(EvalCase(case_uid="case_refund_1", source_type="real_conversation", message="refund"))
+        case = EvalCase(case_uid="case_refund_1", source_type="real_conversation", message="refund")
+        case.set_metadata({"real_context": _order_real_context()})
+        db.add(case)
         db.add(EvalConversationTurn(
             case_uid="case_refund_1",
             conversation_uid="conv_refund_1",
