@@ -15,7 +15,9 @@ import {
   generateKnowledgeGapDraft,
   generateKnowledgeGapTasks,
   generateRepairTasks,
+  previewKnowledgeGapRetest,
   rejectKnowledgeGapTask,
+  retestKnowledgeGapTask,
   submitRealConversationReview,
   triageKnowledgeGapTask,
   updateKnowledgeGapTask,
@@ -453,6 +455,10 @@ function reviewDecisionForGap(task: KnowledgeGapTask) {
   return 'fill_product_field'
 }
 
+function formatStringList(value: unknown) {
+  return Array.isArray(value) ? value.join(', ') : ''
+}
+
 async function generateDraftForKnowledgeGap() {
   if (!selectedKnowledgeGap.value) return
   const result = await generateKnowledgeGapDraft(selectedKnowledgeGap.value.task_uid)
@@ -539,10 +545,10 @@ async function rejectKnowledgeGap() {
 async function verifyKnowledgeGap() {
   if (!selectedKnowledgeGap.value) return
   await ElMessageBox.confirm(
-    'This only records a manual staging check. It will not run automatic replay or publish to the formal knowledge base. Continue?',
-    'Manual verification',
+    'This only records a manual staging check. It will not mark the task verified, run replay, or publish to the formal knowledge base. Continue?',
+    'Manual staging check',
     {
-      confirmButtonText: 'Confirm verified',
+      confirmButtonText: 'Record check',
       cancelButtonText: 'Cancel',
       type: 'warning',
     },
@@ -550,6 +556,35 @@ async function verifyKnowledgeGap() {
   const result = await verifyKnowledgeGapTask(selectedKnowledgeGap.value.task_uid)
   selectedKnowledgeGap.value = result.task
   await loadKnowledgeGaps()
+}
+
+async function previewKnowledgeGapRetestScope() {
+  if (!selectedKnowledgeGap.value) return
+  const result = await previewKnowledgeGapRetest(selectedKnowledgeGap.value.task_uid)
+  ElMessage.info(`Retest preview: ${result.sample_count} turn(s), ${result.case_uids.length} case(s).`)
+}
+
+async function runKnowledgeGapRetest() {
+  if (!selectedKnowledgeGap.value) return
+  await ElMessageBox.confirm(
+    'Retest only verifies whether the current Agent can answer the linked real samples. It will not publish knowledge or media. Continue?',
+    'Run knowledge gap retest',
+    {
+      confirmButtonText: 'Run retest',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const result = await retestKnowledgeGapTask(selectedKnowledgeGap.value.task_uid, { apply: true })
+  selectedKnowledgeGap.value = result.task
+  await loadKnowledgeGaps()
+  await openKnowledgeGapTask(result.task)
+  const status = result.task.verification_status || 'unknown'
+  if (status === 'verified_passed') {
+    ElMessage.success('Retest passed. Task is now verified.')
+  } else {
+    ElMessage.warning(`Retest did not pass: ${status}`)
+  }
 }
 
 async function generateQualityTasksForCurrentRun() {
@@ -1210,6 +1245,7 @@ onMounted(loadRuns)
               <span v-if="task.assigned_to || task.assigned_team">
                 assigned: {{ task.assigned_to || task.assigned_team }}
               </span>
+              <span v-if="task.verification_status">retest: {{ task.verification_status }}</span>
             </button>
           </div>
 
@@ -1226,6 +1262,9 @@ onMounted(loadRuns)
               <span>assigned：{{ selectedKnowledgeGap.assigned_to || selectedKnowledgeGap.assigned_team || '-' }}</span>
               <span>due：{{ selectedKnowledgeGap.due_date || '-' }}</span>
               <span>next：{{ selectedKnowledgeGap.next_action || '-' }}</span>
+              <span>verification_status：{{ selectedKnowledgeGap.verification_status || 'not_verified' }}</span>
+              <span>verification_run：{{ selectedKnowledgeGap.verification_run_uid || '-' }}</span>
+              <span>last_verified_at：{{ selectedKnowledgeGap.last_verified_at || '-' }}</span>
               <span>
                 上下文：
                 product={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_product_context) ? 'yes' : 'no' }},
@@ -1269,6 +1308,32 @@ onMounted(loadRuns)
                 <el-button size="small" @click="setKnowledgeGapStatus('waiting_data')">标记待补资料</el-button>
                 <el-button size="small" @click="setKnowledgeGapStatus('resolved_pending_retest')">标记待复测</el-button>
                 <el-button size="small" type="warning" @click="setKnowledgeGapStatus('rejected')">忽略/驳回</el-button>
+              </div>
+            </div>
+            <div class="gap-retest-panel">
+              <div class="mini-title">复测验证</div>
+              <p class="safe-note">复测只验证当前 Agent 是否能回答关联样本；不会发布知识库，也不会发布素材。</p>
+              <div class="gap-actions">
+                <el-button size="small" @click="previewKnowledgeGapRetestScope">复测预览</el-button>
+                <el-button
+                  v-if="['resolved_pending_retest', 'waiting_data'].includes(selectedKnowledgeGap.status) && selectedKnowledgeGap.sample_count > 0"
+                  size="small"
+                  type="primary"
+                  @click="runKnowledgeGapRetest"
+                >
+                  开始复测
+                </el-button>
+              </div>
+              <div v-if="selectedKnowledgeGap.verification_summary" class="verification-lines">
+                <span>pass_rate: {{ selectedKnowledgeGap.verification_summary.pass_rate ?? '-' }}</span>
+                <span>failed_turns: {{ selectedKnowledgeGap.verification_summary.failed_turns ?? '-' }}</span>
+                <span>agent_error: {{ selectedKnowledgeGap.verification_summary.agent_error_count ?? '-' }}</span>
+                <span>knowledge_gap: {{ selectedKnowledgeGap.verification_summary.knowledge_gap_count ?? '-' }}</span>
+                <span>safe_handoff: {{ selectedKnowledgeGap.verification_summary.safe_handoff_count ?? '-' }}</span>
+                <span>
+                  remaining:
+                  {{ formatStringList(selectedKnowledgeGap.verification_summary.remaining_failure_types) || '-' }}
+                </span>
               </div>
             </div>
             <div class="task-controls">
@@ -1730,6 +1795,7 @@ onMounted(loadRuns)
 }
 
 .gap-triage-panel,
+.gap-retest-panel,
 .gap-history {
   border: 1px solid var(--kb-border);
   border-radius: 8px;
@@ -1759,6 +1825,14 @@ onMounted(loadRuns)
   color: var(--kb-text-secondary);
   font-size: 12px;
   padding: 3px 0;
+}
+
+.verification-lines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
 }
 
 .gap-cards {

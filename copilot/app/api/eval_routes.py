@@ -48,6 +48,21 @@ KNOWLEDGE_GAP_REVIEW_DECISIONS = {
 }
 
 
+def _knowledge_gap_status_allowed(task, status: str, payload: dict | None = None) -> tuple[bool, str]:
+    if status == "verified":
+        return False, "knowledge gap tasks can only become verified after retest passes"
+    if status == "closed":
+        metadata = task.get_metadata() if task is not None else {}
+        review_decision = sanitize_text(metadata.get("review_decision") or (payload or {}).get("review_decision"))
+        verification_status = sanitize_text(metadata.get("verification_status"))
+        note = sanitize_text((payload or {}).get("review_note") or (payload or {}).get("note") or metadata.get("review_note"))
+        if verification_status == "verified_passed" or review_decision == "ignore_false_positive":
+            return True, ""
+        if not note:
+            return False, "closing an unverified knowledge gap requires review_note"
+    return True, ""
+
+
 def _db():
     from app.db import SessionLocal
     return SessionLocal()
@@ -453,6 +468,13 @@ def update_knowledge_gap(task_uid):
         return jsonify({"error": "invalid knowledge gap priority"}), 400
     db = _db()
     try:
+        if status:
+            from app.models.eval_tables import KnowledgeGapTask
+
+            existing = db.query(KnowledgeGapTask).filter(KnowledgeGapTask.task_uid == sanitize_text(task_uid)).one_or_none()
+            allowed, reason = _knowledge_gap_status_allowed(existing, status, data)
+            if not allowed:
+                return jsonify({"error": reason}), 400
         task = KnowledgeGapTaskService().update_task(db, sanitize_text(task_uid), data)
         if task is None:
             return jsonify({"error": "knowledge gap task not found"}), 404
@@ -516,6 +538,12 @@ def update_knowledge_gap_status(task_uid):
         return jsonify({"error": "invalid knowledge gap priority"}), 400
     db = _db()
     try:
+        from app.models.eval_tables import KnowledgeGapTask
+
+        existing = db.query(KnowledgeGapTask).filter(KnowledgeGapTask.task_uid == sanitize_text(task_uid)).one_or_none()
+        allowed, reason = _knowledge_gap_status_allowed(existing, status, data)
+        if not allowed:
+            return jsonify({"error": reason}), 400
         task = KnowledgeGapTaskService().update_status(
             db,
             sanitize_text(task_uid),
@@ -559,6 +587,43 @@ def draft_knowledge_gap(task_uid):
         raise
     finally:
         db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/retest-preview", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/retest-preview", methods=["POST"])
+@require_supervisor
+def preview_knowledge_gap_retest(task_uid):
+    from app.services.knowledge_gap_retest_service import KnowledgeGapRetestService
+
+    data = request.get_json(silent=True) or {}
+    try:
+        result = KnowledgeGapRetestService().preview_task(
+            sanitize_text(task_uid),
+            max_turns=int(data.get("max_turns")) if data.get("max_turns") else None,
+        )
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except ValueError as exc:
+        return jsonify({"error": sanitize_text(str(exc))}), 404
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/retest", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/retest", methods=["POST"])
+@require_supervisor
+def retest_knowledge_gap(task_uid):
+    from app.services.knowledge_gap_retest_service import KnowledgeGapRetestService
+
+    data = request.get_json(silent=True) or {}
+    apply_retest = data.get("apply") is not False
+    try:
+        result = KnowledgeGapRetestService().retest_task(
+            sanitize_text(task_uid),
+            apply=apply_retest,
+            verified_by=sanitize_text(data.get("verified_by") or current_user_name()),
+            max_turns=int(data.get("max_turns")) if data.get("max_turns") else None,
+        )
+        return jsonify(sanitize_obj(result))
+    except ValueError as exc:
+        return jsonify({"error": sanitize_text(str(exc))}), 404
 
 
 @eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/approve", methods=["POST"])
@@ -624,10 +689,11 @@ def verify_knowledge_gap(task_uid):
         metadata["verification"] = {
             "verified_by": sanitize_text(current_user_name()),
             "verification_mode": "manual_staging_check",
-            "note": "Knowledge gap task was manually confirmed after staging review; no automatic replay was executed.",
+            "note": "Knowledge gap task was manually confirmed after staging review; no automatic replay was executed and task status was not verified.",
         }
+        if task.status not in {"resolved_pending_retest", "verified"}:
+            task.status = "resolved_pending_retest"
         task.set_metadata(sanitize_obj(metadata))
-        task.status = "verified"
         db.commit()
         return jsonify(sanitize_obj({"ok": True, "task": task.to_dict()}))
     except Exception:

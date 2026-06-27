@@ -222,11 +222,11 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
     )
     assert verify.status_code == 200
     verified_task = verify.get_json()["task"]
-    assert verified_task["status"] == "verified"
+    assert verified_task["status"] == "resolved_pending_retest"
     assert verified_task["metadata"]["verification"]["verification_mode"] == "manual_staging_check"
 
     db = session_factory()
     try:
-        assert db.query(KnowledgeGapTask).one().status == "verified"
+        assert db.query(KnowledgeGapTask).one().status == "resolved_pending_retest"
     finally:
         db.close()

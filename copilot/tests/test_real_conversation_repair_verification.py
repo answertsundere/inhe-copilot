@@ -26,6 +26,19 @@ def _seed_task(session_factory, related_turns=None):
     try:
         case = EvalCase(case_uid="case_verify_1", source_type="real_conversation", status="active")
         case.message = "first question"
+        case.set_metadata({
+            "real_context": {
+                "conversation_type": "presales",
+                "source_page": "product_detail",
+                "product": {
+                    "product_title": "children storage cabinet",
+                    "sku_code": "SKU-TEST",
+                },
+                "order": {},
+                "media": {"image_urls": [], "video_urls": []},
+                "raw_context_sources": ["product_title", "sku_code"],
+            }
+        })
         db.add(case)
         db.add_all([
             EvalConversationTurn(

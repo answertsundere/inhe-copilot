@@ -232,6 +232,12 @@ export interface KnowledgeGapTask {
   triage_reason?: string
   next_action?: string
   status_history?: Array<Record<string, unknown>>
+  verification_status?: string
+  verification_run_uid?: string
+  last_verified_at?: string
+  verified_by?: string
+  verification_summary?: Record<string, unknown>
+  verification_history?: Array<Record<string, unknown>>
   metadata?: Record<string, unknown>
   draft_count?: number
 }
@@ -509,4 +515,30 @@ export async function rejectKnowledgeGapTask(taskUid: string, reason?: string) {
 export async function verifyKnowledgeGapTask(taskUid: string) {
   const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/verify`)
   return res.data as { task: KnowledgeGapTask }
+}
+
+export async function previewKnowledgeGapRetest(taskUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/retest-preview`)
+  return res.data as {
+    dry_run: boolean
+    task_uid: string
+    case_uids: string[]
+    checked_turn_uids: string[]
+    sample_count: number
+    verification_status: string
+    error?: string
+  }
+}
+
+export async function retestKnowledgeGapTask(taskUid: string, payload?: { apply?: boolean; verified_by?: string }) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/retest`, payload || { apply: true })
+  return res.data as {
+    ok: boolean
+    task: KnowledgeGapTask
+    verification: {
+      verification_status?: string
+      verification_run_uid?: string
+      summary?: Record<string, unknown>
+    } | Record<string, unknown>
+  }
 }
