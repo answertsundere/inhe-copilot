@@ -78,12 +78,12 @@ def test_convert_reviewed_only_previews_and_does_not_move_status(monkeypatch):
 def test_convert_curated_sample_moves_text_contract_to_eval_set(monkeypatch):
     factory = _session_factory(monkeypatch)
     db = factory()
-    db.add(_sample())
+    db.add(_sample(sku="YH06K43B03S13"))
     db.commit()
     db.close()
 
     contract = {
-        "customer_said": "customer asks how to handle mismatch",
+        "customer_said": "SKU: YH06K43B03S13\nBuyer: customer asks how to handle mismatch",
         "suggested_answer": "ask for manual screenshot and item photo before giving solution",
         "curated_by": "codex",
         "conversation_turns": [{"role": "buyer", "text": "old field should not be stored"}],
@@ -140,6 +140,99 @@ def test_curated_contract_requires_suggested_answer(monkeypatch):
 
     assert result["converted"] is False
     assert result["reason"] == "missing_suggested_answer"
+
+
+def test_curated_contract_requires_dialogue_context(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample(sku="YH06K43B03S13"))
+    db.commit()
+    db.close()
+
+    result = TrainingSampleEvalSetService().convert_curated_sample(
+        1,
+        contract={
+            "customer_said": "SKU: YH06K43B03S13",
+            "suggested_answer": "answer with aftersales handling steps",
+        },
+    )
+
+    assert result["converted"] is False
+    assert result["reason"] == "missing_curated_dialogue_context"
+
+
+def test_aftersales_eval_contract_requires_order_or_sku(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample(question_type="售后", sku="", order_no="", product_title="storage cabinet"))
+    db.commit()
+    db.close()
+
+    result = TrainingSampleEvalSetService().convert_curated_sample(
+        1,
+        contract={
+            "customer_said": "Buyer: wrong item was received\nAgent: ask for photos before handling",
+            "suggested_answer": "first verify received item photos, then provide exchange or replacement solution",
+        },
+    )
+
+    assert result["converted"] is False
+    assert result["reason"] == "missing_aftersales_order_or_sku"
+
+
+def test_aftersales_eval_contract_can_use_sku_from_curated_text(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample(question_type="售后", sku="", order_no="", product_title=""))
+    db.commit()
+    db.close()
+
+    result = TrainingSampleEvalSetService().convert_curated_sample(
+        1,
+        contract={
+            "customer_said": "SKU：YH06K43B03S13\n买家：收到的商品和说明书不一致",
+            "suggested_answer": "先致歉并核对实物照片和说明书截图，再按售后流程处理补发或换货",
+        },
+    )
+
+    assert result["converted"] is True
+
+
+def test_presales_eval_contract_requires_product_identity(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample(question_type="售前", sku="", order_no="", product_title="", customer_quote="buyer asks about color"))
+    db.commit()
+    db.close()
+
+    result = TrainingSampleEvalSetService().convert_curated_sample(
+        1,
+        contract={
+            "customer_said": "买家：这两款颜色一样吗\n客服：我帮您核对",
+            "suggested_answer": "说明不同批次和光线可能有色差，以实物为准",
+        },
+    )
+
+    assert result["converted"] is False
+    assert result["reason"] == "missing_product_identity"
+
+
+def test_presales_eval_contract_can_use_product_title_from_curated_text(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    db = factory()
+    db.add(_sample(question_type="售前", sku="", order_no="", product_title="", customer_quote="buyer asks about color"))
+    db.commit()
+    db.close()
+
+    result = TrainingSampleEvalSetService().convert_curated_sample(
+        1,
+        contract={
+            "customer_said": "商品标题：英禾喂养台收纳柜\n买家：这两款颜色一样吗",
+            "suggested_answer": "说明页面图片是参考，不同批次和光线可能有色差，以实物为准",
+        },
+    )
+
+    assert result["converted"] is True
 
 
 def test_conversation_only_contract_is_rejected(monkeypatch):
