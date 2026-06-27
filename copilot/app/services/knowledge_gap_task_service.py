@@ -67,6 +67,7 @@ KNOWLEDGE_GAP_STATUSES = {
     "drafting",
     "pending_review",
     "approved",
+    "queued_for_publish",
     "published",
 }
 

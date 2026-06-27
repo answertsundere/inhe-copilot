@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 import app.db as db_module
 from app.api.eval_routes import eval_bp
 from app.db import Base
-from app.models.eval_tables import EvalFailure, EvalRun, EvalTrace, KnowledgeGapDraft, KnowledgeGapTask
+from app.models.eval_tables import EvalFailure, EvalRun, EvalTrace, KnowledgeGapDraft, KnowledgeGapPublishQueue, KnowledgeGapTask
 
 
 def _make_client(monkeypatch):
@@ -166,14 +166,81 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert mark_ready.status_code == 400
     assert "not ready" in mark_ready.get_json()["error"]
 
+    forbidden_review = client.post(
+        f"/api/eval/knowledge-gaps/{task_uid}/draft/{forced_draft.get_json()['draft']['draft_uid']}/review",
+        json={"decision": "approve_for_queue"},
+        headers={"X-User-Role": "operator"},
+    )
+    assert forbidden_review.status_code == 403
+
+    approve_for_queue = client.post(
+        f"/api/eval/knowledge-gaps/{task_uid}/draft/{forced_draft.get_json()['draft']['draft_uid']}/review",
+        json={
+            "decision": "approve_for_queue",
+            "review_note": "approved upload request for queue",
+            "verified_payload": {
+                "asset_type": "video",
+                "media_purpose": "installation",
+                "answer_scenarios": ["installation help"],
+                "bind_to_sku": "SKU-ROUTE",
+                "asset_source_note": "review folder upload pending",
+                "reviewer_confirms_upload_required": True,
+                "review_checklist": {"asset_scope_verified": True, "source_attached": True},
+            },
+        },
+        headers={"X-User-Role": "supervisor", "X-User-Name": "qa"},
+    )
+    assert approve_for_queue.status_code == 200
+    queue_item = approve_for_queue.get_json()["queue_item"]
+    assert queue_item["publish_target"] == "kb_media_asset"
+    assert queue_item["status"] == "queued"
+    assert approve_for_queue.get_json()["draft"]["review_status"] == "approved_for_queue"
+    assert approve_for_queue.get_json()["task"]["status"] == "queued_for_publish"
+
     detail_after_draft = client.get(f"/api/eval/knowledge-gaps/{task_uid}", headers={"X-User-Role": "operator"})
     assert detail_after_draft.status_code == 200
-    assert detail_after_draft.get_json()["task"]["status"] == "draft_ready"
+    assert detail_after_draft.get_json()["task"]["status"] == "queued_for_publish"
     assert detail_after_draft.get_json()["drafts"]
     detail_draft_content = detail_after_draft.get_json()["drafts"][0]["draft_content"]
     assert detail_draft_content["publish_readiness"] == "needs_media_upload"
     assert detail_draft_content["publish_payload"]
     assert detail_draft_content["reviewer_checklist"]
+
+    queue_list = client.get("/api/eval/knowledge-gap-publish-queue", headers={"X-User-Role": "supervisor"})
+    assert queue_list.status_code == 200
+    assert queue_list.get_json()["summary"]["total"] == 1
+    assert queue_list.get_json()["items"][0]["queue_uid"] == queue_item["queue_uid"]
+
+    export_preview = client.post(
+        f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}/export-preview",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert export_preview.status_code == 200
+    assert export_preview.get_json()["dry_run"] is True
+    assert export_preview.get_json()["writes_formal_tables"] is False
+
+    mark_exported = client.patch(
+        f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}",
+        json={"status": "exported", "note": "offline export"},
+        headers={"X-User-Role": "admin", "X-User-Name": "ops"},
+    )
+    assert mark_exported.status_code == 200
+    assert mark_exported.get_json()["queue_item"]["status"] == "exported"
+    assert mark_exported.get_json()["queue_item"]["export_status"] == "exported"
+    assert mark_exported.get_json()["queue_item"]["exported_at"]
+
+    published = client.patch(
+        f"/api/eval/knowledge-gap-publish-queue/{queue_item['queue_uid']}",
+        json={"status": "published"},
+        headers={"X-User-Role": "admin"},
+    )
+    assert published.status_code == 400
+
+    db = session_factory()
+    try:
+        assert db.query(KnowledgeGapPublishQueue).count() == 1
+    finally:
+        db.close()
 
 
 def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):

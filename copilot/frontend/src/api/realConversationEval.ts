@@ -267,6 +267,25 @@ export interface KnowledgeGapDraft {
   rejection_reason?: string
 }
 
+export interface KnowledgeGapPublishQueueItem {
+  queue_uid: string
+  task_uid: string
+  draft_uid: string
+  source_run_uid?: string
+  publish_target: string
+  payload: Record<string, unknown>
+  readiness_snapshot?: Record<string, unknown>
+  reviewer: string
+  review_note?: string
+  risk_level: string
+  status: 'queued' | 'exported' | 'rejected' | 'cancelled'
+  export_status: 'not_exported' | 'exported'
+  exported_at?: string
+  metadata?: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
 export interface KnowledgeGapSummary {
   run_uid?: string
   filtered_by_run_uid?: boolean
@@ -466,6 +485,58 @@ export async function generateKnowledgeGapDraft(taskUid: string, payload?: { for
 export async function markKnowledgeGapDraftReady(taskUid: string) {
   const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/draft/mark-ready`)
   return res.data as { task: KnowledgeGapTask; draft: KnowledgeGapDraft }
+}
+
+export async function reviewKnowledgeGapDraft(
+  taskUid: string,
+  draftUid: string,
+  payload: {
+    decision: 'approve_for_queue' | 'reject' | 'request_changes'
+    reviewer?: string
+    review_note?: string
+    verified_payload?: Record<string, unknown>
+    review_checklist?: Record<string, boolean>
+  },
+) {
+  const res = await apiClient.post(`/eval/knowledge-gaps/${taskUid}/draft/${draftUid}/review`, payload)
+  return res.data as {
+    task: KnowledgeGapTask
+    draft: KnowledgeGapDraft
+    queue_item?: KnowledgeGapPublishQueueItem
+  }
+}
+
+export async function fetchKnowledgeGapPublishQueue(params?: {
+  status?: string
+  publish_target?: string
+  risk_level?: string
+  reviewer?: string
+  task_uid?: string
+}) {
+  const res = await apiClient.get('/eval/knowledge-gap-publish-queue', { params })
+  return res.data as {
+    items: KnowledgeGapPublishQueueItem[]
+    summary: Record<string, unknown>
+  }
+}
+
+export async function previewKnowledgeGapPublishExport(queueUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gap-publish-queue/${queueUid}/export-preview`)
+  return res.data as {
+    queue_item: KnowledgeGapPublishQueueItem
+    payload_preview: Record<string, unknown>
+    dry_run: boolean
+    writes_formal_tables: boolean
+  }
+}
+
+export async function updateKnowledgeGapPublishQueue(queueUid: string, payload: {
+  status: 'exported' | 'rejected' | 'cancelled'
+  note?: string
+  operator?: string
+}) {
+  const res = await apiClient.patch(`/eval/knowledge-gap-publish-queue/${queueUid}`, payload)
+  return res.data as { queue_item: KnowledgeGapPublishQueueItem }
 }
 
 export async function updateKnowledgeGapTask(taskUid: string, payload: {

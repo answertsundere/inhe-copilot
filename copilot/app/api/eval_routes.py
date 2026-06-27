@@ -33,6 +33,7 @@ KNOWLEDGE_GAP_STATUSES = {
     "drafting",
     "pending_review",
     "approved",
+    "queued_for_publish",
     "published",
 }
 KNOWLEDGE_GAP_PRIORITIES = {"low", "medium", "high"}
@@ -607,6 +608,103 @@ def mark_ready_knowledge_gap_draft(task_uid):
         if result is None:
             return jsonify({"error": "knowledge gap task not found"}), 404
         return jsonify(sanitize_obj({"ok": True, **result}))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gaps/<task_uid>/draft/<draft_uid>/review", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gaps/<task_uid>/draft/<draft_uid>/review", methods=["POST"])
+@require_supervisor
+def review_knowledge_gap_draft(task_uid, draft_uid):
+    from app.services.knowledge_gap_publish_queue_service import KnowledgeGapPublishQueueService
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        result = KnowledgeGapPublishQueueService().review_draft(
+            db,
+            task_uid=sanitize_text(task_uid),
+            draft_uid=sanitize_text(draft_uid),
+            payload=data,
+            reviewer=sanitize_text(current_user_name()),
+        )
+        if result is None:
+            return jsonify({"error": "knowledge gap task not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify({"error": sanitize_text(str(exc))}), 400
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue", methods=["GET"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue", methods=["GET"])
+@require_supervisor
+def list_knowledge_gap_publish_queue():
+    from app.services.knowledge_gap_publish_queue_service import KnowledgeGapPublishQueueService
+
+    db = _db()
+    try:
+        result = KnowledgeGapPublishQueueService().list_queue(
+            db,
+            filters={
+                "status": sanitize_text(request.args.get("status")),
+                "publish_target": sanitize_text(request.args.get("publish_target")),
+                "risk_level": sanitize_text(request.args.get("risk_level")),
+                "reviewer": sanitize_text(request.args.get("reviewer")),
+                "task_uid": sanitize_text(request.args.get("task_uid")),
+            },
+            limit=int(request.args.get("limit") or 100),
+        )
+        return jsonify(sanitize_obj(result))
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>/export-preview", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>/export-preview", methods=["POST"])
+@require_supervisor
+def preview_knowledge_gap_publish_export(queue_uid):
+    from app.services.knowledge_gap_publish_queue_service import KnowledgeGapPublishQueueService
+
+    db = _db()
+    try:
+        result = KnowledgeGapPublishQueueService().export_preview(db, sanitize_text(queue_uid))
+        if result is None:
+            return jsonify({"error": "publish queue item not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, **result}))
+    finally:
+        db.close()
+
+
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])
+@require_supervisor
+def update_knowledge_gap_publish_queue(queue_uid):
+    from app.services.knowledge_gap_publish_queue_service import KnowledgeGapPublishQueueService
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        result = KnowledgeGapPublishQueueService().update_queue_item(
+            db,
+            sanitize_text(queue_uid),
+            data,
+            operator=sanitize_text(current_user_name()),
+        )
+        if result is None:
+            return jsonify({"error": "publish queue item not found"}), 404
+        return jsonify(sanitize_obj({"ok": True, "queue_item": result}))
     except ValueError as exc:
         db.rollback()
         return jsonify({"error": sanitize_text(str(exc))}), 400

@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   approveKnowledgeGapTask,
   fetchEvalTrends,
+  fetchKnowledgeGapPublishQueue,
   fetchKnowledgeGapTask,
   fetchKnowledgeGapTasks,
   fetchRealConversationQualityTasks,
@@ -16,18 +17,22 @@ import {
   generateKnowledgeGapTasks,
   markKnowledgeGapDraftReady,
   generateRepairTasks,
+  previewKnowledgeGapPublishExport,
   previewKnowledgeGapRetest,
   rejectKnowledgeGapTask,
+  reviewKnowledgeGapDraft,
   retestKnowledgeGapTask,
   submitRealConversationReview,
   triageKnowledgeGapTask,
   updateKnowledgeGapTask,
   updateKnowledgeGapStatus,
   updateRepairTask,
+  updateKnowledgeGapPublishQueue,
   verifyKnowledgeGapTask,
   verifyRepairTask,
   type EvalTrends,
   type KnowledgeGapDraft,
+  type KnowledgeGapPublishQueueItem,
   type KnowledgeGapSample,
   type KnowledgeGapSummary,
   type KnowledgeGapTask,
@@ -93,6 +98,12 @@ const knowledgeGapSummary = ref<KnowledgeGapSummary | null>(null)
 const selectedKnowledgeGap = ref<KnowledgeGapTask | null>(null)
 const selectedKnowledgeGapSamples = ref<KnowledgeGapSample[]>([])
 const selectedKnowledgeGapDrafts = ref<KnowledgeGapDraft[]>([])
+const knowledgeGapPublishQueue = ref<KnowledgeGapPublishQueueItem[]>([])
+const knowledgeGapPublishQueueSummary = ref<Record<string, unknown> | null>(null)
+const knowledgeGapPublishQueueStatusFilter = ref('queued')
+const knowledgeGapReviewNote = ref('')
+const knowledgeGapVerifiedPayloadText = ref('')
+const knowledgeGapQueueNote = ref('')
 const knowledgeGapStatusFilter = ref('open')
 const knowledgeGapTypeFilter = ref('')
 const knowledgeGapEvidenceFilter = ref('')
@@ -354,6 +365,7 @@ async function loadRun(run: RealConversationRun) {
     await loadQualityTasks()
     await loadRepairTasks()
     await loadKnowledgeGaps()
+    await loadKnowledgeGapPublishQueue()
   } catch (error: any) {
     if (error?.response?.status === 403) forbidden.value = true
     else ElMessage.error(error?.response?.data?.error || '鍔犺浇鍥炴斁璇︽儏澶辫触')
@@ -420,6 +432,14 @@ async function loadKnowledgeGaps() {
   }
 }
 
+async function loadKnowledgeGapPublishQueue() {
+  const result = await fetchKnowledgeGapPublishQueue({
+    status: knowledgeGapPublishQueueStatusFilter.value || undefined,
+  })
+  knowledgeGapPublishQueue.value = result.items || []
+  knowledgeGapPublishQueueSummary.value = result.summary || null
+}
+
 async function generateKnowledgeGapsForCurrentRun() {
   await ElMessageBox.confirm(
     'Only creates review tasks and drafts. It will not write product facts, media assets, or Agent rules. Continue?',
@@ -440,6 +460,8 @@ async function openKnowledgeGapTask(task: KnowledgeGapTask) {
   selectedKnowledgeGap.value = detail.task
   selectedKnowledgeGapSamples.value = detail.samples || []
   selectedKnowledgeGapDrafts.value = detail.drafts || []
+  knowledgeGapReviewNote.value = ''
+  knowledgeGapVerifiedPayloadText.value = formatJson(selectedKnowledgeGapDrafts.value[0]?.draft_content?.publish_payload || {})
   knowledgeGapOwner.value = detail.task.suggested_owner || knowledgeGapOwner.value
   knowledgeGapTriage.value = {
     review_decision: detail.task.review_decision || reviewDecisionForGap(detail.task),
@@ -505,6 +527,83 @@ async function markSelectedKnowledgeGapDraftReady() {
   selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value.filter((draft) => draft.draft_uid !== result.draft.draft_uid)]
   await loadKnowledgeGaps()
   ElMessage.success('Draft marked ready for supervisor review.')
+}
+
+function parseKnowledgeGapVerifiedPayload() {
+  if (!knowledgeGapVerifiedPayloadText.value.trim()) return {}
+  try {
+    return JSON.parse(knowledgeGapVerifiedPayloadText.value)
+  } catch {
+    throw new Error('verified_payload must be valid JSON')
+  }
+}
+
+async function approveKnowledgeGapDraftForQueue() {
+  if (!selectedKnowledgeGap.value || !latestKnowledgeGapDraft.value) return
+  await ElMessageBox.confirm(
+    'This only adds an audited item to the publish queue. It will not write the formal knowledge base.',
+    'Enter publish queue',
+    {
+      confirmButtonText: 'Enter queue',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    },
+  )
+  const verifiedPayload = parseKnowledgeGapVerifiedPayload()
+  const result = await reviewKnowledgeGapDraft(
+    selectedKnowledgeGap.value.task_uid,
+    latestKnowledgeGapDraft.value.draft_uid,
+    {
+      decision: 'approve_for_queue',
+      review_note: knowledgeGapReviewNote.value,
+      verified_payload: verifiedPayload,
+      review_checklist: {
+        reviewer_checked_payload: true,
+        reviewer_checked_scope: true,
+        reviewer_checked_source: true,
+      },
+    },
+  )
+  selectedKnowledgeGap.value = result.task
+  selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value.filter((draft) => draft.draft_uid !== result.draft.draft_uid)]
+  await loadKnowledgeGaps()
+  await loadKnowledgeGapPublishQueue()
+  ElMessage.success('Draft entered publish queue for audited handoff.')
+}
+
+async function requestKnowledgeGapDraftChanges(decision: 'reject' | 'request_changes') {
+  if (!selectedKnowledgeGap.value || !latestKnowledgeGapDraft.value) return
+  const result = await reviewKnowledgeGapDraft(
+    selectedKnowledgeGap.value.task_uid,
+    latestKnowledgeGapDraft.value.draft_uid,
+    {
+      decision,
+      review_note: knowledgeGapReviewNote.value,
+    },
+  )
+  selectedKnowledgeGap.value = result.task
+  selectedKnowledgeGapDrafts.value = [result.draft, ...selectedKnowledgeGapDrafts.value.filter((draft) => draft.draft_uid !== result.draft.draft_uid)]
+  await loadKnowledgeGaps()
+  ElMessage.success(decision === 'reject' ? 'Draft rejected.' : 'Draft change request saved.')
+}
+
+async function previewPublishQueueItem(item: KnowledgeGapPublishQueueItem) {
+  const result = await previewKnowledgeGapPublishExport(item.queue_uid)
+  ElMessageBox.alert(formatJson(result.payload_preview), 'Export preview', {
+    confirmButtonText: 'Close',
+  })
+}
+
+async function updatePublishQueueItemStatus(item: KnowledgeGapPublishQueueItem, status: 'exported' | 'rejected' | 'cancelled') {
+  const result = await updateKnowledgeGapPublishQueue(item.queue_uid, {
+    status,
+    note: knowledgeGapQueueNote.value,
+  })
+  knowledgeGapPublishQueue.value = knowledgeGapPublishQueue.value.map((row) =>
+    row.queue_uid === item.queue_uid ? result.queue_item : row,
+  )
+  await loadKnowledgeGapPublishQueue()
+  ElMessage.success(`Queue item marked ${status}.`)
 }
 
 async function triageKnowledgeGap() {
@@ -1415,6 +1514,31 @@ onMounted(loadRuns)
               <el-button size="small" type="success" @click="approveKnowledgeGap">瀹℃牳閫氳繃</el-button>
               <el-button size="small" type="warning" @click="verifyKnowledgeGap">人工确认已验证</el-button>
             </div>
+            <div v-if="latestKnowledgeGapDraft" class="gap-review-box">
+              <div class="mini-title">Draft Review</div>
+              <el-input
+                v-model="knowledgeGapReviewNote"
+                size="small"
+                placeholder="review note"
+              />
+              <el-input
+                v-model="knowledgeGapVerifiedPayloadText"
+                type="textarea"
+                :rows="7"
+                placeholder="verified_payload JSON"
+              />
+              <div class="gap-actions">
+                <el-button size="small" type="primary" @click="approveKnowledgeGapDraftForQueue">
+                  进入发布队列
+                </el-button>
+                <el-button size="small" @click="requestKnowledgeGapDraftChanges('request_changes')">
+                  要求修改
+                </el-button>
+                <el-button size="small" type="warning" @click="requestKnowledgeGapDraftChanges('reject')">
+                  驳回草稿
+                </el-button>
+              </div>
+            </div>
             <el-input
               v-model="knowledgeGapRejectReason"
               size="small"
@@ -1458,6 +1582,36 @@ onMounted(loadRuns)
                 <span>{{ item.status || '-' }}</span>
                 <span>{{ item.changed_by || '-' }}</span>
                 <span>{{ item.changed_at || '-' }}</span>
+              </div>
+            </div>
+            <div class="gap-publish-queue">
+              <div class="mini-title">Publish Queue</div>
+              <div class="queue-toolbar">
+                <el-select v-model="knowledgeGapPublishQueueStatusFilter" size="small" @change="loadKnowledgeGapPublishQueue">
+                  <el-option label="queued" value="queued" />
+                  <el-option label="exported" value="exported" />
+                  <el-option label="rejected" value="rejected" />
+                  <el-option label="cancelled" value="cancelled" />
+                  <el-option label="all" value="" />
+                </el-select>
+                <el-input v-model="knowledgeGapQueueNote" size="small" placeholder="queue note" />
+              </div>
+              <div class="queue-summary">
+                total: {{ knowledgeGapPublishQueueSummary?.total ?? knowledgeGapPublishQueue.length }}
+              </div>
+              <el-empty v-if="!knowledgeGapPublishQueue.length" description="暂无发布队列候选" />
+              <div v-for="item in knowledgeGapPublishQueue" :key="item.queue_uid" class="queue-item">
+                <strong>{{ item.publish_target }} / {{ item.status }} / {{ item.export_status }}</strong>
+                <span>{{ item.queue_uid }}</span>
+                <span>risk: {{ item.risk_level }} / reviewer: {{ item.reviewer || '-' }}</span>
+                <div class="gap-actions">
+                  <el-button size="small" @click="previewPublishQueueItem(item)">导出预览</el-button>
+                  <el-button size="small" type="success" @click="updatePublishQueueItemStatus(item, 'exported')">
+                    标记已导出
+                  </el-button>
+                  <el-button size="small" @click="updatePublishQueueItemStatus(item, 'cancelled')">取消</el-button>
+                  <el-button size="small" type="warning" @click="updatePublishQueueItemStatus(item, 'rejected')">驳回</el-button>
+                </div>
               </div>
             </div>
           </section>
@@ -1998,6 +2152,31 @@ onMounted(loadRuns)
   margin: 6px 0;
   color: var(--kb-text-secondary);
   font-size: 12px;
+}
+
+.gap-review-box,
+.gap-publish-queue,
+.queue-item {
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.queue-toolbar {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.queue-summary,
+.queue-item span {
+  display: block;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  margin-top: 3px;
 }
 
 .gap-reject-input {

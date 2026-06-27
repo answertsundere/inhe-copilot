@@ -657,3 +657,64 @@ class KnowledgeGapDraft(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class KnowledgeGapPublishQueue(Base):
+    __tablename__ = "knowledge_gap_publish_queue"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    queue_uid = Column(String(64), nullable=False, unique=True, index=True)
+    task_uid = Column(String(64), nullable=False, index=True)
+    draft_uid = Column(String(64), nullable=False, index=True)
+    source_run_uid = Column(String(64), nullable=False, default="", index=True)
+    publish_target = Column(String(64), nullable=False, default="", index=True)
+    payload_json = Column(Text, nullable=False, default="{}")
+    readiness_snapshot_json = Column(Text, nullable=False, default="{}")
+    reviewer = Column(String(64), nullable=False, default="", index=True)
+    review_note = Column(Text, nullable=False, default="")
+    risk_level = Column(String(16), nullable=False, default="medium", index=True)
+    status = Column(String(32), nullable=False, default="queued", index=True)
+    export_status = Column(String(32), nullable=False, default="not_exported", index=True)
+    exported_at = Column(DateTime, nullable=True)
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def get_payload(self):
+        return _json_load(self.payload_json, {})
+
+    def set_payload(self, value):
+        self.payload_json = _json_dump(value, {})
+
+    def get_readiness_snapshot(self):
+        return _json_load(self.readiness_snapshot_json, {})
+
+    def set_readiness_snapshot(self, value):
+        self.readiness_snapshot_json = _json_dump(value, {})
+
+    def get_metadata(self):
+        return _json_load(self.metadata_json, {})
+
+    def set_metadata(self, value):
+        self.metadata_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "queue_uid": self.queue_uid,
+            "task_uid": self.task_uid,
+            "draft_uid": self.draft_uid,
+            "source_run_uid": self.source_run_uid,
+            "publish_target": self.publish_target,
+            "payload": self.get_payload(),
+            "readiness_snapshot": self.get_readiness_snapshot(),
+            "reviewer": self.reviewer,
+            "review_note": self.review_note,
+            "risk_level": self.risk_level,
+            "status": self.status,
+            "export_status": self.export_status,
+            "exported_at": self.exported_at.isoformat() if self.exported_at else None,
+            "metadata": self.get_metadata(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
