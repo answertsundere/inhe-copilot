@@ -73,6 +73,16 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     data = generated.get_json()
     task_uid = data["tasks"][0]["task_uid"]
     assert data["tasks"][0]["gap_type"] == "media_asset_gap"
+    assert data["tasks"][0]["gap_category"] == "media_asset_gap"
+    assert data["tasks"][0]["required_evidence_type"] == "installation_video"
+    assert data["tasks"][0]["target_system"] == "kb_media_asset"
+
+    filtered = client.get(
+        "/api/eval/knowledge-gaps?gap_category=media_asset_gap&required_evidence_type=installation_video&target_system=kb_media_asset",
+        headers={"X-User-Role": "operator"},
+    )
+    assert filtered.status_code == 200
+    assert len(filtered.get_json()["items"]) == 1
 
     detail = client.get(f"/api/eval/knowledge-gaps/{task_uid}", headers={"X-User-Role": "operator"})
     assert detail.status_code == 200

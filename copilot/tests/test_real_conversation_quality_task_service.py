@@ -145,12 +145,14 @@ def test_quality_task_generation_uses_existing_repair_and_gap_services_without_d
         first = RealConversationQualityTaskService().generate_for_run(db, "quality_task_run_1", created_by="lead")
         second = RealConversationQualityTaskService().generate_for_run(db, "quality_task_run_1", created_by="lead")
 
-        assert first.generated == 2
+        assert first.generated == 3
         assert first.updated == 0
         assert second.generated == 0
-        assert second.updated == 2
+        assert second.updated == 3
         assert second.skipped == 1
         assert db.query(EvalRepairTask).count() == 1
-        assert db.query(KnowledgeGapTask).count() == 1
+        assert db.query(KnowledgeGapTask).count() == 2
+        gap_types = {task.gap_type for task in db.query(KnowledgeGapTask).all()}
+        assert gap_types == {"product_field_gap", "evidence_routing_gap"}
     finally:
         db.close()

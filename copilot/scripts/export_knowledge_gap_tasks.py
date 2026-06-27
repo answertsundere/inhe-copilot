@@ -6,6 +6,7 @@ import argparse
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -16,30 +17,32 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from app.db import SessionLocal, init_db
-from app.models.eval_tables import KnowledgeGapTask
-from app.services.eval_sanitizer_service import sanitize_text
+from app.models.eval_tables import EvalTrace, KnowledgeGapTask
+from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 
 HEADERS = [
     "任务ID",
     "缺口类型",
-    "商品标题",
+    "需要证据类型",
+    "补充目标系统",
+    "推荐动作",
+    "缺失字段",
+    "商品标题预览",
+    "商品ID(脱敏)",
     "SKU",
-    "商品ID",
     "问题类型",
     "失败类型",
     "建议归口",
-    "优先级",
-    "样本数量",
-    "买家问题示例",
-    "Agent 当前回复示例",
-    "原客服回复参考",
-    "缺什么资料",
-    "建议补充内容",
-    "是否需要图片/视频",
-    "是否高风险",
-    "审核状态",
     "负责人",
+    "样本数",
+    "买家问题示例",
+    "Agent当前回复示例",
+    "原客服回复参考",
+    "风险等级",
+    "状态",
+    "优先级",
+    "当前上下文摘要",
     "备注",
 ]
 
@@ -53,23 +56,40 @@ def _joined(values: list[str]) -> str:
     return "\n".join(sanitize_text(value) for value in values[:5] if sanitize_text(value))
 
 
-def _suggested_content(task: KnowledgeGapTask) -> str:
-    if task.gap_type == "media_asset_gap":
-        media_type = task.media_needed_type or "图片/视频/说明书"
-        return f"补充并审核 {media_type}，确认适用商品和可发送范围。"
-    if task.gap_type == "activity_rule_gap":
-        return "补充活动/福利规则，包括活动时间、参与条件、售后后的处理口径。"
-    if task.gap_type == "service_rule_gap":
-        return "补充售后/服务规则，包括触发条件、客户需提供材料和处理边界。"
-    if task.gap_type == "human_policy_gap":
-        return "补充人工复核策略，说明哪些问题必须人工确认。"
-    if task.gap_type == "agent_logic_gap":
-        return "补充 Agent 规则或审核任务，避免同类样本答非所问。"
-    fact_type = task.query_fact_type or "商品资料"
-    return f"补充 {fact_type} 的可核验证据，发布前人工审核。"
+def _metadata(task: KnowledgeGapTask) -> dict[str, Any]:
+    value = task.get_metadata()
+    return value if isinstance(value, dict) else {}
 
 
-def export_knowledge_gap_tasks(output: str | None = None, status: str = "open") -> dict:
+def _task_dict(task: KnowledgeGapTask) -> dict[str, Any]:
+    return sanitize_obj(task.to_dict())
+
+
+def _context_summary_text(task: KnowledgeGapTask) -> str:
+    metadata = _metadata(task)
+    summary = metadata.get("current_context_summary") or {}
+    if not isinstance(summary, dict):
+        return ""
+    parts = [
+        f"product={bool(summary.get('has_product_context'))}",
+        f"order={bool(summary.get('has_order_context'))}",
+        f"media={bool(summary.get('has_media_context'))}",
+        f"selected={int(summary.get('selected_evidence_count') or 0)}",
+        f"sendable_media={int(summary.get('sendable_media_asset_count') or 0)}",
+    ]
+    if summary.get("conversation_media_rejected_reason"):
+        parts.append(f"media_rejected={sanitize_text(summary.get('conversation_media_rejected_reason'))}")
+    return "; ".join(parts)
+
+
+def _matches_run(task: KnowledgeGapTask, run_uid: str, turn_uids: set[str]) -> bool:
+    metadata = task.get_metadata()
+    if sanitize_text(metadata.get("source_run_uid")) == run_uid:
+        return True
+    return bool(set(task.get_related_turn_uids()) & turn_uids)
+
+
+def export_knowledge_gap_tasks(output: str | None = None, status: str = "open", run_uid: str = "") -> dict:
     init_db()
     path = Path(output or default_output_path())
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,6 +100,20 @@ def export_knowledge_gap_tasks(output: str | None = None, status: str = "open") 
         if status:
             query = query.filter(KnowledgeGapTask.status == sanitize_text(status))
         tasks = query.all()
+        target_run_uid = sanitize_text(run_uid)
+        if target_run_uid:
+            tagged_tasks = [
+                task for task in tasks
+                if sanitize_text(task.get_metadata().get("source_run_uid")) == target_run_uid
+            ]
+            if tagged_tasks:
+                tasks = tagged_tasks
+            else:
+                turn_uids = {
+                    sanitize_text(row[0])
+                    for row in db.query(EvalTrace.turn_uid).filter(EvalTrace.run_uid == target_run_uid).all()
+                }
+                tasks = [task for task in tasks if _matches_run(task, target_run_uid, turn_uids)]
 
         workbook = Workbook()
         sheet = workbook.active
@@ -90,32 +124,35 @@ def export_knowledge_gap_tasks(output: str | None = None, status: str = "open") 
             cell.fill = PatternFill("solid", fgColor="D9EAF7")
 
         for task in tasks:
+            row = _task_dict(task)
             sheet.append([
-                sanitize_text(task.task_uid),
-                sanitize_text(task.gap_type),
-                sanitize_text(task.product_title),
-                sanitize_text(task.sku_code),
-                sanitize_text(task.item_id),
-                sanitize_text(task.query_fact_type),
-                sanitize_text(task.failure_type),
-                sanitize_text(task.suggested_fix_area),
-                sanitize_text(task.priority),
-                int(task.sample_count or 0),
+                row.get("task_uid", ""),
+                row.get("gap_category") or row.get("gap_type", ""),
+                row.get("required_evidence_type") or row.get("missing_evidence_type", ""),
+                row.get("target_system", ""),
+                row.get("recommended_action", ""),
+                ", ".join(row.get("missing_fields") or []),
+                row.get("product_title_preview") or sanitize_text(task.product_title)[:80],
+                row.get("item_id_masked", ""),
+                row.get("sku_code", ""),
+                row.get("query_fact_type", ""),
+                row.get("failure_type", ""),
+                row.get("suggested_fix_area", ""),
+                row.get("suggested_owner", ""),
+                int(row.get("sample_count") or 0),
                 _joined(task.get_latest_buyer_questions()),
                 _joined(task.get_latest_agent_replies()),
                 _joined(task.get_latest_original_cs_replies()),
-                sanitize_text(task.missing_evidence_type),
-                sanitize_text(_suggested_content(task)),
-                "是" if task.media_needed_type else "否",
-                "是" if task.risk_level == "high" else "否",
-                sanitize_text(task.status),
-                sanitize_text(task.suggested_owner),
-                sanitize_text(task.summary),
+                row.get("risk_level", ""),
+                row.get("status", ""),
+                row.get("priority", ""),
+                _context_summary_text(task),
+                row.get("summary", ""),
             ])
 
         for col in sheet.columns:
             letter = col[0].column_letter
-            sheet.column_dimensions[letter].width = min(max(len(str(col[0].value or "")) + 4, 12), 36)
+            sheet.column_dimensions[letter].width = min(max(len(str(col[0].value or "")) + 4, 12), 42)
         workbook.save(path)
         return {"output": str(path), "count": len(tasks)}
     finally:
@@ -126,8 +163,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export knowledge gap tasks to Excel.")
     parser.add_argument("--output", default="", help="Excel output path")
     parser.add_argument("--status", default="open", help="Task status filter; empty exports all tasks")
+    parser.add_argument("--run-uid", default="", help="Only export tasks related to this eval run")
     args = parser.parse_args()
-    result = export_knowledge_gap_tasks(output=args.output or None, status=args.status)
+    result = export_knowledge_gap_tasks(output=args.output or None, status=args.status, run_uid=args.run_uid)
     print(result)
 
 

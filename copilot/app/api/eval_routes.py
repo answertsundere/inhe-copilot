@@ -358,7 +358,12 @@ def list_knowledge_gaps():
             filters={
                 "status": request.args.get("status") or "",
                 "gap_type": request.args.get("gap_type") or "",
+                "gap_category": request.args.get("gap_category") or "",
                 "query_fact_type": request.args.get("query_fact_type") or "",
+                "required_evidence_type": request.args.get("required_evidence_type") or "",
+                "missing_evidence_type": request.args.get("missing_evidence_type") or "",
+                "target_system": request.args.get("target_system") or "",
+                "recommended_action": request.args.get("recommended_action") or "",
                 "suggested_fix_area": request.args.get("suggested_fix_area") or "",
                 "suggested_owner": request.args.get("suggested_owner") or "",
                 "risk_level": request.args.get("risk_level") or "",

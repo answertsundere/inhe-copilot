@@ -12,24 +12,31 @@ def _session_factory():
     return sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 
-def _seed_task(session_factory, *, risk_level="high"):
+def _seed_task(session_factory, *, gap_type="product_field_gap", risk_level="high"):
     db = session_factory()
     try:
         task = KnowledgeGapTask(
             task_uid="kgap_draft_1",
-            gap_type="product_fact_gap",
+            gap_type=gap_type,
             product_title="儿童收纳柜",
             query_fact_type="material",
             failure_type="rag_miss",
             suggested_fix_area="knowledge_rag",
             suggested_owner="knowledge_ops",
-            missing_evidence_type="material_fact",
+            missing_evidence_type="product_material",
             risk_level=risk_level,
             sample_count=1,
             priority="high",
             status="open",
             summary="material gap",
         )
+        task.set_metadata({
+            "gap_category": gap_type,
+            "required_evidence_type": "product_material",
+            "target_system": "product_profile",
+            "recommended_action": "fill_product_field",
+            "missing_fields": ["material"],
+        })
         db.add(task)
         sample = KnowledgeGapTaskSample(
             task_uid="kgap_draft_1",
@@ -48,7 +55,7 @@ def _seed_task(session_factory, *, risk_level="high"):
         db.close()
 
 
-def test_draft_generation_writes_only_pending_review_staging():
+def test_product_field_draft_is_staging_and_publish_blocked_without_verified_evidence():
     session_factory = _session_factory()
     _seed_task(session_factory)
     db = session_factory()
@@ -57,13 +64,70 @@ def test_draft_generation_writes_only_pending_review_staging():
 
         assert draft["review_status"] == "pending_review"
         assert draft["publish_target"] == "staging"
-        assert draft["generated_by"] == "ai"
+        assert draft["draft_type"] == "product_field_draft"
         content = draft["draft_content"]
         assert content["source_samples"]
         assert "13812345678" not in str(content)
-        assert any("不代表已核验事实" in item for item in content["uncertain_items"])
-        assert any("不得写 0 风险" in item for item in content["prohibited_claims"])
+        assert content["publish_blocked_reason"] == "product field drafts require verified evidence before publishing"
+        assert content["evidence_requirements"]["required_evidence_type"] == "product_material"
+        assert "material" in content["required_review_fields"]
+        assert any("不得把原客服回复直接当作事实证据" in item for item in content["uncertain_items"])
         assert db.query(KnowledgeGapDraft).count() == 1
+    finally:
+        db.close()
+
+
+def test_media_gap_generates_media_asset_request_not_fake_url():
+    session_factory = _session_factory()
+    _seed_task(session_factory, gap_type="media_asset_gap", risk_level="medium")
+    db = session_factory()
+    try:
+        task = db.query(KnowledgeGapTask).one()
+        task.query_fact_type = "installation"
+        task.missing_evidence_type = "installation_video"
+        task.set_metadata({
+            "gap_category": "media_asset_gap",
+            "required_evidence_type": "installation_video",
+            "target_system": "kb_media_asset",
+            "recommended_action": "upload_approved_media",
+            "missing_fields": ["installation_video"],
+        })
+        db.commit()
+
+        draft = KnowledgeGapDraftService().generate_draft(db, "kgap_draft_1")
+        content = draft["draft_content"]
+        assert draft["draft_type"] == "media_asset_request"
+        assert content["proposed_answer"] == ""
+        assert "installation_video" in content["suggested_content"]
+        assert "http" not in content["suggested_content"].lower()
+        assert content["publish_blocked_reason"] == "media assets must be uploaded and approved before use"
+    finally:
+        db.close()
+
+
+def test_policy_gap_generates_policy_rule_draft_staging_only():
+    session_factory = _session_factory()
+    _seed_task(session_factory, gap_type="aftersales_policy_gap", risk_level="high")
+    db = session_factory()
+    try:
+        task = db.query(KnowledgeGapTask).one()
+        task.query_fact_type = "aftersales_policy"
+        task.missing_evidence_type = "aftersales_rule"
+        task.set_metadata({
+            "gap_category": "aftersales_policy_gap",
+            "required_evidence_type": "aftersales_rule",
+            "target_system": "aftersales_policy",
+            "recommended_action": "write_policy_rule",
+            "missing_fields": ["aftersales_rule"],
+        })
+        db.commit()
+
+        draft = KnowledgeGapDraftService().generate_draft(db, "kgap_draft_1")
+        content = draft["draft_content"]
+        assert draft["draft_type"] == "policy_rule_draft"
+        assert draft["publish_target"] == "staging"
+        assert content["proposed_rule"]
+        assert "不得编造承诺" in content["proposed_rule"]
     finally:
         db.close()
 

@@ -24,6 +24,13 @@ def _json_dump(value, default):
     return json.dumps(value, ensure_ascii=False)
 
 
+def _mask_identifier(value):
+    text = str(value or "")
+    if len(text) <= 4:
+        return text
+    return f"{text[:2]}***{text[-2:]}"
+
+
 class EvalCase(Base):
     __tablename__ = "eval_cases"
 
@@ -512,18 +519,27 @@ class KnowledgeGapTask(Base):
         self.metadata_json = _json_dump(value, {})
 
     def to_dict(self):
+        metadata = self.get_metadata()
         return {
             "id": self.id,
             "task_uid": self.task_uid,
             "gap_type": self.gap_type,
+            "gap_category": metadata.get("gap_category") or self.gap_type,
             "product_title": self.product_title,
+            "product_title_preview": (self.product_title or "")[:80],
             "item_id": self.item_id,
+            "item_id_masked": _mask_identifier(self.item_id),
             "sku_code": self.sku_code,
             "query_fact_type": self.query_fact_type,
             "failure_type": self.failure_type,
             "suggested_fix_area": self.suggested_fix_area,
             "suggested_owner": self.suggested_owner,
             "missing_evidence_type": self.missing_evidence_type,
+            "required_evidence_type": metadata.get("required_evidence_type") or self.missing_evidence_type,
+            "target_system": metadata.get("target_system") or "",
+            "recommended_action": metadata.get("recommended_action") or "",
+            "missing_fields": metadata.get("missing_fields") or [],
+            "current_context_summary": metadata.get("current_context_summary") or {},
             "media_needed_type": self.media_needed_type,
             "risk_level": self.risk_level,
             "sample_count": self.sample_count,
@@ -535,7 +551,7 @@ class KnowledgeGapTask(Base):
             "latest_buyer_questions": self.get_latest_buyer_questions(),
             "latest_agent_replies": self.get_latest_agent_replies(),
             "latest_original_cs_replies": self.get_latest_original_cs_replies(),
-            "metadata": self.get_metadata(),
+            "metadata": metadata,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

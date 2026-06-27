@@ -90,6 +90,8 @@ const selectedKnowledgeGapSamples = ref<KnowledgeGapSample[]>([])
 const selectedKnowledgeGapDrafts = ref<KnowledgeGapDraft[]>([])
 const knowledgeGapStatusFilter = ref('open')
 const knowledgeGapTypeFilter = ref('')
+const knowledgeGapEvidenceFilter = ref('')
+const knowledgeGapTargetSystemFilter = ref('')
 const knowledgeGapRiskFilter = ref('')
 const knowledgeGapOwner = ref('')
 const knowledgeGapRejectReason = ref('')
@@ -251,8 +253,18 @@ const trendTotals = computed(() => {
 })
 
 const knowledgeGapTypeOptions = computed(() => {
-  const values = Array.from(new Set(knowledgeGapTasks.value.map((task) => task.gap_type).filter(Boolean))).sort()
-  return [{ label: 'all gap types', value: '' }, ...values.map((value) => ({ label: value, value }))]
+  const values = Array.from(new Set(knowledgeGapTasks.value.map((task) => task.gap_category || task.gap_type).filter(Boolean))).sort()
+  return [{ label: 'all gap categories', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
+const knowledgeGapEvidenceOptions = computed(() => {
+  const values = Array.from(new Set(knowledgeGapTasks.value.map((task) => task.required_evidence_type || task.missing_evidence_type).filter(Boolean))).sort()
+  return [{ label: 'all evidence types', value: '' }, ...values.map((value) => ({ label: value, value }))]
+})
+
+const knowledgeGapTargetSystemOptions = computed(() => {
+  const values = Array.from(new Set(knowledgeGapTasks.value.map((task) => task.target_system).filter(Boolean))).sort()
+  return [{ label: 'all target systems', value: '' }, ...values.map((value) => ({ label: value, value }))]
 })
 
 function formatJson(value: unknown) {
@@ -353,7 +365,9 @@ async function loadRepairTasks() {
 async function loadKnowledgeGaps() {
   const result = await fetchKnowledgeGapTasks({
     status: knowledgeGapStatusFilter.value || undefined,
-    gap_type: knowledgeGapTypeFilter.value || undefined,
+    gap_category: knowledgeGapTypeFilter.value || undefined,
+    required_evidence_type: knowledgeGapEvidenceFilter.value || undefined,
+    target_system: knowledgeGapTargetSystemFilter.value || undefined,
     risk_level: knowledgeGapRiskFilter.value || undefined,
     suggested_owner: knowledgeGapOwner.value || undefined,
   })
@@ -1064,6 +1078,22 @@ onMounted(loadRuns)
                 :value="option.value"
               />
             </el-select>
+            <el-select v-model="knowledgeGapEvidenceFilter" size="small" @change="loadKnowledgeGaps">
+              <el-option
+                v-for="option in knowledgeGapEvidenceOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="knowledgeGapTargetSystemFilter" size="small" @change="loadKnowledgeGaps">
+              <el-option
+                v-for="option in knowledgeGapTargetSystemOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
             <el-select v-model="knowledgeGapRiskFilter" size="small" @change="loadKnowledgeGaps">
               <el-option
                 v-for="option in knowledgeGapRiskOptions"
@@ -1083,9 +1113,11 @@ onMounted(loadRuns)
               :class="{ active: selectedKnowledgeGap?.task_uid === task.task_uid }"
               @click="openKnowledgeGapTask(task)"
             >
-              <strong>{{ task.gap_type }} / {{ task.query_fact_type || '-' }}</strong>
+              <strong>{{ task.gap_category || task.gap_type }} / {{ task.query_fact_type || '-' }}</strong>
               <span>{{ task.status }} / {{ task.priority }} / {{ task.risk_level }} / samples {{ task.sample_count }}</span>
-              <span>{{ task.product_title || task.item_id || task.sku_code || 'unknown product' }}</span>
+              <span>需要：{{ task.required_evidence_type || task.missing_evidence_type || '-' }}</span>
+              <span>补到：{{ task.target_system || '-' }} / {{ task.recommended_action || '-' }}</span>
+              <span>{{ task.product_title_preview || task.product_title || task.item_id_masked || task.sku_code || 'unknown product' }}</span>
               <span>{{ task.suggested_fix_area }} / {{ task.suggested_owner }}</span>
             </button>
           </div>
@@ -1093,6 +1125,19 @@ onMounted(loadRuns)
           <section v-if="selectedKnowledgeGap" class="gap-detail">
             <div class="sub-title">缂哄彛璇︽儏</div>
             <p>{{ selectedKnowledgeGap.summary }}</p>
+            <div class="gap-meta">
+              <span>缺口类型：{{ selectedKnowledgeGap.gap_category || selectedKnowledgeGap.gap_type }}</span>
+              <span>需要补：{{ selectedKnowledgeGap.required_evidence_type || selectedKnowledgeGap.missing_evidence_type || '-' }}</span>
+              <span>补到：{{ selectedKnowledgeGap.target_system || '-' }}</span>
+              <span>动作：{{ selectedKnowledgeGap.recommended_action || '-' }}</span>
+              <span>缺失字段：{{ (selectedKnowledgeGap.missing_fields || []).join(', ') || '-' }}</span>
+              <span>
+                上下文：
+                product={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_product_context) ? 'yes' : 'no' }},
+                order={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_order_context) ? 'yes' : 'no' }},
+                media={{ Boolean(selectedKnowledgeGap.current_context_summary?.has_media_context) ? 'yes' : 'no' }}
+              </span>
+            </div>
             <div class="task-controls">
               <el-select v-model="selectedKnowledgeGap.status" size="small">
                 <el-option
@@ -1529,6 +1574,18 @@ onMounted(loadRuns)
 .task-detail,
 .gap-detail {
   margin-top: 12px;
+}
+
+.gap-meta {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--kb-text-secondary);
+  font-size: 12px;
 }
 
 .gap-cards {

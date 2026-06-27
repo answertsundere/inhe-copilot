@@ -234,4 +234,4 @@ def should_generate_repair_task(bucket: str) -> bool:
 
 
 def should_generate_knowledge_gap_task(bucket: str) -> bool:
-    return sanitize_text(bucket) == KNOWLEDGE_GAP
+    return sanitize_text(bucket) in {KNOWLEDGE_GAP, CONTEXT_GAP}

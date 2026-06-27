@@ -15,31 +15,7 @@ from app.models.eval_tables import (
     KnowledgeGapTask,
 )
 from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
-from scripts.export_knowledge_gap_tasks import export_knowledge_gap_tasks
-
-
-EXPECTED_EXPORT_HEADERS = [
-    "任务ID",
-    "缺口类型",
-    "商品标题",
-    "SKU",
-    "商品ID",
-    "问题类型",
-    "失败类型",
-    "建议归口",
-    "优先级",
-    "样本数量",
-    "买家问题示例",
-    "Agent 当前回复示例",
-    "原客服回复参考",
-    "缺什么资料",
-    "建议补充内容",
-    "是否需要图片/视频",
-    "是否高风险",
-    "审核状态",
-    "负责人",
-    "备注",
-]
+from scripts.export_knowledge_gap_tasks import HEADERS, export_knowledge_gap_tasks
 
 
 def _session_factory():
@@ -67,6 +43,7 @@ def _add_trace(db, turn_uid, query_fact_type, *, product_title="收纳柜", sku_
         "item_id": item_id,
     })
     trace.set_selected_evidence([])
+    trace.set_rejected_evidence([])
     db.add(trace)
     return trace
 
@@ -77,13 +54,18 @@ def _seed_gap_run(session_factory):
         db.add(EvalRun(run_uid="kgap_run_1", source_type="real_conversation", status="completed"))
         cases = [
             ("turn_fact", "material", "rag_miss", "knowledge_rag", "knowledge_ops"),
-            ("turn_media", "installation", "unsupported_media_claim", "media_pipeline", "media_ops"),
+            ("turn_media", "installation", "rag_miss", "knowledge_rag", "knowledge_ops"),
             ("turn_promo", "promotion_policy", "rag_miss", "knowledge_rag", "knowledge_ops"),
             ("turn_service", "aftersales_policy", "rag_miss", "knowledge_rag", "knowledge_ops"),
+            ("turn_shipping", "stock_shipping", "rag_miss", "knowledge_rag", "knowledge_ops"),
+            ("turn_context", "dimensions", "context_gap", "sample_context_extraction", "data_pipeline"),
             ("turn_correct", "dimensions", "rag_miss", "knowledge_rag", "knowledge_ops"),
         ]
         for turn_uid, fact_type, failure_type, fix_area, owner in cases:
-            _add_trace(db, turn_uid, fact_type, sku_code="SKU-1", item_id="ITEM-1")
+            if turn_uid == "turn_context":
+                _add_trace(db, turn_uid, fact_type, product_title="", sku_code="", item_id="")
+            else:
+                _add_trace(db, turn_uid, fact_type, sku_code="SKU-1", item_id="ITEM-123456")
             db.add(EvalFailure(
                 run_uid="kgap_run_1",
                 case_uid=f"case_{turn_uid}",
@@ -106,19 +88,28 @@ def _seed_gap_run(session_factory):
         db.close()
 
 
-def test_knowledge_gap_generation_maps_failure_types_and_skips_correct_review():
+def test_knowledge_gap_generation_classifies_operational_gap_categories_and_skips_correct_review():
     session_factory = _session_factory()
     _seed_gap_run(session_factory)
     db = session_factory()
     try:
         result = KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
 
-        assert result.generated == 3
+        assert result.generated == 6
         assert result.skipped_correct == 1
-        gap_types = {task.gap_type for task in db.query(KnowledgeGapTask).all()}
-        assert "product_fact_gap" in gap_types
-        assert "activity_rule_gap" in gap_types
-        assert "service_rule_gap" in gap_types
+        tasks = {task.gap_type: task for task in db.query(KnowledgeGapTask).all()}
+        assert tasks["product_field_gap"].missing_evidence_type == "product_material"
+        assert tasks["media_asset_gap"].missing_evidence_type == "installation_video"
+        assert tasks["promotion_policy_gap"].missing_evidence_type == "promotion_rule"
+        assert tasks["aftersales_policy_gap"].missing_evidence_type == "aftersales_rule"
+        context_required = {
+            task.missing_evidence_type
+            for task in db.query(KnowledgeGapTask).all()
+            if task.gap_type == "context_extraction_gap"
+        }
+        assert {"sku_context", "order_context"}.issubset(context_required)
+        assert tasks["media_asset_gap"].get_metadata()["target_system"] == "kb_media_asset"
+        assert tasks["context_extraction_gap"].get_metadata()["recommended_action"] == "fix_context_extraction"
         assert not any("turn_correct" in task.get_related_turn_uids() for task in db.query(KnowledgeGapTask).all())
     finally:
         db.close()
@@ -132,10 +123,30 @@ def test_knowledge_gap_generation_updates_existing_task_instead_of_duplicating()
         first = KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
         second = KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
 
-        assert first.generated == 3
+        assert first.generated == 6
         assert second.generated == 0
-        assert second.updated == 3
-        assert db.query(KnowledgeGapTask).count() == 3
+        assert second.updated == 6
+        assert db.query(KnowledgeGapTask).count() == 6
+    finally:
+        db.close()
+
+
+def test_knowledge_gap_list_filters_new_operational_fields():
+    session_factory = _session_factory()
+    _seed_gap_run(session_factory)
+    db = session_factory()
+    try:
+        KnowledgeGapTaskService().generate_for_run(db, "kgap_run_1", created_by="lead")
+        media = KnowledgeGapTaskService().list_tasks(db, filters={"gap_category": "media_asset_gap"})
+        product = KnowledgeGapTaskService().list_tasks(db, filters={"required_evidence_type": "product_material"})
+        target = KnowledgeGapTaskService().list_tasks(db, filters={"target_system": "context_extractor"})
+
+        assert len(media["items"]) == 1
+        assert media["items"][0]["required_evidence_type"] == "installation_video"
+        assert len(product["items"]) == 1
+        assert product["items"][0]["gap_category"] == "product_field_gap"
+        assert len(target["items"]) == 2
+        assert {item["recommended_action"] for item in target["items"]} == {"fix_context_extraction"}
     finally:
         db.close()
 
@@ -157,15 +168,18 @@ def test_knowledge_gap_export_excel_is_sanitized(monkeypatch, tmp_path):
     output = tmp_path / "knowledge_gap.xlsx"
     result = export_knowledge_gap_tasks(output=str(output), status="open")
 
-    assert result["count"] == 3
+    assert result["count"] == 6
     workbook = load_workbook(output)
     sheet = workbook.active
     assert sheet.title == "知识缺口任务"
-    assert [cell.value for cell in sheet[1]] == EXPECTED_EXPORT_HEADERS
+    assert [cell.value for cell in sheet[1]] == HEADERS
     values = "\n".join(str(cell.value or "") for row in sheet.iter_rows() for cell in row)
     assert "13812345678" not in values
     assert "123456789012345" not in values
     assert "Signature=secret" not in values
+    assert "ITEM-123456" not in values
+    assert "media_asset_gap" in values
+    assert "installation_video" in values
 
 
 def test_knowledge_gap_export_script_help_runs_from_project_root():
@@ -198,4 +212,4 @@ def test_knowledge_gap_export_empty_template_has_chinese_headers(monkeypatch, tm
     sheet = workbook.active
     assert result["count"] == 0
     assert sheet.max_row == 1
-    assert [cell.value for cell in sheet[1]] == EXPECTED_EXPORT_HEADERS
+    assert [cell.value for cell in sheet[1]] == HEADERS

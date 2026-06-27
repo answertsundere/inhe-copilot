@@ -10,11 +10,39 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.real_conversation_quality_bucket_service import bucket_from_trace, should_generate_knowledge_gap_task
 
 
-MEDIA_FACT_TYPES = {"installation", "visual_asset", "media_reference", "dimensions", "space_fit", "detachable"}
+MEDIA_FACT_TYPES = {"installation", "visual_asset", "media_reference"}
+MEDIA_VISUAL_FACT_TYPES = {"visual_asset", "media_reference", "dimensions", "space_fit", "detachable", "accessories"}
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy"}
-SERVICE_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "stock_shipping", "delivery_not_received"}
+AFTERSALES_FACT_TYPES = {
+    "aftersales",
+    "aftersales_policy",
+    "after_sales",
+    "damaged_item",
+    "shortage",
+    "refund",
+    "return_exchange",
+}
+LOGISTICS_CONTEXT_FACT_TYPES = {"stock_shipping", "delivery_not_received", "logistics"}
+CONTEXT_FAILURE_TYPES = {"context_gap", "context_insufficient"}
+MEDIA_FAILURE_TYPES = {"unsupported_media_claim"}
+EVIDENCE_ROUTING_FAILURE_TYPES = {"evidence_misuse", "semantic_mismatch", "intent_contract_mismatch"}
+PRODUCT_FIELD_EVIDENCE_BY_FACT_TYPE = {
+    "dimensions": "product_spec",
+    "space_fit": "product_spec",
+    "material": "product_material",
+    "load_capacity": "load_capacity",
+    "gross_weight": "gross_weight",
+    "weight": "gross_weight",
+    "age_range": "age_range",
+    "accessory_availability": "accessory_availability",
+    "structure_function": "structure_function",
+    "detachable": "product_spec",
+    "certification_report": "certificate_report",
+}
+PRODUCT_FIELD_FACT_TYPES = set(PRODUCT_FIELD_EVIDENCE_BY_FACT_TYPE)
 HIGH_RISK_FACT_TYPES = {"certification_report", "pinch_safety", "safety_small_parts", "material", "aftersales_policy"}
 HIGH_RISK_FAILURES = {"unsafe_claim", "unsupported_media_claim", "tool_policy_blocked"}
+KNOWLEDGE_TASK_AGENT_ERROR_FIX_AREAS = {"media_pipeline", "media_ops", "evidence_rerank"}
 
 
 @dataclass
@@ -88,6 +116,13 @@ def _trace_identity(trace) -> dict[str, str]:
     }
 
 
+def _mask_identifier(value: str) -> str:
+    text = sanitize_text(value)
+    if len(text) <= 4:
+        return text
+    return f"{text[:2]}***{text[-2:]}"
+
+
 def _query_fact_type(failure, trace) -> str:
     if trace and sanitize_text(trace.query_fact_type):
         return sanitize_text(trace.query_fact_type)
@@ -95,38 +130,110 @@ def _query_fact_type(failure, trace) -> str:
     return sanitize_text(metadata.get("query_fact_type") or metadata.get("fact_type") or "")
 
 
-def _gap_type_for(failure_type: str, query_fact_type: str, fix_area: str) -> str:
-    if failure_type == "unsupported_media_claim" or fix_area == "media_pipeline":
+def _evidence_state(trace) -> dict[str, Any]:
+    if trace is None:
+        return {
+            "selected_evidence_count": 0,
+            "rejected_evidence_count": 0,
+            "matched_media_asset_count": 0,
+            "sendable_media_asset_count": 0,
+            "conversation_media_rejected_reason": "",
+        }
+    raw = trace.get_raw_response()
+    answer_trace = trace.get_answer_trace()
+    selected = trace.get_selected_evidence()
+    rejected = trace.get_rejected_evidence()
+    assets: list[Any] = []
+    for source in (
+        raw.get("recommended_assets") if isinstance(raw, dict) else None,
+        raw.get("media_assets") if isinstance(raw, dict) else None,
+        answer_trace.get("media_assets") if isinstance(answer_trace, dict) else None,
+    ):
+        if isinstance(source, list):
+            assets.extend(source)
+    sendable = [
+        asset for asset in assets
+        if isinstance(asset, dict)
+        and str(asset.get("auto_send_level") or asset.get("send_level") or "auto").lower() == "auto"
+    ]
+    media_rejected_reason = ""
+    if isinstance(raw, dict):
+        media_rejected_reason = sanitize_text(
+            raw.get("conversation_media_rejected_reason")
+            or raw.get("media_rejected_reason")
+            or ""
+        )
+    return {
+        "selected_evidence_count": len(selected),
+        "rejected_evidence_count": len(rejected),
+        "matched_media_asset_count": len(assets),
+        "sendable_media_asset_count": len(sendable),
+        "conversation_media_rejected_reason": media_rejected_reason,
+    }
+
+
+def _has_product_context(identity: dict[str, str]) -> bool:
+    return bool(identity.get("product_title") or identity.get("item_id") or identity.get("sku_code"))
+
+
+def _is_context_gap(failure_type: str, query_fact_type: str, fix_area: str, identity: dict[str, str]) -> bool:
+    if failure_type in CONTEXT_FAILURE_TYPES or fix_area in {"sample_context_extraction", "conversation_context"}:
+        return True
+    if not query_fact_type and not _has_product_context(identity):
+        return True
+    return False
+
+
+def _gap_type_for(
+    failure_type: str,
+    query_fact_type: str,
+    fix_area: str,
+    identity: dict[str, str],
+    evidence_state: dict[str, Any],
+) -> str:
+    if _is_context_gap(failure_type, query_fact_type, fix_area, identity):
+        return "context_extraction_gap"
+    if failure_type in MEDIA_FAILURE_TYPES or fix_area in {"media_pipeline", "media_ops"}:
         return "media_asset_gap"
+    if failure_type in EVIDENCE_ROUTING_FAILURE_TYPES or fix_area in {"evidence_rerank", "final_audit_semantic_compiler"}:
+        return "evidence_routing_gap"
     if query_fact_type in PROMOTION_FACT_TYPES or fix_area in {"activity_rules", "promotion_ops"}:
-        return "activity_rule_gap"
-    if query_fact_type in SERVICE_FACT_TYPES or fix_area in {"service_rules", "aftersales_policy"}:
-        return "service_rule_gap"
-    if failure_type in {"rag_miss", "query_fact_type_missing"}:
-        return "product_fact_gap"
-    if failure_type in {"needs_human_review", "context_insufficient"} or fix_area == "human_policy_risk_boundary":
-        return "human_policy_gap"
-    if failure_type in {"semantic_mismatch", "wrong_topic_reply", "intent_contract_mismatch"}:
-        return "agent_logic_gap"
-    return "product_fact_gap"
+        return "promotion_policy_gap"
+    if query_fact_type in AFTERSALES_FACT_TYPES or fix_area in {"service_rules", "aftersales_policy", "sop_policy"}:
+        return "aftersales_policy_gap"
+    if query_fact_type in LOGISTICS_CONTEXT_FACT_TYPES:
+        return "context_extraction_gap"
+    if query_fact_type in MEDIA_FACT_TYPES and int(evidence_state.get("sendable_media_asset_count") or 0) == 0:
+        return "media_asset_gap"
+    if query_fact_type in MEDIA_VISUAL_FACT_TYPES and failure_type == "rag_miss":
+        return "media_asset_gap"
+    if query_fact_type in PRODUCT_FIELD_FACT_TYPES or failure_type in {"rag_miss", "query_fact_type_missing"}:
+        return "product_field_gap"
+    if fix_area in {"agent_engineering", "answer_composition", "final_audit"}:
+        return "evidence_routing_gap"
+    return "product_field_gap"
 
 
 def _missing_evidence_type(gap_type: str, query_fact_type: str) -> str:
     if gap_type == "media_asset_gap":
-        if query_fact_type == "dimensions":
-            return "image_or_dimension_chart"
         if query_fact_type == "installation":
-            return "installation_video_or_manual"
+            return "installation_video"
+        if query_fact_type in {"visual_asset", "media_reference"}:
+            return "real_product_image"
+        if query_fact_type in {"accessories", "structure_function"}:
+            return "accessory_diagram"
         return "approved_media_asset"
-    if gap_type == "activity_rule_gap":
-        return "activity_or_benefit_rule"
-    if gap_type == "service_rule_gap":
-        return "service_or_aftersales_rule"
-    if gap_type == "human_policy_gap":
-        return "human_review_policy"
-    if gap_type == "agent_logic_gap":
-        return "agent_contract_or_audit_rule"
-    return f"{query_fact_type or 'product'}_fact"
+    if gap_type == "promotion_policy_gap":
+        return "promotion_rule"
+    if gap_type == "aftersales_policy_gap":
+        return "aftersales_rule"
+    if gap_type == "context_extraction_gap":
+        if query_fact_type in LOGISTICS_CONTEXT_FACT_TYPES:
+            return "order_context"
+        return "sku_context"
+    if gap_type == "evidence_routing_gap":
+        return "evidence_mapping"
+    return PRODUCT_FIELD_EVIDENCE_BY_FACT_TYPE.get(query_fact_type, "product_spec")
 
 
 def _media_needed_type(gap_type: str, query_fact_type: str) -> str:
@@ -137,6 +244,64 @@ def _media_needed_type(gap_type: str, query_fact_type: str) -> str:
     if query_fact_type in {"dimensions", "space_fit"}:
         return "image"
     return "approved_media"
+
+
+def _target_system(gap_type: str, query_fact_type: str) -> str:
+    if gap_type == "media_asset_gap":
+        return "kb_media_asset"
+    if gap_type == "promotion_policy_gap":
+        return "activity_rules"
+    if gap_type == "aftersales_policy_gap":
+        return "aftersales_policy"
+    if gap_type == "context_extraction_gap":
+        return "context_extractor"
+    if gap_type == "evidence_routing_gap":
+        return "agent_engineering"
+    if query_fact_type in {"dimensions", "gross_weight", "material", "load_capacity", "age_range"}:
+        return "product_profile"
+    return "kb_product"
+
+
+def _recommended_action(gap_type: str) -> str:
+    return {
+        "product_field_gap": "fill_product_field",
+        "media_asset_gap": "upload_approved_media",
+        "aftersales_policy_gap": "write_policy_rule",
+        "promotion_policy_gap": "write_policy_rule",
+        "context_extraction_gap": "fix_context_extraction",
+        "evidence_routing_gap": "improve_evidence_mapping",
+    }.get(gap_type, "manual_policy_review")
+
+
+def _missing_fields(gap_type: str, query_fact_type: str, required_evidence_type: str, identity: dict[str, str]) -> list[str]:
+    fields: list[str] = []
+    if gap_type == "context_extraction_gap":
+        if not identity.get("product_title"):
+            fields.append("product_title")
+        if not identity.get("sku_code"):
+            fields.append("sku_code")
+        if not identity.get("item_id"):
+            fields.append("item_id")
+        return fields or ["conversation_context"]
+    if gap_type == "product_field_gap":
+        return [query_fact_type or required_evidence_type]
+    if gap_type == "media_asset_gap":
+        return [required_evidence_type]
+    if gap_type in {"aftersales_policy_gap", "promotion_policy_gap"}:
+        return [required_evidence_type]
+    return [query_fact_type or "evidence_mapping"]
+
+
+def _context_summary(identity: dict[str, str], trace, evidence_state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "has_product_context": _has_product_context(identity),
+        "has_order_context": bool(getattr(trace, "order_identity_hash", "")) if trace else False,
+        "has_media_context": bool(evidence_state.get("matched_media_asset_count")),
+        "product_title_preview": sanitize_text(identity.get("product_title", ""))[:80],
+        "item_id_masked": _mask_identifier(identity.get("item_id", "")),
+        "sku_code_exists": bool(identity.get("sku_code")),
+        **evidence_state,
+    }
 
 
 def _risk_level(failure_type: str, query_fact_type: str, severities: list[str]) -> str:
@@ -155,9 +320,12 @@ def _priority(risk_level: str, sample_count: int) -> str:
     return "medium"
 
 
-def _summary(gap_type: str, query_fact_type: str, sample_count: int) -> str:
+def _summary(gap_type: str, query_fact_type: str, sample_count: int, required_evidence_type: str) -> str:
     readable_fact = query_fact_type or "unknown_fact"
-    return sanitize_text(f"{sample_count} real replay sample(s) need {gap_type} for {readable_fact}.")
+    return sanitize_text(
+        f"{sample_count} real replay sample(s) need {gap_type} for {readable_fact}; "
+        f"required evidence: {required_evidence_type}."
+    )
 
 
 class KnowledgeGapTaskService:
@@ -210,14 +378,20 @@ class KnowledgeGapTaskService:
                 continue
             trace = traces.get(failure.turn_uid)
             bucket = bucket_from_trace(trace, failures_by_turn.get(failure.turn_uid, [])) if trace else {}
-            if not should_generate_knowledge_gap_task(str(bucket.get("quality_bucket") or "")):
-                continue
             query_fact_type = _query_fact_type(failure, trace)
             fix_area = sanitize_text(failure.suggested_fix_area) or "manual_triage"
             owner = sanitize_text(failure.suggested_owner) or "knowledge_ops"
             failure_type = sanitize_text(failure.failure_type) or "manual_review"
-            gap_type = _gap_type_for(failure_type, query_fact_type, fix_area)
+            if (
+                not should_generate_knowledge_gap_task(str(bucket.get("quality_bucket") or ""))
+                and failure_type not in MEDIA_FAILURE_TYPES
+                and failure_type not in EVIDENCE_ROUTING_FAILURE_TYPES
+                and fix_area not in KNOWLEDGE_TASK_AGENT_ERROR_FIX_AREAS
+            ):
+                continue
             identity = _trace_identity(trace)
+            evidence_state = _evidence_state(trace)
+            gap_type = _gap_type_for(failure_type, query_fact_type, fix_area, identity, evidence_state)
             key = (
                 gap_type,
                 identity["item_id"],
@@ -235,6 +409,7 @@ class KnowledgeGapTaskService:
                 "fix_area": fix_area,
                 "owner": owner,
                 "gap_type": gap_type,
+                "evidence_state": evidence_state,
                 "case_uids": [],
                 "turn_uids": [],
                 "buyer_questions": [],
@@ -243,6 +418,8 @@ class KnowledgeGapTaskService:
                 "severities": [],
                 "samples": [],
             })
+            if not item.get("evidence_state"):
+                item["evidence_state"] = evidence_state
             item["case_uids"].append(failure.case_uid)
             item["turn_uids"].append(failure.turn_uid)
             item["severities"].append(sanitize_text(failure.severity) or "medium")
@@ -299,6 +476,12 @@ class KnowledgeGapTaskService:
             case_uids = _unique(item["case_uids"])
             turn_uids = _unique(item["turn_uids"])
             risk_level = _risk_level(failure_type, query_fact_type, item["severities"])
+            evidence_state = item.get("evidence_state") or {}
+            required_evidence_type = _missing_evidence_type(gap_type, query_fact_type)
+            target_system = _target_system(gap_type, query_fact_type)
+            recommended_action = _recommended_action(gap_type)
+            missing_fields = _missing_fields(gap_type, query_fact_type, required_evidence_type, item["identity"])
+            context_summary = _context_summary(item["identity"], traces.get(turn_uids[0]) if turn_uids else None, evidence_state)
             task.gap_type = gap_type
             task.product_title = product_title
             task.item_id = item_id
@@ -307,14 +490,14 @@ class KnowledgeGapTaskService:
             task.failure_type = failure_type
             task.suggested_fix_area = fix_area
             task.suggested_owner = owner
-            task.missing_evidence_type = _missing_evidence_type(gap_type, query_fact_type)
+            task.missing_evidence_type = required_evidence_type
             task.media_needed_type = _media_needed_type(gap_type, query_fact_type)
             task.risk_level = risk_level
             task.sample_count = len(turn_uids)
             task.priority = _priority(risk_level, len(turn_uids))
             if not task.status:
                 task.status = "open"
-            task.summary = _summary(gap_type, query_fact_type, len(turn_uids))
+            task.summary = _summary(gap_type, query_fact_type, len(turn_uids), required_evidence_type)
             task.set_related_case_uids(case_uids)
             task.set_related_turn_uids(turn_uids)
             task.set_latest_buyer_questions(_unique(item["buyer_questions"], 5))
@@ -323,8 +506,25 @@ class KnowledgeGapTaskService:
             task.set_metadata(sanitize_obj({
                 "created_by": created_by,
                 "source": "real_conversation_replay",
+                "source_run_uid": target_run_uid,
+                "gap_category": gap_type,
+                "required_evidence_type": required_evidence_type,
+                "target_system": target_system,
+                "recommended_action": recommended_action,
+                "missing_fields": missing_fields,
+                "current_context_summary": context_summary,
                 "missing_evidence_type": task.missing_evidence_type,
                 "media_needed_type": task.media_needed_type,
+                "representative_samples": [
+                    {
+                        "turn_uid": sample.get("turn_uid", ""),
+                        "failure_type": sample.get("failure_type", ""),
+                        "query_fact_type": sample.get("query_fact_type", ""),
+                        "buyer_message": sample.get("buyer_message", ""),
+                        "agent_reply": sample.get("agent_reply", ""),
+                    }
+                    for sample in item["samples"][:5]
+                ],
             }))
             db.flush()
 
@@ -359,7 +559,21 @@ class KnowledgeGapTaskService:
 
         filters = filters or {}
         query = db.query(KnowledgeGapTask).order_by(KnowledgeGapTask.updated_at.desc(), KnowledgeGapTask.id.desc())
-        for attr in ["status", "gap_type", "query_fact_type", "suggested_fix_area", "suggested_owner", "risk_level"]:
+        gap_category = sanitize_text(filters.get("gap_category"))
+        if gap_category and not sanitize_text(filters.get("gap_type")):
+            filters = {**filters, "gap_type": gap_category}
+        required_evidence_type = sanitize_text(filters.get("required_evidence_type"))
+        if required_evidence_type and not sanitize_text(filters.get("missing_evidence_type")):
+            filters = {**filters, "missing_evidence_type": required_evidence_type}
+        for attr in [
+            "status",
+            "gap_type",
+            "query_fact_type",
+            "suggested_fix_area",
+            "suggested_owner",
+            "risk_level",
+            "missing_evidence_type",
+        ]:
             value = sanitize_text(filters.get(attr))
             if value:
                 query = query.filter(getattr(KnowledgeGapTask, attr) == value)
@@ -367,6 +581,18 @@ class KnowledgeGapTaskService:
         if product:
             query = query.filter(KnowledgeGapTask.product_title.like(f"%{product}%"))
         rows = query.limit(max(1, min(int(limit or 100), 500))).all()
+        target_system = sanitize_text(filters.get("target_system"))
+        recommended_action = sanitize_text(filters.get("recommended_action"))
+        if target_system or recommended_action:
+            filtered_rows = []
+            for row in rows:
+                metadata = row.get_metadata()
+                if target_system and sanitize_text(metadata.get("target_system")) != target_system:
+                    continue
+                if recommended_action and sanitize_text(metadata.get("recommended_action")) != recommended_action:
+                    continue
+                filtered_rows.append(row)
+            rows = filtered_rows
         draft_counts: dict[str, int] = {}
         for task_uid, count in db.query(KnowledgeGapDraft.task_uid, KnowledgeGapDraft.id).all():
             draft_counts[task_uid] = draft_counts.get(task_uid, 0) + 1
@@ -420,7 +646,11 @@ class KnowledgeGapTaskService:
             "open_count": sum(1 for row in tasks if row.status == "open"),
             "high_risk_count": sum(1 for row in tasks if row.risk_level == "high"),
             "media_gap_count": sum(1 for row in tasks if row.gap_type == "media_asset_gap"),
-            "product_fact_gap_count": sum(1 for row in tasks if row.gap_type == "product_fact_gap"),
+            "product_fact_gap_count": sum(1 for row in tasks if row.gap_type in {"product_fact_gap", "product_field_gap"}),
+            "product_field_gap_count": sum(1 for row in tasks if row.gap_type == "product_field_gap"),
+            "aftersales_policy_gap_count": sum(1 for row in tasks if row.gap_type == "aftersales_policy_gap"),
+            "promotion_policy_gap_count": sum(1 for row in tasks if row.gap_type == "promotion_policy_gap"),
+            "context_extraction_gap_count": sum(1 for row in tasks if row.gap_type == "context_extraction_gap"),
             "draft_count": len(drafts),
             "pending_review_count": sum(1 for row in drafts if row.review_status == "pending_review"),
             "verified_count": sum(1 for row in tasks if row.status == "verified"),

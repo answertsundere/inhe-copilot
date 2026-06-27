@@ -184,14 +184,22 @@ export interface EvalTrends {
 export interface KnowledgeGapTask {
   task_uid: string
   gap_type: string
+  gap_category?: string
   product_title: string
+  product_title_preview?: string
   item_id: string
+  item_id_masked?: string
   sku_code: string
   query_fact_type: string
   failure_type: string
   suggested_fix_area: string
   suggested_owner: string
   missing_evidence_type: string
+  required_evidence_type?: string
+  target_system?: string
+  recommended_action?: string
+  missing_fields?: string[]
+  current_context_summary?: Record<string, unknown>
   media_needed_type: string
   risk_level: 'low' | 'medium' | 'high'
   sample_count: number
@@ -234,6 +242,10 @@ export interface KnowledgeGapSummary {
   high_risk_count: number
   media_gap_count: number
   product_fact_gap_count: number
+  product_field_gap_count?: number
+  aftersales_policy_gap_count?: number
+  promotion_policy_gap_count?: number
+  context_extraction_gap_count?: number
   draft_count: number
   pending_review_count: number
   verified_count: number
@@ -378,7 +390,11 @@ export async function fetchEvalTrends(params?: {
 export async function fetchKnowledgeGapTasks(params?: {
   status?: string
   gap_type?: string
+  gap_category?: string
   query_fact_type?: string
+  required_evidence_type?: string
+  target_system?: string
+  recommended_action?: string
   suggested_fix_area?: string
   suggested_owner?: string
   risk_level?: string
