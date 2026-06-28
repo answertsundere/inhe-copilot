@@ -782,3 +782,56 @@ class KnowledgeGapPublishQueue(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class KnowledgeGapPublishAudit(Base):
+    __tablename__ = "knowledge_gap_publish_audits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    audit_uid = Column(String(64), nullable=False, unique=True, index=True)
+    queue_uid = Column(String(64), nullable=False, index=True)
+    task_uid = Column(String(64), nullable=False, default="", index=True)
+    draft_uid = Column(String(64), nullable=False, default="", index=True)
+    publish_target = Column(String(64), nullable=False, default="", index=True)
+    payload_fingerprint = Column(String(64), nullable=False, default="", index=True)
+    locked_payload_fingerprint = Column(String(64), nullable=False, default="", index=True)
+    operator = Column(String(64), nullable=False, default="", index=True)
+    action = Column(String(64), nullable=False, default="", index=True)
+    status = Column(String(32), nullable=False, default="", index=True)
+    reason = Column(Text, nullable=False, default="")
+    transaction_plan_json = Column(Text, nullable=False, default="{}")
+    validation_result_json = Column(Text, nullable=False, default="{}")
+    writes_formal_tables = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def get_transaction_plan(self):
+        return _json_load(self.transaction_plan_json, {})
+
+    def set_transaction_plan(self, value):
+        self.transaction_plan_json = _json_dump(value, {})
+
+    def get_validation_result(self):
+        return _json_load(self.validation_result_json, {})
+
+    def set_validation_result(self, value):
+        self.validation_result_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "audit_uid": self.audit_uid,
+            "queue_uid": self.queue_uid,
+            "task_uid": self.task_uid,
+            "draft_uid": self.draft_uid,
+            "publish_target": self.publish_target,
+            "payload_fingerprint": self.payload_fingerprint,
+            "locked_payload_fingerprint": self.locked_payload_fingerprint,
+            "operator": self.operator,
+            "action": self.action,
+            "status": self.status,
+            "reason": self.reason,
+            "transaction_plan": self.get_transaction_plan(),
+            "validation_result": self.get_validation_result(),
+            "writes_formal_tables": bool(self.writes_formal_tables),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

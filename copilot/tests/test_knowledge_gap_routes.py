@@ -5,7 +5,16 @@ from sqlalchemy.orm import sessionmaker
 import app.db as db_module
 from app.api.eval_routes import eval_bp
 from app.db import Base
-from app.models.eval_tables import EvalFailure, EvalRun, EvalTrace, KnowledgeGapDraft, KnowledgeGapPublishQueue, KnowledgeGapTask
+from app.models.eval_tables import (
+    EvalFailure,
+    EvalRun,
+    EvalTrace,
+    KnowledgeGapDraft,
+    KnowledgeGapPublishAudit,
+    KnowledgeGapPublishQueue,
+    KnowledgeGapTask,
+)
+from app.services.knowledge_gap_publish_queue_service import payload_fingerprint
 
 
 def _make_client(monkeypatch):
@@ -503,3 +512,72 @@ def test_publish_queue_routes_hide_and_block_superseded_items(monkeypatch):
         headers={"X-User-Role": "admin"},
     )
     assert exported.status_code == 400
+
+
+def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monkeypatch):
+    client, session_factory = _make_client(monkeypatch)
+    payload = {
+        "product_identity": {"item_id": "item-001", "sku_code": "sku-001"},
+        "fields": {"dimensions": "100x40x120cm"},
+        "source_reference": "manual page 3",
+    }
+    fingerprint = payload_fingerprint("product_profile", payload)
+    db = session_factory()
+    try:
+        queue_item = KnowledgeGapPublishQueue(
+            queue_uid="kgpub_route_gate",
+            task_uid="kgap_route_gate",
+            draft_uid="kgdraft_route_gate",
+            publish_target="product_profile",
+            payload_fingerprint=fingerprint,
+            reviewer="lead",
+            risk_level="medium",
+            status="queued",
+            export_status="not_exported",
+            publish_dry_run_status="passed",
+            ready_for_publish=True,
+            pre_publish_retest_status="passed",
+            approved_to_publish=True,
+            approval_status="approved_to_publish",
+            locked_payload_fingerprint=fingerprint,
+        )
+        queue_item.set_payload(payload)
+        db.add(queue_item)
+        db.commit()
+    finally:
+        db.close()
+
+    supervisor = client.post(
+        "/api/eval/knowledge-gap-publish-queue/kgpub_route_gate/simulate-publish",
+        headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
+    )
+    assert supervisor.status_code == 403
+
+    admin = client.post(
+        "/api/eval/knowledge-gap-publish-queue/kgpub_route_gate/simulate-publish",
+        headers={"X-User-Role": "admin", "X-User-Name": "admin"},
+    )
+    assert admin.status_code == 200
+    data = admin.get_json()
+    assert data["ok"] is True
+    assert data["writes_formal_tables"] is False
+    assert data["transaction_plan"]["operations"][0]["target_table"] == "kb_product"
+    assert data["audit_uid"]
+
+    preview = client.post(
+        "/api/eval/knowledge-gap-publish-queue/kgpub_route_gate/export-preview",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert preview.status_code == 200
+    latest_audit = preview.get_json()["latest_publish_audit"]
+    assert latest_audit["audit_uid"] == data["audit_uid"]
+    assert latest_audit["status"] == "passed"
+    assert latest_audit["writes_formal_tables"] is False
+
+    db = session_factory()
+    try:
+        audit = db.query(KnowledgeGapPublishAudit).filter(KnowledgeGapPublishAudit.audit_uid == data["audit_uid"]).one()
+        assert audit.status == "passed"
+        assert audit.writes_formal_tables is False
+    finally:
+        db.close()

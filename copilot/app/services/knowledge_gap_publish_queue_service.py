@@ -417,10 +417,12 @@ class KnowledgeGapPublishQueueService:
 
     def export_preview(self, db, queue_uid: str) -> dict[str, Any] | None:
         from app.models.eval_tables import KnowledgeGapPublishQueue
+        from app.services.knowledge_gap_publish_gate_service import KnowledgeGapPublishGateService
 
         item = db.query(KnowledgeGapPublishQueue).filter(KnowledgeGapPublishQueue.queue_uid == sanitize_text(queue_uid)).one_or_none()
         if item is None:
             return None
+        latest_publish_audit = KnowledgeGapPublishGateService().latest_audit_summary(db, item.queue_uid)
         if item.status == "superseded":
             return sanitize_obj({
                 "queue_item": item.to_dict(),
@@ -435,6 +437,7 @@ class KnowledgeGapPublishQueueService:
                 "approved_to_publish": bool(item.approved_to_publish),
                 "approval_status": item.approval_status,
                 "locked_payload_fingerprint": item.locked_payload_fingerprint,
+                "latest_publish_audit": latest_publish_audit,
             })
         return sanitize_obj({
             "queue_item": item.to_dict(),
@@ -448,6 +451,7 @@ class KnowledgeGapPublishQueueService:
             "approved_to_publish": bool(item.approved_to_publish),
             "approval_status": item.approval_status,
             "locked_payload_fingerprint": item.locked_payload_fingerprint,
+            "latest_publish_audit": latest_publish_audit,
         })
 
     def update_queue_item(self, db, queue_uid: str, payload: dict[str, Any], *, operator: str = "") -> dict[str, Any] | None:

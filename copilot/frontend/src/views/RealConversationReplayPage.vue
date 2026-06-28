@@ -25,6 +25,7 @@ import {
   reviewKnowledgeGapDraft,
   runKnowledgeGapPrePublishRetest,
   retestKnowledgeGapTask,
+  simulateKnowledgeGapPublish,
   submitRealConversationReview,
   triageKnowledgeGapTask,
   updateKnowledgeGapTask,
@@ -608,6 +609,10 @@ function queueDryRunList(item: KnowledgeGapPublishQueueItem, key: string) {
   return Array.isArray(value) ? value.map((entry) => String(entry)) : []
 }
 
+function queuePublishSimulationAudit(item: KnowledgeGapPublishQueueItem) {
+  return (item.metadata?.last_publish_simulation_audit || {}) as Record<string, unknown>
+}
+
 async function dryRunPublishQueueItem(item: KnowledgeGapPublishQueueItem) {
   await ElMessageBox.confirm(
     '本阶段只做发布前模拟校验，不写正式库。继续执行 dry-run？',
@@ -664,6 +669,50 @@ async function runPrePublishRetest(item: KnowledgeGapPublishQueueItem) {
   } else {
     ElMessage.warning('Pre-publish retest failed. Check remaining failures and block reasons.')
   }
+}
+
+function canSimulatePublish(item: KnowledgeGapPublishQueueItem) {
+  return (
+    (item.status === 'queued' || item.status === 'exported') &&
+    item.publish_dry_run_status === 'passed' &&
+    item.ready_for_publish === true &&
+    item.pre_publish_retest_status === 'passed' &&
+    item.approved_to_publish === true &&
+    item.approval_status === 'approved_to_publish'
+  )
+}
+
+async function simulatePublishQueueItem(item: KnowledgeGapPublishQueueItem) {
+  await ElMessageBox.confirm(
+    '本操作只生成服务端发布模拟和审计记录，不写正式知识库、商品库或素材库。继续？',
+    '发布模拟',
+    {
+      confirmButtonText: '执行发布模拟',
+      cancelButtonText: '取消',
+      type: 'warning',
+    },
+  )
+  const result = await simulateKnowledgeGapPublish(item.queue_uid)
+  if (result.queue_item) {
+    knowledgeGapPublishQueue.value = knowledgeGapPublishQueue.value.map((row) =>
+      row.queue_uid === item.queue_uid ? result.queue_item as KnowledgeGapPublishQueueItem : row,
+    )
+  }
+  const message = result.ok ? 'Publish simulation passed. No formal tables were written.' : 'Publish simulation blocked. Check audit reasons.'
+  if (result.ok) {
+    ElMessage.success(message)
+  } else {
+    ElMessage.warning(message)
+  }
+  ElMessageBox.alert(formatJson({
+    audit_uid: result.audit_uid,
+    status: result.status,
+    block_reasons: result.block_reasons,
+    writes_formal_tables: result.writes_formal_tables,
+    transaction_plan: result.transaction_plan,
+  }), '发布模拟结果', {
+    confirmButtonText: 'Close',
+  })
 }
 
 async function updatePublishQueueItemStatus(item: KnowledgeGapPublishQueueItem, status: 'exported' | 'rejected' | 'cancelled') {
@@ -1722,6 +1771,16 @@ onMounted(loadRuns)
                   <summary>pre-publish retest summary</summary>
                   <pre>{{ formatJson(item.pre_publish_retest_summary) }}</pre>
                 </details>
+                <details v-if="Object.keys(queuePublishSimulationAudit(item)).length">
+                  <summary>publish simulation audit</summary>
+                  <div class="draft-fields">
+                    <span>audit: {{ queuePublishSimulationAudit(item).audit_uid || '-' }}</span>
+                    <span>status: {{ queuePublishSimulationAudit(item).status || '-' }}</span>
+                    <span>writes_formal_tables: {{ queuePublishSimulationAudit(item).writes_formal_tables }}</span>
+                    <span>created_at: {{ queuePublishSimulationAudit(item).created_at || '-' }}</span>
+                    <span v-if="queuePublishSimulationAudit(item).reason">reason: {{ queuePublishSimulationAudit(item).reason }}</span>
+                  </div>
+                </details>
                 <div class="gap-actions">
                   <el-button
                     v-if="item.status === 'queued' || item.status === 'exported'"
@@ -1745,6 +1804,14 @@ onMounted(loadRuns)
                     @click="runPrePublishRetest(item)"
                   >
                     发布前复测
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="danger"
+                    :disabled="!canSimulatePublish(item)"
+                    @click="simulatePublishQueueItem(item)"
+                  >
+                    发布模拟
                   </el-button>
                   <el-button size="small" @click="previewPublishQueueItem(item)">导出预览</el-button>
                   <el-button

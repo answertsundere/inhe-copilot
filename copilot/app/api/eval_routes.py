@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify, request
 
-from app.api.admin_auth import current_user_name, require_supervisor
+from app.api.admin_auth import current_user_name, require_admin, require_supervisor
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 
@@ -749,6 +749,29 @@ def run_knowledge_gap_publish_retest(queue_uid):
     except ValueError as exc:
         message = sanitize_text(str(exc))
         return jsonify({"error": message}), 404 if "not found" in message else 400
+
+
+@eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>/simulate-publish", methods=["POST"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>/simulate-publish", methods=["POST"])
+@require_admin
+def simulate_knowledge_gap_publish(queue_uid):
+    from app.services.knowledge_gap_publish_gate_service import KnowledgeGapPublishGateService
+
+    db = _db()
+    try:
+        result = KnowledgeGapPublishGateService().simulate_publish(
+            db,
+            sanitize_text(queue_uid),
+            operator=sanitize_text(current_user_name()),
+        )
+        if result is None:
+            return jsonify({"error": "publish queue item not found"}), 404
+        return jsonify(sanitize_obj(result))
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 @eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>", methods=["PATCH"])

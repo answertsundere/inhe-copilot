@@ -306,6 +306,20 @@ export interface KnowledgeGapPublishQueueItem {
   updated_at?: string
 }
 
+export interface KnowledgeGapPublishSimulation {
+  ok: boolean
+  status: 'passed' | 'blocked' | 'failed'
+  writes_formal_tables: boolean
+  queue_uid: string
+  task_uid?: string
+  draft_uid?: string
+  publish_target: string
+  block_reasons: string[]
+  transaction_plan: Record<string, unknown>
+  audit_uid: string
+  queue_item?: KnowledgeGapPublishQueueItem
+}
+
 export interface KnowledgeGapSummary {
   run_uid?: string
   filtered_by_run_uid?: boolean
@@ -555,6 +569,7 @@ export async function previewKnowledgeGapPublishExport(queueUid: string) {
     approved_to_publish?: boolean
     approval_status?: string
     locked_payload_fingerprint?: string
+    latest_publish_audit?: Record<string, unknown>
   }
 }
 
@@ -586,6 +601,11 @@ export async function runKnowledgeGapPrePublishRetest(queueUid: string) {
     summary: Record<string, unknown>
     block_reasons?: string[]
   }
+}
+
+export async function simulateKnowledgeGapPublish(queueUid: string) {
+  const res = await apiClient.post(`/eval/knowledge-gap-publish-queue/${queueUid}/simulate-publish`)
+  return res.data as KnowledgeGapPublishSimulation
 }
 
 export async function updateKnowledgeGapPublishQueue(queueUid: string, payload: {
