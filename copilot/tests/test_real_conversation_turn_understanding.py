@@ -65,6 +65,17 @@ def test_url_links_and_service_boilerplate_are_not_product_fact_questions():
         assert result["query_fact_type"] == ""
 
 
+def test_non_question_media_reference_with_history_does_not_call_agent():
+    for message in ("图里圈出来这块板", "图片这个位置", "红色圈出来背面那块板"):
+        result = _understand(message, history=[{"speaker": "service", "text": "请看图"}])
+        assert result["turn_actionability"] == "media_reference"
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["should_score"] is True
+        assert result["skip_reason"] == "context_insufficient"
+        assert result["query_fact_type"] == ""
+
+
 def test_logistics_and_aftersales_short_questions_get_fact_type():
     cases = {
         "明天能到吗": "stock_shipping",

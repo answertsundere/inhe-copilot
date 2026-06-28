@@ -463,6 +463,54 @@ def test_url_only_turn_is_traced_but_not_sent_to_agent(monkeypatch):
         db.close()
 
 
+def test_media_reference_with_history_is_context_gap_without_agent_call(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        case = EvalCase(case_uid="case_media_ref_1", source_type="real_conversation", message="media")
+        case.set_metadata({"real_context": _product_real_context()})
+        db.add(case)
+        db.add(EvalConversationTurn(
+            case_uid="case_media_ref_1",
+            conversation_uid="conv_media_ref_1",
+            turn_uid="turn_media_service_1",
+            turn_index=0,
+            speaker="service",
+            sanitized_text="请看图片确认位置",
+        ))
+        db.add(EvalConversationTurn(
+            case_uid="case_media_ref_1",
+            conversation_uid="conv_media_ref_1",
+            turn_uid="turn_media_buyer_1",
+            turn_index=1,
+            speaker="buyer",
+            sanitized_text="图里圈出来这块板",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class MediaReferenceReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            raise AssertionError("non-question media reference should not call agent")
+
+    result = MediaReferenceReplayService().replay_cases(ReplayOptions(run_uid="run_media_reference_context_gap"))
+
+    assert result["failed"] == 1
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).filter(EvalTrace.turn_uid == "turn_media_buyer_1").one()
+        understanding = trace.get_turn_understanding()
+        assert understanding["turn_actionability"] == "media_reference"
+        assert understanding["needs_agent_reply"] is False
+        assert understanding["skip_reason"] == "context_insufficient"
+        assert trace.agent_reply == ""
+        assert "context_insufficient" in trace.get_failure_labels()
+        assert trace.get_quality_bucket()["quality_bucket"] == "context_gap"
+    finally:
+        db.close()
+
+
 def test_deictic_followup_without_context_fails_context_insufficient_without_agent(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()

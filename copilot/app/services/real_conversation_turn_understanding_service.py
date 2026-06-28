@@ -250,6 +250,20 @@ class RealConversationTurnUnderstandingService:
         fact_type, secondary_fact_types = infer_query_fact_types(text)
         if not fact_type and _is_contextual_dimension_short_question(text) and (history or product_hint):
             fact_type = "dimensions"
+        if (message_type_text in {"image", "图片", "video", "视频"} or _contains_any(text, MEDIA_TERMS)) and not _is_actionable_question(text, fact_type):
+            return TurnUnderstanding(
+                turn_actionability="media_reference",
+                needs_agent_reply=False,
+                needs_rag=False,
+                needs_tool=False,
+                should_score=True,
+                reply_strategy="clarify_context",
+                context_dependency="high",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["media_reference"],
+                reason="Buyer turn depends on media or visual context and has no explicit actionable question.",
+                skip_reason="context_insufficient",
+            ).to_dict()
+
         if _is_deictic_followup(text, fact_type):
             has_context = bool(history or product_hint)
             return TurnUnderstanding(
@@ -263,20 +277,6 @@ class RealConversationTurnUnderstandingService:
                 forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["deictic_followup"],
                 reason="Buyer turn is an elliptical follow-up that requires prior context.",
                 skip_reason="" if has_context and not _is_fragment_only(text) else "context_insufficient",
-            ).to_dict()
-
-        if (message_type_text in {"image", "图片", "video", "视频"} or _contains_any(text, MEDIA_TERMS)) and not _is_actionable_question(text, fact_type):
-            return TurnUnderstanding(
-                turn_actionability="media_reference",
-                needs_agent_reply=bool(history),
-                needs_rag=False,
-                needs_tool=False,
-                should_score=bool(history),
-                reply_strategy="clarify_context" if not history else "normal_agent",
-                context_dependency="high",
-                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["media_reference"],
-                reason="Buyer turn depends on media or visual context.",
-                skip_reason="" if history else "context_insufficient",
             ).to_dict()
 
         if _is_actionable_question(text, fact_type):
