@@ -672,6 +672,15 @@ def list_knowledge_gap_publish_queue():
         db.close()
 
 
+@eval_bp.route("/api/eval/knowledge-gap-publish-capabilities", methods=["GET"])
+@eval_bp.route("/api/kb/eval/knowledge-gap-publish-capabilities", methods=["GET"])
+@require_supervisor
+def get_knowledge_gap_publish_capabilities():
+    from app.services.knowledge_gap_publish_transaction_service import KnowledgeGapPublishTransactionService
+
+    return jsonify(sanitize_obj(KnowledgeGapPublishTransactionService().capabilities()))
+
+
 @eval_bp.route("/api/eval/knowledge-gap-publish-queue/<queue_uid>/export-preview", methods=["POST"])
 @eval_bp.route("/api/kb/eval/knowledge-gap-publish-queue/<queue_uid>/export-preview", methods=["POST"])
 @require_supervisor

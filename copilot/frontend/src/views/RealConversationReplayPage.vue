@@ -613,6 +613,10 @@ function queuePublishSimulationAudit(item: KnowledgeGapPublishQueueItem) {
   return (item.metadata?.last_publish_simulation_audit || {}) as Record<string, unknown>
 }
 
+function queuePublishSimulationPlan(item: KnowledgeGapPublishQueueItem) {
+  return (item.metadata?.last_publish_simulation_plan || {}) as Record<string, unknown>
+}
+
 async function dryRunPublishQueueItem(item: KnowledgeGapPublishQueueItem) {
   await ElMessageBox.confirm(
     '本阶段只做发布前模拟校验，不写正式库。继续执行 dry-run？',
@@ -1780,6 +1784,17 @@ onMounted(loadRuns)
                     <span>created_at: {{ queuePublishSimulationAudit(item).created_at || '-' }}</span>
                     <span v-if="queuePublishSimulationAudit(item).reason">reason: {{ queuePublishSimulationAudit(item).reason }}</span>
                   </div>
+                </details>
+                <details v-if="Object.keys(queuePublishSimulationPlan(item)).length">
+                  <summary>publish transaction simulation plan</summary>
+                  <p class="safe-note">当前为发布事务模拟计划，正式写库未启用。</p>
+                  <div class="draft-fields">
+                    <span>plan_version: {{ queuePublishSimulationPlan(item).plan_version || '-' }}</span>
+                    <span>publish_enabled: {{ queuePublishSimulationPlan(item).publish_enabled }}</span>
+                    <span>writes_formal_tables: {{ queuePublishSimulationPlan(item).writes_formal_tables }}</span>
+                    <span>rollback_supported: {{ queuePublishSimulationPlan(item).rollback_supported }}</span>
+                  </div>
+                  <pre>{{ formatJson(queuePublishSimulationPlan(item)) }}</pre>
                 </details>
                 <div class="gap-actions">
                   <el-button

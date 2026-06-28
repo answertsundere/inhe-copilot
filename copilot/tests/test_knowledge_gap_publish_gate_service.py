@@ -77,10 +77,12 @@ def test_product_profile_gate_creates_transaction_plan_without_formal_writes():
         assert result["ok"] is True
         assert result["status"] == "passed"
         assert result["writes_formal_tables"] is False
+        assert result["transaction_plan"]["plan_version"] == "v1"
         assert result["transaction_plan"]["mode"] == "simulation"
-        assert result["transaction_plan"]["operations"][0]["operation"] == "upsert"
-        assert result["transaction_plan"]["operations"][0]["target_table"] == "kb_product"
-        assert "dimensions" in result["transaction_plan"]["operations"][0]["fields"]
+        assert result["transaction_plan"]["publish_enabled"] is False
+        assert result["transaction_plan"]["steps"][1]["operation"] == "upsert"
+        assert result["transaction_plan"]["steps"][1]["target_table"] == "kb_product"
+        assert "dimensions" in result["transaction_plan"]["steps"][1]["fields"]
         assert db.query(KnowledgeGapPublishAudit).count() == 1
         assert db.query(KBProduct).count() == 0
         assert db.query(KBMediaAsset).count() == 0
@@ -157,7 +159,7 @@ def test_media_asset_without_uploaded_asset_or_url_is_blocked():
         result = KnowledgeGapPublishGateService().simulate_publish(db, item.queue_uid, operator="admin")
 
         assert result["ok"] is False
-        assert any("uploaded_asset_id or asset_url" in reason for reason in result["block_reasons"])
+        assert any("media asset missing uploaded_asset_id or asset_url" in reason for reason in result["block_reasons"])
         assert db.query(KBMediaAsset).count() == 0
     finally:
         db.close()

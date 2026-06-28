@@ -320,6 +320,13 @@ export interface KnowledgeGapPublishSimulation {
   queue_item?: KnowledgeGapPublishQueueItem
 }
 
+export interface KnowledgeGapPublishCapabilities {
+  plan_version: string
+  publish_enabled: boolean
+  writes_formal_tables: boolean
+  targets: Record<string, Record<string, unknown>>
+}
+
 export interface KnowledgeGapSummary {
   run_uid?: string
   filtered_by_run_uid?: boolean
@@ -553,6 +560,11 @@ export async function fetchKnowledgeGapPublishQueue(params?: {
     items: KnowledgeGapPublishQueueItem[]
     summary: Record<string, unknown>
   }
+}
+
+export async function fetchKnowledgeGapPublishCapabilities() {
+  const res = await apiClient.get('/eval/knowledge-gap-publish-capabilities')
+  return res.data as KnowledgeGapPublishCapabilities
 }
 
 export async function previewKnowledgeGapPublishExport(queueUid: string) {

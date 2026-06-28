@@ -561,7 +561,9 @@ def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monke
     data = admin.get_json()
     assert data["ok"] is True
     assert data["writes_formal_tables"] is False
-    assert data["transaction_plan"]["operations"][0]["target_table"] == "kb_product"
+    assert data["transaction_plan"]["plan_version"] == "v1"
+    assert data["transaction_plan"]["publish_enabled"] is False
+    assert data["transaction_plan"]["steps"][1]["target_table"] == "kb_product"
     assert data["audit_uid"]
 
     preview = client.post(
@@ -581,3 +583,33 @@ def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monke
         assert audit.writes_formal_tables is False
     finally:
         db.close()
+
+
+def test_publish_capabilities_route_is_supervisor_readable(monkeypatch):
+    client, _session_factory = _make_client(monkeypatch)
+
+    operator = client.get(
+        "/api/eval/knowledge-gap-publish-capabilities",
+        headers={"X-User-Role": "operator"},
+    )
+    assert operator.status_code == 403
+
+    supervisor = client.get(
+        "/api/eval/knowledge-gap-publish-capabilities",
+        headers={"X-User-Role": "supervisor"},
+    )
+    assert supervisor.status_code == 200
+    data = supervisor.get_json()
+    assert data["plan_version"] == "v1"
+    assert data["publish_enabled"] is False
+    assert data["writes_formal_tables"] is False
+    for target in [
+        "product_profile",
+        "kb_product",
+        "kb_media_asset",
+        "activity_rules",
+        "aftersales_policy",
+        "context_extractor",
+    ]:
+        assert target in data["targets"]
+        assert data["targets"][target]["supports_formal_publish"] is False
