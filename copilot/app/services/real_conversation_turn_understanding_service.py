@@ -64,6 +64,20 @@ PRICE_NEGOTIATION_TERMS = (
     "买两个",
 )
 AFTERSALES_STRONG_TERMS = (
+    "质量问题",
+    "全新的",
+    "不是全新",
+    "二手",
+    "没收到",
+    "没有收到",
+    "未收到",
+    "没拿到",
+    "没看见",
+    "没收到货",
+    "没收到这个",
+    "同一边",
+    "同边",
+    "重复的",
     "退货",
     "退款",
     "换货",
@@ -125,6 +139,9 @@ REASON_FOLLOWUP_TERMS = ("为什么", "为啥", "为何", "咋回事", "怎么�
 DEICTIC_TERMS = ("这个", "这个呢", "这款", "这款呢", "这一块", "这块", "这里", "那个", "那这个", "这样的", "这种", "单门的", "抽屉的", "也行", "也可以", *REASON_FOLLOWUP_TERMS)
 MEDIA_TERMS = ("图里", "图片", "照片", "视频", "圈出来", "拍的", "这里", "这个位置")
 URL_OR_LINK_RE = re.compile(r"(https?://|www\.|item\.(taobao|tmall)\.com|img\.alicdn\.com|\.jpg|\.jpeg|\.png|\.mp4)", re.I)
+EXTRA_QUESTION_MARKERS = (
+    "？", "吗", "呢", "嘛", "怎么", "怎样", "如何", "多少", "几", "有没有", "能不能", "会不会", "是不是", "可不可以", "行不行",
+)
 SERVICE_OR_SYSTEM_TERMS = (
     "欢迎光临", "您好~欢迎", "自动回复", "转人工", "人工客服", "客服已接入", "请稍等",
     "咨询量大", "不是有意怠慢", "看到消息后", "为您服务",
@@ -219,6 +236,20 @@ class RealConversationTurnUnderstandingService:
                 skip_reason="link_or_media_only",
             ).to_dict()
 
+        if _is_link_share_without_actionable_request(text):
+            return TurnUnderstanding(
+                turn_actionability="media_reference",
+                needs_agent_reply=False,
+                needs_rag=False,
+                needs_tool=False,
+                should_score=False,
+                reply_strategy="skip",
+                context_dependency="high",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["media_reference"],
+                reason="Buyer shared a product or media link without asking an actionable question.",
+                skip_reason="link_or_media_only",
+            ).to_dict()
+
         if _is_service_or_system_fragment(text):
             return TurnUnderstanding(
                 turn_actionability="noise",
@@ -264,14 +295,15 @@ class RealConversationTurnUnderstandingService:
         if (_is_context_update(text) or _is_preference_update(text)) and not _is_aftersales_or_mismatch(text):
             return TurnUnderstanding(
                 turn_actionability="context_update",
-                needs_agent_reply=True,
+                needs_agent_reply=False,
                 needs_rag=False,
                 needs_tool=False,
                 should_score=True,
-                reply_strategy="acknowledge_aftercare",
+                reply_strategy="acknowledge_context_update",
                 context_dependency="medium",
                 forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["context_update"],
                 reason="Buyer is reporting receipt, installation, or handling status rather than asking a product fact.",
+                skip_reason="context_update_no_question",
             ).to_dict()
 
         fact_type, secondary_fact_types = infer_query_fact_types(text)
@@ -427,6 +459,23 @@ def _is_context_update(text: str) -> bool:
     return not _has_question_or_request(text)
 
 
+def _is_link_share_without_actionable_request(text: str) -> bool:
+    value = str(text or "")
+    if not URL_OR_LINK_RE.search(value):
+        return False
+    text_without_links = re.sub(
+        r"https?://\S+|www\.\S+|\S*(?:item\.taobao\.com|item\.tmall\.com|img\.alicdn\.com)\S*|\S+\.(?:jpg|jpeg|png|mp4)\S*",
+        "",
+        value,
+        flags=re.I,
+    )
+    if _contains_any(text_without_links, QUESTION_MARKERS) or _contains_any(text_without_links, EXTRA_QUESTION_MARKERS):
+        return False
+    if _is_aftersales_or_mismatch(value) or _is_promotion_query(value):
+        return False
+    return True
+
+
 def _is_deictic_followup(text: str, fact_type: str = "") -> bool:
     stripped = _normalize(text)
     if fact_type:
@@ -466,7 +515,7 @@ def _is_actionable_question(text: str, fact_type: str) -> bool:
 
 
 def _has_question_or_request(text: str) -> bool:
-    return _contains_any(text, QUESTION_MARKERS) or _contains_any(text, REQUEST_MARKERS)
+    return _contains_any(text, QUESTION_MARKERS) or _contains_any(text, EXTRA_QUESTION_MARKERS) or _contains_any(text, REQUEST_MARKERS)
 
 
 def _is_promotion_query(text: str) -> bool:

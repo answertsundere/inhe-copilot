@@ -329,7 +329,24 @@ def test_failure_classifier_covers_audit_policy_and_product_identity():
     assert by_type["no_product_identified"]["explanation"]
 
 
-def test_context_update_with_product_fact_reply_is_failed(monkeypatch):
+def test_human_review_no_evidence_fallback_is_not_semantic_mismatch():
+    response = {
+        "suggested_reply": "亲～这类信息需要人工按当前商品核对后再回复您。",
+        "query_fact_type": "age_range",
+        "requires_human_review": True,
+        "evidence_debug": {"selected_evidence": []},
+        "answer_trace": {"query_fact_type": "age_range", "required_fact_types": ["age_range"]},
+        "final_answer_audit": {"passed": False, "issues": ["not_direct_answer"]},
+    }
+
+    labels = {item["failure_type"] for item in classify_turn_failures(response)}
+
+    assert "needs_human_review" in labels
+    assert "rag_miss" in labels
+    assert "semantic_mismatch" not in labels
+
+
+def test_context_update_is_not_sent_to_agent(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()
     try:
@@ -341,7 +358,7 @@ def test_context_update_with_product_fact_reply_is_failed(monkeypatch):
             turn_uid="turn_status_1",
             turn_index=0,
             speaker="buyer",
-            sanitized_text="柜子我昨天收到已经装好了",
+            sanitized_text="好的，相当于收到好评返28",
         ))
         db.commit()
     finally:
@@ -349,43 +366,32 @@ def test_context_update_with_product_fact_reply_is_failed(monkeypatch):
 
     payloads = []
 
-    class WrongTopicReplayService(RealConversationReplayService):
+    class ContextUpdateReplayService(RealConversationReplayService):
         def _call_agent(self, payload):
             payloads.append(payload)
-            return {
-                "suggested_reply": "亲可以先量一下宽深高，再对照尺寸图确认摆放空间。",
-                "requires_human_review": False,
-                "query_fact_type": "",
-                "evidence_debug": {
-                    "query_fact_type": "",
-                    "selected_evidence": [{"fact_type": "dimensions", "content": "尺寸图"}],
-                },
-                "answer_trace": {"query_fact_type": "", "required_fact_types": []},
-                "final_answer_audit": {"passed": True, "expected_topics": []},
-            }
+            raise AssertionError("context update should not call agent")
 
-    result = WrongTopicReplayService().replay_cases(ReplayOptions(run_uid="run_status_wrong_topic"))
+    result = ContextUpdateReplayService().replay_cases(ReplayOptions(run_uid="run_status_skip_agent"))
 
-    assert len(payloads) == 1
-    assert payloads[0]["copilot_context"]["turn_understanding"]["turn_actionability"] == "context_update"
-    assert result["failed"] == 1
+    assert payloads == []
+    assert result["failed"] == 0
+    assert result["passed"] == 1
     db = session_factory()
     try:
         trace = db.query(EvalTrace).one()
-        assert trace.passed is False
-        assert trace.get_turn_understanding()["needs_rag"] is False
-        labels = set(trace.get_failure_labels())
-        assert "wrong_topic_reply" in labels
-        assert "query_fact_type_missing" in labels
-        assert "unrequested_product_fact" in labels
-        assert "unnecessary_rag_call" in labels
+        assert trace.passed is True
+        understanding = trace.get_turn_understanding()
+        assert understanding["turn_actionability"] == "context_update"
+        assert understanding["needs_agent_reply"] is False
+        assert understanding["needs_rag"] is False
+        assert trace.agent_reply == ""
+        assert trace.get_failure_labels() == []
         bucket = trace.get_quality_bucket()
-        assert bucket["quality_bucket"] == "agent_error"
-        assert bucket["is_agent_error"] is True
-        assert bucket["should_count_in_quality_rate"] is True
+        assert bucket["quality_bucket"] == "unscored_or_noise"
+        assert bucket["is_agent_error"] is False
+        assert bucket["should_count_in_quality_rate"] is False
     finally:
         db.close()
-
 
 def test_acknowledgement_is_traced_but_not_scored_or_sent_to_agent(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
@@ -720,6 +726,35 @@ def test_actionable_aftersales_turn_fails_generic_reply_with_missing_agent_fact_
     assert passed is False
     assert "query_fact_type_missing" in labels
     assert "generic_reply_to_actionable_issue" in labels
+
+
+def test_human_review_no_evidence_fallback_is_not_evidence_misuse():
+    response = {
+        "suggested_reply": "亲～这个需要按当前商品资料人工核对，确认后再给您准确答复。",
+        "query_fact_type": "age_range",
+        "requires_human_review": True,
+        "evidence_debug": {"selected_evidence": []},
+        "answer_trace": {"query_fact_type": "age_range", "required_fact_types": ["age_range"]},
+        "final_answer_audit": {"passed": True, "expected_topics": ["age_range"]},
+    }
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "age_range",
+            "forbidden_reply_topics": [],
+        },
+        response,
+        classify_turn_failures(response),
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "needs_human_review" in labels
+    assert "rag_miss" in labels
+    assert "evidence_misuse" not in labels
+    assert "semantic_mismatch" not in labels
 
 
 def test_actionable_aftersales_turn_fails_when_agent_trace_switches_to_installation():

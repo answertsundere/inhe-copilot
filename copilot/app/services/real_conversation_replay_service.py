@@ -349,7 +349,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
         failures.append({"failure_type": "api_error", "severity": "high", "message": sanitize_text(response.get("error"))})
     if response.get("tool_policy_blocked") or response.get("policy_blocked"):
         failures.append({"failure_type": "tool_policy_blocked", "severity": "medium", "message": "tool policy blocked the turn"})
-    if isinstance(final_audit, dict) and final_audit.get("passed") is False:
+    if isinstance(final_audit, dict) and final_audit.get("passed") is False and not (response.get("requires_human_review") and not selected):
         failures.append({"failure_type": "semantic_mismatch", "severity": "high", "message": "final answer audit did not pass"})
     if (
         response.get("product_identified") is False
@@ -498,7 +498,13 @@ def evaluate_replay_turn_result(
             "message": "turn needs RAG but no selected evidence or human-review fallback exists",
         })
 
-    if required_fact_types and reply_topics and query_fact_type and not _has_compatible_fact_type_overlap(reply_topics, required_fact_types):
+    if (
+        required_fact_types
+        and reply_topics
+        and query_fact_type
+        and not _has_compatible_fact_type_overlap(reply_topics, required_fact_types)
+        and not (response.get("requires_human_review") and not selected)
+    ):
         all_failures.append({
             "failure_type": "evidence_misuse",
             "severity": "medium",

@@ -250,6 +250,44 @@ def test_price_negotiation_questions_are_actionable_promotion():
         assert result["query_fact_type"] == "promotion"
 
 
+def test_general_status_updates_do_not_call_agent():
+    for message in ("好的，相当于收到好评返28", "收到后我再联系你", "昨天收到已经装好了"):
+        result = _understand(message, history=[{"speaker": "service", "text": "好的"}])
+        assert result["turn_actionability"] == "context_update"
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["skip_reason"] == "context_update_no_question"
+        assert result["query_fact_type"] == ""
+
+
+def test_aftersales_status_terms_remain_actionable():
+    for message in ("我们没收到这个", "收到的底架是同一边的", "收到会不会有质量问题，是全新的吧"):
+        result = _understand(message, history=[{"speaker": "service", "text": "您看下配件"}])
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["needs_agent_reply"] is True
+        assert result["query_fact_type"] == "aftersales"
+
+
+def test_product_link_with_title_without_question_is_media_reference():
+    for message in (
+        "【淘宝】https://e.tb.cn/h.demo 英禾儿童书架落地置物架可移动书本收纳架",
+        "https://item.taobao.com/item.htm?id=123456789 宝宝水杯沥干晾干支架",
+    ):
+        result = _understand(message)
+        assert result["turn_actionability"] == "media_reference"
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["should_score"] is False
+        assert result["query_fact_type"] == ""
+
+
+def test_product_link_with_explicit_question_still_actionable():
+    result = _understand("https://item.taobao.com/item.htm?id=123456789 这个适合几岁宝宝")
+
+    assert result["turn_actionability"] == "actionable_question"
+    assert result["query_fact_type"] == "age_range"
+
+
 def test_reply_topic_detection_is_fact_type_based():
     topics = detect_reply_topics("您可以量一下宽深高，再对照尺寸图。承重以页面说明为准。")
 

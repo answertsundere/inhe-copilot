@@ -43,6 +43,7 @@ ACCESSORY_AVAILABILITY_FACT_TYPES = {"accessory_availability"}
 AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"}
 DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
+PLACEMENT_SCENE_FACT_TYPES = {"placement_scene"}
 STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
 ACCESSORY_MESSAGE_TERMS = (
@@ -110,6 +111,7 @@ _POLICY_FACT_TYPES = (
     | AFTERSALES_FACT_TYPES
     | PROMOTION_FACT_TYPES
     | DIMENSION_FACT_TYPES
+    | PLACEMENT_SCENE_FACT_TYPES
     | STRUCTURE_FUNCTION_FACT_TYPES
     | GROSS_WEIGHT_FACT_TYPES
     | ACCESSORY_AVAILABILITY_FACT_TYPES
@@ -317,6 +319,25 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
             "forbidden_claims": forbidden_claims,
         }
 
+    if fact_type in PLACEMENT_SCENE_FACT_TYPES:
+        if has_product_context:
+            return {
+                "reply": "亲，这个摆放位置需要按这款商品的材质、结构和使用环境核对后再确认。我先帮您核对，避免直接说能晒、能放导致口径不准确。",
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_placement_scene_for_known_product",
+                "reason": missing_reason or "placement_scene_evidence_missing",
+                "forbidden_claims": forbidden_claims,
+            }
+        return {
+            "reply": "亲，麻烦您发一下商品链接、截图或 SKU，并说明准备摆放的位置，我帮您核对这款是否适合这个环境。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_context_for_placement_scene",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
     if fact_type in DIMENSION_FACT_TYPES:
         if has_product_context:
             return {
@@ -478,6 +499,8 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if fact_type in PROMOTION_FACT_TYPES and not selected_count:
         return True
     if fact_type in DIMENSION_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in PLACEMENT_SCENE_FACT_TYPES and not selected_count:
         return True
     if fact_type in GROSS_WEIGHT_FACT_TYPES and not selected_count:
         return True

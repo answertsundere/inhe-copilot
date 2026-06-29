@@ -96,6 +96,44 @@ def test_dimensions_with_known_product_context_does_not_request_product_link_aga
     assert "SKU" not in result["reply"]
 
 
+def test_placement_scene_without_evidence_uses_manual_verification():
+    result = _policy(query_fact_type="placement_scene", has_product_context=True, has_media_context=False)
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_placement_scene_for_known_product"
+    assert "摆放位置" in result["reply"]
+    assert "核对" in result["reply"]
+    assert "能晒" in result["reply"]
+    assert "口径不准确" in result["reply"]
+
+
+def test_unsupported_media_promise_with_real_chinese_terms_is_rewritten():
+    response = {
+        "suggested_reply": "亲～具体尺寸建议参考下面发您的商品图/尺寸图。",
+        "query_fact_type": "dimensions",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "dimensions", "selected_evidence": []},
+        "answer_trace": {"query_fact_type": "dimensions", "required_fact_types": ["dimensions"]},
+        "recommended_assets": [],
+    }
+    context = {
+        "turn_understanding": {
+            "turn_actionability": "actionable_question",
+            "query_fact_type": "dimensions",
+        },
+        "product_name": "demo product",
+        "media_context": {},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["requires_human_review"] is True
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert "下面发您" not in result["suggested_reply"]
+    assert "商品图/尺寸图" not in result["suggested_reply"]
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_dimensions_for_known_product"
+
+
 def test_gross_weight_with_known_product_context_does_not_answer_dimensions_or_capacity():
     result = _policy(query_fact_type="gross_weight", has_product_context=True)
 
