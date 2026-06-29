@@ -76,6 +76,15 @@ def test_promotion_without_evidence_checks_activity_rules_not_product_detail():
     assert "内部价" not in result["reply"]
 
 
+def test_price_negotiation_without_evidence_uses_activity_rule_handoff():
+    for fact_type in ("promotion_policy", "price_negotiation"):
+        result = _policy(query_fact_type=fact_type, has_product_context=True, has_media_context=False)
+        assert result["requires_human_review"] is True
+        assert result["reply_strategy"] == "verify_current_activity_rule"
+        assert "活动/福利" in result["reply"]
+        assert "内部价" not in result["reply"]
+
+
 def test_dimensions_with_known_product_context_does_not_request_product_link_again():
     result = _policy(query_fact_type="dimensions", has_product_context=True)
 

@@ -221,6 +221,35 @@ def test_accessory_component_usage_questions_are_actionable_installation_questio
         assert "accessory" in result["reason"]
 
 
+def test_accessory_retention_updates_are_not_installation_questions():
+    for message in ("配件里面的螺丝刀我留下了", "这个螺丝刀我还要用", "护栏后面还要用螺丝刀"):
+        result = _understand(message, history=[{"speaker": "service", "text": "好的"}])
+        assert result["turn_actionability"] == "context_update"
+        assert result["needs_agent_reply"] is False
+        assert result["needs_rag"] is False
+        assert result["should_score"] is True
+        assert result["query_fact_type"] == ""
+
+
+def test_accessory_installation_and_missing_tool_questions_remain_actionable():
+    cases = {
+        "螺丝刀怎么用": {"installation"},
+        "没有螺丝刀怎么办": {"installation", "aftersales"},
+        "护栏怎么安装": {"installation"},
+    }
+    for message, allowed_fact_types in cases.items():
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] in allowed_fact_types
+
+
+def test_price_negotiation_questions_are_actionable_promotion():
+    for message in ("买两个能不能便宜点", "多买有优惠吗", "最低多少钱", "能少点吗", "有没有套餐价"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "promotion"
+
+
 def test_reply_topic_detection_is_fact_type_based():
     topics = detect_reply_topics("您可以量一下宽深高，再对照尺寸图。承重以页面说明为准。")
 

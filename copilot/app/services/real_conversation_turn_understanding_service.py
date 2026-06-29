@@ -52,6 +52,17 @@ PROMOTION_TERMS = (
     "有没有送",
     "有什么送",
 )
+PRICE_NEGOTIATION_TERMS = (
+    "便宜",
+    "便宜点",
+    "少点",
+    "最低多少",
+    "最低价",
+    "套餐价",
+    "优惠价",
+    "多买",
+    "买两个",
+)
 AFTERSALES_STRONG_TERMS = (
     "退货",
     "退款",
@@ -122,6 +133,8 @@ PREFERENCE_UPDATE_TERMS = ("我要白色", "要白色", "我要大号", "要大�
 ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "层板", "板件", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带")
 ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里")
 ACCESSORY_PRESENCE_TERMS = ("有吗", "有没有", "带吗", "配吗", "含吗", "送吗")
+ACCESSORY_RETENTION_COMPONENT_TERMS = (*ACCESSORY_COMPONENT_TERMS, "螺丝刀", "工具")
+ACCESSORY_RETENTION_TERMS = ("留下", "留着", "保留", "还要用", "还需要用", "后面要用", "后面还要用", "后面还需要用")
 MISSING_QUANTITY_OBJECT_TERMS = ("配件", "零件", "部件", "螺丝", "板子", "面板", "层板", "抽屉", "件")
 MISSING_QUANTITY_TERMS = ("只有", "只发", "只收到", "少了", "少", "缺", "差一个", "还差")
 STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背")
@@ -232,6 +245,20 @@ class RealConversationTurnUnderstandingService:
                 forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["acknowledgement"],
                 reason="Short acknowledgement does not require an Agent answer.",
                 skip_reason="non_actionable_acknowledgement",
+            ).to_dict()
+
+        if _is_accessory_retention_update(text):
+            return TurnUnderstanding(
+                turn_actionability="context_update",
+                needs_agent_reply=False,
+                needs_rag=False,
+                needs_tool=False,
+                should_score=True,
+                reply_strategy="acknowledge_context_update",
+                context_dependency="medium",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["context_update"],
+                reason="Buyer is adding accessory/component status context rather than asking an installation question.",
+                skip_reason="context_update_no_question",
             ).to_dict()
 
         if (_is_context_update(text) or _is_preference_update(text)) and not _is_aftersales_or_mismatch(text):
@@ -377,6 +404,19 @@ def _is_accessory_usage_question(text: str) -> bool:
     )
 
 
+def _is_accessory_retention_update(text: str) -> bool:
+    value = str(text or "")
+    if not _contains_any(value, ACCESSORY_RETENTION_COMPONENT_TERMS):
+        return False
+    if not _contains_any(value, ACCESSORY_RETENTION_TERMS):
+        return False
+    if _contains_any(value, ACCESSORY_USAGE_TERMS) or _contains_any(value, ACCESSORY_PRESENCE_TERMS):
+        return False
+    if _is_aftersales_or_mismatch(value):
+        return False
+    return not _contains_any(value, QUESTION_MARKERS)
+
+
 def _is_acknowledgement(normalized: str) -> bool:
     return normalized in ACK_TERMS or (len(normalized) <= 4 and normalized.lower() in {item.lower() for item in ACK_TERMS})
 
@@ -431,7 +471,7 @@ def _has_question_or_request(text: str) -> bool:
 
 def _is_promotion_query(text: str) -> bool:
     value = str(text or "")
-    return any(term in value for term in PROMOTION_TERMS)
+    return any(term in value for term in PROMOTION_TERMS) or any(term in value for term in PRICE_NEGOTIATION_TERMS)
 
 
 def _is_logistics_query(text: str) -> bool:

@@ -157,6 +157,7 @@ FACT_TYPE_COMPATIBILITY_GROUPS = {
     "aftersales": {"aftersales", "aftersales_policy", "after_sales"},
     "installation": {"installation", "accessory_usage"},
     "logistics": {"logistics", "order_status", "delivery_not_received"},
+    "promotion": {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"},
 }
 
 GENERIC_FALLBACK_REPLY_TERMS = (
@@ -358,7 +359,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
         failures.append({"failure_type": "no_product_identified", "severity": "medium", "message": "product identity was not resolved"})
     if response.get("requires_human_review"):
         failures.append({"failure_type": "needs_human_review", "severity": "medium", "message": "agent requested human review"})
-    if not reply.strip():
+    if not reply.strip() and not response.get("skipped_agent_reply"):
         failures.append({"failure_type": "answer_incomplete", "severity": "high", "message": "empty agent reply"})
     unsafe_terms = ("绝对安全", "完全无害", "0甲醛", "零甲醛", "宝宝可以直接用")
     if any(term in reply for term in unsafe_terms):
@@ -651,6 +652,7 @@ class RealConversationReplayService:
                     else:
                         response = {
                             "suggested_reply": "",
+                            "skipped_agent_reply": True,
                             "requires_human_review": False,
                             "query_fact_type": turn_understanding.get("query_fact_type", ""),
                             "answer_trace": {

@@ -511,6 +511,54 @@ def test_media_reference_with_history_is_context_gap_without_agent_call(monkeypa
         db.close()
 
 
+def test_accessory_retention_update_skips_agent_without_answer_incomplete(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        case = EvalCase(case_uid="case_accessory_retention_1", source_type="real_conversation", message="retention")
+        case.set_metadata({"real_context": _product_real_context()})
+        db.add(case)
+        db.add(EvalConversationTurn(
+            case_uid="case_accessory_retention_1",
+            conversation_uid="conv_accessory_retention_1",
+            turn_uid="turn_accessory_retention_service_1",
+            turn_index=0,
+            speaker="service",
+            sanitized_text="这个后面还会用到",
+        ))
+        db.add(EvalConversationTurn(
+            case_uid="case_accessory_retention_1",
+            conversation_uid="conv_accessory_retention_1",
+            turn_uid="turn_accessory_retention_buyer_1",
+            turn_index=1,
+            speaker="buyer",
+            sanitized_text="护栏后面还要用螺丝刀",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class AccessoryRetentionReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            raise AssertionError("accessory retention context update should not call agent")
+
+    result = AccessoryRetentionReplayService().replay_cases(ReplayOptions(run_uid="run_accessory_retention_context_update"))
+
+    assert result["passed"] == 1
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).filter(EvalTrace.turn_uid == "turn_accessory_retention_buyer_1").one()
+        understanding = trace.get_turn_understanding()
+        labels = trace.get_failure_labels()
+        assert understanding["turn_actionability"] == "context_update"
+        assert understanding["needs_agent_reply"] is False
+        assert trace.agent_reply == ""
+        assert "answer_incomplete" not in labels
+        assert trace.get_quality_bucket()["quality_bucket"] == "unscored_or_noise"
+    finally:
+        db.close()
+
+
 def test_deictic_followup_without_context_fails_context_insufficient_without_agent(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()
@@ -617,6 +665,37 @@ def test_replay_result_fails_empty_query_fact_type_with_product_reply():
     assert "wrong_topic_reply" in labels
     assert "query_fact_type_missing" in labels
     assert "unrequested_product_fact" in labels
+
+
+def test_promotion_policy_reply_topics_are_compatible_with_promotion():
+    response = {
+        "suggested_reply": "亲，我先帮您核对当前活动/福利，优惠规则需要按页面和下单数量确认。",
+        "query_fact_type": "promotion_policy",
+        "answer_trace": {
+            "query_fact_type": "promotion_policy",
+            "required_fact_types": ["promotion_policy"],
+        },
+        "final_answer_audit": {"passed": True, "expected_topics": ["promotion"]},
+        "requires_human_review": True,
+    }
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "promotion",
+            "forbidden_reply_topics": [],
+        },
+        response,
+        classify_turn_failures(response),
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "rag_miss" in labels
+    assert "needs_human_review" in labels
+    assert "evidence_misuse" not in labels
+    assert "intent_contract_mismatch" not in labels
 
 
 def test_actionable_aftersales_turn_fails_generic_reply_with_missing_agent_fact_type():
