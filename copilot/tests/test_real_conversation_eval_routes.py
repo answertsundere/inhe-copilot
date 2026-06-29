@@ -240,6 +240,11 @@ def test_real_conversation_quality_tasks_routes_group_generate_and_dedupe(monkey
         "generate_knowledge_gap_task",
         "generate_repair_task",
     }
+    generatable_count = sum(
+        1
+        for item in data["task_groups"]
+        if item["next_step"] in {"generate_knowledge_gap_task", "generate_repair_task"}
+    )
 
     first = client.post(
         "/api/eval/real-conversation/runs/quality_task_api/quality-tasks/generate",
@@ -247,7 +252,9 @@ def test_real_conversation_quality_tasks_routes_group_generate_and_dedupe(monkey
     )
     assert first.status_code == 201
     first_data = first.get_json()
-    assert first_data["generated"] == 2
+    assert first_data["groups_seen"] == data["task_group_count"]
+    assert first_data["generated"] <= first_data["groups_seen"]
+    assert first_data["generated"] == generatable_count
     assert first_data["updated"] == 0
 
     second = client.post(
@@ -256,8 +263,9 @@ def test_real_conversation_quality_tasks_routes_group_generate_and_dedupe(monkey
     )
     assert second.status_code == 201
     second_data = second.get_json()
+    assert second_data["groups_seen"] == data["task_group_count"]
     assert second_data["generated"] == 0
-    assert second_data["updated"] == 2
+    assert second_data["updated"] == generatable_count
 
 
 def test_real_conversation_quality_tasks_routes_reject_operator(monkeypatch):

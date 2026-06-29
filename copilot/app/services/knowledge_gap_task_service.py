@@ -419,7 +419,13 @@ def _summary(gap_type: str, query_fact_type: str, sample_count: int, required_ev
 class KnowledgeGapTaskService:
     """Create and manage knowledge gap tasks from replay failures."""
 
-    def generate_for_run(self, db, run_uid: str | None = None, created_by: str = "") -> KnowledgeGapGenerationResult:
+    def generate_for_run(
+        self,
+        db,
+        run_uid: str | None = None,
+        created_by: str = "",
+        allowed_turn_uids: list[str] | set[str] | tuple[str, ...] | None = None,
+    ) -> KnowledgeGapGenerationResult:
         from app.models.eval_tables import (
             EvalFailure,
             EvalReview,
@@ -431,23 +437,29 @@ class KnowledgeGapTaskService:
         target_run_uid = sanitize_text(run_uid) or _latest_run_uid(db)
         if not target_run_uid:
             return KnowledgeGapGenerationResult("", 0, 0, 0, [])
+        allowed_turns = None
+        if allowed_turn_uids is not None:
+            allowed_turns = {
+                sanitize_text(turn_uid)
+                for turn_uid in allowed_turn_uids
+                if sanitize_text(turn_uid)
+            }
+            if not allowed_turns:
+                return KnowledgeGapGenerationResult(target_run_uid, 0, 0, 0, [])
 
-        failures = (
-            db.query(EvalFailure)
-            .filter(EvalFailure.run_uid == target_run_uid)
-            .order_by(EvalFailure.id.asc())
-            .all()
-        )
+        failure_query = db.query(EvalFailure).filter(EvalFailure.run_uid == target_run_uid)
+        trace_query = db.query(EvalTrace).filter(EvalTrace.run_uid == target_run_uid)
+        review_query = db.query(EvalReview).filter(EvalReview.run_uid == target_run_uid)
+        if allowed_turns is not None:
+            failure_query = failure_query.filter(EvalFailure.turn_uid.in_(allowed_turns))
+            trace_query = trace_query.filter(EvalTrace.turn_uid.in_(allowed_turns))
+            review_query = review_query.filter(EvalReview.turn_uid.in_(allowed_turns))
+        failures = failure_query.order_by(EvalFailure.id.asc()).all()
         traces = {
             trace.turn_uid: trace
-            for trace in db.query(EvalTrace).filter(EvalTrace.run_uid == target_run_uid).all()
+            for trace in trace_query.all()
         }
-        reviews = (
-            db.query(EvalReview)
-            .filter(EvalReview.run_uid == target_run_uid)
-            .order_by(EvalReview.id.asc())
-            .all()
-        )
+        reviews = review_query.order_by(EvalReview.id.asc()).all()
         latest_reviews = _latest_reviews_by_turn(reviews)
         correct_turns = {
             turn_uid

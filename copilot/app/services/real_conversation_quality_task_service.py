@@ -49,6 +49,8 @@ class QualityTaskGenerationResult:
     generated: int
     updated: int
     skipped: int
+    groups_seen: int
+    skipped_groups: list[dict[str, Any]]
     repair_tasks: dict[str, Any]
     knowledge_gap_tasks: dict[str, Any]
 
@@ -58,6 +60,9 @@ class QualityTaskGenerationResult:
             "generated": self.generated,
             "updated": self.updated,
             "skipped": self.skipped,
+            "skipped_existing": self.updated,
+            "groups_seen": self.groups_seen,
+            "skipped_groups": self.skipped_groups,
             "repair_tasks": self.repair_tasks,
             "knowledge_gap_tasks": self.knowledge_gap_tasks,
         })
@@ -69,6 +74,17 @@ def _count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:
         value = sanitize_text(item.get(key)) or "unknown"
         counts[value] = counts.get(value, 0) + 1
     return counts
+
+
+def _unique_texts(values: list[str]) -> list[str]:
+    result = []
+    seen = set()
+    for value in values:
+        cleaned = sanitize_text(value)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result
 
 
 def _query_fact_type(trace) -> str:
@@ -286,6 +302,8 @@ class RealConversationQualityTaskService:
                     "query_fact_type": query_fact_type,
                     "product_group_key": product_key,
                     "sample_count": 0,
+                    "related_case_uids": [],
+                    "related_turn_uids": [],
                     "representative_samples": [],
                     "all_failures": [],
                     "recommended_action": _recommended_action(bucket_name),
@@ -293,11 +311,15 @@ class RealConversationQualityTaskService:
                 }
             item = grouped[key]
             item["sample_count"] += 1
+            item["related_case_uids"].append(getattr(trace, "case_uid", ""))
+            item["related_turn_uids"].append(getattr(trace, "turn_uid", ""))
             item["all_failures"].extend(failure_items)
             item["representative_samples"].append(_representative_sample(trace, failure_items, bucket))
 
         task_groups = []
         for item in grouped.values():
+            item["related_case_uids"] = _unique_texts(item["related_case_uids"])
+            item["related_turn_uids"] = _unique_texts(item["related_turn_uids"])
             item["representative_samples"] = sorted(
                 item["representative_samples"],
                 key=_sample_score,
@@ -322,26 +344,47 @@ class RealConversationQualityTaskService:
         from app.services.real_conversation_repair_task_service import RealConversationRepairTaskService
 
         overview = self.build_for_run(db, run_uid)
-        skipped = sum(
-            1
-            for group in overview["task_groups"]
-            if group.get("quality_bucket") == SAFE_HANDOFF
-        )
+        repair_turn_uids: list[str] = []
+        knowledge_turn_uids: list[str] = []
+        skipped_groups: list[dict[str, Any]] = []
+        for group in overview["task_groups"]:
+            turn_uids = [
+                sanitize_text(turn_uid)
+                for turn_uid in group.get("related_turn_uids", [])
+                if sanitize_text(turn_uid)
+            ]
+            next_step = sanitize_text(group.get("next_step"))
+            if next_step == "generate_repair_task":
+                repair_turn_uids.extend(turn_uids)
+            elif next_step == "generate_knowledge_gap_task":
+                knowledge_turn_uids.extend(turn_uids)
+            else:
+                skipped_groups.append({
+                    "task_group_uid": group.get("task_group_uid", ""),
+                    "quality_bucket": group.get("quality_bucket", ""),
+                    "next_step": next_step or "none",
+                    "reason": "no downstream task is generated for this quality bucket",
+                })
+        skipped = len(skipped_groups)
         repair_result = RealConversationRepairTaskService().generate_for_run(
             db,
             run_uid=run_uid,
             created_by=created_by,
+            allowed_turn_uids=_unique_texts(repair_turn_uids),
         ).to_dict()
         knowledge_result = KnowledgeGapTaskService().generate_for_run(
             db,
             run_uid=run_uid,
             created_by=created_by,
+            allowed_turn_uids=_unique_texts(knowledge_turn_uids),
         ).to_dict()
         return QualityTaskGenerationResult(
             run_uid=sanitize_text(run_uid),
             generated=int(repair_result.get("generated") or 0) + int(knowledge_result.get("generated") or 0),
             updated=int(repair_result.get("updated") or 0) + int(knowledge_result.get("updated") or 0),
             skipped=skipped,
+            groups_seen=int(overview.get("task_group_count") or len(overview.get("task_groups") or [])),
+            skipped_groups=skipped_groups,
             repair_tasks=repair_result,
             knowledge_gap_tasks=knowledge_result,
         )
