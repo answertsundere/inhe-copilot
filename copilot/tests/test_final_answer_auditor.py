@@ -78,6 +78,44 @@ def test_final_answer_auditor_allows_no_evidence_controlled_accessory_handoff():
     assert audited.get("generation_mode") != "final_answer_audit_fallback"
 
 
+def test_final_answer_auditor_allows_no_evidence_controlled_placement_handoff():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "亲，这个摆放位置需要按这款商品的材质、结构和使用环境核对后再确认。我先帮您核对，避免直接说能晒、能放导致口径不准确。",
+        "requires_human_review": True,
+        "answer_mode": "no_evidence_controlled_reply",
+        "answer_trace": {
+            "query_fact_type": "placement_scene",
+            "required_fact_types": ["placement_scene"],
+            "no_evidence_reply_policy": {
+                "reply_strategy": "verify_placement_scene_for_known_product",
+                "requires_human_review": True,
+            },
+        },
+        "evidence_debug": {
+            "answer_mode": "no_evidence_controlled_reply",
+            "query_fact_type": "placement_scene",
+            "selected_evidence": [],
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "query_fact_type": "placement_scene",
+                    "answerability": "missing_product_fact",
+                    "missing_fields": ["placement_scene"],
+                }
+            },
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="可以放在飘窗上晒吗",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["final_answer_audit"]["no_evidence_controlled_accepted"] is True
+    assert audited.get("generation_mode") != "final_answer_audit_fallback"
+
+
 def test_final_answer_auditor_blocks_structure_function_answered_as_scene():
     response = {
         "intent": "product_question",

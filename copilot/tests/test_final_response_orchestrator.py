@@ -124,6 +124,72 @@ def test_final_response_orchestrator_syncs_text_reply_block(monkeypatch):
     assert result["reply_blocks"][1]["type"] == "image"
 
 
+def test_final_response_orchestrator_reapplies_no_evidence_policy_after_polish(monkeypatch):
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_polish(response, *, customer_message="", copilot_context=None):
+        response["suggested_reply"] = "亲，您可以参考下面发您的商品图/尺寸图。"
+        response["customer_reply_polish"] = {"checked": True, "applied": True, "mode": "fake"}
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", fake_polish)
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "亲，我先帮您核对对应尺寸资料。",
+            "query_fact_type": "dimensions",
+            "evidence_debug": {"query_fact_type": "dimensions", "selected_evidence": []},
+            "answer_trace": {"query_fact_type": "dimensions", "required_fact_types": ["dimensions"]},
+            "recommended_assets": [],
+        },
+        customer_message="这个多高，有图吗？",
+        copilot_context={
+            "product_name": "demo product",
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "dimensions",
+            },
+        },
+    )
+
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["requires_human_review"] is True
+    assert "下面发" not in result["suggested_reply"]
+    assert "商品图/尺寸图" not in result["suggested_reply"]
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_dimensions_for_known_product"
+    assert result["reply_blocks"][0]["content"] == result["suggested_reply"]
+
+
+def test_final_response_orchestrator_keeps_placement_scene_no_evidence_handoff():
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "亲，放在卧室、客厅都可以，建议摆在干燥平整的位置，不建议长期暴晒。",
+            "query_fact_type": "placement_scene",
+            "evidence_debug": {"query_fact_type": "placement_scene", "selected_evidence": []},
+            "answer_trace": {"query_fact_type": "placement_scene", "required_fact_types": ["placement_scene"]},
+            "recommended_assets": [],
+        },
+        customer_message="可以放在飘窗上晒吗？",
+        copilot_context={
+            "product_name": "demo product",
+            "turn_understanding": {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": "placement_scene",
+            },
+        },
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_placement_scene_for_known_product"
+    assert "卧室" not in result["suggested_reply"]
+    assert "客厅" not in result["suggested_reply"]
+    assert "长期暴晒" not in result["suggested_reply"]
+    assert result.get("generation_mode") != "final_answer_audit_fallback"
+
+
 def test_final_response_orchestrator_can_use_llm_language_expert(monkeypatch):
     from app import config
     from app.llm import client as llm_client

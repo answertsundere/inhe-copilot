@@ -109,6 +109,7 @@ def orchestrate_final_response(
     # wording that the first polish removed. Run the deterministic polish again
     # before the final redline checks.
     response["suggested_reply"] = _polish_text(str(response.get("suggested_reply") or ""))
+    response = apply_no_evidence_reply_policy(response, copilot_context)
 
     pipeline.append({
         "stage": "llm_customer_language_polish",

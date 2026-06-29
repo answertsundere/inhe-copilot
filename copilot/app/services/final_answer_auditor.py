@@ -254,6 +254,15 @@ def audit_final_answer(
     response["final_answer_audit"] = audit
     response.setdefault("evidence_debug", {})["final_answer_audit"] = audit
 
+    if issues and _no_evidence_controlled_reply_acceptable(response, reply, copilot_context or {}):
+        response["final_answer_audit"]["passed"] = True
+        response["final_answer_audit"]["issues"] = []
+        response["final_answer_audit"]["no_evidence_controlled_accepted"] = True
+        response.setdefault("guard_warnings", []).append(
+            "final_answer_audit: no_evidence_controlled_reply_accepted"
+        )
+        return response
+
     # Deterministic override: visual/installation questions may be answered by an
     # attached image/video (size chart, install video, etc.). If hard safety is
     # clean and media is present, accept the reply even if the LLM judge wanted
@@ -386,6 +395,37 @@ def _policy_grounded_reply_acceptable(response: dict[str, Any]) -> bool:
         return True
 
     return False
+
+
+def _no_evidence_controlled_reply_acceptable(
+    response: dict[str, Any],
+    reply: str,
+    copilot_context: dict[str, Any],
+) -> bool:
+    """Accept controlled no-evidence handoff replies without requiring direct fact-topic wording."""
+    debug = response.get("evidence_debug") or {}
+    answer_mode = str(debug.get("answer_mode") or response.get("answer_mode") or "")
+    if answer_mode not in {"no_evidence_controlled_reply", "no_evidence_clarification"}:
+        return False
+    if not response.get("requires_human_review"):
+        return False
+    trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    policy = trace.get("no_evidence_reply_policy") or debug.get("no_evidence_reply_policy")
+    if not isinstance(policy, dict) or not policy.get("reply_strategy"):
+        return False
+    if _hard_safety_issues(reply, response, copilot_context):
+        return False
+    try:
+        from app.services.no_evidence_reply_policy_service import (
+            contains_unsupported_media_promise,
+            has_sendable_media_asset,
+        )
+
+        if contains_unsupported_media_promise(reply, has_sendable_media_asset(response)):
+            return False
+    except Exception:
+        return False
+    return True
 
 
 def _expected_topics(message: str, response: dict[str, Any]) -> set[str]:
