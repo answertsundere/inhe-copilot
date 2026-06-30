@@ -39,7 +39,7 @@ def build_product_context_pack(
     state = dict(state or {})
     if state.get("copilot_context"):
         augment_state_with_real_context_identity(state)
-    identity = _state_identity(state)
+    identity = _resolve_identity_for_pack(state, _state_identity(state))
     conversation_media_reference = build_conversation_media_reference(state.get("copilot_context") or {})
     if not (identity["sku"] or identity["i_id"] or identity["product_name"]):
         return _attach_media_context_trace(
@@ -387,11 +387,12 @@ def _attach_media_context_trace(pack: dict[str, Any], conversation_media_referen
 
 
 def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
     return {
         "identity": identity,
         "resolved_product_identity": identity,
-        "identity_confidence": 0.0,
-        "identity_sources": [],
+        "identity_confidence": float((resolution or {}).get("identity_confidence") or 0.0),
+        "identity_sources": list((resolution or {}).get("identity_sources") or []),
         "retrieval_query": "",
         "query_fact_type": "",
         "requested_fact_type": "",
@@ -403,8 +404,13 @@ def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any
         "missing_required_evidence": [],
         "evidence_pack_trace": {
             "product_identity_locked": False,
+            "product_identity_resolution": resolution or {},
+            "match_reason": (resolution or {}).get("match_reason", ""),
+            "candidate_count": len((resolution or {}).get("ambiguous_candidates") or []),
+            "ambiguous_candidates": (resolution or {}).get("ambiguous_candidates") or [],
+            "unresolved_reason": (resolution or {}).get("unresolved_reason") or reason,
             "generic_rules_role": "fallback_only",
-            "blocked_reason": reason,
+            "blocked_reason": (resolution or {}).get("unresolved_reason") or reason,
         },
         "matched_fields": [],
         "missing_fields": [],
@@ -413,6 +419,7 @@ def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any
         "matched_generic_rules": [],
         "source_priority": ["product_profile", "product_media", "product_knowledge", "faq", "generic_rules"],
         "reason": reason,
+        "unresolved_reason": (resolution or {}).get("unresolved_reason") or reason,
     }
 
 
@@ -429,6 +436,7 @@ def _build_evidence_pack(
     query_fact_type: str,
     top_k: int,
 ) -> dict[str, Any]:
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
     matched_fields = _matched_profile_fields(structured_profile, facts, query_fact_type)
     matched_facts = [_compact_fact_for_evidence(item) for item in facts[:top_k]]
     matched_media = [_compact_media_for_evidence(item) for item in recommended_assets[:3]]
@@ -476,6 +484,7 @@ def _build_evidence_pack(
         "resolved_product_identity": _resolved_product_identity(identity, structured_profile),
         "identity_confidence": _identity_confidence(identity, structured_profile),
         "identity_sources": _identity_sources(state, identity),
+        "product_identity_resolution": resolution or {},
         "retrieval_query": query or "",
         "query_fact_type": query_fact_type or "",
         "requested_fact_type": query_fact_type or "",
@@ -487,6 +496,11 @@ def _build_evidence_pack(
         "missing_required_evidence": missing_required_evidence,
         "evidence_pack_trace": {
             "product_identity_locked": bool(structured_profile),
+            "product_identity_resolution": resolution or {},
+            "match_reason": (resolution or {}).get("match_reason", ""),
+            "candidate_count": len((resolution or {}).get("ambiguous_candidates") or []),
+            "ambiguous_candidates": (resolution or {}).get("ambiguous_candidates") or [],
+            "unresolved_reason": (resolution or {}).get("unresolved_reason", ""),
             "identity_sources": _identity_sources(state, identity),
             "used_product_fields": matched_fields,
             "structured_fact_count": len(product_structured_facts),
@@ -508,16 +522,24 @@ def _build_evidence_pack(
 
 
 def _resolved_product_identity(identity: dict[str, str], structured_profile: dict[str, Any]) -> dict[str, Any]:
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
     return {
         "product_id": structured_profile.get("product_id"),
         "i_id": structured_profile.get("i_id") or identity.get("i_id", ""),
         "sku": identity.get("sku", ""),
         "sku_family": identity.get("sku_family", ""),
         "product_name": structured_profile.get("product_name") or identity.get("product_name", ""),
+        "identity_confidence": (resolution or {}).get("identity_confidence"),
+        "identity_sources": (resolution or {}).get("identity_sources") or [],
+        "match_reason": (resolution or {}).get("match_reason", ""),
+        "unresolved_reason": (resolution or {}).get("unresolved_reason", ""),
     }
 
 
 def _identity_confidence(identity: dict[str, str], structured_profile: dict[str, Any]) -> float:
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
+    if resolution and resolution.get("status") == "resolved":
+        return float(resolution.get("identity_confidence") or resolution.get("confidence") or 0.0)
     if not structured_profile:
         return 0.0
     if identity.get("sku") or identity.get("i_id"):
@@ -529,6 +551,10 @@ def _identity_confidence(identity: dict[str, str], structured_profile: dict[str,
 
 def _identity_sources(state: dict[str, Any], identity: dict[str, str]) -> list[str]:
     sources: list[str] = []
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
+    for source in (resolution or {}).get("identity_sources") or []:
+        if source:
+            sources.append(str(source))
     slots = state.get("slots") if isinstance(state.get("slots"), dict) else {}
     ctx = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
     real_identity = state.get("real_context_product_identity") or ctx.get("real_context_product_identity") or {}
@@ -1481,6 +1507,141 @@ def _state_identity(state: dict) -> dict[str, str]:
         "i_id": str(i_id or "").strip(),
         "product_name": str(product_name or "").strip(),
     }
+
+
+def _resolve_identity_for_pack(state: dict, identity: dict[str, str]) -> dict[str, Any]:
+    signals = _identity_resolution_signals(state, identity)
+    if not any(signals.get(key) for key in ("sku_id", "internal_i_id", "platform_product_id", "platform_product_id_hash", "product_url", "platform_title")):
+        return {**identity, "product_identity_resolution": {"status": "not_found", "unresolved_reason": "no_identity_signal"}}
+    try:
+        from app.services.product_identity_resolver import ProductIdentityResolver
+        resolution = ProductIdentityResolver().resolve(**signals)
+    except Exception as exc:
+        return {
+            **identity,
+            "product_identity_resolution": {
+                "status": "error",
+                "unresolved_reason": f"resolver_failed:{type(exc).__name__}",
+            },
+        }
+
+    status = resolution.get("status")
+    if status == "resolved":
+        sku = resolution.get("sku_code") or resolution.get("sku_id") or identity.get("sku", "")
+        i_id = resolution.get("i_id") or resolution.get("internal_i_id") or identity.get("i_id", "")
+        return {
+            **identity,
+            "sku": str(sku or "").strip(),
+            "sku_family": _sku_family(str(sku or "")),
+            "i_id": str(i_id or "").strip(),
+            "product_name": (
+                resolution.get("display_product_name")
+                or resolution.get("matched_product_title")
+                or resolution.get("canonical_product_name")
+                or identity.get("product_name", "")
+            ),
+            "resolved_product_id": resolution.get("resolved_product_id"),
+            "product_identity_resolution": resolution,
+        }
+    if status == "ambiguous":
+        return {
+            "sku": "",
+            "sku_family": "",
+            "i_id": "",
+            "product_name": "",
+            "product_identity_resolution": resolution,
+        }
+    return {**identity, "product_identity_resolution": resolution}
+
+
+def _identity_resolution_signals(state: dict, identity: dict[str, str]) -> dict[str, Any]:
+    slots = state.get("slots") if isinstance(state.get("slots"), dict) else {}
+    ctx = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
+    real_identity = state.get("real_context_product_identity") or ctx.get("real_context_product_identity") or {}
+    real_context = ctx.get("real_context") if isinstance(ctx.get("real_context"), dict) else {}
+    product = real_context.get("product") if isinstance(real_context.get("product"), dict) else {}
+    order = real_context.get("order") if isinstance(real_context.get("order"), dict) else {}
+    candidates = [
+        *(state.get("product_candidates") or []),
+        *(ctx.get("product_candidates") or []),
+        *(real_identity.get("product_candidates") or []),
+    ]
+    sku = identity.get("sku") or slots.get("sku_code") or ctx.get("sku_code") or real_identity.get("sku_code") or ""
+    i_id = identity.get("i_id") or ctx.get("i_id") or real_identity.get("i_id") or product.get("i_id") or ""
+    product_url = (
+        product.get("product_url")
+        or ctx.get("product_url")
+        or real_identity.get("product_url")
+        or _first_candidate_value(candidates, keys=("product_url",), types=("product_url",))
+    )
+    platform_item_id = (
+        _platform_item_id(product.get("item_id"))
+        or _platform_item_id(real_identity.get("item_id"))
+        or _platform_item_id(_first_candidate_value(candidates, keys=("item_id",), types=("platform_product_id",)))
+    )
+    platform_item_id_hash = (
+        _platform_item_hash(product.get("item_id_hash"))
+        or _platform_item_hash(ctx.get("item_id_hash"))
+        or _platform_item_hash(real_identity.get("item_id_hash"))
+        or _platform_item_hash(_first_candidate_value(candidates, keys=("item_id_hash", "platform_item_id_hash", "value"), types=("platform_product_id", "platform_item_id_hash")))
+    )
+    title = (
+        identity.get("product_name")
+        or product.get("product_title")
+        or order.get("order_product_title")
+        or ctx.get("display_product_name")
+        or ctx.get("platform_product_title")
+        or real_identity.get("product_title")
+        or real_identity.get("order_product_title")
+        or _first_candidate_value(candidates, keys=("product_name", "title", "name", "value"), types=("product_title", "order_product_title", "product_name"))
+        or ""
+    )
+    return {
+        "platform_product_id": platform_item_id,
+        "platform_product_id_hash": platform_item_id_hash,
+        "product_url": str(product_url or ""),
+        "platform_title": str(title or ""),
+        "product_candidates": candidates,
+        "internal_i_id": str(i_id or ""),
+        "sku_id": str(sku or ""),
+        "customer_message": str(state.get("customer_message") or state.get("normalized_message") or ""),
+    }
+
+
+def _platform_item_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or "REDACTED" in text:
+        return ""
+    if text.isdigit():
+        return text
+    try:
+        from app.services.product_identity_resolver import _extract_product_id_from_url
+        return _extract_product_id_from_url(text)
+    except Exception:
+        return ""
+
+
+def _platform_item_hash(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or "REDACTED" in text:
+        return ""
+    if re.fullmatch(r"[0-9a-fA-F]{8,64}", text):
+        return text.lower()
+    return ""
+
+
+def _first_candidate_value(candidates: list[Any], *, keys: tuple[str, ...], types: tuple[str, ...]) -> str:
+    for candidate in candidates or []:
+        if not isinstance(candidate, dict):
+            continue
+        candidate_type = str(candidate.get("type") or "").lower()
+        if types and not any(t in candidate_type for t in types):
+            continue
+        for key in keys:
+            value = str(candidate.get(key) or "").strip()
+            if value:
+                return value
+    return ""
 
 
 def _sku_family(value: str) -> str:

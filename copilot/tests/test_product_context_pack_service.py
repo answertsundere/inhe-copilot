@@ -7,6 +7,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.services.eval_sanitizer_service import hash_sensitive
+
 
 @pytest.fixture()
 def product_context_db(monkeypatch):
@@ -136,6 +138,84 @@ def test_product_context_pack_reads_sku_from_product_candidates(product_context_
 
     assert pack["facts"]
     assert "\u4e0d\u9700\u8981\u6253\u5b54" in pack["facts"][0]["chunk_text"]
+
+
+def test_product_context_pack_uses_resolved_platform_item_id_for_structured_facts(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="YH91K01",
+            product_name="Rocket shelf",
+            status="published",
+            sku_list_json=json.dumps([{
+                "sku_code": "YH91K01B01S01",
+                "platform_item_id": "987654321012",
+                "platform_item_id_hash": hash_sensitive("987654321012"),
+                "product_url": "https://item.taobao.com/item.htm?id=987654321012",
+            }], ensure_ascii=False),
+        )
+        product.set_specs({"material": "PP plastic"})
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "copilot_context": {
+                "real_context": {
+                    "product": {
+                        "item_id": "987654321012",
+                        "item_id_hash": hash_sensitive("987654321012"),
+                        "product_url": "https://item.taobao.com/item.htm?id=987654321012",
+                    }
+                }
+            },
+        },
+        query="what material",
+        allowed_source_types=["product_facts"],
+        query_fact_type="material",
+    )
+
+    product_first = pack["product_first_evidence_pack"]
+    assert product_first["resolved_product_identity"]["i_id"] == "YH91K01"
+    assert product_first["identity_confidence"] >= 0.95
+    assert product_first["product_structured_facts"]
+    assert product_first["product_structured_facts"][0]["fact_type"] == "material"
+    assert product_first["evidence_pack_trace"]["product_identity_resolution"]["match_reason"] == "exact_platform_item_id_hash_match"
+
+
+def test_product_context_pack_does_not_use_structured_facts_for_ambiguous_title(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        first = KBProduct(i_id="YH91K02", product_name="Rocket shelf tall", status="published")
+        first.set_specs({"material": "steel"})
+        second = KBProduct(i_id="YH91K03", product_name="Rocket shelf short", status="published")
+        second.set_specs({"material": "PP"})
+        db.add(first)
+        db.add(second)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"copilot_context": {"platform_product_title": "Rocket shelf"}},
+        query="what material",
+        allowed_source_types=["product_facts"],
+        query_fact_type="material",
+    )
+
+    product_first = pack["product_first_evidence_pack"]
+    assert product_first["product_structured_facts"] == []
+    assert product_first["answerability"] == "no_product_identity"
+    assert product_first["evidence_pack_trace"]["product_identity_resolution"]["status"] == "ambiguous"
+    assert product_first["evidence_pack_trace"]["ambiguous_candidates"]
 
 
 def test_product_context_pack_strict_fact_type_does_not_use_installation_for_detachable(product_context_db):

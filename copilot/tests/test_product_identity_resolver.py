@@ -17,8 +17,171 @@ import os
 import sys
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.services.eval_sanitizer_service import hash_sensitive
+
+
+@pytest.fixture()
+def identity_db(monkeypatch):
+    import app.db as db_module
+    from app.models.kb_tables import KBProduct
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    db_module.Base.metadata.create_all(bind=engine, tables=[KBProduct.__table__])
+    return session_factory
+
+
+def _kb_product(*, i_id: str, name: str, sku: str = "", platform_item_id: str = "", platform_item_id_hash: str = ""):
+    import json
+    from app.models.kb_tables import KBProduct
+
+    product = KBProduct(
+        i_id=i_id,
+        product_name=name,
+        status="published",
+        specs_json=json.dumps({"material": "PP"}, ensure_ascii=False),
+    )
+    sku_rows = []
+    if sku:
+        row = {"sku_code": sku}
+        if platform_item_id:
+            row["platform_item_id"] = platform_item_id
+            row["product_url"] = f"https://item.taobao.com/item.htm?id={platform_item_id}"
+        if platform_item_id_hash:
+            row["platform_item_id_hash"] = platform_item_id_hash
+        sku_rows.append(row)
+    product.sku_list_json = json.dumps(sku_rows, ensure_ascii=False)
+    return product
+
+
+def test_resolver_exact_sku_maps_to_kb_product(identity_db):
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    db = identity_db()
+    try:
+        db.add(_kb_product(i_id="YH90K01", name="Rocket shelf", sku="YH90K01B01S01"))
+        db.commit()
+    finally:
+        db.close()
+
+    result = ProductIdentityResolver().resolve(sku_id="YH90K01B01S01")
+
+    assert result["status"] == "resolved"
+    assert result["i_id"] == "YH90K01"
+    assert result["sku_code"] == "YH90K01B01S01"
+    assert result["identity_confidence"] == 1.0
+    assert result["match_reason"] == "exact_sku_match"
+
+
+def test_resolver_platform_item_id_and_url_map_to_kb_product(identity_db):
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    db = identity_db()
+    try:
+        db.add(_kb_product(
+            i_id="YH90K02",
+            name="Whale storage cart",
+            sku="YH90K02B01S01",
+            platform_item_id="123456789012",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    resolver = ProductIdentityResolver()
+    by_id = resolver.resolve(platform_product_id="123456789012")
+    by_url = resolver.resolve(product_url="https://item.taobao.com/item.htm?id=123456789012")
+
+    assert by_id["status"] == "resolved"
+    assert by_id["i_id"] == "YH90K02"
+    assert by_id["source"] == "platform_item_id_exact"
+    assert by_url["status"] == "resolved"
+    assert by_url["i_id"] == "YH90K02"
+
+
+def test_resolver_platform_item_hash_maps_to_kb_product(identity_db):
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    db = identity_db()
+    try:
+        db.add(_kb_product(
+            i_id="YH90K07",
+            name="Moon storage cabinet",
+            sku="YH90K07B01S01",
+            platform_item_id_hash=hash_sensitive("456789012345"),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    result = ProductIdentityResolver().resolve(platform_product_id_hash=hash_sensitive("456789012345"))
+
+    assert result["status"] == "resolved"
+    assert result["i_id"] == "YH90K07"
+    assert result["match_reason"] == "exact_platform_item_id_hash_match"
+
+
+def test_resolver_high_confidence_order_title_maps_to_kb_product(identity_db):
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    db = identity_db()
+    try:
+        db.add(_kb_product(i_id="YH90K03", name="Three layer rocket shelf", sku="YH90K03B01S01"))
+        db.commit()
+    finally:
+        db.close()
+
+    result = ProductIdentityResolver().resolve(platform_title="Premium Three layer rocket shelf for kids")
+
+    assert result["status"] == "resolved"
+    assert result["i_id"] == "YH90K03"
+    assert result["identity_confidence"] >= 0.78
+
+
+def test_resolver_ambiguous_title_does_not_lock_product(identity_db):
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    db = identity_db()
+    try:
+        db.add(_kb_product(i_id="YH90K04", name="Rocket shelf tall", sku="YH90K04B01S01"))
+        db.add(_kb_product(i_id="YH90K05", name="Rocket shelf short", sku="YH90K05B01S01"))
+        db.commit()
+    finally:
+        db.close()
+
+    result = ProductIdentityResolver().resolve(platform_title="Rocket shelf")
+
+    assert result["status"] == "ambiguous"
+    assert result["i_id"] == ""
+    assert len(result["ambiguous_candidates"]) == 2
+
+
+def test_resolver_low_confidence_title_does_not_lock_product(identity_db):
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    db = identity_db()
+    try:
+        db.add(_kb_product(i_id="YH90K06", name="Ocean bookcase", sku="YH90K06B01S01"))
+        db.commit()
+    finally:
+        db.close()
+
+    result = ProductIdentityResolver().resolve(platform_title="Weather forecast today")
+
+    assert result["status"] == "not_found"
+    assert result["unresolved_reason"]
 
 
 class TestProductIdentityResolver:

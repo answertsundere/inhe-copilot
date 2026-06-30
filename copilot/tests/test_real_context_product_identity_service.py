@@ -3,6 +3,7 @@ from app.services.real_context_product_identity_service import (
     build_conversation_media_reference,
     build_real_context_product_identity,
 )
+from app.services.eval_sanitizer_service import hash_sensitive
 
 
 def test_builds_product_candidates_from_product_and_order_context():
@@ -10,6 +11,7 @@ def test_builds_product_candidates_from_product_and_order_context():
         "real_context": {
             "product": {
                 "item_id": "1234567890",
+                "item_id_hash": hash_sensitive("1234567890"),
                 "product_url": "https://item.taobao.com/item.htm?id=1234567890",
                 "product_title": "儿童书架收纳柜",
                 "sku_code": "YH88K01B02S03",
@@ -29,6 +31,7 @@ def test_builds_product_candidates_from_product_and_order_context():
     assert by_type["sku_code"]["value"] == "YH88K01B02S03"
     assert by_type["i_id"]["value"] == "YH88K01"
     assert by_type["platform_product_id"]["value"] == "1234567890"
+    assert by_type["platform_item_id_hash"]["value"] == hash_sensitive("1234567890")
     assert by_type["product_url"]["value"].startswith("https://item.taobao.com/")
     assert by_type["product_title"]["product_name"] == "儿童书架收纳柜"
     assert by_type["order_product_title"]["product_name"] == "儿童书架收纳柜-订单款"

@@ -44,6 +44,7 @@ def build_real_context_product_identity(copilot_context: dict[str, Any] | None) 
         ctx.get("order_sku_code"),
     )
     item_id = _first_text(product.get("item_id"), ctx.get("item_id"))
+    item_id_hash = _first_text(product.get("item_id_hash"), ctx.get("item_id_hash"))
     product_url = _first_text(product.get("product_url"), ctx.get("product_url"))
     i_id = _first_text(product.get("i_id"), ctx.get("i_id"))
 
@@ -65,6 +66,15 @@ def build_real_context_product_identity(copilot_context: dict[str, Any] | None) 
         else:
             _add_candidate(candidates, "platform_product_id", item_id, "real_context.item_id", item_id=item_id)
         sources.append("item_id")
+    if item_id_hash:
+        _add_candidate(
+            candidates,
+            "platform_item_id_hash",
+            item_id_hash,
+            "real_context.item_id_hash",
+            item_id_hash=item_id_hash,
+        )
+        sources.append("item_id_hash")
     if product_url:
         _add_candidate(candidates, "product_url", product_url, "real_context.product_url", product_url=product_url)
         sources.append("product_url")
@@ -89,6 +99,7 @@ def build_real_context_product_identity(copilot_context: dict[str, Any] | None) 
         "sku_code": sku_code,
         "i_id": i_id or _sku_family(sku_code),
         "item_id": item_id,
+        "item_id_hash": item_id_hash,
         "product_url": product_url,
         "product_title": product_title,
         "order_product_title": order_product_title,
