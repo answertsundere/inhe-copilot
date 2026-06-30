@@ -68,7 +68,10 @@ def _normalize_row(raw: dict[str, Any]) -> dict[str, str]:
     for key, aliases in FIELD_ALIASES.items():
         for alias in aliases:
             if alias in raw:
-                row[key] = sanitize_text(str(raw.get(alias) or ""))
+                if key == "source":
+                    row[key] = str(raw.get(alias) or "").strip()
+                else:
+                    row[key] = sanitize_text(str(raw.get(alias) or ""))
                 break
         row.setdefault(key, "")
     return row
@@ -132,7 +135,7 @@ def run_classify(input_path: str, *, apply: bool = False, operator: str = "auto_
     try:
         for index, row in enumerate(rows, start=2):
             stats["media_checked_count"] += 1
-            source = sanitize_text(row.get("source")).lower()
+            source = str(row.get("source") or "").strip().lower()
             if source in UNTRUSTED_SOURCES or source not in TRUSTED_SOURCES:
                 stats["skipped_count"] += 1
                 skipped.append({"row": index, "reason": "untrusted_source"})
@@ -154,7 +157,12 @@ def run_classify(input_path: str, *, apply: bool = False, operator: str = "auto_
                 continue
             classified_by_type[asset_type] += 1
             chash = _content_hash(product.i_id, sanitize_text(row.get("sku_code")) or product.i_id, asset_type, url)
-            existing = db.query(KBMediaAsset).filter(KBMediaAsset.content_hash == chash).one_or_none()
+            existing = (
+                db.query(KBMediaAsset)
+                .filter(KBMediaAsset.content_hash == chash)
+                .order_by(KBMediaAsset.id.asc())
+                .first()
+            )
             if existing:
                 stats["media_updated_count"] += 1
                 asset = existing
