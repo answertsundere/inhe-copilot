@@ -110,6 +110,8 @@ def test_knowledge_gap_generation_classifies_operational_gap_categories_and_skip
         }
         assert {"sku_context", "order_context"}.issubset(context_required)
         assert tasks["media_asset_gap"].get_metadata()["target_system"] == "kb_media_asset"
+        assert tasks["media_asset_gap"].get_metadata()["current_blocker"]
+        assert len(tasks["media_asset_gap"].get_metadata()["representative_samples"]) <= 3
         assert tasks["context_extraction_gap"].get_metadata()["recommended_action"] == "fix_context_extraction"
         assert not any("turn_correct" in task.get_related_turn_uids() for task in db.query(KnowledgeGapTask).all())
     finally:

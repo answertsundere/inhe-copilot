@@ -538,6 +538,7 @@ class KnowledgeGapTask(Base):
             "required_evidence_type": metadata.get("required_evidence_type") or self.missing_evidence_type,
             "target_system": metadata.get("target_system") or "",
             "recommended_action": metadata.get("recommended_action") or "",
+            "current_blocker": metadata.get("current_blocker") or "",
             "review_decision": metadata.get("review_decision") or "",
             "reviewer": metadata.get("reviewer") or "",
             "review_note": metadata.get("review_note") or "",

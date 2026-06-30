@@ -319,6 +319,26 @@ def _recommended_action(gap_type: str) -> str:
     }.get(gap_type, "manual_policy_review")
 
 
+def _current_blocker(gap_type: str, required_evidence_type: str, evidence_state: dict[str, Any]) -> str:
+    if gap_type == "media_asset_gap":
+        sendable_media = int(evidence_state.get("sendable_media_asset_count") or 0)
+        rejected_reason = sanitize_text(evidence_state.get("conversation_media_rejected_reason") or "")
+        if sendable_media <= 0 and rejected_reason:
+            return f"no approved sendable media: {rejected_reason}"
+        return "no approved sendable media asset for the requested evidence type"
+    if gap_type == "product_field_gap":
+        return f"missing structured product field: {required_evidence_type}"
+    if gap_type == "aftersales_policy_gap":
+        return "missing reviewed aftersales policy rule"
+    if gap_type == "promotion_policy_gap":
+        return "missing reviewed promotion or price policy rule"
+    if gap_type == "context_extraction_gap":
+        return "replay sample lacks structured product/order context"
+    if gap_type == "evidence_routing_gap":
+        return "retrieved evidence is unavailable or not aligned with the requested fact type"
+    return "missing reviewed evidence for this replay failure"
+
+
 def _missing_fields(gap_type: str, query_fact_type: str, required_evidence_type: str, identity: dict[str, str]) -> list[str]:
     fields: list[str] = []
     if gap_type == "context_extraction_gap":
@@ -611,6 +631,7 @@ class KnowledgeGapTaskService:
                 "required_evidence_type": required_evidence_type,
                 "target_system": target_system,
                 "recommended_action": recommended_action,
+                "current_blocker": _current_blocker(gap_type, required_evidence_type, evidence_state),
                 "missing_fields": missing_fields,
                 "current_context_summary": context_summary,
                 "missing_evidence_type": task.missing_evidence_type,
@@ -623,7 +644,7 @@ class KnowledgeGapTaskService:
                         "buyer_message": sample.get("buyer_message", ""),
                         "agent_reply": sample.get("agent_reply", ""),
                     }
-                    for sample in item["samples"][:5]
+                    for sample in item["samples"][:3]
                 ],
             }))
             db.flush()
