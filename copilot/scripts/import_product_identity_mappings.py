@@ -25,14 +25,14 @@ from app.services.eval_sanitizer_service import hash_sensitive, sanitize_obj, sa
 SHEET_NAME = "商品身份映射缺口"
 CONFIRMED_VALUES = {"已确认", "确认", "confirmed", "active", "verified", "yes", "y", "true"}
 FIELD_ALIASES = {
-    "source_run_uid": {"source_run_uid"},
-    "case_uid": {"case_uid"},
-    "turn_uid": {"turn_uid"},
-    "platform_item_id": {"platform_item_id"},
-    "platform_item_id_hash": {"platform_item_id_hash"},
-    "product_url": {"product_url"},
-    "platform_product_title": {"platform_product_title"},
-    "order_product_title": {"order_product_title"},
+    "source_run_uid": {"回放批次", "source_run_uid"},
+    "case_uid": {"案例 ID", "case_uid"},
+    "turn_uid": {"轮次 ID", "turn_uid"},
+    "platform_item_id": {"平台商品 ID", "platform_item_id"},
+    "platform_item_id_hash": {"平台商品 ID Hash", "platform_item_id_hash"},
+    "product_url": {"商品链接", "product_url"},
+    "platform_product_title": {"平台商品标题", "platform_product_title"},
+    "order_product_title": {"订单商品标题", "order_product_title"},
     "i_id": {"建议内部 i_id", "内部 i_id", "i_id"},
     "sku_code": {"建议 SKU", "SKU", "sku_code"},
     "suggested_product_title": {"建议商品标题", "商品标题"},

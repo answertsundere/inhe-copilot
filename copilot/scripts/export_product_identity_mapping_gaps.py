@@ -24,26 +24,27 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 SHEET_NAME = "商品身份映射缺口"
 README_SHEET = "说明"
-HEADERS = [
-    "source_run_uid",
-    "case_uid",
-    "turn_uid",
-    "platform_item_id",
-    "platform_item_id_hash",
-    "product_url",
-    "platform_product_title",
-    "order_product_title",
-    "buyer_message_preview",
-    "unresolved_reason",
-    "candidate_count",
-    "ambiguous_candidates",
-    "建议内部 i_id",
-    "建议 SKU",
-    "建议商品标题",
-    "人工确认状态",
-    "处理人",
-    "备注",
+EXPORT_COLUMNS = [
+    ("回放批次", "source_run_uid"),
+    ("案例 ID", "case_uid"),
+    ("轮次 ID", "turn_uid"),
+    ("平台商品 ID", "platform_item_id"),
+    ("平台商品 ID Hash", "platform_item_id_hash"),
+    ("商品链接", "product_url"),
+    ("平台商品标题", "platform_product_title"),
+    ("订单商品标题", "order_product_title"),
+    ("买家问题预览", "buyer_message_preview"),
+    ("未解析原因", "unresolved_reason"),
+    ("候选数量", "candidate_count"),
+    ("候选商品", "ambiguous_candidates"),
+    ("建议内部 i_id", "suggested_i_id"),
+    ("建议 SKU", "suggested_sku"),
+    ("建议商品标题", "suggested_product_title"),
+    ("人工确认状态", "confirmation_status"),
+    ("处理人", "operator"),
+    ("备注", "note"),
 ]
+HEADERS = [label for label, _key in EXPORT_COLUMNS]
 
 
 def default_output_path() -> str:
@@ -124,12 +125,12 @@ def _identity_row(trace: EvalTrace) -> dict[str, Any] | None:
         "unresolved_reason": _first_text(resolution.get("unresolved_reason"), resolution.get("reason")),
         "candidate_count": len(ambiguous),
         "ambiguous_candidates": json.dumps(sanitize_obj(ambiguous), ensure_ascii=False),
-        "建议内部 i_id": "",
-        "建议 SKU": "",
-        "建议商品标题": "",
-        "人工确认状态": "",
-        "处理人": "",
-        "备注": "",
+        "suggested_i_id": "",
+        "suggested_sku": "",
+        "suggested_product_title": "",
+        "confirmation_status": "",
+        "operator": "",
+        "note": "",
     }
     if not any(row.get(key) for key in ("platform_item_id_hash", "product_url", "platform_item_id", "platform_product_title", "order_product_title")):
         return None
@@ -175,14 +176,14 @@ def write_workbook(rows: list[dict[str, Any]], output: str) -> str:
         cell.font = Font(bold=True)
         cell.fill = header_fill
     for row in rows:
-        ws.append([row.get(header, "") for header in HEADERS])
+        ws.append([row.get(key, "") for _label, key in EXPORT_COLUMNS])
     for idx, header in enumerate(HEADERS, start=1):
         ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = max(14, min(36, len(header) + 4))
 
     readme = workbook.create_sheet(README_SHEET)
     readme.append(["字段", "说明"])
-    readme.append(["人工确认状态", "确认映射后填写：已确认 / confirmed / active。未确认不会导入。"])
-    readme.append(["建议内部 i_id / 建议 SKU", "至少填写一个，导入时会校验 KBProduct 是否存在。"])
+    readme.append(["人工确认状态", "确认映射后填写：已确认 / confirmed / active / verified。未确认不会导入。"])
+    readme.append(["建议内部 i_id / 建议 SKU", "至少填写一个，导入时会校验 KBProduct 是否存在且不冲突。"])
     readme.append(["安全说明", "导出内容已脱敏；如果只有 hash，不能也不应该反推原始 item_id。"])
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     workbook.save(output)

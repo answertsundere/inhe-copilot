@@ -94,14 +94,14 @@ def _write_mapping_workbook(path, *, item_hash: str, i_id: str = "YH92K01", sku_
     ws = wb.active
     ws.title = "商品身份映射缺口"
     ws.append([
-        "source_run_uid",
-        "case_uid",
-        "turn_uid",
-        "platform_item_id",
-        "platform_item_id_hash",
-        "product_url",
-        "platform_product_title",
-        "order_product_title",
+        "回放批次",
+        "案例 ID",
+        "轮次 ID",
+        "平台商品 ID",
+        "平台商品 ID Hash",
+        "商品链接",
+        "平台商品标题",
+        "订单商品标题",
         "建议内部 i_id",
         "建议 SKU",
         "建议商品标题",
@@ -147,6 +147,7 @@ def test_export_unresolved_identity_mapping_gaps_are_deduped_and_sanitized(mappi
     sheet = workbook["商品身份映射缺口"]
     headers = [cell.value for cell in sheet[1]]
     assert headers == HEADERS
+    assert headers[:6] == ["回放批次", "案例 ID", "轮次 ID", "平台商品 ID", "平台商品 ID Hash", "商品链接"]
     values = "\n".join(str(cell.value or "") for row in sheet.iter_rows(values_only=False) for cell in row)
     assert "13812345678" not in values
     assert "123456789012345" not in values
