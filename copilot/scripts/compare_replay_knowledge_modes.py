@@ -42,6 +42,20 @@ def _run_uid_from_json(path: str) -> str:
     return ""
 
 
+def _raw_replay_counts_from_json(path: str) -> dict[str, int]:
+    if not sanitize_text(path):
+        return {"total_turns": 0, "total_cases": 0}
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {"total_turns": 0, "total_cases": 0}
+    replay = data.get("replay") if isinstance(data.get("replay"), dict) else {}
+    schedule = data.get("schedule") if isinstance(data.get("schedule"), dict) else {}
+    return {
+        "total_turns": int(replay.get("turns") or replay.get("total_turns") or schedule.get("total_turns") or 0),
+        "total_cases": int(replay.get("total_cases") or schedule.get("total_cases") or 0),
+    }
+
+
 def _load_traces(db, run_uid: str, sample_limit: int) -> list[EvalTrace]:
     return (
         db.query(EvalTrace)
@@ -120,6 +134,7 @@ def summarize_run(db, run_uid: str, sample_limit: int = 50) -> dict[str, Any]:
         "provisional_used_turns": used_turns,
         "auto_send_with_provisional_count": auto_send_with_provisional_count,
         "case_sequence": [f"{trace.case_uid}:{trace.turn_index}" for trace in traces],
+        "sampled_case_count": len({trace.case_uid for trace in traces}),
     })
 
 
@@ -168,12 +183,26 @@ def compare_modes(
                 },
             })
         provisional = summarize_run(db, provisional_uid, sample_limit)
+        compared_trace_count = max(verified["sampled_turns"], provisional["sampled_turns"])
+        raw_verified = _raw_replay_counts_from_json(verified_only_json)
+        raw_provisional = _raw_replay_counts_from_json(verified_plus_ai_prefill_json)
         return sanitize_obj({
             "summary": {
                 "run_uid_verified_only": verified_uid,
                 "run_uid_verified_plus_ai_prefill": provisional_uid,
                 "same_case_sequence": verified["case_sequence"] == provisional["case_sequence"],
-                "total_turns": max(verified["sampled_turns"], provisional["sampled_turns"]),
+                "compared_trace_count": compared_trace_count,
+                "compared_turn_count": compared_trace_count,
+                "compared_case_count": max(verified["sampled_case_count"], provisional["sampled_case_count"]),
+                "raw_replay_total_turns_verified_only": raw_verified["total_turns"],
+                "raw_replay_total_turns_verified_plus_ai_prefill": raw_provisional["total_turns"],
+                "raw_replay_total_cases_verified_only": raw_verified["total_cases"],
+                "raw_replay_total_cases_verified_plus_ai_prefill": raw_provisional["total_cases"],
+                "total_turns_deprecated": compared_trace_count,
+                "total_turns_deprecated_note": (
+                    "Deprecated: this is the compared sample trace count, "
+                    "not the raw replay total turns."
+                ),
                 "passed": _delta(verified["passed_count"], provisional["passed_count"]),
                 "failed": _delta(verified["failed_count"], provisional["failed_count"]),
                 "auto_sendable": _delta(
