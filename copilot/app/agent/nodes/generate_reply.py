@@ -58,6 +58,29 @@ TEXT_PRODUCT_QUESTION_TERMS = (
     "\u6e05\u6d17", "\u9632\u6f6e",
 )
 
+PRODUCT_FIRST_SOURCE_PRIORITY = [
+    "product_structured_facts",
+    "product_media_assets",
+    "product_scoped_chunks",
+    "activity_policy_rules",
+    "generic_fallback_rules",
+]
+
+CONCRETE_PRODUCT_FACT_TYPES = {
+    "material",
+    "dimensions",
+    "space_fit",
+    "placement_scene",
+    "load_capacity",
+    "gross_weight",
+    "accessories",
+    "accessory_availability",
+    "installation",
+    "certification_report",
+    "age_range",
+    "detachable",
+}
+
 
 def _has_product_context(state: dict) -> bool:
     ctx = state.get("copilot_context", {}) or {}
@@ -81,6 +104,28 @@ def _has_text_product_question(state: dict) -> bool:
     msg = state.get("normalized_message", state.get("customer_message", "")) or ""
     text = IMAGE_MARKER_RE.sub("", msg).strip()
     return bool(text and any(term in text for term in TEXT_PRODUCT_QUESTION_TERMS))
+
+
+def _has_deliverable_media_assets(state: dict) -> bool:
+    """Return True if the resolved product context pack has auto-sendable media."""
+    pack = state.get("product_context_pack") or {}
+    for asset in pack.get("recommended_assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        if not (asset.get("asset_url") or asset.get("url")):
+            continue
+        level = str(asset.get("auto_send_level") or "auto").lower()
+        if level == "auto":
+            return True
+    for asset in pack.get("media_assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        if not (asset.get("asset_url") or asset.get("url")):
+            continue
+        level = str(asset.get("auto_send_level") or "auto").lower()
+        if level == "auto":
+            return True
+    return False
 
 
 def _is_compare_query(text: str) -> bool:
@@ -291,10 +336,15 @@ def generate_reply(state: dict) -> dict:
         suggested_reply = _render_product_facts(state, product_name)
     elif answer_mode == "no_evidence_clarification":
         generic_rule_used = _best_generic_service_rule(state)
-        if _low_risk_generic_rule_fallback(generic_rule_used, state):
+        if (
+            _low_risk_generic_rule_fallback(generic_rule_used, state)
+            and not _generic_fallback_is_concrete_product_fact(state, generic_rule_used)
+        ):
             suggested_reply = _render_generic_service_rule(generic_rule_used, state, product_name)
             generation_mode = "rule_based"
         else:
+            if _generic_fallback_is_concrete_product_fact(state, generic_rule_used):
+                generic_rule_used = None
             no_evidence_reply = _no_evidence_reply(state, product_name)
             suggested_reply = (
                 no_evidence_reply
@@ -309,9 +359,11 @@ def generate_reply(state: dict) -> dict:
 
         if not suggested_reply:
             generic_rule_used = _best_generic_service_rule(state)
-            if generic_rule_used:
+            if generic_rule_used and not _generic_fallback_is_concrete_product_fact(state, generic_rule_used):
                 suggested_reply = _render_generic_service_rule(generic_rule_used, state, product_name)
                 generation_mode = "rule_based"
+            elif _generic_fallback_is_concrete_product_fact(state, generic_rule_used):
+                generic_rule_used = None
 
         can_use_llm = _can_use_llm_for_mode(answer_mode)
         llm_client = get_llm_client()
@@ -428,6 +480,19 @@ def generate_reply(state: dict) -> dict:
         extra_state.setdefault("evidence_debug", {})["generic_service_rule_used"] = generic_rule_summary
         trace["generic_service_rule_used"] = generic_rule_summary
         trace["summary"] += f", generic_rule={generic_rule_summary['rule_key']}"
+
+    selected_product_first = _selected_product_first_evidence(state)
+    final_answer_source = selected_product_first.get("role") or (
+        "generic_fallback_rules" if generic_rule_used else answer_mode
+    )
+    trace["answer_source_priority"] = PRODUCT_FIRST_SOURCE_PRIORITY
+    trace["selected_product_first_evidence"] = selected_product_first
+    trace["selected_evidence_role"] = selected_product_first.get("role", "")
+    trace["generic_fallback_used"] = bool(generic_rule_used)
+    trace["missing_required_evidence"] = _missing_required_evidence_from_pack(state)
+    trace["final_answer_source"] = final_answer_source
+    trace["can_send"] = "deferred_to_final_contract"
+    trace["block_reasons"] = []
 
     return {
         "suggested_reply": suggested_reply,
@@ -577,6 +642,9 @@ def _real_product_facts(state: dict) -> list[dict]:
     query_fact_type = state.get("query_fact_type", "")
     query = state.get("normalized_message", state.get("customer_message", "")) or ""
     candidate_items = (
+        _product_first_structured_facts(state)
+        + _product_first_scoped_chunks(state)
+        +
         list(state.get("evidence", {}).get("product_facts", []) or [])
         + list(state.get("knowledge_evidence", []) or [])
         + list(state.get("filtered_evidence", []) or [])
@@ -620,6 +688,95 @@ def _real_product_facts(state: dict) -> list[dict]:
     return facts
 
 
+def _product_first_pack(state: dict) -> dict[str, Any]:
+    pack = state.get("product_first_evidence_pack")
+    if isinstance(pack, dict) and pack:
+        return pack
+    product_pack = state.get("product_context_pack") if isinstance(state.get("product_context_pack"), dict) else {}
+    for key in ("product_first_evidence_pack", "evidence_pack"):
+        value = product_pack.get(key)
+        if isinstance(value, dict) and value:
+            return value
+    value = state.get("product_card_evidence_pack")
+    return value if isinstance(value, dict) else {}
+
+
+def _product_first_identity_locked(state: dict) -> bool:
+    pack = _product_first_pack(state)
+    trace = pack.get("evidence_pack_trace") if isinstance(pack.get("evidence_pack_trace"), dict) else {}
+    if trace.get("product_identity_locked") is False:
+        return False
+    return float(pack.get("identity_confidence") or 0) > 0 or bool(pack.get("resolved_product_identity"))
+
+
+def _product_first_fact_items(state: dict, bucket: str) -> list[dict]:
+    if not _product_first_identity_locked(state):
+        return []
+    pack = _product_first_pack(state)
+    query_fact_type = str(state.get("query_fact_type") or pack.get("requested_fact_type") or pack.get("query_fact_type") or "")
+    rows = pack.get(bucket) if isinstance(pack.get(bucket), list) else []
+    facts: list[dict] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        fact_type = str(item.get("fact_type") or item.get("evidence_fact_type") or "")
+        if query_fact_type and fact_type and not fact_type_matches(query_fact_type, fact_type):
+            continue
+        if item.get("direct_answer_allowed") is False or item.get("can_direct_answer") is False:
+            continue
+        text = str(item.get("preview") or item.get("chunk_text") or item.get("fact") or item.get("content") or "").strip()
+        if not text:
+            continue
+        converted = dict(item)
+        converted.setdefault("source_type", "product_facts" if bucket == "product_structured_facts" else "installation_guide")
+        converted.setdefault("evidence_fact_type", fact_type)
+        converted.setdefault("fact_type", fact_type)
+        converted.setdefault("chunk_text", text)
+        converted.setdefault("evidence_allowed_for_direct_answer", True)
+        converted.setdefault("direct_answer_allowed", True)
+        converted["product_first_evidence_role"] = bucket
+        facts.append(converted)
+    return facts
+
+
+def _product_first_structured_facts(state: dict) -> list[dict]:
+    return _product_first_fact_items(state, "product_structured_facts")
+
+
+def _product_first_scoped_chunks(state: dict) -> list[dict]:
+    return _product_first_fact_items(state, "product_scoped_chunks")
+
+
+def _selected_product_first_evidence(state: dict) -> dict[str, Any]:
+    for role, facts in (
+        ("product_structured_facts", _product_first_structured_facts(state)),
+        ("product_scoped_chunks", _product_first_scoped_chunks(state)),
+    ):
+        if facts:
+            item = facts[0]
+            return {
+                "role": role,
+                "fact_type": item.get("fact_type") or item.get("evidence_fact_type") or "",
+                "evidence_id": item.get("evidence_id") or item.get("chunk_id") or item.get("entry_id") or "",
+                "source_table": item.get("source_table", ""),
+                "preview": _fact_text(item)[:160],
+            }
+    return {}
+
+
+def _missing_required_evidence_from_pack(state: dict) -> list[dict[str, Any]]:
+    pack = _product_first_pack(state)
+    value = pack.get("missing_required_evidence") if isinstance(pack, dict) else []
+    return value if isinstance(value, list) else []
+
+
+def _generic_fallback_is_concrete_product_fact(state: dict, rule: dict[str, Any] | None) -> bool:
+    if not rule:
+        return False
+    fact_type = str(rule.get("fact_type") or state.get("query_fact_type") or "")
+    return fact_type in CONCRETE_PRODUCT_FACT_TYPES and not _real_product_facts(state)
+
+
 def _generic_service_rules(state: dict) -> list[dict[str, Any]]:
     pack = state.get("product_context_pack") or {}
     rules = pack.get("generic_rules") or []
@@ -642,10 +799,21 @@ def _best_generic_service_rule(state: dict) -> dict[str, Any] | None:
             rule for rule in rules
             if rule.get("fact_type") == "media_reference"
             and query_fact_type in {"installation", "dimensions", "space_fit", "accessories"}
+            and _has_deliverable_media_assets(state)
         ]
         if media:
             return max(media, key=lambda item: float(item.get("score") or 0))
-    return max(rules, key=lambda item: float(item.get("score") or 0))
+    best = max(rules, key=lambda item: float(item.get("score") or 0))
+    # Never promise images/videos when no deliverable media assets exist.
+    if (
+        best.get("fact_type") == "media_reference"
+        and not _has_deliverable_media_assets(state)
+    ):
+        non_media = [rule for rule in rules if rule.get("fact_type") != "media_reference"]
+        if non_media:
+            return max(non_media, key=lambda item: float(item.get("score") or 0))
+        return None
+    return best
 
 
 def _low_risk_generic_rule_fallback(rule: dict[str, Any] | None, state: dict) -> bool:
@@ -1466,7 +1634,7 @@ def _can_use_llm_for_mode(answer_mode: str) -> bool:
 
 
 def _fact_text(item: dict[str, Any]) -> str:
-    return str(item.get("chunk_text") or item.get("fact") or item.get("content") or "")
+    return str(item.get("chunk_text") or item.get("fact") or item.get("content") or item.get("preview") or "")
 
 
 def _product_name(state: dict) -> str:

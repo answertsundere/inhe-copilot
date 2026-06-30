@@ -62,6 +62,7 @@ def _safe_product_context_pack(pack: dict) -> dict:
             for item in (pack.get("generic_rules") or [])[:5]
         ],
         "evidence_pack": pack.get("evidence_pack", {}),
+        "product_first_evidence_pack": pack.get("product_first_evidence_pack") or pack.get("evidence_pack", {}),
     }
 
 
