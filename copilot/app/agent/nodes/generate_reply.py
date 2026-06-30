@@ -493,6 +493,16 @@ def generate_reply(state: dict) -> dict:
     trace["final_answer_source"] = final_answer_source
     trace["can_send"] = "deferred_to_final_contract"
     trace["block_reasons"] = []
+    if selected_product_first.get("provisional_knowledge_used"):
+        extra_state["requires_human_review"] = True
+        extra_state["review_reason"] = "ai_provisional_knowledge_requires_review"
+        trace["provisional_knowledge_used"] = True
+        trace["provisional_draft_uid"] = selected_product_first.get("provisional_draft_uid", "")
+        trace["provisional_verification_status"] = "pending_review"
+        trace["usable_for_eval"] = True
+        trace["usable_for_auto_send"] = False
+        trace["can_send"] = False
+        trace["block_reasons"] = ["ai_provisional_knowledge_not_verified"]
 
     return {
         "suggested_reply": suggested_reply,
@@ -734,6 +744,9 @@ def _product_first_fact_items(state: dict, bucket: str) -> list[dict]:
         converted.setdefault("chunk_text", text)
         converted.setdefault("evidence_allowed_for_direct_answer", True)
         converted.setdefault("direct_answer_allowed", True)
+        converted.setdefault("usable_for_auto_send", item.get("usable_for_auto_send", True))
+        converted.setdefault("provisional_knowledge_used", bool(item.get("provisional_knowledge_used")))
+        converted.setdefault("provisional_draft_uid", item.get("provisional_draft_uid", ""))
         converted["product_first_evidence_role"] = bucket
         facts.append(converted)
     return facts
@@ -759,6 +772,11 @@ def _selected_product_first_evidence(state: dict) -> dict[str, Any]:
                 "fact_type": item.get("fact_type") or item.get("evidence_fact_type") or "",
                 "evidence_id": item.get("evidence_id") or item.get("chunk_id") or item.get("entry_id") or "",
                 "source_table": item.get("source_table", ""),
+                "protocol_source_type": item.get("protocol_source_type", ""),
+                "provisional_knowledge_used": bool(item.get("provisional_knowledge_used")),
+                "provisional_draft_uid": item.get("provisional_draft_uid", ""),
+                "usable_for_eval": bool(item.get("usable_for_eval", False)),
+                "usable_for_auto_send": bool(item.get("usable_for_auto_send", True)),
                 "preview": _fact_text(item)[:160],
             }
     return {}

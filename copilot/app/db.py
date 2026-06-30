@@ -217,6 +217,16 @@ def _migrate_add_columns():
             ("locked_payload_fingerprint", "VARCHAR(64)", "''"),
             ("approval_status", "VARCHAR(32)", "'not_ready'"),
         ],
+        "ai_provisional_knowledge": [
+            ("task_uid", "VARCHAR(64)", "''"),
+            ("kb_product_id", "INTEGER", "NULL"),
+            ("field_name", "VARCHAR(64)", "''"),
+            ("source", "VARCHAR(64)", "'ai_prefill'"),
+            ("usable_for_eval", "BOOLEAN", "1"),
+            ("usable_for_auto_send", "BOOLEAN", "0"),
+            ("created_by", "VARCHAR(64)", "''"),
+            ("metadata_json", "TEXT", "'{}'"),
+        ],
     }
     for table_name, new_columns in eval_table_columns.items():
         if table_name not in inspector.get_table_names():

@@ -77,6 +77,12 @@ def build_product_context_pack(
             fact_type=query_fact_type,
             limit=3,
         )
+        provisional_evidence = _collect_ai_provisional_evidence(
+            db=db,
+            identity=identity,
+            structured_profile=structured_profile,
+            query_fact_type=query_fact_type,
+        )
         media_assets = _collect_media_assets(db, KBMediaAsset, identity, structured_profile, limit=300)
         signals = {
             "customer_message": query or "",
@@ -90,6 +96,7 @@ def build_product_context_pack(
         media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
         candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
+        candidates.extend(provisional_evidence)
         if not allowed or "product_facts" in allowed:
             candidates.extend(_activity_facts_for_query(activity_rules, query=query, query_fact_type=query_fact_type))
             candidates.extend(_media_facts_for_query(
@@ -290,6 +297,7 @@ def build_product_context_pack(
             media_assets=media_assets,
             recommended_assets=recommended_assets,
             generic_rules=generic_rules,
+            provisional_evidence=provisional_evidence,
             query=query,
             query_fact_type=query_fact_type,
             top_k=top_k,
@@ -311,9 +319,11 @@ def build_product_context_pack(
                 "recommended_media_count": len(recommended_assets),
                 "activity_rule_count": len(activity_rules),
                 "generic_rule_count": len(generic_rules),
+                "provisional_knowledge_count": len(provisional_evidence),
                 "has_structured_profile": bool(structured_profile),
                 "query_fact_type": query_fact_type,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
+                "knowledge_mode": evidence_pack.get("knowledge_mode", "verified_only"),
             },
         }, conversation_media_reference)
     finally:
@@ -432,6 +442,7 @@ def _build_evidence_pack(
     media_assets: list[dict[str, Any]],
     recommended_assets: list[dict[str, Any]],
     generic_rules: list[dict[str, Any]],
+    provisional_evidence: list[dict[str, Any]] | None = None,
     query: str,
     query_fact_type: str,
     top_k: int,
@@ -441,6 +452,7 @@ def _build_evidence_pack(
     matched_facts = [_compact_fact_for_evidence(item) for item in facts[:top_k]]
     matched_media = [_compact_media_for_evidence(item) for item in recommended_assets[:3]]
     matched_generic_rules = [_compact_generic_rule_for_evidence(item) for item in generic_rules[:3]]
+    provisional_facts = [_compact_fact_for_evidence(item) for item in (provisional_evidence or [])]
     product_structured_facts = [
         _compact_fact_for_evidence(item)
         for item in facts
@@ -456,6 +468,7 @@ def _build_evidence_pack(
         item for item in facts
         if item.get("evidence_allowed_for_direct_answer") is not False
         and _fact_matches_query_type(query_fact_type, item)
+        and not item.get("provisional_knowledge_used")
     ]
 
     missing_fields: list[str] = []
@@ -472,6 +485,8 @@ def _build_evidence_pack(
         answerability = "direct_answer"
     elif matched_media and query_fact_type in {"installation", "dimensions", "space_fit", "detachable", "accessories", "packaging"}:
         answerability = "media_supported"
+    elif provisional_facts:
+        answerability = "provisional_answerable"
     elif matched_generic_rules:
         answerability = "generic_rule_fallback"
     elif structured_profile:
@@ -489,9 +504,12 @@ def _build_evidence_pack(
         "query_fact_type": query_fact_type or "",
         "requested_fact_type": query_fact_type or "",
         "answerability": answerability,
+        "knowledge_mode": _eval_knowledge_mode(),
+        "provisional_knowledge_used": bool(provisional_facts),
         "product_structured_facts": product_structured_facts,
         "product_media_assets": product_media_assets,
         "product_scoped_chunks": product_scoped_chunks,
+        "ai_provisional_knowledge": provisional_facts,
         "generic_fallback_rules": matched_generic_rules,
         "missing_required_evidence": missing_required_evidence,
         "evidence_pack_trace": {
@@ -508,6 +526,9 @@ def _build_evidence_pack(
             "recommended_media_count": len(matched_media),
             "product_scoped_chunk_count": len(product_scoped_chunks),
             "generic_rule_count": len(matched_generic_rules),
+            "provisional_knowledge_count": len(provisional_facts),
+            "provisional_draft_uids": [item.get("evidence_id") for item in provisional_facts if item.get("evidence_id")],
+            "knowledge_mode": _eval_knowledge_mode(),
             "generic_rules_role": "fallback_only",
             "missing_required_evidence": missing_required_evidence,
             "answerability": answerability,
@@ -519,6 +540,34 @@ def _build_evidence_pack(
         "matched_generic_rules": matched_generic_rules,
         "source_priority": ["product_profile", "product_media", "product_knowledge", "faq", "generic_rules"],
     }
+
+
+def _eval_knowledge_mode() -> str:
+    try:
+        from app.services.ai_provisional_knowledge_service import current_eval_knowledge_mode
+        return current_eval_knowledge_mode()
+    except Exception:
+        return "verified_only"
+
+
+def _collect_ai_provisional_evidence(
+    *,
+    db,
+    identity: dict[str, str],
+    structured_profile: dict[str, Any],
+    query_fact_type: str,
+) -> list[dict[str, Any]]:
+    try:
+        from app.services.ai_provisional_knowledge_service import AIProvisionalKnowledgeService
+        return AIProvisionalKnowledgeService().find_eval_evidence(
+            db=db,
+            i_id=structured_profile.get("i_id") or identity.get("i_id", ""),
+            sku_code=identity.get("sku", ""),
+            query_fact_type=query_fact_type,
+            limit=5,
+        )
+    except Exception:
+        return []
 
 
 def _resolved_product_identity(identity: dict[str, str], structured_profile: dict[str, Any]) -> dict[str, Any]:
@@ -705,6 +754,10 @@ def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
         "source_table": item.get("source_table", ""),
         "source_id": item.get("source_id", ""),
         "verification_status": item.get("verification_status", ""),
+        "provisional_knowledge_used": bool(item.get("provisional_knowledge_used")),
+        "provisional_draft_uid": item.get("provisional_draft_uid", ""),
+        "usable_for_eval": bool(item.get("usable_for_eval", False)),
+        "usable_for_auto_send": bool(item.get("usable_for_auto_send", True)),
         "can_direct_answer": item.get("can_direct_answer", item.get("evidence_allowed_for_direct_answer") is not False),
         "needs_human_review": bool(item.get("needs_human_review")),
         "block_reasons": item.get("block_reasons", []),

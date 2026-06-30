@@ -836,3 +836,66 @@ class KnowledgeGapPublishAudit(Base):
             "writes_formal_tables": bool(self.writes_formal_tables),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class AIProvisionalKnowledge(Base):
+    __tablename__ = "ai_provisional_knowledge"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    draft_uid = Column(String(64), nullable=False, unique=True, index=True)
+    source_run_uid = Column(String(64), nullable=False, default="", index=True)
+    case_uid = Column(String(64), nullable=False, default="", index=True)
+    turn_uid = Column(String(64), nullable=False, default="", index=True)
+    task_uid = Column(String(64), nullable=False, default="", index=True)
+    kb_product_id = Column(Integer, nullable=True, index=True)
+    i_id = Column(String(64), nullable=False, default="", index=True)
+    sku_code = Column(String(64), nullable=False, default="", index=True)
+    query_fact_type = Column(String(64), nullable=False, default="", index=True)
+    field_name = Column(String(64), nullable=False, default="", index=True)
+    provisional_value = Column(Text, nullable=False, default="")
+    provisional_answer = Column(Text, nullable=False, default="")
+    confidence = Column(String(16), nullable=False, default="low", index=True)
+    source = Column(String(64), nullable=False, default="ai_prefill", index=True)
+    verification_status = Column(String(32), nullable=False, default="ai_prefill", index=True)
+    usable_for_eval = Column(Boolean, nullable=False, default=True, index=True)
+    usable_for_auto_send = Column(Boolean, nullable=False, default=False, index=True)
+    created_by = Column(String(64), nullable=False, default="")
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_ai_provisional_lookup", "i_id", "sku_code", "query_fact_type", "verification_status"),
+    )
+
+    def get_metadata(self):
+        return _json_load(self.metadata_json, {})
+
+    def set_metadata(self, value):
+        self.metadata_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "draft_uid": self.draft_uid,
+            "source_run_uid": self.source_run_uid,
+            "case_uid": self.case_uid,
+            "turn_uid": self.turn_uid,
+            "task_uid": self.task_uid,
+            "kb_product_id": self.kb_product_id,
+            "i_id": self.i_id,
+            "sku_code": self.sku_code,
+            "query_fact_type": self.query_fact_type,
+            "field_name": self.field_name,
+            "provisional_value": self.provisional_value,
+            "provisional_answer": self.provisional_answer,
+            "confidence": self.confidence,
+            "source": self.source,
+            "verification_status": self.verification_status,
+            "usable_for_eval": bool(self.usable_for_eval),
+            "usable_for_auto_send": bool(self.usable_for_auto_send),
+            "created_by": self.created_by,
+            "metadata": self.get_metadata(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
