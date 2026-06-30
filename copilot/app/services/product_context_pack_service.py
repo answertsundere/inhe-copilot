@@ -21,6 +21,7 @@ from app.services.media_asset_service import (
     get_auto_send_level,
     get_media_purpose,
 )
+from app.services.product_structured_evidence_service import build_product_spec_evidence_candidates
 from app.services.real_context_product_identity_service import (
     augment_state_with_real_context_identity,
     build_conversation_media_reference,
@@ -88,8 +89,8 @@ def build_product_context_pack(
         )
         media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
+        candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
         if not allowed or "product_facts" in allowed:
-            candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
             candidates.extend(_activity_facts_for_query(activity_rules, query=query, query_fact_type=query_fact_type))
             candidates.extend(_media_facts_for_query(
                 structured_profile,
@@ -105,6 +106,11 @@ def build_product_context_pack(
         )
         if allowed:
             chunk_query = chunk_query.filter(KnowledgeChunk.source_type.in_(allowed))
+        scope_filter = _knowledge_scope_filter(KnowledgeChunk, KnowledgeEntry, identity, structured_profile)
+        if scope_filter is not None:
+            chunk_query = chunk_query.filter(scope_filter)
+        else:
+            chunk_query = chunk_query.filter(False)
 
         for chunk in chunk_query.all():
             entry = chunk.entry
@@ -189,7 +195,13 @@ def build_product_context_pack(
             })
 
         if not allowed or "faq" in allowed:
-            for qa in db.query(KBQA).filter(KBQA.status == "published").filter(KBQA.auto_reply == True).all():  # noqa: E712
+            qa_query = db.query(KBQA).filter(KBQA.status == "published").filter(KBQA.auto_reply == True)  # noqa: E712
+            qa_filter = _qa_scope_filter(KBQA, identity, structured_profile)
+            if qa_filter is not None:
+                qa_query = qa_query.filter(qa_filter)
+            else:
+                qa_query = qa_query.filter(False)
+            for qa in qa_query.limit(80).all():
                 product = qa.product
                 product_scope = [getattr(product, "product_name", "")] if product else []
                 if product:
@@ -271,9 +283,11 @@ def build_product_context_pack(
         candidates.sort(key=lambda item: item.get("rerank_score", 0), reverse=True)
         returned_facts = candidates[:top_k]
         evidence_pack = _build_evidence_pack(
+            state=state,
             identity=identity,
             structured_profile=structured_profile,
             facts=returned_facts,
+            media_assets=media_assets,
             recommended_assets=recommended_assets,
             generic_rules=generic_rules,
             query=query,
@@ -289,6 +303,7 @@ def build_product_context_pack(
             "activity_rules": activity_rules,
             "generic_rules": generic_rules,
             "evidence_pack": evidence_pack,
+            "product_first_evidence_pack": evidence_pack,
             "stats": {
                 "candidate_count": len(candidates),
                 "returned_count": min(len(candidates), top_k),
@@ -316,6 +331,7 @@ def _empty_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
         "activity_rules": [],
         "generic_rules": [],
         "evidence_pack": evidence_pack,
+        "product_first_evidence_pack": evidence_pack,
         "stats": {
             "candidate_count": 0,
             "returned_count": 0,
@@ -373,9 +389,23 @@ def _attach_media_context_trace(pack: dict[str, Any], conversation_media_referen
 def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
     return {
         "identity": identity,
+        "resolved_product_identity": identity,
+        "identity_confidence": 0.0,
+        "identity_sources": [],
         "retrieval_query": "",
         "query_fact_type": "",
+        "requested_fact_type": "",
         "answerability": "no_product_identity" if reason == "no_product_identity" else "unavailable",
+        "product_structured_facts": [],
+        "product_media_assets": [],
+        "product_scoped_chunks": [],
+        "generic_fallback_rules": [],
+        "missing_required_evidence": [],
+        "evidence_pack_trace": {
+            "product_identity_locked": False,
+            "generic_rules_role": "fallback_only",
+            "blocked_reason": reason,
+        },
         "matched_fields": [],
         "missing_fields": [],
         "matched_facts": [],
@@ -388,9 +418,11 @@ def _empty_evidence_pack(identity: dict[str, str], reason: str) -> dict[str, Any
 
 def _build_evidence_pack(
     *,
+    state: dict[str, Any],
     identity: dict[str, str],
     structured_profile: dict[str, Any],
     facts: list[dict[str, Any]],
+    media_assets: list[dict[str, Any]],
     recommended_assets: list[dict[str, Any]],
     generic_rules: list[dict[str, Any]],
     query: str,
@@ -401,6 +433,17 @@ def _build_evidence_pack(
     matched_facts = [_compact_fact_for_evidence(item) for item in facts[:top_k]]
     matched_media = [_compact_media_for_evidence(item) for item in recommended_assets[:3]]
     matched_generic_rules = [_compact_generic_rule_for_evidence(item) for item in generic_rules[:3]]
+    product_structured_facts = [
+        _compact_fact_for_evidence(item)
+        for item in facts
+        if _is_product_structured_fact(item)
+    ]
+    product_scoped_chunks = [
+        _compact_fact_for_evidence(item)
+        for item in facts
+        if _is_product_scoped_chunk(item)
+    ]
+    product_media_assets = [_compact_media_for_evidence(item) for item in media_assets[:12]]
     direct_facts = [
         item for item in facts
         if item.get("evidence_allowed_for_direct_answer") is not False
@@ -410,6 +453,12 @@ def _build_evidence_pack(
     missing_fields: list[str] = []
     if query_fact_type and not direct_facts and query_fact_type not in matched_fields:
         missing_fields.append(query_fact_type)
+    missing_required_evidence = _missing_required_evidence(
+        query_fact_type=query_fact_type,
+        direct_facts=direct_facts,
+        matched_fields=matched_fields,
+        recommended_assets=recommended_assets,
+    )
 
     if direct_facts:
         answerability = "direct_answer"
@@ -424,9 +473,31 @@ def _build_evidence_pack(
 
     return {
         "identity": identity,
+        "resolved_product_identity": _resolved_product_identity(identity, structured_profile),
+        "identity_confidence": _identity_confidence(identity, structured_profile),
+        "identity_sources": _identity_sources(state, identity),
         "retrieval_query": query or "",
         "query_fact_type": query_fact_type or "",
+        "requested_fact_type": query_fact_type or "",
         "answerability": answerability,
+        "product_structured_facts": product_structured_facts,
+        "product_media_assets": product_media_assets,
+        "product_scoped_chunks": product_scoped_chunks,
+        "generic_fallback_rules": matched_generic_rules,
+        "missing_required_evidence": missing_required_evidence,
+        "evidence_pack_trace": {
+            "product_identity_locked": bool(structured_profile),
+            "identity_sources": _identity_sources(state, identity),
+            "used_product_fields": matched_fields,
+            "structured_fact_count": len(product_structured_facts),
+            "media_asset_count": len(product_media_assets),
+            "recommended_media_count": len(matched_media),
+            "product_scoped_chunk_count": len(product_scoped_chunks),
+            "generic_rule_count": len(matched_generic_rules),
+            "generic_rules_role": "fallback_only",
+            "missing_required_evidence": missing_required_evidence,
+            "answerability": answerability,
+        },
         "matched_fields": matched_fields,
         "missing_fields": missing_fields,
         "matched_facts": matched_facts,
@@ -434,6 +505,135 @@ def _build_evidence_pack(
         "matched_generic_rules": matched_generic_rules,
         "source_priority": ["product_profile", "product_media", "product_knowledge", "faq", "generic_rules"],
     }
+
+
+def _resolved_product_identity(identity: dict[str, str], structured_profile: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "product_id": structured_profile.get("product_id"),
+        "i_id": structured_profile.get("i_id") or identity.get("i_id", ""),
+        "sku": identity.get("sku", ""),
+        "sku_family": identity.get("sku_family", ""),
+        "product_name": structured_profile.get("product_name") or identity.get("product_name", ""),
+    }
+
+
+def _identity_confidence(identity: dict[str, str], structured_profile: dict[str, Any]) -> float:
+    if not structured_profile:
+        return 0.0
+    if identity.get("sku") or identity.get("i_id"):
+        return 0.95
+    if identity.get("product_name"):
+        return 0.8
+    return 0.5
+
+
+def _identity_sources(state: dict[str, Any], identity: dict[str, str]) -> list[str]:
+    sources: list[str] = []
+    slots = state.get("slots") if isinstance(state.get("slots"), dict) else {}
+    ctx = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
+    real_identity = state.get("real_context_product_identity") or ctx.get("real_context_product_identity") or {}
+    order_identity = state.get("order_product_identity") if isinstance(state.get("order_product_identity"), dict) else {}
+    if identity.get("sku"):
+        if slots.get("sku_code"):
+            sources.append("slots.sku_code")
+        if ctx.get("sku_code"):
+            sources.append("copilot_context.sku_code")
+        if real_identity.get("sku_code"):
+            sources.append("real_context_product_identity.sku_code")
+        if order_identity.get("sku_id") or order_identity.get("internal_sku_code"):
+            sources.append("order_product_identity.sku")
+        if state.get("sku_code"):
+            sources.append("state.sku_code")
+    if identity.get("i_id"):
+        if order_identity.get("i_id") or order_identity.get("internal_product_code"):
+            sources.append("order_product_identity.item_id")
+        if ctx.get("i_id"):
+            sources.append("copilot_context.i_id")
+        if real_identity.get("i_id"):
+            sources.append("real_context_product_identity.i_id")
+        if state.get("i_id"):
+            sources.append("state.i_id")
+        if identity.get("sku_family"):
+            sources.append("sku_family")
+    if identity.get("product_name"):
+        if state.get("matched_product_name"):
+            sources.append("matched_product_name")
+        if ctx.get("product_name"):
+            sources.append("copilot_context.product_name")
+        if real_identity.get("display_product_name") or real_identity.get("product_title"):
+            sources.append("real_context_product_identity.product_title")
+        if state.get("product_candidates") or ctx.get("product_candidates") or real_identity.get("product_candidates"):
+            sources.append("product_candidates")
+    return list(dict.fromkeys(sources))
+
+
+def _is_product_structured_fact(item: dict[str, Any]) -> bool:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    return (
+        bool(metadata.get("structured_profile_fact"))
+        or item.get("source_table") == "kb_product"
+        or item.get("protocol_source_type") == "product_spec"
+    )
+
+
+def _is_product_media_fact(item: dict[str, Any]) -> bool:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    return (
+        item.get("source_table") == "kb_media_asset"
+        or item.get("protocol_source_type") == "media_asset"
+        or metadata.get("source_table") == "kb_media_asset"
+    )
+
+
+def _is_product_scoped_chunk(item: dict[str, Any]) -> bool:
+    if _is_product_structured_fact(item) or _is_product_media_fact(item):
+        return False
+    return bool(item.get("product_context_pack")) and item.get("source_type") != "generic_rules"
+
+
+def _missing_required_evidence(
+    *,
+    query_fact_type: str,
+    direct_facts: list[dict[str, Any]],
+    matched_fields: list[str],
+    recommended_assets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    missing: list[dict[str, Any]] = []
+    if query_fact_type and not direct_facts and query_fact_type not in matched_fields:
+        missing.append({"evidence_type": "product_fact", "fact_type": query_fact_type})
+    media_requirement = _required_media_type_for_fact(query_fact_type)
+    if media_requirement and not _has_sendable_media_type(recommended_assets, media_requirement):
+        missing.append({"evidence_type": "media_asset", "asset_type": media_requirement})
+    return missing
+
+
+def _required_media_type_for_fact(query_fact_type: str) -> str:
+    return {
+        "installation": "installation_video",
+        "dimensions": "size_chart",
+        "space_fit": "size_chart",
+        "accessories": "accessory_photo",
+    }.get(query_fact_type or "", "")
+
+
+def _normalized_media_type(asset_type: str) -> str:
+    return {
+        "install_video": "installation_video",
+        "install_image": "manual",
+        "pack_guide_image": "manual",
+        "size_image": "size_chart",
+        "accessory_image": "accessory_photo",
+        "sku_image": "product_photo",
+    }.get(asset_type or "", asset_type or "")
+
+
+def _has_sendable_media_type(assets: list[dict[str, Any]], required_type: str) -> bool:
+    for asset in assets or []:
+        if _normalized_media_type(str(asset.get("asset_type") or "")) != required_type:
+            continue
+        if asset.get("asset_url") and asset.get("auto_send_level", "auto") == "auto":
+            return True
+    return False
 
 
 def _matched_profile_fields(
@@ -470,10 +670,18 @@ def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
     text = _clean_qa_answer_text(str(item.get("chunk_text") or ""))
     alignment = item.get("semantic_alignment") if isinstance(item.get("semantic_alignment"), dict) else {}
     return {
+        "evidence_id": item.get("evidence_id") or item.get("chunk_id") or item.get("entry_id"),
         "entry_id": item.get("entry_id"),
         "chunk_id": item.get("chunk_id"),
         "title": item.get("title", ""),
         "source_type": item.get("source_type", ""),
+        "protocol_source_type": item.get("protocol_source_type", ""),
+        "source_table": item.get("source_table", ""),
+        "source_id": item.get("source_id", ""),
+        "verification_status": item.get("verification_status", ""),
+        "can_direct_answer": item.get("can_direct_answer", item.get("evidence_allowed_for_direct_answer") is not False),
+        "needs_human_review": bool(item.get("needs_human_review")),
+        "block_reasons": item.get("block_reasons", []),
         "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
         "score": item.get("rerank_score", item.get("score", 0)),
         "direct_answer_allowed": item.get("evidence_allowed_for_direct_answer") is not False,
@@ -502,13 +710,25 @@ def _clean_qa_answer_text(text: str) -> str:
 
 
 def _compact_media_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
+    asset_type = item.get("asset_type", "")
+    auto_send_level = item.get("auto_send_level", "auto")
+    asset_url = item.get("asset_url", "")
     return {
+        "evidence_id": f"kbmedia:{item.get('asset_id') or item.get('id')}",
         "asset_id": item.get("asset_id") or item.get("id"),
-        "asset_type": item.get("asset_type", ""),
+        "source_table": "kb_media_asset",
+        "verification_status": "verified",
+        "can_direct_answer": auto_send_level == "auto" and bool(asset_url),
+        "asset_type": asset_type,
+        "evidence_media_type": _normalized_media_type(str(asset_type or "")),
         "asset_title": item.get("asset_title", ""),
         "product_name": item.get("product_name", ""),
         "send_strategy": item.get("send_strategy", ""),
         "confidence": item.get("match_confidence", item.get("score", 0)),
+        "approved": True,
+        "usable": True,
+        "auto_send_level": auto_send_level,
+        "has_asset_url": bool(asset_url),
     }
 
 
@@ -540,7 +760,7 @@ def _find_kb_product(db, KBProduct, identity: dict[str, str]):
         if product:
             return product
 
-    products = db.query(KBProduct).filter(KBProduct.status == "published").all()
+    products = _candidate_kb_products(db, KBProduct, identity)
     for product in products:
         if any(_code_matches(code, product.i_id) for code in (sku, sku_family, i_id)):
             return product
@@ -552,6 +772,31 @@ def _find_kb_product(db, KBProduct, identity: dict[str, str]):
             if _text_matches(product_name, product.product_name):
                 return product
     return None
+
+
+def _candidate_kb_products(db, KBProduct, identity: dict[str, str]) -> list[Any]:
+    seen: set[Any] = set()
+    rows: list[Any] = []
+
+    def add(query) -> None:
+        for product in query.limit(30).all():
+            product_id = getattr(product, "id", None)
+            if product_id in seen:
+                continue
+            seen.add(product_id)
+            rows.append(product)
+
+    base = db.query(KBProduct).filter(KBProduct.status == "published")
+    for code in (identity.get("sku", ""), identity.get("sku_family", ""), identity.get("i_id", "")):
+        code = str(code or "").strip()
+        if not code:
+            continue
+        add(base.filter(KBProduct.i_id == code))
+        add(base.filter(KBProduct.sku_list_json.like(f"%{code}%")))
+    product_name = str(identity.get("product_name") or "").strip()
+    if product_name:
+        add(base.filter(KBProduct.product_name.like(f"%{product_name}%")))
+    return rows
 
 
 def _build_structured_profile(product) -> dict[str, Any]:
@@ -580,7 +825,7 @@ def _build_structured_profile(product) -> dict[str, Any]:
         "completeness_score": product.completeness_score,
         "missing_fields": product.get_missing_fields(),
     }
-    profile["answerable_fields"] = _answerable_fields(specs, logistics, warranty)
+    profile["answerable_fields"] = _answerable_fields(specs, logistics, warranty, sku_list)
     return profile
 
 
@@ -604,7 +849,12 @@ def _clean_sku_list(value: list[Any]) -> list[dict[str, Any]]:
             compact = {
                 str(k): v for k, v in item.items()
                 if v not in (None, "", [], {}, "-")
-                and str(k) in {"sku_code", "sku_id", "sku_name", "name", "color", "size", "price", "enabled", "properties"}
+                and str(k) in {
+                    "sku_code", "sku_id", "sku_name", "name", "color", "size", "spec",
+                    "enabled", "properties", "sku_variant_key", "gross_weight_kg",
+                    "gross_weight", "package_weight", "net_weight_kg", "carton_length_cm",
+                    "carton_width_cm", "carton_height_cm", "packaging", "barcode_69",
+                }
             }
             if compact:
                 cleaned.append(compact)
@@ -613,8 +863,19 @@ def _clean_sku_list(value: list[Any]) -> list[dict[str, Any]]:
     return cleaned
 
 
-def _answerable_fields(specs: dict[str, Any], logistics: dict[str, Any], warranty: dict[str, Any]) -> list[str]:
+def _answerable_fields(
+    specs: dict[str, Any],
+    logistics: dict[str, Any],
+    warranty: dict[str, Any],
+    sku_list: list[dict[str, Any]] | None = None,
+) -> list[str]:
     haystack = {str(k).lower(): v for k, v in {**specs, **logistics, **warranty}.items()}
+    for item in sku_list or []:
+        if not isinstance(item, dict):
+            continue
+        for key, value in item.items():
+            if value not in (None, "", [], {}, "-"):
+                haystack[f"sku_list.{key}".lower()] = value
     mapping = {
         "material": ("material", "材质", "材料", "用料"),
         "dimensions": ("size", "尺寸", "长宽高", "height", "width", "length"),
@@ -647,22 +908,18 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
     """
     if not profile:
         return []
-    specs = profile.get("specs") or {}
-    logistics = profile.get("logistics") or {}
-    warranty = profile.get("warranty") or {}
-    field_map = _profile_field_map(specs, logistics, warranty)
     requested = query_fact_type or _infer_profile_fact_type_from_query(query)
     if not requested:
         return []
-    if requested in {"pinch_safety", "certification_report", "safety_small_parts"}:
+    protocol_candidates = build_product_spec_evidence_candidates(
+        profile,
+        requested_fact_type=requested,
+    )
+    if not protocol_candidates:
         return []
 
-    fields = field_map.get(requested) or []
-    values = [(label, value) for label, value in fields if value not in (None, "", [], {}, "-")]
-    if not values:
-        return []
-
-    body = "\n".join(f"{label}: {value}" for label, value in values)
+    protocol = protocol_candidates[0]
+    body = str(protocol.get("customer_text") or protocol.get("value") or "").strip()
     title = f"{profile.get('product_name') or '当前商品'}商品资料"
     text_score = _text_overlap_score(query, title, body)
     return [{
@@ -670,7 +927,7 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
         "text_score": round(text_score, 4),
         "vector_score": 0.0,
         "scope_score": 1.0,
-        "source_confidence": 0.85,
+        "source_confidence": float(protocol.get("source_confidence") or 0.85),
         "rerank_score": round(18.0 + text_score, 4),
         "mismatch_reason": "",
         "chunk_id": f"kbproduct:{profile.get('product_id')}:{requested}",
@@ -684,7 +941,18 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
         "category_l3": requested,
         "fact_type": requested,
         "evidence_fact_type": requested,
-        "metadata": {"source": "kb_product.specs", "structured_profile_fact": True},
+        "metadata": {
+            "source": "kb_product.specs",
+            "structured_profile_fact": True,
+            "product_evidence_protocol": True,
+            "source_table": protocol.get("source_table", "kb_product"),
+            "source_id": protocol.get("source_id", ""),
+            "source_field_keys": protocol.get("source_field_keys", []),
+            "verification_status": protocol.get("verification_status", ""),
+            "can_direct_answer": bool(protocol.get("can_direct_answer")),
+            "needs_human_review": bool(protocol.get("needs_human_review")),
+            "block_reasons": protocol.get("block_reasons", []),
+        },
         "semantic_alignment": _direct_semantic_alignment(requested, requested),
         "entry_status": "published",
         "index_status": "ready",
@@ -694,6 +962,16 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
         "sku_scope": [item.get("sku_code") for item in profile.get("sku_list", []) if isinstance(item, dict) and item.get("sku_code")],
         "product_scope": [profile.get("i_id", ""), profile.get("product_name", "")],
         "product_context_pack": True,
+        "evidence_id": protocol.get("evidence_id", f"kbproduct:{profile.get('product_id')}:{requested}"),
+        "protocol_source_type": protocol.get("source_type", "product_spec"),
+        "source_table": protocol.get("source_table", "kb_product"),
+        "source_id": protocol.get("source_id", ""),
+        "requested_fact_type": protocol.get("requested_fact_type", requested),
+        "verification_status": protocol.get("verification_status", ""),
+        "can_direct_answer": bool(protocol.get("can_direct_answer")),
+        "needs_human_review": bool(protocol.get("needs_human_review")),
+        "block_reasons": protocol.get("block_reasons", []),
+        "customer_text": body,
         "evidence_allowed_for_direct_answer": True,
         "evidence_allowed_for_exact_answer": True,
     }]
@@ -794,40 +1072,6 @@ def _activity_query_requested(query: str, query_fact_type: str) -> bool:
         "\u4ef7\u4fdd",
         "\u4fdd\u4ef7",
     ))
-
-
-def _profile_field_map(
-    specs: dict[str, Any],
-    logistics: dict[str, Any],
-    warranty: dict[str, Any],
-) -> dict[str, list[tuple[str, Any]]]:
-    values = {**specs, **logistics, **warranty}
-
-    def pick(*keys: str) -> list[tuple[str, Any]]:
-        picked = []
-        for key, value in values.items():
-            key_text = str(key).lower()
-            if any(token.lower() in key_text or token in str(key) for token in keys):
-                picked.append((str(key), value))
-        return picked
-
-    return {
-        "material": pick("material", "材质", "材料", "用料"),
-        "dimensions": pick("size", "尺寸", "长宽高", "height", "width", "length", "规格"),
-        "space_fit": pick("size", "尺寸", "长宽高", "height", "width", "length", "规格"),
-        "placement_scene": pick("usage_scene", "scene", "room", "适用场景", "摆放", "卧室", "客厅", "书房", "厨房", "阳台"),
-        "load_capacity": pick("load_capacity", "承重", "载重"),
-        "gross_weight": pick("gross_weight", "gross_weight_kg", "package_weight", "product_weight", "weight", "毛重", "包装重量", "商品重量"),
-        "installation": pick("install_method", "installation", "安装", "组装", "打孔"),
-        "accessory_availability": pick("accessory_availability", "accessory_purchase", "accessory_sale", "spare_part_purchase", "配件售卖", "配件补购", "配件单卖"),
-        "detachable": pick("detachable", "可拆", "拆卸", "拆装"),
-        "odor": pick("odor", "odor_note", "气味", "味道", "异味", "散味"),
-        "cleaning_care": pick("cleaning", "清洗", "保养", "水洗"),
-        "age_range": pick("age_range", "适用年龄", "月龄", "年龄"),
-        "accessories": pick("accessories", "配件", "清单", "parts"),
-        "stock_shipping": pick("shipping", "发货", "物流", "库存"),
-        "aftersales_policy": pick("warranty", "质保", "售后"),
-    }
 
 
 def _infer_profile_fact_type_from_query(query: str) -> str:
@@ -1129,6 +1373,12 @@ def _media_facts_for_query(
         "evidence_fact_type": query_fact_type,
         "metadata": {
             "source": "kb_media_asset",
+            "product_evidence_protocol": True,
+            "source_table": "kb_media_asset",
+            "source_id": str(asset_id),
+            "verification_status": "verified",
+            "can_direct_answer": True,
+            "needs_human_review": False,
             "media_asset_id": asset_id,
             "asset_type": asset_type,
             "media_purpose": asset.get("media_purpose"),
@@ -1146,6 +1396,18 @@ def _media_facts_for_query(
         "sku_scope": [asset.get("sku_code", "")],
         "product_scope": [asset.get("i_id", ""), asset.get("product_name", "")],
         "product_context_pack": True,
+        "evidence_id": chunk_id,
+        "protocol_source_type": "media_asset",
+        "source_table": "kb_media_asset",
+        "source_id": str(asset_id),
+        "requested_fact_type": query_fact_type,
+        "verification_status": "verified",
+        "can_direct_answer": True,
+        "needs_human_review": False,
+        "media_asset_id": asset_id,
+        "media_url": asset.get("asset_url", ""),
+        "block_reasons": [],
+        "customer_text": body,
         "evidence_allowed_for_direct_answer": True,
         "evidence_allowed_for_exact_answer": True,
     }]
@@ -1256,6 +1518,60 @@ def _text_matches(target: str, candidate: str) -> bool:
     target = str(target or "").strip()
     candidate = str(candidate or "").strip()
     return bool(target and candidate and (target in candidate or candidate in target))
+
+
+def _identity_scope_terms(identity: dict[str, str], structured_profile: dict[str, Any] | None = None) -> list[str]:
+    structured_profile = structured_profile or {}
+    terms = [
+        identity.get("sku", ""),
+        identity.get("sku_family", ""),
+        identity.get("i_id", ""),
+        identity.get("product_name", ""),
+        structured_profile.get("i_id", ""),
+        structured_profile.get("product_name", ""),
+    ]
+    return list(dict.fromkeys(str(term or "").strip() for term in terms if str(term or "").strip()))
+
+
+def _knowledge_scope_filter(KnowledgeChunk, KnowledgeEntry, identity: dict[str, str], structured_profile: dict[str, Any]):
+    from sqlalchemy import or_
+
+    conditions = []
+    product_id = structured_profile.get("product_id")
+    if product_id:
+        conditions.append(KnowledgeEntry.product_id == str(product_id))
+    for term in _identity_scope_terms(identity, structured_profile):
+        like = f"%{term}%"
+        conditions.extend([
+            KnowledgeChunk.product_scope_json.like(like),
+            KnowledgeChunk.sku_scope_json.like(like),
+            KnowledgeEntry.product_scope_json.like(like),
+            KnowledgeEntry.sku_scope_json.like(like),
+            KnowledgeEntry.product_id.like(like),
+            KnowledgeEntry.sku_id.like(like),
+            KnowledgeEntry.title.like(like),
+        ])
+    if not conditions:
+        return None
+    return or_(*conditions)
+
+
+def _qa_scope_filter(KBQA, identity: dict[str, str], structured_profile: dict[str, Any]):
+    from sqlalchemy import or_
+
+    conditions = []
+    product_id = structured_profile.get("product_id")
+    if product_id:
+        conditions.append(KBQA.product_id == product_id)
+    for term in _identity_scope_terms(identity, structured_profile):
+        like = f"%{term}%"
+        conditions.extend([
+            KBQA.sku_codes_json.like(like),
+            KBQA.question.like(like),
+        ])
+    if not conditions:
+        return None
+    return or_(*conditions)
 
 
 def _scope_matches(

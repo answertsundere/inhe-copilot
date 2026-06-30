@@ -361,8 +361,67 @@ def test_product_context_pack_answers_gross_weight_from_product_card(product_con
     assert pack["facts"]
     assert pack["facts"][0]["fact_type"] == "gross_weight"
     assert "7.5kg" in pack["facts"][0]["chunk_text"]
+    assert "package_weight:" not in pack["facts"][0]["chunk_text"]
+    assert pack["facts"][0]["protocol_source_type"] == "product_spec"
+    assert pack["facts"][0]["source_table"] == "kb_product"
+    assert pack["facts"][0]["can_direct_answer"] is True
     assert pack["evidence_pack"]["answerability"] == "direct_answer"
     assert "gross_weight" in pack["evidence_pack"]["matched_fields"]
+    assert "load_capacity" not in pack["evidence_pack"]["matched_fields"]
+    matched = pack["evidence_pack"]["matched_facts"][0]
+    assert matched["evidence_id"].startswith("kbproduct:")
+    assert matched["source_table"] == "kb_product"
+    assert matched["protocol_source_type"] == "product_spec"
+    assert pack["product_first_evidence_pack"]["requested_fact_type"] == "gross_weight"
+    assert pack["product_first_evidence_pack"]["product_structured_facts"][0]["fact_type"] == "gross_weight"
+    assert pack["product_first_evidence_pack"]["missing_required_evidence"] == []
+
+
+def test_product_context_pack_answers_gross_weight_from_sku_variants(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_WEIGHT_SKU_001",
+            product_name="\u6d4b\u8bd5\u591a\u89c4\u683c\u7f6e\u7269\u67b6",
+            sku_list_json=json.dumps([
+                {
+                    "sku_code": "TEST_WEIGHT_SKU_001",
+                    "sku_variant_key": "TEST_WEIGHT_SKU_001|\u7ec4\u54081|\u767d\u8272",
+                    "spec": "\u7ec4\u54081",
+                    "color": "\u767d\u8272",
+                    "gross_weight_kg": "3.15",
+                },
+                {
+                    "sku_code": "TEST_WEIGHT_SKU_001",
+                    "sku_variant_key": "TEST_WEIGHT_SKU_001|\u7ec4\u54082|\u767d\u8272",
+                    "spec": "\u7ec4\u54082",
+                    "color": "\u767d\u8272",
+                    "gross_weight_kg": "4.2",
+                },
+            ], ensure_ascii=False),
+            specs_json=json.dumps({"load_capacity": "20kg"}, ensure_ascii=False),
+            logistics_json=json.dumps({}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_WEIGHT_SKU_001"}, "matched_product_name": "\u6d4b\u8bd5\u591a\u89c4\u683c\u7f6e\u7269\u67b6"},
+        query="\u6bdb\u91cd\u591a\u5c11",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="gross_weight",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "gross_weight"
+    assert "\u7ec4\u54081 \u767d\u8272\uff1a3.15kg" in pack["facts"][0]["chunk_text"]
+    assert "\u7ec4\u54082 \u767d\u8272\uff1a4.2kg" in pack["facts"][0]["chunk_text"]
     assert "load_capacity" not in pack["evidence_pack"]["matched_fields"]
 
 
@@ -397,9 +456,45 @@ def test_product_context_pack_answers_accessory_availability_from_product_card(p
     assert pack["facts"]
     assert pack["facts"][0]["fact_type"] == "accessory_availability"
     assert "\u8865\u8d2d" in pack["facts"][0]["chunk_text"]
+    assert pack["facts"][0]["source_table"] == "kb_product"
     assert pack["evidence_pack"]["answerability"] == "direct_answer"
     assert "accessory_availability" in pack["evidence_pack"]["matched_fields"]
     assert "installation" not in pack["evidence_pack"]["matched_fields"]
+
+
+def test_product_context_pack_does_not_answer_accessory_availability_from_parts_list(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_ACCESSORY_LIST_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_ACCESSORY_LIST_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({
+                "accessories": "\u87ba\u4e1d\u3001\u9632\u5012\u5668\u3001\u8d34\u7247",
+                "install_method": "\u5361\u6263\u5f0f\u7ec4\u88c5",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_ACCESSORY_LIST_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u914d\u4ef6\u80fd\u5355\u72ec\u4e70\u5417",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="accessory_availability",
+    )
+
+    assert pack["facts"] == []
+    assert pack["evidence_pack"]["answerability"] == "missing_product_fact"
+    assert pack["evidence_pack"]["missing_fields"] == ["accessory_availability"]
+    assert pack["product_first_evidence_pack"]["product_structured_facts"] == []
+    assert {"evidence_type": "product_fact", "fact_type": "accessory_availability"} in pack["product_first_evidence_pack"]["missing_required_evidence"]
 
 
 def test_product_context_pack_does_not_infer_pinch_safety_from_profile(product_context_db):
@@ -433,6 +528,69 @@ def test_product_context_pack_does_not_infer_pinch_safety_from_profile(product_c
     assert pack["facts"] == []
     assert pack["evidence_pack"]["answerability"] == "missing_product_fact"
     assert pack["evidence_pack"]["missing_fields"] == ["pinch_safety"]
+
+
+def test_product_context_pack_answers_material_from_product_card_without_raw_field_label(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_MATERIAL_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_MATERIAL_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"material": "\u51b7\u8f67\u94a2\u7ba1+PP"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_MATERIAL_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u8fd9\u4e2a\u6750\u8d28\u662f\u4ec0\u4e48",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="material",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "material"
+    assert "\u51b7\u8f67\u94a2\u7ba1+PP" in pack["facts"][0]["chunk_text"]
+    assert "material:" not in pack["facts"][0]["chunk_text"]
+    assert pack["facts"][0]["source_table"] == "kb_product"
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+
+
+def test_product_context_pack_does_not_use_material_as_certification_report(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_CERT_001",
+            product_name="\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+            sku_list_json=json.dumps([{"sku_code": "TEST_CERT_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"material": "PP/ABS"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_CERT_001B01S01"}, "matched_product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc"},
+        query="\u6709\u6ca1\u6709\u68c0\u6d4b\u62a5\u544a",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="certification_report",
+    )
+
+    assert pack["facts"] == []
+    assert pack["evidence_pack"]["answerability"] == "missing_product_fact"
+    assert pack["evidence_pack"]["missing_fields"] == ["certification_report"]
 
 
 def test_product_context_pack_returns_ranked_media_assets(product_context_db):
@@ -496,6 +654,8 @@ def test_product_context_pack_returns_ranked_media_assets(product_context_db):
     assert pack["recommended_assets"][0]["asset_type"] == "install_video"
     assert pack["stats"]["recommended_media_count"] == 1
     assert pack["evidence_pack"]["matched_media"][0]["asset_type"] == "install_video"
+    assert pack["product_first_evidence_pack"]["product_media_assets"][0]["evidence_media_type"] == "installation_video"
+    assert pack["product_first_evidence_pack"]["product_media_assets"][0]["can_direct_answer"] is True
 
 
 def test_product_context_pack_answers_detachable_from_product_card(product_context_db):
@@ -593,7 +753,7 @@ def test_product_context_pack_answers_odor_from_product_card(product_context_db)
 
     assert pack["facts"]
     assert pack["facts"][0]["fact_type"] == "odor"
-    assert "odor_note" in pack["facts"][0]["chunk_text"]
+    assert "odor_note" not in pack["facts"][0]["chunk_text"]
     assert "\u901a\u98ce" in pack["facts"][0]["chunk_text"]
     assert pack["evidence_pack"]["answerability"] == "direct_answer"
     assert pack["evidence_pack"]["matched_facts"][0]["fact_type"] == "odor"
@@ -775,6 +935,8 @@ def test_rag_retrieve_merges_product_context_pack_when_primary_retriever_is_empt
     assert result["retrieved_chunks"]
     assert result["retrieved_chunks"][0]["product_context_pack"] is True
     assert result["product_context_pack_stats"]["returned_count"] == 1
+    assert result["product_first_evidence_pack"]["requested_fact_type"] == "installation"
+    assert result["trace_steps"][-1]["product_first_evidence_pack"]["product_scoped_chunks"]
 
 
 def test_product_context_pack_does_not_recommend_wrong_variant_media(product_context_db):
@@ -917,3 +1079,114 @@ def test_product_context_pack_placement_scene_drops_material_evidence(product_co
     assert {item["fact_type"] for item in pack["facts"]} == {"placement_scene"}
     assert "bedroom" in pack["facts"][0]["chunk_text"]
     assert pack["evidence_pack"]["matched_facts"][0]["semantic_alignment"]["alignment"] == "primary_match"
+
+
+def test_product_first_pack_does_not_promise_install_video_when_no_approved_media(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="TEST_NO_VIDEO_001",
+            product_name="Test no video product",
+            sku_list_json=json.dumps([{"sku_code": "TEST_NO_VIDEO_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "TEST_NO_VIDEO_001B01S01"}, "matched_product_name": "Test no video product"},
+        query="installation video please",
+        allowed_source_types=["installation_guide", "faq"],
+        query_fact_type="installation",
+    )
+
+    product_first = pack["product_first_evidence_pack"]
+    assert pack["recommended_assets"] == []
+    assert product_first["matched_media"] == []
+    assert {"evidence_type": "media_asset", "asset_type": "installation_video"} in product_first["missing_required_evidence"]
+
+
+def test_product_first_pack_keeps_generic_rules_as_fallback_when_structured_fact_exists(product_context_db):
+    from app.models.kb_tables import KBGenericServiceRule, KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="TEST_GENERIC_BOUNDARY_001",
+            product_name="Test generic boundary product",
+            sku_list_json=json.dumps([{"sku_code": "TEST_GENERIC_BOUNDARY_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"material": "steel and PP"}, ensure_ascii=False),
+            status="published",
+        ))
+        rule = KBGenericServiceRule(
+            rule_key="test_material_generic_boundary",
+            title="Generic material boundary",
+            intent="product_question",
+            fact_type="material",
+            scenario="material",
+            content="Generic material wording only.",
+            reply_template="Generic material wording only.",
+            status="active",
+            auto_reply_allowed=True,
+            source_confidence=0.75,
+        )
+        rule.set_query_keywords(["material"])
+        db.add(rule)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "intent": "product_question",
+            "slots": {"sku_code": "TEST_GENERIC_BOUNDARY_001B01S01"},
+            "matched_product_name": "Test generic boundary product",
+        },
+        query="what material is it",
+        allowed_source_types=["faq"],
+        query_fact_type="material",
+    )
+
+    product_first = pack["product_first_evidence_pack"]
+    assert pack["facts"]
+    assert pack["facts"][0]["source_table"] == "kb_product"
+    assert product_first["answerability"] == "direct_answer"
+    assert product_first["product_structured_facts"][0]["fact_type"] == "material"
+    assert product_first["generic_fallback_rules"]
+    assert product_first["evidence_pack_trace"]["generic_rules_role"] == "fallback_only"
+
+
+def test_product_first_pack_requires_clear_identity_before_using_similar_product_facts(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="TEST_SIMILAR_001",
+            product_name="Similar product with facts",
+            sku_list_json=json.dumps([{"sku_code": "TEST_SIMILAR_001B01S01"}], ensure_ascii=False),
+            specs_json=json.dumps({"material": "steel"}, ensure_ascii=False),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {},
+        query="what material is this",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="material",
+    )
+
+    assert pack["facts"] == []
+    assert pack["product_first_evidence_pack"]["answerability"] == "no_product_identity"
+    assert pack["product_first_evidence_pack"]["product_structured_facts"] == []

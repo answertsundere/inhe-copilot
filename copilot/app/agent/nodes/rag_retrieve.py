@@ -268,6 +268,7 @@ def rag_retrieve(state: dict) -> dict:
         "query_fact_type": query_fact_type,
         "product_context_pack_stats": product_context_pack.get("stats", {}),
         "product_card_evidence": product_context_pack.get("evidence_pack", {}),
+        "product_first_evidence_pack": product_context_pack.get("product_first_evidence_pack") or product_context_pack.get("evidence_pack", {}),
         "summary": f"RAG检索: {len(results)}条结果, mode={retrieval_mode}, allowed={allowed_source_types}, intent={search_intent}",
     }
 
@@ -276,6 +277,7 @@ def rag_retrieve(state: dict) -> dict:
         "product_context_pack": product_context_pack,
         "product_context_pack_stats": product_context_pack.get("stats", {}),
         "product_card_evidence_pack": product_context_pack.get("evidence_pack", {}),
+        "product_first_evidence_pack": product_context_pack.get("product_first_evidence_pack") or product_context_pack.get("evidence_pack", {}),
         "current_query": msg,
         "retrieval_query": locals().get("search_query", msg),
         "rag_search_query": locals().get("search_query", msg),
