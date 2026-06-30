@@ -124,6 +124,107 @@ def test_final_response_orchestrator_syncs_text_reply_block(monkeypatch):
     assert result["reply_blocks"][1]["type"] == "image"
 
 
+def test_final_response_orchestrator_rejects_repolish_that_drops_short_display_name(monkeypatch):
+    display_name = "儿童书架收纳柜家用多层置物架"
+    original = f"亲，关于《{display_name}》：这款尺寸图可以参考下面图片。"
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_polish(response, *, customer_message="", copilot_context=None):
+        response["suggested_reply"] = original
+        response["display_product_name"] = display_name
+        response["customer_reply_polish"] = {"checked": True, "applied": True, "mode": "fake"}
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", fake_polish)
+    monkeypatch.setattr(orchestrator, "_polish_text", lambda text: text.replace(display_name, "书架"))
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": original,
+            "display_product_name": display_name,
+        },
+        customer_message="这个尺寸多大？",
+    )
+
+    assert result["suggested_reply"] == original
+    assert result["evidence_debug"]["customer_reply_repolish_rejected"]["reason"] == "display_product_name_dropped"
+
+
+def test_final_response_orchestrator_marks_auto_send_ready_for_matching_media_block(monkeypatch):
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "apply_no_evidence_reply_policy", lambda response, copilot_context=None: response)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: response)
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "请参考下面的尺寸图。",
+            "recommended_assets": [{
+                "asset_type": "sku_image",
+                "asset_url": "https://example.com/size.png?signature=secret",
+                "auto_send_level": "auto",
+            }],
+            "reply_blocks": [
+                {"type": "text", "content": "old"},
+                {"type": "image", "url": "https://example.com/size.png", "send_mode": "auto_when_platform_connected"},
+            ],
+            "reply_delivery": {"mode": "blocks", "auto_send_ready": False, "reason": "not_synced"},
+        },
+        customer_message="有尺寸图吗？",
+    )
+
+    assert result["can_send"] is True
+    assert result["reply_delivery"]["auto_send_ready"] is True
+
+
+def test_final_response_orchestrator_does_not_auto_send_media_without_url_or_auto_level(monkeypatch):
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "apply_no_evidence_reply_policy", lambda response, copilot_context=None: response)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: response)
+
+    missing_url = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "请参考下面的尺寸图。",
+            "recommended_assets": [{"asset_type": "sku_image", "auto_send_level": "auto"}],
+            "reply_blocks": [{"type": "text", "content": "old"}, {"type": "image", "send_mode": "auto_when_platform_connected"}],
+            "reply_delivery": {"mode": "blocks", "auto_send_ready": True},
+        },
+        customer_message="有尺寸图吗？",
+    )
+    review_asset = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "请参考下面的尺寸图。",
+            "recommended_assets": [{
+                "asset_type": "sku_image",
+                "asset_url": "https://example.com/size.png",
+                "auto_send_level": "review",
+            }],
+            "reply_blocks": [
+                {"type": "text", "content": "old"},
+                {"type": "image", "url": "https://example.com/size.png", "send_mode": "auto_when_platform_connected"},
+            ],
+            "reply_delivery": {"mode": "blocks", "auto_send_ready": True},
+        },
+        customer_message="有尺寸图吗？",
+    )
+
+    assert missing_url["can_send"] is True
+    assert missing_url["reply_delivery"]["auto_send_ready"] is False
+    assert review_asset["can_send"] is True
+    assert review_asset["reply_delivery"]["auto_send_ready"] is False
+
+
 def test_final_response_orchestrator_reapplies_no_evidence_policy_after_polish(monkeypatch):
     def fake_audit(response, *, customer_message, copilot_context=None):
         response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}

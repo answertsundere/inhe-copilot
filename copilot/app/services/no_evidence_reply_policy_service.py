@@ -301,6 +301,15 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
         }
 
     if fact_type == "space_fit":
+        if has_sendable_media_asset:
+            return {
+                "reply": "亲，这款的尺寸/实物图我一起发您参考。您可以先对照图片里的尺寸标注，再结合家里预留位置的宽度、进深和高度判断；如果您把预留尺寸发我，我也可以继续帮您一起看。",
+                "requires_human_review": False,
+                "needs_followup": False,
+                "reply_strategy": "send_supported_space_fit_asset",
+                "reason": "sendable_media_asset_available",
+                "forbidden_claims": [],
+            }
         if has_product_context:
             return {
                 "reply": "亲，我已经看到当前商品信息了，但能不能放得下还需要对照这款尺寸和您家预留位置的宽度、进深、高度。我先帮您核对，避免不同款式尺寸说混；您也可以把预留位置尺寸发我，我一起帮您判断。",

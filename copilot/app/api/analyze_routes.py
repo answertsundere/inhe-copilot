@@ -207,6 +207,9 @@ def api_analyze():
         copilot_context = copilot_context or {}
         if product_name:
             copilot_context.setdefault("product_name", product_name)
+            # Preserve the explicitly supplied product name from the current turn
+            # so downstream polish can prefer it over historical context.
+            copilot_context.setdefault("explicit_product_name", product_name)
             if _looks_like_customer_product_title(product_name):
                 copilot_context.setdefault("display_product_name", product_name)
                 copilot_context.setdefault("platform_product_title", product_name)

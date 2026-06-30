@@ -108,7 +108,14 @@ def orchestrate_final_response(
     # The LLM polish may reintroduce deterministic blocked phrases or handoff
     # wording that the first polish removed. Run the deterministic polish again
     # before the final redline checks.
-    response["suggested_reply"] = _polish_text(str(response.get("suggested_reply") or ""))
+    before_repolish = str(response.get("suggested_reply") or "")
+    repolished = _polish_text(before_repolish)
+    response["suggested_reply"] = repolished
+    if not _preserves_customer_product_name(before_repolish, repolished, response):
+        response["suggested_reply"] = before_repolish
+        response.setdefault("evidence_debug", {})["customer_reply_repolish_rejected"] = {
+            "reason": "display_product_name_dropped",
+        }
     response = apply_no_evidence_reply_policy(response, copilot_context)
 
     pipeline.append({
@@ -217,15 +224,50 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
     response["block_reasons"] = block_reasons
     delivery = response.get("reply_delivery")
     if isinstance(delivery, dict):
-        delivery["auto_send_ready"] = bool(delivery.get("auto_send_ready")) and can_send
+        delivery["auto_send_ready"] = _media_delivery_ready(response) and can_send
         if not can_send:
             delivery["reason"] = "final_sendable_contract_blocked"
+        elif delivery["auto_send_ready"]:
+            delivery["reason"] = ""
         response["reply_delivery"] = delivery
     response.setdefault("evidence_debug", {})["sendable_reply_contract"] = {
         "can_send": can_send,
         "reply_status": response["reply_status"],
         "block_reasons": block_reasons,
     }
+
+
+def _media_delivery_ready(response: dict[str, Any]) -> bool:
+    media_block_urls: set[str] = set()
+    for block in response.get("reply_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") not in {"image", "video"}:
+            continue
+        url = str(block.get("url") or "").strip()
+        if not url:
+            continue
+        if block.get("send_mode") not in ("", None, "auto_when_platform_connected"):
+            continue
+        media_block_urls.add(_canonical_media_url(url))
+    if not media_block_urls:
+        return False
+
+    auto_asset_urls: set[str] = set()
+    for asset in response.get("recommended_assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        url = str(asset.get("asset_url") or asset.get("url") or "").strip()
+        if not url:
+            continue
+        if str(asset.get("auto_send_level") or "auto").lower() != "auto":
+            continue
+        auto_asset_urls.add(_canonical_media_url(url))
+    return bool(media_block_urls & auto_asset_urls)
+
+
+def _canonical_media_url(url: str) -> str:
+    return str(url or "").split("?", 1)[0].strip().lower()
 
 
 def ensure_sendable_reply_contract(response: dict[str, Any]) -> dict[str, Any]:
@@ -365,7 +407,7 @@ def _preserves_customer_product_name(
     response: dict[str, Any],
 ) -> bool:
     display_name = str(response.get("display_product_name") or "").strip()
-    if not display_name or len(display_name) < 16:
+    if not display_name or len(display_name) < 4:
         return True
     if display_name not in original_reply:
         return True

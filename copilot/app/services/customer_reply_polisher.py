@@ -37,14 +37,17 @@ def polish_customer_reply(
     if not original.strip():
         return response
 
-    polished = _polish_text(original)
     display_name = _display_product_name(response, copilot_context or {})
+    protected_original, display_name_token = _protect_display_product_name(original, display_name)
+    polished = _polish_text(protected_original)
+    polished = _restore_display_product_name(polished, display_name, display_name_token)
     internal_names = _internal_product_names(response)
     if display_name:
         polished = _replace_internal_product_names(polished, display_name, internal_names)
         response["display_product_name"] = display_name
     polished = _rewrite_complaint_service_reply(polished, response, customer_message)
     polished = _rewrite_media_workflow_reply(polished, response, customer_message, display_name)
+    polished = _ensure_display_product_name_preserved(original, polished, display_name)
     complaint_contract_passed = _is_customer_safe_complaint_reply(polished, response, customer_message)
     if complaint_contract_passed:
         debug = response.setdefault("evidence_debug", {})
@@ -73,6 +76,42 @@ def polish_customer_reply(
     response["customer_reply_polish"] = info
     response.setdefault("evidence_debug", {})["customer_reply_polish"] = info
     return response
+
+
+def _protect_display_product_name(text: str, display_name: str) -> tuple[str, str]:
+    if not display_name or display_name not in text:
+        return text, ""
+    token = "__DISPLAY_PRODUCT_NAME__"
+    while token in text:
+        token += "_"
+    return text.replace(display_name, token), token
+
+
+def _restore_display_product_name(text: str, display_name: str, token: str) -> str:
+    if not display_name or not token:
+        return text
+    return text.replace(token, display_name)
+
+
+def _ensure_display_product_name_preserved(original: str, polished: str, display_name: str) -> str:
+    if not display_name or display_name in polished:
+        return polished
+    if not _original_mentions_display_name(original, display_name):
+        return polished
+    text = polished.strip()
+    if not text:
+        return display_name
+    return f"关于《{display_name}》：{text}"
+
+
+def _original_mentions_display_name(original: str, display_name: str) -> bool:
+    if display_name in original:
+        return True
+    chars = [char for char in display_name if not char.isspace()]
+    if len(chars) < 4:
+        return False
+    hits = sum(1 for char in chars if char in original)
+    return hits / len(chars) >= 0.6
 
 
 def _polish_text(text: str) -> str:
@@ -440,6 +479,12 @@ def _has_deliverable_media(response: dict[str, Any]) -> bool:
 
 
 def _display_product_name(response: dict[str, Any], copilot_context: dict[str, Any]) -> str:
+    # Explicit product name from the current API request takes precedence over
+    # historical context or auto-resolved names.
+    explicit = str(copilot_context.get("explicit_product_name") or response.get("explicit_product_name") or "").strip()
+    if explicit:
+        return explicit
+
     candidates: list[Any] = []
     candidates.extend([
         response.get("display_product_name"),
@@ -447,6 +492,7 @@ def _display_product_name(response: dict[str, Any], copilot_context: dict[str, A
         response.get("front_product_title"),
         response.get("product_title"),
         response.get("item_title"),
+        response.get("product_name"),
     ])
     candidates.extend([
         copilot_context.get("display_product_name"),
@@ -454,6 +500,7 @@ def _display_product_name(response: dict[str, Any], copilot_context: dict[str, A
         copilot_context.get("front_product_title"),
         copilot_context.get("product_title"),
         copilot_context.get("item_title"),
+        copilot_context.get("product_name"),
     ])
 
     context_used = response.get("context_used") or {}

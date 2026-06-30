@@ -169,6 +169,14 @@ def test_space_fit_with_known_product_context_mentions_reserved_space():
     assert "商品链接" not in result["reply"]
 
 
+def test_space_fit_with_sendable_media_asset_can_reference_delivery():
+    result = _policy(query_fact_type="space_fit", has_product_context=True, has_sendable_media_asset=True)
+
+    assert result["requires_human_review"] is False
+    assert result["reply_strategy"] == "send_supported_space_fit_asset"
+    assert result["reason"] == "sendable_media_asset_available"
+
+
 def test_structure_function_with_known_product_context_safe_handoff():
     result = _policy(query_fact_type="structure_function", has_product_context=True)
 
