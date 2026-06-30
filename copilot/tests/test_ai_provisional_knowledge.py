@@ -97,6 +97,7 @@ def test_generate_ai_prefill_draft_never_writes_verified(provisional_db):
 
     db = provisional_db()
     try:
+        _add_product(db)
         _add_gap_task(db)
     finally:
         db.close()
@@ -125,6 +126,7 @@ def test_high_risk_ai_prefill_is_low_confidence_pending_review(provisional_db):
 
     db = provisional_db()
     try:
+        _add_product(db)
         _add_gap_task(db, fact_type="certification_report", reference_reply="Please check the report with support.")
     finally:
         db.close()
@@ -249,6 +251,42 @@ def test_eval_mode_uses_ai_prefill_but_not_auto_send(provisional_db, monkeypatch
     assert provisional["provisional_draft_uid"] == "aipk_eval_on"
     assert provisional["usable_for_eval"] is True
     assert provisional["usable_for_auto_send"] is False
+
+
+def test_eval_mode_matches_promotion_fact_type_alias(provisional_db, monkeypatch):
+    from app.models.eval_tables import AIProvisionalKnowledge
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = provisional_db()
+    try:
+        _add_product(db)
+        db.add(AIProvisionalKnowledge(
+            draft_uid="aipk_eval_promotion_alias",
+            i_id="YH77K01",
+            sku_code="YH77K01B01S01",
+            query_fact_type="promotion",
+            field_name="promotion",
+            provisional_answer="Please confirm the current promotion with support.",
+            confidence="medium",
+            verification_status="pending_review",
+            usable_for_eval=True,
+            usable_for_auto_send=False,
+        ))
+        db.commit()
+    finally:
+        db.close()
+    monkeypatch.setenv("COPILOT_EVAL_KNOWLEDGE_MODE", "verified_plus_ai_prefill")
+
+    pack = build_product_context_pack(
+        {"slots": {"sku_code": "YH77K01B01S01"}},
+        query="Any discount?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="promotion_policy",
+    )
+
+    evidence_pack = pack["product_first_evidence_pack"]
+    assert evidence_pack["provisional_knowledge_used"] is True
+    assert evidence_pack["ai_provisional_knowledge"][0]["provisional_draft_uid"] == "aipk_eval_promotion_alias"
 
 
 def test_generate_reply_requires_review_when_using_ai_prefill():

@@ -15,6 +15,14 @@ EVAL_MODE_VERIFIED_ONLY = "verified_only"
 EVAL_MODE_WITH_PREFILL = "verified_plus_ai_prefill"
 ALLOWED_EVAL_MODES = {EVAL_MODE_VERIFIED_ONLY, EVAL_MODE_WITH_PREFILL}
 PROVISIONAL_USABLE_STATUSES = {"ai_prefill", "pending_review", "approved"}
+PROVISIONAL_FACT_TYPE_ALIASES = {
+    "promotion": {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"},
+    "promotion_policy": {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"},
+    "price_negotiation": {"promotion", "promotion_policy", "price_negotiation"},
+    "stock_shipping": {"stock_shipping", "shipping", "delivery"},
+    "shipping": {"stock_shipping", "shipping", "delivery"},
+    "delivery": {"stock_shipping", "shipping", "delivery"},
+}
 HIGH_RISK_FACT_TYPES = {
     "dimensions",
     "gross_weight",
@@ -60,6 +68,13 @@ def _confidence_for_fact_type(fact_type: str, has_reference: bool) -> str:
     if sanitize_text(fact_type) in HIGH_RISK_FACT_TYPES:
         return "low"
     return "medium" if has_reference else "low"
+
+
+def _fact_type_aliases(fact_type: str) -> set[str]:
+    clean = sanitize_text(fact_type)
+    if not clean:
+        return set()
+    return set(PROVISIONAL_FACT_TYPE_ALIASES.get(clean, {clean}))
 
 
 def _provisional_answer(*, question: str, reference_reply: str, fact_type: str, product_title: str) -> tuple[str, str]:
@@ -167,10 +182,13 @@ class AIProvisionalKnowledgeService:
                     tasks = filter_tasks_by_run(db, tasks, target_run_uid)
                 except Exception:
                     tasks = [task for task in tasks if target_run_uid in (task.metadata_json or "")]
+            from app.services.ai_provisional_identity_binding_service import AIProvisionalIdentityBindingService
+            identity_binder = AIProvisionalIdentityBindingService()
             for task in tasks[:max(1, min(int(limit or 100), 500))]:
                 sample = _sample_for_task(db, task)
                 fact_type = sanitize_text(task.query_fact_type or task.missing_evidence_type or task.gap_type)
                 field_name = sanitize_text(task.missing_evidence_type or fact_type)
+                identity_binding = identity_binder.bind_for_task(db, task)
                 value, answer = _provisional_answer(
                     question=sample.get("buyer_message", ""),
                     reference_reply=sample.get("reference_human_reply", ""),
@@ -178,7 +196,10 @@ class AIProvisionalKnowledgeService:
                     product_title=task.product_title,
                 )
                 has_basis = bool(value or answer)
-                draft_uid = _draft_uid(task.task_uid, fact_type, task.item_id, task.sku_code, value, answer)
+                bound_i_id = identity_binding.i_id if identity_binding.identity_status == "resolved" else ""
+                bound_sku_code = identity_binding.sku_code if identity_binding.identity_status == "resolved" else ""
+                usable_for_eval = bool(has_basis and identity_binding.identity_status == "resolved")
+                draft_uid = _draft_uid(task.task_uid, fact_type, bound_i_id, bound_sku_code, value, answer)
                 existing = db.query(AIProvisionalKnowledge).filter(AIProvisionalKnowledge.draft_uid == draft_uid).one_or_none()
                 if existing:
                     skipped.append({"task_uid": task.task_uid, "reason": "existing_draft", "draft_uid": draft_uid})
@@ -190,9 +211,9 @@ class AIProvisionalKnowledgeService:
                     case_uid=sample.get("case_uid", ""),
                     turn_uid=sample.get("turn_uid", ""),
                     task_uid=task.task_uid,
-                    kb_product_id=_product_id_for_i_id(db, task.item_id),
-                    i_id=task.item_id,
-                    sku_code=task.sku_code,
+                    kb_product_id=identity_binding.kb_product_id,
+                    i_id=bound_i_id,
+                    sku_code=bound_sku_code,
                     query_fact_type=fact_type,
                     field_name=field_name,
                     provisional_value=value,
@@ -200,11 +221,16 @@ class AIProvisionalKnowledgeService:
                     confidence=_confidence_for_fact_type(fact_type, has_basis),
                     source="ai_prefill",
                     verification_status="pending_review" if has_basis else "ai_prefill",
-                    usable_for_eval=bool(has_basis),
+                    usable_for_eval=usable_for_eval,
                     usable_for_auto_send=False,
                     created_by="ai_prefill_service",
                 )
-                draft.set_metadata(_metadata_from_task(task, sample, source="generate_for_run"))
+                metadata = _metadata_from_task(task, sample, source="generate_for_run")
+                metadata["identity_binding_trace"] = identity_binding.to_dict()
+                metadata["identity_status"] = identity_binding.identity_status
+                if has_basis and identity_binding.identity_status != "resolved":
+                    metadata["usable_for_eval_blocked_reason"] = identity_binding.skipped_reason or identity_binding.identity_status
+                draft.set_metadata(metadata)
                 drafts.append(draft.to_dict())
                 generated += 1
                 if apply:
@@ -261,6 +287,22 @@ class AIProvisionalKnowledgeService:
                 draft_uid = sanitize_text(row.get("draft_uid")) or _draft_uid(
                     row.get("source_run_uid"), row.get("case_uid"), row.get("turn_uid"), i_id, sku_code, fact_type, value, answer
                 )
+                identity_binding = None
+                if i_id or sku_code:
+                    from app.services.ai_provisional_identity_binding_service import AIProvisionalIdentityBindingService
+                    identity_binding = AIProvisionalIdentityBindingService()._merge_candidates([
+                        item for item in [
+                            AIProvisionalIdentityBindingService()._resolve_from_iid_or_sku(
+                                db,
+                                i_id=i_id,
+                                sku_code=sku_code,
+                                source="manual_ai_provisional_import",
+                            )
+                        ] if item
+                    ], [])
+                    if identity_binding.identity_status != "resolved":
+                        skipped.append({"row": index, "reason": "identity_not_resolved"})
+                        continue
                 existing = db.query(AIProvisionalKnowledge).filter(AIProvisionalKnowledge.draft_uid == draft_uid).one_or_none()
                 draft = existing or AIProvisionalKnowledge(draft_uid=draft_uid)
                 draft.source_run_uid = sanitize_text(row.get("source_run_uid"))
@@ -269,6 +311,7 @@ class AIProvisionalKnowledgeService:
                 draft.task_uid = sanitize_text(row.get("task_uid"))
                 draft.i_id = i_id
                 draft.sku_code = sku_code
+                draft.kb_product_id = identity_binding.kb_product_id if identity_binding else _product_id_for_i_id(db, i_id)
                 draft.query_fact_type = fact_type
                 draft.field_name = sanitize_text(row.get("field_name") or fact_type)
                 draft.provisional_value = value
@@ -276,16 +319,21 @@ class AIProvisionalKnowledgeService:
                 draft.confidence = sanitize_text(row.get("confidence") or _confidence_for_fact_type(fact_type, True))
                 draft.source = "ai_prefill"
                 draft.verification_status = status if status in PROVISIONAL_USABLE_STATUSES else "pending_review"
-                draft.usable_for_eval = str(row.get("usable_for_eval", "true")).strip().lower() not in {"false", "0", "no"}
+                requested_eval = str(row.get("usable_for_eval", "true")).strip().lower() not in {"false", "0", "no"}
+                draft.usable_for_eval = bool(requested_eval and (draft.i_id or draft.sku_code))
                 draft.usable_for_auto_send = False
                 draft.created_by = sanitize_text(operator or row.get("created_by"))
-                draft.set_metadata(sanitize_obj({
+                metadata = {
                     "source": "manual_ai_provisional_import",
                     "operator": operator,
                     "imported_at": _now_iso(),
                     "formal_verified": False,
                     "note": row.get("note", ""),
-                }))
+                }
+                if identity_binding:
+                    metadata["identity_binding_trace"] = identity_binding.to_dict()
+                    metadata["identity_status"] = identity_binding.identity_status
+                draft.set_metadata(sanitize_obj(metadata))
                 matched += 1
                 updated.append(draft_uid)
                 if apply:
@@ -302,6 +350,73 @@ class AIProvisionalKnowledgeService:
                 "skipped_reasons": skipped,
                 "updated_draft_uids": updated,
                 "writes_verified_knowledge": False,
+            })
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def backfill_identity(
+        self,
+        *,
+        run_uid: str = "",
+        apply: bool = False,
+        limit: int = 500,
+        db_factory=None,
+    ) -> dict[str, Any]:
+        from app.models.eval_tables import AIProvisionalKnowledge
+        from app.services.ai_provisional_identity_binding_service import AIProvisionalIdentityBindingService
+
+        db_factory = db_factory or SessionLocal
+        db = db_factory()
+        matched = 0
+        skipped: list[dict[str, Any]] = []
+        updated: list[str] = []
+        try:
+            query = db.query(AIProvisionalKnowledge).order_by(AIProvisionalKnowledge.updated_at.desc(), AIProvisionalKnowledge.id.desc())
+            if sanitize_text(run_uid):
+                query = query.filter(AIProvisionalKnowledge.source_run_uid == sanitize_text(run_uid))
+            rows = query.limit(max(1, min(int(limit or 500), 2000))).all()
+            binder = AIProvisionalIdentityBindingService()
+            for row in rows:
+                binding = binder.bind_for_draft(db, row)
+                metadata = row.get_metadata()
+                metadata["identity_binding_trace"] = binding.to_dict()
+                metadata["identity_status"] = binding.identity_status
+                if binding.identity_status != "resolved":
+                    metadata["usable_for_eval_blocked_reason"] = binding.skipped_reason or binding.identity_status
+                    skipped.append({
+                        "draft_uid": row.draft_uid,
+                        "reason": binding.skipped_reason or binding.identity_status,
+                    })
+                    if apply:
+                        row.usable_for_eval = False
+                        row.set_metadata(metadata)
+                    continue
+                matched += 1
+                updated.append(row.draft_uid)
+                if apply:
+                    row.i_id = binding.i_id
+                    row.sku_code = binding.sku_code
+                    row.kb_product_id = binding.kb_product_id
+                    row.usable_for_eval = bool(row.provisional_value or row.provisional_answer)
+                    row.usable_for_auto_send = False
+                    row.set_metadata(metadata)
+            if apply:
+                db.commit()
+            else:
+                db.rollback()
+            return sanitize_obj({
+                "ok": True,
+                "dry_run": not apply,
+                "run_uid": sanitize_text(run_uid),
+                "matched_count": matched,
+                "skipped_count": len(skipped),
+                "skipped_reasons": skipped,
+                "updated_draft_uids": updated,
+                "writes_verified_knowledge": False,
+                "auto_send_enabled": False,
             })
         except Exception:
             db.rollback()
@@ -342,8 +457,9 @@ class AIProvisionalKnowledgeService:
                 query = query.filter(or_(*identifiers))
             else:
                 return []
-            if sanitize_text(query_fact_type):
-                query = query.filter(AIProvisionalKnowledge.query_fact_type == sanitize_text(query_fact_type))
+            aliases = _fact_type_aliases(query_fact_type)
+            if aliases:
+                query = query.filter(AIProvisionalKnowledge.query_fact_type.in_(list(aliases)))
             rows = query.order_by(AIProvisionalKnowledge.updated_at.desc(), AIProvisionalKnowledge.id.desc()).limit(limit).all()
             return [self.to_evidence(row) for row in rows]
         finally:
@@ -353,6 +469,13 @@ class AIProvisionalKnowledgeService:
     @staticmethod
     def to_evidence(row) -> dict[str, Any]:
         text = sanitize_text(row.provisional_answer or row.provisional_value)
+        metadata = row.get_metadata()
+        identity_trace = metadata.get("identity_binding_trace") if isinstance(metadata, dict) else {}
+        identity_sources = []
+        identity_status = ""
+        if isinstance(identity_trace, dict):
+            identity_sources = identity_trace.get("identity_sources") or []
+            identity_status = identity_trace.get("identity_status") or ""
         return sanitize_obj({
             "evidence_id": row.draft_uid,
             "entry_id": row.draft_uid,
@@ -365,6 +488,11 @@ class AIProvisionalKnowledgeService:
             "source_table": "ai_provisional_knowledge",
             "source_id": row.draft_uid,
             "verification_status": row.verification_status,
+            "identity_status": identity_status or ("resolved" if row.i_id or row.sku_code or row.kb_product_id else "unresolved"),
+            "identity_sources": identity_sources,
+            "i_id": row.i_id,
+            "sku_code": row.sku_code,
+            "kb_product_id": row.kb_product_id,
             "fact_type": row.query_fact_type,
             "evidence_fact_type": row.query_fact_type,
             "score": 6.0 if row.confidence == "medium" else 4.0,
@@ -383,6 +511,11 @@ class AIProvisionalKnowledgeService:
                 "usable_for_eval": bool(row.usable_for_eval),
                 "usable_for_auto_send": False,
                 "verification_status": row.verification_status,
+                "identity_status": identity_status or ("resolved" if row.i_id or row.sku_code or row.kb_product_id else "unresolved"),
+                "identity_sources": identity_sources,
+                "i_id": row.i_id,
+                "sku_code": row.sku_code,
+                "kb_product_id": row.kb_product_id,
                 "confidence": row.confidence,
             },
         })
