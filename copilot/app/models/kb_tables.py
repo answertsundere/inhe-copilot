@@ -121,6 +121,60 @@ class KBProduct(Base):
         return d
 
 
+class ProductIdentityMapping(Base):
+    __tablename__ = "product_identity_mappings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    mapping_uid = Column(String(64), nullable=False, unique=True, index=True)
+    platform = Column(String(32), nullable=False, default="", index=True)
+    platform_item_id = Column(String(64), nullable=False, default="", index=True)
+    platform_item_id_hash = Column(String(64), nullable=False, default="", index=True)
+    product_url_host = Column(String(128), nullable=False, default="", index=True)
+    platform_product_title = Column(String(255), nullable=False, default="")
+    kb_product_id = Column(Integer, ForeignKey("kb_product.id"), nullable=False, index=True)
+    i_id = Column(String(64), nullable=False, default="", index=True)
+    sku_code = Column(String(64), nullable=False, default="", index=True)
+    confidence = Column(Float, nullable=False, default=1.0)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    source = Column(String(64), nullable=False, default="")
+    created_by = Column(String(64), nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    metadata_json = Column(Text, nullable=False, default="{}")
+
+    __table_args__ = (
+        Index("idx_product_identity_mapping_hash_status", "platform_item_id_hash", "status"),
+        Index("idx_product_identity_mapping_item_status", "platform_item_id", "status"),
+        Index("idx_product_identity_mapping_iid_status", "i_id", "status"),
+    )
+
+    def get_metadata(self):
+        return _json_get(self.metadata_json, {})
+
+    def set_metadata(self, value):
+        self.metadata_json = _json_set(value, False)
+
+    def to_dict(self):
+        return {
+            "mapping_uid": self.mapping_uid,
+            "platform": self.platform,
+            "platform_item_id": self.platform_item_id,
+            "platform_item_id_hash": self.platform_item_id_hash,
+            "product_url_host": self.product_url_host,
+            "platform_product_title": self.platform_product_title,
+            "kb_product_id": self.kb_product_id,
+            "i_id": self.i_id,
+            "sku_code": self.sku_code,
+            "confidence": self.confidence,
+            "status": self.status,
+            "source": self.source,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "metadata": self.get_metadata(),
+        }
+
+
 class KBProductActivityRule(Base):
     __tablename__ = "kb_product_activity_rule"
 

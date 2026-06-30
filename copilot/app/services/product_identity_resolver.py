@@ -277,7 +277,7 @@ class ProductIdentityResolver:
     ) -> dict:
         try:
             from app.db import SessionLocal
-            from app.models.kb_tables import KBProduct
+            from app.models.kb_tables import KBProduct, ProductIdentityMapping
             from sqlalchemy import or_
         except Exception as exc:
             return _unresolved("resolver_import_failed", error=type(exc).__name__)
@@ -313,6 +313,18 @@ class ProductIdentityResolver:
                         platform_product_id=platform_id,
                         match_reason="exact_i_id_match",
                     )
+
+            mapping_match = _resolve_from_identity_mapping(
+                db,
+                KBProduct,
+                ProductIdentityMapping,
+                platform_item_id=platform_id,
+                platform_item_id_hash=platform_hash,
+                product_url=product_url,
+                sku_code=sku,
+            )
+            if mapping_match.get("status") in {"resolved", "ambiguous"}:
+                return mapping_match
 
             if platform_id:
                 like = f"%{platform_id}%"
@@ -555,6 +567,62 @@ def _first_text(*values: Any) -> str:
         if text:
             return text
     return ""
+
+
+def _resolve_from_identity_mapping(
+    db,
+    KBProduct,
+    ProductIdentityMapping,
+    *,
+    platform_item_id: str = "",
+    platform_item_id_hash: str = "",
+    product_url: str = "",
+    sku_code: str = "",
+) -> dict:
+    filters = []
+    if platform_item_id:
+        filters.append(ProductIdentityMapping.platform_item_id == platform_item_id)
+    if platform_item_id_hash:
+        filters.append(ProductIdentityMapping.platform_item_id_hash == platform_item_id_hash)
+    host = _url_host(product_url)
+    if host and (platform_item_id or platform_item_id_hash):
+        filters.append(ProductIdentityMapping.product_url_host == host)
+    if not filters:
+        return _unresolved("no_mapping_identity_signal")
+    from sqlalchemy import or_
+
+    rows = (
+        db.query(ProductIdentityMapping)
+        .filter(ProductIdentityMapping.status.in_(["active", "verified", "confirmed"]))
+        .filter(or_(*filters))
+        .limit(20)
+        .all()
+    )
+    if not rows:
+        return _unresolved("no_product_identity_mapping_found")
+    product_ids = {row.kb_product_id for row in rows if row.kb_product_id}
+    if len(product_ids) > 1:
+        products = db.query(KBProduct).filter(KBProduct.id.in_(list(product_ids))).all()
+        return _ambiguous("multiple_active_product_identity_mappings", products, confidence=0.8)
+    row = rows[0]
+    product = db.query(KBProduct).filter(KBProduct.id == row.kb_product_id).first()
+    if not product:
+        return _unresolved("mapped_kb_product_missing", i_id=row.i_id, sku_code=row.sku_code or sku_code)
+    return _resolved_from_product(
+        product,
+        source="product_identity_mapping",
+        confidence=float(row.confidence or 0.96),
+        sku_code=row.sku_code or sku_code,
+        platform_product_id=platform_item_id,
+        match_reason="product_identity_mapping_match",
+    )
+
+
+def _url_host(value: str) -> str:
+    try:
+        return urlsplit(str(value or "")).netloc.lower()
+    except Exception:
+        return ""
 
 
 def _find_product_by_sku(db, KBProduct, sku: str):
