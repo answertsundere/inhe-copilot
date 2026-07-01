@@ -899,3 +899,79 @@ class AIProvisionalKnowledge(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class AgentBenchmarkScenario(Base):
+    __tablename__ = "agent_benchmark_scenarios"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scenario_uid = Column(String(64), nullable=False, unique=True, index=True)
+    source_type = Column(String(32), nullable=False, default="manual", index=True)
+    source_uid = Column(String(128), nullable=False, default="", index=True)
+    status = Column(String(32), nullable=False, default="candidate", index=True)
+    title = Column(String(255), nullable=False, default="")
+    scenario_type = Column(String(32), nullable=False, default="mixed", index=True)
+    sidecar_context_json = Column(Text, nullable=False, default="{}")
+    conversation_turns_json = Column(Text, nullable=False, default="[]")
+    expected_reply_json = Column(Text, nullable=False, default="{}")
+    rubric_json = Column(Text, nullable=False, default="{}")
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_by = Column(String(64), nullable=False, default="")
+    updated_by = Column(String(64), nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_agent_benchmark_source", "source_type", "source_uid"),
+        Index("idx_agent_benchmark_status_type", "status", "scenario_type"),
+    )
+
+    def get_sidecar_context(self):
+        return _json_load(self.sidecar_context_json, {})
+
+    def set_sidecar_context(self, value):
+        self.sidecar_context_json = _json_dump(value, {})
+
+    def get_conversation_turns(self):
+        return _json_load(self.conversation_turns_json, [])
+
+    def set_conversation_turns(self, value):
+        self.conversation_turns_json = _json_dump(value, [])
+
+    def get_expected_reply(self):
+        return _json_load(self.expected_reply_json, {})
+
+    def set_expected_reply(self, value):
+        self.expected_reply_json = _json_dump(value, {})
+
+    def get_rubric(self):
+        return _json_load(self.rubric_json, {})
+
+    def set_rubric(self, value):
+        self.rubric_json = _json_dump(value, {})
+
+    def get_metadata(self):
+        return _json_load(self.metadata_json, {})
+
+    def set_metadata(self, value):
+        self.metadata_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "scenario_uid": self.scenario_uid,
+            "source_type": self.source_type,
+            "source_uid": self.source_uid,
+            "status": self.status,
+            "title": self.title,
+            "scenario_type": self.scenario_type,
+            "sidecar_context": self.get_sidecar_context(),
+            "conversation_turns": self.get_conversation_turns(),
+            "expected_reply": self.get_expected_reply(),
+            "rubric": self.get_rubric(),
+            "metadata": self.get_metadata(),
+            "created_by": self.created_by,
+            "updated_by": self.updated_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
