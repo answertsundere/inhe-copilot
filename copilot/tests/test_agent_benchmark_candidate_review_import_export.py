@@ -40,8 +40,16 @@ def _add_scenario(
             scenario_type="presales",
             created_by="test",
         )
-        row.set_sidecar_context({"product_title": "儿童收纳柜", "sku_code": "SKU-1"} if with_sidecar else {})
-        row.set_conversation_turns(turns if turns is not None else [{"speaker": "buyer", "text": "材质安全吗"}])
+        row.set_sidecar_context({"product_title": "Kids storage cabinet", "sku_code": "SKU-1"} if with_sidecar else {})
+        row.set_conversation_turns(
+            turns
+            if turns is not None
+            else [
+                {"speaker": "buyer", "text": "Is the material safe?"},
+                {"speaker": "csr", "text": "Please wait."},
+                {"speaker": "buyer", "text": "Will it get damp?"},
+            ]
+        )
         row.set_expected_reply({
             "expected_reply": expected_reply,
             "key_points": [],
@@ -54,6 +62,8 @@ def _add_scenario(
             "expected_reply_quality": expected_quality,
             "expected_reply_block_reason": "welcome_reference_reply" if expected_quality == "low_quality" else "",
             "needs_expected_reply_review": needs_review,
+            "original_cs_reply": "Welcome to our shop.",
+            "query_fact_type": "material",
         })
         db.add(row)
         db.commit()
@@ -61,13 +71,13 @@ def _add_scenario(
         db.close()
 
 
-def _write_review_sheet(path, rows):
+def _write_review_sheet(path, rows, headers=None):
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Agent强度测试候选"
-    sheet.append([
+    sheet.title = "Agent benchmark review"
+    sheet.append(headers or [
         "scenario_uid",
-        "当前expected_reply",
+        "当前标准答案",
         "关键点",
         "禁止话术",
         "必须转人工",
@@ -92,8 +102,11 @@ def test_export_keeps_low_quality_candidate_blocked(tmp_path, monkeypatch):
     sheet = workbook.active
     headers = [cell.value for cell in sheet[1]]
     row = {headers[idx]: sheet[2][idx].value for idx in range(len(headers))}
-    assert row["expected_reply质量"] == "low_quality"
+    assert "建议标准答案草稿" in headers
+    assert row["质量状态"] == "low_quality"
     assert row["阻断原因"] == "welcome_reference_reply"
+    assert "Will it get damp?" in row["客户完整对话"]
+    assert row["当前标准答案"] is None
 
 
 def test_import_dry_run_does_not_write_review(tmp_path, monkeypatch):
@@ -102,11 +115,11 @@ def test_import_dry_run_does_not_write_review(tmp_path, monkeypatch):
     review_file = tmp_path / "review.xlsx"
     _write_review_sheet(review_file, [[
         "bench_review_1",
-        "这款材质需要按商品资料核对，不能承诺绝对安全。",
-        "商品资料核对",
-        "绝对安全",
-        "是",
-        "否",
+        "This material should be checked against the product record before replying.",
+        "product record",
+        "absolutely safe",
+        "true",
+        "false",
         "lead",
         "reviewed",
     ]])
@@ -129,11 +142,11 @@ def test_import_apply_writes_reviewed_expected_reply(tmp_path, monkeypatch):
     review_file = tmp_path / "review.xlsx"
     _write_review_sheet(review_file, [[
         "bench_review_1",
-        "这款材质需要按商品资料核对，不能承诺绝对安全。",
-        "商品资料核对",
-        "绝对安全",
-        "是",
-        "否",
+        "This material should be checked against the product record before replying.",
+        "product record",
+        "absolutely safe",
+        "true",
+        "false",
         "lead",
         "reviewed",
     ]])
@@ -146,9 +159,51 @@ def test_import_apply_writes_reviewed_expected_reply(tmp_path, monkeypatch):
         row = db.query(AgentBenchmarkScenario).filter_by(scenario_uid="bench_review_1").one()
         expected = row.get_expected_reply()
         assert expected["needs_review"] is False
-        assert expected["key_points"] == ["商品资料核对"]
-        assert expected["forbidden_claims"] == ["绝对安全"]
+        assert expected["key_points"] == ["product record"]
+        assert expected["forbidden_claims"] == ["absolutely safe"]
         assert row.get_metadata()["expected_reply_quality"] == "valid"
+    finally:
+        db.close()
+
+
+def test_import_uses_suggested_draft_when_current_expected_reply_is_empty(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(session_factory)
+    review_file = tmp_path / "review.xlsx"
+    _write_review_sheet(
+        review_file,
+        [[
+            "bench_review_1",
+            "",
+            "Use product record",
+            "do not promise exact safety",
+            "true",
+            "false",
+            "lead",
+            "",
+            "Please check the current product record before replying to the customer.",
+        ]],
+        headers=[
+            "scenario_uid",
+            "当前标准答案",
+            "关键点",
+            "禁止话术",
+            "必须转人工",
+            "允许自动发送",
+            "审核人",
+            "审核备注",
+            "建议标准答案草稿",
+        ],
+    )
+
+    result = import_reviewed_candidates(str(review_file), apply=True, db_factory=session_factory)
+
+    assert result["updated_count"] == 1
+    db = session_factory()
+    try:
+        row = db.query(AgentBenchmarkScenario).filter_by(scenario_uid="bench_review_1").one()
+        assert row.get_expected_reply()["expected_reply"] == "Please check the current product record before replying to the customer."
+        assert row.get_expected_reply()["needs_review"] is False
     finally:
         db.close()
 
@@ -157,8 +212,8 @@ def test_import_skips_missing_or_unknown_scenario_uid(tmp_path, monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     review_file = tmp_path / "review.xlsx"
     _write_review_sheet(review_file, [
-        ["", "有效回复", "", "", "否", "否", "lead", ""],
-        ["unknown_uid", "有效回复", "", "", "否", "否", "lead", ""],
+        ["", "Valid reviewed reply", "", "", "false", "false", "lead", ""],
+        ["unknown_uid", "Valid reviewed reply", "", "", "false", "false", "lead", ""],
     ])
 
     result = import_reviewed_candidates(str(review_file), apply=True, db_factory=session_factory)
@@ -171,7 +226,7 @@ def test_reviewer_required_for_import(tmp_path, monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(session_factory)
     review_file = tmp_path / "review.xlsx"
-    _write_review_sheet(review_file, [["bench_review_1", "这款材质按商品资料核对。", "", "", "否", "否", "", ""]])
+    _write_review_sheet(review_file, [["bench_review_1", "Check the product record before replying.", "", "", "false", "false", "", ""]])
 
     result = import_reviewed_candidates(str(review_file), apply=True, db_factory=session_factory)
 
@@ -267,8 +322,8 @@ def test_promote_active_only_for_eligible_reviewed_scenario(tmp_path, monkeypatc
     _add_scenario(session_factory, scenario_uid="bench_no_sidecar", with_sidecar=False)
     review_file = tmp_path / "review.xlsx"
     _write_review_sheet(review_file, [
-        ["bench_review_1", "这款材质按商品资料核对。", "", "", "否", "否", "lead", ""],
-        ["bench_no_sidecar", "这款材质按商品资料核对。", "", "", "否", "否", "lead", ""],
+        ["bench_review_1", "Check this material against the product record before replying.", "", "", "false", "false", "lead", ""],
+        ["bench_no_sidecar", "Check this material against the product record before replying.", "", "", "false", "false", "lead", ""],
     ])
 
     result = import_reviewed_candidates(str(review_file), apply=True, promote_active=True, db_factory=session_factory)
@@ -284,11 +339,11 @@ def test_imported_key_points_and_forbidden_claims_are_used_by_runner(tmp_path, m
     review_file = tmp_path / "review.xlsx"
     _write_review_sheet(review_file, [[
         "bench_review_1",
-        "这款材质需要按商品资料核对，不能承诺绝对安全。",
-        "商品资料核对",
-        "绝对安全",
-        "否",
-        "是",
+        "This material should be checked against the product record before replying.",
+        "product record",
+        "absolutely safe",
+        "false",
+        "true",
         "lead",
         "",
     ]])
@@ -297,7 +352,7 @@ def test_imported_key_points_and_forbidden_claims_are_used_by_runner(tmp_path, m
     missing_key_point = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
         "can_send": True,
         "requires_human_review": False,
-        "sendable_reply": "这款可以咨询客服。",
+        "sendable_reply": "Please ask support.",
         "answer_trace": {"query_fact_type": "material"},
     }).run_scenarios(db_factory=session_factory)
     assert "missing_key_point" in missing_key_point["per_scenario_result"][0]["failure_reasons"]
@@ -305,7 +360,7 @@ def test_imported_key_points_and_forbidden_claims_are_used_by_runner(tmp_path, m
     forbidden = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
         "can_send": True,
         "requires_human_review": False,
-        "sendable_reply": "这款需要按商品资料核对，绝对安全。",
+        "sendable_reply": "This material should be checked against the product record and is absolutely safe.",
         "answer_trace": {"query_fact_type": "material"},
     }).run_scenarios(db_factory=session_factory)
     assert "forbidden_claim_present" in forbidden["per_scenario_result"][0]["failure_reasons"]

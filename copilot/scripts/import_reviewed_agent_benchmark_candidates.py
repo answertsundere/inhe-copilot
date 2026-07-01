@@ -22,8 +22,10 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 HEADER_ALIASES = {
     "scenario_uid": "scenario_uid",
-    "当前expected_reply": "expected_reply",
     "expected_reply": "expected_reply",
+    "当前标准答案": "expected_reply",
+    "当前expected_reply": "expected_reply",
+    "建议标准答案草稿": "suggested_expected_reply",
     "关键点": "key_points",
     "禁止话术": "forbidden_claims",
     "必须转人工": "must_handoff",
@@ -32,10 +34,35 @@ HEADER_ALIASES = {
     "审核备注": "review_note",
 }
 
+POSITIONAL_HEADERS = {
+    0: "scenario_uid",
+    1: "expected_reply",
+    2: "key_points",
+    3: "forbidden_claims",
+    4: "must_handoff",
+    5: "auto_send_allowed",
+    6: "reviewer",
+    7: "review_note",
+}
+
+
+def _header_name(cell: Any, idx: int) -> str:
+    text = sanitize_text(cell)
+    if text in HEADER_ALIASES:
+        return HEADER_ALIASES[text]
+    lowered = text.lower()
+    if "scenario_uid" in lowered:
+        return "scenario_uid"
+    if "expected_reply" in lowered:
+        return "expected_reply"
+    return POSITIONAL_HEADERS.get(idx, text)
+
 
 def _as_bool(value: Any) -> bool | None:
     if value is None or value == "":
         return None
+    if isinstance(value, bool):
+        return value
     text = sanitize_text(value).lower()
     if text in {"1", "true", "yes", "y", "是", "对", "需要", "允许"}:
         return True
@@ -57,7 +84,7 @@ def _read_rows(path: str) -> list[dict[str, Any]]:
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
         return []
-    headers = [HEADER_ALIASES.get(sanitize_text(cell), sanitize_text(cell)) for cell in rows[0]]
+    headers = [_header_name(cell, idx) for idx, cell in enumerate(rows[0])]
     parsed = []
     for row in rows[1:]:
         item = {}
@@ -95,7 +122,7 @@ def import_reviewed_candidates(
         if not reviewer:
             skipped.append({"scenario_uid": scenario_uid, "reason": "reviewer_required"})
             continue
-        expected_reply = sanitize_text(row.get("expected_reply"))
+        expected_reply = sanitize_text(row.get("expected_reply")) or sanitize_text(row.get("suggested_expected_reply"))
         quality = expected_reply_quality(expected_reply)
         if quality["quality"] != "valid":
             skipped.append({

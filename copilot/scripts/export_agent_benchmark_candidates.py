@@ -25,14 +25,17 @@ HEADERS = [
     "状态",
     "标题",
     "场景类型",
-    "客户完整对话",
-    "千牛侧栏商品",
-    "千牛侧栏SKU",
-    "千牛侧栏i_id",
-    "千牛侧栏订单",
-    "当前expected_reply",
-    "expected_reply质量",
+    "问题类型",
+    "质量状态",
     "阻断原因",
+    "千牛侧栏商品",
+    "千牛侧栏 SKU",
+    "千牛侧栏 i_id",
+    "千牛侧栏订单",
+    "客户完整对话",
+    "客服原始回复参考",
+    "当前标准答案",
+    "建议标准答案草稿",
     "关键点",
     "禁止话术",
     "必须转人工",
@@ -47,9 +50,9 @@ def _join_turns(turns: list[dict[str, Any]]) -> str:
     lines = []
     for turn in turns or []:
         speaker = sanitize_text(turn.get("speaker"))
-        text = sanitize_text(turn.get("text"))
+        text = sanitize_text(turn.get("text") or turn.get("message"))
         if text:
-            lines.append(f"{speaker or 'unknown'}：{text}")
+            lines.append(f"{speaker or 'unknown'}: {text}")
     return "\n".join(lines)
 
 
@@ -91,14 +94,17 @@ def export_candidates(
             item.get("status", ""),
             item.get("title", ""),
             item.get("scenario_type", ""),
-            _join_turns(item.get("conversation_turns") or []),
+            metadata.get("query_fact_type") or "",
+            quality,
+            block_reason,
             sidecar.get("product_title") or sidecar.get("product_name") or "",
             sidecar.get("sku_code") or "",
             sidecar.get("i_id") or "",
             sidecar.get("order_id") or sidecar.get("platform_order_id") or "",
+            _join_turns(item.get("conversation_turns") or []),
+            metadata.get("original_cs_reply") or "",
             expected.get("expected_reply") or "",
-            quality,
-            block_reason,
+            "",
             _join_list(expected.get("key_points") or []),
             _join_list(expected.get("forbidden_claims") or []),
             bool(expected.get("must_handoff")),

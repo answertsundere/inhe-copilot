@@ -551,6 +551,64 @@ class AgentBenchmarkDatasetService:
         finally:
             db.close()
 
+    def update_expected_reply_draft(
+        self,
+        scenario_uid: str,
+        expected_reply: str,
+        key_points: list[str] | None = None,
+        forbidden_claims: list[str] | None = None,
+        auto_send_allowed: bool | None = None,
+        must_handoff: bool | None = None,
+        draft_reason: str = "",
+        updated_by: str = "benchmark_suggestion",
+        db_factory=None,
+    ) -> dict[str, Any]:
+        from app.db import SessionLocal
+        from app.models.eval_tables import AgentBenchmarkScenario
+
+        db_factory = db_factory or SessionLocal
+        db = db_factory()
+        try:
+            row = (
+                db.query(AgentBenchmarkScenario)
+                .filter(AgentBenchmarkScenario.scenario_uid == sanitize_text(scenario_uid))
+                .one_or_none()
+            )
+            if row is None:
+                raise ValueError("scenario_not_found")
+            expected = row.get_expected_reply()
+            expected["expected_reply"] = sanitize_text(expected_reply)
+            if key_points is not None:
+                expected["key_points"] = sanitize_obj(key_points)
+            if forbidden_claims is not None:
+                expected["forbidden_claims"] = sanitize_obj(forbidden_claims)
+            if auto_send_allowed is not None:
+                expected["auto_send_allowed"] = bool(auto_send_allowed)
+            if must_handoff is not None:
+                expected["must_handoff"] = bool(must_handoff)
+            expected["needs_review"] = True
+            expected["draft_source"] = "suggested_expected_reply"
+            quality = expected_reply_quality(expected.get("expected_reply"))
+            expected["quality"] = quality["quality"]
+            expected["block_reason"] = quality["block_reason"]
+
+            metadata = row.get_metadata()
+            metadata["expected_reply_quality"] = quality["quality"]
+            metadata["expected_reply_block_reason"] = quality["block_reason"]
+            metadata["needs_expected_reply_review"] = True
+            metadata["suggested_expected_reply_draft_reason"] = sanitize_text(draft_reason)
+            metadata["suggested_expected_reply_updated_at"] = _utc_now()
+            row.updated_by = sanitize_text(updated_by)
+            row.set_expected_reply(expected)
+            row.set_metadata(metadata)
+            db.commit()
+            return row.to_dict()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
     def list_scenarios(self, filters: dict[str, Any] | None = None, db_factory=None) -> dict[str, Any]:
         from app.db import SessionLocal
         from app.models.eval_tables import AgentBenchmarkScenario
