@@ -1638,10 +1638,10 @@ onMounted(loadRuns)
               v-model="selectedKnowledgeGap.summary"
               type="textarea"
               :rows="2"
-              placeholder="浠诲姟鎽樿锛屼笉浼氳嚜鍔ㄥ啓鍏ユ寮忕煡璇嗗簱"
+              placeholder="任务摘要，不会自动写入正式知识库"
             />
             <div class="gap-actions">
-              <el-button size="small" type="primary" @click="saveKnowledgeGapTask">淇濆瓨</el-button>
+              <el-button size="small" type="primary" @click="saveKnowledgeGapTask">保存</el-button>
               <el-button size="small" @click="generateDraftForKnowledgeGap">生成待审草稿</el-button>
               <el-button size="small" @click="regenerateDraftForKnowledgeGap">重新生成草稿</el-button>
               <el-button
@@ -1652,7 +1652,7 @@ onMounted(loadRuns)
               >
                 标记待审核
               </el-button>
-              <el-button size="small" type="success" @click="approveKnowledgeGap">瀹℃牳閫氳繃</el-button>
+              <el-button size="small" type="success" @click="approveKnowledgeGap">审核通过</el-button>
               <el-button size="small" type="warning" @click="verifyKnowledgeGap">人工确认已验证</el-button>
             </div>
             <div v-if="latestKnowledgeGapDraft" class="gap-review-box">
