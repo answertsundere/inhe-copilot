@@ -1505,7 +1505,7 @@ onMounted(loadRuns)
             </el-select>
           </div>
 
-          <el-empty v-if="!knowledgeGapTasks.length" description="鏆傛棤鐭ヨ瘑缂哄彛浠诲姟" />
+          <el-empty v-if="!knowledgeGapTasks.length" description="暂无知识缺口任务" />
           <div v-else class="gap-list">
             <button
               v-for="task in knowledgeGapTasks"
@@ -1529,7 +1529,7 @@ onMounted(loadRuns)
           </div>
 
           <section v-if="selectedKnowledgeGap" class="gap-detail">
-            <div class="sub-title">缂哄彛璇︽儏</div>
+            <div class="sub-title">缺口详情</div>
             <p>{{ selectedKnowledgeGap.summary }}</p>
             <div class="gap-meta">
               <span>缺口类型：{{ selectedKnowledgeGap.gap_category || selectedKnowledgeGap.gap_type }}</span>
