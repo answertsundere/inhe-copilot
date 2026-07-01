@@ -101,6 +101,14 @@ def is_low_quality_reference_reply(text: str) -> bool:
     return False
 
 
+def expected_reply_quality(text: str) -> dict[str, str]:
+    text = sanitize_text(text)
+    block_reason = _expected_reply_block_reason(text)
+    if block_reason or is_low_quality_reference_reply(text):
+        return {"quality": "missing" if not text else "low_quality", "block_reason": block_reason}
+    return {"quality": "valid", "block_reason": ""}
+
+
 def _expected_reply_block_reason(text: str) -> str:
     value = sanitize_text(text)
     compact = re.sub(r"\s+", "", value)
@@ -193,8 +201,8 @@ def _turns_for_case(db, case_uid: str) -> list[dict[str, Any]]:
 
 def build_expected_reply_candidate(trace, conversation_turns: list[dict[str, Any]], sidecar_context: dict[str, Any]) -> dict[str, Any]:
     reference = sanitize_text(trace.reference_human_reply)
-    block_reason = _expected_reply_block_reason(reference)
-    is_low_quality = bool(block_reason) or is_low_quality_reference_reply(reference)
+    quality = expected_reply_quality(reference)
+    is_low_quality = quality["quality"] != "valid"
     return sanitize_obj({
         "expected_reply": "" if is_low_quality else reference,
         "key_points": [],
@@ -203,8 +211,8 @@ def build_expected_reply_candidate(trace, conversation_turns: list[dict[str, Any
         "auto_send_allowed": bool(trace.passed and not trace.requires_human_review),
         "needs_review": True,
         "draft_source": "low_quality_reference_reply" if is_low_quality else "reference_human_reply",
-        "quality": "low_quality" if is_low_quality else "valid",
-        "block_reason": block_reason,
+        "quality": quality["quality"],
+        "block_reason": quality["block_reason"],
     })
 
 
@@ -422,6 +430,7 @@ class AgentBenchmarkDatasetService:
         forbidden_claims: list[str] | None = None,
         auto_send_allowed: bool | None = None,
         must_handoff: bool | None = None,
+        review_note: str | None = None,
         db_factory=None,
     ) -> dict[str, Any]:
         from app.db import SessionLocal
@@ -451,8 +460,12 @@ class AgentBenchmarkDatasetService:
                 expected["auto_send_allowed"] = bool(auto_send_allowed)
             if must_handoff is not None:
                 expected["must_handoff"] = bool(must_handoff)
-            if not sanitize_text(expected.get("expected_reply")):
+            reply_text = sanitize_text(expected.get("expected_reply"))
+            if not reply_text:
                 raise ValueError("expected_reply_required")
+            quality = expected_reply_quality(reply_text)
+            if quality["quality"] != "valid":
+                raise ValueError(quality["block_reason"] or "expected_reply_low_quality")
             expected["needs_review"] = False
             expected["quality"] = "valid"
             expected["block_reason"] = ""
@@ -463,6 +476,8 @@ class AgentBenchmarkDatasetService:
             metadata["needs_expected_reply_review"] = False
             metadata["expected_reply_reviewed_by"] = reviewer
             metadata["expected_reply_reviewed_at"] = _utc_now()
+            if review_note is not None:
+                metadata["expected_reply_review_note"] = sanitize_text(review_note)
             row.updated_by = reviewer
             row.set_expected_reply(expected)
             row.set_metadata(metadata)
