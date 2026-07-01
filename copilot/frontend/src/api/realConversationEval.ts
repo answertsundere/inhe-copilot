@@ -91,6 +91,7 @@ export interface RealConversationReview {
 
 export interface RealConversationRunSummary {
   failure_counts_by_type: Record<string, number>
+  failure_type_counts?: Record<string, number>
   review_counts_by_decision: Record<string, number>
   avg_latency_ms: number
   requires_review_count: number
@@ -106,9 +107,16 @@ export interface RealConversationRunSummary {
   context_gap_rate?: number
   knowledge_gap_rate?: number
   agent_error_rate?: number
+  agent_true_error_rate?: number
+  knowledge_gap_or_rag_miss_rate?: number
   quality_denominator?: number
   agent_accuracy_denominator?: number
   agent_accuracy_passed?: number
+  quality_bucket_counts?: Record<string, number>
+  sidecar_product_context_rate?: number
+  sidecar_order_context_rate?: number
+  missing_sidecar_context_count?: number
+  context_gap_due_to_missing_sidecar_count?: number
 }
 
 export type ReviewDecision =
