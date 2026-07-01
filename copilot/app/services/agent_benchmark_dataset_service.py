@@ -6,6 +6,7 @@ knowledge, media assets, or verified KB data.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -15,6 +16,41 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 ACTIVE_STATUSES = {"candidate", "curated", "active", "retired"}
 SCENARIO_TYPES = {"presales", "aftersales", "logistics", "installation", "promotion", "mixed"}
+BUSINESS_REPLY_TERMS = (
+    "材质",
+    "尺寸",
+    "承重",
+    "重量",
+    "毛重",
+    "安装",
+    "视频",
+    "说明书",
+    "配件",
+    "补发",
+    "退",
+    "换",
+    "退款",
+    "物流",
+    "快递",
+    "发货",
+    "优惠",
+    "活动",
+    "券",
+    "价格",
+    "送货",
+    "上门",
+    "订单",
+    "售后",
+    "检测",
+    "报告",
+    "味道",
+    "通风",
+)
+WELCOME_TERMS = ("欢迎光临", "看中哪些宝贝", "我可以帮您介绍")
+WAIT_TERMS = ("稍等", "等一下", "马上", "我看一下", "稍等亲", "稍等一下")
+ACK_TERMS = ("好的", "可以的", "嗯嗯", "在的", "亲亲在的", "收到", "好哒")
+HANDOFF_TERMS = ("人工客服", "请联系人工", "转人工", "有什么可以帮您")
+URL_ONLY_RE = re.compile(r"^\s*(https?://\S+|\[SIGNED_URL_REDACTED:[^\]]+\]|\[LONG_URL_REDACTED:[^\]]+\])\s*$", re.I)
 
 
 def _new_scenario_uid() -> str:
@@ -42,6 +78,47 @@ def _has_main_sidecar_context(sidecar: dict[str, Any]) -> bool:
         or sidecar.get("order_id")
         or sidecar.get("platform_order_id")
     )
+
+
+def is_low_quality_reference_reply(text: str) -> bool:
+    """Return True when a CSR reference is not suitable as benchmark ground truth."""
+    value = sanitize_text(text)
+    compact = re.sub(r"\s+", "", value)
+    if not compact:
+        return True
+    if URL_ONLY_RE.match(value) or re.fullmatch(r"[\W_]+", compact):
+        return True
+    if any(term in compact for term in WELCOME_TERMS):
+        return True
+    if any(term in compact for term in HANDOFF_TERMS) and not any(term in compact for term in BUSINESS_REPLY_TERMS):
+        return True
+    if any(term in compact for term in WAIT_TERMS) and len(compact) <= 18:
+        return True
+    if any(compact == term or compact == f"{term}亲" or compact == f"{term}哦" for term in ACK_TERMS):
+        return True
+    if len(compact) <= 6 and not any(term in compact for term in BUSINESS_REPLY_TERMS):
+        return True
+    return False
+
+
+def _expected_reply_block_reason(text: str) -> str:
+    value = sanitize_text(text)
+    compact = re.sub(r"\s+", "", value)
+    if not compact:
+        return "missing_reference_reply"
+    if URL_ONLY_RE.match(value):
+        return "link_only_reference_reply"
+    if any(term in compact for term in WELCOME_TERMS):
+        return "welcome_reference_reply"
+    if any(term in compact for term in WAIT_TERMS) and len(compact) <= 18:
+        return "waiting_reference_reply"
+    if any(compact == term or compact == f"{term}亲" or compact == f"{term}哦" for term in ACK_TERMS):
+        return "acknowledgement_reference_reply"
+    if any(term in compact for term in HANDOFF_TERMS) and not any(term in compact for term in BUSINESS_REPLY_TERMS):
+        return "generic_handoff_reference_reply"
+    if len(compact) <= 6 and not any(term in compact for term in BUSINESS_REPLY_TERMS):
+        return "too_short_without_business_information"
+    return ""
 
 
 def _extract_sidecar_context(trace) -> dict[str, Any]:
@@ -114,16 +191,20 @@ def _turns_for_case(db, case_uid: str) -> list[dict[str, Any]]:
     ])
 
 
-def _expected_reply_from_trace(trace) -> dict[str, Any]:
+def build_expected_reply_candidate(trace, conversation_turns: list[dict[str, Any]], sidecar_context: dict[str, Any]) -> dict[str, Any]:
     reference = sanitize_text(trace.reference_human_reply)
+    block_reason = _expected_reply_block_reason(reference)
+    is_low_quality = bool(block_reason) or is_low_quality_reference_reply(reference)
     return sanitize_obj({
-        "expected_reply": reference,
+        "expected_reply": "" if is_low_quality else reference,
         "key_points": [],
         "forbidden_claims": [],
         "must_handoff": bool(trace.requires_human_review),
         "auto_send_allowed": bool(trace.passed and not trace.requires_human_review),
         "needs_review": True,
-        "draft_source": "reference_human_reply" if reference else "empty_candidate",
+        "draft_source": "low_quality_reference_reply" if is_low_quality else "reference_human_reply",
+        "quality": "low_quality" if is_low_quality else "valid",
+        "block_reason": block_reason,
     })
 
 
@@ -160,6 +241,7 @@ class AgentBenchmarkDatasetService:
             candidates: list[dict[str, Any]] = []
             created = 0
             skipped = 0
+            expected_quality_counts = {"valid": 0, "low_quality": 0, "missing": 0}
             for trace in query.all():
                 quality_bucket = trace.get_quality_bucket()
                 if (
@@ -184,9 +266,13 @@ class AgentBenchmarkDatasetService:
 
                 sidecar = _extract_sidecar_context(trace)
                 missing_sidecar = not _has_main_sidecar_context(sidecar)
-                expected = _expected_reply_from_trace(trace)
                 scenario_type = _scenario_type_from_trace(trace)
                 turns = _turns_for_case(db, trace.case_uid)
+                expected = build_expected_reply_candidate(trace, turns, sidecar)
+                expected_quality = expected.get("quality") or "missing"
+                if not sanitize_text(trace.reference_human_reply):
+                    expected_quality = "missing"
+                expected_quality_counts[expected_quality] = expected_quality_counts.get(expected_quality, 0) + 1
                 title = _first_text(trace.buyer_message, f"benchmark {trace.turn_uid}")[:120]
                 metadata = sanitize_obj({
                     "source_run_uid": trace.run_uid,
@@ -198,6 +284,11 @@ class AgentBenchmarkDatasetService:
                     "failure_labels": trace.get_failure_labels(),
                     "quality_bucket": quality_bucket,
                     "query_fact_type": trace.query_fact_type,
+                    "expected_reply_quality": expected_quality,
+                    "expected_reply_block_reason": expected.get("block_reason", ""),
+                    "reference_reply_preview": trace.reference_human_reply[:120],
+                    "buyer_message_preview": trace.buyer_message[:120],
+                    "needs_expected_reply_review": True,
                 })
                 payload = {
                     "scenario_uid": _new_scenario_uid(),
@@ -249,6 +340,9 @@ class AgentBenchmarkDatasetService:
                 "created": created if apply else 0,
                 "dry_run_count": len(candidates) if not apply else 0,
                 "skipped": skipped,
+                "valid_expected_count": expected_quality_counts.get("valid", 0),
+                "low_quality_expected_count": expected_quality_counts.get("low_quality", 0),
+                "missing_expected_count": expected_quality_counts.get("missing", 0),
                 "candidates": candidates,
             }
         except Exception:
@@ -281,25 +375,96 @@ class AgentBenchmarkDatasetService:
             )
             if row is None:
                 raise ValueError("scenario_not_found")
+            reviewer = sanitize_text(reviewer)
+            if not reviewer:
+                raise ValueError("reviewer_required")
             sidecar = row.get_sidecar_context()
             expected = row.get_expected_reply()
+            turns = row.get_conversation_turns()
+            metadata = row.get_metadata()
             if not _has_main_sidecar_context(sidecar):
                 raise ValueError("sidecar_context_required")
+            if not turns:
+                raise ValueError("conversation_turns_required")
             if not sanitize_text(expected.get("expected_reply")):
                 raise ValueError("expected_reply_required")
-            metadata = row.get_metadata()
+            if expected.get("needs_review") is not False:
+                raise ValueError("expected_reply_review_required")
+            if metadata.get("expected_reply_quality") != "valid":
+                raise ValueError("expected_reply_quality_required")
             history = metadata.get("status_history")
             if not isinstance(history, list):
                 history = []
             history.append({
                 "from": row.status,
                 "to": "active",
-                "reviewer": sanitize_text(reviewer),
+                "reviewer": reviewer,
                 "at": _utc_now(),
             })
             metadata["status_history"] = history
             row.status = "active"
-            row.updated_by = sanitize_text(reviewer)
+            row.updated_by = reviewer
+            row.set_metadata(metadata)
+            db.commit()
+            return row.to_dict()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def mark_expected_reply_reviewed(
+        self,
+        scenario_uid: str,
+        reviewer: str,
+        expected_reply: str | None = None,
+        key_points: list[str] | None = None,
+        forbidden_claims: list[str] | None = None,
+        auto_send_allowed: bool | None = None,
+        must_handoff: bool | None = None,
+        db_factory=None,
+    ) -> dict[str, Any]:
+        from app.db import SessionLocal
+        from app.models.eval_tables import AgentBenchmarkScenario
+
+        reviewer = sanitize_text(reviewer)
+        if not reviewer:
+            raise ValueError("reviewer_required")
+        db_factory = db_factory or SessionLocal
+        db = db_factory()
+        try:
+            row = (
+                db.query(AgentBenchmarkScenario)
+                .filter(AgentBenchmarkScenario.scenario_uid == sanitize_text(scenario_uid))
+                .one_or_none()
+            )
+            if row is None:
+                raise ValueError("scenario_not_found")
+            expected = row.get_expected_reply()
+            if expected_reply is not None:
+                expected["expected_reply"] = sanitize_text(expected_reply)
+            if key_points is not None:
+                expected["key_points"] = sanitize_obj(key_points)
+            if forbidden_claims is not None:
+                expected["forbidden_claims"] = sanitize_obj(forbidden_claims)
+            if auto_send_allowed is not None:
+                expected["auto_send_allowed"] = bool(auto_send_allowed)
+            if must_handoff is not None:
+                expected["must_handoff"] = bool(must_handoff)
+            if not sanitize_text(expected.get("expected_reply")):
+                raise ValueError("expected_reply_required")
+            expected["needs_review"] = False
+            expected["quality"] = "valid"
+            expected["block_reason"] = ""
+
+            metadata = row.get_metadata()
+            metadata["expected_reply_quality"] = "valid"
+            metadata["expected_reply_block_reason"] = ""
+            metadata["needs_expected_reply_review"] = False
+            metadata["expected_reply_reviewed_by"] = reviewer
+            metadata["expected_reply_reviewed_at"] = _utc_now()
+            row.updated_by = reviewer
+            row.set_expected_reply(expected)
             row.set_metadata(metadata)
             db.commit()
             return row.to_dict()
