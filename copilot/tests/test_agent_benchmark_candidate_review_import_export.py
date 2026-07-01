@@ -179,6 +179,88 @@ def test_reviewer_required_for_import(tmp_path, monkeypatch):
     assert result["skipped"][0]["reason"] == "reviewer_required"
 
 
+def test_dry_run_promote_active_requires_sidecar_context(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(session_factory, scenario_uid="bench_no_sidecar", with_sidecar=False)
+    review_file = tmp_path / "review.xlsx"
+    _write_review_sheet(review_file, [[
+        "bench_no_sidecar",
+        "This reply has enough business detail for the reviewed benchmark answer.",
+        "",
+        "",
+        "false",
+        "false",
+        "lead",
+        "",
+    ]])
+
+    result = import_reviewed_candidates(str(review_file), apply=False, promote_active=True, db_factory=session_factory)
+
+    assert result["dry_run"] is True
+    assert result["updated_count"] == 1
+    assert result["would_update_count"] == 1
+    assert result["promoted_count"] == 0
+    assert result["would_promote_count"] == 0
+    assert result["promoted_scenario_uids"] == []
+    assert result["errors"] == [{"scenario_uid": "bench_no_sidecar", "reason": "sidecar_context_required"}]
+    db = session_factory()
+    try:
+        row = db.query(AgentBenchmarkScenario).filter_by(scenario_uid="bench_no_sidecar").one()
+        assert row.status == "candidate"
+        assert row.get_expected_reply()["needs_review"] is True
+        assert row.get_metadata()["expected_reply_quality"] == "low_quality"
+    finally:
+        db.close()
+
+
+def test_dry_run_promote_active_reports_would_promote_for_eligible_scenario(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(session_factory)
+    review_file = tmp_path / "review.xlsx"
+    _write_review_sheet(review_file, [[
+        "bench_review_1",
+        "This reply has enough business detail for the reviewed benchmark answer.",
+        "",
+        "",
+        "false",
+        "false",
+        "lead",
+        "",
+    ]])
+
+    result = import_reviewed_candidates(str(review_file), apply=False, promote_active=True, db_factory=session_factory)
+
+    assert result["updated_count"] == 1
+    assert result["would_update_count"] == 1
+    assert result["promoted_count"] == 0
+    assert result["would_promote_count"] == 1
+    assert result["promoted_scenario_uids"] == []
+    assert result["would_promote_scenario_uids"] == ["bench_review_1"]
+    db = session_factory()
+    try:
+        row = db.query(AgentBenchmarkScenario).filter_by(scenario_uid="bench_review_1").one()
+        assert row.status == "candidate"
+        assert row.get_expected_reply()["needs_review"] is True
+        assert row.get_metadata()["expected_reply_quality"] == "low_quality"
+    finally:
+        db.close()
+
+
+def test_dry_run_promote_active_does_not_promote_low_quality_expected_reply(tmp_path, monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(session_factory)
+    review_file = tmp_path / "review.xlsx"
+    _write_review_sheet(review_file, [["bench_review_1", "ok", "", "", "false", "false", "lead", ""]])
+
+    result = import_reviewed_candidates(str(review_file), apply=False, promote_active=True, db_factory=session_factory)
+
+    assert result["updated_count"] == 0
+    assert result["promoted_count"] == 0
+    assert result["would_promote_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped"][0]["scenario_uid"] == "bench_review_1"
+
+
 def test_promote_active_only_for_eligible_reviewed_scenario(tmp_path, monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(session_factory)

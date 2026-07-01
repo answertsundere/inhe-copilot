@@ -369,6 +369,80 @@ class AgentBenchmarkDatasetService:
             "note": "No reviewed training-sample source is wired for benchmark extraction yet.",
         }
 
+    def _validate_active_row(
+        self,
+        row,
+        reviewer: str,
+        expected_reply_override: str | None = None,
+    ) -> dict[str, Any]:
+        reviewer = sanitize_text(reviewer)
+        if not reviewer:
+            return {"eligible": False, "reason": "reviewer_required"}
+        if row is None:
+            return {"eligible": False, "reason": "scenario_not_found", "reviewer": reviewer}
+
+        sidecar = row.get_sidecar_context()
+        expected = row.get_expected_reply()
+        turns = row.get_conversation_turns()
+        metadata = row.get_metadata()
+        if not _has_main_sidecar_context(sidecar):
+            return {"eligible": False, "reason": "sidecar_context_required", "reviewer": reviewer}
+        if not turns:
+            return {"eligible": False, "reason": "conversation_turns_required", "reviewer": reviewer}
+
+        if expected_reply_override is not None:
+            reply_text = sanitize_text(expected_reply_override)
+            if not reply_text:
+                return {"eligible": False, "reason": "expected_reply_required", "reviewer": reviewer}
+            quality = expected_reply_quality(reply_text)
+            if quality["quality"] != "valid":
+                return {
+                    "eligible": False,
+                    "reason": quality["block_reason"] or "expected_reply_low_quality",
+                    "reviewer": reviewer,
+                }
+            expected = dict(expected)
+            metadata = dict(metadata)
+            expected["expected_reply"] = reply_text
+            expected["needs_review"] = False
+            metadata["expected_reply_quality"] = "valid"
+
+        if not sanitize_text(expected.get("expected_reply")):
+            return {"eligible": False, "reason": "expected_reply_required", "reviewer": reviewer}
+        if expected.get("needs_review") is not False:
+            return {"eligible": False, "reason": "expected_reply_review_required", "reviewer": reviewer}
+        if metadata.get("expected_reply_quality") != "valid":
+            return {"eligible": False, "reason": "expected_reply_quality_required", "reviewer": reviewer}
+        return {"eligible": True, "reason": "", "reviewer": reviewer}
+
+    def validate_active_eligibility(
+        self,
+        scenario_uid: str,
+        reviewer: str,
+        expected_reply_override: str | None = None,
+        db_factory=None,
+    ) -> dict[str, Any]:
+        from app.db import SessionLocal
+        from app.models.eval_tables import AgentBenchmarkScenario
+
+        db_factory = db_factory or SessionLocal
+        db = db_factory()
+        try:
+            row = (
+                db.query(AgentBenchmarkScenario)
+                .filter(AgentBenchmarkScenario.scenario_uid == sanitize_text(scenario_uid))
+                .one_or_none()
+            )
+            result = self._validate_active_row(
+                row,
+                reviewer=reviewer,
+                expected_reply_override=expected_reply_override,
+            )
+            result["scenario_uid"] = sanitize_text(scenario_uid)
+            return sanitize_obj(result)
+        finally:
+            db.close()
+
     def promote_to_active(self, scenario_uid: str, reviewer: str, db_factory=None) -> dict[str, Any]:
         from app.db import SessionLocal
         from app.models.eval_tables import AgentBenchmarkScenario
@@ -383,23 +457,11 @@ class AgentBenchmarkDatasetService:
             )
             if row is None:
                 raise ValueError("scenario_not_found")
-            reviewer = sanitize_text(reviewer)
-            if not reviewer:
-                raise ValueError("reviewer_required")
-            sidecar = row.get_sidecar_context()
-            expected = row.get_expected_reply()
-            turns = row.get_conversation_turns()
+            validation = self._validate_active_row(row, reviewer=reviewer)
+            if not validation.get("eligible"):
+                raise ValueError(validation.get("reason") or "active_eligibility_failed")
+            reviewer = validation["reviewer"]
             metadata = row.get_metadata()
-            if not _has_main_sidecar_context(sidecar):
-                raise ValueError("sidecar_context_required")
-            if not turns:
-                raise ValueError("conversation_turns_required")
-            if not sanitize_text(expected.get("expected_reply")):
-                raise ValueError("expected_reply_required")
-            if expected.get("needs_review") is not False:
-                raise ValueError("expected_reply_review_required")
-            if metadata.get("expected_reply_quality") != "valid":
-                raise ValueError("expected_reply_quality_required")
             history = metadata.get("status_history")
             if not isinstance(history, list):
                 history = []

@@ -79,6 +79,7 @@ def import_reviewed_candidates(
     rows = _read_rows(input_path)
     updated: list[str] = []
     promoted: list[str] = []
+    would_promote: list[str] = []
     skipped: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     for row in rows:
@@ -115,7 +116,19 @@ def import_reviewed_candidates(
         if not apply:
             updated.append(scenario_uid)
             if promote_active:
-                promoted.append(scenario_uid)
+                validation = service.validate_active_eligibility(
+                    scenario_uid,
+                    reviewer=reviewer,
+                    expected_reply_override=payload["expected_reply"],
+                    db_factory=db_factory,
+                )
+                if validation.get("eligible"):
+                    would_promote.append(scenario_uid)
+                else:
+                    errors.append({
+                        "scenario_uid": scenario_uid,
+                        "reason": sanitize_text(validation.get("reason")) or "active_eligibility_failed",
+                    })
             continue
         try:
             service.mark_expected_reply_reviewed(
@@ -138,14 +151,18 @@ def import_reviewed_candidates(
     return sanitize_obj({
         "input": input_path,
         "apply": bool(apply),
+        "dry_run": not bool(apply),
         "promote_active": bool(promote_active),
         "rows_seen": len(rows),
         "updated_count": len(updated),
         "promoted_count": len(promoted),
+        "would_update_count": len(updated) if not apply else 0,
+        "would_promote_count": len(would_promote) if not apply else 0,
         "skipped_count": len(skipped),
         "error_count": len(errors),
         "updated_scenario_uids": updated,
         "promoted_scenario_uids": promoted,
+        "would_promote_scenario_uids": would_promote,
         "skipped": skipped,
         "errors": errors,
     })
