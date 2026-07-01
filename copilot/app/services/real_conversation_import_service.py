@@ -396,6 +396,9 @@ def parse_source_file(path: Path) -> list[ImportedConversation]:
                 **record,
                 "message_type": message_type,
                 "product_hint": record.get("product_hint") or record.get("product_name") or record.get("item_title") or "",
+                "product_title": record.get("sidecar_product_title") or record.get("product_title") or record.get("product_name") or record.get("product_hint") or "",
+                "sku_code": record.get("sidecar_sku_code") or record.get("sku_code") or record.get("sku") or record.get("order_sku_code") or "",
+                "order_id": record.get("sidecar_order_id") or record.get("order_id") or record.get("order_no") or record.get("tid") or "",
             })
             rolling_context = merge_real_context(rolling_context, record_context)
             if speaker == "buyer":
@@ -416,6 +419,18 @@ def parse_source_file(path: Path) -> list[ImportedConversation]:
                 metadata=sanitize_obj({
                     "source_row_index": idx,
                     "raw_speaker": record.get("speaker") or record.get("role") or record.get("sender") or "",
+                    "sidecar_product_title": (
+                        record.get("sidecar_product_title")
+                        or record.get("sidecar_product_name")
+                        or record.get("product_title")
+                        or record.get("product_name")
+                        or record.get("product_hint")
+                        or record.get("item_title")
+                        or ""
+                    ),
+                    "sidecar_sku_code": record.get("sidecar_sku_code") or record.get("sidecar_sku") or record.get("sku_code") or record.get("sku") or record.get("order_sku_code") or "",
+                    "sidecar_i_id": record.get("sidecar_i_id") or record.get("i_id") or record.get("internal_i_id") or "",
+                    "sidecar_order_id": record.get("sidecar_order_id") or record.get("order_id") or record.get("order_no") or record.get("tid") or "",
                     "real_context": rolling_context,
                 }),
             ))

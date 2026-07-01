@@ -18,7 +18,11 @@ from app.services.real_conversation_context_extractor import (
     summarize_real_context,
 )
 from app.services.real_conversation_context_sufficiency_service import assess_context_sufficiency
-from app.services.real_context_product_identity_service import build_conversation_media_reference
+from app.services.real_conversation_sidecar_context_service import (
+    apply_sidecar_to_context_sufficiency,
+    build_sidecar_context,
+)
+from app.services.real_context_product_identity_service import build_conversation_media_reference, merge_product_candidates
 
 
 FAILURE_TYPES = {
@@ -611,7 +615,21 @@ class RealConversationReplayService:
                     real_context = _real_context_for_turn(case, turn)
                     agent_real_context = build_agent_context_from_real_context(real_context)
                     product_name = turn.product_hint or agent_real_context.get("product_name", "")
-                    product_candidates = product_candidates_from_real_context(real_context)
+                    case_metadata = case.get_metadata() or {}
+                    turn_metadata = turn.get_metadata() or {}
+                    preliminary_sidecar_context = build_sidecar_context(
+                        case_metadata=case_metadata,
+                        turn_metadata=turn_metadata,
+                        real_context=real_context,
+                        agent_context=agent_real_context,
+                        buyer_message=turn.sanitized_text,
+                        product_hint=product_name,
+                    )
+                    product_name = preliminary_sidecar_context.get("product_name") or product_name
+                    product_candidates = merge_product_candidates(
+                        preliminary_sidecar_context.get("product_candidates") or [],
+                        product_candidates_from_real_context(real_context),
+                    )
                     real_context_summary = summarize_real_context(real_context)
                     real_context_identity = agent_real_context.get("real_context_product_identity") or {}
                     conversation_media_reference = build_conversation_media_reference(agent_real_context)
@@ -621,12 +639,32 @@ class RealConversationReplayService:
                         message_type=turn.message_type,
                         product_hint=product_name,
                     )
+                    sidecar_context = build_sidecar_context(
+                        case_metadata=case_metadata,
+                        turn_metadata=turn_metadata,
+                        real_context=real_context,
+                        agent_context=agent_real_context,
+                        turn_understanding=turn_understanding,
+                        buyer_message=turn.sanitized_text,
+                        product_hint=product_name,
+                    )
+                    product_name = sidecar_context.get("product_name") or product_name
+                    product_candidates = merge_product_candidates(
+                        sidecar_context.get("product_candidates") or [],
+                        product_candidates,
+                    )
                     context_sufficiency = assess_context_sufficiency(
                         turn_understanding=turn_understanding,
                         real_context_summary=real_context_summary,
                         real_context_identity=real_context_identity,
                     ).to_dict()
+                    context_sufficiency = apply_sidecar_to_context_sufficiency(context_sufficiency, sidecar_context)
                     turn_understanding["context_sufficiency"] = context_sufficiency
+                    turn_understanding["sidecar_context_quality"] = sidecar_context.get("sidecar_context_quality", "")
+                    turn_understanding["sidecar_context_sources"] = sidecar_context.get("sidecar_context_sources", [])
+                    turn_understanding["missing_context_fields"] = sidecar_context.get("missing_context_fields", [])
+                    turn_understanding["has_sidecar_product_context"] = bool(sidecar_context.get("has_sidecar_product_context"))
+                    turn_understanding["has_sidecar_order_context"] = bool(sidecar_context.get("has_sidecar_order_context"))
                     should_score = bool(turn_understanding.get("should_score"))
                     if should_score:
                         totals["turns"] += 1
@@ -634,16 +672,33 @@ class RealConversationReplayService:
                         "message": turn.sanitized_text,
                         "conversation_id": f"real_eval_{case.case_uid}",
                         "product_name": product_name,
+                        "product_title": sidecar_context.get("product_title") or product_name,
+                        "sku_code": sidecar_context.get("sku_code") or agent_real_context.get("sku_code", ""),
+                        "i_id": sidecar_context.get("i_id") or agent_real_context.get("i_id", ""),
                         "product_candidates": product_candidates,
-                        "order_id": agent_real_context.get("order_id", ""),
+                        "order_id": sidecar_context.get("order_id") or agent_real_context.get("order_id", ""),
+                        "platform_order_id": sidecar_context.get("platform_order_id") or "",
                         "tracking_no": agent_real_context.get("tracking_no", ""),
                         "copilot_context": {
+                            **agent_real_context,
                             "conversation_history": conversation_history,
                             "eval_case_uid": case.case_uid,
                             "eval_turn_uid": turn.turn_uid,
                             "source_type": "real_conversation",
                             "turn_understanding": turn_understanding,
-                            **agent_real_context,
+                            "sidecar_context": sidecar_context,
+                            "sidecar_context_quality": sidecar_context.get("sidecar_context_quality", ""),
+                            "sidecar_context_sources": sidecar_context.get("sidecar_context_sources", []),
+                            "missing_context_fields": sidecar_context.get("missing_context_fields", []),
+                            "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
+                            "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
+                            "product_candidates": product_candidates,
+                            "product_name": product_name,
+                            "product_title": sidecar_context.get("product_title") or product_name,
+                            "sku_code": sidecar_context.get("sku_code") or agent_real_context.get("sku_code", ""),
+                            "i_id": sidecar_context.get("i_id") or agent_real_context.get("i_id", ""),
+                            "order_id": sidecar_context.get("order_id") or agent_real_context.get("order_id", ""),
+                            "platform_order_id": sidecar_context.get("platform_order_id") or "",
                         },
                     }
                     started = time.time()
@@ -736,6 +791,12 @@ class RealConversationReplayService:
                         **intent_contract,
                         "real_context": real_context_summary,
                         "real_context_product_identity": real_context_identity,
+                        "sidecar_context": sidecar_context,
+                        "sidecar_context_quality": sidecar_context.get("sidecar_context_quality", ""),
+                        "sidecar_context_sources": sidecar_context.get("sidecar_context_sources", []),
+                        "missing_context_fields": sidecar_context.get("missing_context_fields", []),
+                        "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
+                        "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
                         "conversation_media_reference": conversation_media_reference,
                     }))
                     trace.set_final_audit(sanitize_obj(response.get("final_answer_audit") or response.get("final_audit") or {}))
@@ -743,6 +804,7 @@ class RealConversationReplayService:
                     product_identity = _extract_product_identity(response)
                     product_identity["real_context"] = real_context_summary
                     product_identity["real_context_product_identity"] = real_context_identity
+                    product_identity["sidecar_context"] = sidecar_context
                     trace.set_product_identity(product_identity)
                     trace.set_failure_labels(labels)
                     trace.set_raw_response(sanitize_obj({
@@ -755,6 +817,12 @@ class RealConversationReplayService:
                         "quality_bucket": quality_bucket,
                         "real_context": real_context_summary,
                         "real_context_product_identity": real_context_identity,
+                        "sidecar_context": sidecar_context,
+                        "sidecar_context_quality": sidecar_context.get("sidecar_context_quality", ""),
+                        "sidecar_context_sources": sidecar_context.get("sidecar_context_sources", []),
+                        "missing_context_fields": sidecar_context.get("missing_context_fields", []),
+                        "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
+                        "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
                         "conversation_media_reference": conversation_media_reference,
                     }))
                     db.add(trace)

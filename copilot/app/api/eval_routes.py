@@ -105,6 +105,45 @@ def _trace_to_dict_with_quality_bucket(trace, failures_by_turn: dict[str, list])
     return data
 
 
+def _trace_sidecar_context(trace) -> dict:
+    raw = trace.get_raw_response() if hasattr(trace, "get_raw_response") else {}
+    answer_trace = trace.get_answer_trace() if hasattr(trace, "get_answer_trace") else {}
+    understanding = trace.get_turn_understanding() if hasattr(trace, "get_turn_understanding") else {}
+    sidecar = {}
+    if isinstance(raw, dict):
+        sidecar = raw.get("sidecar_context") if isinstance(raw.get("sidecar_context"), dict) else sidecar
+    if not sidecar and isinstance(answer_trace, dict):
+        sidecar = answer_trace.get("sidecar_context") if isinstance(answer_trace.get("sidecar_context"), dict) else sidecar
+    return sanitize_obj({
+        "sidecar_context_quality": (
+            sidecar.get("sidecar_context_quality")
+            or raw.get("sidecar_context_quality")
+            or answer_trace.get("sidecar_context_quality")
+            or understanding.get("sidecar_context_quality")
+            or ""
+        ),
+        "has_sidecar_product_context": bool(
+            sidecar.get("has_sidecar_product_context")
+            or raw.get("has_sidecar_product_context")
+            or answer_trace.get("has_sidecar_product_context")
+            or understanding.get("has_sidecar_product_context")
+        ),
+        "has_sidecar_order_context": bool(
+            sidecar.get("has_sidecar_order_context")
+            or raw.get("has_sidecar_order_context")
+            or answer_trace.get("has_sidecar_order_context")
+            or understanding.get("has_sidecar_order_context")
+        ),
+        "missing_context_fields": (
+            sidecar.get("missing_context_fields")
+            or raw.get("missing_context_fields")
+            or answer_trace.get("missing_context_fields")
+            or understanding.get("missing_context_fields")
+            or []
+        ),
+    })
+
+
 def _build_run_summary(run, traces, failures, reviews) -> dict:
     scored_traces = [
         row for row in traces
@@ -127,12 +166,28 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
     }
     quality_denominator = 0
     quality_passed = 0
+    sidecar_denominator = len(traces)
+    sidecar_product_context_count = 0
+    sidecar_order_context_count = 0
+    missing_sidecar_context_count = 0
+    context_gap_due_to_missing_sidecar_count = 0
     for trace in traces:
         bucket = _trace_quality_bucket(trace, failures_by_turn)
         bucket_name = str(bucket.get("quality_bucket") or "agent_error")
         if bucket_name not in bucket_counts:
             bucket_name = "agent_error"
         bucket_counts[bucket_name] += 1
+        sidecar = _trace_sidecar_context(trace)
+        if sidecar.get("has_sidecar_product_context"):
+            sidecar_product_context_count += 1
+        if sidecar.get("has_sidecar_order_context"):
+            sidecar_order_context_count += 1
+        quality = str(sidecar.get("sidecar_context_quality") or "")
+        missing_fields = list(sidecar.get("missing_context_fields") or [])
+        if quality in {"missing", "insufficient", "partial"} or missing_fields:
+            missing_sidecar_context_count += 1
+            if bucket_name == "context_gap":
+                context_gap_due_to_missing_sidecar_count += 1
         if bucket.get("should_count_in_quality_rate") is not False:
             quality_denominator += 1
             if trace.passed:
@@ -160,6 +215,11 @@ def _build_run_summary(run, traces, failures, reviews) -> dict:
         "quality_denominator": quality_denominator,
         "agent_accuracy_denominator": quality_denominator,
         "agent_accuracy_passed": quality_passed,
+        "quality_bucket_counts": bucket_counts,
+        "sidecar_product_context_rate": round(sidecar_product_context_count / sidecar_denominator, 4) if sidecar_denominator else 0,
+        "sidecar_order_context_rate": round(sidecar_order_context_count / sidecar_denominator, 4) if sidecar_denominator else 0,
+        "missing_sidecar_context_count": missing_sidecar_context_count,
+        "context_gap_due_to_missing_sidecar_count": context_gap_due_to_missing_sidecar_count,
     }
 
 

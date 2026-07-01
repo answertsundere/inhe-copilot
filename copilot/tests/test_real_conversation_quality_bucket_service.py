@@ -131,6 +131,31 @@ def test_context_gap_is_separate_from_knowledge_gap_and_accuracy_denominator():
     assert KNOWLEDGE_GAP in result["secondary_buckets"]
 
 
+def test_missing_sidecar_context_keeps_wrong_reply_out_of_agent_error_bucket():
+    result = _bucket(
+        failure_labels=["context_gap", "semantic_mismatch", "unrequested_product_fact"],
+        failures=[
+            {"failure_type": "context_gap", "suggested_fix_area": "sample_context_extraction"},
+            {"failure_type": "semantic_mismatch", "suggested_fix_area": "final_audit_semantic_compiler"},
+        ],
+        turn_understanding={
+            "should_score": True,
+            "turn_actionability": "actionable_question",
+            "sidecar_context_quality": "missing",
+            "context_sufficiency": {
+                "is_sufficient": False,
+                "missing_context_fields": ["product"],
+                "sidecar_context_quality": "missing",
+            },
+        },
+    )
+
+    assert result["quality_bucket"] == CONTEXT_GAP
+    assert result["is_context_gap"] is True
+    assert result["should_count_in_quality_rate"] is False
+    assert AGENT_ERROR in result["secondary_buckets"]
+
+
 def test_rag_miss_still_knowledge_gap():
     result = _bucket(
         failure_labels=["rag_miss"],

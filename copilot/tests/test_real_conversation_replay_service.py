@@ -9,6 +9,23 @@ from app.services.real_conversation_replay_service import classify_turn_failures
 from app.services.real_conversation_replay_service import evaluate_replay_turn_result
 
 
+class _FixedTurnUnderstanding:
+    def __init__(self, query_fact_type: str, needs_rag: bool = True):
+        self.query_fact_type = query_fact_type
+        self.needs_rag = needs_rag
+
+    def understand(self, *_args, **_kwargs):
+        return {
+            "turn_actionability": "actionable_question",
+            "needs_agent_reply": True,
+            "needs_rag": self.needs_rag,
+            "should_score": True,
+            "query_fact_type": self.query_fact_type,
+            "expected_query_fact_type": self.query_fact_type,
+            "reply_strategy": "normal_agent",
+        }
+
+
 def _patch_test_db(monkeypatch):
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
@@ -891,7 +908,7 @@ def test_replay_stores_expected_actual_and_effective_query_fact_type_contract(mo
     class MismatchReplayService(RealConversationReplayService):
         def _call_agent(self, payload):
             return {
-                "suggested_reply": "请按安装说明书确认配件安装位置。",
+                "suggested_reply": "installation instructions reply",
                 "requires_human_review": False,
                 "query_fact_type": "installation",
                 "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
@@ -915,5 +932,116 @@ def test_replay_stores_expected_actual_and_effective_query_fact_type_contract(mo
         assert answer_trace["expected_query_fact_type"] == "aftersales"
         assert answer_trace["actual_query_fact_type"] == "installation"
         assert "intent_contract_mismatch" in labels
+    finally:
+        db.close()
+
+
+def test_replay_uses_sidecar_product_title_as_presales_context(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_sidecar_product", source_type="real_conversation", message="gross weight"))
+        turn = EvalConversationTurn(
+            case_uid="case_sidecar_product",
+            conversation_uid="conv_sidecar_product",
+            turn_uid="turn_sidecar_product",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="gross weight?",
+        )
+        turn.set_metadata({"sidecar_product_title": "sidecar product"})
+        db.add(turn)
+        db.commit()
+    finally:
+        db.close()
+
+    payloads = []
+
+    class SidecarReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            payloads.append(payload)
+            return {
+                "suggested_reply": "Need human review for this product fact.",
+                "requires_human_review": True,
+                "query_fact_type": "gross_weight",
+                "answer_trace": {"query_fact_type": "gross_weight", "required_fact_types": ["gross_weight"]},
+                "evidence_debug": {"query_fact_type": "gross_weight", "selected_evidence": []},
+            }
+
+    result = SidecarReplayService(_FixedTurnUnderstanding("gross_weight")).replay_cases(
+        ReplayOptions(run_uid="run_sidecar_product")
+    )
+
+    assert result["context_gap"] == 0
+    assert len(payloads) == 1
+    payload = payloads[0]
+    assert payload["product_name"] == "sidecar product"
+    assert payload["copilot_context"]["sidecar_context_quality"] == "complete"
+    assert any(candidate.get("product_name") == "sidecar product" for candidate in payload["product_candidates"])
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        understanding = trace.get_turn_understanding()
+        assert understanding["sidecar_context_quality"] == "complete"
+        assert understanding["context_sufficiency"]["is_sufficient"] is True
+        assert "context_gap" not in trace.get_failure_labels()
+        assert trace.get_quality_bucket()["quality_bucket"] == "knowledge_gap"
+    finally:
+        db.close()
+
+
+def test_replay_keeps_platform_identity_only_as_context_gap(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        real_context = {
+            "conversation_type": "presales",
+            "source_page": "product_detail",
+            "product": {
+                "item_id_hash": "hash-item",
+                "product_url": "https://item.taobao.com/item.htm?id=123456",
+            },
+            "order": {},
+            "media": {"image_urls": [], "video_urls": []},
+            "raw_context_sources": ["product_url"],
+        }
+        case = EvalCase(case_uid="case_sidecar_hash_only", source_type="real_conversation", message="dimensions")
+        case.set_metadata({"real_context": real_context})
+        db.add(case)
+        db.add(EvalConversationTurn(
+            case_uid="case_sidecar_hash_only",
+            conversation_uid="conv_sidecar_hash_only",
+            turn_uid="turn_sidecar_hash_only",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="dimensions?",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    class HashOnlyReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            return {
+                "suggested_reply": "Need human review for this product fact.",
+                "requires_human_review": True,
+                "query_fact_type": "dimensions",
+                "answer_trace": {"query_fact_type": "dimensions", "required_fact_types": ["dimensions"]},
+            }
+
+    result = HashOnlyReplayService(_FixedTurnUnderstanding("dimensions")).replay_cases(
+        ReplayOptions(run_uid="run_sidecar_hash_only")
+    )
+
+    assert result["context_gap"] == 1
+    db = session_factory()
+    try:
+        trace = db.query(EvalTrace).one()
+        understanding = trace.get_turn_understanding()
+        assert understanding["sidecar_context_quality"] == "missing"
+        assert understanding["context_sufficiency"]["is_sufficient"] is False
+        assert understanding["context_sufficiency"]["missing_context_fields"] == ["product"]
+        assert trace.get_answer_trace()["sidecar_context"]["supplemental_platform_identity"]["item_id_hash"] == "hash-item"
+        assert trace.get_quality_bucket()["quality_bucket"] == "context_gap"
     finally:
         db.close()
