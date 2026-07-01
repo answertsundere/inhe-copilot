@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+import uuid
 from typing import Any, Callable
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
@@ -72,6 +74,28 @@ def _response_failure_labels(response: dict[str, Any]) -> list[str]:
     return [sanitize_text(item) for item in raw if sanitize_text(item)]
 
 
+def _answer_trace_summary(response: dict[str, Any]) -> dict[str, Any]:
+    trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    return sanitize_obj({
+        "query_fact_type": trace.get("query_fact_type"),
+        "required_fact_types": trace.get("required_fact_types"),
+        "evidence_answered_fact_types": trace.get("evidence_answered_fact_types"),
+        "mode": trace.get("mode"),
+        "rag_evidence_used": trace.get("rag_evidence_used"),
+        "block_reasons": trace.get("block_reasons"),
+    })
+
+
+def _reply_status(response: dict[str, Any], agent_reply: str) -> str:
+    if bool(response.get("can_send")) and agent_reply:
+        return "can_send"
+    if bool(response.get("requires_human_review")):
+        return "requires_human_review"
+    if not agent_reply:
+        return "no_sendable_reply"
+    return "blocked"
+
+
 def _buyer_turns(conversation_turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     turns = []
     for item in conversation_turns or []:
@@ -108,6 +132,7 @@ class AgentBenchmarkRunnerService:
     def run_scenarios(
         self,
         status: str = "active",
+        scenario_type: str | None = None,
         limit: int | None = None,
         scenario_uids: list[str] | None = None,
         run_uid: str | None = None,
@@ -124,29 +149,57 @@ class AgentBenchmarkRunnerService:
                 query = query.filter(AgentBenchmarkScenario.scenario_uid.in_([sanitize_text(uid) for uid in scenario_uids]))
             else:
                 query = query.filter(AgentBenchmarkScenario.status == sanitize_text(status or "active"))
+            scenario_type = sanitize_text(scenario_type)
+            if scenario_type:
+                query = query.filter(AgentBenchmarkScenario.scenario_type == scenario_type)
             query = query.order_by(AgentBenchmarkScenario.id.asc())
             if limit:
                 query = query.limit(max(int(limit), 1))
             rows = query.all()
-            results = [self._run_one(row, run_uid=run_uid or "") for row in rows]
+            benchmark_run_uid = sanitize_text(run_uid or "") or f"bench_run_{uuid.uuid4().hex[:12]}"
+            results = [self._run_one(row, run_uid=benchmark_run_uid) for row in rows]
             passed = sum(1 for item in results if item.get("passed"))
             total = len(results)
             failure_reasons: dict[str, int] = {}
+            by_scenario_type: dict[str, dict[str, Any]] = {}
+            by_query_fact_type: dict[str, dict[str, Any]] = {}
+            by_reply_status: dict[str, int] = {}
             for item in results:
+                self._add_group_result(by_scenario_type, item.get("scenario_type") or "unknown", bool(item.get("passed")))
+                self._add_group_result(by_query_fact_type, item.get("query_fact_type") or "unknown", bool(item.get("passed")))
+                reply_status = sanitize_text(item.get("reply_status") or "unknown")
+                by_reply_status[reply_status] = by_reply_status.get(reply_status, 0) + 1
                 for reason in item.get("failure_reasons", []):
                     failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
             return sanitize_obj({
-                "run_uid": sanitize_text(run_uid or ""),
+                "benchmark_run_uid": benchmark_run_uid,
+                "run_uid": benchmark_run_uid,
                 "status": status,
                 "total": total,
                 "passed": passed,
                 "failed": total - passed,
+                "total_scenarios": total,
+                "passed_count": passed,
+                "failed_count": total - passed,
                 "pass_rate": round(passed / total, 4) if total else 0,
                 "failure_reasons": failure_reasons,
+                "by_scenario_type": by_scenario_type,
+                "by_query_fact_type": by_query_fact_type,
+                "by_failure_reason": failure_reasons,
+                "by_reply_status": by_reply_status,
                 "per_scenario_result": results,
             })
         finally:
             db.close()
+
+    def _add_group_result(self, container: dict[str, dict[str, Any]], key: str, passed: bool) -> None:
+        item = container.setdefault(sanitize_text(key) or "unknown", {"total": 0, "passed": 0, "failed": 0, "pass_rate": 0})
+        item["total"] += 1
+        if passed:
+            item["passed"] += 1
+        else:
+            item["failed"] += 1
+        item["pass_rate"] = round(item["passed"] / item["total"], 4) if item["total"] else 0
 
     def _run_one(self, scenario, run_uid: str = "") -> dict[str, Any]:
         sidecar = scenario.get_sidecar_context()
@@ -155,22 +208,51 @@ class AgentBenchmarkRunnerService:
         buyer_turns = _buyer_turns(conversation_turns)
         responses = []
         history: list[dict[str, Any]] = []
+        total_latency_ms = 0
         for turn in buyer_turns:
             payload = self._build_payload(scenario.scenario_uid, turn, history, sidecar, run_uid)
+            started = time.perf_counter()
             response = sanitize_obj(self._call_agent(payload))
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            total_latency_ms += latency_ms
             responses.append({"turn_uid": turn.get("turn_uid", ""), "payload": sanitize_obj(payload), "response": response})
             history.append({"role": "customer", "text": turn["text"]})
             reply = _extract_reply(response)
             if reply:
                 history.append({"role": "agent", "text": reply})
         score = self._score(scenario.scenario_type, expected, responses[-1]["response"] if responses else {})
+        last_response = responses[-1]["response"] if responses else {}
+        fact_type = _response_query_fact_type(last_response)
         return sanitize_obj({
             "scenario_uid": scenario.scenario_uid,
+            "title": scenario.title,
             "scenario_type": scenario.scenario_type,
+            "query_fact_type": fact_type,
+            "sidecar_context": self._sidecar_summary(sidecar),
+            "conversation_turns": conversation_turns,
+            "expected_reply": expected,
             "passed": score["passed"],
             "failure_reasons": score["failure_reasons"],
+            "missing_key_points": score["missing_key_points"],
+            "forbidden_claims_hit": score["forbidden_claims_hit"],
             "agent_reply": score["agent_reply"],
+            "sendable_reply": sanitize_text(last_response.get("sendable_reply")),
+            "draft_reply": sanitize_text(last_response.get("draft_reply") or last_response.get("suggested_reply")),
+            "can_send": bool(last_response.get("can_send")),
+            "requires_human_review": bool(last_response.get("requires_human_review")),
+            "reply_status": score["reply_status"],
+            "latency_ms": total_latency_ms,
+            "answer_trace": _answer_trace_summary(last_response),
             "responses": responses,
+        })
+
+    def _sidecar_summary(self, sidecar: dict[str, Any]) -> dict[str, Any]:
+        return sanitize_obj({
+            "product_title": sidecar.get("product_title") or sidecar.get("product_name"),
+            "sku_code": sidecar.get("sku_code"),
+            "i_id": sidecar.get("i_id"),
+            "order_id": sidecar.get("order_id"),
+            "platform_order_id": sidecar.get("platform_order_id"),
         })
 
     def _build_payload(
@@ -209,16 +291,24 @@ class AgentBenchmarkRunnerService:
     def _score(self, scenario_type: str, expected: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
         agent_reply = _extract_reply(response)
         reasons: list[str] = []
+        missing_key_points: list[str] = []
+        forbidden_claims_hit: list[str] = []
+        reply_status = _reply_status(response, agent_reply)
         if bool(response.get("can_send")) != bool(expected.get("auto_send_allowed")):
-            reasons.append("auto_send_allowed_mismatch")
+            if bool(response.get("can_send")) and not bool(expected.get("auto_send_allowed")):
+                reasons.append("auto_send_not_allowed")
+            else:
+                reasons.append("auto_send_missing")
         if bool(response.get("requires_human_review")) != bool(expected.get("must_handoff")):
-            reasons.append("must_handoff_mismatch")
+            reasons.append("handoff_mismatch")
         for point in expected.get("key_points") or []:
             if sanitize_text(point) and not _contains(agent_reply, point):
+                missing_key_points.append(sanitize_text(point))
                 reasons.append("missing_key_point")
                 break
         for forbidden in expected.get("forbidden_claims") or []:
             if sanitize_text(forbidden) and _contains(agent_reply, forbidden):
+                forbidden_claims_hit.append(sanitize_text(forbidden))
                 reasons.append("forbidden_claim_present")
                 break
         labels = set(_response_failure_labels(response))
@@ -227,9 +317,16 @@ class AgentBenchmarkRunnerService:
         fact_type = _response_query_fact_type(response)
         allowed = SCENARIO_FACT_TYPE_COMPATIBILITY.get(sanitize_text(scenario_type), set())
         if allowed and fact_type and fact_type not in allowed:
-            reasons.append("query_fact_type_mismatch")
+            reasons.append("fact_type_mismatch")
+        if reply_status == "no_sendable_reply" and bool(expected.get("auto_send_allowed")):
+            reasons.append("no_sendable_reply")
+        elif reply_status == "blocked" and bool(expected.get("auto_send_allowed")):
+            reasons.append("blocked_reply")
         return {
             "passed": not reasons,
             "failure_reasons": reasons,
+            "missing_key_points": missing_key_points,
+            "forbidden_claims_hit": forbidden_claims_hit,
             "agent_reply": agent_reply,
+            "reply_status": reply_status,
         }
