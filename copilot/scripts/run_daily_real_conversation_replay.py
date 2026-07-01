@@ -9,6 +9,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -35,11 +36,38 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--replay-only", action="store_true", help="skip extraction and replay existing real_conversation cases")
     parser.add_argument("--generate-repair-tasks", action="store_true", help="generate repair tasks after replay")
     parser.add_argument("--created-by", default="daily_replay")
+    parser.add_argument("--eval-sidecar-product-title", default="", help="eval-only QianNiu sidecar product title")
+    parser.add_argument("--eval-sidecar-sku-code", default="", help="eval-only QianNiu sidecar SKU code")
+    parser.add_argument("--eval-sidecar-i-id", default="", help="eval-only internal product i_id")
+    parser.add_argument("--eval-sidecar-order-id", default="", help="eval-only QianNiu sidecar order id")
     return parser
+
+
+def _json_for_file(report: dict[str, Any]) -> str:
+    return json.dumps(sanitize_obj(report), ensure_ascii=False, indent=2)
+
+
+def _print_json_safely(report: dict[str, Any]) -> None:
+    """Print readable UTF-8 JSON, falling back when Windows console cannot encode it."""
+    text = _json_for_file(report)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(json.dumps(sanitize_obj(report), ensure_ascii=True, indent=2))
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    eval_sidecar_context = {
+        key: value
+        for key, value in {
+            "sidecar_product_title": args.eval_sidecar_product_title,
+            "sidecar_sku_code": args.eval_sidecar_sku_code,
+            "sidecar_i_id": args.eval_sidecar_i_id,
+            "sidecar_order_id": args.eval_sidecar_order_id,
+        }.items()
+        if value
+    }
     report = run_daily_real_conversation_replay(DailyReplayOptions(
         source_dir=args.source_dir,
         sample_limit=args.sample_limit,
@@ -50,13 +78,14 @@ def main(argv: list[str] | None = None) -> int:
         replay_only=args.replay_only,
         generate_repair_tasks=args.generate_repair_tasks,
         created_by=args.created_by,
+        eval_sidecar_context=eval_sidecar_context,
     ))
-    output = json.dumps(sanitize_obj(report), ensure_ascii=False, indent=2)
+    output = _json_for_file(report)
     if args.json_output:
         path = Path(args.json_output)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(output, encoding="utf-8")
-    print(output)
+    _print_json_safely(report)
     return 0
 
 

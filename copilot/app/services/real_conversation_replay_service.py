@@ -200,6 +200,7 @@ class ReplayOptions:
     turn_uids: list[str] | None = None
     source_type: str = "real_conversation"
     run_metadata: dict[str, Any] | None = None
+    eval_sidecar_context: dict[str, Any] | None = None
 
 
 def _new_run_uid() -> str:
@@ -560,6 +561,7 @@ class RealConversationReplayService:
         run_uid = options.run_uid or _new_run_uid()
         case_uid_filter = set(options.case_uids or [])
         turn_uid_filter = set(options.turn_uids or [])
+        eval_sidecar_context = sanitize_obj(options.eval_sidecar_context or {})
         db = SessionLocal()
         try:
             query = (
@@ -577,6 +579,7 @@ class RealConversationReplayService:
             run.set_metadata({
                 "sample_only": options.sample_only,
                 **sanitize_obj(options.run_metadata or {}),
+                "eval_sidecar_context": eval_sidecar_context,
             })
             db.add(run)
             db.commit()
@@ -614,6 +617,8 @@ class RealConversationReplayService:
                     conversation_history = history[:-1]
                     real_context = _real_context_for_turn(case, turn)
                     agent_real_context = build_agent_context_from_real_context(real_context)
+                    if eval_sidecar_context:
+                        agent_real_context.update(eval_sidecar_context)
                     product_name = turn.product_hint or agent_real_context.get("product_name", "")
                     case_metadata = case.get_metadata() or {}
                     turn_metadata = turn.get_metadata() or {}

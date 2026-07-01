@@ -1045,3 +1045,74 @@ def test_replay_keeps_platform_identity_only_as_context_gap(monkeypatch):
         assert trace.get_quality_bucket()["quality_bucket"] == "context_gap"
     finally:
         db.close()
+
+
+def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        real_context = {
+            "conversation_type": "presales",
+            "source_page": "product_detail",
+            "product": {
+                "item_id_hash": "hash-item",
+                "product_url": "https://item.taobao.com/item.htm?id=123456",
+            },
+            "order": {},
+        }
+        case = EvalCase(case_uid="case_eval_sidecar", source_type="real_conversation", message="dimensions")
+        case.set_metadata({"real_context": real_context})
+        db.add(case)
+        db.add(EvalConversationTurn(
+            case_uid="case_eval_sidecar",
+            conversation_uid="conv_eval_sidecar",
+            turn_uid="turn_eval_sidecar",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="dimensions?",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    payloads = []
+
+    class EvalSidecarReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            payloads.append(payload)
+            return {
+                "suggested_reply": "Need human review for this product fact.",
+                "requires_human_review": True,
+                "query_fact_type": "dimensions",
+                "answer_trace": {"query_fact_type": "dimensions", "required_fact_types": ["dimensions"]},
+            }
+
+    result = EvalSidecarReplayService(_FixedTurnUnderstanding("dimensions")).replay_cases(
+        ReplayOptions(
+            run_uid="run_eval_sidecar",
+            eval_sidecar_context={
+                "sidecar_product_title": "本地模拟商品",
+                "sidecar_sku_code": "YH-LOCAL",
+                "sidecar_i_id": "IID-LOCAL",
+                "sidecar_order_id": "ORDER-LOCAL",
+            },
+        )
+    )
+
+    assert result["context_gap"] == 0
+    assert payloads[0]["product_name"] == "本地模拟商品"
+    assert payloads[0]["sku_code"] == "YH-LOCAL"
+    assert payloads[0]["i_id"] == "IID-LOCAL"
+    assert payloads[0]["order_id"] == "ORDER-LOCAL"
+    assert payloads[0]["copilot_context"]["sidecar_context_quality"] == "complete"
+    assert payloads[0]["copilot_context"]["sidecar_context"]["order_id"] == "ORDER-LOCAL"
+    db = session_factory()
+    try:
+        run = db.query(EvalRun).filter(EvalRun.run_uid == "run_eval_sidecar").one()
+        assert run.get_metadata()["eval_sidecar_context"]["sidecar_sku_code"] == "YH-LOCAL"
+        assert run.get_metadata()["eval_sidecar_context"]["sidecar_order_id"] == "ORDER-LOCAL"
+        trace = db.query(EvalTrace).one()
+        assert trace.get_turn_understanding()["context_sufficiency"]["is_sufficient"] is True
+        assert "context_gap" not in trace.get_failure_labels()
+    finally:
+        db.close()

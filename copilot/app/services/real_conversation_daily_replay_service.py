@@ -40,6 +40,7 @@ class DailyReplayOptions:
     replay_only: bool = False
     generate_repair_tasks: bool = False
     created_by: str = "system"
+    eval_sidecar_context: dict[str, Any] | None = None
 
 
 def _pass_rate(passed: int, total: int) -> float:
@@ -82,6 +83,7 @@ def _daily_metadata(
             "error_message": sanitize_text(error_message),
             "created_by": sanitize_text(options.created_by),
             "generate_repair_tasks": bool(options.generate_repair_tasks),
+            "eval_sidecar_context": sanitize_obj(options.eval_sidecar_context or {}),
         }
     })
 
@@ -120,6 +122,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         replay_only=bool(options.replay_only),
         generate_repair_tasks=bool(options.generate_repair_tasks),
         created_by=sanitize_text(options.created_by) or "system",
+        eval_sidecar_context=sanitize_obj(options.eval_sidecar_context or {}),
     )
     schedule_uid = _new_schedule_uid(options.run_date)
     run_uid = _new_run_uid(schedule_uid)
@@ -133,6 +136,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         "sample_limit": options.sample_limit,
         "date": options.run_date,
         "generate_repair_tasks": options.generate_repair_tasks,
+        "eval_sidecar_context": sanitize_obj(options.eval_sidecar_context or {}),
     }
 
     if not options.replay_only:
@@ -166,6 +170,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
                     limit_cases=options.sample_limit,
                     run_uid=run_uid,
                     case_uids=imported_case_uids or None,
+                    eval_sidecar_context=options.eval_sidecar_context,
                 )
             )
         report["replay"] = replay
