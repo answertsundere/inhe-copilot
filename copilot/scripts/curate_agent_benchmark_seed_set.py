@@ -116,19 +116,20 @@ def _base_rubric(item: dict[str, Any], expected: dict[str, Any]) -> dict[str, An
 def _seed_expected_for_item(item: dict[str, Any]) -> dict[str, Any]:
     scenario_type = sanitize_text(item.get("scenario_type"))
     qft = _query_fact_type(item)
-
     if scenario_type == "installation" or qft in {"installation", "accessory_usage", "accessory_compatibility"}:
         return {
             "expected_reply": (
-                "亲，我先帮您按当前这款商品的安装资料核对。"
+                "亲，我先按当前这款商品帮您核对安装资料。"
                 "如果资料里只有安装图或步骤说明，就不能直接承诺有安装视频；"
-                "您也可以把卡住的位置拍照发来，我这边转人工按这款结构帮您确认下一步。"
+                "可以先把可发送的安装示意图或说明书发您参考。"
+                "您按图纸装的时候如果卡在哪一步，可以把当前位置和配件拍照发来继续核对。"
             ),
-            "key_points": ["按当前这款商品", "不直接承诺有安装视频", "转人工"],
+            "key_points": ["按当前这款商品", "不直接承诺有安装视频", "安装图或说明书"],
             "forbidden_claims": ["一定有安装视频", "通用安装方式都适用", "随便装"],
-            "must_handoff": True,
-            "auto_send_allowed": False,
+            "must_handoff": False,
+            "auto_send_allowed": True,
         }
+
     if scenario_type == "promotion" or qft in {"promotion", "promotion_policy", "price_negotiation", "coupon", "discount"}:
         return {
             "expected_reply": (

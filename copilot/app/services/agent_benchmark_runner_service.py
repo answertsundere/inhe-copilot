@@ -53,6 +53,17 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
         return not any(term in normalized_text for term in video_promises)
     alias_groups = [
         (
+            ("\u5b89\u88c5\u56fe", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u56fe\u6216\u8bf4\u660e\u4e66"),
+            (
+                "\u5b89\u88c5\u56fe",
+                "\u5b89\u88c5\u793a\u610f\u56fe",
+                "\u8bf4\u660e\u4e66",
+                "\u56fe\u7eb8",
+                "\u6309\u56fe",
+                "\u6b65\u9aa4\u8bf4\u660e",
+            ),
+        ),
+        (
             ("\u5f53\u524d\u5546\u54c1", "\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1", "\u6309\u5f53\u524d\u5546\u54c1", "\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"),
             (
                 "\u5f53\u524d\u8fd9\u6b3e",

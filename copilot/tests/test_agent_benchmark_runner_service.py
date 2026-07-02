@@ -399,6 +399,32 @@ def test_installation_video_negative_key_point_accepts_no_video_promise(monkeypa
     assert item["missing_key_points"] == []
 
 
+def test_installation_material_key_point_accepts_diagram_and_manual_aliases(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "Send the approved installation diagram or manual when available.",
+            "key_points": ["\u5b89\u88c5\u56fe\u6216\u8bf4\u660e\u4e66"],
+            "forbidden_claims": [],
+            "must_handoff": False,
+            "auto_send_allowed": True,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": True,
+        "requires_human_review": False,
+        "sendable_reply": "\u6211\u5148\u628a\u5b89\u88c5\u793a\u610f\u56fe/\u8bf4\u660e\u4e66\u53d1\u60a8\u53c2\u8003\uff0c\u60a8\u53ef\u4ee5\u6309\u56fe\u7eb8\u4e0a\u7684\u6b65\u9aa4\u5b89\u88c5\u3002",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
 def test_forbidden_claims_fail(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(session_factory)

@@ -141,6 +141,19 @@ def test_seed_curator_does_not_generate_concrete_numeric_facts(monkeypatch):
     assert not any(char.isdigit() for char in expected)
 
 
+def test_seed_curator_installation_seed_allows_verified_install_material_send(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_candidate(session_factory)
+
+    result = curate_seed_set(limit=5, apply_reviewed=False, db_factory=session_factory)
+
+    expected = result["items"][0]["expected"]
+    assert expected["auto_send_allowed"] is True
+    assert expected["must_handoff"] is False
+    assert "安装图或说明书" in expected["key_points"]
+    assert "一定有安装视频" in expected["forbidden_claims"]
+
+
 def test_seed_curator_evaluate_rejects_unclear_candidate():
     item = {
         "scenario_uid": "unclear",
