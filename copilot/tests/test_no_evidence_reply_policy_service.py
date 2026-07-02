@@ -276,11 +276,30 @@ def test_space_fit_with_known_product_context_mentions_reserved_space():
 
 
 def test_space_fit_with_sendable_media_asset_can_reference_delivery():
-    result = _policy(query_fact_type="space_fit", has_product_context=True, has_sendable_media_asset=True)
+    result = _policy(
+        query_fact_type="space_fit",
+        has_product_context=True,
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["size_chart"],
+    )
 
     assert result["requires_human_review"] is False
     assert result["reply_strategy"] == "send_supported_space_fit_asset"
     assert result["reason"] == "sendable_media_asset_available"
+
+
+def test_space_fit_with_non_size_media_asset_stays_human_review():
+    result = _policy(
+        query_fact_type="space_fit",
+        has_product_context=True,
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["product_photo"],
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_space_fit_for_known_product"
+    assert result["reason"] == "no_approved_usable_media_asset_matched"
+    assert "预留位置" in result["reply"]
 
 
 def test_structure_function_with_known_product_context_safe_handoff():

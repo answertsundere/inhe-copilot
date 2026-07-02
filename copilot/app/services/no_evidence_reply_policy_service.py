@@ -43,6 +43,14 @@ ACCESSORY_AVAILABILITY_FACT_TYPES = {"accessory_availability"}
 AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"}
 DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
+SPACE_FIT_MEDIA_ASSET_TYPES = {
+    "dimension_image",
+    "dimensions_image",
+    "size_chart",
+    "size_image",
+    "product_size_chart",
+    "space_fit_image",
+}
 PLACEMENT_SCENE_FACT_TYPES = {"placement_scene"}
 STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
@@ -478,7 +486,7 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
         }
 
     if fact_type == "space_fit":
-        if has_sendable_media_asset:
+        if has_sendable_media_asset and (sendable_media_asset_types & SPACE_FIT_MEDIA_ASSET_TYPES):
             return {
                 "reply": "亲，这款的尺寸/实物图我一起发您参考。您可以先对照图片里的尺寸标注，再结合家里预留位置的宽度、进深和高度判断；如果您把预留尺寸发我，我也可以继续帮您一起看。",
                 "requires_human_review": False,
