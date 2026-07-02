@@ -243,6 +243,32 @@ def test_current_product_key_point_accepts_current_style_alias(monkeypatch):
     assert item["missing_key_points"] == []
 
 
+def test_current_product_key_point_accepts_your_style_alias(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "Verify against this product.",
+            "key_points": ["\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "\u4eb2\uff0c\u8fd9\u4e2a\u9700\u8981\u6309\u60a8\u8fd9\u6b3e\u7684\u7ed3\u6784\u548c\u914d\u4ef6\u89c4\u683c\u6838\u5bf9\uff0c\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u786e\u8ba4\u3002",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
 def test_current_product_key_point_rejects_page_only_reply(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(
@@ -339,6 +365,32 @@ def test_installation_video_promise_key_point_accepts_no_sendable_video_boundary
         "can_send": False,
         "requires_human_review": True,
         "draft_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u76ee\u524d\u6682\u65f6\u6ca1\u6709\u53ef\u76f4\u63a5\u53d1\u9001\u7684\u5b89\u88c5\u89c6\u9891\uff0c\u6211\u5148\u5e2e\u60a8\u6838\u5bf9\u5b89\u88c5\u8d44\u6599\u3002",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
+def test_installation_video_negative_key_point_accepts_no_video_promise(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "Do not promise installation video.",
+            "key_points": ["\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891"],
+            "forbidden_claims": ["\u4e00\u5b9a\u6709\u5b89\u88c5\u89c6\u9891"],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "\u4eb2\uff0c\u8fd9\u4e2a\u9700\u8981\u6309\u60a8\u8fd9\u6b3e\u7684\u7ed3\u6784\u548c\u914d\u4ef6\u89c4\u683c\u6838\u5bf9\uff0c\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u786e\u8ba4\u662f\u5426\u9002\u914d\u3002",
         "answer_trace": {"query_fact_type": "installation"},
     }).run_scenarios(db_factory=session_factory)
 

@@ -494,6 +494,84 @@ def test_gold_installation_diagram_reply_matches_supervisor_wording():
     assert "对照图纸" in result["reply"]
 
 
+def test_installation_structure_modification_uses_handoff_not_diagram_send():
+    result = _policy(
+        query_fact_type="installation",
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["install_image"],
+        customer_message="这款能不能只装中间部分，两边拆掉会不会影响稳固？",
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_structure_function_for_known_product"
+    assert "转人工" in result["reply"]
+    assert "侧板/护栏/挡板" in result["reply"]
+
+
+def test_installation_diagram_request_still_can_use_diagram_when_not_modification():
+    result = _policy(
+        query_fact_type="installation",
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["install_image"],
+        customer_message="安装步骤怎么看？",
+    )
+
+    assert result["requires_human_review"] is False
+    assert result["reply_strategy"] == "send_installation_diagram_without_video"
+
+
+def test_installation_accessory_package_question_uses_handoff_without_confusing_usage():
+    result = _policy(
+        query_fact_type="installation",
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["install_image"],
+        customer_message="这款有没有配螺丝刀？",
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_accessory_usage_with_photo"
+    assert "转人工" in result["reply"]
+
+
+def test_installation_accessory_package_uses_context_customer_message():
+    response = {
+        "suggested_reply": "亲，这个细节可以参考下面发您的图片或视频。",
+        "evidence_debug": {"query_fact_type": "installation", "selected_evidence": []},
+        "context_used": {
+            "product_context_pack": {
+                "stats": {"sendable_media_asset_count": 1},
+                "recommended_assets": [{
+                    "asset_url": "https://asset.example/install.png",
+                    "asset_type": "install_image",
+                    "auto_send_level": "auto",
+                }],
+            }
+        },
+    }
+    context = {
+        "customer_message": "这款有没有配螺丝刀？",
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "product_name": "测试商品",
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_accessory_usage_with_photo"
+    assert result.get("can_send") is not True
+
+
+def test_installation_tool_usage_request_is_not_package_missing_question():
+    result = _policy(
+        query_fact_type="installation",
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["install_image"],
+        customer_message="螺丝刀怎么用？",
+    )
+
+    assert result["reply_strategy"] == "send_installation_diagram_without_video"
+
+
 def test_gold_stability_reply_for_fixed_or_load_capacity_questions():
     result = _policy(query_fact_type="load_capacity", has_product_context=True)
 

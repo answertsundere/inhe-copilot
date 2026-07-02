@@ -70,6 +70,45 @@ ACCESSORY_MESSAGE_TERMS = (
     "哪块",
     "位置",
 )
+ACCESSORY_PACKAGE_ITEM_TERMS = ("螺丝刀", "螺丝", "五金包", "工具包", "安装工具")
+ACCESSORY_PACKAGE_INTENT_TERMS = (
+    "没有配",
+    "没配",
+    "有配",
+    "配了",
+    "带不带",
+    "有没有",
+    "少了",
+    "缺",
+    "漏发",
+    "少件",
+    "缺件",
+)
+STRUCTURE_MODIFICATION_TERMS = (
+    "改装",
+    "加装",
+    "补配",
+    "补一面",
+    "第四面",
+    "拆掉",
+    "拆了",
+    "拆下来",
+    "只装中间",
+    "只保留中间",
+    "保留中间",
+    "中间部分",
+    "不要两边",
+    "一边不要",
+    "两边不要",
+    "单独配",
+    "能不能配",
+    "能不能用",
+    "适不适配",
+    "摇晃",
+    "稳固",
+    "稳定性",
+)
+STRUCTURE_PART_TERMS = ("侧板", "护栏", "围栏", "挡板", "板件", "中间", "两边", "一边", "结构", "孔位", "配件")
 MEDIA_REQUEST_TERMS = (
     "视频",
     "安装视频",
@@ -341,6 +380,16 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
             "needs_followup": True,
             "reply_strategy": "request_product_context_for_accessory_availability",
             "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in INSTALLATION_FACT_TYPES and _looks_like_structure_modification_question(inputs):
+        return {
+            "reply": _reply_structure_function_verify(),
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "verify_structure_function_for_known_product",
+            "reason": missing_reason or "structure_function_evidence_missing",
             "forbidden_claims": forbidden_claims,
         }
 
@@ -660,6 +709,8 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
         "real_context_summary": summary,
         "customer_message": str(
             response.get("customer_message")
+            or context.get("customer_message")
+            or context.get("current_query")
             or debug.get("current_query")
             or semantic_query.get("current_query")
             or answer_trace.get("customer_message")
@@ -696,6 +747,10 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if actionability in {"context_update", "deictic_followup"}:
         return True
     if response.get("generation_mode") == "turn_contract_controlled_handoff":
+        return True
+    if fact_type in INSTALLATION_FACT_TYPES and (
+        _looks_like_structure_modification_question(inputs) or _looks_like_accessory_question(inputs)
+    ):
         return True
     if (
         fact_type in INSTALLATION_FACT_TYPES
@@ -790,7 +845,20 @@ def _asks_for_known_context(reply: str, inputs: dict[str, Any]) -> bool:
 
 def _looks_like_accessory_question(inputs: dict[str, Any]) -> bool:
     message = str(inputs.get("customer_message") or "")
-    return any(term in message for term in ACCESSORY_MESSAGE_TERMS)
+    if any(term in message for term in ACCESSORY_MESSAGE_TERMS):
+        return True
+    has_package_item = any(term in message for term in ACCESSORY_PACKAGE_ITEM_TERMS)
+    has_package_intent = any(term in message for term in ACCESSORY_PACKAGE_INTENT_TERMS)
+    return has_package_item and has_package_intent
+
+
+def _looks_like_structure_modification_question(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    if not message:
+        return False
+    has_modification = any(term in message for term in STRUCTURE_MODIFICATION_TERMS)
+    has_structure_part = any(term in message for term in STRUCTURE_PART_TERMS)
+    return has_modification and has_structure_part
 
 
 def _looks_like_internal_space_question(inputs: dict[str, Any]) -> bool:

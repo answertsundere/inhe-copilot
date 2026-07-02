@@ -48,10 +48,21 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
         return True
     normalized_key = sanitize_text(key_point)
     normalized_text = sanitize_text(text)
+    if any(term in normalized_key for term in ("不直接承诺有安装视频", "不承诺有安装视频")):
+        video_promises = ("一定有安装视频", "可以发安装视频", "我把安装视频发您", "把安装视频发您", "发安装视频")
+        return not any(term in normalized_text for term in video_promises)
     alias_groups = [
         (
             ("\u5f53\u524d\u5546\u54c1", "\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1", "\u6309\u5f53\u524d\u5546\u54c1", "\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"),
-            ("\u5f53\u524d\u8fd9\u6b3e", "\u8fd9\u6b3e\u5546\u54c1", "\u6309\u5f53\u524d\u8fd9\u6b3e", "\u6309\u8fd9\u6b3e"),
+            (
+                "\u5f53\u524d\u8fd9\u6b3e",
+                "\u8fd9\u6b3e\u5546\u54c1",
+                "\u6309\u5f53\u524d\u8fd9\u6b3e",
+                "\u6309\u8fd9\u6b3e",
+                "\u6309\u60a8\u8fd9\u6b3e",
+                "\u60a8\u8fd9\u6b3e",
+                "\u8fd9\u6b3e\u7684",
+            ),
         ),
         (
             ("\u4e0d\u80fd\u76f4\u63a5\u627f\u8bfa\u989d\u5916\u964d\u4ef7", "\u4e0d\u627f\u8bfa\u989d\u5916\u964d\u4ef7", "\u4e0d\u76f4\u63a5\u627f\u8bfa\u4f18\u60e0"),
@@ -378,6 +389,8 @@ class AgentBenchmarkRunnerService:
                 "order_id": sanitize_text(sidecar.get("order_id")),
                 "platform_order_id": sanitize_text(sidecar.get("platform_order_id")),
                 "benchmark_query_fact_type": query_fact_type,
+                "customer_message": sanitize_text(turn.get("text")),
+                "current_query": sanitize_text(turn.get("text")),
                 "turn_understanding": turn_understanding,
             },
         }
