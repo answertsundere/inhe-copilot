@@ -65,6 +65,7 @@ PLACEMENT_SCENE_FACT_TYPES = {"placement_scene"}
 STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
+MATERIAL_SAFETY_FACT_TYPES = {"material", "material_safety", "certification_report"}
 ACCESSORY_MESSAGE_TERMS = (
     "部件",
     "配件",
@@ -176,6 +177,7 @@ _POLICY_FACT_TYPES = (
     | STRUCTURE_FUNCTION_FACT_TYPES
     | LOAD_CAPACITY_FACT_TYPES
     | GROSS_WEIGHT_FACT_TYPES
+    | MATERIAL_SAFETY_FACT_TYPES
     | ACCESSORY_AVAILABILITY_FACT_TYPES
 )
 
@@ -207,9 +209,9 @@ def _reply_installation_video_request_with_diagram_review() -> str:
 
 def _reply_stability_verify() -> str:
     return (
-        "亲，这个主要看您说的是哪一款组合。正常按说明书安装、螺丝拧紧后，"
-        "日常使用稳定性是可以的；如果是儿童使用场景，建议按说明把防倒件也固定好，会更稳一些。"
-        "您可以把当前商品截图或安装位置发我，我帮您确认这款是否需要额外固定。"
+        "亲，正常放书本、玩具这类日常使用可以参考商品资料来判断。"
+        "没有具体承重数值前，我不直接报公斤数；建议分散摆放，不要集中压在一处，"
+        "安装时按说明固定好、螺丝拧紧，稳定性会更好。具体承重我帮您按资料核一下。"
     )
 
 
@@ -246,9 +248,17 @@ def _reply_promotion_verify() -> str:
 
 def _reply_placement_bed_rail_verify() -> str:
     return (
-        "亲，这个主要看您家床垫厚度和床边结构。您可以先量一下床垫厚度，"
-        "再对照页面标注的适用范围；如果是特殊床架、榻榻米或床边比较厚，"
-        "建议拍一下床边位置，我帮您再确认是否合适。"
+        "亲，这个要看您准备放的位置和环境。如果是阳台、卫生间这类可能潮湿或暴晒的位置，"
+        "建议先确认这款材质和页面使用说明；您也可以把摆放位置拍一下，"
+        "我帮您按资料一起看是否合适。"
+    )
+
+
+def _reply_material_safety_verify() -> str:
+    return (
+        "亲，材质和安全说明要以这款商品页、材质说明或检测/合格资料为准。"
+        "我这边不直接说无毒或有证书；您要确认材质、气味或检测证明的话，"
+        "我按当前商品资料核对，有依据再发您参考。"
     )
 
 
@@ -301,6 +311,8 @@ def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) ->
         policy["reply"] = _reply_space_fit_verify()
     elif strategy == "verify_placement_scene_for_known_product":
         policy["reply"] = _reply_placement_bed_rail_verify()
+    elif strategy == "verify_material_safety_for_known_product":
+        policy["reply"] = _reply_material_safety_verify()
     elif strategy == "verify_dimensions_for_known_product" and _looks_like_internal_space_question(inputs):
         policy["reply"] = _reply_internal_space_verify()
     elif strategy == "verify_stability_or_load_capacity":
@@ -372,6 +384,26 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
             "reply_strategy": "verify_stability_or_load_capacity",
             "reason": missing_reason or "stability_or_load_capacity_evidence_missing",
             "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in MATERIAL_SAFETY_FACT_TYPES:
+        material_forbidden_claims = forbidden_claims + ["无毒", "食品级", "有证书", "有检测报告", "环保无味"]
+        if has_product_context or has_order_context:
+            return {
+                "reply": _reply_material_safety_verify(),
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_material_safety_for_known_product",
+                "reason": missing_reason or "material_safety_evidence_missing",
+                "forbidden_claims": material_forbidden_claims,
+            }
+        return {
+            "reply": "亲，材质和安全说明要先对应到具体商品资料。您发一下商品截图、链接或 SKU，我再按这款资料核对材质、气味或检测证明，避免按别的款式说错。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_product_context_for_material_safety",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": material_forbidden_claims,
         }
 
     if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES:

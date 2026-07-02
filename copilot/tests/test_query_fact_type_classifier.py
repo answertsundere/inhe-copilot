@@ -41,6 +41,18 @@ def test_accessory_installation_question_is_not_availability():
     assert result["query_fact_type"] != "accessory_availability"
 
 
+def test_weight_units_with_pressure_context_are_load_capacity():
+    for message in ("放几斤不压扁", "放多少斤会不会压弯", "能放几斤书"):
+        result = classify_query_fact_type(message, "product_question")
+        assert result["query_fact_type"] == "load_capacity"
+
+
+def test_plain_product_weight_questions_remain_gross_weight():
+    for message in ("这个多重", "毛重多少", "商品重量几斤"):
+        result = classify_query_fact_type(message, "product_question")
+        assert result["query_fact_type"] == "gross_weight"
+
+
 def test_promotion_terms_are_not_misrouted_to_aftersales():
     for message in ("有没有福利", "有什么优惠", "晒图返多少"):
         result = classify_query_fact_type(message, "product_question")

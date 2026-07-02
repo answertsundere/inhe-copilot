@@ -1,6 +1,39 @@
 from app.services.customer_reply_polisher import polish_customer_reply
 
 
+def test_polisher_preserves_product_names_with_storage_cabinet_terms():
+    product_name = "九号防夹滑门收纳柜"
+    response = {
+        "suggested_reply": f"亲，您问的是「{product_name}」的材质，我先帮您核实一下准确说法。",
+        "display_product_name": product_name,
+    }
+
+    polished = polish_customer_reply(response, customer_message="这个材质安全吗")
+    reply = polished["suggested_reply"]
+
+    assert product_name in reply
+    assert "九号防夹滑门商品" not in reply
+    assert "核实一下准确说法" not in reply
+    assert "确认清楚" not in reply
+
+
+def test_polisher_preserves_product_names_with_bookshelf_and_bedrail_terms():
+    names = ("三层火箭书架", "儿童床护栏", "防夹滑门整理柜")
+    for product_name in names:
+        response = {
+            "suggested_reply": f"亲，您问的是「{product_name}」，我先帮您核实一下准确说法。",
+            "display_product_name": product_name,
+        }
+
+        polished = polish_customer_reply(response, customer_message="这个安全吗")
+        reply = polished["suggested_reply"]
+
+        assert product_name in reply
+        assert "商品」" not in reply
+        assert "核实一下准确说法" not in reply
+        assert "确认清楚" not in reply
+
+
 def test_polisher_removes_internal_material_safety_process_language():
     response = {
         "suggested_reply": (
@@ -59,3 +92,34 @@ def test_polisher_redacts_internal_system_terms():
     assert "知识库" not in reply
     assert "已审核资料" not in reply
     assert "可直接引用" not in reply
+def test_polisher_keeps_material_safety_consultation_out_of_complaint_rewrite():
+    response = {
+        "suggested_reply": "亲，材质和安全说明要以这款商品页和检测/合格资料为准，我帮您核对资料后再确认。",
+        "intent": "complaint",
+        "risk_level": "high",
+        "requires_human_review": True,
+        "evidence_debug": {"query_fact_type": "material"},
+    }
+
+    polished = polish_customer_reply(response, customer_message="什么材质，有毒吗")
+    reply = polished["suggested_reply"]
+
+    assert "材质和安全说明" in reply
+    assert "订单号或购买记录" not in reply
+    assert "非常抱歉让您有这么不好的体验" not in reply
+
+
+def test_polisher_still_rewrites_real_complaint_with_material_risk_terms():
+    response = {
+        "suggested_reply": "亲，材质和安全说明要以资料为准，我帮您核对。",
+        "intent": "complaint",
+        "risk_level": "high",
+        "requires_human_review": True,
+        "evidence_debug": {"query_fact_type": "material"},
+    }
+
+    polished = polish_customer_reply(response, customer_message="这个有毒我要投诉")
+    reply = polished["suggested_reply"]
+
+    assert "非常抱歉" in reply
+    assert "跟进" in reply

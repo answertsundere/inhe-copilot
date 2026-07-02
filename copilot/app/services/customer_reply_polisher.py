@@ -22,6 +22,7 @@ _BLOCKED_PHRASES = (
     "Evidence Gate",
     "query_fact_type",
     "fact_type",
+    "核实一下准确说法",
 )
 
 
@@ -133,9 +134,12 @@ def _normalize_greeting(text: str) -> str:
 def _rewrite_common_process_phrases(text: str) -> str:
     replacements = (
         ("我先按当前商品", "我这边先按这款商品"),
-        ("帮您核实一下准确说法", "为您确认清楚"),
-        ("核实一下准确说法", "确认清楚"),
-        ("核对一下准确说法", "确认清楚"),
+        ("按当前商品信息", "按这款商品"),
+        ("当前商品信息", "这款商品"),
+        ("当前商品", "这款商品"),
+        ("帮您核实一下准确说法", "帮您确认一下"),
+        ("核实一下准确说法", "确认一下"),
+        ("核对一下准确说法", "确认一下"),
         ("再按准确说法回复您", "再回复您"),
         ("给您准确回复", "回复您"),
         ("确认后再给您准确回复", "确认后回复您"),
@@ -203,12 +207,12 @@ def _rewrite_generic_handoff(text: str) -> str:
     )
     text = re.sub(
         r"麻烦您稍等一下，我这边确认清楚后再回复您。",
-        "您稍等一下，我确认清楚后回复您。",
+        "您稍等一下，我确认后回复您。",
         text,
     )
     text = re.sub(
         r"麻烦您稍等一下，我确认清楚后再回复您。",
-        "您稍等一下，我确认清楚后回复您。",
+        "您稍等一下，我确认后回复您。",
         text,
     )
     text = re.sub(
@@ -229,6 +233,8 @@ def _remove_internal_words(text: str) -> str:
         ("已审核资料", "资料"),
         ("已审核说明", "说明"),
         ("可直接引用的", ""),
+        ("帮您核实一下准确说法", "帮您确认一下"),
+        ("核实一下准确说法", "确认一下"),
     )
     for old, new in replacements:
         text = text.replace(old, new)
@@ -290,11 +296,43 @@ def _is_complaint_or_quality_service_turn(response: dict[str, Any], customer_mes
     if isinstance(debug, dict):
         intent = intent or str(debug.get("intent") or "").lower()
         risk = risk or str(debug.get("risk_level") or "").lower()
+    if (
+        (intent in {"complaint", "high_risk"} or risk in {"high", "critical"})
+        and _is_material_safety_consultation(response, customer_message)
+    ):
+        return False
     if intent in {"complaint", "high_risk"} or risk in {"high", "critical"}:
         return True
     return _contains_any_plain(
         customer_message,
         ("投诉", "差评", "12315", "平台介入", "曝光", "质量太差", "再不处理", "不处理"),
+    )
+
+
+def _is_material_safety_consultation(response: dict[str, Any], customer_message: str) -> bool:
+    """Product material/safety questions should not be polished as complaints.
+
+    Phrases like “什么材质，有毒吗” are high-risk enough to require review, but
+    they are still presales product-safety consultations unless the buyer is
+    explicitly threatening投诉/差评/平台介入.
+    """
+    text = str(customer_message or "")
+    debug = response.get("evidence_debug") or {}
+    fact_type = str(
+        response.get("query_fact_type")
+        or response.get("fact_type")
+        or (debug.get("query_fact_type") if isinstance(debug, dict) else "")
+        or ""
+    )
+    material_terms = ("材质", "材料", "什么料", "环保", "有毒", "无毒", "甲醛", "安全", "食品级")
+    escalation_terms = ("投诉", "差评", "12315", "平台介入", "曝光", "举报", "律师", "起诉")
+    if any(term in text for term in escalation_terms):
+        return False
+    if fact_type in {"material", "material_safety", "certification_report"}:
+        return any(term in text for term in material_terms)
+    return (
+        any(term in text for term in ("材质", "材料", "什么料"))
+        and any(term in text for term in ("有毒", "无毒", "甲醛", "安全", "环保", "食品级"))
     )
 
 

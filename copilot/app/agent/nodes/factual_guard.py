@@ -453,6 +453,16 @@ def _rewrite_safe_reply(state: dict, original_reply: str) -> str:
             "\n麻烦您提供一下订单号，我们会安排专人跟进。"
         )
 
+    # --- material safety consultation: high-risk review without complaint flow ---
+    if intent in ("complaint", "high_risk") and _is_material_safety_consultation(state):
+        product_name = _customer_product_name(state)
+        subject = f"「{product_name}」" if product_name else "这款商品"
+        return (
+            f"亲，您关心{subject}的材质和安全很正常。"
+            "这类信息要以商品页、材质说明或检测/合格资料为准，我这边不直接替您下结论。"
+            "我先帮您按当前商品核对资料，有依据后再发您参考。"
+        )
+
     # --- complaint / high_risk: de-escalate ---
     if intent in ("complaint", "high_risk"):
         return (
@@ -553,3 +563,35 @@ def _rewrite_safe_reply(state: dict, original_reply: str) -> str:
 
 # 向后兼容别名
 _rewrite_low_confidence_reply = _rewrite_safe_reply
+
+
+def _is_material_safety_consultation(state: dict) -> bool:
+    message = str(state.get("normalized_message") or state.get("customer_message") or "")
+    fact_type = str(state.get("query_fact_type") or "")
+    semantic = state.get("semantic_query") or {}
+    if isinstance(semantic, dict):
+        fact_type = fact_type or str(semantic.get("query_fact_type") or semantic.get("primary_fact_type") or "")
+    material_terms = ("材质", "材料", "什么料", "环保", "有毒", "无毒", "甲醛", "安全", "食品级", "检测", "合格")
+    escalation_terms = ("投诉", "差评", "12315", "平台介入", "曝光", "举报", "律师", "起诉")
+    if any(term in message for term in escalation_terms):
+        return False
+    if fact_type in {"material", "material_safety", "certification_report"}:
+        return any(term in message for term in material_terms)
+    return (
+        any(term in message for term in ("材质", "材料", "什么料"))
+        and any(term in message for term in ("有毒", "无毒", "甲醛", "安全", "环保", "食品级"))
+    )
+
+
+def _customer_product_name(state: dict) -> str:
+    context = state.get("copilot_context") or {}
+    for value in (
+        state.get("matched_product_name"),
+        state.get("product_name"),
+        context.get("display_product_name") if isinstance(context, dict) else "",
+        context.get("product_title") if isinstance(context, dict) else "",
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""

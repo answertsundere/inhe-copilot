@@ -87,6 +87,24 @@ def _known_order_text(state: dict) -> str:
     return ""
 
 
+def _is_material_safety_consultation(state: dict) -> bool:
+    message = str(state.get("normalized_message") or state.get("customer_message") or "")
+    fact_type = str(state.get("query_fact_type") or "")
+    semantic = state.get("semantic_query") or {}
+    if isinstance(semantic, dict):
+        fact_type = fact_type or str(semantic.get("query_fact_type") or semantic.get("primary_fact_type") or "")
+    material_terms = ("材质", "材料", "什么料", "环保", "有毒", "无毒", "甲醛", "安全", "食品级", "检测", "合格")
+    escalation_terms = ("投诉", "差评", "12315", "平台介入", "曝光", "举报", "律师", "起诉")
+    if any(term in message for term in escalation_terms):
+        return False
+    if fact_type in {"material", "material_safety", "certification_report"}:
+        return any(term in message for term in material_terms)
+    return (
+        any(term in message for term in ("材质", "材料", "什么料"))
+        and any(term in message for term in ("有毒", "无毒", "甲醛", "安全", "环保", "食品级"))
+    )
+
+
 def _product_no_evidence_reply(state: dict) -> str:
     product = _known_product_text(state)
     msg = state.get("normalized_message") or state.get("customer_message") or ""
@@ -106,7 +124,7 @@ def _product_no_evidence_reply(state: dict) -> str:
             return (
                 f"亲，您担心的是「{product}」滑门/结构会不会夹手、家里宝宝使用是否安全对吗？\n"
                 "这个点我先帮您按对应款式核实清楚，避免不同款式结构说错影响您判断。\n"
-                "麻烦您稍等一下，我确认清楚后再按准确说法回复您。"
+                "麻烦您稍等一下，我确认后再按准确说法回复您。"
             )
         return (
             "亲，夹手和宝宝使用安全这个点需要先对上具体款式后再确认。\n"
@@ -131,7 +149,7 @@ def _product_no_evidence_reply(state: dict) -> str:
             )
         return (
             f"亲，您问的是「{product}」的{topic}，我先帮您核对一下准确说法。\n"
-            "麻烦您稍等一下，我这边确认清楚后再回复您，避免给您说错影响选择。"
+            "麻烦您稍等一下，我这边确认后再回复您，避免给您说错影响选择。"
         )
     return (
         f"亲，{topic}我需要先对上具体款式后再确认。\n"
@@ -354,18 +372,28 @@ def gold_csr_reply_builder(state: dict) -> dict:
         changed = True
 
     elif goal == "deescalate_complaint":
-        targeted_reply = _refund_complaint_handoff_reply(state)
-        if targeted_reply:
-            reply = targeted_reply
+        if _is_material_safety_consultation(state):
+            product = _known_product_text(state)
+            subject = f"「{product}」" if product else "这款商品"
+            reply = (
+                f"亲，您关心{subject}的材质和安全很正常。"
+                "这类信息要以商品页、材质说明或检测/合格资料为准，我这边不直接替您下结论。"
+                "我先帮您按当前商品核对资料，有依据后再发您参考。"
+            )
             changed = True
         else:
-            reply = (
-            "亲亲，非常抱歉让您等着急了，这个情况我会优先帮您跟进。\n"
-            "为了避免信息不准，我需要先核实订单和处理记录，再转人工/主管继续处理。\n"
-            f"{_already_asked_order_text(state)}\n"
-            "我这边不会先做超出核实结果的承诺，但会按实际情况给您推进处理。"
-        )
-        changed = True
+            targeted_reply = _refund_complaint_handoff_reply(state)
+            if targeted_reply:
+                reply = targeted_reply
+                changed = True
+            else:
+                reply = (
+                "亲亲，非常抱歉让您等着急了，这个情况我会优先帮您跟进。\n"
+                "为了避免信息不准，我需要先核实订单和处理记录，再转人工/主管继续处理。\n"
+                f"{_already_asked_order_text(state)}\n"
+                "我这边不会先做超出核实结果的承诺，但会按实际情况给您推进处理。"
+            )
+            changed = True
 
     trace = {
         "node": "gold_csr_reply_builder",

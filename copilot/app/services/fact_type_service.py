@@ -215,7 +215,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u80fd\u653e\u5417",
         "\u9002\u5408\u653e",
     )),
-    ("load_capacity", ("\u627f\u91cd", "\u80fd\u653e\u591a\u91cd", "\u653e\u591a\u91cd", "\u7ed3\u5b9e", "\u80fd\u653e\u591a\u5c11", "\u538b\u5f2f")),
+    ("load_capacity", ("\u627f\u91cd", "\u80fd\u653e\u591a\u91cd", "\u653e\u591a\u91cd", "\u653e\u51e0\u65a4", "\u653e\u591a\u5c11\u65a4", "\u7ed3\u5b9e", "\u80fd\u653e\u591a\u5c11", "\u538b\u5f2f", "\u538b\u6241", "\u538b\u584c", "\u538b\u574f")),
     ("dimensions", ("\u5c3a\u5bf8", "\u591a\u9ad8", "\u591a\u5bbd", "\u591a\u957f", "\u9ad8\u5ea6", "\u5bbd\u5ea6", "\u957f\u5ea6", "\u5360\u5730", "\u89c4\u683c")),
     ("detachable", ("\u53ef\u62c6", "\u62c6\u5378", "\u62c6\u5f00", "\u62c6\u4e0b\u6765", "\u80fd\u62c6", "\u62c6\u88c5")),
     ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f")),
@@ -258,7 +258,19 @@ _GROSS_WEIGHT_TERMS = (
     "gross_weight_kg",
     "product weight",
 )
-_LOAD_CAPACITY_BLOCKERS_FOR_WEIGHT = ("承重", "载重", "能放多重", "放多重", "压弯", "放多少")
+_LOAD_CAPACITY_BLOCKERS_FOR_WEIGHT = (
+    "承重",
+    "载重",
+    "能放多重",
+    "放多重",
+    "放几斤",
+    "放多少斤",
+    "压弯",
+    "压扁",
+    "压塌",
+    "压坏",
+    "放多少",
+)
 _ACCESSORY_OBJECT_TERMS = ("配件", "小篮子", "篮子", "零件", "部件", "防倒器", "双面贴")
 _ACCESSORY_AVAILABILITY_TERMS = (
     "有卖",

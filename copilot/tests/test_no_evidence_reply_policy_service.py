@@ -226,9 +226,47 @@ def test_placement_scene_without_evidence_uses_manual_verification():
 
     assert result['requires_human_review'] is True
     assert result['reply_strategy'] == 'verify_placement_scene_for_known_product'
-    assert '床垫厚度' in result['reply']
-    assert '特殊床架' in result['reply']
-    assert '拍一下床边位置' in result['reply']
+    assert '准备放的位置和环境' in result['reply']
+    assert '阳台' in result['reply']
+    assert '床垫厚度' not in result['reply']
+    assert '特殊床架' not in result['reply']
+
+
+def test_load_capacity_without_evidence_uses_safe_non_numeric_fallback():
+    result = _policy(query_fact_type='load_capacity', has_product_context=True, has_media_context=False)
+
+    assert result['requires_human_review'] is True
+    assert result['reply_strategy'] == 'verify_stability_or_load_capacity'
+    assert '不直接报公斤数' in result['reply']
+    assert '分散摆放' in result['reply']
+    assert '压不弯' not in result['reply']
+
+
+def test_material_safety_without_evidence_uses_document_based_fallback():
+    result = _policy(query_fact_type='material', has_product_context=True, has_media_context=False)
+
+    assert result['requires_human_review'] is True
+    assert result['reply_strategy'] == 'verify_material_safety_for_known_product'
+    assert '材质和安全说明' in result['reply']
+    assert '检测/合格资料' in result['reply']
+    assert '当前商品资料' in result['reply']
+    assert '确认清楚' not in result['reply']
+    assert '订单号' not in result['reply']
+    assert '无毒或有证书' in result['reply']
+    assert '有依据再发您参考' in result['reply']
+    assert '无毒' in result['forbidden_claims']
+    assert '有检测报告' in result['forbidden_claims']
+
+
+def test_material_safety_without_product_context_requests_product_not_order():
+    result = _policy(query_fact_type='certification_report', has_product_context=False, has_order_context=False)
+
+    assert result['requires_human_review'] is True
+    assert result['reply_strategy'] == 'request_product_context_for_material_safety'
+    assert '商品截图' in result['reply']
+    assert 'SKU' in result['reply']
+    assert '订单号' not in result['reply']
+    assert '有证书' in result['forbidden_claims']
 
 
 def test_unsupported_media_promise_with_real_chinese_terms_is_rewritten():
@@ -627,9 +665,9 @@ def test_gold_stability_reply_for_fixed_or_load_capacity_questions():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_stability_or_load_capacity"
-    assert "按说明书安装" in result["reply"]
-    assert "防倒件" in result["reply"]
-    assert "商品截图" in result["reply"]
+    assert "不直接报公斤数" in result["reply"]
+    assert "分散摆放" in result["reply"]
+    assert "按资料核一下" in result["reply"]
 
 
 def test_gold_internal_space_reply_for_inside_space_question():
@@ -667,11 +705,12 @@ def test_gold_promotion_reply_mentions_coupon_and_activity_boundary():
     assert "下单页面" in result["reply"]
 
 
-def test_gold_bed_fit_reply_mentions_mattress_and_photo_check():
+def test_gold_placement_scene_reply_mentions_environment_and_photo_check():
     result = _policy(query_fact_type="placement_scene", has_product_context=True)
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_placement_scene_for_known_product"
-    assert "床垫厚度" in result["reply"]
-    assert "特殊床架" in result["reply"]
-    assert "拍一下床边位置" in result["reply"]
+    assert "准备放的位置和环境" in result["reply"]
+    assert "阳台" in result["reply"]
+    assert "摆放位置" in result["reply"]
+    assert "床垫厚度" not in result["reply"]
