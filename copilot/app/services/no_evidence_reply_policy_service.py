@@ -59,7 +59,6 @@ SPACE_FIT_MEDIA_HINT_TERMS = (
     "位置",
     "size",
     "dimension",
-    "marked",
     "measure",
 )
 PLACEMENT_SCENE_FACT_TYPES = {"placement_scene"}
