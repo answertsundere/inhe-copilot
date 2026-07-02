@@ -1,4 +1,4 @@
-from app.services.no_evidence_reply_policy_service import (
+﻿from app.services.no_evidence_reply_policy_service import (
     apply_no_evidence_reply_policy,
     build_no_evidence_reply_policy,
     contains_unsupported_media_promise,
@@ -159,9 +159,15 @@ def test_aftersales_mismatch_reply_uses_aftersales_check_action():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "aftersales_mismatch_check"
-    assert "资料和实物可能不一致" in result["reply"]
-    assert "售后核对" in result["reply"]
-    assert "资料截图和实物照片" in result["reply"]
+    assert "先别着急" in result["reply"]
+    assert "当前订单" in result["reply"]
+    assert "售后问题" in result["reply"]
+    assert "资料截图" in result["reply"]
+    assert "问题位置" in result["reply"]
+    assert "实物照片" in result["reply"]
+    assert "转人工" in result["reply"]
+    assert "直接退款" not in result["reply"]
+    assert "直接补发" not in result["reply"]
 
 
 def test_promotion_without_evidence_checks_activity_rules_not_product_detail():
@@ -301,8 +307,14 @@ def test_damaged_aftersales_with_order_context_asks_for_damage_photos_not_produc
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "aftersales_damaged_item_check"
-    assert "破损位置" in result["reply"] or "断裂" in result["reply"]
-    assert "补发" in result["reply"] or "换件" in result["reply"]
+    assert "先别着急" in result["reply"]
+    assert "当前订单" in result["reply"]
+    assert "问题位置" in result["reply"]
+    assert "外包装" in result["reply"]
+    assert "转人工核实" in result["reply"]
+    assert "处理方案" in result["reply"]
+    assert "直接补发" not in result["reply"]
+    assert "直接退款" not in result["reply"]
     assert "商品链接" not in result["reply"]
 
 
@@ -316,8 +328,11 @@ def test_damaged_aftersales_without_context_requests_order_or_product_info():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "request_context_for_damaged_aftersales"
+    assert "先别着急" in result["reply"]
     assert "订单" in result["reply"]
     assert "商品" in result["reply"]
+    assert "问题位置" in result["reply"]
+    assert "转人工核实" in result["reply"]
 
 
 def test_dimensions_without_product_context_can_request_minimal_product_identity():

@@ -195,6 +195,36 @@ def _reply_placement_bed_rail_verify() -> str:
     )
 
 
+def _reply_damaged_aftersales_with_context() -> str:
+    return (
+        "\u4eb2\uff0c\u6536\u5230\uff0c\u5148\u522b\u7740\u6025\u3002"
+        "\u9ebb\u70e6\u60a8\u62cd\u4e00\u4e0b\u65ad\u88c2/\u7834\u635f\u4f4d\u7f6e\u3001"
+        "\u95ee\u9898\u4f4d\u7f6e\u3001\u914d\u4ef6\u6574\u4f53\u548c\u5916\u5305\u88c5\uff0c"
+        "\u6211\u8fd9\u8fb9\u6309\u5f53\u524d\u8ba2\u5355\u5148\u8f6c\u4eba\u5de5\u6838\u5b9e\uff0c"
+        "\u786e\u8ba4\u540e\u518d\u7ed9\u60a8\u5bf9\u5e94\u7684\u5904\u7406\u65b9\u6848\u3002"
+    )
+
+
+def _reply_damaged_aftersales_request_context() -> str:
+    return (
+        "\u4eb2\uff0c\u6536\u5230\uff0c\u5148\u522b\u7740\u6025\u3002"
+        "\u9ebb\u70e6\u60a8\u8865\u5145\u4e00\u4e0b\u8ba2\u5355\u4fe1\u606f\u3001\u5546\u54c1\u4fe1\u606f\uff0c"
+        "\u5e76\u62cd\u4e00\u4e0b\u65ad\u88c2/\u7834\u635f\u4f4d\u7f6e\u3001\u95ee\u9898\u4f4d\u7f6e\u548c\u914d\u4ef6\u6574\u4f53\uff0c"
+        "\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u6838\u5b9e\u540e\u518d\u7ed9\u60a8\u5bf9\u5e94\u7684\u552e\u540e\u5904\u7406\u65b9\u6848\u3002"
+    )
+
+
+def _reply_aftersales_mismatch_check() -> str:
+    return (
+        "\u4eb2\uff0c\u5148\u522b\u7740\u6025\uff0c"
+        "\u60a8\u53cd\u9988\u7684\u8d44\u6599\u548c\u5b9e\u7269\u53ef\u80fd\u4e0d\u4e00\u81f4\uff0c"
+        "\u6211\u5148\u6309\u5f53\u524d\u8ba2\u5355\u548c\u552e\u540e\u95ee\u9898\u5e2e\u60a8\u6838\u5b9e\u3002"
+        "\u9ebb\u70e6\u60a8\u53d1\u4e00\u4e0b\u5bf9\u5e94\u8d44\u6599\u622a\u56fe\u3001"
+        "\u95ee\u9898\u4f4d\u7f6e\u548c\u5b9e\u7269\u7167\u7247\uff0c"
+        "\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u786e\u8ba4\u540e\u518d\u7ed9\u60a8\u5904\u7406\u65b9\u6848\u3002"
+    )
+
+
 def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
     policy = _build_no_evidence_reply_policy_raw(inputs)
     return _apply_gold_service_reply(policy, inputs)
@@ -218,6 +248,12 @@ def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) ->
         policy["reply"] = _reply_internal_space_verify()
     elif strategy == "verify_stability_or_load_capacity":
         policy["reply"] = _reply_stability_verify()
+    elif strategy == "aftersales_damaged_item_check":
+        policy["reply"] = _reply_damaged_aftersales_with_context()
+    elif strategy == "request_context_for_damaged_aftersales":
+        policy["reply"] = _reply_damaged_aftersales_request_context()
+    elif strategy == "aftersales_mismatch_check":
+        policy["reply"] = _reply_aftersales_mismatch_check()
     return policy
 
 

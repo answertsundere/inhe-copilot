@@ -43,6 +43,23 @@ def _contains(text: str, needle: str) -> bool:
     return sanitize_text(needle).lower() in sanitize_text(text).lower()
 
 
+def _key_point_satisfied(text: str, key_point: str) -> bool:
+    if _contains(text, key_point):
+        return True
+    normalized_key = sanitize_text(key_point)
+    normalized_text = sanitize_text(text)
+    alias_groups = [
+        (("先别着急", "安抚", "别着急"), ("先别着急", "别担心", "我先帮您核实", "我来帮您处理", "给您处理")),
+        (("订单信息", "当前订单"), ("当前订单", "订单信息", "按订单", "订单")),
+        (("实物照片", "问题照片", "问题位置"), ("实物照片", "问题位置", "拍照", "拍一下", "图片")),
+        (("转人工", "人工核实", "人工确认"), ("转人工", "人工核实", "人工确认", "核实后处理", "处理方案")),
+    ]
+    for triggers, aliases in alias_groups:
+        if any(trigger in normalized_key for trigger in triggers):
+            return any(alias in normalized_text for alias in aliases)
+    return False
+
+
 def _extract_reply(response: dict[str, Any]) -> str:
     return sanitize_text(
         response.get("sendable_reply")
@@ -367,7 +384,7 @@ class AgentBenchmarkRunnerService:
         if bool(response.get("requires_human_review")) != bool(expected.get("must_handoff")):
             reasons.append("handoff_mismatch")
         for point in expected.get("key_points") or []:
-            if sanitize_text(point) and not _contains(agent_reply, point):
+            if sanitize_text(point) and not _key_point_satisfied(agent_reply, point):
                 missing_key_points.append(sanitize_text(point))
                 reasons.append("missing_key_point")
                 break

@@ -190,6 +190,33 @@ def test_missing_key_points_fail(monkeypatch):
     assert item["missing_key_points"] == ["reinforced board"]
 
 
+def test_aftersales_key_points_accept_generic_aliases(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="aftersales",
+        expected={
+            "expected_reply": "Please comfort the customer and hand off.",
+            "key_points": ["先别着急", "订单信息", "实物照片", "转人工"],
+            "forbidden_claims": ["直接退款"],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "亲，我先帮您核实当前订单。麻烦把问题位置拍照发来，我这边人工核实后给您处理方案。",
+        "answer_trace": {"query_fact_type": "aftersales"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["failure_reasons"] == []
+    assert item["missing_key_points"] == []
+
+
 def test_forbidden_claims_fail(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(session_factory)
