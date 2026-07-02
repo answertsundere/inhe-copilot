@@ -178,6 +178,7 @@ def test_promotion_without_evidence_checks_activity_rules_not_product_detail():
     assert '优惠券' in result['reply']
     assert '满减' in result['reply']
     assert '下单页面' in result['reply']
+    assert '转人工' in result['reply']
     assert '商品详情需要确认' not in result['reply']
     assert '内部价' not in result['reply']
 
@@ -189,6 +190,7 @@ def test_price_negotiation_without_evidence_uses_activity_rule_handoff():
         assert result['reply_strategy'] == 'verify_current_activity_rule'
         assert '优惠券' in result['reply']
         assert '下单页面' in result['reply']
+        assert '转人工' in result['reply']
         assert '内部价' not in result['reply']
 
 

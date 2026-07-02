@@ -49,6 +49,18 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
     normalized_key = sanitize_text(key_point)
     normalized_text = sanitize_text(text)
     alias_groups = [
+        (
+            ("\u5f53\u524d\u5546\u54c1", "\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1", "\u6309\u5f53\u524d\u5546\u54c1", "\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"),
+            ("\u5f53\u524d\u8fd9\u6b3e", "\u8fd9\u6b3e\u5546\u54c1", "\u6309\u5f53\u524d\u8fd9\u6b3e", "\u6309\u8fd9\u6b3e"),
+        ),
+        (
+            ("\u4e0d\u80fd\u76f4\u63a5\u627f\u8bfa\u989d\u5916\u964d\u4ef7", "\u4e0d\u627f\u8bfa\u989d\u5916\u964d\u4ef7", "\u4e0d\u76f4\u63a5\u627f\u8bfa\u4f18\u60e0"),
+            ("\u4ee5\u60a8\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u4ee5\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u4ee5\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u6309\u9875\u9762\u89c4\u5219\u6838\u5bf9", "\u6838\u5bf9\u6d3b\u52a8\u89c4\u5219"),
+        ),
+        (
+            ("\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891", "\u4e0d\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891"),
+            ("\u6682\u65f6\u6ca1\u6709\u53ef\u76f4\u63a5\u53d1\u9001\u7684\u5b89\u88c5\u89c6\u9891", "\u6ca1\u6709\u53ef\u76f4\u63a5\u53d1\u9001\u7684\u5b89\u88c5\u89c6\u9891", "\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891", "\u4e0d\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891"),
+        ),
         (("先别着急", "安抚", "别着急"), ("先别着急", "别担心", "我先帮您核实", "我来帮您处理", "给您处理")),
         (("订单信息", "当前订单"), ("当前订单", "订单信息", "按订单", "订单")),
         (("实物照片", "问题照片", "问题位置"), ("实物照片", "问题位置", "拍照", "拍一下", "图片")),
