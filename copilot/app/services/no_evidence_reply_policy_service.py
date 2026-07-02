@@ -51,6 +51,17 @@ SPACE_FIT_MEDIA_ASSET_TYPES = {
     "product_size_chart",
     "space_fit_image",
 }
+SPACE_FIT_MEDIA_HINT_TERMS = (
+    "尺寸",
+    "尺码",
+    "大小",
+    "空间",
+    "位置",
+    "size",
+    "dimension",
+    "marked",
+    "measure",
+)
 PLACEMENT_SCENE_FACT_TYPES = {"placement_scene"}
 STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
@@ -433,12 +444,12 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
                     "forbidden_claims": [],
                 }
             return {
-                "reply": "亲，我把这款对应的安装资料发您参考，您可以先按步骤看一下；如果卡在某一步，把当前位置拍给我，我继续帮您看。",
-                "requires_human_review": False,
-                "needs_followup": False,
-                "reply_strategy": "send_supported_installation_asset",
-                "reason": "sendable_media_asset_available",
-                "forbidden_claims": [],
+                "reply": _reply_installation_verify(),
+                "requires_human_review": True,
+                "needs_followup": True,
+                "reply_strategy": "verify_installation_asset_before_send",
+                "reason": missing_reason or "installation_media_role_mismatch",
+                "forbidden_claims": forbidden_claims,
             }
         if has_product_context or has_order_context:
             return {
@@ -943,6 +954,20 @@ def _collect_sendable_media_asset_types(asset_types: set[str], assets: Any, *, b
         asset_type = str(asset.get("asset_type") or asset.get("type") or "").strip()
         if asset_type:
             asset_types.add(asset_type)
+        if _is_space_fit_media_asset(asset):
+            asset_types.add("space_fit_image")
+
+
+def _is_space_fit_media_asset(asset: dict[str, Any]) -> bool:
+    asset_type = str(asset.get("asset_type") or asset.get("type") or "").strip()
+    purpose = str(asset.get("media_purpose") or asset.get("purpose") or "").strip()
+    title = str(asset.get("asset_title") or asset.get("title") or "").strip()
+    if asset_type in SPACE_FIT_MEDIA_ASSET_TYPES or purpose in SPACE_FIT_MEDIA_ASSET_TYPES:
+        return True
+    if asset_type not in {"sku_image", "product_photo", "image"}:
+        return False
+    haystack = f"{purpose} {title}".lower()
+    return any(term.lower() in haystack for term in SPACE_FIT_MEDIA_HINT_TERMS)
 
 
 def _product_context_pack(response: dict[str, Any]) -> dict[str, Any]:

@@ -38,12 +38,28 @@ def test_installation_without_sendable_asset_requires_verified_material_before_s
 
 
 def test_installation_with_sendable_asset_can_reference_delivery():
-    result = _policy(query_fact_type="installation", has_sendable_media_asset=True)
+    result = _policy(
+        query_fact_type="installation",
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["install_video"],
+    )
 
     assert result["requires_human_review"] is False
     assert result["reply_strategy"] == "send_supported_installation_asset"
     assert "发您参考" in result["reply"]
     assert result["forbidden_claims"] == []
+
+
+def test_installation_with_non_install_media_asset_requires_review():
+    result = _policy(
+        query_fact_type="installation",
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["sku_image"],
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "verify_installation_asset_before_send"
+    assert result["reason"]
 
 
 def test_installation_with_diagram_but_no_video_uses_diagram_reply():
@@ -304,6 +320,18 @@ def test_space_fit_with_non_size_media_asset_stays_human_review():
     assert "预留位置" in result["reply"]
 
 
+def test_space_fit_sku_image_with_size_title_counts_as_space_fit_asset():
+    result = _policy(
+        query_fact_type="space_fit",
+        has_product_context=True,
+        has_sendable_media_asset=True,
+        sendable_media_asset_types=["sku_image", "space_fit_image"],
+    )
+
+    assert result["requires_human_review"] is False
+    assert result["reply_strategy"] == "send_supported_space_fit_asset"
+
+
 def test_structure_function_with_known_product_context_safe_handoff():
     result = _policy(query_fact_type="structure_function", has_product_context=True)
 
@@ -400,6 +428,28 @@ def test_sendable_media_asset_types_reads_installation_image_assets():
             "auto_send_level": "auto",
         }]
     }) == {"install_image"}
+
+
+def test_sendable_media_asset_types_adds_space_fit_role_for_size_marked_sku_image():
+    assert get_sendable_media_asset_types({
+        "recommended_assets": [{
+            "asset_type": "sku_image",
+            "asset_title": "Size marked product image",
+            "asset_url": "https://asset.example/size.png",
+            "auto_send_level": "auto",
+        }]
+    }) == {"sku_image", "space_fit_image"}
+
+
+def test_sendable_media_asset_types_does_not_treat_plain_sku_image_as_space_fit():
+    assert get_sendable_media_asset_types({
+        "recommended_assets": [{
+            "asset_type": "sku_image",
+            "asset_title": "Product appearance",
+            "asset_url": "https://asset.example/product.png",
+            "auto_send_level": "auto",
+        }]
+    }) == {"sku_image"}
 
 
 def test_apply_policy_replaces_unsupported_media_promise_after_rewrite():

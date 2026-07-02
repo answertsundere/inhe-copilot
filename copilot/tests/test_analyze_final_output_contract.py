@@ -135,6 +135,48 @@ def test_analyze_allows_space_fit_pack_media_as_send_blocks(client, monkeypatch)
     assert data["reply_delivery"]["auto_send_ready"] is True
 
 
+def test_analyze_blocks_space_fit_plain_sku_image_auto_send(client, monkeypatch):
+    import app.services.analysis_execution_service as execution_service
+
+    def fake_execute_analysis(**kwargs):
+        return {
+            "intent": "product_question",
+            "suggested_reply": "Please compare with the product image.",
+            "requires_human_review": False,
+            "context_used": {
+                "product_context_pack": {
+                    "recommended_assets": [{
+                        "asset_id": 15,
+                        "asset_type": "sku_image",
+                        "asset_title": "Product appearance image",
+                        "asset_url": "https://example.com/product.png",
+                        "product_name": "Test product",
+                        "auto_send_level": "auto",
+                    }]
+                },
+                "conversation_context_summary": {
+                    "confirmed_product": "Test product",
+                },
+            },
+            "evidence_debug": {"query_fact_type": "space_fit"},
+        }
+
+    monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
+
+    response = client.post("/api/analyze", json={
+        "message": "small bedroom, can it fit?",
+        "product_name": "Test product",
+        "conversation_id": "pytest_plain_sku_image_space_fit",
+    })
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["recommended_assets"][0]["asset_type"] == "sku_image"
+    assert data["reply_delivery"]["auto_send_ready"] is False
+    assert data["can_send"] is False
+    assert data["requires_human_review"] is True
+
+
 def test_analyze_keeps_pack_media_preview_only_when_review_required(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 
