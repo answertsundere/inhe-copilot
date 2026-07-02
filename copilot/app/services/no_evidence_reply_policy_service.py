@@ -45,6 +45,7 @@ PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupo
 DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
 PLACEMENT_SCENE_FACT_TYPES = {"placement_scene"}
 STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
+LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
 ACCESSORY_MESSAGE_TERMS = (
     "部件",
@@ -105,6 +106,9 @@ DAMAGED_ITEM_TERMS = (
     "压坏",
     "磕坏",
 )
+INSTALLATION_VIDEO_ASSET_TYPES = {"install_video", "installation_video", "video"}
+INSTALLATION_DIAGRAM_ASSET_TYPES = {"install_image", "pack_guide_image", "installation_guide", "manual", "manual_image"}
+VIDEO_PROMISE_TERMS = ("安装视频", "视频发", "发视频", "把视频", "录制安装视频")
 _POLICY_FACT_TYPES = (
     INSTALLATION_FACT_TYPES
     | ACCESSORY_FACT_TYPES
@@ -113,12 +117,111 @@ _POLICY_FACT_TYPES = (
     | DIMENSION_FACT_TYPES
     | PLACEMENT_SCENE_FACT_TYPES
     | STRUCTURE_FUNCTION_FACT_TYPES
+    | LOAD_CAPACITY_FACT_TYPES
     | GROSS_WEIGHT_FACT_TYPES
     | ACCESSORY_AVAILABILITY_FACT_TYPES
 )
 
 
+def _reply_installation_diagram_without_video() -> str:
+    return (
+        "亲，我先按当前这款商品帮您核对安装资料。这款目前暂时没有可直接发送的安装视频，"
+        "我先把安装示意图/说明书发您参考。"
+        "您可以按图上的板件编号和步骤来装；过程中如果卡在哪一步，"
+        "直接拍一下当前安装位置和配件，我帮您对照图纸看。"
+    )
+
+
+def _reply_installation_verify() -> str:
+    return (
+        "亲，这个需要按您这款商品核对对应安装资料。我先帮您确认对应款式的视频/说明书，"
+        "防止资料和款式不对应；如果您卡在某一步，也可以把当前位置拍给我，我一起帮您看。"
+    )
+
+
+def _reply_installation_video_request_with_diagram_review() -> str:
+    return (
+        "\u4eb2\uff0c\u6211\u5148\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1\u5e2e\u60a8\u6838\u5bf9\u5b89\u88c5\u8d44\u6599\u3002"
+        "\u76ee\u524d\u53ea\u80fd\u770b\u5230\u5b89\u88c5\u56fe/\u8bf4\u660e\u4e66\u7c7b\u8d44\u6599\uff0c\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891\u3002"
+        "\u60a8\u5982\u679c\u5361\u5728\u67d0\u4e00\u6b65\uff0c\u53ef\u4ee5\u628a\u5f53\u524d\u4f4d\u7f6e\u62cd\u7167\u53d1\u6765\uff0c"
+        "\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u5e2e\u60a8\u6309\u8fd9\u6b3e\u7ed3\u6784\u786e\u8ba4\u4e0b\u4e00\u6b65\u3002"
+    )
+
+
+def _reply_stability_verify() -> str:
+    return (
+        "亲，这个主要看您说的是哪一款组合。正常按说明书安装、螺丝拧紧后，"
+        "日常使用稳定性是可以的；如果是儿童使用场景，建议按说明把防倒件也固定好，会更稳一些。"
+        "您可以把当前商品截图或安装位置发我，我帮您确认这款是否需要额外固定。"
+    )
+
+
+def _reply_internal_space_verify() -> str:
+    return (
+        "亲，您是想看里面的收纳格/内部空间对吗？这类内部结构一般在商品详情页会有展示图。"
+        "我这边也可以帮您找对应的内部空间图发您参考。您如果是想放玩具、衣服或书本，"
+        "也可以告诉我大概尺寸，我帮您判断能不能放下。"
+    )
+
+
+def _reply_space_fit_verify() -> str:
+    return (
+        "亲，我可以帮您判断能不能放下。需要对照这款商品尺寸和您家预留位置的长、宽、高，"
+        "还要留一点余量，方便摆放、开门或抽屉拉出。您把预留空间尺寸发我，"
+        "我帮您对照看是否合适。"
+    )
+
+
+def _reply_structure_function_verify() -> str:
+    return (
+        "亲，这个需要按您这款的结构和配件规格核对，不能直接按其他款式判断。"
+        "主要要看孔位、结构件、侧板/护栏/挡板位置，以及说明书里是否标注支持补配、加装、调节或左右互换。"
+        "您把商品截图、订单信息、说明书那一页或需要补配/加装的位置发我，我这边转人工确认是否可补、是否适配，避免装错方向。"
+    )
+
+
+def _reply_promotion_verify() -> str:
+    return (
+        "亲，我帮您看一下当前这款能用的优惠。现在页面价格一般会跟活动、优惠券、满减和下单时间有关，"
+        "具体以您下单页面显示为准。我这边也可以帮您核对一下有没有还能领取或叠加的券。"
+    )
+
+
+def _reply_placement_bed_rail_verify() -> str:
+    return (
+        "亲，这个主要看您家床垫厚度和床边结构。您可以先量一下床垫厚度，"
+        "再对照页面标注的适用范围；如果是特殊床架、榻榻米或床边比较厚，"
+        "建议拍一下床边位置，我帮您再确认是否合适。"
+    )
+
+
 def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
+    policy = _build_no_evidence_reply_policy_raw(inputs)
+    return _apply_gold_service_reply(policy, inputs)
+
+
+def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    strategy = str(policy.get("reply_strategy") or "")
+    if strategy == "send_installation_diagram_without_video":
+        policy["reply"] = _reply_installation_diagram_without_video()
+    elif strategy == "verify_installation_asset_before_send":
+        policy["reply"] = _reply_installation_verify()
+    elif strategy == "verify_structure_function_for_known_product":
+        policy["reply"] = _reply_structure_function_verify()
+    elif strategy == "verify_current_activity_rule":
+        policy["reply"] = _reply_promotion_verify()
+    elif strategy == "verify_space_fit_for_known_product":
+        policy["reply"] = _reply_space_fit_verify()
+    elif strategy == "verify_placement_scene_for_known_product":
+        policy["reply"] = _reply_placement_bed_rail_verify()
+    elif strategy == "verify_dimensions_for_known_product" and _looks_like_internal_space_question(inputs):
+        policy["reply"] = _reply_internal_space_verify()
+    elif strategy == "verify_stability_or_load_capacity":
+        policy["reply"] = _reply_stability_verify()
+    return policy
+
+
+def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any]:
     """Build a deterministic safe reply for evidence-missing states."""
     fact_type = str(inputs.get("query_fact_type") or "").strip()
     actionability = str(inputs.get("turn_actionability") or "").strip()
@@ -126,6 +229,7 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
     has_order_context = bool(inputs.get("has_order_context"))
     has_media_context = bool(inputs.get("has_media_context"))
     has_sendable_media_asset = bool(inputs.get("has_sendable_media_asset"))
+    sendable_media_asset_types = {str(item or "").strip() for item in (inputs.get("sendable_media_asset_types") or [])}
     missing_reason = str(inputs.get("missing_reason") or "")
 
     forbidden_claims = list(MEDIA_PROMISE_TERMS)
@@ -167,6 +271,16 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
             "forbidden_claims": forbidden_claims,
         }
 
+    if fact_type in LOAD_CAPACITY_FACT_TYPES:
+        return {
+            "reply": _reply_stability_verify(),
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "verify_stability_or_load_capacity",
+            "reason": missing_reason or "stability_or_load_capacity_evidence_missing",
+            "forbidden_claims": forbidden_claims,
+        }
+
     if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES:
         if has_product_context or has_order_context:
             return {
@@ -198,8 +312,35 @@ def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
 
     if fact_type in INSTALLATION_FACT_TYPES:
         if has_sendable_media_asset:
+            if sendable_media_asset_types & INSTALLATION_VIDEO_ASSET_TYPES:
+                return {
+                    "reply": "亲，我把这款对应的安装视频/说明书发您参考，您可以先按步骤看一下；如果卡在某一步，把当前位置拍给我，我继续帮您看。",
+                    "requires_human_review": False,
+                    "needs_followup": False,
+                    "reply_strategy": "send_supported_installation_asset",
+                    "reason": "sendable_installation_video_available",
+                    "forbidden_claims": [],
+                }
+            if sendable_media_asset_types & INSTALLATION_DIAGRAM_ASSET_TYPES:
+                if _looks_like_installation_video_request(inputs):
+                    return {
+                        "reply": _reply_installation_video_request_with_diagram_review(),
+                        "requires_human_review": True,
+                        "needs_followup": True,
+                        "reply_strategy": "review_installation_diagram_without_video",
+                        "reason": "installation_video_requested_but_only_diagram_available",
+                        "forbidden_claims": forbidden_claims,
+                    }
+                return {
+                    "reply": "亲，这款目前暂时没有可直接发送的安装视频，我先把安装示意图/说明书发您参考。您可以按图上的板件编号和步骤来装；过程中如果卡在哪一步，直接拍一下当前安装位置和配件，我帮您对照图纸看。",
+                    "requires_human_review": False,
+                    "needs_followup": False,
+                    "reply_strategy": "send_installation_diagram_without_video",
+                    "reason": "sendable_installation_diagram_available_without_video",
+                    "forbidden_claims": [],
+                }
             return {
-                "reply": "亲，我把这款对应的安装视频/说明书发您参考，您可以先按步骤看一下；如果卡在某一步，把当前位置拍给我，我继续帮您看。",
+                "reply": "亲，我把这款对应的安装资料发您参考，您可以先按步骤看一下；如果卡在某一步，把当前位置拍给我，我继续帮您看。",
                 "requires_human_review": False,
                 "needs_followup": False,
                 "reply_strategy": "send_supported_installation_asset",
@@ -428,6 +569,7 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
     understanding = context.get("turn_understanding") if isinstance(context.get("turn_understanding"), dict) else {}
     debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
     answer_trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    semantic_query = debug.get("semantic_query") if isinstance(debug.get("semantic_query"), dict) else {}
     fact_type = str(
         understanding.get("expected_query_fact_type")
         or understanding.get("query_fact_type")
@@ -469,9 +611,16 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
             or stats.get("media_context_count")
         ),
         "has_sendable_media_asset": has_sendable_media_asset(response),
+        "sendable_media_asset_types": sorted(get_sendable_media_asset_types(response)),
         "missing_reason": str(stats.get("conversation_media_rejected_reason") or debug.get("missing_reason") or ""),
         "real_context_summary": summary,
-        "customer_message": str(response.get("customer_message") or ""),
+        "customer_message": str(
+            response.get("customer_message")
+            or debug.get("current_query")
+            or semantic_query.get("current_query")
+            or answer_trace.get("customer_message")
+            or ""
+        ),
     }
 
 
@@ -482,6 +631,19 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     selected_count = _selected_evidence_count(response)
 
     if contains_unsupported_media_promise(reply, has_sendable_media_asset(response)):
+        return True
+    if (
+        fact_type in INSTALLATION_FACT_TYPES
+        and _promises_installation_video(reply)
+        and not (set(inputs.get("sendable_media_asset_types") or []) & INSTALLATION_VIDEO_ASSET_TYPES)
+    ):
+        return True
+    if (
+        fact_type in INSTALLATION_FACT_TYPES
+        and _looks_like_installation_video_request(inputs)
+        and inputs.get("has_sendable_media_asset")
+        and not (set(inputs.get("sendable_media_asset_types") or []) & INSTALLATION_VIDEO_ASSET_TYPES)
+    ):
         return True
     if _asks_for_known_context(reply, inputs):
         return True
@@ -510,6 +672,8 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if fact_type in DIMENSION_FACT_TYPES and not selected_count:
         return True
     if fact_type in PLACEMENT_SCENE_FACT_TYPES and not selected_count:
+        return True
+    if fact_type in LOAD_CAPACITY_FACT_TYPES and not selected_count:
         return True
     if fact_type in GROSS_WEIGHT_FACT_TYPES and not selected_count:
         return True
@@ -541,11 +705,28 @@ def has_sendable_media_asset(response: dict[str, Any]) -> bool:
         return False
 
 
+def get_sendable_media_asset_types(response: dict[str, Any]) -> set[str]:
+    asset_types: set[str] = set()
+    _collect_sendable_media_asset_types(asset_types, response.get("reply_blocks"), blocks=True)
+    _collect_sendable_media_asset_types(asset_types, response.get("recommended_assets"))
+    pack = _product_context_pack(response)
+    _collect_sendable_media_asset_types(asset_types, pack.get("recommended_assets"))
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    summary = debug.get("product_context_pack_summary") if isinstance(debug.get("product_context_pack_summary"), dict) else {}
+    _collect_sendable_media_asset_types(asset_types, summary.get("recommended_assets"))
+    return asset_types
+
+
 def contains_unsupported_media_promise(reply: str, has_sendable: bool) -> bool:
     if has_sendable:
         return False
     value = str(reply or "")
     return any(term in value for term in MEDIA_PROMISE_TERMS)
+
+
+def _promises_installation_video(reply: str) -> bool:
+    value = str(reply or "")
+    return any(term in value for term in VIDEO_PROMISE_TERMS)
 
 
 def _selected_evidence_count(response: dict[str, Any]) -> int:
@@ -568,9 +749,24 @@ def _looks_like_accessory_question(inputs: dict[str, Any]) -> bool:
     return any(term in message for term in ACCESSORY_MESSAGE_TERMS)
 
 
+def _looks_like_internal_space_question(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    return any(term in message for term in ("里面", "内部", "空间", "收纳格", "里面空间"))
+
+
 def _looks_like_media_request(inputs: dict[str, Any]) -> bool:
     message = str(inputs.get("customer_message") or "")
     return any(term in message for term in MEDIA_REQUEST_TERMS)
+
+
+def _looks_like_installation_video_request(inputs: dict[str, Any]) -> bool:
+    message = str(inputs.get("customer_message") or "")
+    install_context = any(
+        term in message
+        for term in ("\u5b89\u88c5", "\u7ec4\u88c5", "\u6559\u7a0b", "\u600e\u4e48\u88c5", "\u8bf4\u660e")
+    )
+    media_request = any(term in message for term in ("\u89c6\u9891", "\u6559\u7a0b"))
+    return install_context and media_request
 
 
 def _looks_like_mismatch_question(inputs: dict[str, Any]) -> bool:
@@ -611,6 +807,30 @@ def _has_auto_send_asset(assets: Any) -> bool:
         if auto_level in {"auto", "auto_when_platform_connected"}:
             return True
     return False
+
+
+def _collect_sendable_media_asset_types(asset_types: set[str], assets: Any, *, blocks: bool = False) -> None:
+    if not isinstance(assets, list):
+        return
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        if blocks:
+            block_type = str(asset.get("type") or "").strip()
+            if block_type in {"image", "video"}:
+                asset_types.add(block_type)
+            asset_type = str(asset.get("asset_type") or "").strip()
+            if asset_type:
+                asset_types.add(asset_type)
+            continue
+        if not (asset.get("asset_url") or asset.get("url")):
+            continue
+        auto_level = str(asset.get("auto_send_level") or asset.get("send_mode") or "auto")
+        if auto_level not in {"auto", "auto_when_platform_connected"}:
+            continue
+        asset_type = str(asset.get("asset_type") or asset.get("type") or "").strip()
+        if asset_type:
+            asset_types.add(asset_type)
 
 
 def _product_context_pack(response: dict[str, Any]) -> dict[str, Any]:

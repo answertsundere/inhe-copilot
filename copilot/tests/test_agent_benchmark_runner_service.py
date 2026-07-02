@@ -93,6 +93,73 @@ def test_runner_injects_sidecar_context_into_agent_payload(monkeypatch):
     assert payloads[0]["copilot_context"]["sidecar_context"]["i_id"] == "IID-BENCH"
 
 
+def test_runner_injects_reviewed_query_fact_type_contract(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(session_factory, scenario_type="installation")
+    db = session_factory()
+    try:
+        row = db.query(AgentBenchmarkScenario).filter_by(scenario_uid="bench_runner_1").one()
+        metadata = row.get_metadata()
+        metadata["query_fact_type"] = "installation"
+        row.set_metadata(metadata)
+        db.commit()
+    finally:
+        db.close()
+    payloads = []
+
+    def fake_agent(payload):
+        payloads.append(payload)
+        return {
+            "can_send": False,
+            "requires_human_review": True,
+            "draft_reply": "Please confirm installation material with a human agent.",
+            "answer_trace": {"query_fact_type": "installation"},
+        }
+
+    AgentBenchmarkRunnerService(agent_callable=fake_agent).run_scenarios(db_factory=session_factory)
+
+    turn_contract = payloads[0]["copilot_context"]["turn_understanding"]
+    assert payloads[0]["copilot_context"]["benchmark_query_fact_type"] == "installation"
+    assert turn_contract["query_fact_type"] == "installation"
+    assert turn_contract["expected_query_fact_type"] == "installation"
+    assert "expected_reply" not in payloads[0]["copilot_context"]
+
+
+def test_runner_scores_reviewed_source_turn_not_later_buyer_turn(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(session_factory, scenario_type="installation")
+    db = session_factory()
+    try:
+        row = db.query(AgentBenchmarkScenario).filter_by(scenario_uid="bench_runner_1").one()
+        row.set_metadata({"source_turn_uid": "target_turn", "query_fact_type": "installation"})
+        row.set_conversation_turns([
+            {"turn_uid": "target_turn", "speaker": "buyer", "text": "Need installation material."},
+            {"turn_uid": "csr_1", "speaker": "service", "text": "I will check it."},
+            {"turn_uid": "later_turn", "speaker": "buyer", "text": "Different later question."},
+        ])
+        db.commit()
+    finally:
+        db.close()
+    payloads = []
+
+    def fake_agent(payload):
+        payloads.append(payload)
+        return {
+            "can_send": False,
+            "requires_human_review": True,
+            "draft_reply": "Please confirm the installation material with a human agent.",
+            "answer_trace": {"query_fact_type": "installation"},
+        }
+
+    result = AgentBenchmarkRunnerService(agent_callable=fake_agent).run_scenarios(db_factory=session_factory)
+
+    assert result["total_scenarios"] == 1
+    assert len(payloads) == 1
+    assert payloads[0]["message"] == "Need installation material."
+    assert payloads[0]["copilot_context"]["conversation_history"] == []
+    assert result["per_scenario_result"][0]["responses"][0]["turn_uid"] == "target_turn"
+
+
 def test_runner_empty_when_no_active_scenarios(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(session_factory, status="candidate")

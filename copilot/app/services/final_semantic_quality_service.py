@@ -181,8 +181,65 @@ def _strict_product_fact_boundary_issues(response: dict[str, Any], query_fact_ty
         installation_terms = ("\u5b89\u88c5\u8d44\u6599", "\u8bf4\u660e\u4e66", "\u600e\u4e48\u88c5", "\u5b89\u88c5\u89c6\u9891", "\u5b89\u88c5\u8bf4\u660e")
         if any(term in reply for term in installation_terms) and not any(term in reply for term in availability_terms):
             issues.append("accessory_availability_answered_with_installation")
+    if query_fact_type == "installation":
+        installation_terms = (
+            "\u5b89\u88c5",
+            "\u7ec4\u88c5",
+            "\u6559\u7a0b",
+            "\u8bf4\u660e\u4e66",
+            "\u56fe\u7eb8",
+            "\u89c6\u9891",
+            "\u6b65\u9aa4",
+            "\u5b54\u4f4d",
+            "\u87ba\u4e1d",
+            "\u914d\u4ef6",
+            "\u5361\u4f4f",
+            "\u62cd\u7167",
+            "\u6838\u5bf9",
+            "\u4eba\u5de5",
+        )
+        wrong_product_fact_terms = (
+            "\u5c3a\u5bf8",
+            "\u5bbd",
+            "\u6df1",
+            "\u9ad8",
+            "\u9884\u7559",
+            "\u7a7a\u95f4",
+            "\u6750\u8d28",
+            "\u6750\u6599",
+            "\u627f\u91cd",
+            "\u8f7d\u91cd",
+            "\u6bdb\u91cd",
+            "\u91cd\u91cf",
+            "\u9002\u7528\u5e74\u9f84",
+            "\u5e74\u9f84",
+        )
+        has_installation_context = any(term in reply for term in installation_terms)
+        if any(term in reply for term in wrong_product_fact_terms) and not has_installation_context:
+            issues.append("installation_answered_with_unrelated_product_fact")
     if query_fact_type == "structure_function":
-        structure_terms = ("结构", "侧板", "护栏", "围栏", "挡板", "板子", "放下", "翻下", "翻起", "打开", "收起", "折叠", "调节", "核对", "确认")
+        structure_terms = (
+            "结构",
+            "孔位",
+            "结构件",
+            "配件规格",
+            "侧板",
+            "护栏",
+            "围栏",
+            "挡板",
+            "板子",
+            "补配",
+            "加装",
+            "适配",
+            "翻下",
+            "翻起",
+            "打开",
+            "收起",
+            "折叠",
+            "调节",
+            "核对",
+            "确认",
+        )
         scene_or_space_terms = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "预留位置", "走动空间", "宽度", "进深", "高度", "空间小")
         has_structure_context = any(term in reply for term in structure_terms)
         if any(term in reply for term in scene_or_space_terms) and not has_structure_context:

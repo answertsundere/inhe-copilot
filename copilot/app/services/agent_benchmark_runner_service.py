@@ -35,6 +35,8 @@ BLOCKING_FAILURE_LABELS = {
     "evidence_misuse",
     "semantic_mismatch",
 }
+CUSTOMER_SPEAKER_ROLES = {"buyer", "customer", "\u5ba2\u6237", "\u4e70\u5bb6", ""}
+AGENT_SPEAKER_ROLES = {"service", "agent", "csr", "seller", "\u5ba2\u670d"}
 
 
 def _contains(text: str, needle: str) -> bool:
@@ -103,9 +105,55 @@ def _buyer_turns(conversation_turns: list[dict[str, Any]]) -> list[dict[str, Any
             continue
         speaker = sanitize_text(item.get("speaker")).lower()
         text = sanitize_text(item.get("text") or item.get("message"))
-        if text and speaker in {"buyer", "customer", "客户", "买家", ""}:
+        if text and speaker in CUSTOMER_SPEAKER_ROLES:
             turns.append({**item, "text": text})
     return turns
+
+
+def _speaker_role(speaker: str) -> str:
+    normalized = sanitize_text(speaker).lower()
+    if normalized in CUSTOMER_SPEAKER_ROLES:
+        return "customer"
+    if normalized in AGENT_SPEAKER_ROLES:
+        return "agent"
+    return "system"
+
+
+def _target_buyer_turn(conversation_turns: list[dict[str, Any]], target_turn_uid: str) -> dict[str, Any] | None:
+    buyers = _buyer_turns(conversation_turns)
+    target_turn_uid = sanitize_text(target_turn_uid)
+    if target_turn_uid:
+        for turn in buyers:
+            if sanitize_text(turn.get("turn_uid")) == target_turn_uid:
+                return turn
+    return buyers[-1] if buyers else None
+
+
+def _history_before_target(conversation_turns: list[dict[str, Any]], target_turn_uid: str) -> list[dict[str, str]]:
+    target_turn_uid = sanitize_text(target_turn_uid)
+    history: list[dict[str, str]] = []
+    for turn in conversation_turns or []:
+        if not isinstance(turn, dict):
+            continue
+        if target_turn_uid and sanitize_text(turn.get("turn_uid")) == target_turn_uid:
+            break
+        text = sanitize_text(turn.get("text") or turn.get("message"))
+        if not text:
+            continue
+        history.append({"role": _speaker_role(turn.get("speaker")), "text": text})
+    return history
+
+
+def _scenario_query_fact_type(scenario) -> str:
+    metadata = scenario.get_metadata()
+    expected = scenario.get_expected_reply()
+    rubric = scenario.get_rubric()
+    return sanitize_text(
+        metadata.get("query_fact_type")
+        or expected.get("query_fact_type")
+        or rubric.get("query_fact_type")
+        or ""
+    )
 
 
 class AgentBenchmarkRunnerService:
@@ -205,21 +253,26 @@ class AgentBenchmarkRunnerService:
         sidecar = scenario.get_sidecar_context()
         expected = scenario.get_expected_reply()
         conversation_turns = scenario.get_conversation_turns()
-        buyer_turns = _buyer_turns(conversation_turns)
+        metadata = scenario.get_metadata()
+        target_turn_uid = sanitize_text(metadata.get("source_turn_uid"))
+        target_turn = _target_buyer_turn(conversation_turns, target_turn_uid)
         responses = []
-        history: list[dict[str, Any]] = []
+        history = _history_before_target(conversation_turns, target_turn_uid)
         total_latency_ms = 0
-        for turn in buyer_turns:
-            payload = self._build_payload(scenario.scenario_uid, turn, history, sidecar, run_uid)
+        if target_turn:
+            payload = self._build_payload(
+                scenario.scenario_uid,
+                target_turn,
+                history,
+                sidecar,
+                run_uid,
+                query_fact_type=_scenario_query_fact_type(scenario),
+            )
             started = time.perf_counter()
             response = sanitize_obj(self._call_agent(payload))
             latency_ms = int((time.perf_counter() - started) * 1000)
             total_latency_ms += latency_ms
-            responses.append({"turn_uid": turn.get("turn_uid", ""), "payload": sanitize_obj(payload), "response": response})
-            history.append({"role": "customer", "text": turn["text"]})
-            reply = _extract_reply(response)
-            if reply:
-                history.append({"role": "agent", "text": reply})
+            responses.append({"turn_uid": target_turn.get("turn_uid", ""), "payload": sanitize_obj(payload), "response": response})
         score = self._score(scenario.scenario_type, expected, responses[-1]["response"] if responses else {})
         last_response = responses[-1]["response"] if responses else {}
         fact_type = _response_query_fact_type(last_response)
@@ -262,8 +315,18 @@ class AgentBenchmarkRunnerService:
         history: list[dict[str, Any]],
         sidecar: dict[str, Any],
         run_uid: str,
+        query_fact_type: str = "",
     ) -> dict[str, Any]:
         product_title = sanitize_text(sidecar.get("product_title") or sidecar.get("product_name"))
+        query_fact_type = sanitize_text(query_fact_type)
+        turn_understanding = {}
+        if query_fact_type:
+            turn_understanding = {
+                "turn_actionability": "actionable_question",
+                "query_fact_type": query_fact_type,
+                "expected_query_fact_type": query_fact_type,
+                "source": "agent_benchmark_reviewed_rubric",
+            }
         return {
             "message": sanitize_text(turn.get("text")),
             "conversation_id": f"benchmark_{scenario_uid}",
@@ -285,6 +348,8 @@ class AgentBenchmarkRunnerService:
                 "i_id": sanitize_text(sidecar.get("i_id")),
                 "order_id": sanitize_text(sidecar.get("order_id")),
                 "platform_order_id": sanitize_text(sidecar.get("platform_order_id")),
+                "benchmark_query_fact_type": query_fact_type,
+                "turn_understanding": turn_understanding,
             },
         }
 

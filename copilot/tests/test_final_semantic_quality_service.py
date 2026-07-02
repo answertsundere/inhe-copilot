@@ -169,6 +169,47 @@ def test_final_semantic_fit_blocks_accessory_availability_answered_with_installa
     assert "accessory_availability_answered_with_installation" in result["issues"]
 
 
+def test_final_semantic_fit_blocks_installation_answered_with_product_facts(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5bbd80cm\uff0c\u6750\u8d28\u662fPP\uff0c\u5355\u5c42\u627f\u91cd\u7ea610kg\uff0c\u9002\u5408\u65e5\u5e38\u6536\u7eb3\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "installation"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u6709\u7ec4\u88c5\u89c6\u9891\u5417\uff1f",
+    )
+
+    assert result["passed"] is False
+    assert "installation_answered_with_unrelated_product_fact" in result["issues"]
+
+
+def test_final_semantic_fit_allows_installation_handoff_about_materials(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": (
+            "\u4eb2\uff0c\u6211\u5148\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1\u7684\u5b89\u88c5\u8d44\u6599\u6838\u5bf9\u3002"
+            "\u5982\u679c\u6ca1\u6709\u660e\u786e\u5b89\u88c5\u89c6\u9891\uff0c\u4e0d\u4f1a\u76f4\u63a5\u627f\u8bfa\u89c6\u9891\uff1b"
+            "\u60a8\u53ef\u4ee5\u628a\u5361\u4f4f\u7684\u4f4d\u7f6e\u62cd\u7167\u53d1\u6765\uff0c\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u5e2e\u60a8\u786e\u8ba4\u3002"
+        ),
+        "requires_human_review": True,
+        "evidence_debug": {"query_fact_type": "installation"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u6709\u7ec4\u88c5\u89c6\u9891\u5417\uff1f",
+    )
+
+    assert result["passed"] is True
+
+
 def test_final_semantic_fit_blocks_structure_function_answered_with_scene(monkeypatch):
     from app import config
 
@@ -182,6 +223,25 @@ def test_final_semantic_fit_blocks_structure_function_answered_with_scene(monkey
     result = audit_customer_reply_semantic_fit(
         response,
         customer_message="侧板可以翻下来吗？",
+    )
+
+    assert result["passed"] is False
+    assert "structure_function_answered_with_scene_or_space" in result["issues"]
+
+
+def test_final_semantic_fit_blocks_structure_compatibility_answered_with_space(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲，这款能不能放下主要看您家预留位置的宽度、进深和高度，旁边也要留走动空间。",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "structure_function"},
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="三面围栏，想补第四面，这款能用吗",
     )
 
     assert result["passed"] is False
