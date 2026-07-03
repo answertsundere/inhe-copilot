@@ -193,44 +193,47 @@ def _base_rubric(item: dict[str, Any], expected: dict[str, Any]) -> dict[str, An
     })
 
 
+def _installation_expected_for_item(item: dict[str, Any]) -> dict[str, Any]:
+    if not _has_sendable_installation_asset(item):
+        return {
+            "expected_reply": (
+                "亲，我先帮您按当前这款商品的安装资料核对。"
+                "现在没有确认到可直接发送的安装视频、安装图或说明书，"
+                "我不直接承诺有安装视频；您卡在哪一步可以拍照发来，"
+                "我这边转人工按这款结构帮您确认。"
+            ),
+            "key_points": [
+                "按当前这款商品",
+                "不直接承诺有安装视频",
+                "转人工",
+            ],
+            "forbidden_claims": [
+                "一定有安装视频",
+                "通用安装方式都适用",
+                "随便装",
+            ],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        }
+    return {
+        "expected_reply": (
+            "亲，我先按当前这款商品帮您核对安装资料。"
+            "如果资料里只有安装图或步骤说明，就不能直接承诺有安装视频；"
+            "可以先把可发送的安装示意图或说明书发您参考。"
+            "您按图纸装的时候如果卡在哪一步，可以把当前位置和配件拍照发来继续核对。"
+        ),
+        "key_points": ["按当前这款商品", "不直接承诺有安装视频", "安装图或说明书"],
+        "forbidden_claims": ["一定有安装视频", "通用安装方式都适用", "随便装"],
+        "must_handoff": False,
+        "auto_send_allowed": True,
+    }
+
+
 def _seed_expected_for_item(item: dict[str, Any]) -> dict[str, Any]:
     scenario_type = sanitize_text(item.get("scenario_type"))
     qft = _query_fact_type(item)
     if scenario_type == "installation" or qft in {"installation", "accessory_usage", "accessory_compatibility"}:
-        if not _has_sendable_installation_asset(item):
-            return {
-                "expected_reply": (
-                    "\u4eb2\uff0c\u6211\u5148\u5e2e\u60a8\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1\u7684\u5b89\u88c5\u8d44\u6599\u6838\u5bf9\u3002"
-                    "\u73b0\u5728\u6ca1\u6709\u786e\u8ba4\u5230\u53ef\u76f4\u63a5\u53d1\u9001\u7684\u5b89\u88c5\u89c6\u9891\u3001\u5b89\u88c5\u56fe\u6216\u8bf4\u660e\u4e66\uff0c"
-                    "\u6211\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891\uff1b\u60a8\u5361\u5728\u54ea\u4e00\u6b65\u53ef\u4ee5\u62cd\u7167\u53d1\u6765\uff0c"
-                    "\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u6309\u8fd9\u6b3e\u7ed3\u6784\u5e2e\u60a8\u786e\u8ba4\u3002"
-                ),
-                "key_points": [
-                    "\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1",
-                    "\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891",
-                    "\u8f6c\u4eba\u5de5",
-                ],
-                "forbidden_claims": [
-                    "\u4e00\u5b9a\u6709\u5b89\u88c5\u89c6\u9891",
-                    "\u901a\u7528\u5b89\u88c5\u65b9\u5f0f\u90fd\u9002\u7528",
-                    "\u968f\u4fbf\u88c5",
-                ],
-                "must_handoff": True,
-                "auto_send_allowed": False,
-            }
-        return {
-            "expected_reply": (
-                "亲，我先按当前这款商品帮您核对安装资料。"
-                "如果资料里只有安装图或步骤说明，就不能直接承诺有安装视频；"
-                "可以先把可发送的安装示意图或说明书发您参考。"
-                "您按图纸装的时候如果卡在哪一步，可以把当前位置和配件拍照发来继续核对。"
-            ),
-            "key_points": ["按当前这款商品", "不直接承诺有安装视频", "安装图或说明书"],
-            "forbidden_claims": ["一定有安装视频", "通用安装方式都适用", "随便装"],
-            "must_handoff": False,
-            "auto_send_allowed": True,
-        }
-
+        return _installation_expected_for_item(item)
     if scenario_type == "promotion" or qft in {"promotion", "promotion_policy", "price_negotiation", "coupon", "discount"}:
         return {
             "expected_reply": (
@@ -313,6 +316,26 @@ def evaluate_seed_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "expected": expected,
         "rubric": _base_rubric(item, expected),
     }
+
+
+def build_seed_expected_for_item(item: dict[str, Any]) -> dict[str, Any]:
+    expected = _seed_expected_for_item(item)
+    is_installation = (
+        sanitize_text(item.get("scenario_type")) == "installation"
+        or _query_fact_type(item) in {"installation", "accessory_usage", "accessory_compatibility"}
+    )
+    reason = "seed_rubric_recalculated"
+    if is_installation:
+        reason = (
+            "installation_sendable_asset_available"
+            if bool(expected.get("auto_send_allowed"))
+            else "installation_sendable_asset_missing"
+        )
+    return sanitize_obj({
+        "expected": expected,
+        "rubric": _base_rubric(item, expected),
+        "reason": reason,
+    })
 
 
 def _write_json(path: str, payload: dict[str, Any]) -> None:

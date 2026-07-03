@@ -19,6 +19,24 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 
 SUMMARY_HEADERS = ("指标", "数值")
+DETAIL_HEADERS = [
+    "场景 UID",
+    "标题",
+    "场景类型",
+    "问题类型",
+    "是否通过",
+    "回复状态",
+    "可发送",
+    "需要人工复核",
+    "失败原因",
+    "缺少关键点",
+    "命中禁用话术",
+    "客户完整对话",
+    "侧栏上下文",
+    "期望回复",
+    "Agent 回复",
+    "耗时 ms",
+]
 
 
 def _write_rows(sheet, headers: list[str], rows: list[list[Any]]) -> None:
@@ -70,24 +88,6 @@ def _write_excel(path: str, payload: dict[str, Any]) -> None:
     _write_rows(failures, ["失败原因", "数量"], _group_rows(payload.get("by_failure_reason", {})))
 
     detail = workbook.create_sheet("逐条结果")
-    detail_headers = [
-        "场景 UID",
-        "标题",
-        "场景类型",
-        "问题类型",
-        "是否通过",
-        "回复状态",
-        "可发送",
-        "需人工复核",
-        "失败原因",
-        "缺失关键点",
-        "命中禁用话术",
-        "客户完整对话",
-        "侧栏上下文",
-        "期望回复",
-        "Agent回复",
-        "耗时ms",
-    ]
     detail_rows = []
     for item in payload.get("per_scenario_result", []) or []:
         turns = item.get("conversation_turns") or []
@@ -110,14 +110,14 @@ def _write_excel(path: str, payload: dict[str, Any]) -> None:
             sanitize_text(item.get("agent_reply")),
             item.get("latency_ms", 0),
         ])
-    _write_rows(detail, detail_headers, detail_rows)
+    _write_rows(detail, DETAIL_HEADERS, detail_rows)
     workbook.save(target)
 
 
 def _write_json(path: str, payload: dict) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(sanitize_obj(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+    target.write_text(json.dumps(sanitize_obj(payload), ensure_ascii=True, indent=2), encoding="utf-8")
 
 
 def run_benchmark_report(
@@ -129,6 +129,7 @@ def run_benchmark_report(
     json_output: str = "",
     excel_output: str = "",
     fail_on_failure: bool = False,
+    include_full_trace: bool = False,
     db_factory=None,
     agent_callable=None,
 ) -> tuple[dict[str, Any], int]:
@@ -138,6 +139,7 @@ def run_benchmark_report(
         scenario_uids=scenario_uids or None,
         limit=limit or None,
         run_uid=run_uid,
+        include_full_trace=include_full_trace,
         db_factory=db_factory,
     )
     if json_output:
@@ -160,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-output", default="")
     parser.add_argument("--excel-output", default="")
     parser.add_argument("--fail-on-failure", action="store_true")
+    parser.add_argument("--include-full-trace", action="store_true")
     args = parser.parse_args(argv)
 
     init_db()
@@ -172,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         json_output=args.json_output,
         excel_output=args.excel_output,
         fail_on_failure=bool(args.fail_on_failure),
+        include_full_trace=bool(args.include_full_trace),
     )
     print(json.dumps(sanitize_obj(result), ensure_ascii=False, indent=2))
     return exit_code

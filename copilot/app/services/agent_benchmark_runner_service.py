@@ -235,6 +235,7 @@ class AgentBenchmarkRunnerService:
         limit: int | None = None,
         scenario_uids: list[str] | None = None,
         run_uid: str | None = None,
+        include_full_trace: bool = False,
         db_factory=None,
     ) -> dict[str, Any]:
         from app.db import SessionLocal
@@ -256,7 +257,7 @@ class AgentBenchmarkRunnerService:
                 query = query.limit(max(int(limit), 1))
             rows = query.all()
             benchmark_run_uid = sanitize_text(run_uid or "") or f"bench_run_{uuid.uuid4().hex[:12]}"
-            results = [self._run_one(row, run_uid=benchmark_run_uid) for row in rows]
+            results = [self._run_one(row, run_uid=benchmark_run_uid, include_full_trace=include_full_trace) for row in rows]
             passed = sum(1 for item in results if item.get("passed"))
             total = len(results)
             failure_reasons: dict[str, int] = {}
@@ -300,7 +301,7 @@ class AgentBenchmarkRunnerService:
             item["failed"] += 1
         item["pass_rate"] = round(item["passed"] / item["total"], 4) if item["total"] else 0
 
-    def _run_one(self, scenario, run_uid: str = "") -> dict[str, Any]:
+    def _run_one(self, scenario, run_uid: str = "", include_full_trace: bool = False) -> dict[str, Any]:
         sidecar = scenario.get_sidecar_context()
         expected = scenario.get_expected_reply()
         conversation_turns = scenario.get_conversation_turns()
@@ -327,7 +328,7 @@ class AgentBenchmarkRunnerService:
         score = self._score(scenario.scenario_type, expected, responses[-1]["response"] if responses else {})
         last_response = responses[-1]["response"] if responses else {}
         fact_type = _response_query_fact_type(last_response)
-        return sanitize_obj({
+        result = {
             "scenario_uid": scenario.scenario_uid,
             "title": scenario.title,
             "scenario_type": scenario.scenario_type,
@@ -347,8 +348,10 @@ class AgentBenchmarkRunnerService:
             "reply_status": score["reply_status"],
             "latency_ms": total_latency_ms,
             "answer_trace": _answer_trace_summary(last_response),
-            "responses": responses,
-        })
+        }
+        if include_full_trace:
+            result["responses"] = responses
+        return sanitize_obj(result)
 
     def _sidecar_summary(self, sidecar: dict[str, Any]) -> dict[str, Any]:
         return sanitize_obj({

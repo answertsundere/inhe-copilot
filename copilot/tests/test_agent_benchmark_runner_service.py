@@ -157,7 +157,12 @@ def test_runner_scores_reviewed_source_turn_not_later_buyer_turn(monkeypatch):
     assert len(payloads) == 1
     assert payloads[0]["message"] == "Need installation material."
     assert payloads[0]["copilot_context"]["conversation_history"] == []
-    assert result["per_scenario_result"][0]["responses"][0]["turn_uid"] == "target_turn"
+    assert "responses" not in result["per_scenario_result"][0]
+    traced = AgentBenchmarkRunnerService(agent_callable=fake_agent).run_scenarios(
+        db_factory=session_factory,
+        include_full_trace=True,
+    )
+    assert traced["per_scenario_result"][0]["responses"][0]["turn_uid"] == "target_turn"
 
 
 def test_runner_empty_when_no_active_scenarios(monkeypatch):
@@ -509,3 +514,4 @@ def test_run_benchmark_report_writes_json_and_excel(tmp_path, monkeypatch):
     workbook = load_workbook(excel_output)
     assert set(workbook.sheetnames) == {"汇总", "按场景", "按问题类型", "失败原因", "逐条结果"}
     assert [cell.value for cell in workbook["逐条结果"][1]][:5] == ["场景 UID", "标题", "场景类型", "问题类型", "是否通过"]
+    assert "responses" not in json_output.read_text(encoding="utf-8")
