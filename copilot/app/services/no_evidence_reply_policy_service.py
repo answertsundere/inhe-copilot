@@ -767,6 +767,15 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
     media_context = context.get("media_context") if isinstance(context.get("media_context"), dict) else {}
     pack = _product_context_pack(response)
     stats = pack.get("stats") if isinstance(pack.get("stats"), dict) else {}
+    has_sendable_media = has_sendable_media_asset(response)
+    sendable_media_types = sorted(get_sendable_media_asset_types(response))
+    if fact_type in INSTALLATION_FACT_TYPES:
+        selected_installation_types = _selected_delivery_media_asset_types(response)
+        has_sendable_media = bool(
+            selected_installation_types
+            & (INSTALLATION_VIDEO_ASSET_TYPES | INSTALLATION_DIAGRAM_ASSET_TYPES)
+        )
+        sendable_media_types = sorted(selected_installation_types)
     return {
         "query_fact_type": fact_type,
         "turn_actionability": str(understanding.get("turn_actionability") or response.get("turn_actionability") or ""),
@@ -793,8 +802,8 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
             or media_context.get("video_urls")
             or stats.get("media_context_count")
         ),
-        "has_sendable_media_asset": has_sendable_media_asset(response),
-        "sendable_media_asset_types": sorted(get_sendable_media_asset_types(response)),
+        "has_sendable_media_asset": has_sendable_media,
+        "sendable_media_asset_types": sendable_media_types,
         "missing_reason": str(stats.get("conversation_media_rejected_reason") or debug.get("missing_reason") or ""),
         "real_context_summary": summary,
         "customer_message": str(
@@ -903,6 +912,18 @@ def get_sendable_media_asset_types(response: dict[str, Any]) -> set[str]:
     debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
     summary = debug.get("product_context_pack_summary") if isinstance(debug.get("product_context_pack_summary"), dict) else {}
     _collect_sendable_media_asset_types(asset_types, summary.get("recommended_assets"))
+    return asset_types
+
+
+def _selected_delivery_media_asset_types(response: dict[str, Any]) -> set[str]:
+    """Return media types that are actually attached to the current reply.
+
+    Product context packs may contain usable media somewhere in the catalog, but
+    that is not enough to make the current text reply sendable. For installation
+    answers we only treat already-built image/video reply blocks as deliverable.
+    """
+    asset_types: set[str] = set()
+    _collect_sendable_media_asset_types(asset_types, response.get("reply_blocks"), blocks=True)
     return asset_types
 
 

@@ -132,11 +132,11 @@ def test_apply_policy_rewrites_video_request_when_only_diagram_is_available():
 
     assert result["requires_human_review"] is True
     assert result["generation_mode"] == "no_evidence_reply_policy"
-    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "review_installation_diagram_without_video"
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
     assert "\u8f6c\u4eba\u5de5" in result["suggested_reply"]
 
 
-def test_installation_video_promise_is_rewritten_when_only_diagram_is_sendable():
+def test_installation_video_promise_with_unattached_diagram_requires_handoff():
     response = {
         "suggested_reply": "亲，我把安装视频发您参考，您先看一下。",
         "query_fact_type": "installation",
@@ -155,10 +155,70 @@ def test_installation_video_promise_is_rewritten_when_only_diagram_is_sendable()
     result = apply_no_evidence_reply_policy(response, context)
 
     assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["requires_human_review"] is True
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert "转人工" in result["suggested_reply"]
+    assert "我把安装视频发您" not in result["suggested_reply"]
+
+
+def test_installation_context_pack_media_count_without_reply_block_requires_handoff():
+    response = {
+        "suggested_reply": "亲，我先把安装示意图/说明书发您参考。",
+        "query_fact_type": "installation",
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "selected_evidence": [{"fact_type": "installation"}],
+        },
+        "context_used": {
+            "product_context_pack": {
+                "stats": {"sendable_media_asset_count": 1},
+                "recommended_assets": [{
+                    "asset_type": "install_image",
+                    "asset_url": "https://asset.example/install.png",
+                    "auto_send_level": "auto",
+                }],
+            },
+        },
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "real_context_summary": {"has_product_context": True, "has_media_context": True},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["requires_human_review"] is True
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert "转人工" in result["suggested_reply"]
+
+
+def test_installation_attached_diagram_block_can_send_diagram_reply():
+    response = {
+        "suggested_reply": "亲，我把安装视频发您参考，您先看一下。",
+        "query_fact_type": "installation",
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "selected_evidence": [{"fact_type": "installation"}],
+        },
+        "reply_blocks": [
+            {"type": "text", "content": "亲，我先把安装示意图发您参考。"},
+            {
+                "type": "image",
+                "asset_type": "install_image",
+                "url": "https://asset.example/install.png",
+                "send_mode": "auto_when_platform_connected",
+            },
+        ],
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "real_context_summary": {"has_product_context": True, "has_media_context": True},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
     assert result["requires_human_review"] is False
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "send_installation_diagram_without_video"
-    assert "暂时没有可直接发送的安装视频" in result["suggested_reply"]
-    assert "我把安装视频发您" not in result["suggested_reply"]
 
 
 def test_accessory_usage_without_evidence_asks_for_accessory_photo_without_inventing_usage():
