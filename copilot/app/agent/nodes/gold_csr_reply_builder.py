@@ -323,7 +323,7 @@ def gold_csr_reply_builder(state: dict) -> dict:
         if concern == "smalltalk":
             reply = "我在。您可以直接说要查物流、问商品、处理售后，或者先简单问一句都可以。"
         else:
-            reply = "我在处理。刚才的回复如果没帮到您，您可以直接说具体问题，我会重新按事实查，不跟您绕。"
+            reply = "亲，我在的。刚才的回复如果没帮到您，您可以直接说具体问题，我重新帮您核对清楚。"
         changed = True
 
     elif answer_mode == "no_evidence_clarification" and goal in ("answer_product_fact", "answer_or_clarify"):
