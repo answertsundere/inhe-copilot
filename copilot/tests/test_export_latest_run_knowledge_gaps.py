@@ -10,9 +10,12 @@ from app.db import Base
 from app.models.eval_tables import EvalRun, EvalTrace, KnowledgeGapTask
 from scripts.export_latest_run_knowledge_gaps import (
     SHEET_ALL,
+    SHEET_HIGH_RISK,
     SHEET_MEDIA,
+    SHEET_OVERVIEW,
     SHEET_POLICY,
     SHEET_PRODUCT,
+    SHEET_ROUTING,
     TASK_HEADERS,
     export_latest_run_knowledge_gaps,
 )
@@ -169,9 +172,21 @@ def test_latest_run_knowledge_gap_export_filters_run_and_writes_sheets(monkeypat
         "promotion_policy_gap": 1,
     }
     workbook = load_workbook(output)
-    assert {SHEET_ALL, SHEET_MEDIA, SHEET_POLICY, SHEET_PRODUCT}.issubset(set(workbook.sheetnames))
+    assert {
+        SHEET_OVERVIEW,
+        SHEET_ALL,
+        SHEET_MEDIA,
+        SHEET_POLICY,
+        SHEET_PRODUCT,
+        SHEET_ROUTING,
+        SHEET_HIGH_RISK,
+    }.issubset(set(workbook.sheetnames))
+    overview_values = [cell.value for row in workbook[SHEET_OVERVIEW].iter_rows() for cell in row]
+    assert "\u7f3a\u53e3\u4efb\u52a1\u6570" in overview_values
     all_sheet = workbook[SHEET_ALL]
     assert [cell.value for cell in all_sheet[1]] == TASK_HEADERS
+    assert "\u9700\u8981\u8865\u4ec0\u4e48" in TASK_HEADERS
+    assert "\u662f\u5426\u53ef\u81ea\u52a8\u53d1\u9001" in TASK_HEADERS
     assert all_sheet.max_row == 4
     media_sheet = workbook[SHEET_MEDIA]
     assert media_sheet.max_row == 2
@@ -180,6 +195,10 @@ def test_latest_run_knowledge_gap_export_filters_run_and_writes_sheets(monkeypat
     assert policy_sheet.max_row == 2
     product_sheet = workbook[SHEET_PRODUCT]
     assert product_sheet.max_row == 2
+    routing_sheet = workbook[SHEET_ROUTING]
+    assert routing_sheet.max_row == 1
+    high_risk_sheet = workbook[SHEET_HIGH_RISK]
+    assert high_risk_sheet.max_row == 2
 
 
 def test_latest_run_knowledge_gap_export_is_sanitized(monkeypatch, tmp_path):

@@ -23,10 +23,13 @@ from app.services.knowledge_gap_task_service import KnowledgeGapTaskService
 
 
 SHEET_README = "\u8bf4\u660e"
+SHEET_OVERVIEW = "\u603b\u89c8"
 SHEET_ALL = "\u77e5\u8bc6\u7f3a\u53e3\u4efb\u52a1"
 SHEET_MEDIA = "\u7d20\u6750\u7f3a\u53e3"
 SHEET_POLICY = "\u552e\u540e\u6d3b\u52a8\u89c4\u5219\u7f3a\u53e3"
 SHEET_PRODUCT = "\u5546\u54c1\u5b57\u6bb5\u7f3a\u53e3"
+SHEET_ROUTING = "\u4e0a\u4e0b\u6587\u6216\u8bc1\u636e\u8def\u7531\u7f3a\u53e3"
+SHEET_HIGH_RISK = "\u9ad8\u98ce\u9669\u9700\u4eba\u5de5\u786e\u8ba4"
 
 TASK_HEADERS = [
     "\u4f18\u5148\u7ea7",
@@ -37,11 +40,17 @@ TASK_HEADERS = [
     "\u5546\u54c1\u7f16\u7801",
     "\u5546\u54c1\u540d\u79f0",
     "\u95ee\u9898\u7c7b\u578b",
+    "\u95ee\u9898\u7c7b\u578b\u4e2d\u6587\u540d",
     "\u5931\u8d25\u6b21\u6570",
-    "\u4ee3\u8868\u4e70\u5bb6\u95ee\u9898\uff08\u5df2\u8131\u654f\uff09",
-    "Agent\u5f53\u524d\u5904\u7406\uff08\u5df2\u8131\u654f\uff09",
+    "\u4e70\u5bb6\u95ee\u9898\uff08\u5df2\u8131\u654f\uff09",
+    "\u5f53\u524d\u56de\u590d\uff08\u5df2\u8131\u654f\uff09",
+    "\u5931\u8d25\u539f\u56e0",
     "\u5f53\u524d\u963b\u585e\u70b9",
+    "\u9700\u8981\u8865\u4ec0\u4e48",
     "\u5efa\u8bae\u52a8\u4f5c",
+    "\u5efa\u8bae\u586b\u5199\u5185\u5bb9",
+    "\u4ee3\u8868\u6837\u672c\uff08\u6700\u591a3\u6761\uff09",
+    "\u662f\u5426\u53ef\u81ea\u52a8\u53d1\u9001",
     "\u4eba\u5de5\u5904\u7406\u7ed3\u679c",
     "\u4eba\u5de5\u8865\u5145\u5185\u5bb9",
     "\u662f\u5426\u5df2\u8865\u77e5\u8bc6\u5e93",
@@ -66,6 +75,32 @@ GAP_CATEGORY_LABELS = {
     "promotion_policy_gap": "\u6d3b\u52a8\u89c4\u5219\u7f3a\u53e3",
     "evidence_routing_gap": "\u8bc1\u636e\u8def\u7531\u7f3a\u53e3",
     "context_extraction_gap": "\u4e0a\u4e0b\u6587\u62bd\u53d6\u7f3a\u53e3",
+}
+
+QUERY_FACT_TYPE_LABELS = {
+    "installation": "\u5b89\u88c5/\u8bf4\u660e\u4e66/\u6559\u7a0b",
+    "accessory_usage": "\u914d\u4ef6\u7528\u9014",
+    "accessory_availability": "\u914d\u4ef6\u8865\u914d/\u552e\u5356",
+    "accessory_compatibility": "\u914d\u4ef6\u9002\u914d",
+    "structure_function": "\u7ed3\u6784\u529f\u80fd",
+    "dimensions": "\u5c3a\u5bf8",
+    "space_fit": "\u7a7a\u95f4/\u6446\u653e\u9002\u914d",
+    "placement_scene": "\u4f7f\u7528\u573a\u666f",
+    "material": "\u6750\u8d28",
+    "material_safety": "\u6750\u8d28\u5b89\u5168",
+    "certification_report": "\u68c0\u6d4b/\u8bc1\u4e66",
+    "load_capacity": "\u627f\u91cd",
+    "gross_weight": "\u91cd\u91cf/\u6bdb\u91cd",
+    "age_range": "\u9002\u7528\u5e74\u9f84",
+    "child_suitability": "\u513f\u7ae5\u9002\u7528",
+    "child_safety": "\u513f\u7ae5\u5b89\u5168",
+    "promotion": "\u4f18\u60e0/\u798f\u5229",
+    "promotion_policy": "\u6d3b\u52a8\u89c4\u5219",
+    "price_negotiation": "\u8bae\u4ef7/\u591a\u4e70\u4f18\u60e0",
+    "aftersales": "\u552e\u540e",
+    "aftersales_policy": "\u552e\u540e\u653f\u7b56",
+    "stock_shipping": "\u5e93\u5b58/\u53d1\u8d27",
+    "logistics": "\u7269\u6d41",
 }
 
 
@@ -108,7 +143,57 @@ def _current_blocker(task: dict[str, Any]) -> str:
     return sanitize_text(metadata.get("current_blocker") or task.get("summary") or "")
 
 
+def _query_fact_type_label(task: dict[str, Any]) -> str:
+    fact_type = sanitize_text(task.get("query_fact_type") or "")
+    return QUERY_FACT_TYPE_LABELS.get(fact_type, fact_type or "\u672a\u8bc6\u522b")
+
+
+def _required_evidence(task: dict[str, Any]) -> str:
+    metadata = _metadata(task)
+    evidence = sanitize_text(
+        task.get("required_evidence_type")
+        or task.get("missing_evidence_type")
+        or task.get("media_needed_type")
+        or metadata.get("required_evidence_type")
+    )
+    missing_fields = metadata.get("missing_fields")
+    if isinstance(missing_fields, list) and missing_fields:
+        fields = [sanitize_text(str(value)) for value in missing_fields if sanitize_text(str(value))]
+        if fields:
+            return "\n".join(fields[:5])
+    return evidence or _current_blocker(task)
+
+
+def _suggested_fill_content(task: dict[str, Any]) -> str:
+    category = _gap_category(task)
+    evidence = _required_evidence(task)
+    if category == "media_asset_gap":
+        return f"\u586b\u5199\u5df2\u5ba1\u6838\u53ef\u7528\u7684\u7d20\u6750\u94fe\u63a5/\u7d20\u6750ID\uff1a{evidence}"
+    if category == "product_field_gap":
+        return f"\u586b\u5199\u5f53\u524d\u5546\u54c1\u7684\u7ed3\u6784\u5316\u5b57\u6bb5\u503c\uff1a{evidence}"
+    if category == "promotion_policy_gap":
+        return "\u586b\u5199\u5f53\u524d\u6d3b\u52a8/\u4f18\u60e0/\u8d60\u54c1\u89c4\u5219\uff0c\u6ce8\u660e\u751f\u6548\u6761\u4ef6\u548c\u65f6\u95f4"
+    if category == "aftersales_policy_gap":
+        return "\u586b\u5199\u9000\u6362/\u8865\u53d1/\u8fd0\u8d39/\u7834\u635f\u7b49\u552e\u540e\u5904\u7406\u53e3\u5f84"
+    if category in {"context_extraction_gap", "evidence_routing_gap"}:
+        return "\u8865\u5145\u4e0a\u4e0b\u6587\u5b57\u6bb5\u6765\u6e90\u6216\u4fee\u6b63\u8bc1\u636e role/\u8def\u7531\u6807\u8bb0"
+    return "\u586b\u5199\u6709\u6765\u6e90\u7684\u53ef\u590d\u6838\u8bc1\u636e"
+
+
+def _representative_samples(task: dict[str, Any]) -> str:
+    questions = [sanitize_text(str(value)) for value in (task.get("latest_buyer_questions") or [])]
+    replies = [sanitize_text(str(value)) for value in (task.get("latest_agent_replies") or [])]
+    lines: list[str] = []
+    for index, question in enumerate([value for value in questions if value][:3], start=1):
+        reply = replies[index - 1] if index - 1 < len(replies) else ""
+        lines.append(f"{index}. \u4e70\u5bb6\uff1a{question}")
+        if reply:
+            lines.append(f"   \u5f53\u524d\u56de\u590d\uff1a{reply}")
+    return "\n".join(lines)
+
+
 def _task_row(task: dict[str, Any]) -> list[Any]:
+    sample_text = _representative_samples(task)
     return [
         sanitize_text(task.get("priority") or ""),
         GAP_CATEGORY_LABELS.get(_gap_category(task), _gap_category(task)),
@@ -118,11 +203,17 @@ def _task_row(task: dict[str, Any]) -> list[Any]:
         _product_code(task),
         sanitize_text(task.get("product_title_preview") or task.get("product_title") or ""),
         sanitize_text(task.get("query_fact_type") or ""),
+        _query_fact_type_label(task),
         int(task.get("sample_count") or 0),
         _join(task.get("latest_buyer_questions") or []),
         _join(task.get("latest_agent_replies") or []),
+        sanitize_text(task.get("failure_type") or ""),
         _current_blocker(task),
+        _required_evidence(task),
         sanitize_text(task.get("recommended_action") or ""),
+        _suggested_fill_content(task),
+        sample_text,
+        "\u5426\uff08\u9700 verified evidence + sendable contract \u901a\u8fc7\u540e\u518d\u8bc4\u4f30\uff09",
         "",
         "",
         "",
@@ -162,6 +253,38 @@ def _append_task_sheet(workbook: Workbook, title: str, tasks: list[dict[str, Any
     sheet.append(TASK_HEADERS)
     for task in tasks:
         sheet.append(_task_row(task))
+    _apply_sheet_style(sheet)
+
+
+def _append_overview(workbook: Workbook, tasks: list[dict[str, Any]]) -> None:
+    sheet = workbook.create_sheet(SHEET_OVERVIEW)
+    category_counts = Counter(_gap_category(task) or "unknown" for task in tasks)
+    fact_counts = Counter(sanitize_text(task.get("query_fact_type") or "unknown") for task in tasks)
+    owner_counts = Counter(sanitize_text(task.get("suggested_owner") or "unknown") for task in tasks)
+    priority_counts = Counter(sanitize_text(task.get("priority") or "unknown") for task in tasks)
+    rows = [
+        ["\u6307\u6807", "\u503c"],
+        ["\u7f3a\u53e3\u4efb\u52a1\u6570", len(tasks)],
+        ["\u8bf4\u660e", "\u672c\u8868\u53ea\u7528\u4e8e\u4eba\u5de5\u6cbb\u7406\u548c\u590d\u6d4b\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5199\u6b63\u5f0f\u77e5\u8bc6\u5e93/\u7d20\u6750\u5e93\u3002"],
+        ["", ""],
+        ["\u6309\u7f3a\u53e3\u7c7b\u578b", ""],
+    ]
+    for key, count in sorted(category_counts.items()):
+        rows.append([GAP_CATEGORY_LABELS.get(key, key), count])
+    rows.append(["", ""])
+    rows.append(["\u6309\u95ee\u9898\u7c7b\u578b", ""])
+    for key, count in fact_counts.most_common():
+        rows.append([QUERY_FACT_TYPE_LABELS.get(key, key), count])
+    rows.append(["", ""])
+    rows.append(["\u6309\u8d1f\u8d23\u4eba", ""])
+    for key, count in sorted(owner_counts.items()):
+        rows.append([key, count])
+    rows.append(["", ""])
+    rows.append(["\u6309\u4f18\u5148\u7ea7", ""])
+    for key, count in sorted(priority_counts.items()):
+        rows.append([key, count])
+    for row in rows:
+        sheet.append(row)
     _apply_sheet_style(sheet)
 
 
@@ -240,6 +363,7 @@ def export_latest_run_knowledge_gaps(
 
     workbook = Workbook()
     _append_readme(workbook, run_uid=target_run_uid, tasks=tasks)
+    _append_overview(workbook, tasks)
     _append_task_sheet(workbook, SHEET_ALL, tasks)
     _append_task_sheet(workbook, SHEET_MEDIA, [task for task in tasks if _gap_category(task) == "media_asset_gap"])
     _append_task_sheet(
@@ -251,6 +375,23 @@ def export_latest_run_knowledge_gaps(
         ],
     )
     _append_task_sheet(workbook, SHEET_PRODUCT, [task for task in tasks if _gap_category(task) == "product_field_gap"])
+    _append_task_sheet(
+        workbook,
+        SHEET_ROUTING,
+        [
+            task for task in tasks
+            if _gap_category(task) in {"context_extraction_gap", "evidence_routing_gap"}
+        ],
+    )
+    _append_task_sheet(
+        workbook,
+        SHEET_HIGH_RISK,
+        [
+            task for task in tasks
+            if sanitize_text(task.get("risk_level")).lower() in {"high", "critical"}
+            or _gap_category(task) in {"aftersales_policy_gap", "promotion_policy_gap"}
+        ],
+    )
 
     path = Path(output or default_output_path())
     path.parent.mkdir(parents=True, exist_ok=True)
