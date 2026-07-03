@@ -53,6 +53,18 @@ def test_plain_product_weight_questions_remain_gross_weight():
         assert result["query_fact_type"] == "gross_weight"
 
 
+def test_child_suitability_age_terms_are_age_range():
+    for message in ("有没有适合2周岁宝宝的", "这个适合几岁宝宝", "两岁小孩能不能用", "宝宝多大能用"):
+        result = classify_query_fact_type(message, "product_question")
+        assert result["query_fact_type"] == "age_range"
+
+
+def test_baby_product_name_with_installation_request_stays_installation():
+    result = classify_query_fact_type("宝宝书架有安装视频吗", "product_question")
+
+    assert result["query_fact_type"] == "installation"
+
+
 def test_promotion_terms_are_not_misrouted_to_aftersales():
     for message in ("有没有福利", "有什么优惠", "晒图返多少"):
         result = classify_query_fact_type(message, "product_question")

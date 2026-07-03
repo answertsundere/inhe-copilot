@@ -201,6 +201,26 @@ def test_final_answer_auditor_llm_blocks_space_question_answered_as_load(monkeyp
     assert audited["requires_human_review"] is True
 
 
+def test_final_answer_auditor_blocks_child_age_safety_claims_to_handoff():
+    response = {
+        "intent": "product_question",
+        "product_name": "测试儿童书架",
+        "suggested_reply": "亲亲，这款适合0-6岁的宝宝使用，圆角设计也能保护宝宝安全。",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "age_range"},
+    }
+
+    audited = audit_final_answer(response, customer_message="有没有适合2周岁宝宝的")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert audited["requires_human_review"] is True
+    assert "适用年龄" in audited["suggested_reply"]
+    assert "不直接承诺适合某个年龄段" in audited["suggested_reply"]
+    assert "不说绝对安全" in audited["suggested_reply"]
+    assert "适合0-6岁" not in audited["suggested_reply"]
+    assert "保护宝宝安全" not in audited["suggested_reply"]
+
+
 def test_final_answer_auditor_blocks_pinch_answered_as_battery():
     response = {
         "intent": "product_question",

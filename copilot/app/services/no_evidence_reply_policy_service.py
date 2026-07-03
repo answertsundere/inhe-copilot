@@ -66,6 +66,7 @@ STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
 MATERIAL_SAFETY_FACT_TYPES = {"material", "material_safety", "certification_report"}
+AGE_RANGE_FACT_TYPES = {"age_range", "child_suitability", "child_safety"}
 ACCESSORY_MESSAGE_TERMS = (
     "部件",
     "配件",
@@ -178,6 +179,7 @@ _POLICY_FACT_TYPES = (
     | LOAD_CAPACITY_FACT_TYPES
     | GROSS_WEIGHT_FACT_TYPES
     | MATERIAL_SAFETY_FACT_TYPES
+    | AGE_RANGE_FACT_TYPES
     | ACCESSORY_AVAILABILITY_FACT_TYPES
 )
 
@@ -204,6 +206,14 @@ def _reply_installation_video_request_with_diagram_review() -> str:
         "\u76ee\u524d\u53ea\u80fd\u770b\u5230\u5b89\u88c5\u56fe/\u8bf4\u660e\u4e66\u7c7b\u8d44\u6599\uff0c\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891\u3002"
         "\u60a8\u5982\u679c\u5361\u5728\u67d0\u4e00\u6b65\uff0c\u53ef\u4ee5\u628a\u5f53\u524d\u4f4d\u7f6e\u62cd\u7167\u53d1\u6765\uff0c"
         "\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u5e2e\u60a8\u6309\u8fd9\u6b3e\u7ed3\u6784\u786e\u8ba4\u4e0b\u4e00\u6b65\u3002"
+    )
+
+
+def _reply_installation_handoff_verify() -> str:
+    return (
+        "\u4eb2\uff0c\u8fd9\u4e2a\u9700\u8981\u6309\u60a8\u8fd9\u6b3e\u5546\u54c1\u6838\u5bf9\u5bf9\u5e94\u5b89\u88c5\u8d44\u6599\u3002"
+        "\u6211\u5148\u8f6c\u4eba\u5de5\u786e\u8ba4\u5bf9\u5e94\u6b3e\u5f0f\u7684\u89c6\u9891/\u8bf4\u660e\u4e66\uff0c\u9632\u6b62\u8d44\u6599\u548c\u6b3e\u5f0f\u4e0d\u5bf9\u5e94\uff1b"
+        "\u5982\u679c\u60a8\u5361\u5728\u67d0\u4e00\u6b65\uff0c\u4e5f\u53ef\u4ee5\u628a\u5f53\u524d\u4f4d\u7f6e\u62cd\u7ed9\u6211\uff0c\u6211\u4e00\u8d77\u5e2e\u60a8\u770b\u3002"
     )
 
 
@@ -262,6 +272,14 @@ def _reply_material_safety_verify() -> str:
     )
 
 
+def _reply_child_suitability_verify() -> str:
+    return (
+        "亲，儿童适用和安全这类问题要按这款商品页的适用年龄、材质/结构说明，"
+        "以及检测或合格资料一起核对。我这边不直接承诺适合某个年龄段，"
+        "也不说绝对安全；您如果是给宝宝使用，我按当前商品资料先核对清楚，有依据再发您参考。"
+    )
+
+
 def _reply_damaged_aftersales_with_context() -> str:
     return (
         "\u4eb2\uff0c\u6536\u5230\uff0c\u5148\u522b\u7740\u6025\u3002"
@@ -302,7 +320,7 @@ def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) ->
     if strategy == "send_installation_diagram_without_video":
         policy["reply"] = _reply_installation_diagram_without_video()
     elif strategy == "verify_installation_asset_before_send":
-        policy["reply"] = _reply_installation_verify()
+        policy["reply"] = _reply_installation_handoff_verify()
     elif strategy == "verify_structure_function_for_known_product":
         policy["reply"] = _reply_structure_function_verify()
     elif strategy == "verify_current_activity_rule":
@@ -313,6 +331,8 @@ def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) ->
         policy["reply"] = _reply_placement_bed_rail_verify()
     elif strategy == "verify_material_safety_for_known_product":
         policy["reply"] = _reply_material_safety_verify()
+    elif strategy == "verify_child_suitability_for_known_product":
+        policy["reply"] = _reply_child_suitability_verify()
     elif strategy == "verify_dimensions_for_known_product" and _looks_like_internal_space_question(inputs):
         policy["reply"] = _reply_internal_space_verify()
     elif strategy == "verify_stability_or_load_capacity":
@@ -404,6 +424,34 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
             "reply_strategy": "request_product_context_for_material_safety",
             "reason": missing_reason or "product_context_missing",
             "forbidden_claims": material_forbidden_claims,
+        }
+
+    if fact_type in AGE_RANGE_FACT_TYPES:
+        child_forbidden_claims = forbidden_claims + [
+            "适合0-6岁",
+            "适合2周岁",
+            "保护宝宝安全",
+            "放心使用",
+            "绝对安全",
+            "不会夹手",
+            "不会倒",
+        ]
+        if has_product_context or has_order_context:
+            return {
+                "reply": _reply_child_suitability_verify(),
+                "requires_human_review": True,
+                "needs_followup": False,
+                "reply_strategy": "verify_child_suitability_for_known_product",
+                "reason": missing_reason or "child_suitability_evidence_missing",
+                "forbidden_claims": child_forbidden_claims,
+            }
+        return {
+            "reply": "亲，儿童适用和安全说明要先对应到具体商品资料。您发一下商品截图、链接或 SKU，我再按这款商品核对适用年龄、材质/结构说明和检测资料。",
+            "requires_human_review": True,
+            "needs_followup": True,
+            "reply_strategy": "request_product_context_for_child_suitability",
+            "reason": missing_reason or "product_context_missing",
+            "forbidden_claims": child_forbidden_claims,
         }
 
     if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES:

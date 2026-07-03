@@ -30,6 +30,7 @@ def test_installation_without_sendable_asset_requires_verified_material_before_s
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_installation_asset_before_send"
     assert "对应安装资料" in result["reply"]
+    assert "转人工" in result["reply"]
     assert "防止资料和款式不对应" in result["reply"]
     assert "把当前位置拍给我" in result["reply"]
     assert "我把视频发您" not in result["reply"]
@@ -267,6 +268,32 @@ def test_material_safety_without_product_context_requests_product_not_order():
     assert 'SKU' in result['reply']
     assert '订单号' not in result['reply']
     assert '有证书' in result['forbidden_claims']
+
+
+def test_child_suitability_without_evidence_requires_review_and_no_safety_promise():
+    result = _policy(query_fact_type='age_range', has_product_context=True, has_media_context=False)
+
+    assert result['requires_human_review'] is True
+    assert result['reply_strategy'] == 'verify_child_suitability_for_known_product'
+    assert '儿童适用和安全' in result['reply']
+    assert '适用年龄' in result['reply']
+    assert '不直接承诺适合某个年龄段' in result['reply']
+    assert '不说绝对安全' in result['reply']
+    assert '适合0-6岁' not in result['reply']
+    assert '保护宝宝安全' not in result['reply']
+    assert '适合0-6岁' in result['forbidden_claims']
+    assert '保护宝宝安全' in result['forbidden_claims']
+
+
+def test_child_suitability_without_product_context_requests_product_not_order():
+    result = _policy(query_fact_type='child_safety', has_product_context=False, has_order_context=False)
+
+    assert result['requires_human_review'] is True
+    assert result['reply_strategy'] == 'request_product_context_for_child_suitability'
+    assert '商品截图' in result['reply']
+    assert 'SKU' in result['reply']
+    assert '订单号' not in result['reply']
+    assert '绝对安全' in result['forbidden_claims']
 
 
 def test_unsupported_media_promise_with_real_chinese_terms_is_rewritten():

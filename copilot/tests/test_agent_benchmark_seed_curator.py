@@ -26,6 +26,7 @@ def _add_candidate(
     with_sidecar: bool = True,
     status: str = "candidate",
     turns: list[dict] | None = None,
+    metadata_extra: dict | None = None,
 ):
     db = session_factory()
     try:
@@ -52,11 +53,14 @@ def _add_candidate(
             "auto_send_allowed": False,
             "must_handoff": True,
         })
-        row.set_metadata({
+        metadata = {
             "expected_reply_quality": "missing",
             "needs_expected_reply_review": True,
             "query_fact_type": query_fact_type,
-        })
+        }
+        if metadata_extra:
+            metadata.update(metadata_extra)
+        row.set_metadata(metadata)
         db.add(row)
         db.commit()
     finally:
@@ -143,15 +147,65 @@ def test_seed_curator_does_not_generate_concrete_numeric_facts(monkeypatch):
 
 def test_seed_curator_installation_seed_allows_verified_install_material_send(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
-    _add_candidate(session_factory)
+    _add_candidate(
+        session_factory,
+        metadata_extra={
+            "recommended_assets": [
+                {
+                    "asset_type": "manual",
+                    "review_status": "approved",
+                    "usable": True,
+                    "auto_send_level": "auto",
+                    "asset_url": "https://example.test/manual.jpg",
+                }
+            ]
+        },
+    )
 
     result = curate_seed_set(limit=5, apply_reviewed=False, db_factory=session_factory)
 
     expected = result["items"][0]["expected"]
     assert expected["auto_send_allowed"] is True
     assert expected["must_handoff"] is False
-    assert "安装图或说明书" in expected["key_points"]
-    assert "一定有安装视频" in expected["forbidden_claims"]
+    assert "\u5b89\u88c5\u56fe\u6216\u8bf4\u660e\u4e66" in expected["key_points"]
+
+
+def test_seed_curator_installation_seed_without_install_asset_requires_handoff(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_candidate(session_factory)
+
+    result = curate_seed_set(limit=5, apply_reviewed=False, db_factory=session_factory)
+
+    expected = result["items"][0]["expected"]
+    assert expected["auto_send_allowed"] is False
+    assert expected["must_handoff"] is True
+    assert "\u8f6c\u4eba\u5de5" in expected["key_points"]
+    assert "\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891" in expected["key_points"]
+
+
+def test_seed_curator_installation_seed_rejects_plain_product_photo_as_sendable(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_candidate(
+        session_factory,
+        metadata_extra={
+            "recommended_assets": [
+                {
+                    "asset_type": "sku_image",
+                    "media_role": "product_photo",
+                    "review_status": "approved",
+                    "usable": True,
+                    "auto_send_level": "auto",
+                    "asset_url": "https://example.test/product.jpg",
+                }
+            ]
+        },
+    )
+
+    result = curate_seed_set(limit=5, apply_reviewed=False, db_factory=session_factory)
+
+    expected = result["items"][0]["expected"]
+    assert expected["auto_send_allowed"] is False
+    assert expected["must_handoff"] is True
 
 
 def test_seed_curator_evaluate_rejects_unclear_candidate():

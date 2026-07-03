@@ -37,6 +37,26 @@ CONCRETE_FACT_TYPES = {
     "accessory_availability",
 }
 SUPPORTED_SCENARIO_TYPES = {"installation", "promotion", "aftersales", "logistics", "presales"}
+INSTALLATION_SENDABLE_ASSET_TYPES = {
+    "install_video",
+    "installation_video",
+    "video",
+    "install_image",
+    "installation_guide",
+    "manual",
+    "manual_image",
+    "pack_guide_image",
+}
+INSTALLATION_SENDABLE_ROLES = {
+    "installation_video",
+    "install_video",
+    "installation_diagram",
+    "install_image",
+    "installation_guide",
+    "manual",
+    "manual_image",
+    "pack_guide_image",
+}
 ORDER_BACKEND_FACT_TYPES = {"refund_status", "order_status", "delivery_tracking"}
 ORDER_BACKEND_TEXT_TERMS = (
     "退款",
@@ -75,6 +95,66 @@ def _conversation_text(item: dict[str, Any]) -> str:
             if text:
                 parts.append(text)
     return "\n".join(parts)
+
+
+def _iter_candidate_assets(item: dict[str, Any]) -> list[dict[str, Any]]:
+    assets: list[dict[str, Any]] = []
+    containers = [
+        item,
+        item.get("metadata") or {},
+        item.get("answer_trace") or {},
+        (item.get("metadata") or {}).get("answer_trace") or {},
+    ]
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        for key in ("recommended_assets", "product_media_assets", "media_assets"):
+            value = container.get(key)
+            if isinstance(value, list):
+                assets.extend(asset for asset in value if isinstance(asset, dict))
+        pack = container.get("product_first_evidence_pack") or container.get("product_context_pack") or {}
+        if isinstance(pack, dict):
+            value = pack.get("product_media_assets")
+            if isinstance(value, list):
+                assets.extend(asset for asset in value if isinstance(asset, dict))
+    return assets
+
+
+def _is_approved_usable_auto_asset(asset: dict[str, Any]) -> bool:
+    status_values = {
+        sanitize_text(asset.get("status")).lower(),
+        sanitize_text(asset.get("review_status")).lower(),
+        sanitize_text(asset.get("approval_status")).lower(),
+        sanitize_text(asset.get("verification_status")).lower(),
+    }
+    if status_values & {"rejected", "disabled", "expired", "superseded"}:
+        return False
+    approved = (
+        asset.get("approved") is True
+        or asset.get("is_approved") is True
+        or asset.get("usable") is True
+        or asset.get("is_usable") is True
+        or bool(status_values & {"approved", "usable", "verified", "active"})
+    )
+    auto_send_level = sanitize_text(asset.get("auto_send_level") or asset.get("send_level")).lower()
+    auto = asset.get("auto_send") is True or auto_send_level in {"auto", "auto_when_platform_connected"}
+    return bool(approved and auto)
+
+
+def _has_sendable_installation_asset(item: dict[str, Any]) -> bool:
+    for asset in _iter_candidate_assets(item):
+        if not _is_approved_usable_auto_asset(asset):
+            continue
+        asset_type = sanitize_text(asset.get("asset_type") or asset.get("type")).lower()
+        role = sanitize_text(
+            asset.get("media_role")
+            or asset.get("asset_role")
+            or asset.get("evidence_role")
+            or asset.get("purpose")
+        ).lower()
+        if asset_type in INSTALLATION_SENDABLE_ASSET_TYPES or role in INSTALLATION_SENDABLE_ROLES:
+            return True
+    return False
 
 
 def _too_unclear_for_seed(item: dict[str, Any]) -> bool:
@@ -117,6 +197,27 @@ def _seed_expected_for_item(item: dict[str, Any]) -> dict[str, Any]:
     scenario_type = sanitize_text(item.get("scenario_type"))
     qft = _query_fact_type(item)
     if scenario_type == "installation" or qft in {"installation", "accessory_usage", "accessory_compatibility"}:
+        if not _has_sendable_installation_asset(item):
+            return {
+                "expected_reply": (
+                    "\u4eb2\uff0c\u6211\u5148\u5e2e\u60a8\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1\u7684\u5b89\u88c5\u8d44\u6599\u6838\u5bf9\u3002"
+                    "\u73b0\u5728\u6ca1\u6709\u786e\u8ba4\u5230\u53ef\u76f4\u63a5\u53d1\u9001\u7684\u5b89\u88c5\u89c6\u9891\u3001\u5b89\u88c5\u56fe\u6216\u8bf4\u660e\u4e66\uff0c"
+                    "\u6211\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891\uff1b\u60a8\u5361\u5728\u54ea\u4e00\u6b65\u53ef\u4ee5\u62cd\u7167\u53d1\u6765\uff0c"
+                    "\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u6309\u8fd9\u6b3e\u7ed3\u6784\u5e2e\u60a8\u786e\u8ba4\u3002"
+                ),
+                "key_points": [
+                    "\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1",
+                    "\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891",
+                    "\u8f6c\u4eba\u5de5",
+                ],
+                "forbidden_claims": [
+                    "\u4e00\u5b9a\u6709\u5b89\u88c5\u89c6\u9891",
+                    "\u901a\u7528\u5b89\u88c5\u65b9\u5f0f\u90fd\u9002\u7528",
+                    "\u968f\u4fbf\u88c5",
+                ],
+                "must_handoff": True,
+                "auto_send_allowed": False,
+            }
         return {
             "expected_reply": (
                 "亲，我先按当前这款商品帮您核对安装资料。"
