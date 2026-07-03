@@ -363,6 +363,34 @@ def test_human_review_no_evidence_fallback_is_not_semantic_mismatch():
     assert "semantic_mismatch" not in labels
 
 
+def test_unsafe_claim_classifier_ignores_negated_forbidden_terms():
+    response = {
+        "suggested_reply": "亲，我这边不直接承诺适合某个年龄段，也不说绝对安全，需要按资料核对。",
+        "query_fact_type": "age_range",
+        "requires_human_review": True,
+        "evidence_debug": {"selected_evidence": []},
+        "answer_trace": {"query_fact_type": "age_range", "required_fact_types": ["age_range"]},
+    }
+
+    labels = {item["failure_type"] for item in classify_turn_failures(response)}
+
+    assert "needs_human_review" in labels
+    assert "unsafe_claim" not in labels
+
+
+def test_unsafe_claim_classifier_still_blocks_direct_forbidden_terms():
+    response = {
+        "suggested_reply": "亲，这款绝对安全，宝宝可以直接用。",
+        "query_fact_type": "age_range",
+        "evidence_debug": {"selected_evidence": [{"fact_type": "age_range"}]},
+        "answer_trace": {"query_fact_type": "age_range", "required_fact_types": ["age_range"]},
+    }
+
+    labels = {item["failure_type"] for item in classify_turn_failures(response)}
+
+    assert "unsafe_claim" in labels
+
+
 def test_context_update_is_not_sent_to_agent(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     db = session_factory()

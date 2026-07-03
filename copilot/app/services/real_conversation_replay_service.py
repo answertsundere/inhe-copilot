@@ -367,7 +367,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     if not reply.strip() and not response.get("skipped_agent_reply"):
         failures.append({"failure_type": "answer_incomplete", "severity": "high", "message": "empty agent reply"})
     unsafe_terms = ("绝对安全", "完全无害", "0甲醛", "零甲醛", "宝宝可以直接用")
-    if any(term in reply for term in unsafe_terms):
+    if _contains_unnegated_unsafe_claim(reply, unsafe_terms):
         failures.append({"failure_type": "unsafe_claim", "severity": "high", "message": "reply contains unsafe absolute claim"})
     media_terms = ("我把视频发您", "我把图片发您", "下面发您", "已发您视频", "已发您图片")
     if any(term in reply for term in media_terms) and not response.get("recommended_assets"):
@@ -383,6 +383,36 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
         failure_type = failure.get("failure_type", "api_error")
         enriched.append({**repair_guidance_for_failure(failure_type), **failure})
     return enriched
+
+
+def _contains_unnegated_unsafe_claim(reply: str, unsafe_terms: tuple[str, ...]) -> bool:
+    negation_markers = (
+        "不说",
+        "不能说",
+        "不会说",
+        "不直接承诺",
+        "不承诺",
+        "不能承诺",
+        "不会承诺",
+        "不得承诺",
+        "不要承诺",
+        "不保证",
+        "不能保证",
+        "不会保证",
+        "不敢保证",
+        "不建议承诺",
+    )
+    for term in unsafe_terms:
+        start = 0
+        while True:
+            idx = reply.find(term, start)
+            if idx < 0:
+                break
+            prefix = reply[max(0, idx - 14):idx]
+            if not any(marker in prefix for marker in negation_markers):
+                return True
+            start = idx + len(term)
+    return False
 
 
 def evaluate_replay_turn_result(
