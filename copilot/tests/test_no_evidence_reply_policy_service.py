@@ -5,6 +5,14 @@
     get_sendable_media_asset_types,
     has_sendable_media_asset,
 )
+from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
+
+
+def _assert_customer_facing_safe_handoff(reply: str):
+    for term in CUSTOMER_FACING_INTERNAL_REDLINE_TERMS:
+        assert term not in reply
+    assert "核对" in reply or "核实" in reply
+    assert "准确回复" in reply or "处理方案" in reply or "为准" in reply
 
 
 def _policy(**overrides):
@@ -29,10 +37,11 @@ def test_installation_without_sendable_asset_requires_verified_material_before_s
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_installation_asset_before_send"
-    assert "对应安装资料" in result["reply"]
-    assert "转人工" in result["reply"]
-    assert "防止资料和款式不对应" in result["reply"]
-    assert "把当前位置拍给我" in result["reply"]
+    assert "安装资料" in result["reply"]
+    assert "核对" in result["reply"]
+    assert "当前位置拍给我" in result["reply"]
+    assert "准确回复" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
     assert "我把视频发您" not in result["reply"]
     assert "下面发您" not in result["reply"]
     assert "可以发安装视频" not in result["reply"]
@@ -89,9 +98,10 @@ def test_installation_video_request_with_only_diagram_requires_handoff():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "review_installation_diagram_without_video"
-    assert "\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1" in result["reply"]
-    assert "\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891" in result["reply"]
-    assert "\u8f6c\u4eba\u5de5" in result["reply"]
+    assert "\u8fd9\u6b3e\u5546\u54c1" in result["reply"]
+    assert "\u5b89\u88c5\u8d44\u6599" in result["reply"]
+    assert "\u51c6\u786e\u56de\u590d" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_installation_tutorial_request_with_only_diagram_requires_handoff():
@@ -104,7 +114,8 @@ def test_installation_tutorial_request_with_only_diagram_requires_handoff():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "review_installation_diagram_without_video"
-    assert "\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891" in result["reply"]
+    assert "\u5b89\u88c5\u8d44\u6599" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_apply_policy_rewrites_video_request_when_only_diagram_is_available():
@@ -133,7 +144,8 @@ def test_apply_policy_rewrites_video_request_when_only_diagram_is_available():
     assert result["requires_human_review"] is True
     assert result["generation_mode"] == "no_evidence_reply_policy"
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
-    assert "\u8f6c\u4eba\u5de5" in result["suggested_reply"]
+    assert "\u5b89\u88c5\u8d44\u6599" in result["suggested_reply"]
+    _assert_customer_facing_safe_handoff(result["suggested_reply"])
 
 
 def test_installation_video_promise_with_unattached_diagram_requires_handoff():
@@ -157,7 +169,9 @@ def test_installation_video_promise_with_unattached_diagram_requires_handoff():
     assert result["generation_mode"] == "no_evidence_reply_policy"
     assert result["requires_human_review"] is True
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
-    assert "转人工" in result["suggested_reply"]
+    assert "安装资料" in result["suggested_reply"]
+    assert "准确回复" in result["suggested_reply"]
+    _assert_customer_facing_safe_handoff(result["suggested_reply"])
     assert "我把安装视频发您" not in result["suggested_reply"]
 
 
@@ -189,7 +203,8 @@ def test_installation_context_pack_media_count_without_reply_block_requires_hand
 
     assert result["requires_human_review"] is True
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
-    assert "转人工" in result["suggested_reply"]
+    assert "安装资料" in result["suggested_reply"]
+    _assert_customer_facing_safe_handoff(result["suggested_reply"])
 
 
 def test_installation_attached_diagram_block_can_send_diagram_reply():
@@ -226,9 +241,11 @@ def test_accessory_usage_without_evidence_asks_for_accessory_photo_without_inven
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_accessory_usage_with_photo"
-    assert "配件图确认" in result["reply"]
-    assert "配件和说明书位置拍一下" in result["reply"]
-    assert "少件或配件不匹配" in result["reply"]
+    assert "结构" in result["reply"]
+    assert "配件规格" in result["reply"]
+    assert "说明书" in result["reply"]
+    assert "准确回复" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_aftersales_mismatch_reply_uses_aftersales_check_action():
@@ -239,10 +256,11 @@ def test_aftersales_mismatch_reply_uses_aftersales_check_action():
     assert "先别着急" in result["reply"]
     assert "当前订单" in result["reply"]
     assert "售后问题" in result["reply"]
-    assert "资料截图" in result["reply"]
+    assert "相关说明页" in result["reply"]
     assert "问题位置" in result["reply"]
     assert "实物照片" in result["reply"]
-    assert "转人工" in result["reply"]
+    assert "处理方案" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
     assert "直接退款" not in result["reply"]
     assert "直接补发" not in result["reply"]
 
@@ -254,8 +272,9 @@ def test_promotion_without_evidence_checks_activity_rules_not_product_detail():
     assert result['reply_strategy'] == 'verify_current_activity_rule'
     assert '优惠券' in result['reply']
     assert '满减' in result['reply']
-    assert '下单页面' in result['reply']
-    assert '转人工' in result['reply']
+    assert '下单页' in result['reply']
+    assert '核对' in result['reply']
+    _assert_customer_facing_safe_handoff(result['reply'])
     assert '商品详情需要确认' not in result['reply']
     assert '内部价' not in result['reply']
 
@@ -266,8 +285,9 @@ def test_price_negotiation_without_evidence_uses_activity_rule_handoff():
         assert result['requires_human_review'] is True
         assert result['reply_strategy'] == 'verify_current_activity_rule'
         assert '优惠券' in result['reply']
-        assert '下单页面' in result['reply']
-        assert '转人工' in result['reply']
+        assert '下单页' in result['reply']
+        assert '核对' in result['reply']
+        _assert_customer_facing_safe_handoff(result['reply'])
         assert '内部价' not in result['reply']
 
 
@@ -276,8 +296,10 @@ def test_dimensions_with_known_product_context_does_not_request_product_link_aga
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_dimensions_for_known_product"
-    assert "已经看到当前商品信息" in result["reply"]
-    assert "尺寸图/商品资料" in result["reply"]
+    assert "尺寸/规格" in result["reply"]
+    assert "资料" in result["reply"]
+    assert "预留位置" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
     assert "商品链接" not in result["reply"]
     assert "SKU" not in result["reply"]
 
@@ -287,8 +309,9 @@ def test_placement_scene_without_evidence_uses_manual_verification():
 
     assert result['requires_human_review'] is True
     assert result['reply_strategy'] == 'verify_placement_scene_for_known_product'
-    assert '准备放的位置和环境' in result['reply']
-    assert '阳台' in result['reply']
+    assert '准备放的位置环境' in result['reply']
+    assert '现场环境' in result['reply']
+    _assert_customer_facing_safe_handoff(result['reply'])
     assert '床垫厚度' not in result['reply']
     assert '特殊床架' not in result['reply']
 
@@ -298,8 +321,10 @@ def test_load_capacity_without_evidence_uses_safe_non_numeric_fallback():
 
     assert result['requires_human_review'] is True
     assert result['reply_strategy'] == 'verify_stability_or_load_capacity'
-    assert '不直接报公斤数' in result['reply']
+    assert '承重和稳定性' in result['reply']
     assert '分散摆放' in result['reply']
+    assert '准确回复' in result['reply']
+    _assert_customer_facing_safe_handoff(result['reply'])
     assert '压不弯' not in result['reply']
 
 
@@ -308,13 +333,14 @@ def test_material_safety_without_evidence_uses_document_based_fallback():
 
     assert result['requires_human_review'] is True
     assert result['reply_strategy'] == 'verify_material_safety_for_known_product'
-    assert '材质和安全说明' in result['reply']
-    assert '检测/合格资料' in result['reply']
-    assert '当前商品资料' in result['reply']
+    assert '材质' in result['reply']
+    assert '检测说明' in result['reply']
+    assert '核对' in result['reply']
+    assert '避免说错' in result['reply']
+    assert '准确回复' in result['reply']
     assert '确认清楚' not in result['reply']
     assert '订单号' not in result['reply']
-    assert '无毒或有证书' in result['reply']
-    assert '有依据再发您参考' in result['reply']
+    _assert_customer_facing_safe_handoff(result['reply'])
     assert '无毒' in result['forbidden_claims']
     assert '有检测报告' in result['forbidden_claims']
 
@@ -335,10 +361,11 @@ def test_child_suitability_without_evidence_requires_review_and_no_safety_promis
 
     assert result['requires_human_review'] is True
     assert result['reply_strategy'] == 'verify_child_suitability_for_known_product'
-    assert '儿童适用和安全' in result['reply']
+    assert '宝宝适用和安全' in result['reply']
     assert '适用年龄' in result['reply']
-    assert '不直接承诺适合某个年龄段' in result['reply']
-    assert '不说绝对安全' in result['reply']
+    assert '核对' in result['reply']
+    assert '避免说错' in result['reply']
+    _assert_customer_facing_safe_handoff(result['reply'])
     assert '适合0-6岁' not in result['reply']
     assert '保护宝宝安全' not in result['reply']
     assert '适合0-6岁' in result['forbidden_claims']
@@ -412,9 +439,9 @@ def test_space_fit_with_known_product_context_mentions_reserved_space():
 
     assert result['requires_human_review'] is True
     assert result['reply_strategy'] == 'verify_space_fit_for_known_product'
-    assert '能不能放下' in result['reply']
     assert '预留位置' in result['reply']
-    assert '长、宽、高' in result['reply']
+    assert '宽、深、高' in result['reply']
+    _assert_customer_facing_safe_handoff(result['reply'])
     assert '商品链接' not in result['reply']
 
 
@@ -443,6 +470,7 @@ def test_space_fit_with_non_size_media_asset_stays_human_review():
     assert result["reply_strategy"] == "verify_space_fit_for_known_product"
     assert result["reason"] == "no_approved_usable_media_asset_matched"
     assert "预留位置" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_space_fit_sku_image_with_size_title_counts_as_space_fit_asset():
@@ -464,8 +492,9 @@ def test_structure_function_with_known_product_context_safe_handoff():
     assert result["reply_strategy"] == "verify_structure_function_for_known_product"
     assert "结构" in result["reply"]
     assert "配件规格" in result["reply"]
-    assert "补配" in result["reply"] or "加装" in result["reply"]
-    assert "是否可补、是否适配" in result["reply"]
+    assert "孔位" in result["reply"]
+    assert "侧板/护栏/挡板" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
     assert "卧室" not in result["reply"]
     assert "客厅" not in result["reply"]
     assert "预留位置" not in result["reply"]
@@ -485,8 +514,9 @@ def test_damaged_aftersales_with_order_context_asks_for_damage_photos_not_produc
     assert "当前订单" in result["reply"]
     assert "问题位置" in result["reply"]
     assert "外包装" in result["reply"]
-    assert "转人工核实" in result["reply"]
+    assert "核实" in result["reply"]
     assert "处理方案" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
     assert "直接补发" not in result["reply"]
     assert "直接退款" not in result["reply"]
     assert "商品链接" not in result["reply"]
@@ -506,7 +536,8 @@ def test_damaged_aftersales_without_context_requests_order_or_product_info():
     assert "订单" in result["reply"]
     assert "商品" in result["reply"]
     assert "问题位置" in result["reply"]
-    assert "转人工核实" in result["reply"]
+    assert "核实" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_dimensions_without_product_context_can_request_minimal_product_identity():
@@ -593,9 +624,11 @@ def test_apply_policy_replaces_unsupported_media_promise_after_rewrite():
 
     assert result["requires_human_review"] is True
     assert result["generation_mode"] == "no_evidence_reply_policy"
-    assert "对应安装资料" in result["suggested_reply"]
+    assert "安装资料" in result["suggested_reply"]
+    assert "准确回复" in result["suggested_reply"]
     assert "我把视频发您" not in result["suggested_reply"]
     assert "发您参考" not in result["suggested_reply"]
+    _assert_customer_facing_safe_handoff(result["suggested_reply"])
 
 
 def test_installation_media_request_without_sendable_asset_applies_even_with_selected_evidence():
@@ -616,8 +649,10 @@ def test_installation_media_request_without_sendable_asset_applies_even_with_sel
     assert result["generation_mode"] == "no_evidence_reply_policy"
     assert result["requires_human_review"] is True
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
-    assert "按这款商品核对一下" not in result["suggested_reply"]
-    assert "确认后再回复" not in result["suggested_reply"]
+    assert "安装资料" in result["suggested_reply"]
+    assert "准确回复" in result["suggested_reply"]
+    assert "下面发您" not in result["suggested_reply"]
+    _assert_customer_facing_safe_handoff(result["suggested_reply"])
 
 
 def test_aftersales_mismatch_request_applies_even_with_selected_evidence():
@@ -679,8 +714,9 @@ def test_installation_structure_modification_uses_handoff_not_diagram_send():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_structure_function_for_known_product"
-    assert "转人工" in result["reply"]
+    assert "核对" in result["reply"]
     assert "侧板/护栏/挡板" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_installation_diagram_request_still_can_use_diagram_when_not_modification():
@@ -705,7 +741,8 @@ def test_installation_accessory_package_question_uses_handoff_without_confusing_
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_accessory_usage_with_photo"
-    assert "转人工" in result["reply"]
+    assert "配件规格" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_installation_accessory_package_uses_context_customer_message():
@@ -752,9 +789,10 @@ def test_gold_stability_reply_for_fixed_or_load_capacity_questions():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_stability_or_load_capacity"
-    assert "不直接报公斤数" in result["reply"]
+    assert "承重和稳定性" in result["reply"]
     assert "分散摆放" in result["reply"]
-    assert "按资料核一下" in result["reply"]
+    assert "核对" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_gold_internal_space_reply_for_inside_space_question():
@@ -767,8 +805,8 @@ def test_gold_internal_space_reply_for_inside_space_question():
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_dimensions_for_known_product"
     assert "内部空间" in result["reply"]
-    assert "玩具" in result["reply"]
-    assert "衣服" in result["reply"]
+    assert "核对" in result["reply"]
+    assert "准确回复" in result["reply"]
 
 
 def test_gold_structure_function_reply_for_left_right_installation():
@@ -777,9 +815,9 @@ def test_gold_structure_function_reply_for_left_right_installation():
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_structure_function_for_known_product"
     assert "孔位" in result["reply"]
-    assert "说明书" in result["reply"]
     assert "侧板/护栏/挡板" in result["reply"]
-    assert "避免装错方向" in result["reply"]
+    assert "避免" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
 
 
 def test_gold_promotion_reply_mentions_coupon_and_activity_boundary():
@@ -789,7 +827,7 @@ def test_gold_promotion_reply_mentions_coupon_and_activity_boundary():
     assert result["reply_strategy"] == "verify_current_activity_rule"
     assert "优惠券" in result["reply"]
     assert "满减" in result["reply"]
-    assert "下单页面" in result["reply"]
+    assert "下单页" in result["reply"]
 
 
 def test_gold_placement_scene_reply_mentions_environment_and_photo_check():
@@ -797,7 +835,7 @@ def test_gold_placement_scene_reply_mentions_environment_and_photo_check():
 
     assert result["requires_human_review"] is True
     assert result["reply_strategy"] == "verify_placement_scene_for_known_product"
-    assert "准备放的位置和环境" in result["reply"]
-    assert "阳台" in result["reply"]
-    assert "摆放位置" in result["reply"]
+    assert "准备放的位置环境" in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
+    assert "现场环境" in result["reply"]
     assert "床垫厚度" not in result["reply"]

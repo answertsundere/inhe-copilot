@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.customer_facing_safe_handoff_service import apply_customer_facing_safe_handoff
+
 
 MEDIA_PROMISE_TERMS = (
     "我把视频发您",
@@ -312,7 +314,8 @@ def _reply_aftersales_mismatch_check() -> str:
 
 def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
     policy = _build_no_evidence_reply_policy_raw(inputs)
-    return _apply_gold_service_reply(policy, inputs)
+    policy = _apply_gold_service_reply(policy, inputs)
+    return apply_customer_facing_safe_handoff(policy, inputs)
 
 
 def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
@@ -805,6 +808,13 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
         "has_sendable_media_asset": has_sendable_media,
         "sendable_media_asset_types": sendable_media_types,
         "missing_reason": str(stats.get("conversation_media_rejected_reason") or debug.get("missing_reason") or ""),
+        "product_name": str(
+            response.get("product_name")
+            or response.get("product_title")
+            or context.get("product_name")
+            or context.get("product_title")
+            or ""
+        ),
         "real_context_summary": summary,
         "customer_message": str(
             response.get("customer_message")

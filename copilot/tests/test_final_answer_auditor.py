@@ -1,4 +1,5 @@
 from app.services.final_answer_auditor import _expected_topics, audit_final_answer
+from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
 
 
 class _FakeMessage:
@@ -134,6 +135,24 @@ def test_final_answer_auditor_blocks_structure_function_answered_as_scene():
     assert audited["requires_human_review"] is True
 
 
+def test_final_answer_auditor_blocks_structure_compatibility_answered_as_space():
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "亲，这款能不能放下主要看您家预留位置的宽度、进深和高度，旁边也要留走动空间。",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "structure_function"},
+    }
+
+    audited = audit_final_answer(response, customer_message="三面围栏，想补第四面，这款能用吗")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert any(
+        issue in audited["final_answer_audit"]["issues"]
+        for issue in ("wrong_topic:structure_function->space_fit", "answer_not_about_customer_question")
+    )
+    assert audited["requires_human_review"] is True
+
+
 def test_final_answer_auditor_allows_damaged_aftersales_handoff():
     response = {
         "intent": "aftersales",
@@ -214,9 +233,13 @@ def test_final_answer_auditor_blocks_child_age_safety_claims_to_handoff():
 
     assert audited["final_answer_audit"]["passed"] is False
     assert audited["requires_human_review"] is True
+    assert "宝宝适用" in audited["suggested_reply"]
     assert "适用年龄" in audited["suggested_reply"]
-    assert "不直接承诺适合某个年龄段" in audited["suggested_reply"]
-    assert "不说绝对安全" in audited["suggested_reply"]
+    assert "核对" in audited["suggested_reply"]
+    assert "避免说错" in audited["suggested_reply"]
+    assert "准确回复" in audited["suggested_reply"]
+    for term in CUSTOMER_FACING_INTERNAL_REDLINE_TERMS:
+        assert term not in audited["suggested_reply"]
     assert "适合0-6岁" not in audited["suggested_reply"]
     assert "保护宝宝安全" not in audited["suggested_reply"]
 

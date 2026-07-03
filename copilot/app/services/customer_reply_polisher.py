@@ -10,6 +10,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.services.customer_facing_safe_handoff_service import (
+    customer_facing_safe_handoff_reply,
+    has_customer_facing_internal_redline,
+)
 
 _BLOCKED_PHRASES = (
     "准确说法",
@@ -48,6 +52,7 @@ def polish_customer_reply(
         response["display_product_name"] = display_name
     polished = _rewrite_complaint_service_reply(polished, response, customer_message)
     polished = _rewrite_media_workflow_reply(polished, response, customer_message, display_name)
+    polished = _rewrite_safe_handoff_internal_language(polished, response, copilot_context or {})
     polished = _ensure_display_product_name_preserved(original, polished, display_name)
     complaint_contract_passed = _is_customer_safe_complaint_reply(polished, response, customer_message)
     if complaint_contract_passed:
@@ -77,6 +82,41 @@ def polish_customer_reply(
     response["customer_reply_polish"] = info
     response.setdefault("evidence_debug", {})["customer_reply_polish"] = info
     return response
+
+
+def _rewrite_safe_handoff_internal_language(text: str, response: dict[str, Any], copilot_context: dict[str, Any]) -> str:
+    if not has_customer_facing_internal_redline(text):
+        return text
+    if not bool(response.get("requires_human_review")):
+        return text
+    fact_type = _safe_handoff_fact_type(response, copilot_context)
+    reply = customer_facing_safe_handoff_reply(
+        fact_type,
+        inputs={
+            "product_name": response.get("display_product_name")
+            or response.get("product_name")
+            or response.get("product_title")
+            or copilot_context.get("product_name")
+            or copilot_context.get("product_title")
+            or "",
+        },
+    )
+    return reply or text
+
+
+def _safe_handoff_fact_type(response: dict[str, Any], copilot_context: dict[str, Any]) -> str:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    understanding = copilot_context.get("turn_understanding") if isinstance(copilot_context.get("turn_understanding"), dict) else {}
+    return str(
+        response.get("query_fact_type")
+        or response.get("fact_type")
+        or debug.get("query_fact_type")
+        or trace.get("query_fact_type")
+        or understanding.get("query_fact_type")
+        or understanding.get("expected_query_fact_type")
+        or ""
+    )
 
 
 def _protect_display_product_name(text: str, display_name: str) -> tuple[str, str]:

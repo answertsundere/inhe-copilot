@@ -48,6 +48,20 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
         return True
     normalized_key = sanitize_text(key_point)
     normalized_text = sanitize_text(text)
+    if any(term in normalized_key for term in ("\u8f6c\u4eba\u5de5", "\u4eba\u5de5\u6838\u5b9e", "\u4eba\u5de5\u786e\u8ba4")):
+        handoff_aliases = (
+            "\u8f6c\u4eba\u5de5",
+            "\u4eba\u5de5\u6838\u5b9e",
+            "\u4eba\u5de5\u786e\u8ba4",
+            "\u6838\u5b9e\u540e\u5904\u7406",
+            "\u5904\u7406\u65b9\u6848",
+            "\u786e\u8ba4\u540e\u7ed9\u60a8",
+            "\u6838\u5bf9\u540e\u5904\u7406",
+            "\u51c6\u786e\u56de\u590d",
+            "\u786e\u8ba4\u540e\u56de\u590d",
+            "\u6211\u4e00\u8d77\u5e2e\u60a8\u6838\u5bf9",
+        )
+        return any(alias in normalized_text for alias in handoff_aliases)
     if any(term in normalized_key for term in ("不直接承诺有安装视频", "不承诺有安装视频")):
         video_promises = ("一定有安装视频", "可以发安装视频", "我把安装视频发您", "把安装视频发您", "发安装视频")
         return not any(term in normalized_text for term in video_promises)
@@ -72,12 +86,13 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
                 "\u6309\u8fd9\u6b3e",
                 "\u6309\u60a8\u8fd9\u6b3e",
                 "\u60a8\u8fd9\u6b3e",
+                "\u8fd9\u6b3e\u300c",
                 "\u8fd9\u6b3e\u7684",
             ),
         ),
         (
             ("\u4e0d\u80fd\u76f4\u63a5\u627f\u8bfa\u989d\u5916\u964d\u4ef7", "\u4e0d\u627f\u8bfa\u989d\u5916\u964d\u4ef7", "\u4e0d\u76f4\u63a5\u627f\u8bfa\u4f18\u60e0"),
-            ("\u4ee5\u60a8\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u4ee5\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u4ee5\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u6309\u9875\u9762\u89c4\u5219\u6838\u5bf9", "\u6838\u5bf9\u6d3b\u52a8\u89c4\u5219"),
+            ("\u4ee5\u60a8\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u4ee5\u60a8\u4e0b\u5355\u9875\u663e\u793a\u4e3a\u51c6", "\u4ee5\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u4ee5\u4e0b\u5355\u9875\u663e\u793a\u4e3a\u51c6", "\u4ee5\u9875\u9762\u663e\u793a\u4e3a\u51c6", "\u6309\u9875\u9762\u89c4\u5219\u6838\u5bf9", "\u6838\u5bf9\u6d3b\u52a8\u89c4\u5219"),
         ),
         (
             ("\u4e0d\u76f4\u63a5\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891", "\u4e0d\u627f\u8bfa\u6709\u5b89\u88c5\u89c6\u9891"),
@@ -86,8 +101,23 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
         (("先别着急", "安抚", "别着急"), ("先别着急", "别担心", "我先帮您核实", "我来帮您处理", "给您处理")),
         (("订单信息", "当前订单"), ("当前订单", "订单信息", "按订单", "订单")),
         (("实物照片", "问题照片", "问题位置"), ("实物照片", "问题位置", "拍照", "拍一下", "图片")),
-        (("转人工", "人工核实", "人工确认"), ("转人工", "人工核实", "人工确认", "核实后处理", "处理方案")),
+        (("转人工", "人工核实", "人工确认"), ("转人工", "人工核实", "人工确认", "核实后处理", "处理方案", "确认后给您", "核对后处理", "准确回复", "确认后回复")),
     ]
+    alias_groups.append((
+        ("\u8f6c\u4eba\u5de5", "\u4eba\u5de5\u6838\u5b9e", "\u4eba\u5de5\u786e\u8ba4"),
+        (
+            "\u8f6c\u4eba\u5de5",
+            "\u4eba\u5de5\u6838\u5b9e",
+            "\u4eba\u5de5\u786e\u8ba4",
+            "\u6838\u5b9e\u540e\u5904\u7406",
+            "\u5904\u7406\u65b9\u6848",
+            "\u786e\u8ba4\u540e\u7ed9\u60a8",
+            "\u6838\u5bf9\u540e\u5904\u7406",
+            "\u51c6\u786e\u56de\u590d",
+            "\u786e\u8ba4\u540e\u56de\u590d",
+            "\u6211\u4e00\u8d77\u5e2e\u60a8\u6838\u5bf9",
+        ),
+    ))
     for triggers, aliases in alias_groups:
         if any(trigger in normalized_key for trigger in triggers):
             return any(alias in normalized_text for alias in aliases)

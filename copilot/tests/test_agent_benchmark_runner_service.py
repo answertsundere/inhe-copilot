@@ -222,6 +222,32 @@ def test_aftersales_key_points_accept_generic_aliases(monkeypatch):
     assert item["missing_key_points"] == []
 
 
+def test_handoff_key_point_accepts_customer_facing_verification_copy(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="promotion",
+        expected={
+            "expected_reply": "Verify manually.",
+            "key_points": ["\u8f6c\u4eba\u5de5"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "\u4eb2\uff0c\u60a8\u53ef\u4ee5\u628a\u4f18\u60e0\u9875\u9762\u622a\u56fe\u53d1\u6211\uff0c\u6211\u4e00\u8d77\u5e2e\u60a8\u6838\u5bf9\u3002",
+        "answer_trace": {"query_fact_type": "promotion"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
 def test_current_product_key_point_accepts_current_style_alias(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(
@@ -318,6 +344,32 @@ def test_promotion_discount_promise_key_point_accepts_page_rule_boundary(monkeyp
         "can_send": False,
         "requires_human_review": True,
         "draft_reply": "\u4eb2\uff0c\u5177\u4f53\u4ee5\u60a8\u4e0b\u5355\u9875\u9762\u663e\u793a\u4e3a\u51c6\uff0c\u6211\u8fd9\u8fb9\u53ef\u4ee5\u5e2e\u60a8\u6838\u5bf9\u6d3b\u52a8\u89c4\u5219\u3002",
+        "answer_trace": {"query_fact_type": "promotion"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
+def test_promotion_discount_promise_key_point_accepts_order_page_short_alias(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="promotion",
+        expected={
+            "expected_reply": "Do not promise extra discount.",
+            "key_points": ["\u4e0d\u80fd\u76f4\u63a5\u627f\u8bfa\u989d\u5916\u964d\u4ef7"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "\u4eb2\uff0c\u5177\u4f53\u4ee5\u60a8\u4e0b\u5355\u9875\u663e\u793a\u4e3a\u51c6\uff0c\u6211\u5e2e\u60a8\u6838\u5bf9\u4f18\u60e0\u5238\u548c\u6ee1\u51cf\u89c4\u5219\u3002",
         "answer_trace": {"query_fact_type": "promotion"},
     }).run_scenarios(db_factory=session_factory)
 

@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from app import config
+from app.services.customer_facing_safe_handoff_service import customer_facing_safe_handoff_reply
 from app.services.generic_service_rule_service import unsafe_promise_terms
 
 logger = logging.getLogger(__name__)
@@ -661,12 +662,7 @@ def _fallback_reply(response: dict[str, Any], message: str, expected: set[str]) 
             "收到后建议先检查外观和气味，放在通风处散味后再给宝宝使用；如果有明显刺鼻气味、破损或材质异常，可以拍照/视频联系我们处理。"
         )
     if "age_range" in expected:
-        return (
-            f"亲亲，您想确认「{product}」是否适合宝宝使用，这个要按这款商品页的适用年龄、材质/结构说明，"
-            "以及检测或合格资料一起核对。\n"
-            "我这边不直接承诺适合某个年龄段，也不说绝对安全；如果是给宝宝使用，"
-            "我先按当前商品资料帮您核对，有依据后再发您参考。"
-        )
+        return customer_facing_safe_handoff_reply("age_range", inputs={"product_name": product})
     if "gift" in expected:
         return (
             "亲亲，赠品一般需要同时看下单活动页面、订单是否满足条件，以及仓库发货明细。\n"
