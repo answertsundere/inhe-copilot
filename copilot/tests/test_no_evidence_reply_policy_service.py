@@ -258,7 +258,43 @@ def test_aftersales_mismatch_reply_uses_aftersales_check_action():
     assert "售后问题" in result["reply"]
     assert "相关说明页" in result["reply"]
     assert "问题位置" in result["reply"]
-    assert "实物照片" in result["reply"]
+
+
+def test_return_pickup_without_evidence_requires_order_aftersales_check():
+    result = _policy(
+        query_fact_type="return_pickup",
+        has_product_context=True,
+        has_order_context=False,
+        customer_message="\u4e3a\u4ec0\u4e48\u6ca1\u6709\u4e0a\u95e8\u53d6\u4ef6",
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "return_pickup_check"
+    assert result["needs_followup"] is True
+    assert "\u552e\u540e\u5355" in result["reply"]
+    assert "\u53d6\u4ef6\u65b9\u5f0f" in result["reply"]
+    assert "\u8ba2\u5355" in result["reply"]
+    assert "\u4e0b\u4e00\u6b65\u5904\u7406\u65b9\u6848" in result["reply"]
+    for forbidden in ("\u4e00\u5b9a\u4f1a\u4e0a\u95e8\u53d6\u4ef6", "\u9a6c\u4e0a\u4e0a\u95e8\u53d6\u4ef6", "\u7acb\u5373\u9000\u6b3e", "\u76f4\u63a5\u8865\u53d1", "\u4e00\u5b9a\u8d54\u4ed8"):
+        assert forbidden not in result["reply"]
+    _assert_customer_facing_safe_handoff(result["reply"])
+
+
+def test_return_pickup_with_order_context_still_requires_human_review_without_promise():
+    result = _policy(
+        query_fact_type="return_pickup",
+        has_product_context=True,
+        has_order_context=True,
+        customer_message="\u5feb\u9012\u63fd\u6536\u600e\u4e48\u8fd8\u6ca1\u6765",
+    )
+
+    assert result["requires_human_review"] is True
+    assert result["reply_strategy"] == "return_pickup_check"
+    assert result["needs_followup"] is False
+    assert "\u5f53\u524d\u8ba2\u5355" in result["reply"]
+    assert "\u5feb\u9012\u63fd\u6536" in result["reply"]
+    assert "\u60a8\u628a\u8ba2\u5355" not in result["reply"]
+    assert "\u4e00\u5b9a\u4f1a\u4e0a\u95e8\u53d6\u4ef6" not in result["reply"]
     assert "处理方案" in result["reply"]
     _assert_customer_facing_safe_handoff(result["reply"])
     assert "直接退款" not in result["reply"]

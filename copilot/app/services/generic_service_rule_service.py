@@ -226,6 +226,40 @@ DEFAULT_GENERIC_SERVICE_RULES.append({
 
 DEFAULT_GENERIC_SERVICE_RULES.extend([
     {
+        "rule_key": "return_pickup_aftersales_logistics_check_v1",
+        "title": "退货/售后取件安排核对",
+        "intent": "aftersales",
+        "fact_type": "return_pickup",
+        "scenario": "return_pickup_check",
+        "query_keywords": [
+            "上门取件",
+            "退货取件",
+            "快递取件",
+            "预约取件",
+            "取件码",
+            "取件员",
+            "取件安排",
+            "上门揽收",
+            "快递揽收",
+            "揽收",
+        ],
+        "content": (
+            "退货、售后取件、上门揽收类问题需要按当前订单售后单、平台取件方式、预约时间和快递揽收状态核对。"
+            "客服可以确认客户是否已提交售后申请、是否选择平台上门取件、是否有取件码或预约时间。"
+            "未核实前不能承诺一定会上门取件、立即取件、直接退款、补发、赔付或改派快递。"
+        ),
+        "reply_template": (
+            "亲，我先帮您按当前订单的售后进度核对一下。"
+            "上门取件一般要看平台售后单里的取件方式、预约时间和快递揽收安排；"
+            "您把订单/售后申请页面或取件信息发我，我确认后告诉您下一步怎么处理。"
+        ),
+        "forbidden_claims": ["一定会上门取件", "马上上门取件", "立即退款", "直接补发", "一定赔付"],
+        "required_guardrails": ["按订单售后单核对", "不承诺取件结果", "不承诺退款补发赔付"],
+        "source_confidence": 0.78,
+        "risk_level": "medium",
+        "priority": 45,
+    },
+    {
         "rule_key": "logistics_order_status_check_v1",
         "title": "物流/发货状态核对",
         "intent": "logistics",

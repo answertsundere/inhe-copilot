@@ -96,6 +96,22 @@ def test_logistics_and_aftersales_short_questions_get_fact_type():
         assert result["query_fact_type"] == fact_type
 
 
+def test_return_pickup_questions_are_aftersales_logistics_not_stock_shipping():
+    for message in ("\u4e3a\u4ec0\u4e48\u6ca1\u6709\u4e0a\u95e8\u53d6\u4ef6", "\u9000\u8d27\u53d6\u4ef6\u600e\u4e48\u5b89\u6392", "\u5feb\u9012\u63fd\u6536\u4ec0\u4e48\u65f6\u5019\u6765"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "return_pickup"
+        assert result["needs_rag"] is False
+        assert result["needs_tool"] is True
+
+
+def test_return_pickup_does_not_steal_normal_delivery_tracking():
+    for message in ("\u7269\u6d41\u5230\u54ea\u4e86", "\u4ec0\u4e48\u65f6\u5019\u53d1\u8d27", "\u8fd0\u5355\u53f7\u53d1\u6211\u4e00\u4e0b"):
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == "stock_shipping"
+
+
 def test_short_deictic_dimension_needs_context_before_fact_type():
     without_context = _understand("这个多大")
     with_product_context = _understand("这个多大", product_hint="children cabinet")

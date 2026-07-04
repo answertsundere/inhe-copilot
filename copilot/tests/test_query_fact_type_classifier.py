@@ -26,6 +26,9 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u7269\u6d41\u5230\u54ea\u4e86": "stock_shipping",
         "\u7b7e\u6536\u540e\u6ca1\u6536\u5230": "stock_shipping",
         "\u8fd0\u5355\u53f7\u53d1\u6211\u4e00\u4e0b": "stock_shipping",
+        "\u4e3a\u4ec0\u4e48\u6ca1\u6709\u4e0a\u95e8\u53d6\u4ef6": "return_pickup",
+        "\u9000\u8d27\u53d6\u4ef6\u600e\u4e48\u5b89\u6392": "return_pickup",
+        "\u53d6\u4ef6\u7801\u5728\u54ea\u91cc\u770b": "return_pickup",
         "\u4e70\u4e24\u4e2a\u80fd\u4e0d\u80fd\u4fbf\u5b9c\u70b9": "promotion_policy",
         "\u591a\u4e70\u6709\u798f\u5229\u5417": "promotion_policy",
         "\u8fd9\u4e2a\u600e\u4e48\u4e0b\u5355": "order_assistance",
@@ -39,6 +42,12 @@ def test_query_fact_type_classifier_high_frequency_fields():
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")
         assert result["query_fact_type"] == expected
+
+
+def test_return_pickup_does_not_steal_normal_shipping_questions():
+    for message in ("\u7269\u6d41\u5230\u54ea\u4e86", "\u4ec0\u4e48\u65f6\u5019\u53d1\u8d27", "\u7b7e\u6536\u540e\u6ca1\u6536\u5230", "\u8fd0\u5355\u53f7\u53d1\u6211\u4e00\u4e0b"):
+        result = classify_query_fact_type(message, "product_question")
+        assert result["query_fact_type"] == "stock_shipping"
 
 
 def test_accessory_installation_question_is_not_availability():

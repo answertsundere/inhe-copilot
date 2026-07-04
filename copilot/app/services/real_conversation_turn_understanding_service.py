@@ -22,9 +22,10 @@ PRODUCT_FACT_TOPICS = {
     "installation": ("安装", "组装", "装", "教程", "说明书", "视频", "打孔", "螺丝", "install", "installation", "video"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
     "age_range": ("适合几岁", "适合多大", "年龄", "月龄", "宝宝", "儿童", "孩子"),
+    "return_pickup": ("上门取件", "退货取件", "快递取件", "预约取件", "取件码", "取件员", "取件安排", "上门揽收", "快递揽收", "揽收"),
     "stock_shipping": (
         "发货", "现货", "库存", "几天到", "什么时候到", "明天能到", "能到吗", "到吗",
-        "物流", "快递", "签收", "没收到", "发出", "发出来", "揽收", "单号", "运单号", "取件",
+        "物流", "快递", "签收", "没收到", "发出", "发出来", "单号", "运单号",
     ),
     "aftersales": (
         "退", "退款", "退货", "换", "换货", "补发", "漏发", "缺件", "少件",
@@ -62,6 +63,19 @@ PRICE_NEGOTIATION_TERMS = (
     "优惠价",
     "多买",
     "买两个",
+)
+RETURN_PICKUP_TERMS = (
+    "上门取件",
+    "退货取件",
+    "快递取件",
+    "预约取件",
+    "取件码",
+    "取件员",
+    "取件安排",
+    "上门揽收",
+    "快递揽收",
+    "揽收",
+    "取走退货",
 )
 AFTERSALES_STRONG_TERMS = (
     "质量问题",
@@ -359,16 +373,16 @@ class RealConversationTurnUnderstandingService:
 
         if _is_actionable_question(text, fact_type):
             needs_media = "视频" in text or "图片" in text or "图" in text
-            needs_rag = False if fact_type in {"stock_shipping", "aftersales"} else (bool(fact_type) or needs_media)
+            needs_rag = False if fact_type in {"stock_shipping", "aftersales", "return_pickup"} else (bool(fact_type) or needs_media)
             reason = "Buyer asks accessory or component usage, identification, or presence." if _is_accessory_usage_question(text) else "Buyer turn contains a question or request that needs an answer."
             return TurnUnderstanding(
                 turn_actionability="actionable_question",
                 needs_agent_reply=True,
                 needs_rag=needs_rag,
-                needs_tool=fact_type in {"stock_shipping", "aftersales"},
+                needs_tool=fact_type in {"stock_shipping", "aftersales", "return_pickup"},
                 should_score=True,
                 reply_strategy="normal_agent",
-                context_dependency="low" if product_hint or fact_type in {"stock_shipping", "aftersales"} else "medium",
+                context_dependency="low" if product_hint or fact_type in {"stock_shipping", "aftersales", "return_pickup"} else "medium",
                 forbidden_reply_topics=[],
                 reason=reason,
                 query_fact_type=fact_type,
@@ -407,7 +421,12 @@ def infer_query_fact_type(text: str) -> str:
 def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
     value = str(text or "")
     has_promotion = _is_promotion_query(value)
+    has_return_pickup = _is_return_pickup_query(value)
     has_aftersales = _is_aftersales_or_mismatch(value)
+    if has_return_pickup and has_promotion:
+        return "return_pickup", ["promotion", "aftersales"]
+    if has_return_pickup:
+        return "return_pickup", ["aftersales"]
     if has_aftersales and has_promotion:
         return "aftersales", ["promotion"]
     if has_promotion:
@@ -532,7 +551,7 @@ def _is_contextual_dimension_short_question(text: str) -> bool:
 def _is_actionable_question(text: str, fact_type: str) -> bool:
     if _has_question_or_request(text):
         return True
-    return bool(fact_type and (fact_type in {"aftersales", "stock_shipping"} or not _is_context_update(text)))
+    return bool(fact_type and (fact_type in {"aftersales", "stock_shipping", "return_pickup"} or not _is_context_update(text)))
 
 
 def _has_question_or_request(text: str) -> bool:
@@ -547,6 +566,11 @@ def _is_promotion_query(text: str) -> bool:
 def _is_logistics_query(text: str) -> bool:
     value = str(text or "")
     return any(term in value for term in PRODUCT_FACT_TOPICS["stock_shipping"])
+
+
+def _is_return_pickup_query(text: str) -> bool:
+    value = str(text or "")
+    return any(term in value for term in RETURN_PICKUP_TERMS)
 
 
 def _is_structure_function_query(text: str) -> bool:

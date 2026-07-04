@@ -88,6 +88,14 @@ def test_service_action_generic_rules_cover_common_policy_gaps():
 
     cases = [
         {
+            "query": "\u9000\u8d27\u53d6\u4ef6\u600e\u4e48\u5b89\u6392\uff0c\u4e3a\u4ec0\u4e48\u6ca1\u6709\u4e0a\u95e8\u53d6\u4ef6",
+            "intent": "aftersales",
+            "fact_type": "return_pickup",
+            "rule_key": "return_pickup_aftersales_logistics_check_v1",
+            "must": ["\u8ba2\u5355", "\u552e\u540e", "\u53d6\u4ef6\u65b9\u5f0f", "\u4e0b\u4e00\u6b65"],
+            "forbidden": ["\u4e00\u5b9a\u4f1a\u4e0a\u95e8\u53d6\u4ef6", "\u7acb\u5373\u9000\u6b3e", "\u76f4\u63a5\u8865\u53d1"],
+        },
+        {
             "query": "\u7269\u6d41\u5230\u54ea\u4e86\uff0c\u7b7e\u6536\u540e\u6ca1\u6536\u5230",
             "intent": "logistics",
             "fact_type": "stock_shipping",

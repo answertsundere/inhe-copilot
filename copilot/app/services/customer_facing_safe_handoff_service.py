@@ -36,7 +36,8 @@ DIMENSION_FACT_TYPES = {"dimensions", "space_fit", "placement_scene"}
 INSTALLATION_FACT_TYPES = {"installation", "visual_asset", "media_reference"}
 ACCESSORY_FACT_TYPES = {"accessory_usage", "accessories", "packaging", "accessory_availability", "structure_function"}
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"}
-AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
+RETURN_PICKUP_FACT_TYPES = {"return_pickup", "aftersales_logistics"}
+AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"} | RETURN_PICKUP_FACT_TYPES
 
 
 def apply_customer_facing_safe_handoff(policy: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -101,6 +102,18 @@ def customer_facing_safe_handoff_reply(
         return (
             f"亲，这个要按{product_hint}的结构、孔位和配件规格核对一下，避免侧板/护栏/挡板这类位置装错或配错。"
             "您可以拍下对应位置或说明书那一页，我一起帮您看；确认后给您准确回复。"
+        )
+    if fact_type in RETURN_PICKUP_FACT_TYPES:
+        if _has_order_context(inputs or {}):
+            return (
+                "亲，我先帮您按当前订单售后进度核对一下。"
+                "上门取件要看售后单里的取件方式、预约时间和快递揽收安排；"
+                "我确认清楚后给您下一步处理方案。"
+            )
+        return (
+            "亲，我先帮您按订单售后进度核对一下。"
+            "上门取件要看售后单里的取件方式、预约时间和快递揽收安排；"
+            "您把订单/售后申请页面或取件信息发我，我确认后给您下一步处理方案。"
         )
     if fact_type in PROMOTION_FACT_TYPES:
         return (
@@ -181,6 +194,15 @@ def _product_hint(inputs: dict[str, Any]) -> str:
     return f"这款「{product}」" if product else "这款商品"
 
 
+def _has_order_context(inputs: dict[str, Any]) -> bool:
+    return bool(
+        inputs.get("has_order_context")
+        or inputs.get("order_id")
+        or inputs.get("platform_order_id")
+        or inputs.get("order_id_hash")
+    )
+
+
 def _risk_type(fact_type: str) -> str:
     if fact_type in MATERIAL_SAFETY_FACT_TYPES:
         return "material_safety"
@@ -194,6 +216,8 @@ def _risk_type(fact_type: str) -> str:
         return "installation_media"
     if fact_type in PROMOTION_FACT_TYPES:
         return "promotion_policy"
+    if fact_type in RETURN_PICKUP_FACT_TYPES:
+        return "return_pickup"
     if fact_type in AFTERSALES_FACT_TYPES:
         return "aftersales"
     return fact_type or "unknown"
@@ -202,6 +226,8 @@ def _risk_type(fact_type: str) -> str:
 def _customer_action(fact_type: str) -> str:
     if fact_type in PROMOTION_FACT_TYPES:
         return "核对当前页面活动/优惠券/满减规则"
+    if fact_type in RETURN_PICKUP_FACT_TYPES:
+        return "核对订单售后取件方式/预约时间/快递揽收安排"
     if fact_type in AFTERSALES_FACT_TYPES:
         return "核对订单和问题照片"
     if fact_type in INSTALLATION_FACT_TYPES:

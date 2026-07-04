@@ -42,7 +42,8 @@ ORDER_CONTEXT_REQUEST_TERMS = (
 INSTALLATION_FACT_TYPES = {"installation", "visual_asset", "media_reference"}
 ACCESSORY_FACT_TYPES = {"accessory_usage", "accessories", "packaging"}
 ACCESSORY_AVAILABILITY_FACT_TYPES = {"accessory_availability"}
-AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"}
+RETURN_PICKUP_FACT_TYPES = {"return_pickup", "aftersales_logistics"}
+AFTERSALES_FACT_TYPES = {"aftersales", "aftersales_policy", "after_sales", "media_mismatch", "wrong_item", "missing_part"} | RETURN_PICKUP_FACT_TYPES
 PROMOTION_FACT_TYPES = {"promotion", "promotion_policy", "activity_rule", "coupon", "discount", "gift_policy", "price_negotiation"}
 DIMENSION_FACT_TYPES = {"dimensions", "space_fit"}
 SPACE_FIT_MEDIA_ASSET_TYPES = {
@@ -312,6 +313,20 @@ def _reply_aftersales_mismatch_check() -> str:
     )
 
 
+def _reply_return_pickup_check(has_order_context: bool = False) -> str:
+    if has_order_context:
+        return (
+            "亲，我先按当前订单的售后进度帮您核对一下。"
+            "上门取件要看平台售后单里的取件方式、预约时间和快递揽收安排。"
+            "我这边确认清楚后告诉您下一步处理方案。"
+        )
+    return (
+        "亲，我先帮您核对售后取件安排。"
+        "上门取件要看订单售后单里的取件方式、预约时间和快递揽收状态；"
+        "您把订单/售后申请页面或取件信息发我，我确认后告诉您下一步处理方案。"
+    )
+
+
 def build_no_evidence_reply_policy(inputs: dict[str, Any]) -> dict[str, Any]:
     policy = _build_no_evidence_reply_policy_raw(inputs)
     policy = _apply_gold_service_reply(policy, inputs)
@@ -346,6 +361,8 @@ def _apply_gold_service_reply(policy: dict[str, Any], inputs: dict[str, Any]) ->
         policy["reply"] = _reply_damaged_aftersales_request_context()
     elif strategy == "aftersales_mismatch_check":
         policy["reply"] = _reply_aftersales_mismatch_check()
+    elif strategy == "return_pickup_check":
+        policy["reply"] = _reply_return_pickup_check(bool(inputs.get("has_order_context")))
     return policy
 
 
@@ -559,6 +576,16 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
             "reply_strategy": "verify_accessory_usage_with_photo",
             "reason": missing_reason or "accessory_evidence_missing",
             "forbidden_claims": forbidden_claims,
+        }
+
+    if fact_type in RETURN_PICKUP_FACT_TYPES:
+        return {
+            "reply": _reply_return_pickup_check(has_order_context),
+            "requires_human_review": True,
+            "needs_followup": not has_order_context,
+            "reply_strategy": "return_pickup_check",
+            "reason": missing_reason or "return_pickup_requires_order_aftersales_check",
+            "forbidden_claims": forbidden_claims + ["一定会上门取件", "马上上门取件", "立即退款", "直接补发", "一定赔付"],
         }
 
     if fact_type in AFTERSALES_FACT_TYPES:

@@ -26,6 +26,7 @@ FACT_TYPE_LABELS = {
     "detachable": "拆卸/可拆",
     "variant_compare": "款式差异",
     "stock_shipping": "库存/发货",
+    "return_pickup": "退货/售后取件",
     "invoice_policy": "发票政策",
     "price_protection": "价保政策",
     "promotion_policy": "优惠活动",
@@ -173,6 +174,19 @@ _AFTERSALES_PROMOTION_BOUNDARY_MARKERS = (
     "投诉",
     "赔偿",
 )
+_RETURN_PICKUP_MARKERS = (
+    "上门取件",
+    "退货取件",
+    "快递取件",
+    "预约取件",
+    "取件码",
+    "取件员",
+    "取件安排",
+    "上门揽收",
+    "快递揽收",
+    "揽收",
+    "取走退货",
+)
 
 
 _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
@@ -197,6 +211,18 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u8fd4\u73b0",
     )),
     ("gift_policy", ("\u8d60\u54c1", "\u793c\u54c1", "\u6ca1\u9001", "\u5c11\u9001")),
+    ("return_pickup", (
+        "\u4e0a\u95e8\u53d6\u4ef6",
+        "\u9000\u8d27\u53d6\u4ef6",
+        "\u5feb\u9012\u53d6\u4ef6",
+        "\u9884\u7ea6\u53d6\u4ef6",
+        "\u53d6\u4ef6\u7801",
+        "\u53d6\u4ef6\u5458",
+        "\u53d6\u4ef6\u5b89\u6392",
+        "\u4e0a\u95e8\u63fd\u6536",
+        "\u5feb\u9012\u63fd\u6536",
+        "\u63fd\u6536",
+    )),
     ("stock_shipping", (
         "\u6709\u8d27",
         "\u5e93\u5b58",
@@ -417,6 +443,16 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
             "confidence": 0.86 if len(promotion_hits) > 1 else 0.8,
             "matched_terms": promotion_hits[:5],
             "secondary_fact_types": [],
+            "source": "unicode_rule",
+        }
+    return_pickup_hits = [kw for kw in _RETURN_PICKUP_MARKERS if kw in msg]
+    if return_pickup_hits:
+        return {
+            "query_fact_type": "return_pickup",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("return_pickup", "return_pickup"),
+            "confidence": 0.88,
+            "matched_terms": return_pickup_hits[:5],
+            "secondary_fact_types": ["aftersales_policy"],
             "source": "unicode_rule",
         }
     # Aftersales补发/少件 wins over the generic installation 螺丝/配件 keyword
