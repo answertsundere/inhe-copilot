@@ -154,6 +154,10 @@ def test_structure_function_questions_are_not_space_or_scene_questions():
         "这个一边能放下来吗",
         "侧板可以翻下来吗",
         "护栏能不能放下",
+        "三面围栏，想补第四面，这款能用吗",
+        "这个护栏能补一面吗",
+        "这个侧板能单独配吗",
+        "这个配件能不能装这款",
     )
     for message in cases:
         result = _understand(message)
@@ -165,11 +169,17 @@ def test_structure_function_questions_are_not_space_or_scene_questions():
 def test_structure_function_does_not_steal_scene_or_space_fit_questions():
     bedroom = _understand("这个放阳台可以吗")
     small_space = _understand("空间小能放下吗")
+    cabinet = _understand("这个柜子能不能放阳台")
+    bed = _understand("这个床能不能放下")
 
     assert bedroom["turn_actionability"] == "actionable_question"
     assert bedroom["query_fact_type"] == "placement_scene"
     assert small_space["turn_actionability"] == "actionable_question"
     assert small_space["query_fact_type"] == "space_fit"
+    assert cabinet["turn_actionability"] == "actionable_question"
+    assert cabinet["query_fact_type"] == "placement_scene"
+    assert bed["turn_actionability"] == "actionable_question"
+    assert bed["query_fact_type"] == "space_fit"
 
 
 def test_can_only_becomes_actionable_with_business_action_or_question_marker():

@@ -56,6 +56,88 @@ def test_generic_rule_service_uses_semantic_fact_type():
     assert rules[0]["source_type"] == "generic_rules"
 
 
+def test_after_sales_payment_rule_matches_payment_timing_questions():
+    from app.services.generic_service_rule_service import (
+        render_generic_service_reply,
+        search_generic_service_rules,
+    )
+
+    rules = search_generic_service_rules(
+        query="\u652f\u4ed8\u5b9d\u6253\u6b3e\u591a\u4e45\u80fd\u5230\u8d26\uff1f\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\u9700\u8981\u591a\u4e45\uff1f",
+        intent="aftersales",
+        fact_type="aftersales_policy",
+    )
+
+    assert rules
+    reply = render_generic_service_reply(rules[0])
+    assert rules[0]["rule_key"] == "after_sales_payment_timing_v1"
+    assert rules[0]["fact_type"] == "aftersales_policy"
+    assert "7 \u5929\u5de6\u53f3" in reply
+    assert "72 \u5c0f\u65f6\u5de6\u53f3" in reply
+    assert "\u652f\u4ed8\u5b9d\u8d26\u53f7" in reply
+    assert "\u59d3\u540d" in reply
+    assert "\u9a6c\u4e0a\u5230\u8d26" not in reply
+    assert "\u4e00\u5b9a\u5f53\u5929\u5230\u8d26" not in reply
+
+
+def test_service_action_generic_rules_cover_common_policy_gaps():
+    from app.services.generic_service_rule_service import (
+        render_generic_service_reply,
+        search_generic_service_rules,
+    )
+
+    cases = [
+        {
+            "query": "\u7269\u6d41\u5230\u54ea\u4e86\uff0c\u7b7e\u6536\u540e\u6ca1\u6536\u5230",
+            "intent": "logistics",
+            "fact_type": "stock_shipping",
+            "rule_key": "logistics_order_status_check_v1",
+            "must": ["\u8ba2\u5355\u7269\u6d41", "\u53d1\u8d27", "\u7b7e\u6536\u540e\u6ca1\u6536\u5230"],
+            "forbidden": ["\u660e\u5929\u4e00\u5b9a\u5230", "\u80af\u5b9a\u5df2\u9001\u8fbe"],
+        },
+        {
+            "query": "\u5c11\u4ef6\u4e86\u600e\u4e48\u8865\u53d1",
+            "intent": "aftersales",
+            "fact_type": "aftersales_policy",
+            "rule_key": "aftersales_issue_collect_and_review_v1",
+            "must": ["\u95ee\u9898\u4f4d\u7f6e\u7167\u7247", "\u8ba2\u5355\u4fe1\u606f", "\u5904\u7406\u65b9\u6848"],
+            "forbidden": ["\u9a6c\u4e0a\u8865\u53d1", "\u76f4\u63a5\u9000\u6b3e"],
+        },
+        {
+            "query": "\u4e70\u4e24\u4e2a\u80fd\u4e0d\u80fd\u4fbf\u5b9c\u70b9\uff0c\u6709\u6ca1\u6709\u4f18\u60e0\u5238",
+            "intent": "promotion",
+            "fact_type": "promotion_policy",
+            "rule_key": "promotion_current_activity_check_v1",
+            "must": ["\u6d3b\u52a8\u548c\u4f18\u60e0", "\u4e0b\u5355\u9875", "\u51c6\u786e\u53e3\u5f84"],
+            "forbidden": ["\u4e00\u5b9a\u6709\u4f18\u60e0", "\u80af\u5b9a\u80fd\u4fbf\u5b9c"],
+        },
+        {
+            "query": "\u8fd9\u4e2a\u600e\u4e48\u4e0b\u5355\uff0c\u89c4\u683c\u600e\u4e48\u9009",
+            "intent": "order_assistance",
+            "fact_type": "order_assistance",
+            "rule_key": "purchase_assistance_spec_check_v1",
+            "must": ["\u9009\u62e9\u89c4\u683c", "\u5c3a\u5bf8", "\u9875\u9762\u4fe1\u606f"],
+            "forbidden": ["\u968f\u4fbf\u62cd", "\u4e00\u5b9a\u9002\u5408"],
+        },
+    ]
+
+    for case in cases:
+        rules = search_generic_service_rules(
+            query=case["query"],
+            intent=case["intent"],
+            fact_type=case["fact_type"],
+        )
+        assert rules
+        assert rules[0]["rule_key"] == case["rule_key"]
+        assert rules[0]["source_type"] == "generic_rules"
+        assert rules[0]["risk_level"] == "medium"
+        reply = render_generic_service_reply(rules[0])
+        for term in case["must"]:
+            assert term in reply
+        for term in case["forbidden"]:
+            assert term not in reply
+
+
 def test_render_generic_service_reply_uses_display_name_without_internal_terms():
     from app.services.generic_service_rule_service import (
         DEFAULT_GENERIC_SERVICE_RULES,

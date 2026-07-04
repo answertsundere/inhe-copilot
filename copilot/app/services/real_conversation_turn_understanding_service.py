@@ -156,9 +156,28 @@ MISSING_QUANTITY_OBJECT_TERMS = ("配件", "零件", "部件", "螺丝", "板子
 MISSING_QUANTITY_TERMS = ("只有", "只发", "只收到", "少了", "少", "缺", "差一个", "还差")
 STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背")
 STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动")
+STRUCTURE_COMPATIBILITY_OBJECT_TERMS = (*STRUCTURE_OBJECT_TERMS, "配件", "第四面", "一面")
+STRUCTURE_COMPATIBILITY_ACTION_TERMS = (
+    "补第四面",
+    "补一面",
+    "补配件",
+    "补一个",
+    "补",
+    "加装",
+    "适配",
+    "能不能配",
+    "能配",
+    "配吗",
+    "单独配",
+    "能不能装这款",
+    "能装这款",
+    "装这款",
+)
 STRUCTURE_CONFIRM_TERMS = ("不是可以", "可以吗", "能不能", "是不是", "怎么", "有吗", "吗", "呢")
 STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间")
 STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
+SPACE_FIT_OBJECT_TERMS = ("柜子", "床", "床垫", "书架", "收纳柜", "置物架", "架子", "桌子", "鞋柜")
+SPACE_FIT_ACTION_TERMS = ("能不能放下", "能放下", "放得下", "放的下", "摆得下", "摆的下", "够不够放", "放不放得下")
 
 
 @dataclass
@@ -399,6 +418,8 @@ def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
         return "stock_shipping", []
     if _is_structure_function_query(value):
         return "structure_function", []
+    if _is_space_fit_query(value):
+        return "space_fit", []
     if _is_accessory_usage_question(value):
         return "installation", []
     if any(term in value for term in ("视频", "教程", "说明书", "怎么装", "如何装", "安装")):
@@ -536,8 +557,19 @@ def _is_structure_function_query(text: str) -> bool:
         return False
     has_object = any(term in value for term in STRUCTURE_OBJECT_TERMS)
     has_action = any(term in value for term in STRUCTURE_ACTION_TERMS)
+    has_compatibility_object = any(term in value for term in STRUCTURE_COMPATIBILITY_OBJECT_TERMS)
+    has_compatibility_action = any(term in value for term in STRUCTURE_COMPATIBILITY_ACTION_TERMS)
     has_confirm = any(term in value for term in STRUCTURE_CONFIRM_TERMS) or _has_question_or_request(value)
-    return has_object and has_action and has_confirm
+    return has_confirm and ((has_object and has_action) or (has_compatibility_object and has_compatibility_action))
+
+
+def _is_space_fit_query(text: str) -> bool:
+    value = str(text or "")
+    if any(term in value for term in STRUCTURE_SCENE_BLOCKERS):
+        return False
+    has_object = any(term in value for term in SPACE_FIT_OBJECT_TERMS)
+    has_action = any(term in value for term in SPACE_FIT_ACTION_TERMS)
+    return has_object and has_action
 
 
 def _is_aftersales_or_mismatch(text: str) -> bool:

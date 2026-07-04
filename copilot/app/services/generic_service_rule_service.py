@@ -173,6 +173,197 @@ DEFAULT_GENERIC_SERVICE_RULES: list[dict[str, Any]] = [
 ]
 
 
+DEFAULT_GENERIC_SERVICE_RULES.append({
+    "rule_key": "after_sales_payment_timing_v1",
+    "title": "\u552e\u540e\u6253\u6b3e\u65f6\u6548\u8bf4\u660e",
+    "intent": "aftersales",
+    "fact_type": "aftersales_policy",
+    "scenario": "after_sales_payment",
+    "query_keywords": [
+        "\u552e\u540e\u6253\u6b3e",
+        "\u6253\u6b3e",
+        "\u652f\u4ed8\u5b9d\u6253\u6b3e",
+        "\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e",
+        "\u5c0f\u989d\u6253\u6b3e",
+        "\u5230\u8d26",
+        "\u591a\u4e45\u5230\u8d26",
+        "\u51e0\u5929\u5230",
+        "\u6536\u6b3e\u8d26\u53f7",
+        "\u652f\u4ed8\u5b9d\u8d26\u53f7",
+        "\u6536\u6b3e\u4eba\u59d3\u540d",
+        "\u8865\u507f\u6b3e",
+        "\u8d54\u4ed8",
+        "\u9000\u6b3e\u5dee\u989d",
+    ],
+    "content": (
+        "\u552e\u540e\u6b3e\u9879\u5904\u7406\u9700\u533a\u5206\u652f\u4ed8\u5b9d\u6253\u6b3e\u548c\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\u3002"
+        "\u652f\u4ed8\u5b9d\u6253\u6b3e\u65f6\u6548\u4e00\u822c\u4e3a 7 \u5929\u5de6\u53f3\uff0c\u9700\u5ba2\u6237\u63d0\u4f9b\u6536\u6b3e\u652f\u4ed8\u5b9d\u8d26\u53f7\u548c\u6536\u6b3e\u4eba\u59d3\u540d\u3002"
+        "\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\u4e00\u822c\u5728 72 \u5c0f\u65f6\u5de6\u53f3\u3002"
+        "\u5ba2\u670d\u53ea\u80fd\u8bf4\u660e\u53c2\u8003\u65f6\u6548\u548c\u6240\u9700\u4fe1\u606f\uff0c\u4e0d\u80fd\u627f\u8bfa\u7acb\u5373\u5230\u8d26\u6216\u7edd\u5bf9\u5230\u8d26\u65f6\u95f4\u3002"
+    ),
+    "reply_template": (
+        "\u4eb2\uff5e\u552e\u540e\u6253\u6b3e\u8fd9\u8fb9\u7ed9\u60a8\u8bf4\u660e\u4e00\u4e0b\uff1a"
+        "\u5982\u679c\u662f\u652f\u4ed8\u5b9d\u6253\u6b3e\uff0c\u65f6\u6548\u4e00\u822c\u662f 7 \u5929\u5de6\u53f3\uff0c"
+        "\u9700\u8981\u60a8\u63d0\u4f9b\u6536\u6b3e\u652f\u4ed8\u5b9d\u8d26\u53f7\u548c\u6536\u6b3e\u4eba\u59d3\u540d\uff1b"
+        "\u5982\u679c\u662f\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\uff0c\u4e00\u822c\u5728 72 \u5c0f\u65f6\u5de6\u53f3\u5230\u8d26\u3002"
+        "\u5177\u4f53\u5230\u8d26\u65f6\u95f4\u4e5f\u4f1a\u53d7\u5e73\u53f0\u548c\u8d22\u52a1\u5904\u7406\u8fdb\u5ea6\u5f71\u54cd\uff0c\u6211\u8fd9\u8fb9\u4f1a\u5e2e\u60a8\u8ddf\u8fdb\u3002"
+    ),
+    "forbidden_claims": [
+        "\u9a6c\u4e0a\u5230\u8d26",
+        "\u7acb\u5373\u5230\u8d26",
+        "\u4e00\u5b9a\u5f53\u5929\u5230\u8d26",
+        "\u4e00\u5b9a 72 \u5c0f\u65f6\u5185\u5230\u8d26",
+        "\u672a\u6536\u96c6\u652f\u4ed8\u5b9d\u8d26\u53f7\u548c\u59d3\u540d\u5c31\u8bf4\u53ef\u4ee5\u6253\u6b3e",
+    ],
+    "required_guardrails": [
+        "\u4ec5\u8bf4\u660e\u53c2\u8003\u65f6\u6548\uff0c\u4e0d\u627f\u8bfa\u7edd\u5bf9\u5230\u8d26\u65f6\u95f4",
+        "\u652f\u4ed8\u5b9d\u6253\u6b3e\u9700\u5148\u6536\u96c6\u6536\u6b3e\u8d26\u53f7\u548c\u59d3\u540d",
+    ],
+    "source_confidence": 0.82,
+    "risk_level": "medium",
+    "priority": 40,
+})
+
+DEFAULT_GENERIC_SERVICE_RULES.extend([
+    {
+        "rule_key": "logistics_order_status_check_v1",
+        "title": "物流/发货状态核对",
+        "intent": "logistics",
+        "fact_type": "stock_shipping",
+        "scenario": "logistics_status_check",
+        "query_keywords": [
+            "发货",
+            "什么时候发",
+            "几天到",
+            "多久到",
+            "物流",
+            "快递",
+            "签收",
+            "没收到",
+            "到哪了",
+            "运单号",
+        ],
+        "content": (
+            "物流、发货、签收未收到类问题需要按当前订单物流信息核对。"
+            "客服可以确认客户想查发货、运输进度还是签收未收到，并按订单/平台物流信息回复。"
+            "不能承诺具体发货时效、到货时间或物流结果。"
+        ),
+        "reply_template": (
+            "亲，我帮您按当前订单物流信息核对一下。"
+            "您是想确认发货、到哪了，还是签收后没收到？"
+            "我看准后给您回复，避免物流节点看错。"
+        ),
+        "forbidden_claims": ["今天一定发", "明天一定到", "马上到", "肯定已送达"],
+        "required_guardrails": ["按订单物流核对", "不承诺绝对到货/发货时间"],
+        "source_confidence": 0.78,
+        "risk_level": "medium",
+        "priority": 50,
+    },
+    {
+        "rule_key": "aftersales_issue_collect_and_review_v1",
+        "title": "售后问题信息收集与核实",
+        "intent": "aftersales",
+        "fact_type": "aftersales_policy",
+        "scenario": "aftersales_issue_review",
+        "query_keywords": [
+            "售后",
+            "破损",
+            "坏了",
+            "少件",
+            "漏发",
+            "补发",
+            "退货",
+            "退款",
+            "换货",
+            "发错",
+            "不一致",
+            "不对",
+        ],
+        "content": (
+            "售后问题应先收集订单信息、问题位置照片、配件/包装情况，再按售后流程核实处理方案。"
+            "不能在未核实前直接承诺退款、补发、换货或赔付。"
+        ),
+        "reply_template": (
+            "亲，您反馈的情况我先帮您登记。"
+            "麻烦发一下问题位置照片、配件整体和订单信息，我这边按售后流程核对处理方案。"
+            "确认清楚后再给您准确处理，避免直接判断错。"
+        ),
+        "forbidden_claims": ["直接退款", "马上补发", "一定赔付", "肯定给您换"],
+        "required_guardrails": ["先收集照片和订单信息", "核实后给处理方案"],
+        "source_confidence": 0.78,
+        "risk_level": "medium",
+        "priority": 50,
+    },
+    {
+        "rule_key": "promotion_current_activity_check_v1",
+        "title": "优惠/活动核对",
+        "intent": "promotion",
+        "fact_type": "promotion_policy",
+        "scenario": "promotion_activity_check",
+        "query_keywords": [
+            "优惠",
+            "活动",
+            "优惠券",
+            "满减",
+            "折扣",
+            "福利",
+            "便宜点",
+            "多买",
+            "买两个",
+            "晒图",
+            "返现",
+            "赠品",
+        ],
+        "content": (
+            "优惠、活动、议价和晒图返现类问题需要按当前商品页面、活动规则、优惠券和下单页展示核对。"
+            "不能承诺额外优惠、返现金额、赠品或活动一定可叠加。"
+        ),
+        "reply_template": (
+            "亲，我帮您看一下当前这款可用的活动和优惠。"
+            "页面显示的券、满减和活动一般以下单页为准；页面没显示的，我再帮您核对一下。"
+            "我确认后给您准确口径。"
+        ),
+        "forbidden_claims": ["一定有优惠", "肯定能便宜", "一定返现", "活动一定叠加"],
+        "required_guardrails": ["以下单页/活动规则为准", "不承诺额外优惠"],
+        "source_confidence": 0.78,
+        "risk_level": "medium",
+        "priority": 50,
+    },
+    {
+        "rule_key": "purchase_assistance_spec_check_v1",
+        "title": "下单/规格选择协助",
+        "intent": "order_assistance",
+        "fact_type": "order_assistance",
+        "scenario": "purchase_assistance",
+        "query_keywords": [
+            "链接",
+            "怎么买",
+            "怎么下单",
+            "拍哪个",
+            "选哪个",
+            "下单",
+            "规格",
+            "颜色",
+            "款式",
+        ],
+        "content": (
+            "下单协助类问题可以引导客户在当前商品页选择规格后下单。"
+            "如果客户不确定规格/颜色/款式，应让客户说明需求，再按商品页面信息核对。"
+            "不能代替客户确认未知商品事实或承诺平台交易结果。"
+        ),
+        "reply_template": (
+            "亲，您可以从当前商品页选择规格后下单。"
+            "如果不确定选哪款，把您想要的尺寸、颜色或使用场景发我，我帮您按页面信息核对一下。"
+        ),
+        "forbidden_claims": ["随便拍", "一定适合", "我替您下单"],
+        "required_guardrails": ["按当前商品页规格核对", "不替客户承诺未知规格"],
+        "source_confidence": 0.76,
+        "risk_level": "medium",
+        "priority": 60,
+    },
+])
+
+
 for _rule in DEFAULT_GENERIC_SERVICE_RULES:
     if _rule.get("rule_key") == "media_supported_install_size_parts_v1":
         _rule.update({

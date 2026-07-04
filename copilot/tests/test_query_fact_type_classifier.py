@@ -23,6 +23,13 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u6750\u8d28\u6709\u6c14\u5473\u5417": "odor",
         "\u652f\u4ed8\u5b9d\u6253\u6b3e\u591a\u4e45\u80fd\u5230\u8d26": "aftersales_policy",
         "\u6dd8\u5b9d\u5c0f\u989d\u6253\u6b3e\u4e00\u822c\u591a\u4e45": "aftersales_policy",
+        "\u7269\u6d41\u5230\u54ea\u4e86": "stock_shipping",
+        "\u7b7e\u6536\u540e\u6ca1\u6536\u5230": "stock_shipping",
+        "\u8fd0\u5355\u53f7\u53d1\u6211\u4e00\u4e0b": "stock_shipping",
+        "\u4e70\u4e24\u4e2a\u80fd\u4e0d\u80fd\u4fbf\u5b9c\u70b9": "promotion_policy",
+        "\u591a\u4e70\u6709\u798f\u5229\u5417": "promotion_policy",
+        "\u8fd9\u4e2a\u600e\u4e48\u4e0b\u5355": "order_assistance",
+        "\u89c4\u683c\u600e\u4e48\u9009": "order_assistance",
         "\u6bdb\u91cd\u591a\u5c11": "gross_weight",
         "\u5546\u54c1\u6bdb\u91cd\u591a\u5c11": "gross_weight",
         "\u8fd9\u4e2a\u591a\u91cd": "gross_weight",
@@ -39,6 +46,17 @@ def test_accessory_installation_question_is_not_availability():
 
     assert result["query_fact_type"] in {"installation", "accessory_usage"}
     assert result["query_fact_type"] != "accessory_availability"
+
+
+def test_service_aliases_do_not_steal_ambiguous_short_turns():
+    for message in ("\u8fd9\u4e2a\u5462", "\u53ef\u4ee5\u5417", "\u5728\u5417", "\u94fe\u63a5"):
+        result = classify_query_fact_type(message, "product_question")
+        assert result["query_fact_type"] not in {
+            "stock_shipping",
+            "promotion_policy",
+            "aftersales_policy",
+            "order_assistance",
+        }
 
 
 def test_weight_units_with_pressure_context_are_load_capacity():
