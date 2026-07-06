@@ -16,6 +16,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+def _load_dotenv_safely() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(PROJECT_ROOT / ".env")
+    except Exception:
+        pass
+
+
+_load_dotenv_safely()
+
 from app.services.eval_sanitizer_service import sanitize_obj
 from app.services.real_conversation_daily_replay_service import (
     DailyReplayOptions,
@@ -42,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-sidecar-order-id", default="", help="eval-only QianNiu sidecar order id")
     parser.add_argument("--disable-external-tools", action="store_true", help="eval replay only: skip live external tools")
     parser.add_argument("--external-tool-timeout-seconds", type=float, default=0, help="eval replay only: per-tool hard timeout")
+    parser.add_argument("--agent-turn-timeout-seconds", type=float, default=0, help="eval replay only: per-turn Agent hard timeout")
     return parser
 
 
@@ -83,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         eval_sidecar_context=eval_sidecar_context,
         disable_external_tools=args.disable_external_tools,
         external_tool_timeout_seconds=args.external_tool_timeout_seconds,
+        agent_turn_timeout_seconds=args.agent_turn_timeout_seconds,
     ))
     output = _json_for_file(report)
     if args.json_output:

@@ -3,6 +3,7 @@
 """
 
 import json
+import logging
 import math
 import re
 from datetime import datetime
@@ -12,6 +13,8 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+logger = logging.getLogger(__name__)
 
 
 def _get_db():

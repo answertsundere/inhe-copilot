@@ -43,6 +43,7 @@ class DailyReplayOptions:
     eval_sidecar_context: dict[str, Any] | None = None
     disable_external_tools: bool = False
     external_tool_timeout_seconds: int | float = 0
+    agent_turn_timeout_seconds: int | float = 0
 
 
 def _pass_rate(passed: int, total: int) -> float:
@@ -89,6 +90,7 @@ def _daily_metadata(
             "eval_replay_options": sanitize_obj({
                 "disable_external_tools": bool(options.disable_external_tools),
                 "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
+                "agent_turn_timeout_seconds": float(options.agent_turn_timeout_seconds or 0),
             }),
         }
     })
@@ -131,6 +133,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         eval_sidecar_context=sanitize_obj(options.eval_sidecar_context or {}),
         disable_external_tools=bool(options.disable_external_tools),
         external_tool_timeout_seconds=float(options.external_tool_timeout_seconds or 0),
+        agent_turn_timeout_seconds=float(options.agent_turn_timeout_seconds or 0),
     )
     schedule_uid = _new_schedule_uid(options.run_date)
     run_uid = _new_run_uid(schedule_uid)
@@ -148,6 +151,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         "eval_replay_options": sanitize_obj({
             "disable_external_tools": bool(options.disable_external_tools),
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
+            "agent_turn_timeout_seconds": float(options.agent_turn_timeout_seconds or 0),
         }),
     }
 
@@ -185,6 +189,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
                     eval_sidecar_context=options.eval_sidecar_context,
                     disable_external_tools=options.disable_external_tools,
                     external_tool_timeout_seconds=options.external_tool_timeout_seconds,
+                    agent_turn_timeout_seconds=options.agent_turn_timeout_seconds,
                 )
             )
         report["replay"] = replay

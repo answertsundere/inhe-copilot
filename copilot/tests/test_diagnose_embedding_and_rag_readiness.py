@@ -9,6 +9,7 @@ from app.db import Base
 from app.models.eval_tables import EvalRun, EvalTrace
 from scripts.diagnose_embedding_and_rag_readiness import (
     build_embedding_rag_readiness_report,
+    main,
     write_excel,
     write_json,
 )
@@ -87,3 +88,34 @@ def test_embedding_rag_readiness_counts_missing_config_as_zero_evidence(tmp_path
     assert report["summary"]["embedding_enabled"] is False
     assert report["summary"]["embedding_not_configured_count"] == 2
     assert report["summary"]["fallback_retrieval_likely"] is True
+
+
+
+def test_embedding_rag_readiness_json_only_does_not_write_excel(tmp_path, monkeypatch):
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-json-only"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed"))
+    db.commit()
+    db.close()
+
+    import scripts.diagnose_embedding_and_rag_readiness as module
+
+    monkeypatch.setattr(module, "SessionLocal", Session)
+    json_path = tmp_path / "readiness.json"
+    default_excel = tmp_path / "should-not-exist.xlsx"
+    monkeypatch.setattr(module, "default_excel_path", lambda: str(default_excel))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "diagnose_embedding_and_rag_readiness.py",
+            "--run-uid",
+            run_uid,
+            "--json-output",
+            str(json_path),
+        ],
+    )
+
+    assert main() == 0
+    assert json_path.exists()
+    assert not default_excel.exists()

@@ -20,6 +20,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+def _load_dotenv_safely() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(PROJECT_ROOT / ".env")
+    except Exception:
+        pass
+
+
+_load_dotenv_safely()
+
 from openpyxl import Workbook  # noqa: E402
 from openpyxl.styles import Font, PatternFill  # noqa: E402
 
@@ -325,7 +337,7 @@ def _json_cell(value: Any) -> str:
 
 
 def default_excel_path() -> str:
-    return str(Path.home() / "Desktop" / f"Embedding和RAG就绪诊断_{datetime.now().strftime('%Y%m%d')}.xlsx")
+    return str(PROJECT_ROOT / "outputs" / f"embedding_rag_readiness_{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 
 def write_json(path: str, report: dict[str, Any]) -> None:
@@ -355,8 +367,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     report = build_embedding_rag_readiness_report(run_uid=args.run_uid, latest=args.latest, limit=args.limit)
-    excel_output = args.excel_output or default_excel_path()
-    write_excel(excel_output, report)
+    excel_output = args.excel_output
+    if excel_output:
+        write_excel(excel_output, report)
     write_json(args.json_output, report)
     summary = report.get("summary") or {}
     print(json.dumps({

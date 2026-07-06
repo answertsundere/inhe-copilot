@@ -12,6 +12,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+def _load_dotenv_safely() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(PROJECT_ROOT / ".env")
+    except Exception:
+        pass
+
+
+_load_dotenv_safely()
+
 from app.db import init_db
 from app.models.eval_tables import AgentBenchmarkScenario  # noqa: F401 - register table before init_db
 from app.services.agent_benchmark_runner_service import AgentBenchmarkRunnerService

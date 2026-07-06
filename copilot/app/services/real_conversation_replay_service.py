@@ -205,6 +205,7 @@ class ReplayOptions:
     eval_sidecar_context: dict[str, Any] | None = None
     disable_external_tools: bool = False
     external_tool_timeout_seconds: int | float = 0
+    agent_turn_timeout_seconds: int | float = 0
 
 
 def _new_run_uid() -> str:
@@ -212,10 +213,10 @@ def _new_run_uid() -> str:
 
 
 def _agent_turn_timeout_seconds(options: "ReplayOptions") -> float:
-    timeout = float(options.external_tool_timeout_seconds or 0)
-    if timeout <= 0:
-        return 0.0
-    return max(timeout * 3, 15.0)
+    explicit_timeout = float(options.agent_turn_timeout_seconds or 0)
+    if explicit_timeout > 0:
+        return explicit_timeout
+    return 0.0
 
 
 def _json_list(value) -> list:

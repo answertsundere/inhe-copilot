@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 import app.db as db_module
 from app.db import Base
 from app.models.eval_tables import EvalCase, EvalConversationTurn, EvalFailure, EvalRun, EvalTrace
-from app.services.real_conversation_replay_service import RealConversationReplayService, ReplayOptions
+from app.services.real_conversation_replay_service import RealConversationReplayService, ReplayOptions, _agent_turn_timeout_seconds
 from app.services.real_conversation_replay_service import classify_turn_failures
 from app.services.real_conversation_replay_service import evaluate_replay_turn_result
 
@@ -1126,6 +1126,7 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
             },
             disable_external_tools=True,
             external_tool_timeout_seconds=5,
+            agent_turn_timeout_seconds=4,
         )
     )
 
@@ -1136,6 +1137,7 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
     assert payloads[0]["order_id"] == "ORDER-LOCAL"
     assert payloads[0]["copilot_context"]["eval_replay_options"]["disable_external_tools"] is True
     assert payloads[0]["copilot_context"]["eval_replay_options"]["external_tool_timeout_seconds"] == 5
+    assert payloads[0]["copilot_context"]["eval_replay_options"]["agent_turn_timeout_seconds"] == 4
     assert payloads[0]["copilot_context"]["sidecar_context_quality"] == "complete"
     assert payloads[0]["copilot_context"]["sidecar_context"]["order_id"] == "ORDER-LOCAL"
     db = session_factory()
@@ -1144,6 +1146,7 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
         assert run.get_metadata()["eval_sidecar_context"]["sidecar_sku_code"] == "YH-LOCAL"
         assert run.get_metadata()["eval_sidecar_context"]["sidecar_order_id"] == "ORDER-LOCAL"
         assert run.get_metadata()["eval_replay_options"]["disable_external_tools"] is True
+        assert run.get_metadata()["eval_replay_options"]["agent_turn_timeout_seconds"] == 4
         trace = db.query(EvalTrace).one()
         assert trace.get_turn_understanding()["context_sufficiency"]["is_sufficient"] is True
         assert trace.get_answer_trace()["eval_replay_options"]["disable_external_tools"] is True
@@ -1185,3 +1188,8 @@ def test_replay_agent_turn_timeout_returns_safe_handoff():
     assert "needs_human_review" in failure_types
     assert "answer_incomplete" not in failure_types
     assert "rag_miss" not in failure_types
+
+
+def test_external_tool_timeout_does_not_implicitly_timeout_agent_turn():
+    assert _agent_turn_timeout_seconds(ReplayOptions(external_tool_timeout_seconds=5)) == 0
+    assert _agent_turn_timeout_seconds(ReplayOptions(external_tool_timeout_seconds=5, agent_turn_timeout_seconds=4)) == 4
