@@ -199,11 +199,63 @@ class TestToolExecutor:
         )
 
         plan = [{"tool_name": "slow_tool", "inputs": {}}]
-        result = executor.execute_plan(plan, {}, total_timeout_ms=200)
+        result = executor.execute_plan(
+            plan,
+            {"copilot_context": {"eval_replay_options": {"external_tool_timeout_seconds": 0.05}}},
+            total_timeout_ms=200,
+        )
 
         # 不抛异常，正常返回
         assert "tool_results" in result
         assert result["tool_results"]["slow_tool"]["found"] is False
+        assert result["tool_traces"][0]["status"] == "timeout"
+        assert result["tool_traces"][0]["error_code"] == "timeout"
+        assert result["requires_human_review"] is True
+        assert result["timed_out"] is True
+
+    def test_replay_disabled_external_tool_is_not_called(self):
+        from app.agent.tools.executor import ToolExecutor
+        from app.agent.tools.base import ToolSpec
+
+        def should_not_call(_inputs, _state):
+            raise AssertionError("external tool should be disabled in replay")
+
+        executor = ToolExecutor()
+        executor._registry._tools["jst_lookup_order_tool"] = ToolSpec(
+            name="jst_lookup_order_tool",
+            description="jst",
+            handler=should_not_call,
+        )
+
+        result = executor.execute_plan(
+            [{"tool_name": "jst_lookup_order_tool", "inputs": {"identifier": "LOCAL_ORDER"}}],
+            {"copilot_context": {"eval_replay_options": {"disable_external_tools": True}}},
+            total_timeout_ms=5000,
+        )
+
+        assert result["tool_results"]["jst_lookup_order_tool"]["safe_fallback_reason"] == "external_tools_disabled_for_replay"
+        assert result["tool_traces"][0]["status"] == "skipped"
+        assert result["tool_traces"][0]["error_code"] == "external_tools_disabled_for_replay"
+        assert result["requires_human_review"] is True
+        assert result["external_tool_control"]["disabled_tools"] == ["jst_lookup_order_tool"]
+
+    def test_jst_live_query_honors_replay_external_tool_disable(self, monkeypatch):
+        from app.agent.nodes.jst_live_query import jst_live_query
+
+        def should_not_call(*_args, **_kwargs):
+            raise AssertionError("legacy JST fallback should be disabled in replay")
+
+        monkeypatch.setattr("app.agent.nodes.jst_live_query.lookup_order_by_identifier", should_not_call)
+
+        result = jst_live_query({
+            "slots": {"identifier_type": "internal_order_id", "order_id": "LOCAL_ORDER"},
+            "copilot_context": {"eval_replay_options": {"disable_external_tools": True}},
+        })
+
+        assert result["order_found"] is False
+        assert result["requires_human_review"] is True
+        assert result["jst_fallback_reason"] == "external_tools_disabled_for_replay"
+        assert result["trace_steps"][-1]["error_code"] == "external_tools_disabled_for_replay"
 
     def test_execute_exception_caught(self):
         """工具抛异常不会传播，而是记录到 trace"""

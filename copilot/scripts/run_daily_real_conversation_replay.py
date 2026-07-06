@@ -40,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-sidecar-sku-code", default="", help="eval-only QianNiu sidecar SKU code")
     parser.add_argument("--eval-sidecar-i-id", default="", help="eval-only internal product i_id")
     parser.add_argument("--eval-sidecar-order-id", default="", help="eval-only QianNiu sidecar order id")
+    parser.add_argument("--disable-external-tools", action="store_true", help="eval replay only: skip live external tools")
+    parser.add_argument("--external-tool-timeout-seconds", type=float, default=0, help="eval replay only: per-tool hard timeout")
     return parser
 
 
@@ -79,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         generate_repair_tasks=args.generate_repair_tasks,
         created_by=args.created_by,
         eval_sidecar_context=eval_sidecar_context,
+        disable_external_tools=args.disable_external_tools,
+        external_tool_timeout_seconds=args.external_tool_timeout_seconds,
     ))
     output = _json_for_file(report)
     if args.json_output:

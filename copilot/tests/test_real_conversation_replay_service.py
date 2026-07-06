@@ -1124,6 +1124,8 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
                 "sidecar_i_id": "IID-LOCAL",
                 "sidecar_order_id": "ORDER-LOCAL",
             },
+            disable_external_tools=True,
+            external_tool_timeout_seconds=5,
         )
     )
 
@@ -1132,6 +1134,8 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
     assert payloads[0]["sku_code"] == "YH-LOCAL"
     assert payloads[0]["i_id"] == "IID-LOCAL"
     assert payloads[0]["order_id"] == "ORDER-LOCAL"
+    assert payloads[0]["copilot_context"]["eval_replay_options"]["disable_external_tools"] is True
+    assert payloads[0]["copilot_context"]["eval_replay_options"]["external_tool_timeout_seconds"] == 5
     assert payloads[0]["copilot_context"]["sidecar_context_quality"] == "complete"
     assert payloads[0]["copilot_context"]["sidecar_context"]["order_id"] == "ORDER-LOCAL"
     db = session_factory()
@@ -1139,8 +1143,45 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
         run = db.query(EvalRun).filter(EvalRun.run_uid == "run_eval_sidecar").one()
         assert run.get_metadata()["eval_sidecar_context"]["sidecar_sku_code"] == "YH-LOCAL"
         assert run.get_metadata()["eval_sidecar_context"]["sidecar_order_id"] == "ORDER-LOCAL"
+        assert run.get_metadata()["eval_replay_options"]["disable_external_tools"] is True
         trace = db.query(EvalTrace).one()
         assert trace.get_turn_understanding()["context_sufficiency"]["is_sufficient"] is True
+        assert trace.get_answer_trace()["eval_replay_options"]["disable_external_tools"] is True
         assert "context_gap" not in trace.get_failure_labels()
     finally:
         db.close()
+
+
+def test_replay_agent_turn_timeout_returns_safe_handoff():
+    import time
+
+    class SlowReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            time.sleep(0.2)
+            return {"suggested_reply": "late reply", "can_send": True}
+
+    payload = {
+        "message": "where is my order?",
+        "copilot_context": {
+            "turn_understanding": {"query_fact_type": "logistics"},
+            "eval_replay_options": {
+                "disable_external_tools": True,
+                "external_tool_timeout_seconds": 0.01,
+                "agent_turn_timeout_seconds": 0.01,
+            },
+        },
+    }
+
+    response = SlowReplayService()._call_agent_with_replay_timeout(payload, 0.01)
+
+    assert response["can_send"] is False
+    assert response["sendable_reply"] == ""
+    assert response["suggested_reply"]
+    assert response["requires_human_review"] is True
+    assert response["reason_for_review"] == "agent_turn_timeout_for_replay"
+    assert response["evidence_debug"]["agent_turn_timeout"]["timed_out"] is True
+    assert response["answer_trace"]["agent_turn_timeout"] is True
+    failure_types = {item["failure_type"] for item in classify_turn_failures(response)}
+    assert "needs_human_review" in failure_types
+    assert "answer_incomplete" not in failure_types
+    assert "rag_miss" not in failure_types

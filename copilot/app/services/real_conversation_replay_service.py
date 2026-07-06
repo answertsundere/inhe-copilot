@@ -1,6 +1,8 @@
 """Turn-by-turn replay for sanitized real conversation eval cases."""
 
 import time
+import queue
+import threading
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -201,10 +203,19 @@ class ReplayOptions:
     source_type: str = "real_conversation"
     run_metadata: dict[str, Any] | None = None
     eval_sidecar_context: dict[str, Any] | None = None
+    disable_external_tools: bool = False
+    external_tool_timeout_seconds: int | float = 0
 
 
 def _new_run_uid() -> str:
     return f"real_run_{uuid.uuid4().hex[:12]}"
+
+
+def _agent_turn_timeout_seconds(options: "ReplayOptions") -> float:
+    timeout = float(options.external_tool_timeout_seconds or 0)
+    if timeout <= 0:
+        return 0.0
+    return max(timeout * 3, 15.0)
 
 
 def _json_list(value) -> list:
@@ -395,6 +406,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     answer_trace = response.get("answer_trace") or {}
     final_audit = response.get("final_answer_audit") or response.get("final_audit") or {}
     evidence_debug = response.get("evidence_debug") or {}
+    agent_turn_timed_out = bool((evidence_debug.get("agent_turn_timeout") or {}).get("timed_out"))
     if response.get("error"):
         failures.append({"failure_type": "api_error", "severity": "high", "message": sanitize_text(response.get("error"))})
     if response.get("tool_policy_blocked") or response.get("policy_blocked"):
@@ -409,7 +421,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
         failures.append({"failure_type": "no_product_identified", "severity": "medium", "message": "product identity was not resolved"})
     if response.get("requires_human_review"):
         failures.append({"failure_type": "needs_human_review", "severity": "medium", "message": "agent requested human review"})
-    if not reply.strip() and not response.get("skipped_agent_reply"):
+    if not reply.strip() and not response.get("skipped_agent_reply") and not agent_turn_timed_out:
         failures.append({"failure_type": "answer_incomplete", "severity": "high", "message": "empty agent reply"})
     unsafe_terms = ("绝对安全", "完全无害", "0甲醛", "零甲醛", "宝宝可以直接用")
     if _contains_unnegated_unsafe_claim(reply, unsafe_terms):
@@ -418,7 +430,12 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     if any(term in reply for term in media_terms) and not response.get("recommended_assets"):
         failures.append({"failure_type": "unsupported_media_claim", "severity": "medium", "message": "reply promises media without attached asset"})
     required = set(str(x) for x in _extract_required_fact_types(response) if x)
-    if query_fact_type and query_fact_type not in {"logistics", "order_status", "after_sales", "aftersales", "aftersales_policy"} and not selected:
+    if (
+        query_fact_type
+        and query_fact_type not in {"logistics", "order_status", "after_sales", "aftersales", "aftersales_policy"}
+        and not selected
+        and not agent_turn_timed_out
+    ):
         failures.append({"failure_type": "rag_miss", "severity": "medium", "message": "product question has no selected evidence"})
     answered = set(str(x) for x in _json_list(answer_trace.get("evidence_answered_fact_types")) if x)
     if required and answered and not _has_compatible_fact_type_overlap(required, answered):
@@ -628,6 +645,64 @@ class RealConversationReplayService:
         )
         return response
 
+    def _call_agent_with_replay_timeout(self, payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
+        if timeout_seconds <= 0:
+            return self._call_agent(payload)
+
+        result_queue: queue.Queue = queue.Queue(maxsize=1)
+
+        def _target() -> None:
+            try:
+                result_queue.put(("result", self._call_agent(payload)), block=False)
+            except Exception as exc:
+                result_queue.put(("error", exc), block=False)
+
+        thread = threading.Thread(target=_target, daemon=True)
+        thread.start()
+        thread.join(timeout_seconds)
+        if thread.is_alive():
+            return self._agent_timeout_response(payload, timeout_seconds)
+        kind, value = result_queue.get_nowait()
+        if kind == "error":
+            raise value
+        return value or {}
+
+    def _agent_timeout_response(self, payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
+        copilot_context = payload.get("copilot_context") or {}
+        turn_understanding = copilot_context.get("turn_understanding") or {}
+        query_fact_type = str(turn_understanding.get("query_fact_type") or "")
+        eval_replay_options = copilot_context.get("eval_replay_options") or {}
+        reason = "agent_turn_timeout_for_replay"
+        draft_reply = "亲，这条需要我再核对一下资料和订单情况，避免给您说错，我确认后再给您准确回复。"
+        return {
+            "suggested_reply": draft_reply,
+            "draft_reply": draft_reply,
+            "sendable_reply": "",
+            "can_send": False,
+            "requires_human_review": True,
+            "reply_status": "needs_human_review",
+            "reason_for_review": reason,
+            "block_reasons": [reason],
+            "query_fact_type": query_fact_type,
+            "evidence_debug": {
+                "query_fact_type": query_fact_type,
+                "external_tool_control": eval_replay_options,
+                "agent_turn_timeout": {
+                    "timed_out": True,
+                    "timeout_seconds": timeout_seconds,
+                    "reason": reason,
+                },
+                "selected_evidence": [],
+            },
+            "answer_trace": {
+                "query_fact_type": query_fact_type,
+                "required_fact_types": [query_fact_type] if query_fact_type else [],
+                "agent_turn_timeout": True,
+                "timeout_seconds": timeout_seconds,
+                "reason": reason,
+            },
+        }
+
     def replay_cases(self, options: ReplayOptions | None = None) -> dict[str, Any]:
         from app.db import SessionLocal
         from app.models.eval_tables import EvalCase, EvalConversationTurn, EvalFailure, EvalRun, EvalTrace
@@ -637,6 +712,11 @@ class RealConversationReplayService:
         case_uid_filter = set(options.case_uids or [])
         turn_uid_filter = set(options.turn_uids or [])
         eval_sidecar_context = sanitize_obj(options.eval_sidecar_context or {})
+        eval_replay_options = sanitize_obj({
+            "disable_external_tools": bool(options.disable_external_tools),
+            "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
+            "agent_turn_timeout_seconds": _agent_turn_timeout_seconds(options),
+        })
         db = SessionLocal()
         try:
             query = (
@@ -655,6 +735,7 @@ class RealConversationReplayService:
                 "sample_only": options.sample_only,
                 **sanitize_obj(options.run_metadata or {}),
                 "eval_sidecar_context": eval_sidecar_context,
+                "eval_replay_options": eval_replay_options,
             })
             db.add(run)
             db.commit()
@@ -779,6 +860,7 @@ class RealConversationReplayService:
                             "i_id": sidecar_context.get("i_id") or agent_real_context.get("i_id", ""),
                             "order_id": sidecar_context.get("order_id") or agent_real_context.get("order_id", ""),
                             "platform_order_id": sidecar_context.get("platform_order_id") or "",
+                            "eval_replay_options": eval_replay_options,
                         },
                     }
                     started = time.time()
@@ -786,7 +868,10 @@ class RealConversationReplayService:
                     response: dict[str, Any] = {}
                     if turn_understanding.get("needs_agent_reply"):
                         try:
-                            response = self._call_agent(payload) or {}
+                            response = self._call_agent_with_replay_timeout(
+                                payload,
+                                float(eval_replay_options.get("agent_turn_timeout_seconds") or 0),
+                            ) or {}
                         except Exception as exc:
                             exception = exc
                             response = {"error": str(exc)}
@@ -878,6 +963,7 @@ class RealConversationReplayService:
                         "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
                         "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
                         "conversation_media_reference": conversation_media_reference,
+                        "eval_replay_options": eval_replay_options,
                     }))
                     trace.set_final_audit(sanitize_obj(response.get("final_answer_audit") or response.get("final_audit") or {}))
                     trace.set_semantic_compiler(sanitize_obj(response.get("semantic_compiler") or response.get("semantic_compiler_debug") or {}))
@@ -904,6 +990,7 @@ class RealConversationReplayService:
                         "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
                         "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
                         "conversation_media_reference": conversation_media_reference,
+                        "eval_replay_options": eval_replay_options,
                     }))
                     db.add(trace)
                     for failure in failures:

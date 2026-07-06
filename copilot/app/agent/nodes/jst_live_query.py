@@ -32,6 +32,31 @@ def jst_live_query(state: dict) -> dict:
     查询前先写入即时回复，避免用户等太久没有反馈。
     """
     t0 = time.time()
+    try:
+        from app.agent.tools.executor import get_replay_tool_control
+        replay_tool_control = get_replay_tool_control(state)
+    except Exception:
+        replay_tool_control = {"disable_external_tools": False, "external_tool_timeout_seconds": 0.0}
+    if replay_tool_control.get("disable_external_tools"):
+        duration_ms = int((time.time() - t0) * 1000)
+        trace = {
+            "node": "jst_live_query",
+            "status": "skipped",
+            "duration_ms": duration_ms,
+            "cache_hit": False,
+            "provider": "jst",
+            "error_code": "external_tools_disabled_for_replay",
+            "requires_human_review": True,
+            "summary": "JST live query skipped by eval replay external tool control",
+        }
+        return {
+            "order_found": False,
+            "requires_human_review": True,
+            "reason_for_review": "external_tool_unavailable_for_replay",
+            "jst_fallback_reason": "external_tools_disabled_for_replay",
+            "external_tool_control": replay_tool_control,
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
     slots = state.get("slots", {})
 
     identifier = ""

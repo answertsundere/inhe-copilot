@@ -11,12 +11,43 @@ ToolExecutor — 工具执行器
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Optional
 
 from app.agent.tools.base import ToolSpec
 from app.agent.tools.registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
+
+_EXTERNAL_TOOL_NAMES = {
+    "jst_lookup_order_tool",
+    "jst_lookup_outbound_tool",
+    "jst_lookup_tracking_tool",
+}
+
+
+def get_replay_tool_control(state: dict | None) -> dict:
+    if not isinstance(state, dict):
+        return {
+            "disable_external_tools": False,
+            "external_tool_timeout_seconds": 0.0,
+        }
+    copilot_context = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
+    options = copilot_context.get("eval_replay_options") if isinstance(copilot_context.get("eval_replay_options"), dict) else {}
+    if not options and isinstance(state.get("eval_replay_options"), dict):
+        options = state.get("eval_replay_options") or {}
+    try:
+        timeout_seconds = float(options.get("external_tool_timeout_seconds") or 0)
+    except (TypeError, ValueError):
+        timeout_seconds = 0.0
+    return {
+        "disable_external_tools": bool(options.get("disable_external_tools")),
+        "external_tool_timeout_seconds": max(timeout_seconds, 0.0),
+    }
+
+
+def _is_external_tool(tool_name: str) -> bool:
+    return str(tool_name or "") in _EXTERNAL_TOOL_NAMES
 
 
 def _looks_like_sku(value: str) -> bool:
@@ -84,6 +115,11 @@ class ToolExecutor:
         tool_results = {}
         tool_traces = []
         timed_out = False
+        requires_human_review = False
+        control = get_replay_tool_control(state)
+        replay_timeout_ms = int(control["external_tool_timeout_seconds"] * 1000) if control["external_tool_timeout_seconds"] else 0
+        disabled_tools: list[str] = []
+        timed_out_tools: list[str] = []
 
         for call in tool_plan:
             elapsed_ms = int((time.time() - t0) * 1000)
@@ -102,6 +138,14 @@ class ToolExecutor:
             tool_name = call.get("tool_name", "")
             inputs = call.get("inputs", {})
 
+            if control["disable_external_tools"] and _is_external_tool(tool_name):
+                result, trace = self._disabled_external_tool_result(tool_name, inputs)
+                tool_results[tool_name] = result
+                tool_traces.append(trace)
+                disabled_tools.append(tool_name)
+                requires_human_review = True
+                continue
+
             spec = self._registry.get(tool_name)
             if spec is None:
                 tool_traces.append({
@@ -117,10 +161,22 @@ class ToolExecutor:
             # 单工具超时 = min(工具自身超时, 剩余总预算)
             remaining_budget = total_timeout_ms - elapsed_ms
             tool_timeout = min(spec.timeout_ms, remaining_budget)
+            if replay_timeout_ms > 0:
+                tool_timeout = min(tool_timeout, replay_timeout_ms)
 
-            result, trace = self._execute_single(spec, inputs, state, tool_timeout)
+            result, trace = self._execute_single(
+                spec,
+                inputs,
+                state,
+                tool_timeout,
+                hard_timeout=replay_timeout_ms > 0,
+            )
             tool_results[tool_name] = result
             tool_traces.append(trace)
+            if trace.get("timed_out") or trace.get("error_code") == "timeout":
+                timed_out = True
+                timed_out_tools.append(tool_name)
+                requires_human_review = True
 
         total_duration_ms = int((time.time() - t0) * 1000)
         return {
@@ -128,7 +184,32 @@ class ToolExecutor:
             "tool_traces": tool_traces,
             "total_duration_ms": total_duration_ms,
             "timed_out": timed_out,
+            "requires_human_review": requires_human_review,
+            "external_tool_control": {
+                **control,
+                "disabled_tools": disabled_tools,
+                "timed_out_tools": timed_out_tools,
+            },
         }
+
+    def _disabled_external_tool_result(self, tool_name: str, inputs: dict) -> tuple[dict, dict]:
+        result = {
+            "found": False,
+            "safe_fallback_reason": "external_tools_disabled_for_replay",
+            "requires_human_review": True,
+        }
+        trace = {
+            "node": "tool_executor",
+            "tool_name": tool_name,
+            "status": "skipped",
+            "duration_ms": 0,
+            "provider": "tool_registry",
+            "input_summary": _summarize_inputs(inputs),
+            "error_code": "external_tools_disabled_for_replay",
+            "requires_human_review": True,
+            "summary": f"{tool_name}: skipped by eval replay external tool control",
+        }
+        return result, trace
 
     def _execute_single(
         self,
@@ -136,6 +217,7 @@ class ToolExecutor:
         inputs: dict,
         state: dict,
         timeout_ms: int,
+        hard_timeout: bool = False,
     ) -> tuple[dict, dict]:
         """执行单个工具，返回 (result, trace)"""
         t0 = time.time()
@@ -153,7 +235,35 @@ class ToolExecutor:
             }
 
         try:
-            result = spec.handler(inputs, state)
+            if hard_timeout:
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(spec.handler, inputs, state)
+                try:
+                    result = future.result(timeout=max(float(timeout_ms) / 1000, 0.001))
+                except FutureTimeoutError:
+                    future.cancel()
+                    duration_ms = int((time.time() - t0) * 1000)
+                    return {
+                        "found": False,
+                        "error": f"{spec.name} timed out",
+                        "safe_fallback_reason": "tool_timeout",
+                        "requires_human_review": True,
+                    }, {
+                        "node": "tool_executor",
+                        "tool_name": spec.name,
+                        "status": "timeout",
+                        "duration_ms": duration_ms,
+                        "provider": "tool_registry",
+                        "input_summary": _summarize_inputs(inputs),
+                        "error_code": "timeout",
+                        "timed_out": True,
+                        "requires_human_review": True,
+                        "summary": f"{spec.name}: timeout ({duration_ms}ms > {timeout_ms}ms)",
+                    }
+                finally:
+                    executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                result = spec.handler(inputs, state)
             duration_ms = int((time.time() - t0) * 1000)
 
             # 超时检测（事后）
@@ -612,7 +722,11 @@ def tool_executor_node(state: dict) -> dict:
         "tool_results": exec_result["tool_results"],
         "tool_traces": exec_result["tool_traces"],
         "trace_steps": state.get("trace_steps", []) + [trace] + exec_result["tool_traces"],
+        "external_tool_control": exec_result.get("external_tool_control", {}),
     }
+    if exec_result.get("requires_human_review"):
+        result["requires_human_review"] = True
+        result["reason_for_review"] = "external_tool_unavailable_for_replay"
 
     # 从 JST 工具结果中提取 legacy 字段，供 generate_logistics_reply 等节点使用
     legacy = _extract_legacy_fields(exec_result["tool_results"], state)
