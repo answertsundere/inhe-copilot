@@ -59,6 +59,18 @@ def test_agent_error_labels_win_over_safe_handoff_and_gap():
         assert result["is_agent_error"] is True
 
 
+def test_unnecessary_rag_call_with_handoff_is_safe_handoff_not_agent_error():
+    result = _bucket(
+        requires_human_review=True,
+        failure_labels=["needs_human_review", "unnecessary_rag_call"],
+        turn_understanding={"should_score": True, "turn_actionability": "actionable_question"},
+    )
+
+    assert result["quality_bucket"] == SAFE_HANDOFF
+    assert result["is_safe_handoff"] is True
+    assert result["is_agent_error"] is False
+
+
 def test_context_update_with_unrequested_product_fact_is_agent_error():
     result = _bucket(
         failure_labels=["unrequested_product_fact"],

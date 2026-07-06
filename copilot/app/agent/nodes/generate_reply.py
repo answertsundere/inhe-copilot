@@ -693,9 +693,34 @@ def _real_product_facts(state: dict) -> list[dict]:
             continue
         if source_type in ("product_facts", "installation_guide", "faq") and chunk_text:
             facts.append(item)
+    facts = _drop_placeholder_product_facts_when_concrete_exists(facts)
     if query_fact_type == "odor":
         facts.sort(key=lambda item: (0 if _has_specific_odor_evidence(_fact_text(item)) else 1, -float(item.get("score") or 0)))
     return facts
+
+
+_PLACEHOLDER_PRODUCT_FACT_MARKERS = (
+    "\u9700\u8981\u4eba\u5de5\u6838\u5b9e",
+    "\u4eba\u5de5\u590d\u6838",
+    "\u672a\u5728\u73b0\u6709\u7ed3\u6784\u5316\u8d44\u6599\u4e2d\u660e\u786e",
+    "\u672a\u660e\u786e",
+    "\u4ee5\u5546\u54c1\u8be6\u60c5\u9875",
+    "\u4ee5\u5b9e\u7269",
+)
+
+
+def _is_placeholder_product_fact(item: dict) -> bool:
+    text = _fact_text(item)
+    if not text:
+        return False
+    return any(marker in text for marker in _PLACEHOLDER_PRODUCT_FACT_MARKERS)
+
+
+def _drop_placeholder_product_facts_when_concrete_exists(facts: list[dict]) -> list[dict]:
+    concrete = [item for item in facts if not _is_placeholder_product_fact(item)]
+    if concrete:
+        return concrete
+    return []
 
 
 def _product_first_pack(state: dict) -> dict[str, Any]:
@@ -736,6 +761,8 @@ def _product_first_fact_items(state: dict, bucket: str) -> list[dict]:
             continue
         text = str(item.get("preview") or item.get("chunk_text") or item.get("fact") or item.get("content") or "").strip()
         if not text:
+            continue
+        if _is_placeholder_product_fact({**item, "chunk_text": text}):
             continue
         converted = dict(item)
         converted.setdefault("source_type", "product_facts" if bucket == "product_structured_facts" else "installation_guide")

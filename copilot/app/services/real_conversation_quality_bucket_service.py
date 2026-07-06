@@ -24,7 +24,6 @@ AGENT_ERROR_LABELS = {
     "query_fact_type_missing",
     "semantic_mismatch",
     "tool_policy_blocked",
-    "unnecessary_rag_call",
     "unrequested_product_fact",
     "unsafe_claim",
     "unsupported_media_claim",

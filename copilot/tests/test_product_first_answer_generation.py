@@ -82,6 +82,48 @@ def test_generate_reply_prefers_product_first_material_over_generic_rule():
     assert trace["final_answer_source"] == "product_structured_facts"
 
 
+def test_generate_reply_drops_placeholder_material_when_concrete_fact_exists():
+    from app.agent.nodes.generate_reply import generate_reply
+
+    pack = _structured_pack(
+        "material",
+        "材质需要人工核实：未在现有结构化资料中明确材质，以商品详情页或人工复核结果为准。",
+    )
+    pack["product_structured_facts"].append({
+        "evidence_id": "kbproduct:test:material:concrete",
+        "source_table": "kb_product",
+        "protocol_source_type": "product_spec",
+        "fact_type": "material",
+        "direct_answer_allowed": True,
+        "can_direct_answer": True,
+        "preview": "这款商品的材质为钢架和PP件。",
+    })
+
+    state = _state_with_pack("material", "")
+    state["product_first_evidence_pack"] = pack
+    state["product_context_pack"]["product_first_evidence_pack"] = pack
+    state["product_context_pack"]["evidence_pack"] = pack
+
+    result = generate_reply(state)
+
+    assert "钢架和PP件" in result["suggested_reply"]
+    assert "未在现有结构化资料中明确" not in result["suggested_reply"]
+    assert "需要人工核实" not in result["suggested_reply"]
+
+
+def test_generate_reply_does_not_direct_answer_placeholder_material_only():
+    from app.agent.nodes.generate_reply import generate_reply
+
+    result = generate_reply(_state_with_pack(
+        "material",
+        "材质需要人工核实：未在现有结构化资料中明确材质，以商品详情页或人工复核结果为准。",
+    ))
+
+    assert "未在现有结构化资料中明确" not in result["suggested_reply"]
+    trace = result["trace_steps"][-1]
+    assert trace["final_answer_source"] != "product_structured_facts"
+
+
 def test_generate_reply_uses_gross_weight_without_dimension_or_load_capacity():
     from app.agent.nodes.generate_reply import generate_reply
 
