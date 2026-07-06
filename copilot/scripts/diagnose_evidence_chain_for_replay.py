@@ -57,7 +57,11 @@ PRIMARY_REASONS = {
     "retrieval_filter_too_strict",
     "evidence_role_mismatch",
     "query_fact_type_missing",
+    "product_first_pack_empty",
+    "pack_generated_but_not_consumed",
+    "selected_evidence_summary_missing",
     "final_gate_blocked",
+    "true_knowledge_gap",
     "unknown",
 }
 
@@ -772,6 +776,8 @@ def _classify_reason(
     generic_rules: dict[str, Any],
     embedding: dict[str, Any],
     rag: dict[str, Any],
+    pack_counts: dict[str, Any],
+    selected_evidence_count: int,
     block_reasons: list[str],
 ) -> tuple[str, list[str]]:
     reasons: list[str] = []
@@ -801,7 +807,26 @@ def _classify_reason(
     if block_reasons:
         reasons.append("final_gate_blocked")
     if not reasons:
-        reasons.append("unknown")
+        pack_has_evidence = any(
+            int(pack_counts.get(key) or 0) > 0
+            for key in (
+                "pack_structured_facts_count",
+                "pack_media_assets_count",
+                "pack_scoped_chunks_count",
+                "pack_generic_rules_count",
+            )
+        )
+        rag_has_candidates = int(rag.get("rag_candidate_count") or 0) > 0 or int(rag.get("rag_filtered_count") or 0) > 0
+        if selected_evidence_count == 0 and pack_has_evidence:
+            reasons.append("pack_generated_but_not_consumed")
+        elif selected_evidence_count == 0 and rag_has_candidates:
+            reasons.append("selected_evidence_summary_missing")
+        elif selected_evidence_count == 0 and not pack_counts.get("has_product_first_pack"):
+            reasons.append("product_first_pack_empty")
+        elif selected_evidence_count == 0:
+            reasons.append("true_knowledge_gap")
+        else:
+            reasons.append("unknown")
     primary = reasons[0]
     if primary not in PRIMARY_REASONS:
         primary = "unknown"
@@ -836,6 +861,8 @@ def _analyze_trace(db, trace: EvalTrace, embedding: dict[str, Any]) -> dict[str,
         generic_rules=generic_rules,
         embedding=embedding,
         rag=rag,
+        pack_counts=pack_counts,
+        selected_evidence_count=selected_count,
         block_reasons=block_reasons,
     )
     structured_field_coverage = {field: bool(value) for field, value in coverage.items() if value}
@@ -926,6 +953,14 @@ def _suggested_action(row: dict[str, Any]) -> str:
         return "检查 RAG 超时和候选过滤耗时，先确认 embedding 服务可用"
     if reason == "query_fact_type_missing":
         return "修 turn understanding/fact_type 合同，不按具体买家原话特判"
+    if reason == "product_first_pack_empty":
+        return "检查 Product-first Evidence Pack 是否生成并写入 trace；不要用空 pack 冒充已检索"
+    if reason == "pack_generated_but_not_consumed":
+        return "Product-first Pack 已有候选证据，检查 generate_reply/answer_trace 是否未转成 selected_evidence"
+    if reason == "selected_evidence_summary_missing":
+        return "RAG 已有候选或过滤摘要，检查 selected_evidence_summary/answer_trace 写入合同"
+    if reason == "true_knowledge_gap":
+        return "当前商品/规则/素材未找到可用证据，进入知识/素材/规则治理"
     if reason == "final_gate_blocked":
         return "查看 final gate block_reasons，确认是否缺证据或回复主题错误"
     return "需要继续人工排查该 trace 的 raw_response/evidence_debug"

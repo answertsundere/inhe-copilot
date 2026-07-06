@@ -210,3 +210,88 @@ def test_direct_answer_evidence_summary_is_counted_as_selected_evidence(tmp_path
     assert report["summary"]["zero_evidence_trace_count"] == 0
     assert report["records"][0]["selected_evidence_count"] >= 1
     assert report["summary"]["embedding_config_status"]["status"] == "configured"
+
+
+def test_pack_generated_but_not_consumed_is_not_unknown(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
+    monkeypatch.setenv("COPILOT_EMBEDDING_MODEL", "text-embedding-v3")
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-pack-not-consumed"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed", total_turns=1))
+    product = KBProduct(i_id="IID-1", product_name="娴嬭瘯涔︽灦", status="active")
+    db.add(product)
+    db.flush()
+    db.add(KBGenericServiceRule(rule_key="after-sales", title="售后核对", fact_type="aftersales_policy", status="active"))
+    raw = {
+        "evidence_debug": {
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "resolved_product_identity": {"product_id": product.id, "i_id": "IID-1", "sku": "SKU-1"},
+                    "identity_confidence": 1.0,
+                    "product_structured_facts": [],
+                    "product_media_assets": [],
+                    "product_scoped_chunks": [],
+                    "generic_fallback_rules": [{"rule_key": "after-sales", "fact_type": "aftersales_policy"}],
+                }
+            }
+        }
+    }
+    db.add(_trace(run_uid, "turn-pack", message="少件了怎么办", qft="aftersales_policy", raw=raw))
+    db.commit()
+    db.close()
+
+    report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
+
+    assert report["summary"]["zero_evidence_trace_count"] == 1
+    assert report["summary"]["by_primary_reason"] == {"pack_generated_but_not_consumed": 1}
+    row = report["zero_evidence_records"][0]
+    assert row["pack_scoped_chunks_count"] == 0
+    assert row["pack_generic_rules_count"] == 1
+
+
+def test_rag_candidates_without_selected_summary_are_classified(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
+    monkeypatch.setenv("COPILOT_EMBEDDING_MODEL", "text-embedding-v3")
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-rag-summary-missing"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed", total_turns=1))
+    product = KBProduct(i_id="IID-1", product_name="娴嬭瘯涔︽灦", status="active")
+    product.set_specs({"material": "PP"})
+    db.add(product)
+    db.flush()
+    raw = {"evidence_debug": {"evidence_gate_summary": {"candidate_count": 3, "filtered_count": 2}}}
+    db.add(_trace(run_uid, "turn-rag-candidates", message="什么材质", qft="material", raw=raw))
+    db.commit()
+    db.close()
+
+    report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
+
+    assert report["summary"]["zero_evidence_trace_count"] == 1
+    assert report["summary"]["by_primary_reason"] == {"selected_evidence_summary_missing": 1}
+    assert report["zero_evidence_records"][0]["rag_candidate_count"] == 3
+
+
+def test_empty_pack_without_other_breakpoint_is_classified(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
+    monkeypatch.setenv("COPILOT_EMBEDDING_MODEL", "text-embedding-v3")
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-empty-pack"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed", total_turns=1))
+    db.add(KBProduct(i_id="IID-1", product_name="娴嬭瘯涔︽灦", status="active"))
+    db.add(_trace(run_uid, "turn-empty-pack", message="这个还有别的吗", qft="product_question"))
+    db.commit()
+    db.close()
+
+    report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
+
+    assert report["summary"]["zero_evidence_trace_count"] == 1
+    assert report["summary"]["by_primary_reason"] == {"product_first_pack_empty": 1}

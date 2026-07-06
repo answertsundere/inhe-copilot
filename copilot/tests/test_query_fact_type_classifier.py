@@ -38,6 +38,13 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u8fd9\u4e2a\u591a\u91cd": "gross_weight",
         "\u5c0f\u7bee\u5b50\u914d\u4ef6\u6709\u5356\u5417": "accessory_availability",
         "\u914d\u4ef6\u80fd\u5355\u72ec\u4e70\u5417": "accessory_availability",
+        "\u4ec0\u4e48\u5851\u6599": "material",
+        "\u8d34\u7eb8\u8d34\u54ea\uff1f": "installation",
+        "\u8fd9\u4e2a\u4e0d\u662f\u80cc\u80f6\u5417": "installation",
+        "\u87ba\u5e3d\u6ed1\u7259\u600e\u4e48\u529e": "aftersales_policy",
+        "\u5e2e\u6211\u6539\u4e00\u4e0b\u5730\u5740": "order_assistance",
+        "\u9001\u8d27\u4e0a\u95e8\u5417": "stock_shipping",
+        "\u8fd9\u4e24\u6b3e\u54ea\u4e2a\u627f\u653e\u7684\u6570\u91cf\u66f4\u591a": "variant_compare",
     }
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")

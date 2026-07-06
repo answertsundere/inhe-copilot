@@ -193,7 +193,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("pinch_safety", ("\u9632\u5939", "\u5939\u624b", "\u5939\u5230", "\u88ab\u5939", "\u5939\u4f4f", "\u5b89\u5168\u9690\u60a3")),
     ("safety_small_parts", ("\u5c0f\u96f6\u4ef6", "\u8bef\u541e", "\u541e\u4e86", "\u5361\u5589", "\u7a92\u606f", "\u7535\u6c60", "\u7535\u6c60\u4ed3", "\u7535\u6c60\u76d6")),
     ("certification_report", ("\u7532\u919b", "\u68c0\u6d4b\u62a5\u544a", "\u8d28\u68c0", "\u8ba4\u8bc1", "\u5408\u683c\u8bc1", "\u73af\u4fdd")),
-    ("variant_compare", ("\u533a\u522b", "\u5dee\u522b", "\u5dee\u5f02", "\u5bf9\u6bd4", "\u54ea\u4e2a\u66f4\u597d")),
+    ("variant_compare", ("\u533a\u522b", "\u5dee\u522b", "\u5dee\u5f02", "\u5bf9\u6bd4", "\u54ea\u4e2a\u66f4\u597d", "\u54ea\u6b3e", "\u54ea\u6b3e\u66f4", "\u6570\u91cf\u66f4\u591a", "\u627f\u653e")),
     ("price_protection", ("\u4ef7\u4fdd", "\u4fdd\u4ef7", "\u964d\u4ef7")),
     ("invoice_policy", ("\u53d1\u7968", "\u62ac\u5934", "\u7a0e\u53f7")),
     ("promotion_policy", (
@@ -237,6 +237,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u51e0\u5929\u5230",
         "\u591a\u4e45\u5230",
         "\u8fd0\u5355\u53f7",
+        "\u9001\u8d27\u4e0a\u95e8",
     )),
     ("order_assistance", (
         "\u600e\u4e48\u4e0b\u5355",
@@ -247,6 +248,12 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u94fe\u63a5\u53d1\u6211",
         "\u4e0b\u5355\u94fe\u63a5",
         "\u89c4\u683c\u600e\u4e48\u9009",
+        "\u6539\u5730\u5740",
+        "\u6539\u4e00\u4e0b\u5730\u5740",
+        "\u4fee\u6539\u5730\u5740",
+        "\u6362\u5730\u5740",
+        "\u6539\u6536\u8d27\u5730\u5740",
+        "\u5730\u5740\u6ca1\u6539",
     )),
     ("cleaning_care", ("\u6e05\u6d01", "\u6e05\u7406", "\u6c34\u6d17", "\u600e\u4e48\u6d17", "\u4fdd\u517b")),
     ("odor", ("\u6c14\u5473", "\u5473\u9053", "\u6709\u5473", "\u65e0\u5473", "\u65e0\u5f02\u5473", "\u5f02\u5473", "\u523a\u9f3b", "\u6563\u5473")),
@@ -281,8 +288,8 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("load_capacity", ("\u627f\u91cd", "\u80fd\u653e\u591a\u91cd", "\u653e\u591a\u91cd", "\u653e\u51e0\u65a4", "\u653e\u591a\u5c11\u65a4", "\u7ed3\u5b9e", "\u80fd\u653e\u591a\u5c11", "\u538b\u5f2f", "\u538b\u6241", "\u538b\u584c", "\u538b\u574f")),
     ("dimensions", ("\u5c3a\u5bf8", "\u591a\u9ad8", "\u591a\u5bbd", "\u591a\u957f", "\u9ad8\u5ea6", "\u5bbd\u5ea6", "\u957f\u5ea6", "\u5360\u5730", "\u89c4\u683c")),
     ("detachable", ("\u53ef\u62c6", "\u62c6\u5378", "\u62c6\u5f00", "\u62c6\u4e0b\u6765", "\u80fd\u62c6", "\u62c6\u88c5")),
-    ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f")),
-    ("material", ("\u6750\u8d28", "\u6750\u6599", "\u4ec0\u4e48\u6599", "\u7528\u6599", "\u677f\u6750", "\u5b9e\u6728", "\u5b89\u5168\u5417", "\u53d7\u6f6e", "\u9632\u6f6e", "\u751f\u9508")),
+    ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f", "\u8d34\u7eb8", "\u80cc\u80f6", "\u8d34\u54ea", "\u8d34\u54ea\u91cc")),
+    ("material", ("\u6750\u8d28", "\u6750\u6599", "\u4ec0\u4e48\u6599", "\u4ec0\u4e48\u5851\u6599", "\u5851\u6599", "\u7528\u6599", "\u677f\u6750", "\u5b9e\u6728", "\u5b89\u5168\u5417", "\u53d7\u6f6e", "\u9632\u6f6e", "\u751f\u9508")),
     ("aftersales_policy", (
         "\u9000\u8d27",
         "\u9000\u6b3e",
@@ -302,6 +309,8 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u6536\u6b3e\u4eba\u59d3\u540d",
         "\u8d54\u4ed8",
         "\u8865\u507f\u6b3e",
+        "\u6ed1\u7259",
+        "\u87ba\u5e3d\u6ed1\u7259",
     )),
 ]
 

@@ -17,21 +17,23 @@ from app.services.eval_sanitizer_service import sanitize_text
 PRODUCT_FACT_TOPICS = {
     "dimensions": ("尺寸", "长宽高", "多高", "多宽", "多长", "高度", "宽度", "深度", "最窄", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间", "占地方", "占地", "几平方", "平方"),
-    "load_capacity": ("承重", "载重", "多重", "压弯", "压塌", "结实", "放很多书", "容量"),
-    "material": ("材质", "材料", "板材", "环保", "防潮", "受潮", "防水", "甲醛", "气味", "material"),
-    "installation": ("安装", "组装", "装", "教程", "说明书", "视频", "打孔", "螺丝", "install", "installation", "video"),
+    "load_capacity": ("承重", "载重", "多重", "压弯", "压塌", "结实", "放很多书", "容量", "承放"),
+    "material": ("材质", "材料", "板材", "塑料", "什么塑料", "环保", "防潮", "受潮", "防水", "甲醛", "气味", "material"),
+    "installation": ("安装", "组装", "装", "教程", "说明书", "视频", "打孔", "螺丝", "贴纸", "背胶", "贴哪", "贴哪里", "install", "installation", "video"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
     "age_range": ("适合几岁", "适合多大", "年龄", "月龄", "宝宝", "儿童", "孩子"),
     "return_pickup": ("上门取件", "退货取件", "快递取件", "预约取件", "取件码", "取件员", "取件安排", "上门揽收", "快递揽收", "揽收"),
     "stock_shipping": (
         "发货", "现货", "库存", "几天到", "什么时候到", "明天能到", "能到吗", "到吗",
-        "物流", "快递", "签收", "没收到", "发出", "发出来", "单号", "运单号",
+        "物流", "快递", "签收", "没收到", "发出", "发出来", "单号", "运单号", "送货上门",
     ),
     "aftersales": (
         "退", "退款", "退货", "换", "换货", "补发", "漏发", "缺件", "少件",
         "少了", "没有", "破损", "售后", "发错", "不对", "对不上", "不一样",
-        "不太一样", "物品", "wrong item",
+        "不太一样", "物品", "滑牙", "螺帽滑牙", "wrong item",
     ),
+    "variant_compare": ("两款", "哪款", "哪个更", "哪款更", "区别", "差别", "对比", "数量更多"),
+    "order_assistance": ("改地址", "改一下地址", "修改地址", "换地址", "改收货地址", "地址没改", "怎么下单", "下单链接", "规格怎么选"),
 }
 
 PROMOTION_TERMS = (
@@ -340,6 +342,8 @@ class RealConversationTurnUnderstandingService:
             ).to_dict()
 
         fact_type, secondary_fact_types = infer_query_fact_types(text)
+        if not fact_type and _is_order_address_followup(text, history):
+            fact_type = "order_assistance"
         if not fact_type and _is_contextual_dimension_short_question(text) and (history or product_hint):
             fact_type = "dimensions"
         if (message_type_text in {"image", "图片", "video", "视频"} or _contains_any(text, MEDIA_TERMS)) and not _is_actionable_question(text, fact_type):
@@ -433,6 +437,8 @@ def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
         return "promotion", []
     if has_aftersales:
         return "aftersales", []
+    if _is_variant_compare_query(value):
+        return "variant_compare", []
     if _is_logistics_query(value):
         return "stock_shipping", []
     if _is_structure_function_query(value):
@@ -566,6 +572,21 @@ def _is_promotion_query(text: str) -> bool:
 def _is_logistics_query(text: str) -> bool:
     value = str(text or "")
     return any(term in value for term in PRODUCT_FACT_TOPICS["stock_shipping"])
+
+
+def _is_variant_compare_query(text: str) -> bool:
+    value = str(text or "")
+    has_compare_subject = any(term in value for term in ("两款", "哪款", "哪个更", "哪款更", "对比"))
+    has_compare_relation = any(term in value for term in ("更多", "更好", "区别", "差别", "哪个更", "哪款更", "数量"))
+    return has_compare_subject and has_compare_relation
+
+
+def _is_order_address_followup(text: str, history: list[dict[str, Any]] | None) -> bool:
+    value = str(text or "")
+    if not any(term in value for term in ("没改", "没有改", "还没改", "显示没改")):
+        return False
+    recent = " ".join(str(item.get("text") or item.get("content") or item.get("message") or "") for item in (history or [])[-6:])
+    return any(term in recent for term in ("改地址", "修改地址", "换地址", "收货地址", "地址"))
 
 
 def _is_return_pickup_query(text: str) -> bool:

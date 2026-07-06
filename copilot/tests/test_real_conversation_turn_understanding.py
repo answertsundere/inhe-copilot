@@ -96,6 +96,42 @@ def test_logistics_and_aftersales_short_questions_get_fact_type():
         assert result["query_fact_type"] == fact_type
 
 
+def test_replay_high_frequency_service_and_product_terms_get_fact_type():
+    cases = {
+        "\u5e2e\u5fd9\u6539\u5730\u5740\u4e86\u5417": "order_assistance",
+        "\u9001\u8d27\u4e0a\u95e8\u5417": "stock_shipping",
+        "\u4ec0\u4e48\u5851\u6599": "material",
+        "\u8d34\u7eb8\u8d34\u54ea\uff1f": "installation",
+        "\u8fd9\u4e2a\u4e0d\u662f\u80cc\u80f6\u561b": "installation",
+        "\u4f60\u4eec\u6709\u4e9b\u87ba\u5e3d\u6ed1\u7259\uff0c\u600e\u4e48\u529e": "aftersales",
+        "\u8fd9\u4e24\u6b3e\u54ea\u4e2a\u627f\u653e\u7684\u6570\u91cf\u66f4\u591a": "variant_compare",
+    }
+    for message, fact_type in cases.items():
+        result = _understand(message)
+        assert result["turn_actionability"] == "actionable_question"
+        assert result["query_fact_type"] == fact_type
+    address_followup = _understand(
+        "\u6211\u8fd9\u663e\u793a\u6ca1\u6539\u5462",
+        history=[{"speaker": "buyer", "text": "\u5e2e\u5fd9\u6539\u5730\u5740\u4e86\u5417"}],
+    )
+    assert address_followup["turn_actionability"] == "actionable_question"
+    assert address_followup["query_fact_type"] == "order_assistance"
+
+
+def test_short_fragments_stay_contextual_after_fact_type_aliases():
+    for message in ("\u8fd9\u4e2a\u5417", "\u4e24\u8fb9\u5462", "\u6211\u8054\u7cfb\uff1f"):
+        result = _understand(message)
+        assert result["query_fact_type"] == ""
+        assert result["turn_actionability"] in {"deictic_followup", "noise", "actionable_question"}
+
+
+def test_order_assistance_alias_does_not_steal_purchase_status_update():
+    result = _understand("\u597d\u7684\uff0c\u9a6c\u4e0a\u4e0b\u5355")
+
+    assert result["query_fact_type"] == ""
+    assert result["turn_actionability"] == "noise"
+
+
 def test_return_pickup_questions_are_aftersales_logistics_not_stock_shipping():
     for message in ("\u4e3a\u4ec0\u4e48\u6ca1\u6709\u4e0a\u95e8\u53d6\u4ef6", "\u9000\u8d27\u53d6\u4ef6\u600e\u4e48\u5b89\u6392", "\u5feb\u9012\u63fd\u6536\u4ec0\u4e48\u65f6\u5019\u6765"):
         result = _understand(message)
