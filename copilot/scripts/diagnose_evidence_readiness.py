@@ -466,15 +466,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--latest", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--json-output", default="")
-    parser.add_argument("--excel-output", default="")
+    parser.add_argument("--excel-output", default="", help="Optional Excel output path. Excel is only written when this is provided.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     report = build_evidence_readiness_report(run_uid=args.run_uid, latest=args.latest, limit=args.limit)
-    excel_output = args.excel_output or default_excel_path()
-    write_excel(excel_output, report)
+    excel_output = args.excel_output
+    if excel_output:
+        write_excel(excel_output, report)
     write_json(args.json_output, report)
     summary = report.get("summary") or {}
     print(json.dumps({

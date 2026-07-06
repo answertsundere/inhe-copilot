@@ -20,6 +20,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+def _load_dotenv_safely() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(PROJECT_ROOT / ".env")
+    except Exception:
+        pass
+
+
+_load_dotenv_safely()
+
 from openpyxl import Workbook  # noqa: E402
 from openpyxl.styles import Font, PatternFill  # noqa: E402
 from sqlalchemy import or_  # noqa: E402
@@ -335,13 +347,22 @@ def _selected_evidence(trace: EvalTrace) -> list[Any]:
     raw = trace.get_raw_response() or {}
     answer = trace.get_answer_trace() or {}
     debug = _as_dict(raw.get("evidence_debug"))
-    return _first_list(
+    selected = _first_list(
         trace.get_selected_evidence(),
         debug.get("selected_evidence"),
         debug.get("evidence_selected"),
         raw.get("selected_evidence"),
         answer.get("selected_evidence"),
     )
+    if selected:
+        return selected
+    direct: list[Any] = []
+    for key in ("knowledge_evidence_summary", "filtered_evidence_summary"):
+        direct.extend(item for item in _as_list(debug.get(key)) if _is_direct_answer_evidence(item))
+    pack = _extract_product_context_pack(raw, answer)
+    for bucket in ("product_structured_facts", "product_scoped_chunks"):
+        direct.extend(item for item in _as_list(pack.get(bucket)) if _is_direct_answer_evidence(item))
+    return direct
 
 
 def _selected_evidence_count(trace: EvalTrace) -> int:
@@ -377,6 +398,28 @@ def _extract_product_context_pack(raw: dict[str, Any], answer: dict[str, Any]) -
         _dig(answer, "evidence_debug", "product_context_pack_summary", "evidence_pack"),
     ]
     return _first_dict(*candidates)
+
+
+def _is_direct_answer_evidence(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    if item.get("reference_only") is True:
+        return False
+    if _text(item.get("gate_status")).lower() in {"blocked", "reference_only"}:
+        return False
+    for key in ("direct_answer_allowed", "can_direct_answer", "evidence_allowed_for_exact_answer"):
+        if item.get(key) is False:
+            return False
+    return bool(
+        item.get("chunk_text")
+        or item.get("chunk_preview")
+        or item.get("preview")
+        or item.get("content")
+        or item.get("fact")
+        or item.get("evidence_id")
+        or item.get("chunk_id")
+        or item.get("entry_id")
+    )
 
 
 def _extract_sidecar(trace: EvalTrace) -> dict[str, Any]:
@@ -682,15 +725,15 @@ def _pack_counts(pack: dict[str, Any]) -> dict[str, Any]:
 
 def _trace_rag_numbers(raw: dict[str, Any]) -> dict[str, int | bool]:
     debug = _as_dict(raw.get("evidence_debug"))
-    summaries = [
-        _as_dict(debug.get("knowledge_evidence_summary")),
-        _as_dict(debug.get("filtered_evidence_summary")),
-        _as_dict(debug.get("evidence_gate_summary")),
+    evidence_lists = [
+        _as_list(debug.get("knowledge_evidence_summary")),
+        _as_list(debug.get("filtered_evidence_summary")),
     ]
+    summaries = [_as_dict(debug.get("evidence_gate_summary"))]
     text = json.dumps(sanitize_obj(debug), ensure_ascii=False).lower()
     timeout = "timeout" in text or "超时" in text
-    candidate = 0
-    filtered = 0
+    candidate = max((len(items) for items in evidence_lists), default=0)
+    filtered = max((sum(1 for item in items if _is_direct_answer_evidence(item)) for items in evidence_lists), default=0)
     for summary in summaries:
         for key in ("candidate_count", "candidates", "raw_count", "total"):
             try:
@@ -1076,7 +1119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-uid", default="", help="EvalRun run_uid. Omit with --latest to use latest completed real_conversation run.")
     parser.add_argument("--latest", action="store_true", help="Use latest completed real_conversation run.")
     parser.add_argument("--json-output", default="", help="Optional JSON output path.")
-    parser.add_argument("--excel-output", default="", help="Optional Excel output path. Defaults to Desktop Evidence链路诊断_YYYYMMDD.xlsx.")
+    parser.add_argument("--excel-output", default="", help="Optional Excel output path. Excel is only written when this is provided.")
     parser.add_argument("--limit", type=int, default=0, help="Limit traces for smoke diagnostics.")
     return parser.parse_args()
 
@@ -1084,8 +1127,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     report = diagnose_evidence_chain(run_uid=args.run_uid, latest=args.latest, limit=args.limit)
-    excel_output = args.excel_output or default_excel_path()
-    _write_excel(excel_output, report)
+    excel_output = args.excel_output
+    if excel_output:
+        _write_excel(excel_output, report)
     if args.json_output:
         _write_json(args.json_output, report)
     summary = report.get("summary") or {}

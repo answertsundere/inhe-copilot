@@ -156,3 +156,57 @@ def test_latest_completed_real_run_is_used(tmp_path):
 
     assert report["run_uid"] == "newer"
     assert report["summary"]["total_traces"] == 1
+
+
+def test_direct_answer_evidence_summary_is_counted_as_selected_evidence(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
+    monkeypatch.setenv("COPILOT_EMBEDDING_MODEL", "text-embedding-v3")
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-direct-evidence"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed", total_turns=1))
+    product = KBProduct(i_id="IID-1", product_name="测试书架", status="active")
+    product.set_specs({"installation": "贴纸贴在对应标记位置"})
+    db.add(product)
+    db.flush()
+    raw = {
+        "evidence_debug": {
+            "knowledge_evidence_summary": [
+                {
+                    "source_type": "product_facts",
+                    "query_fact_type": "installation",
+                    "evidence_fact_type": "installation",
+                    "gate_status": "allowed",
+                    "direct_answer_allowed": True,
+                    "evidence_allowed_for_exact_answer": True,
+                    "chunk_preview": "安装说明：贴纸贴在对应标记位置。",
+                }
+            ],
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "resolved_product_identity": {"product_id": product.id, "i_id": "IID-1", "sku": "SKU-1"},
+                    "identity_confidence": 1.0,
+                    "product_structured_facts": [
+                        {
+                            "evidence_id": "kbproduct:1:installation",
+                            "fact_type": "installation",
+                            "direct_answer_allowed": True,
+                            "preview": "贴纸贴在对应标记位置。",
+                        }
+                    ],
+                }
+            },
+        }
+    }
+    db.add(_trace(run_uid, "turn-direct", message="贴纸贴哪", qft="installation", raw=raw))
+    db.commit()
+    db.close()
+
+    report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
+
+    assert report["summary"]["total_traces"] == 1
+    assert report["summary"]["zero_evidence_trace_count"] == 0
+    assert report["records"][0]["selected_evidence_count"] >= 1
+    assert report["summary"]["embedding_config_status"]["status"] == "configured"

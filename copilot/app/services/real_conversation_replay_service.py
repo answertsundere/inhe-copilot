@@ -294,6 +294,7 @@ def _extract_evidence(response: dict[str, Any]) -> tuple[list, list]:
         evidence_debug.get("selected_evidence")
         or evidence_debug.get("evidence_selected")
         or response.get("selected_evidence")
+        or _direct_answer_evidence_from_debug(evidence_debug)
         or []
     )
     rejected = (
@@ -303,6 +304,50 @@ def _extract_evidence(response: dict[str, Any]) -> tuple[list, list]:
         or []
     )
     return _json_list(sanitize_obj(selected)), _json_list(sanitize_obj(rejected))
+
+
+def _direct_answer_evidence_from_debug(evidence_debug: dict[str, Any]) -> list:
+    if not isinstance(evidence_debug, dict):
+        return []
+    rows: list[dict[str, Any]] = []
+    for key in ("knowledge_evidence_summary", "filtered_evidence_summary"):
+        items = evidence_debug.get(key)
+        if isinstance(items, list):
+            rows.extend(item for item in items if _is_direct_answer_evidence(item))
+
+    summary = evidence_debug.get("product_context_pack_summary")
+    if isinstance(summary, dict):
+        for pack_key in ("product_first_evidence_pack", "evidence_pack"):
+            pack = summary.get(pack_key)
+            if not isinstance(pack, dict):
+                continue
+            for bucket in ("product_structured_facts", "product_scoped_chunks"):
+                items = pack.get(bucket)
+                if isinstance(items, list):
+                    rows.extend(item for item in items if _is_direct_answer_evidence(item))
+    return rows
+
+
+def _is_direct_answer_evidence(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    if item.get("reference_only") is True:
+        return False
+    if str(item.get("gate_status") or "").lower() in {"blocked", "reference_only"}:
+        return False
+    for key in ("direct_answer_allowed", "can_direct_answer", "evidence_allowed_for_exact_answer"):
+        if item.get(key) is False:
+            return False
+    return bool(
+        item.get("chunk_text")
+        or item.get("chunk_preview")
+        or item.get("preview")
+        or item.get("content")
+        or item.get("fact")
+        or item.get("evidence_id")
+        or item.get("chunk_id")
+        or item.get("entry_id")
+    )
 
 
 def _extract_product_identity(response: dict[str, Any]) -> dict:

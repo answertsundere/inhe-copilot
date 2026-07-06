@@ -691,6 +691,70 @@ def test_installation_media_request_without_sendable_asset_applies_even_with_sel
     _assert_customer_facing_safe_handoff(result["suggested_reply"])
 
 
+def test_installation_direct_evidence_summary_prevents_false_no_evidence_handoff():
+    response = {
+        "suggested_reply": "亲，这个贴纸按安装说明贴在对应标记位置就可以，装的时候先对齐孔位再固定。",
+        "query_fact_type": "installation",
+        "customer_message": "贴纸贴哪",
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "knowledge_evidence_summary": [
+                {
+                    "source_type": "product_facts",
+                    "query_fact_type": "installation",
+                    "evidence_fact_type": "installation",
+                    "gate_status": "allowed",
+                    "direct_answer_allowed": True,
+                    "evidence_allowed_for_exact_answer": True,
+                    "chunk_preview": "安装说明：贴纸贴在对应标记位置。",
+                }
+            ],
+        },
+        "recommended_assets": [],
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "real_context_summary": {"has_product_context": True, "has_media_context": True},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result.get("generation_mode") != "no_evidence_reply_policy"
+    assert result["suggested_reply"] == response["suggested_reply"]
+
+
+def test_installation_media_request_still_requires_attached_asset_with_direct_evidence_summary():
+    response = {
+        "suggested_reply": "亲～这个问题我先帮您按这款商品核对一下，您稍等一下，我这边确认后再回复您。",
+        "query_fact_type": "installation",
+        "customer_message": "麻烦发下安装资料",
+        "evidence_debug": {
+            "knowledge_evidence_summary": [
+                {
+                    "source_type": "product_facts",
+                    "query_fact_type": "installation",
+                    "evidence_fact_type": "installation",
+                    "gate_status": "allowed",
+                    "direct_answer_allowed": True,
+                    "evidence_allowed_for_exact_answer": True,
+                    "chunk_preview": "安装说明可参考说明书步骤。",
+                }
+            ],
+        },
+        "recommended_assets": [],
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "real_context_summary": {"has_product_context": True, "has_media_context": False},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["requires_human_review"] is True
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+
+
 def test_aftersales_mismatch_request_applies_even_with_selected_evidence():
     response = {
         "suggested_reply": "亲～这个问题我先帮您按这款商品核对一下，您稍等一下，我这边确认后再回复您。",

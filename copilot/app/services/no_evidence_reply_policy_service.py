@@ -861,7 +861,7 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     reply = str(response.get("suggested_reply") or "")
     selected_count = _selected_evidence_count(response)
 
-    if contains_unsupported_media_promise(reply, has_sendable_media_asset(response)):
+    if contains_unsupported_media_promise(reply, bool(inputs.get("has_sendable_media_asset"))):
         return True
     if (
         fact_type in INSTALLATION_FACT_TYPES
@@ -891,7 +891,7 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if (
         fact_type in INSTALLATION_FACT_TYPES
         and not inputs.get("has_sendable_media_asset")
-        and (not selected_count or inputs.get("has_media_context") or _looks_like_media_request(inputs))
+        and (_looks_like_media_request(inputs) or not selected_count)
     ):
         return True
     if fact_type in ACCESSORY_FACT_TYPES and not selected_count:
@@ -979,7 +979,46 @@ def _promises_installation_video(reply: str) -> bool:
 def _selected_evidence_count(response: dict[str, Any]) -> int:
     debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
     selected = debug.get("selected_evidence") or debug.get("evidence_selected") or response.get("selected_evidence") or []
-    return len(selected) if isinstance(selected, list) else int(bool(selected))
+    if isinstance(selected, list) and selected:
+        return len(selected)
+    if selected and not isinstance(selected, list):
+        return 1
+
+    count = 0
+    for key in ("knowledge_evidence_summary", "filtered_evidence_summary"):
+        items = debug.get(key)
+        if isinstance(items, list):
+            count += sum(1 for item in items if _is_direct_answer_evidence(item))
+
+    summary = debug.get("product_context_pack_summary") if isinstance(debug.get("product_context_pack_summary"), dict) else {}
+    for pack_key in ("product_first_evidence_pack", "evidence_pack"):
+        pack = summary.get(pack_key) if isinstance(summary.get(pack_key), dict) else {}
+        for bucket in ("product_structured_facts", "product_scoped_chunks"):
+            rows = pack.get(bucket) if isinstance(pack.get(bucket), list) else []
+            count += sum(1 for item in rows if _is_direct_answer_evidence(item))
+    return count
+
+
+def _is_direct_answer_evidence(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    if item.get("reference_only") is True:
+        return False
+    if str(item.get("gate_status") or "").lower() in {"blocked", "reference_only"}:
+        return False
+    for key in ("direct_answer_allowed", "can_direct_answer", "evidence_allowed_for_exact_answer"):
+        if item.get(key) is False:
+            return False
+    return bool(
+        item.get("chunk_text")
+        or item.get("chunk_preview")
+        or item.get("preview")
+        or item.get("content")
+        or item.get("fact")
+        or item.get("evidence_id")
+        or item.get("chunk_id")
+        or item.get("entry_id")
+    )
 
 
 def _asks_for_known_context(reply: str, inputs: dict[str, Any]) -> bool:
