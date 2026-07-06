@@ -10,6 +10,7 @@
 """
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import sys
@@ -18,9 +19,28 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-BATCH_SIZE = 20
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+BATCH_SIZE = 10
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
+
+
+def _load_dotenv_safely() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        load_dotenv(os.path.join(project_root, ".env"))
+    except Exception:
+        pass
+
+
+_load_dotenv_safely()
 
 
 def preflight_check():
