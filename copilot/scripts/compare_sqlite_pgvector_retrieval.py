@@ -1,0 +1,240 @@
+"""Shadow compare current SQLite retrieval against pgvector retrieval."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import statistics
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.db import SessionLocal, init_db  # noqa: E402
+from app.models.eval_tables import EvalRun, EvalTrace  # noqa: E402
+from app.retrieval.current_sqlite_retriever import CurrentSQLiteRetriever  # noqa: E402
+from app.services.embedding_service import EmbeddingService  # noqa: E402
+from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # noqa: E402
+from app.services.pgvector_retriever_service import PgVectorRetrieverService  # noqa: E402
+
+
+def _write_json(path: str, payload: dict) -> None:
+    if not path:
+        return
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(sanitize_obj(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _latest_run_uid(db) -> str:
+    run = (
+        db.query(EvalRun)
+        .filter(EvalRun.source_type == "real_conversation", EvalRun.status == "completed")
+        .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
+        .first()
+    )
+    return run.run_uid if run else ""
+
+
+def _query_fact_type(trace: EvalTrace) -> str:
+    turn = trace.get_turn_understanding() or {}
+    answer = trace.get_answer_trace() or {}
+    raw = trace.get_raw_response() or {}
+    return sanitize_text(
+        trace.query_fact_type
+        or turn.get("query_fact_type")
+        or answer.get("query_fact_type")
+        or raw.get("query_fact_type")
+    )
+
+
+def _sidecar(trace: EvalTrace) -> dict[str, str]:
+    raw = trace.get_raw_response() or {}
+    context = raw.get("copilot_context") if isinstance(raw.get("copilot_context"), dict) else {}
+    sidecar = context.get("sidecar_context") if isinstance(context.get("sidecar_context"), dict) else {}
+    if not sidecar:
+        sidecar = raw.get("sidecar_context") if isinstance(raw.get("sidecar_context"), dict) else {}
+    return {
+        "product_title": sanitize_text(sidecar.get("product_title") or sidecar.get("product_name") or raw.get("product_name")),
+        "sku_code": sanitize_text(sidecar.get("sku_code") or raw.get("sku_code")),
+        "i_id": sanitize_text(sidecar.get("i_id") or raw.get("i_id")),
+    }
+
+
+def _load_traces(db, run_uid: str, limit: int) -> list[EvalTrace]:
+    query = db.query(EvalTrace).filter(EvalTrace.run_uid == run_uid).order_by(EvalTrace.id.asc())
+    if limit:
+        query = query.limit(max(1, int(limit)))
+    return query.all()
+
+
+def _ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [str(row.get("chunk_id") or row.get("source_chunk_id") or "") for row in rows if row]
+
+
+def _has_direct_answerable(rows: list[dict[str, Any]]) -> bool:
+    for row in rows:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        if metadata.get("direct_answer_allowed") is True:
+            return True
+        if row.get("source_type") in {"product_fact", "faq", "manual", "generic_rules"}:
+            return True
+    return False
+
+
+def compare_retrieval(
+    *,
+    run_uid: str = "",
+    limit: int = 50,
+    json_output: str = "",
+    sqlite_retriever=None,
+    pg_service: PgVectorRetrieverService | None = None,
+    embedding_provider=None,
+    db_factory=SessionLocal,
+) -> dict[str, Any]:
+    db = db_factory()
+    try:
+        resolved_run_uid = sanitize_text(run_uid) or _latest_run_uid(db)
+        traces = _load_traces(db, resolved_run_uid, limit)
+    finally:
+        db.close()
+
+    sqlite_retriever = sqlite_retriever or CurrentSQLiteRetriever()
+    pg_service = pg_service or PgVectorRetrieverService()
+    embedding_provider = embedding_provider or EmbeddingService.get_embeddings
+    pg_check = pg_service.check()
+    if not pg_check.get("pgvector_available"):
+        result = sanitize_obj({
+            "summary": {
+                "run_uid": resolved_run_uid,
+                "resolved_run_uid": resolved_run_uid,
+                "pgvector_available": False,
+                "extension_available": bool(pg_check.get("extension_available")),
+                "compare_trace_count": 0,
+                "sqlite_avg_latency_ms": 0.0,
+                "pgvector_avg_latency_ms": 0.0,
+                "pgvector_timeout_count": 0,
+                "pgvector_direct_answerable_count": 0,
+                "overlap_count": 0,
+                "pgvector_only_direct_candidates": 0,
+                "pgvector_error": pg_check.get("error") or "pgvector_unavailable",
+                "skipped_reason": "pgvector_unavailable",
+            },
+            "rows": [],
+        })
+        _write_json(json_output, result)
+        return result
+    rows: list[dict[str, Any]] = []
+    sqlite_latencies: list[float] = []
+    pg_latencies: list[float] = []
+    pgvector_timeout_count = 0
+    pgvector_direct_answerable_count = 0
+    overlap_total = 0
+    pgvector_only_direct_candidates = 0
+
+    for trace in traces:
+        qft = _query_fact_type(trace)
+        sidecar = _sidecar(trace)
+        if not qft or not (sidecar["i_id"] or sidecar["sku_code"] or sidecar["product_title"]):
+            continue
+        query_text = sanitize_text(trace.buyer_message)
+        if not query_text:
+            continue
+        started = time.perf_counter()
+        sqlite_rows = sqlite_retriever.retrieve(
+            query=query_text,
+            product_scope=[sidecar["product_title"]] if sidecar["product_title"] else [],
+            sku_scope=[sidecar["sku_code"] or sidecar["i_id"]] if (sidecar["sku_code"] or sidecar["i_id"]) else [],
+            fact_type=qft,
+            top_k=5,
+        )
+        sqlite_latency = round((time.perf_counter() - started) * 1000, 2)
+        sqlite_latencies.append(sqlite_latency)
+        pg_rows: list[dict[str, Any]] = []
+        pg_latency = 0.0
+        if pg_check.get("pgvector_available"):
+            embedding = embedding_provider([query_text])
+            query_embedding = embedding[0] if embedding else []
+            started = time.perf_counter()
+            try:
+                pg_rows = pg_service.retrieve(
+                    query_text=query_text,
+                    query_embedding=query_embedding,
+                    i_id=sidecar["i_id"],
+                    sku_code=sidecar["sku_code"],
+                    query_fact_type=qft,
+                    top_k=5,
+                )
+            except Exception:
+                pgvector_timeout_count += 1
+                pg_rows = []
+            pg_latency = round((time.perf_counter() - started) * 1000, 2)
+            pg_latencies.append(pg_latency)
+
+        sqlite_ids = set(_ids(sqlite_rows))
+        pg_ids = set(_ids(pg_rows))
+        overlap = len(sqlite_ids & pg_ids)
+        pg_only = pg_ids - sqlite_ids
+        pg_direct = _has_direct_answerable(pg_rows)
+        if pg_direct:
+            pgvector_direct_answerable_count += 1
+        if pg_only and pg_direct:
+            pgvector_only_direct_candidates += len(pg_only)
+        overlap_total += overlap
+        rows.append({
+            "case_uid": trace.case_uid,
+            "turn_uid": trace.turn_uid,
+            "query_fact_type": qft,
+            "buyer_message_preview": query_text[:120],
+            "sidecar": sidecar,
+            "sqlite_candidate_count": len(sqlite_rows),
+            "pgvector_candidate_count": len(pg_rows),
+            "sqlite_top_ids": list(sqlite_ids)[:5],
+            "pgvector_top_ids": list(pg_ids)[:5],
+            "sqlite_latency_ms": sqlite_latency,
+            "pgvector_latency_ms": pg_latency,
+            "overlap_count": overlap,
+            "pgvector_only_count": len(pg_only),
+            "sqlite_only_count": len(sqlite_ids - pg_ids),
+            "whether_pgvector_has_direct_answerable": pg_direct,
+        })
+
+    summary = {
+        "run_uid": resolved_run_uid,
+        "resolved_run_uid": resolved_run_uid,
+        "pgvector_available": bool(pg_check.get("pgvector_available")),
+        "extension_available": bool(pg_check.get("extension_available")),
+        "compare_trace_count": len(rows),
+        "sqlite_avg_latency_ms": round(statistics.mean(sqlite_latencies), 2) if sqlite_latencies else 0.0,
+        "pgvector_avg_latency_ms": round(statistics.mean(pg_latencies), 2) if pg_latencies else 0.0,
+        "pgvector_timeout_count": pgvector_timeout_count,
+        "pgvector_direct_answerable_count": pgvector_direct_answerable_count,
+        "overlap_count": overlap_total,
+        "pgvector_only_direct_candidates": pgvector_only_direct_candidates,
+        "pgvector_error": pg_check.get("error") or "",
+    }
+    result = sanitize_obj({"summary": summary, "rows": rows})
+    _write_json(json_output, result)
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    parser = argparse.ArgumentParser(description="Shadow compare current SQLite retrieval against pgvector retrieval.")
+    parser.add_argument("--run-uid", default="")
+    parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument("--json-output", default="")
+    args = parser.parse_args(argv)
+    init_db()
+    result = compare_retrieval(run_uid=args.run_uid, limit=args.limit, json_output=args.json_output)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get("summary", {}).get("pgvector_available") else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
