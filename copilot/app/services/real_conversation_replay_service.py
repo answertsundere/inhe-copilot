@@ -1,5 +1,6 @@
 """Turn-by-turn replay for sanitized real conversation eval cases."""
 
+import json
 import time
 import queue
 import threading
@@ -49,6 +50,7 @@ FAILURE_TYPES = {
     "intent_contract_mismatch",
     "generic_reply_to_actionable_issue",
     "accessory_usage_missed",
+    "replay_turn_timeout",
 }
 
 FAILURE_REPAIR_GUIDANCE = {
@@ -157,6 +159,11 @@ FAILURE_REPAIR_GUIDANCE = {
         "suggested_owner": "agent_engineering",
         "explanation": "The buyer asked how to identify or use an accessory/component, but the turn was not routed to installation support.",
     },
+    "replay_turn_timeout": {
+        "suggested_fix_area": "replay_stability",
+        "suggested_owner": "engineering",
+        "explanation": "The eval replay turn hit its hard deadline and was safely routed to human review instead of blocking the run.",
+    },
 }
 
 FACT_TYPE_COMPATIBILITY_GROUPS = {
@@ -206,6 +213,7 @@ class ReplayOptions:
     disable_external_tools: bool = False
     external_tool_timeout_seconds: int | float = 0
     agent_turn_timeout_seconds: int | float = 0
+    progress_log: bool = False
 
 
 def _new_run_uid() -> str:
@@ -217,6 +225,50 @@ def _agent_turn_timeout_seconds(options: "ReplayOptions") -> float:
     if explicit_timeout > 0:
         return explicit_timeout
     return 0.0
+
+
+def _message_preview(value: str, limit: int = 80) -> str:
+    text = sanitize_text(value or "").replace("\n", " ").strip()
+    return text[:limit]
+
+
+def _replay_progress_snapshot(
+    *,
+    stage: str,
+    case_index: int,
+    total_cases: int,
+    turn_index: int,
+    total_turns: int,
+    case_uid: str,
+    turn_uid: str,
+    buyer_message: str,
+) -> dict[str, Any]:
+    return sanitize_obj({
+        "stage": stage,
+        "case_index": case_index,
+        "total_cases": total_cases,
+        "turn_index": turn_index,
+        "total_turns": total_turns,
+        "case_uid": sanitize_text(case_uid),
+        "turn_uid": sanitize_text(turn_uid),
+        "buyer_message_preview": _message_preview(buyer_message),
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
+
+
+def _record_replay_progress(db: Any, run: Any, progress: dict[str, Any], *, progress_log: bool = False) -> None:
+    progress = sanitize_obj(progress)
+    if progress_log:
+        try:
+            print("[replay-progress] " + json.dumps(progress, ensure_ascii=False), flush=True)
+        except UnicodeEncodeError:
+            print("[replay-progress] " + json.dumps(progress, ensure_ascii=True), flush=True)
+    if run is None:
+        return
+    current = run.get_metadata() if hasattr(run, "get_metadata") else {}
+    current["replay_progress_last"] = progress
+    run.set_metadata(current)
+    db.commit()
 
 
 def _json_list(value) -> list:
@@ -504,6 +556,13 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     agent_turn_timed_out = bool((evidence_debug.get("agent_turn_timeout") or {}).get("timed_out"))
     if response.get("error"):
         failures.append({"failure_type": "api_error", "severity": "high", "message": sanitize_text(response.get("error"))})
+    if agent_turn_timed_out:
+        timeout_stage = sanitize_text((evidence_debug.get("agent_turn_timeout") or {}).get("stage") or "agent_call")
+        failures.append({
+            "failure_type": "replay_turn_timeout",
+            "severity": "medium",
+            "message": f"replay turn timed out at {timeout_stage}",
+        })
     if response.get("tool_policy_blocked") or response.get("policy_blocked"):
         failures.append({"failure_type": "tool_policy_blocked", "severity": "medium", "message": "tool policy blocked the turn"})
     if (
@@ -777,6 +836,8 @@ class RealConversationReplayService:
         turn_understanding = copilot_context.get("turn_understanding") or {}
         query_fact_type = str(turn_understanding.get("query_fact_type") or "")
         eval_replay_options = copilot_context.get("eval_replay_options") or {}
+        progress = sanitize_obj(copilot_context.get("replay_progress") or {})
+        timeout_stage = sanitize_text(progress.get("stage") or "agent_call")
         reason = "agent_turn_timeout_for_replay"
         draft_reply = "亲，这条需要我再核对一下资料和订单情况，避免给您说错，我确认后再给您准确回复。"
         return {
@@ -795,6 +856,8 @@ class RealConversationReplayService:
                 "agent_turn_timeout": {
                     "timed_out": True,
                     "timeout_seconds": timeout_seconds,
+                    "stage": timeout_stage,
+                    "progress": progress,
                     "reason": reason,
                 },
                 "selected_evidence": [],
@@ -803,7 +866,10 @@ class RealConversationReplayService:
                 "query_fact_type": query_fact_type,
                 "required_fact_types": [query_fact_type] if query_fact_type else [],
                 "agent_turn_timeout": True,
+                "replay_turn_timeout": True,
                 "timeout_seconds": timeout_seconds,
+                "timeout_stage": timeout_stage,
+                "replay_progress": progress,
                 "reason": reason,
             },
         }
@@ -821,6 +887,7 @@ class RealConversationReplayService:
             "disable_external_tools": bool(options.disable_external_tools),
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
             "agent_turn_timeout_seconds": _agent_turn_timeout_seconds(options),
+            "progress_log": bool(options.progress_log),
         })
         db = SessionLocal()
         try:
@@ -854,6 +921,7 @@ class RealConversationReplayService:
                 "agent_accuracy_passed": 0,
                 "agent_accuracy_failed": 0,
                 "context_gap": 0,
+                "replay_turn_timeout_count": 0,
             }
             if options.sample_only:
                 run.status = "sampled"
@@ -861,7 +929,7 @@ class RealConversationReplayService:
                 db.commit()
                 return {"run_uid": run_uid, "status": run.status, "total_cases": len(cases), **totals}
 
-            for case in cases:
+            for case_index, case in enumerate(cases, start=1):
                 turns = (
                     db.query(EvalConversationTurn)
                     .filter(EvalConversationTurn.case_uid == case.case_uid)
@@ -899,6 +967,18 @@ class RealConversationReplayService:
                     real_context_summary = summarize_real_context(real_context)
                     real_context_identity = agent_real_context.get("real_context_product_identity") or {}
                     conversation_media_reference = build_conversation_media_reference(agent_real_context)
+                    progress = _replay_progress_snapshot(
+                        stage="turn_understanding",
+                        case_index=case_index,
+                        total_cases=len(cases),
+                        turn_index=turn.turn_index,
+                        total_turns=len(turns),
+                        case_uid=case.case_uid,
+                        turn_uid=turn.turn_uid,
+                        buyer_message=turn.sanitized_text,
+                    )
+                    if options.progress_log:
+                        _record_replay_progress(db, run, progress, progress_log=True)
                     turn_understanding = self.turn_understanding_service.understand(
                         turn.sanitized_text,
                         history=conversation_history,
@@ -968,6 +1048,19 @@ class RealConversationReplayService:
                             "eval_replay_options": eval_replay_options,
                         },
                     }
+                    progress = _replay_progress_snapshot(
+                        stage="agent_call" if turn_understanding.get("needs_agent_reply") else "scoring",
+                        case_index=case_index,
+                        total_cases=len(cases),
+                        turn_index=turn.turn_index,
+                        total_turns=len(turns),
+                        case_uid=case.case_uid,
+                        turn_uid=turn.turn_uid,
+                        buyer_message=turn.sanitized_text,
+                    )
+                    payload["copilot_context"]["replay_progress"] = progress
+                    if options.progress_log or float(eval_replay_options.get("agent_turn_timeout_seconds") or 0) > 0:
+                        _record_replay_progress(db, run, progress, progress_log=bool(options.progress_log))
                     started = time.time()
                     exception = None
                     response: dict[str, Any] = {}
@@ -993,6 +1086,12 @@ class RealConversationReplayService:
                             },
                         }
                     latency_ms = int((time.time() - started) * 1000)
+                    if options.progress_log or float(eval_replay_options.get("agent_turn_timeout_seconds") or 0) > 0:
+                        _record_replay_progress(db, run, {
+                            **progress,
+                            "stage": "scoring",
+                            "elapsed_ms": latency_ms,
+                        }, progress_log=bool(options.progress_log))
                     turn_understanding = enrich_turn_understanding_with_contract(response, turn_understanding)
                     intent_contract = {
                         "expected_query_fact_type": turn_understanding.get("expected_query_fact_type", ""),
@@ -1013,6 +1112,8 @@ class RealConversationReplayService:
                         ])
                         passed = False
                     labels = [f["failure_type"] for f in failures]
+                    if "replay_turn_timeout" in labels:
+                        totals["replay_turn_timeout_count"] += 1
                     quality_bucket = classify_quality_bucket(
                         passed=passed,
                         requires_human_review=bool(response.get("requires_human_review")),
@@ -1116,6 +1217,14 @@ class RealConversationReplayService:
                         row.set_metadata({"trace_turn_index": turn.turn_index})
                         db.add(row)
                     db.commit()
+                    if options.progress_log or float(eval_replay_options.get("agent_turn_timeout_seconds") or 0) > 0:
+                        _record_replay_progress(db, run, {
+                            **progress,
+                            "stage": "persist_trace",
+                            "elapsed_ms": latency_ms,
+                            "passed": passed,
+                            "failure_labels": labels,
+                        }, progress_log=bool(options.progress_log))
 
             run.status = "completed"
             run.total_turns = totals["turns"]

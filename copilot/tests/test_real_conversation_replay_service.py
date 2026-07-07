@@ -1309,11 +1309,88 @@ def test_replay_agent_turn_timeout_returns_safe_handoff():
     assert response["requires_human_review"] is True
     assert response["reason_for_review"] == "agent_turn_timeout_for_replay"
     assert response["evidence_debug"]["agent_turn_timeout"]["timed_out"] is True
+    assert response["evidence_debug"]["agent_turn_timeout"]["stage"] == "agent_call"
     assert response["answer_trace"]["agent_turn_timeout"] is True
+    assert response["answer_trace"]["replay_turn_timeout"] is True
     failure_types = {item["failure_type"] for item in classify_turn_failures(response)}
+    assert "replay_turn_timeout" in failure_types
     assert "needs_human_review" in failure_types
     assert "answer_incomplete" not in failure_types
     assert "rag_miss" not in failure_types
+
+
+def test_replay_turn_timeout_marks_trace_and_continues_next_turn(monkeypatch):
+    import time
+
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        case = EvalCase(case_uid="case_timeout", source_type="real_conversation", status="active", message="timeout")
+        case.set_metadata({"real_context": _product_real_context()})
+        db.add(case)
+        db.add_all([
+            EvalConversationTurn(
+                case_uid="case_timeout",
+                conversation_uid="conv_timeout",
+                turn_uid="turn_timeout_1",
+                turn_index=0,
+                speaker="buyer",
+                sanitized_text="slow dimensions question",
+            ),
+            EvalConversationTurn(
+                case_uid="case_timeout",
+                conversation_uid="conv_timeout",
+                turn_uid="turn_timeout_2",
+                turn_index=1,
+                speaker="buyer",
+                sanitized_text="normal dimensions question",
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    class TimeoutReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            if payload["message"].startswith("slow"):
+                time.sleep(0.2)
+                return {"suggested_reply": "late reply", "can_send": True}
+            return {
+                "suggested_reply": "The dimensions evidence answers this question.",
+                "requires_human_review": False,
+                "evidence_debug": {
+                    "query_fact_type": "dimensions",
+                    "selected_evidence": [{"fact_type": "dimensions", "content": "dimensions fact"}],
+                },
+                "answer_trace": {
+                    "query_fact_type": "dimensions",
+                    "required_fact_types": ["dimensions"],
+                    "evidence_answered_fact_types": ["dimensions"],
+                },
+                "final_answer_audit": {"passed": True},
+            }
+
+    result = TimeoutReplayService(_FixedTurnUnderstanding("dimensions")).replay_cases(
+        ReplayOptions(run_uid="run_timeout", agent_turn_timeout_seconds=0.01)
+    )
+
+    assert result["status"] == "completed"
+    assert result["replay_turn_timeout_count"] == 1
+    db = session_factory()
+    try:
+        traces = db.query(EvalTrace).order_by(EvalTrace.turn_index).all()
+        assert len(traces) == 2
+        assert "replay_turn_timeout" in traces[0].get_failure_labels()
+        assert traces[0].requires_human_review is True
+        assert traces[0].agent_reply
+        assert traces[0].get_answer_trace()["timeout_stage"] == "agent_call"
+        assert traces[1].passed is True
+        assert "replay_turn_timeout" not in traces[1].get_failure_labels()
+        run = db.query(EvalRun).filter(EvalRun.run_uid == "run_timeout").one()
+        assert run.status == "completed"
+        assert run.get_metadata()["replay_progress_last"]["stage"] == "persist_trace"
+    finally:
+        db.close()
 
 
 def test_external_tool_timeout_does_not_implicitly_timeout_agent_turn():

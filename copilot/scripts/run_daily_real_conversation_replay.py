@@ -54,7 +54,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-sidecar-order-id", default="", help="eval-only QianNiu sidecar order id")
     parser.add_argument("--disable-external-tools", action="store_true", help="eval replay only: skip live external tools")
     parser.add_argument("--external-tool-timeout-seconds", type=float, default=0, help="eval replay only: per-tool hard timeout")
-    parser.add_argument("--agent-turn-timeout-seconds", type=float, default=0, help="eval replay only: per-turn Agent hard timeout")
+    parser.add_argument(
+        "--agent-turn-timeout-seconds",
+        "--turn-timeout-seconds",
+        dest="agent_turn_timeout_seconds",
+        type=float,
+        default=0,
+        help="eval replay only: per-turn Agent hard timeout",
+    )
+    parser.add_argument("--progress-log", action="store_true", help="eval replay only: print sanitized per-turn progress")
     return parser
 
 
@@ -97,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         disable_external_tools=args.disable_external_tools,
         external_tool_timeout_seconds=args.external_tool_timeout_seconds,
         agent_turn_timeout_seconds=args.agent_turn_timeout_seconds,
+        progress_log=args.progress_log,
     ))
     output = _json_for_file(report)
     if args.json_output:

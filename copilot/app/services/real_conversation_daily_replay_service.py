@@ -44,6 +44,7 @@ class DailyReplayOptions:
     disable_external_tools: bool = False
     external_tool_timeout_seconds: int | float = 0
     agent_turn_timeout_seconds: int | float = 0
+    progress_log: bool = False
 
 
 def _pass_rate(passed: int, total: int) -> float:
@@ -91,6 +92,7 @@ def _daily_metadata(
                 "disable_external_tools": bool(options.disable_external_tools),
                 "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
                 "agent_turn_timeout_seconds": float(options.agent_turn_timeout_seconds or 0),
+                "progress_log": bool(options.progress_log),
             }),
         }
     })
@@ -134,6 +136,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         disable_external_tools=bool(options.disable_external_tools),
         external_tool_timeout_seconds=float(options.external_tool_timeout_seconds or 0),
         agent_turn_timeout_seconds=float(options.agent_turn_timeout_seconds or 0),
+        progress_log=bool(options.progress_log),
     )
     schedule_uid = _new_schedule_uid(options.run_date)
     run_uid = _new_run_uid(schedule_uid)
@@ -152,6 +155,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
             "disable_external_tools": bool(options.disable_external_tools),
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
             "agent_turn_timeout_seconds": float(options.agent_turn_timeout_seconds or 0),
+            "progress_log": bool(options.progress_log),
         }),
     }
 
@@ -190,6 +194,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
                     disable_external_tools=options.disable_external_tools,
                     external_tool_timeout_seconds=options.external_tool_timeout_seconds,
                     agent_turn_timeout_seconds=options.agent_turn_timeout_seconds,
+                    progress_log=options.progress_log,
                 )
             )
         report["replay"] = replay

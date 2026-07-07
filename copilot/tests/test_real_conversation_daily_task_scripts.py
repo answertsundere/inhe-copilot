@@ -30,6 +30,8 @@ def test_daily_replay_script_help_runs_without_pythonpath():
     assert result.returncode == 0
     assert "--source-dir" in result.stdout
     assert "--generate-repair-tasks" in result.stdout
+    assert "--turn-timeout-seconds" in result.stdout
+    assert "--progress-log" in result.stdout
 
 
 def test_daily_replay_wrapper_has_dynamic_date_and_apply_flow():
