@@ -173,6 +173,13 @@ DEFAULT_GENERIC_SERVICE_RULES: list[dict[str, Any]] = [
 ]
 
 
+GENERIC_RULE_FACT_TYPE_ALIASES = {
+    "aftersales": {"aftersales_policy", "return_pickup"},
+    "promotion": {"promotion_policy", "gift_policy"},
+    "gift_policy": {"promotion_policy"},
+}
+
+
 DEFAULT_GENERIC_SERVICE_RULES.append({
     "rule_key": "after_sales_payment_timing_v1",
     "title": "\u552e\u540e\u6253\u6b3e\u65f6\u6548\u8bf4\u660e",
@@ -513,8 +520,12 @@ def search_generic_service_rules(
     limit: int = 3,
 ) -> list[dict[str, Any]]:
     rules = _load_db_rules(db, RuleModel)
-    if not rules:
-        rules = [normalize_rule(item) for item in DEFAULT_GENERIC_SERVICE_RULES]
+    default_rules = [normalize_rule(item) for item in DEFAULT_GENERIC_SERVICE_RULES]
+    if rules:
+        active_keys = {str(rule.get("rule_key") or "") for rule in rules}
+        rules = [*rules, *[rule for rule in default_rules if rule.get("rule_key") not in active_keys]]
+    else:
+        rules = default_rules
 
     scored = []
     for rule in rules:
@@ -620,6 +631,8 @@ def _score_rule(rule: dict[str, Any], *, query: str, intent: str, fact_type: str
     rule_fact_type = str(rule.get("fact_type") or "")
     if fact_type and rule_fact_type == fact_type:
         score += 8.0
+    elif fact_type and rule_fact_type in GENERIC_RULE_FACT_TYPE_ALIASES.get(fact_type, set()):
+        score += 6.0
     elif fact_type and rule_fact_type == "media_reference" and fact_type in {"installation", "dimensions", "space_fit", "accessories"}:
         score += 5.0
     elif fact_type:

@@ -212,7 +212,7 @@ def test_direct_answer_evidence_summary_is_counted_as_selected_evidence(tmp_path
     assert report["summary"]["embedding_config_status"]["status"] == "configured"
 
 
-def test_pack_generated_but_not_consumed_is_not_unknown(tmp_path, monkeypatch):
+def test_direct_pack_evidence_is_counted_as_selected_not_zero_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
     monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
     monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
@@ -231,7 +231,13 @@ def test_pack_generated_but_not_consumed_is_not_unknown(tmp_path, monkeypatch):
                 "evidence_pack": {
                     "resolved_product_identity": {"product_id": product.id, "i_id": "IID-1", "sku": "SKU-1"},
                     "identity_confidence": 1.0,
-                    "product_structured_facts": [],
+                    "product_structured_facts": [
+                        {
+                            "fact_type": "aftersales_policy",
+                            "direct_answer_allowed": True,
+                            "preview": "售后处理说明。",
+                        }
+                    ],
                     "product_media_assets": [],
                     "product_scoped_chunks": [],
                     "generic_fallback_rules": [{"rule_key": "after-sales", "fact_type": "aftersales_policy"}],
@@ -245,11 +251,88 @@ def test_pack_generated_but_not_consumed_is_not_unknown(tmp_path, monkeypatch):
 
     report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
 
-    assert report["summary"]["zero_evidence_trace_count"] == 1
-    assert report["summary"]["by_primary_reason"] == {"pack_generated_but_not_consumed": 1}
-    row = report["zero_evidence_records"][0]
+    assert report["summary"]["zero_evidence_trace_count"] == 0
+    row = report["records"][0]
+    assert row["selected_evidence_count"] == 1
+    assert row["pack_structured_facts_count"] == 1
     assert row["pack_scoped_chunks_count"] == 0
     assert row["pack_generic_rules_count"] == 1
+
+
+def test_generic_fallback_only_is_not_pack_not_consumed(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
+    monkeypatch.setenv("COPILOT_EMBEDDING_MODEL", "text-embedding-v3")
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-generic-only-pack"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed", total_turns=1))
+    product = KBProduct(i_id="IID-1", product_name="测试书架", status="active")
+    db.add(product)
+    db.flush()
+    raw = {
+        "evidence_debug": {
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "resolved_product_identity": {"product_id": product.id, "i_id": "IID-1", "sku": "SKU-1"},
+                    "identity_confidence": 1.0,
+                    "product_structured_facts": [],
+                    "product_media_assets": [],
+                    "product_scoped_chunks": [],
+                    "generic_fallback_rules": [{"rule_key": "after-sales", "fact_type": "aftersales_policy"}],
+                    "missing_required_evidence": [{"evidence_type": "product_fact", "fact_type": "aftersales_policy"}],
+                }
+            }
+        }
+    }
+    db.add(_trace(run_uid, "turn-generic-only", message="少件了怎么办", qft="aftersales_policy", raw=raw))
+    db.commit()
+    db.close()
+
+    report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
+
+    assert report["summary"]["zero_evidence_trace_count"] == 1
+    assert report["summary"]["by_primary_reason"] == {"true_knowledge_gap": 1}
+
+
+def test_unknown_unscored_turn_is_context_or_noise_not_fact_type_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_BASE", "https://example.invalid")
+    monkeypatch.setenv("COPILOT_EMBEDDING_API_KEY", "configured-for-test")
+    monkeypatch.setenv("COPILOT_EMBEDDING_MODEL", "text-embedding-v3")
+    Session = _session_factory(tmp_path)
+    db = Session()
+    run_uid = "run-context-or-noise"
+    db.add(EvalRun(run_uid=run_uid, source_type="real_conversation", status="completed", total_turns=1))
+    trace = _trace(
+        run_uid,
+        "turn-noise",
+        message="好的",
+        qft="",
+        raw={
+            "quality_bucket": {
+                "quality_bucket": "unscored_or_noise",
+                "should_count_in_quality_rate": False,
+            }
+        },
+    )
+    trace.set_turn_understanding({
+        "query_fact_type": "",
+        "turn_actionability": "acknowledgement",
+        "should_score": False,
+        "skip_reason": "non_actionable_acknowledgement",
+    })
+    trace.set_failure_labels([])
+    db.add(trace)
+    db.commit()
+    db.close()
+
+    report = diagnose_evidence_chain(run_uid=run_uid, db_factory=Session)
+
+    assert report["summary"]["zero_evidence_trace_count"] == 1
+    assert report["summary"]["by_primary_reason"] == {"context_or_noise": 1}
+    assert "query_fact_type_missing" not in report["summary"]["by_primary_reason"]
 
 
 def test_rag_candidates_without_selected_summary_are_classified(tmp_path, monkeypatch):

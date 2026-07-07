@@ -56,6 +56,36 @@ def test_generic_rule_service_uses_semantic_fact_type():
     assert rules[0]["source_type"] == "generic_rules"
 
 
+def test_default_generic_rules_are_merged_when_database_has_partial_rules(generic_rule_db):
+    from app.models.kb_tables import KBGenericServiceRule
+    from app.services.generic_service_rule_service import search_generic_service_rules
+
+    db = generic_rule_db()
+    try:
+        db.add(KBGenericServiceRule(
+            rule_key="custom_invoice_rule",
+            title="发票核对",
+            fact_type="invoice_policy",
+            status="active",
+            auto_reply_allowed=True,
+            priority=10,
+        ))
+        db.commit()
+
+        rules = search_generic_service_rules(
+            db=db,
+            RuleModel=KBGenericServiceRule,
+            query="退货取件怎么安排",
+            intent="aftersales",
+            fact_type="return_pickup",
+        )
+    finally:
+        db.close()
+
+    assert rules
+    assert rules[0]["rule_key"] == "return_pickup_aftersales_logistics_check_v1"
+
+
 def test_after_sales_payment_rule_matches_payment_timing_questions():
     from app.services.generic_service_rule_service import (
         render_generic_service_reply,
@@ -144,6 +174,26 @@ def test_service_action_generic_rules_cover_common_policy_gaps():
             assert term in reply
         for term in case["forbidden"]:
             assert term not in reply
+
+
+def test_generic_rule_aliases_cover_replay_fact_type_variants():
+    from app.services.generic_service_rule_service import search_generic_service_rules
+
+    aftersales_rules = search_generic_service_rules(
+        query="这个坏了怎么处理",
+        intent="aftersales",
+        fact_type="aftersales",
+    )
+    gift_rules = search_generic_service_rules(
+        query="什么赠品呀",
+        intent="promotion",
+        fact_type="gift_policy",
+    )
+
+    assert aftersales_rules
+    assert aftersales_rules[0]["fact_type"] in {"aftersales_policy", "return_pickup"}
+    assert gift_rules
+    assert gift_rules[0]["rule_key"] == "promotion_current_activity_check_v1"
 
 
 def test_render_generic_service_reply_uses_display_name_without_internal_terms():

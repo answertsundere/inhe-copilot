@@ -39,6 +39,8 @@ FACT_TYPE_LABELS = {
 FACT_TYPE_LABELS.update({
     "gross_weight": "商品毛重/包装重量",
     "accessory_availability": "配件售卖/补购",
+    "accessory_usage": "配件用途/识别",
+    "order_assistance": "下单/规格选择",
 })
 
 
@@ -47,7 +49,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("certification_report", ("甲醛", "检测报告", "检查报告", "质检报告", "检验报告", "合格证", "环保证书", "认证", "证书", "3C", "食品级")),
     ("variant_compare", ("基础款", "升级款", "升级版", "差什么", "区别", "差别", "差异", "对比", "哪个更好")),
     ("price_protection", ("价保", "保价", "价格保护", "买贵", "降价")),
-    ("invoice_policy", ("发票", "开发票", "电子发票", "抬头", "税号")),
+    ("invoice_policy", ("发票", "开发票", "开票", "电子发票", "抬头", "税号")),
     ("promotion_policy", ("优惠", "活动", "券", "满减", "便宜", "折扣", "赠送", "送我")),
     ("gift_policy", ("赠品", "礼品", "没送", "少送", "漏发赠品")),
     ("stock_shipping", ("有货", "库存", "今天拍", "今天发", "什么时候发", "能发吗", "上发", "发货")),
@@ -67,7 +69,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u7a33\u5417",
     )),
     ("load_capacity", ("承重", "能放多重", "放多重", "结实", "稳不稳", "会不会倒", "放多少本", "能放多少本", "多少本", "放几本", "能放多少", "装多少", "能装多少", "放多少", "放很多", "压弯", "会不会压弯")),
-    ("dimensions", ("尺寸", "多高", "多宽", "多长", "高度", "长度", "宽度", "占地")),
+    ("dimensions", ("尺寸", "多大", "多高", "多宽", "多长", "高度", "长度", "宽度", "占地")),
     ("detachable", ("可拆", "可拆卸", "拆卸", "拆开", "拆下来", "能拆", "拆装")),
     ("installation", ("安装", "怎么装", "装不上", "螺丝", "配件", "说明书", "安装视频", "教程", "组装", "拼接", "打孔", "需要打孔", "免打孔", "租房")),
     ("material", ("材质", "材料", "什么料", "用料", "板材", "实木", "环保", "安全吗", "安全", "受潮", "防潮", "生锈")),
@@ -195,7 +197,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("certification_report", ("\u7532\u919b", "\u68c0\u6d4b\u62a5\u544a", "\u8d28\u68c0", "\u8ba4\u8bc1", "\u5408\u683c\u8bc1", "\u73af\u4fdd")),
     ("variant_compare", ("\u533a\u522b", "\u5dee\u522b", "\u5dee\u5f02", "\u5bf9\u6bd4", "\u54ea\u4e2a\u66f4\u597d", "\u54ea\u6b3e", "\u54ea\u6b3e\u66f4", "\u6570\u91cf\u66f4\u591a", "\u627f\u653e")),
     ("price_protection", ("\u4ef7\u4fdd", "\u4fdd\u4ef7", "\u964d\u4ef7")),
-    ("invoice_policy", ("\u53d1\u7968", "\u62ac\u5934", "\u7a0e\u53f7")),
+    ("invoice_policy", ("\u53d1\u7968", "\u5f00\u7968", "\u62ac\u5934", "\u7a0e\u53f7")),
     ("promotion_policy", (
         "\u4f18\u60e0",
         "\u6d3b\u52a8",
@@ -241,6 +243,7 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     )),
     ("order_assistance", (
         "\u600e\u4e48\u4e0b\u5355",
+        "\u600e\u6837\u4e0b\u5355",
         "\u600e\u4e48\u4e70",
         "\u62cd\u54ea\u4e2a",
         "\u9009\u54ea\u4e2a",
@@ -286,7 +289,8 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u9002\u5408\u653e",
     )),
     ("load_capacity", ("\u627f\u91cd", "\u80fd\u653e\u591a\u91cd", "\u653e\u591a\u91cd", "\u653e\u51e0\u65a4", "\u653e\u591a\u5c11\u65a4", "\u7ed3\u5b9e", "\u80fd\u653e\u591a\u5c11", "\u538b\u5f2f", "\u538b\u6241", "\u538b\u584c", "\u538b\u574f")),
-    ("dimensions", ("\u5c3a\u5bf8", "\u591a\u9ad8", "\u591a\u5bbd", "\u591a\u957f", "\u9ad8\u5ea6", "\u5bbd\u5ea6", "\u957f\u5ea6", "\u5360\u5730", "\u89c4\u683c")),
+    ("accessory_usage", ("\u4f5c\u7528\u662f\u5565", "\u4ec0\u4e48\u4f5c\u7528", "\u6709\u4ec0\u4e48\u7528", "\u5e72\u5565\u7528", "\u5e72\u561b\u7528", "\u7528\u6765\u5e72\u5565", "\u7528\u9014")),
+    ("dimensions", ("\u5c3a\u5bf8", "\u591a\u5927", "\u591a\u9ad8", "\u591a\u5bbd", "\u591a\u957f", "\u9ad8\u5ea6", "\u5bbd\u5ea6", "\u957f\u5ea6", "\u5360\u5730", "\u89c4\u683c")),
     ("detachable", ("\u53ef\u62c6", "\u62c6\u5378", "\u62c6\u5f00", "\u62c6\u4e0b\u6765", "\u80fd\u62c6", "\u62c6\u88c5")),
     ("installation", ("\u5b89\u88c5", "\u600e\u4e48\u88c5", "\u88c5\u4e0d\u4e0a", "\u87ba\u4e1d", "\u914d\u4ef6", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u89c6\u9891", "\u6559\u7a0b", "\u7ec4\u88c5", "\u6253\u5b54", "\u79df\u623f", "\u8d34\u7eb8", "\u80cc\u80f6", "\u8d34\u54ea", "\u8d34\u54ea\u91cc")),
     ("material", ("\u6750\u8d28", "\u6750\u6599", "\u4ec0\u4e48\u6599", "\u4ec0\u4e48\u5851\u6599", "\u5851\u6599", "\u7528\u6599", "\u677f\u6750", "\u5b9e\u6728", "\u5b89\u5168\u5417", "\u53d7\u6f6e", "\u9632\u6f6e", "\u751f\u9508")),

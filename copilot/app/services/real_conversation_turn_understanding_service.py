@@ -15,7 +15,7 @@ from app.services.eval_sanitizer_service import sanitize_text
 
 
 PRODUCT_FACT_TOPICS = {
-    "dimensions": ("尺寸", "长宽高", "多高", "多宽", "多长", "高度", "宽度", "深度", "最窄", "规格"),
+    "dimensions": ("尺寸", "长宽高", "多大", "多高", "多宽", "多长", "高度", "宽度", "深度", "最窄", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间", "占地方", "占地", "几平方", "平方"),
     "load_capacity": ("承重", "载重", "多重", "压弯", "压塌", "结实", "放很多书", "容量", "承放"),
     "material": ("材质", "材料", "板材", "塑料", "什么塑料", "环保", "防潮", "受潮", "防水", "甲醛", "气味", "material"),
@@ -33,7 +33,8 @@ PRODUCT_FACT_TOPICS = {
         "不太一样", "物品", "滑牙", "螺帽滑牙", "wrong item",
     ),
     "variant_compare": ("两款", "哪款", "哪个更", "哪款更", "区别", "差别", "对比", "数量更多"),
-    "order_assistance": ("改地址", "改一下地址", "修改地址", "换地址", "改收货地址", "地址没改", "怎么下单", "下单链接", "规格怎么选"),
+    "invoice_policy": ("发票", "开发票", "开票", "抬头", "税号"),
+    "order_assistance": ("改地址", "改一下地址", "修改地址", "换地址", "改收货地址", "地址没改", "怎么下单", "怎样下单", "下单链接", "规格怎么选"),
 }
 
 PROMOTION_TERMS = (
@@ -163,8 +164,8 @@ SERVICE_OR_SYSTEM_TERMS = (
     "咨询量大", "不是有意怠慢", "看到消息后", "为您服务",
 )
 PREFERENCE_UPDATE_TERMS = ("我要白色", "要白色", "我要大号", "要大号", "再买一个", "备注", "换成白色", "换白色")
-ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "层板", "板件", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带")
-ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里")
+ACCESSORY_COMPONENT_TERMS = ("防倒器", "双面贴", "顶板", "底板", "背板", "侧板", "层板", "板件", "螺丝", "配件", "卡扣", "固定件", "垫片", "安全带", "指甲刀", "工具", "套装", "其他", "其它")
+ACCESSORY_USAGE_TERMS = ("干啥用", "做什么用", "用来干啥", "哪个是", "是哪一个", "怎么用", "装哪里", "贴哪里", "放哪里", "作用", "用途")
 ACCESSORY_PRESENCE_TERMS = ("有吗", "有没有", "带吗", "配吗", "含吗", "送吗")
 ACCESSORY_RETENTION_COMPONENT_TERMS = (*ACCESSORY_COMPONENT_TERMS, "螺丝刀", "工具")
 ACCESSORY_RETENTION_TERMS = ("留下", "留着", "保留", "还要用", "还需要用", "后面要用", "后面还要用", "后面还需要用")
@@ -339,6 +340,20 @@ class RealConversationTurnUnderstandingService:
                 forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["context_update"],
                 reason="Buyer is reporting receipt, installation, or handling status rather than asking a product fact.",
                 skip_reason="context_update_no_question",
+            ).to_dict()
+
+        if _is_contextual_dimension_short_question(text) and not (history or product_hint):
+            return TurnUnderstanding(
+                turn_actionability="deictic_followup",
+                needs_agent_reply=False,
+                needs_rag=False,
+                needs_tool=False,
+                should_score=True,
+                reply_strategy="clarify_context",
+                context_dependency="high",
+                forbidden_reply_topics=FORBIDDEN_TOPICS_BY_ACTIONABILITY["deictic_followup"],
+                reason="Buyer turn is a short dimension follow-up that requires prior product context.",
+                skip_reason="context_insufficient",
             ).to_dict()
 
         fact_type, secondary_fact_types = infer_query_fact_types(text)

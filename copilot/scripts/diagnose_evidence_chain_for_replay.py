@@ -40,6 +40,7 @@ from app.db import SessionLocal  # noqa: E402
 from app.models.eval_tables import EvalRun, EvalTrace  # noqa: E402
 from app.models.kb_tables import KBGenericServiceRule, KBMediaAsset, KBProduct  # noqa: E402
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # noqa: E402
+from app.services.generic_service_rule_service import search_generic_service_rules  # noqa: E402
 from app.services.media_asset_service import get_auto_send_level, get_media_purpose  # noqa: E402
 
 
@@ -57,6 +58,7 @@ PRIMARY_REASONS = {
     "retrieval_filter_too_strict",
     "evidence_role_mismatch",
     "query_fact_type_missing",
+    "context_or_noise",
     "product_first_pack_empty",
     "pack_generated_but_not_consumed",
     "selected_evidence_summary_missing",
@@ -669,26 +671,27 @@ def _collect_media(db, product: KBProduct | None, identity: dict[str, Any], side
     }
 
 
-def _collect_generic_rules(db, query_fact_type: str) -> dict[str, Any]:
+def _collect_generic_rules(db, query_fact_type: str, *, query: str = "") -> dict[str, Any]:
     qft = _text(query_fact_type)
     if not qft or qft == "unknown":
         return {"items": [], "count": 0}
-    rules = (
-        db.query(KBGenericServiceRule)
-        .filter(KBGenericServiceRule.status == "active", KBGenericServiceRule.fact_type == qft)
-        .order_by(KBGenericServiceRule.priority.asc(), KBGenericServiceRule.id.asc())
-        .all()
+    rules = search_generic_service_rules(
+        db=db,
+        RuleModel=KBGenericServiceRule,
+        query=query,
+        fact_type=qft,
+        limit=5,
     )
     return {
         "items": [
             sanitize_obj(
                 {
-                    "rule_key": rule.rule_key,
-                    "title": rule.title,
-                    "fact_type": rule.fact_type,
-                    "allowed_when_product_fact_missing": bool(rule.allowed_when_product_fact_missing),
-                    "auto_reply_allowed": bool(rule.auto_reply_allowed),
-                    "risk_level": rule.risk_level,
+                    "rule_key": rule.get("rule_key"),
+                    "title": rule.get("title"),
+                    "fact_type": rule.get("fact_type"),
+                    "allowed_when_product_fact_missing": bool(rule.get("allowed_when_product_fact_missing", True)),
+                    "auto_reply_allowed": bool(rule.get("auto_reply_allowed", True)),
+                    "risk_level": rule.get("risk_level"),
                 }
             )
             for rule in rules
@@ -779,11 +782,23 @@ def _classify_reason(
     pack_counts: dict[str, Any],
     selected_evidence_count: int,
     block_reasons: list[str],
+    quality_bucket: str = "",
+    turn_actionability: str = "",
+    should_score: bool | None = None,
+    skip_reason: str = "",
 ) -> tuple[str, list[str]]:
     reasons: list[str] = []
     qft = _text(query_fact_type)
     if not qft or qft == "unknown":
-        reasons.append("query_fact_type_missing")
+        if _is_context_or_noise_breakpoint(
+            quality_bucket=quality_bucket,
+            turn_actionability=turn_actionability,
+            should_score=should_score,
+            skip_reason=skip_reason,
+        ):
+            reasons.append("context_or_noise")
+        else:
+            reasons.append("query_fact_type_missing")
     if sidecar.get("sidecar_context_quality") in {"missing", "insufficient"} or not sidecar.get("has_sidecar_product_context"):
         reasons.append("sidecar_missing_or_not_passed")
     if identity.get("resolver_executed") and identity.get("status") not in {"resolved", "exact", "matched"}:
@@ -807,18 +822,21 @@ def _classify_reason(
     if block_reasons:
         reasons.append("final_gate_blocked")
     if not reasons:
-        pack_has_evidence = any(
-            int(pack_counts.get(key) or 0) > 0
-            for key in (
-                "pack_structured_facts_count",
-                "pack_media_assets_count",
-                "pack_scoped_chunks_count",
-                "pack_generic_rules_count",
-            )
+        direct_pack_evidence_count = sum(
+            int(pack_counts.get(key) or 0)
+            for key in ("pack_structured_facts_count", "pack_scoped_chunks_count")
+        )
+        media_pack_can_direct = qft in MEDIA_FACT_TYPES and int(pack_counts.get("pack_media_assets_count") or 0) > 0
+        fallback_only_pack = (
+            int(pack_counts.get("pack_generic_rules_count") or 0) > 0
+            and direct_pack_evidence_count == 0
+            and not media_pack_can_direct
         )
         rag_has_candidates = int(rag.get("rag_candidate_count") or 0) > 0 or int(rag.get("rag_filtered_count") or 0) > 0
-        if selected_evidence_count == 0 and pack_has_evidence:
+        if selected_evidence_count == 0 and (direct_pack_evidence_count > 0 or media_pack_can_direct):
             reasons.append("pack_generated_but_not_consumed")
+        elif selected_evidence_count == 0 and fallback_only_pack:
+            reasons.append("true_knowledge_gap")
         elif selected_evidence_count == 0 and rag_has_candidates:
             reasons.append("selected_evidence_summary_missing")
         elif selected_evidence_count == 0 and not pack_counts.get("has_product_first_pack"):
@@ -833,10 +851,31 @@ def _classify_reason(
     return primary, [reason for reason in reasons[1:] if reason != primary]
 
 
+def _is_context_or_noise_breakpoint(
+    *,
+    quality_bucket: str = "",
+    turn_actionability: str = "",
+    should_score: bool | None = None,
+    skip_reason: str = "",
+) -> bool:
+    bucket = _text(quality_bucket)
+    actionability = _text(turn_actionability)
+    skip = _text(skip_reason)
+    if bucket in {"unscored_or_noise", "context_gap"}:
+        return True
+    if should_score is False:
+        return True
+    if actionability in {"noise", "acknowledgement", "media_reference", "context_update", "deictic_followup"}:
+        return True
+    return skip in {"not_actionable", "context_insufficient", "non_actionable_acknowledgement", "link_or_media_only", "service_or_system_fragment"}
+
+
 def _analyze_trace(db, trace: EvalTrace, embedding: dict[str, Any]) -> dict[str, Any]:
     raw = trace.get_raw_response() or {}
     answer = trace.get_answer_trace() or {}
+    turn = trace.get_turn_understanding() or {}
     qft = _query_fact_type(trace)
+    quality_bucket = _quality_bucket(trace)
     sidecar = _extract_sidecar(trace)
     pack = _extract_product_context_pack(raw, answer)
     identity = _identity_resolution(trace, pack, sidecar)
@@ -845,7 +884,7 @@ def _analyze_trace(db, trace: EvalTrace, embedding: dict[str, Any]) -> dict[str,
     required_fields = _required_structured_fields(qft)
     missing_fields = [field for field in required_fields if not coverage.get(field)]
     media = _collect_media(db, product, identity, sidecar, qft)
-    generic_rules = _collect_generic_rules(db, qft)
+    generic_rules = _collect_generic_rules(db, qft, query=trace.buyer_message or "")
     pack_counts = _pack_counts(pack)
     rag = _trace_rag_numbers(raw)
     block_reasons = _block_reasons(trace)
@@ -864,6 +903,10 @@ def _analyze_trace(db, trace: EvalTrace, embedding: dict[str, Any]) -> dict[str,
         pack_counts=pack_counts,
         selected_evidence_count=selected_count,
         block_reasons=block_reasons,
+        quality_bucket=quality_bucket,
+        turn_actionability=_text(turn.get("turn_actionability")),
+        should_score=turn.get("should_score") if isinstance(turn.get("should_score"), bool) else None,
+        skip_reason=_text(turn.get("skip_reason")),
     )
     structured_field_coverage = {field: bool(value) for field, value in coverage.items() if value}
     record = {
@@ -873,7 +916,7 @@ def _analyze_trace(db, trace: EvalTrace, embedding: dict[str, Any]) -> dict[str,
         "turn_index": trace.turn_index,
         "buyer_message_preview": _text(trace.buyer_message)[:120],
         "query_fact_type": qft,
-        "quality_bucket": _quality_bucket(trace),
+        "quality_bucket": quality_bucket,
         "failure_labels": trace.get_failure_labels() or [],
         "selected_evidence_count": selected_count,
         "primary_reason": primary,
@@ -953,6 +996,8 @@ def _suggested_action(row: dict[str, Any]) -> str:
         return "检查 RAG 超时和候选过滤耗时，先确认 embedding 服务可用"
     if reason == "query_fact_type_missing":
         return "修 turn understanding/fact_type 合同，不按具体买家原话特判"
+    if reason == "context_or_noise":
+        return "该轮次是噪声、短句、状态补充或上下文不足；不要硬归类为商品事实"
     if reason == "product_first_pack_empty":
         return "检查 Product-first Evidence Pack 是否生成并写入 trace；不要用空 pack 冒充已检索"
     if reason == "pack_generated_but_not_consumed":

@@ -100,7 +100,10 @@ def test_replay_high_frequency_service_and_product_terms_get_fact_type():
     cases = {
         "\u5e2e\u5fd9\u6539\u5730\u5740\u4e86\u5417": "order_assistance",
         "\u9001\u8d27\u4e0a\u95e8\u5417": "stock_shipping",
+        "\u5f00\u7968": "invoice_policy",
         "\u4ec0\u4e48\u5851\u6599": "material",
+        "\u76d2\u5b50\u591a\u5927": "dimensions",
+        "\u9664\u4e86\u6307\u7532\u5200\uff0c\u5176\u5b83\u4fe9\u4e2a\u4f5c\u7528\u662f\u5565": "installation",
         "\u8d34\u7eb8\u8d34\u54ea\uff1f": "installation",
         "\u8fd9\u4e2a\u4e0d\u662f\u80cc\u80f6\u561b": "installation",
         "\u4f60\u4eec\u6709\u4e9b\u87ba\u5e3d\u6ed1\u7259\uff0c\u600e\u4e48\u529e": "aftersales",
