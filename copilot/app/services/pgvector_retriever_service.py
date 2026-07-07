@@ -230,6 +230,29 @@ LIMIT %(top_k)s
     return sql, params
 
 
+def build_fetch_by_source_ids_sql(collection: str = DEFAULT_COLLECTION) -> str:
+    table = _safe_identifier(collection)
+    return f"""
+SELECT
+    source_chunk_id,
+    entry_id,
+    chunk_text,
+    i_id,
+    sku_code,
+    product_title,
+    query_fact_type,
+    source_type,
+    evidence_role,
+    media_role,
+    status,
+    usable_for_agent,
+    metadata,
+    content_hash
+FROM {table}
+WHERE source_chunk_id = ANY(%(source_chunk_ids)s)
+""".strip()
+
+
 def validate_embedding(value: Any, dimension: int = VECTOR_DIMENSION) -> list[float] | None:
     embedding = _json_load(value, value)
     if not isinstance(embedding, list) or len(embedding) != dimension:
@@ -388,6 +411,17 @@ class PgVectorRetrieverService:
                 rows = cur.fetchall()
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
         return [self._row_to_candidate(row, latency_ms=latency_ms, query_text=query_text) for row in rows]
+
+    def fetch_rows_by_source_ids(self, source_chunk_ids: list[str]) -> dict[str, dict[str, Any]]:
+        ids = [str(item).strip() for item in source_chunk_ids if str(item).strip()]
+        if not ids or not self.dsn:
+            return {}
+        sql = build_fetch_by_source_ids_sql(self.collection)
+        with self.connect_factory(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"source_chunk_ids": ids})
+                rows = cur.fetchall()
+        return {str(row.get("source_chunk_id")): dict(row) for row in rows}
 
     @staticmethod
     def _row_to_candidate(row: dict[str, Any], *, latency_ms: float, query_text: str) -> dict[str, Any]:

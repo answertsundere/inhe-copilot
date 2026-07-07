@@ -29,6 +29,18 @@ class _FakePgService:
             "metadata": {"direct_answer_allowed": True},
         }]
 
+    def fetch_rows_by_source_ids(self, source_chunk_ids):
+        return {
+            "1": {
+                "source_chunk_id": "1",
+                "query_fact_type": "installation",
+                "source_type": "faq",
+                "i_id": "IID-1",
+                "sku_code": "SKU-1",
+                "usable_for_agent": True,
+            }
+        }
+
 
 class _UnavailablePgService:
     def check(self):
@@ -82,9 +94,12 @@ def test_shadow_compare_does_not_mutate_eval_trace(tmp_path):
     assert report["summary"]["compare_trace_count"] == 1
     assert report["summary"]["pgvector_available"] is True
     assert report["summary"]["pgvector_direct_answerable_count"] == 1
+    assert report["summary"]["missing_in_pgvector_count"] == 0
+    assert report["summary"]["metadata_mismatch_count"] == 0
     assert report["rows"][0]["sqlite_candidate_count"] == 1
     assert report["rows"][0]["pgvector_candidate_count"] == 1
     assert report["rows"][0]["overlap_count"] == 1
+    assert report["rows"][0]["filter_ablation"]["strict"]["candidate_count"] == 1
 
     db = Session()
     try:

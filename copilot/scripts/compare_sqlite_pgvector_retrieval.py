@@ -22,6 +22,18 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # n
 from app.services.pgvector_retriever_service import PgVectorRetrieverService  # noqa: E402
 
 
+_SHADOW_FACT_TYPE_ALIASES = {
+    "promotion_policy": ["promotion_policy", "price_negotiation"],
+    "price_negotiation": ["price_negotiation", "promotion_policy"],
+    "aftersales": ["aftersales", "aftersales_policy"],
+    "aftersales_policy": ["aftersales_policy", "return_pickup", "refund_policy", "replacement_policy"],
+    "return_pickup": ["return_pickup", "aftersales_policy"],
+    "refund_policy": ["refund_policy", "aftersales_policy"],
+    "replacement_policy": ["replacement_policy", "aftersales_policy"],
+    "space_fit": ["space_fit", "dimensions"],
+}
+
+
 def _write_json(path: str, payload: dict) -> None:
     if not path:
         return
@@ -83,13 +95,135 @@ def _ids(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def _has_direct_answerable(rows: list[dict[str, Any]]) -> bool:
+    direct_source_types = {
+        "product_fact",
+        "product_facts",
+        "dingtalk_product_detail",
+        "faq",
+        "manual",
+        "product_activity_rule",
+    }
     for row in rows:
         metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
         if metadata.get("direct_answer_allowed") is True:
             return True
-        if row.get("source_type") in {"product_fact", "faq", "manual", "generic_rules"}:
+        if row.get("source_type") in direct_source_types:
             return True
     return False
+
+
+def _fact_type_aliases(query_fact_type: str) -> list[str]:
+    values = _SHADOW_FACT_TYPE_ALIASES.get(str(query_fact_type or ""), [str(query_fact_type or "")])
+    return [item for item in dict.fromkeys(values) if item]
+
+
+def _retrieve_pgvector(
+    pg_service: PgVectorRetrieverService,
+    *,
+    query_text: str,
+    query_embedding: list[float],
+    sidecar: dict[str, str],
+    query_fact_type: str,
+    mode: str,
+) -> tuple[list[dict[str, Any]], float, bool]:
+    started = time.perf_counter()
+    timed_out = False
+    try:
+        if mode == "strict":
+            rows = pg_service.retrieve(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                i_id=sidecar["i_id"],
+                sku_code=sidecar["sku_code"],
+                query_fact_type=query_fact_type,
+                top_k=5,
+            )
+        elif mode == "no_fact_type":
+            rows = pg_service.retrieve(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                i_id=sidecar["i_id"],
+                sku_code=sidecar["sku_code"],
+                query_fact_type="",
+                top_k=5,
+            )
+        elif mode == "product_only":
+            rows = pg_service.retrieve(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                i_id=sidecar["i_id"],
+                sku_code=sidecar["sku_code"],
+                query_fact_type="",
+                allowed_source_types=[],
+                allowed_evidence_roles=[],
+                top_k=5,
+            )
+        elif mode == "no_product":
+            rows = pg_service.retrieve(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                i_id="",
+                sku_code="",
+                query_fact_type=query_fact_type,
+                top_k=5,
+                allow_broad_search=True,
+            )
+        elif mode == "fact_type_alias":
+            rows = []
+            seen: set[str] = set()
+            for alias in _fact_type_aliases(query_fact_type):
+                for item in pg_service.retrieve(
+                    query_text=query_text,
+                    query_embedding=query_embedding,
+                    i_id=sidecar["i_id"],
+                    sku_code=sidecar["sku_code"],
+                    query_fact_type=alias,
+                    top_k=5,
+                ):
+                    item_id = str(item.get("chunk_id") or item.get("source_chunk_id") or "")
+                    if item_id in seen:
+                        continue
+                    seen.add(item_id)
+                    rows.append(item)
+            rows = rows[:5]
+        else:
+            rows = []
+    except Exception:
+        timed_out = True
+        rows = []
+    latency = round((time.perf_counter() - started) * 1000, 2)
+    return rows, latency, timed_out
+
+
+def _sqlite_source_chunk_ids(rows: list[dict[str, Any]]) -> list[str]:
+    values: list[str] = []
+    for row in rows:
+        raw = str(row.get("chunk_id") or "")
+        if raw.isdigit():
+            values.append(raw)
+    return values
+
+
+def _metadata_mismatches(sqlite_rows: list[dict[str, Any]], pg_rows_by_id: dict[str, dict[str, Any]]) -> list[dict[str, str]]:
+    mismatches: list[dict[str, str]] = []
+    for row in sqlite_rows:
+        source_chunk_id = str(row.get("chunk_id") or "")
+        if not source_chunk_id.isdigit() or source_chunk_id not in pg_rows_by_id:
+            continue
+        pg_row = pg_rows_by_id[source_chunk_id]
+        checks = {
+            "query_fact_type": (row.get("fact_type") or "", pg_row.get("query_fact_type") or ""),
+            "source_type": (row.get("source_type") or "", pg_row.get("source_type") or ""),
+        }
+        for field, (sqlite_value, pg_value) in checks.items():
+            if str(sqlite_value or "") and str(pg_value or "") and str(sqlite_value) != str(pg_value):
+                mismatches.append({
+                    "source_chunk_id": source_chunk_id,
+                    "field": field,
+                    "sqlite_value": str(sqlite_value),
+                    "pgvector_value": str(pg_value),
+                })
+    return mismatches
 
 
 def compare_retrieval(
@@ -141,6 +275,10 @@ def compare_retrieval(
     pgvector_direct_answerable_count = 0
     overlap_total = 0
     pgvector_only_direct_candidates = 0
+    missing_in_pgvector_count = 0
+    metadata_mismatch_count = 0
+    strict_empty_but_product_only_has_candidates_count = 0
+    fact_type_alias_helped_count = 0
 
     for trace in traces:
         qft = _query_fact_type(trace)
@@ -162,23 +300,44 @@ def compare_retrieval(
         sqlite_latencies.append(sqlite_latency)
         pg_rows: list[dict[str, Any]] = []
         pg_latency = 0.0
+        ablation: dict[str, dict[str, Any]] = {}
+        sqlite_source_ids = _sqlite_source_chunk_ids(sqlite_rows)
+        pg_rows_by_source_id = (
+            pg_service.fetch_rows_by_source_ids(sqlite_source_ids)
+            if sqlite_source_ids and hasattr(pg_service, "fetch_rows_by_source_ids")
+            else {}
+        )
+        missing_ids = [item for item in sqlite_source_ids if item not in pg_rows_by_source_id]
+        missing_in_pgvector_count += len(missing_ids)
+        mismatches = _metadata_mismatches(sqlite_rows, pg_rows_by_source_id)
+        metadata_mismatch_count += len(mismatches)
         if pg_check.get("pgvector_available"):
             embedding = embedding_provider([query_text])
             query_embedding = embedding[0] if embedding else []
-            started = time.perf_counter()
-            try:
-                pg_rows = pg_service.retrieve(
+            for mode in ("strict", "no_fact_type", "product_only", "no_product", "fact_type_alias"):
+                mode_rows, mode_latency, mode_timed_out = _retrieve_pgvector(
+                    pg_service,
                     query_text=query_text,
                     query_embedding=query_embedding,
-                    i_id=sidecar["i_id"],
-                    sku_code=sidecar["sku_code"],
+                    sidecar=sidecar,
                     query_fact_type=qft,
-                    top_k=5,
+                    mode=mode,
                 )
-            except Exception:
-                pgvector_timeout_count += 1
-                pg_rows = []
-            pg_latency = round((time.perf_counter() - started) * 1000, 2)
+                ablation[mode] = {
+                    "candidate_count": len(mode_rows),
+                    "direct_answerable": _has_direct_answerable(mode_rows),
+                    "latency_ms": mode_latency,
+                    "top_ids": _ids(mode_rows)[:3],
+                }
+                if mode_timed_out:
+                    pgvector_timeout_count += 1
+                if mode == "strict":
+                    pg_rows = mode_rows
+                    pg_latency = mode_latency
+            if ablation.get("strict", {}).get("candidate_count", 0) == 0 and ablation.get("product_only", {}).get("candidate_count", 0) > 0:
+                strict_empty_but_product_only_has_candidates_count += 1
+            if ablation.get("strict", {}).get("candidate_count", 0) == 0 and ablation.get("fact_type_alias", {}).get("candidate_count", 0) > 0:
+                fact_type_alias_helped_count += 1
             pg_latencies.append(pg_latency)
 
         sqlite_ids = set(_ids(sqlite_rows))
@@ -207,6 +366,9 @@ def compare_retrieval(
             "pgvector_only_count": len(pg_only),
             "sqlite_only_count": len(sqlite_ids - pg_ids),
             "whether_pgvector_has_direct_answerable": pg_direct,
+            "missing_in_pgvector_ids": missing_ids[:5],
+            "metadata_mismatches": mismatches[:5],
+            "filter_ablation": ablation,
         })
 
     summary = {
@@ -221,6 +383,10 @@ def compare_retrieval(
         "pgvector_direct_answerable_count": pgvector_direct_answerable_count,
         "overlap_count": overlap_total,
         "pgvector_only_direct_candidates": pgvector_only_direct_candidates,
+        "missing_in_pgvector_count": missing_in_pgvector_count,
+        "metadata_mismatch_count": metadata_mismatch_count,
+        "strict_empty_but_product_only_has_candidates_count": strict_empty_but_product_only_has_candidates_count,
+        "fact_type_alias_helped_count": fact_type_alias_helped_count,
         "pgvector_error": pg_check.get("error") or "",
     }
     result = sanitize_obj({"summary": summary, "rows": rows})
