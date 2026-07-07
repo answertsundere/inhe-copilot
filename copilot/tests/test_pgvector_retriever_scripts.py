@@ -110,3 +110,33 @@ def test_sync_shadow_sources_reports_metadata_only_without_embedding(monkeypatch
         "media_asset": 3,
     }
     assert result["metadata_only_source_types"] == ["kbqa", "generic_rule", "media_asset"]
+
+
+def test_shadow_embedding_generation_batches_api_requests(monkeypatch):
+    import scripts.sync_pgvector_kb_chunks as script
+    from app.models.kb_tables import KBGenericServiceRule
+
+    calls = []
+
+    def fake_get_embeddings(texts):
+        calls.append(len(texts))
+        return [[0.01] * 1024 for _ in texts]
+
+    monkeypatch.setattr(script.EmbeddingService, "get_embeddings", fake_get_embeddings)
+    rules = [
+        KBGenericServiceRule(
+            id=index,
+            rule_key=f"rule-{index}",
+            title=f"title {index}",
+            content="content",
+            fact_type="promotion_policy",
+            auto_reply_allowed=False,
+        )
+        for index in range(25)
+    ]
+
+    rows, failed = script._build_rows_with_embeddings(rules, source_type="generic_rule")
+
+    assert calls == [10, 10, 5]
+    assert len(rows) == 25
+    assert failed == 0

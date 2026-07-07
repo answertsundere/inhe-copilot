@@ -509,3 +509,44 @@ def sync_chunks_to_pgvector(
                     conn.commit()
             conn.commit()
     return result
+
+
+def sync_pg_rows_to_pgvector(
+    rows: Iterable[dict[str, Any]],
+    *,
+    pg_service: PgVectorRetrieverService,
+    batch_size: int = 500,
+) -> dict[str, Any]:
+    result = {
+        "dry_run": False,
+        "scanned_count": 0,
+        "synced_count": 0,
+        "failed_count": 0,
+    }
+    prepared = [row for row in rows if row]
+    result["scanned_count"] = len(prepared)
+    if not prepared:
+        return result
+    if not pg_service.dsn:
+        result["failed_count"] = len(prepared)
+        result["error"] = "missing_dsn"
+        return result
+    sql = build_upsert_sql(pg_service.collection)
+    batch_size = max(1, int(batch_size or 500))
+    with pg_service.connect_factory(pg_service.dsn) as conn:
+        with conn.cursor() as cur:
+            for index, row in enumerate(prepared, start=1):
+                cur.execute("SAVEPOINT sync_row")
+                try:
+                    cur.execute(sql, row)
+                    cur.execute("RELEASE SAVEPOINT sync_row")
+                    result["synced_count"] += 1
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sync_row")
+                    cur.execute("RELEASE SAVEPOINT sync_row")
+                    result["failed_count"] += 1
+                    continue
+                if index % batch_size == 0:
+                    conn.commit()
+            conn.commit()
+    return result
