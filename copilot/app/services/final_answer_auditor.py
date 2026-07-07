@@ -645,8 +645,8 @@ def _fallback_reply(response: dict[str, Any], message: str, expected: set[str]) 
     if "dimensions" in expected or "space_fit" in expected:
         return (
             f"亲亲，您问的是「{product}」的尺寸大小对吗？\n"
-            "具体长、宽、高规格建议以商品详情页或尺寸图为准，您可以参考下面发您的商品图/尺寸图。\n"
-            "如果您把预留位置的宽度、进深、高度发我，我也可以帮您对照一下是否放得下。"
+            "具体长、宽、高规格需要对照这款的商品资料或尺寸图确认，避免不同款式尺寸说混。\n"
+            "如果您把预留位置的宽度、进深、高度发我，我也可以一起帮您核对是否放得下。"
         )
     if "odor" in expected:
         return (

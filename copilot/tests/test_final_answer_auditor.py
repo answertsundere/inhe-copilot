@@ -167,6 +167,26 @@ def test_final_answer_auditor_allows_damaged_aftersales_handoff():
     assert audited["suggested_reply"] == response["suggested_reply"]
 
 
+def test_final_answer_auditor_dimension_fallback_does_not_promise_media_without_block():
+    response = {
+        "intent": "product_question",
+        "product_name": "\u6d4b\u8bd5\u6536\u7eb3\u67dc",
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u6750\u8d28\u633a\u7ed3\u5b9e\u7684\u3002",
+        "requires_human_review": False,
+        "evidence_debug": {"query_fact_type": "dimensions"},
+        "reply_blocks": [],
+        "recommended_assets": [],
+    }
+
+    audited = audit_final_answer(response, customer_message="\u8fd9\u6b3e\u591a\u9ad8")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert audited["requires_human_review"] is True
+    assert "\u4e0b\u9762\u53d1" not in audited["suggested_reply"]
+    assert "\u5546\u54c1\u56fe/\u5c3a\u5bf8\u56fe" not in audited["suggested_reply"]
+    assert "\u6838\u5bf9" in audited["suggested_reply"]
+
+
 def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
     from app import config
     from app.llm import client as llm_client

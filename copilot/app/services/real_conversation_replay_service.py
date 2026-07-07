@@ -343,6 +343,8 @@ def _direct_answer_evidence_from_debug(evidence_debug: dict[str, Any]) -> list:
 def _is_direct_answer_evidence(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
+    if _is_placeholder_verification_evidence(item):
+        return False
     if item.get("reference_only") is True:
         return False
     if str(item.get("gate_status") or "").lower() in {"blocked", "reference_only"}:
@@ -350,16 +352,107 @@ def _is_direct_answer_evidence(item: Any) -> bool:
     for key in ("direct_answer_allowed", "can_direct_answer", "evidence_allowed_for_exact_answer"):
         if item.get(key) is False:
             return False
+    # IDs are useful for traceability, but they do not prove the evidence can
+    # answer the buyer. Replay scoring should only treat evidence with actual
+    # customer-facing content as direct-answerable.
     return bool(
         item.get("chunk_text")
         or item.get("chunk_preview")
         or item.get("preview")
         or item.get("content")
         or item.get("fact")
-        or item.get("evidence_id")
-        or item.get("chunk_id")
-        or item.get("entry_id")
     )
+
+
+_PLACEHOLDER_VERIFICATION_EVIDENCE_MARKERS = (
+    "\u9700\u8981\u4eba\u5de5\u6838\u5b9e",
+    "\u4eba\u5de5\u590d\u6838",
+    "\u672a\u5728\u73b0\u6709\u7ed3\u6784\u5316\u8d44\u6599\u4e2d\u660e\u786e",
+    "\u672a\u660e\u786e",
+    "\u4ee5\u5546\u54c1\u8be6\u60c5\u9875",
+    "\u4ee5\u5b9e\u7269",
+)
+
+
+_MEDIA_DELIVERY_EVIDENCE_MARKERS = (
+    "\u4e0b\u9762\u53d1",
+    "\u4e0b\u9762\u53d1\u9001",
+    "\u53d1\u60a8",
+    "\u5df2\u53d1\u60a8",
+    "\u56fe\u7247",
+    "\u5c3a\u5bf8\u56fe",
+    "\u89c4\u683c\u56fe",
+    "\u5b89\u88c5\u56fe",
+    "\u5b89\u88c5\u89c6\u9891",
+    "\u89c6\u9891",
+    "\u8bf4\u660e\u4e66",
+)
+
+
+def _evidence_text(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(
+        item.get("chunk_text")
+        or item.get("chunk_preview")
+        or item.get("preview")
+        or item.get("content")
+        or item.get("fact")
+        or ""
+    )
+
+
+def _is_placeholder_verification_evidence(item: Any) -> bool:
+    text = _evidence_text(item)
+    if not text:
+        return False
+    return any(marker in text for marker in _PLACEHOLDER_VERIFICATION_EVIDENCE_MARKERS)
+
+
+def _is_media_delivery_evidence(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    identity = " ".join(
+        str(item.get(key) or "")
+        for key in ("evidence_id", "chunk_id", "entry_id", "source_id", "source_type", "protocol_source_type")
+    ).lower()
+    text = _evidence_text(item)
+    return (
+        "kbmedia:" in identity
+        or "media" in identity
+        or "\u56fe" in identity
+        or "\u89c6\u9891" in identity
+    ) and any(marker in text for marker in _MEDIA_DELIVERY_EVIDENCE_MARKERS)
+
+
+def _has_reply_media_delivery(response: dict[str, Any] | None) -> bool:
+    if not isinstance(response, dict):
+        return False
+    for block in response.get("reply_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or block.get("block_type") or "").lower()
+        if block_type in {"image", "video"} and (
+            block.get("asset_url") or block.get("url") or block.get("media_url")
+        ):
+            return True
+    for asset in response.get("recommended_assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        if asset.get("asset_url") or asset.get("url") or asset.get("media_url"):
+            return True
+    return False
+
+
+def _has_direct_answerable_evidence(items: list[Any], response: dict[str, Any] | None = None) -> bool:
+    has_media_delivery = _has_reply_media_delivery(response)
+    for item in items or []:
+        if not _is_direct_answer_evidence(item):
+            continue
+        if _is_media_delivery_evidence(item) and not has_media_delivery:
+            continue
+        return True
+    return False
 
 
 def _extract_product_identity(response: dict[str, Any]) -> dict:
@@ -404,6 +497,7 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     reply = str(response.get("suggested_reply") or response.get("reply") or "")
     query_fact_type = _extract_query_fact_type(response)
     selected, _ = _extract_evidence(response)
+    has_answerable_evidence = _has_direct_answerable_evidence(selected, response)
     answer_trace = response.get("answer_trace") or {}
     final_audit = response.get("final_answer_audit") or response.get("final_audit") or {}
     evidence_debug = response.get("evidence_debug") or {}
@@ -412,7 +506,11 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
         failures.append({"failure_type": "api_error", "severity": "high", "message": sanitize_text(response.get("error"))})
     if response.get("tool_policy_blocked") or response.get("policy_blocked"):
         failures.append({"failure_type": "tool_policy_blocked", "severity": "medium", "message": "tool policy blocked the turn"})
-    if isinstance(final_audit, dict) and final_audit.get("passed") is False and not (response.get("requires_human_review") and not selected):
+    if (
+        isinstance(final_audit, dict)
+        and final_audit.get("passed") is False
+        and not (response.get("requires_human_review") and not has_answerable_evidence)
+    ):
         failures.append({"failure_type": "semantic_mismatch", "severity": "high", "message": "final answer audit did not pass"})
     if (
         response.get("product_identified") is False
@@ -434,12 +532,17 @@ def classify_turn_failures(response: dict[str, Any], exception: Exception | None
     if (
         query_fact_type
         and query_fact_type not in {"logistics", "order_status", "after_sales", "aftersales", "aftersales_policy"}
-        and not selected
+        and not has_answerable_evidence
         and not agent_turn_timed_out
     ):
         failures.append({"failure_type": "rag_miss", "severity": "medium", "message": "product question has no selected evidence"})
     answered = set(str(x) for x in _json_list(answer_trace.get("evidence_answered_fact_types")) if x)
-    if required and answered and not _has_compatible_fact_type_overlap(required, answered):
+    if (
+        required
+        and answered
+        and not _has_compatible_fact_type_overlap(required, answered)
+        and not (response.get("requires_human_review") and not has_answerable_evidence)
+    ):
         failures.append({"failure_type": "evidence_misuse", "severity": "medium", "message": "answered fact types do not overlap required fact types"})
     enriched = []
     for failure in failures:
@@ -508,6 +611,7 @@ def evaluate_replay_turn_result(
     query_fact_type = contract["effective_query_fact_type"]
     required_fact_types = set(str(item) for item in _extract_required_fact_types(response) if item)
     selected, _ = _extract_evidence(response)
+    has_answerable_evidence = _has_direct_answerable_evidence(selected, response)
     actionability = str(understanding.get("turn_actionability") or "")
     forbidden_topics = set(str(item) for item in (understanding.get("forbidden_reply_topics") or []) if item)
     skip_reason = str(understanding.get("skip_reason") or "")
@@ -589,7 +693,7 @@ def evaluate_replay_turn_result(
             "message": "reply contains product facts not grounded in the current turn intent",
         })
 
-    if bool(understanding.get("needs_rag")) and not selected and not response.get("requires_human_review"):
+    if bool(understanding.get("needs_rag")) and not has_answerable_evidence and not response.get("requires_human_review"):
         all_failures.append({
             "failure_type": "rag_miss",
             "severity": "medium",
@@ -601,7 +705,7 @@ def evaluate_replay_turn_result(
         and reply_topics
         and query_fact_type
         and not _has_compatible_fact_type_overlap(reply_topics, required_fact_types)
-        and not (response.get("requires_human_review") and not selected)
+        and not (response.get("requires_human_review") and not has_answerable_evidence)
     ):
         all_failures.append({
             "failure_type": "evidence_misuse",

@@ -802,6 +802,132 @@ def test_human_review_no_evidence_fallback_is_not_evidence_misuse():
     assert "semantic_mismatch" not in labels
 
 
+def test_human_review_placeholder_evidence_is_not_agent_semantic_error():
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5177\u4f53\u5c3a\u5bf8\u6211\u5148\u6309\u5f53\u524d\u5546\u54c1\u8d44\u6599\u6838\u5bf9\uff0c\u907f\u514d\u4e0d\u540c\u6b3e\u5f0f\u8bf4\u6df7\u3002",
+        "query_fact_type": "dimensions",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "selected_evidence": [{
+                "source_type": "product_facts",
+                "fact_type": "dimensions",
+                "chunk_text": "\u8fd9\u6b3e\u5546\u54c1\u7684\u5c3a\u5bf8\u9700\u8981\u4eba\u5de5\u6838\u5b9e\uff1a\u672a\u5728\u73b0\u6709\u7ed3\u6784\u5316\u8d44\u6599\u4e2d\u660e\u786e\u5c3a\u5bf8\uff0c\u4ee5\u5546\u54c1\u8be6\u60c5\u9875\u6216\u5c3a\u5bf8\u56fe\u4e3a\u51c6\u3002",
+            }],
+        },
+        "answer_trace": {
+            "query_fact_type": "dimensions",
+            "required_fact_types": ["dimensions"],
+            "evidence_answered_fact_types": ["installation"],
+        },
+        "final_answer_audit": {"passed": False, "issues": ["semantic_mismatch"], "expected_topics": ["dimensions"]},
+    }
+
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "dimensions",
+            "forbidden_reply_topics": [],
+        },
+        response,
+        classify_turn_failures(response),
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "needs_human_review" in labels
+    assert "rag_miss" in labels
+    assert "semantic_mismatch" not in labels
+    assert "evidence_misuse" not in labels
+
+
+def test_media_delivery_evidence_without_reply_block_is_not_direct_answerable():
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5c3a\u5bf8\u6211\u5148\u6309\u5f53\u524d\u5546\u54c1\u8d44\u6599\u6838\u5bf9\uff0c\u907f\u514d\u8bf4\u9519\u3002",
+        "query_fact_type": "dimensions",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "selected_evidence": [{
+                "chunk_id": "kbmedia:1:dimensions",
+                "source_type": "product_facts",
+                "evidence_fact_type": "dimensions",
+                "direct_answer_allowed": True,
+                "chunk_preview": "\u8fd9\u6b3e\u5546\u54c1\u7684\u5c3a\u5bf8\u53ef\u4ee5\u53c2\u8003\u4e0b\u9762\u53d1\u9001\u7684\u5c3a\u5bf8/\u89c4\u683c\u56fe\u7247\u3002",
+            }],
+        },
+        "answer_trace": {
+            "query_fact_type": "dimensions",
+            "required_fact_types": ["dimensions"],
+            "evidence_answered_fact_types": ["installation"],
+        },
+        "reply_blocks": [],
+        "recommended_assets": [],
+        "final_answer_audit": {"passed": False, "issues": ["semantic_mismatch"]},
+    }
+
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "dimensions",
+            "forbidden_reply_topics": [],
+        },
+        response,
+        classify_turn_failures(response),
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is False
+    assert "needs_human_review" in labels
+    assert "rag_miss" in labels
+    assert "semantic_mismatch" not in labels
+    assert "evidence_misuse" not in labels
+
+
+def test_media_delivery_evidence_with_reply_block_counts_as_answerable():
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u5c3a\u5bf8\u60a8\u53ef\u4ee5\u53c2\u8003\u56fe\u91cc\u6807\u6ce8\u7684\u89c4\u683c\u3002",
+        "query_fact_type": "dimensions",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "selected_evidence": [{
+                "chunk_id": "kbmedia:1:dimensions",
+                "source_type": "product_facts",
+                "evidence_fact_type": "dimensions",
+                "direct_answer_allowed": True,
+                "chunk_preview": "\u8fd9\u6b3e\u5546\u54c1\u7684\u5c3a\u5bf8\u53ef\u4ee5\u53c2\u8003\u4e0b\u9762\u53d1\u9001\u7684\u5c3a\u5bf8/\u89c4\u683c\u56fe\u7247\u3002",
+            }],
+        },
+        "answer_trace": {
+            "query_fact_type": "dimensions",
+            "required_fact_types": ["dimensions"],
+            "evidence_answered_fact_types": ["dimensions"],
+        },
+        "reply_blocks": [{"type": "image", "asset_url": "https://example.test/size.png"}],
+        "recommended_assets": [{"asset_url": "https://example.test/size.png", "asset_type": "size_chart"}],
+        "final_answer_audit": {"passed": True},
+    }
+
+    passed, failures = evaluate_replay_turn_result(
+        {
+            "turn_actionability": "actionable_question",
+            "needs_rag": True,
+            "should_score": True,
+            "query_fact_type": "dimensions",
+            "forbidden_reply_topics": [],
+        },
+        response,
+        classify_turn_failures(response),
+    )
+
+    labels = {item["failure_type"] for item in failures}
+    assert passed is True
+    assert "rag_miss" not in labels
+    assert "semantic_mismatch" not in labels
+
+
 def test_actionable_aftersales_turn_fails_when_agent_trace_switches_to_installation():
     passed, failures = evaluate_replay_turn_result(
         {
