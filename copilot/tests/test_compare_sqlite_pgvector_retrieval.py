@@ -94,11 +94,15 @@ def test_shadow_compare_does_not_mutate_eval_trace(tmp_path):
     assert report["summary"]["compare_trace_count"] == 1
     assert report["summary"]["pgvector_available"] is True
     assert report["summary"]["pgvector_direct_answerable_count"] == 1
+    assert report["summary"]["pgvector_faq_direct_count"] == 1
+    assert report["summary"]["pgvector_service_action_count"] == 0
+    assert report["summary"]["pgvector_media_reference_count"] == 0
     assert report["summary"]["missing_in_pgvector_count"] == 0
     assert report["summary"]["metadata_mismatch_count"] == 0
     assert report["rows"][0]["sqlite_candidate_count"] == 1
     assert report["rows"][0]["pgvector_candidate_count"] == 1
     assert report["rows"][0]["overlap_count"] == 1
+    assert report["rows"][0]["pgvector_role_counts"]["faq_direct"] == 1
     assert report["rows"][0]["filter_ablation"]["strict"]["candidate_count"] == 1
 
     db = Session()

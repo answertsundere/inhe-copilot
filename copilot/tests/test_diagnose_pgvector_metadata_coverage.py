@@ -59,4 +59,9 @@ def test_metadata_coverage_report_includes_shadow_source_counts(monkeypatch):
     assert report["sqlite_shadow_sources"]["sqlite_kbqa_published_count"] == 7
     assert report["sqlite_shadow_sources"]["sqlite_generic_rule_active_count"] == 3
     assert report["sqlite_shadow_sources"]["sqlite_media_asset_count"] == 5
+    assert report["sqlite_shadow_sources"]["rows_without_embedding_by_source_type"] == {
+        "kbqa": 7,
+        "generic_rule": 3,
+        "media_asset": 5,
+    }
     assert any("media assets" in note for note in report["notes"])

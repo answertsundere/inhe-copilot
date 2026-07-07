@@ -95,21 +95,44 @@ def _ids(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def _has_direct_answerable(rows: list[dict[str, Any]]) -> bool:
-    direct_source_types = {
-        "product_fact",
-        "product_facts",
-        "dingtalk_product_detail",
-        "faq",
-        "manual",
-        "product_activity_rule",
-    }
     for row in rows:
-        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-        if metadata.get("direct_answer_allowed") is True:
-            return True
-        if row.get("source_type") in direct_source_types:
+        if _candidate_role(row) in {"product_fact_direct", "faq_direct"}:
             return True
     return False
+
+
+def _candidate_role(row: dict[str, Any]) -> str:
+    evidence_role = str(row.get("evidence_role") or "").strip()
+    source_type = str(row.get("source_type") or "").strip()
+    if evidence_role in {"product_fact_direct", "faq_direct", "service_action", "fallback_only", "media_reference"}:
+        return evidence_role
+    if source_type in {"product_fact", "product_facts", "dingtalk_product_detail", "product_activity_rule", "manual"}:
+        return "product_fact_direct"
+    if source_type in {"faq", "kbqa"}:
+        return "faq_direct"
+    if source_type in {"generic_rule", "generic_rules", "response_templates", "aftersales_policy"}:
+        return "service_action"
+    if source_type == "media_asset":
+        return "media_reference"
+    if evidence_role in {"service_action", "fallback_only"}:
+        return evidence_role
+    if evidence_role == "media_reference":
+        return "media_reference"
+    return "reference_only"
+
+
+def _role_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {
+        "product_fact_direct": 0,
+        "faq_direct": 0,
+        "service_action": 0,
+        "media_reference": 0,
+        "reference_only": 0,
+    }
+    for row in rows:
+        role = _candidate_role(row)
+        counts[role if role in counts else "reference_only"] += 1
+    return counts
 
 
 def _fact_type_aliases(query_fact_type: str) -> list[str]:
@@ -273,6 +296,10 @@ def compare_retrieval(
     pg_latencies: list[float] = []
     pgvector_timeout_count = 0
     pgvector_direct_answerable_count = 0
+    pgvector_product_fact_direct_count = 0
+    pgvector_faq_direct_count = 0
+    pgvector_service_action_count = 0
+    pgvector_media_reference_count = 0
     overlap_total = 0
     pgvector_only_direct_candidates = 0
     missing_in_pgvector_count = 0
@@ -347,6 +374,11 @@ def compare_retrieval(
         pg_direct = _has_direct_answerable(pg_rows)
         if pg_direct:
             pgvector_direct_answerable_count += 1
+        role_counts = _role_counts(pg_rows)
+        pgvector_product_fact_direct_count += role_counts["product_fact_direct"]
+        pgvector_faq_direct_count += role_counts["faq_direct"]
+        pgvector_service_action_count += role_counts["service_action"]
+        pgvector_media_reference_count += role_counts["media_reference"]
         if pg_only and pg_direct:
             pgvector_only_direct_candidates += len(pg_only)
         overlap_total += overlap
@@ -366,6 +398,7 @@ def compare_retrieval(
             "pgvector_only_count": len(pg_only),
             "sqlite_only_count": len(sqlite_ids - pg_ids),
             "whether_pgvector_has_direct_answerable": pg_direct,
+            "pgvector_role_counts": role_counts,
             "missing_in_pgvector_ids": missing_ids[:5],
             "metadata_mismatches": mismatches[:5],
             "filter_ablation": ablation,
@@ -380,6 +413,10 @@ def compare_retrieval(
         "sqlite_avg_latency_ms": round(statistics.mean(sqlite_latencies), 2) if sqlite_latencies else 0.0,
         "pgvector_avg_latency_ms": round(statistics.mean(pg_latencies), 2) if pg_latencies else 0.0,
         "pgvector_timeout_count": pgvector_timeout_count,
+        "pgvector_product_fact_direct_count": pgvector_product_fact_direct_count,
+        "pgvector_faq_direct_count": pgvector_faq_direct_count,
+        "pgvector_service_action_count": pgvector_service_action_count,
+        "pgvector_media_reference_count": pgvector_media_reference_count,
         "pgvector_direct_answerable_count": pgvector_direct_answerable_count,
         "overlap_count": overlap_total,
         "pgvector_only_direct_candidates": pgvector_only_direct_candidates,

@@ -78,3 +78,35 @@ def test_sync_chunks_dry_run_counts_bad_dimensions():
     assert result["synced_count"] == 1
     assert result["skipped_no_embedding"] == 1
     assert result["skipped_bad_dimension"] == 1
+
+
+def test_sync_shadow_sources_reports_metadata_only_without_embedding(monkeypatch):
+    import scripts.sync_pgvector_kb_chunks as script
+
+    monkeypatch.setattr(script, "load_published_chunks", lambda db, limit=0: [])
+    monkeypatch.setattr(script, "_count_kbqa_without_embeddings", lambda db, limit=0: 2)
+    monkeypatch.setattr(script, "_count_generic_rules_without_embeddings", lambda db, limit=0: 1)
+    monkeypatch.setattr(script, "_count_media_assets_without_embeddings", lambda db, limit=0: 3)
+
+    class _Db:
+        def close(self):
+            pass
+
+    result = script.run(
+        apply=False,
+        source_type="all",
+        include_kbqa=True,
+        include_generic_rules=True,
+        include_media_assets=True,
+        db_factory=lambda: _Db(),
+    )
+
+    assert result["source_types"] == ["knowledge_chunk", "kbqa", "generic_rule", "media_asset"]
+    assert result["scanned_count"] == 6
+    assert result["synced_count"] == 0
+    assert result["skipped_no_embedding_by_source_type"] == {
+        "kbqa": 2,
+        "generic_rule": 1,
+        "media_asset": 3,
+    }
+    assert result["metadata_only_source_types"] == ["kbqa", "generic_rule", "media_asset"]

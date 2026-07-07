@@ -63,6 +63,27 @@ ORDER BY count DESC, value ASC
     return {str(row["value"]): int(row["count"] or 0) for row in cur.fetchall()}
 
 
+def _distribution_by_source_type(cur, table: str, field: str, limit: int = 50) -> dict[str, dict[str, int]]:
+    cur.execute(
+        f"""
+SELECT
+    COALESCE(NULLIF(source_type, ''), '__empty__') AS source_type,
+    COALESCE(NULLIF({field}, ''), '__empty__') AS value,
+    COUNT(*) AS count
+FROM {table}
+GROUP BY source_type, value
+ORDER BY source_type ASC, count DESC
+LIMIT %(limit)s
+""",
+        {"limit": limit},
+    )
+    result: dict[str, dict[str, int]] = {}
+    for row in cur.fetchall():
+        source = str(row["source_type"])
+        result.setdefault(source, {})[str(row["value"])] = int(row["count"] or 0)
+    return result
+
+
 def _pgvector_coverage(service: PgVectorRetrieverService) -> dict[str, Any]:
     check = service.check()
     result: dict[str, Any] = {
@@ -91,7 +112,32 @@ SELECT
     COUNT(*) FILTER (WHERE i_id = '' AND sku_code = '' AND product_title = '') AS rows_missing_product_identity,
     COUNT(*) FILTER (WHERE query_fact_type = '') AS rows_missing_query_fact_type,
     COUNT(*) FILTER (WHERE evidence_role = '') AS rows_missing_evidence_role,
-    COUNT(*) FILTER (WHERE source_type = '') AS rows_missing_source_type
+    COUNT(*) FILTER (WHERE source_type = '') AS rows_missing_source_type,
+    COUNT(*) FILTER (
+        WHERE evidence_role = 'product_fact_direct'
+           OR source_type IN ('product_fact', 'product_facts', 'dingtalk_product_detail', 'product_activity_rule', 'manual')
+    ) AS product_fact_direct_candidate_count,
+    COUNT(*) FILTER (
+        WHERE evidence_role = 'faq_direct'
+           OR source_type IN ('faq', 'kbqa')
+    ) AS faq_direct_candidate_count,
+    COUNT(*) FILTER (
+        WHERE evidence_role IN ('service_action', 'fallback_only')
+           OR source_type IN ('generic_rule', 'generic_rules', 'response_templates', 'aftersales_policy')
+    ) AS service_action_candidate_count,
+    COUNT(*) FILTER (
+        WHERE evidence_role = 'media_reference'
+           OR source_type = 'media_asset'
+    ) AS media_reference_candidate_count,
+    COUNT(*) FILTER (
+        WHERE evidence_role IN ('product_fact_direct', 'faq_direct')
+           OR source_type IN ('product_fact', 'product_facts', 'dingtalk_product_detail', 'product_activity_rule', 'manual', 'faq', 'kbqa')
+    ) AS direct_answerable_candidate_count,
+    COUNT(*) FILTER (WHERE source_type = 'kbqa') AS source_type_kbqa_count,
+    COUNT(*) FILTER (WHERE source_type = 'generic_rule') AS source_type_generic_rule_count,
+    COUNT(*) FILTER (WHERE source_type = 'media_asset') AS source_type_media_asset_count,
+    COUNT(*) FILTER (WHERE source_type = 'media_asset' AND status = 'published' AND usable_for_agent = true) AS approved_media_shadow_count,
+    COUNT(*) FILTER (WHERE source_type = 'media_asset' AND (status <> 'published' OR usable_for_agent = false)) AS pending_media_shadow_count
 FROM {table}
 """
             )
@@ -100,6 +146,7 @@ FROM {table}
             result["embedding_dimension_distribution"] = _embedding_dimension_distribution(cur, table)
             result["source_type_distribution"] = _distribution(cur, table, "source_type")
             result["evidence_role_distribution"] = _distribution(cur, table, "evidence_role")
+            result["evidence_role_distribution_by_source_type"] = _distribution_by_source_type(cur, table, "evidence_role")
             result["media_role_distribution"] = _distribution(cur, table, "media_role")
             result["status_distribution"] = _distribution(cur, table, "status")
     return result
@@ -127,6 +174,11 @@ def _sqlite_shadow_source_coverage(db) -> dict[str, Any]:
         "sqlite_generic_rule_auto_reply_count": int(generic_auto or 0),
         "sqlite_media_asset_count": int(media_total or 0),
         "sqlite_approved_usable_media_asset_count": int(approved_media or 0),
+        "rows_without_embedding_by_source_type": {
+            "kbqa": int(qa_auto or 0),
+            "generic_rule": int(generic_auto or 0),
+            "media_asset": int(approved_media or 0),
+        },
     }
 
 
