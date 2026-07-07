@@ -73,7 +73,13 @@ def _load_traces(db, run_uid: str, limit: int) -> list[EvalTrace]:
 
 
 def _ids(rows: list[dict[str, Any]]) -> list[str]:
-    return [str(row.get("chunk_id") or row.get("source_chunk_id") or "") for row in rows if row]
+    ids: list[str] = []
+    for row in rows:
+        raw = str(row.get("chunk_id") or row.get("source_chunk_id") or "")
+        if raw.startswith("pgvector:"):
+            raw = raw.split(":", 1)[1]
+        ids.append(raw)
+    return [item for item in ids if item]
 
 
 def _has_direct_answerable(rows: list[dict[str, Any]]) -> bool:

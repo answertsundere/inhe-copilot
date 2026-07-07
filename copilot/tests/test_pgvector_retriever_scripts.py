@@ -70,6 +70,7 @@ def test_sync_chunks_dry_run_counts_bad_dimensions():
         [good, bad, missing],
         pg_service=PgVectorRetrieverService(dsn=""),
         apply=False,
+        batch_size=2,
     )
 
     assert result["dry_run"] is True

@@ -14,7 +14,7 @@ def _session_factory(tmp_path):
 
 class _FakeSQLiteRetriever:
     def retrieve(self, **kwargs):
-        return [{"chunk_id": "sqlite:1", "chunk_text": "安装说明", "source_type": "faq"}]
+        return [{"chunk_id": "1", "chunk_text": "安装说明", "source_type": "faq"}]
 
 
 class _FakePgService:
@@ -84,6 +84,7 @@ def test_shadow_compare_does_not_mutate_eval_trace(tmp_path):
     assert report["summary"]["pgvector_direct_answerable_count"] == 1
     assert report["rows"][0]["sqlite_candidate_count"] == 1
     assert report["rows"][0]["pgvector_candidate_count"] == 1
+    assert report["rows"][0]["overlap_count"] == 1
 
     db = Session()
     try:

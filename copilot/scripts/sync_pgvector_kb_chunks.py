@@ -38,13 +38,26 @@ def load_published_chunks(db, *, limit: int = 0) -> list[KnowledgeChunk]:
     return query.all()
 
 
-def run(*, apply: bool = False, limit: int = 0, json_output: str = "", db_factory=SessionLocal) -> dict:
+def run(
+    *,
+    apply: bool = False,
+    limit: int = 0,
+    batch_size: int = 500,
+    json_output: str = "",
+    db_factory=SessionLocal,
+) -> dict:
     db = db_factory()
     try:
         chunks = load_published_chunks(db, limit=limit)
-        result = sync_chunks_to_pgvector(chunks, pg_service=PgVectorRetrieverService(), apply=apply)
+        result = sync_chunks_to_pgvector(
+            chunks,
+            pg_service=PgVectorRetrieverService(),
+            apply=apply,
+            batch_size=batch_size,
+        )
         result["apply"] = bool(apply)
         result["limit"] = int(limit or 0)
+        result["batch_size"] = int(batch_size or 500)
     finally:
         db.close()
     _write_json(json_output, result)
@@ -57,10 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Sync published knowledge chunk embeddings to pgvector shadow table.")
     parser.add_argument("--apply", action="store_true", help="Write to pgvector. Default is dry-run.")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--json-output", default="")
     args = parser.parse_args(argv)
     init_db()
-    result = run(apply=args.apply, limit=args.limit, json_output=args.json_output)
+    result = run(apply=args.apply, limit=args.limit, batch_size=args.batch_size, json_output=args.json_output)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if not result.get("error") else 2
 
