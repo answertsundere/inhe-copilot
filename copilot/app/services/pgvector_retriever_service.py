@@ -258,6 +258,44 @@ WHERE source_chunk_id = ANY(%(source_chunk_ids)s)
 """.strip()
 
 
+def build_fetch_for_metadata_normalization_sql(collection: str = DEFAULT_COLLECTION, limit: int = 0) -> str:
+    table = _safe_identifier(collection)
+    limit_sql = "LIMIT %(limit)s" if limit else ""
+    return f"""
+SELECT
+    source_chunk_id,
+    entry_id,
+    chunk_text,
+    i_id,
+    sku_code,
+    product_title,
+    query_fact_type,
+    source_type,
+    evidence_role,
+    media_role,
+    status,
+    usable_for_agent,
+    metadata,
+    content_hash
+FROM {table}
+ORDER BY source_chunk_id ASC
+{limit_sql}
+""".strip()
+
+
+def build_update_metadata_normalization_sql(collection: str = DEFAULT_COLLECTION) -> str:
+    table = _safe_identifier(collection)
+    return f"""
+UPDATE {table}
+SET
+    query_fact_type = %(query_fact_type)s,
+    evidence_role = %(evidence_role)s,
+    metadata = %(metadata)s::jsonb,
+    updated_at = now()
+WHERE source_chunk_id = %(source_chunk_id)s
+""".strip()
+
+
 def validate_embedding(value: Any, dimension: int = VECTOR_DIMENSION) -> list[float] | None:
     embedding = _json_load(value, value)
     if not isinstance(embedding, list) or len(embedding) != dimension:
@@ -432,6 +470,44 @@ class PgVectorRetrieverService:
                 cur.execute(sql, {"source_chunk_ids": ids})
                 rows = cur.fetchall()
         return {str(row.get("source_chunk_id")): dict(row) for row in rows}
+
+    def fetch_rows_for_metadata_normalization(self, *, limit: int = 0) -> list[dict[str, Any]]:
+        if not self.dsn:
+            return []
+        sql = build_fetch_for_metadata_normalization_sql(self.collection, limit=limit)
+        params = {"limit": max(1, int(limit or 0))} if limit else {}
+        with self.connect_factory(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def apply_metadata_normalization_updates(self, updates: list[dict[str, Any]], *, batch_size: int = 500) -> dict[str, Any]:
+        result = {"updated_count": 0, "failed_count": 0}
+        if not updates:
+            return result
+        if not self.dsn:
+            result["failed_count"] = len(updates)
+            result["error"] = "missing_dsn"
+            return result
+        sql = build_update_metadata_normalization_sql(self.collection)
+        batch_size = max(1, int(batch_size or 500))
+        with self.connect_factory(self.dsn) as conn:
+            with conn.cursor() as cur:
+                for index, update in enumerate(updates, start=1):
+                    cur.execute("SAVEPOINT normalize_row")
+                    try:
+                        cur.execute(sql, update)
+                        cur.execute("RELEASE SAVEPOINT normalize_row")
+                        result["updated_count"] += 1
+                    except Exception:
+                        cur.execute("ROLLBACK TO SAVEPOINT normalize_row")
+                        cur.execute("RELEASE SAVEPOINT normalize_row")
+                        result["failed_count"] += 1
+                    if index % batch_size == 0:
+                        conn.commit()
+            conn.commit()
+        return result
 
     @staticmethod
     def _row_to_candidate(row: dict[str, Any], *, latency_ms: float, query_text: str) -> dict[str, Any]:

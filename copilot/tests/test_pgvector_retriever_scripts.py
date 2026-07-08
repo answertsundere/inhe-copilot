@@ -140,3 +140,52 @@ def test_shadow_embedding_generation_batches_api_requests(monkeypatch):
     assert calls == [10, 10, 5]
     assert len(rows) == 25
     assert failed == 0
+
+
+class _FakeMetadataPgService:
+    def __init__(self):
+        self.updates = []
+
+    def fetch_rows_for_metadata_normalization(self, *, limit=0):
+        return [{
+            "source_chunk_id": "1",
+            "query_fact_type": "accessories",
+            "evidence_role": "accessories",
+            "source_type": "product_facts",
+            "chunk_text": "配件可以单独购买",
+            "metadata": {},
+        }]
+
+    def apply_metadata_normalization_updates(self, updates, *, batch_size=500):
+        self.updates.extend(updates)
+        return {"updated_count": len(updates), "failed_count": 0}
+
+
+def test_normalize_metadata_dry_run_does_not_update_pgvector():
+    import scripts.sync_pgvector_kb_chunks as script
+
+    service = _FakeMetadataPgService()
+
+    result = script.normalize_pgvector_metadata(apply=False, pg_service=service)
+
+    assert result["dry_run"] is True
+    assert result["would_update_count"] == 1
+    assert result["updated_count"] == 0
+    assert service.updates == []
+
+
+def test_normalize_metadata_apply_updates_pgvector_metadata_only():
+    import scripts.sync_pgvector_kb_chunks as script
+
+    service = _FakeMetadataPgService()
+
+    result = script.normalize_pgvector_metadata(apply=True, pg_service=service)
+
+    assert result["dry_run"] is False
+    assert result["would_update_count"] == 1
+    assert result["updated_count"] == 1
+    assert service.updates[0]["query_fact_type"] == "accessory_availability"
+    assert "embedding" not in service.updates[0]
+    metadata = json.loads(service.updates[0]["metadata"])
+    assert metadata["original_query_fact_type"] == "accessories"
+    assert metadata["normalized_query_fact_type"] == "accessory_availability"

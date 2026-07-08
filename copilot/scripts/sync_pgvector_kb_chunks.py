@@ -19,6 +19,7 @@ from app.models.kb_tables import KBGenericServiceRule, KBMediaAsset, KBProduct, 
 from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry  # noqa: E402
 from app.services.eval_sanitizer_service import sanitize_obj  # noqa: E402
 from app.services.embedding_service import EmbeddingService  # noqa: E402
+from app.services.fact_type_metadata_normalizer import normalize_pgvector_fact_type_metadata  # noqa: E402
 from app.services.fact_type_service import infer_evidence_fact_type  # noqa: E402
 from app.services.media_asset_service import get_auto_send_level  # noqa: E402
 from app.services.pgvector_retriever_service import (  # noqa: E402
@@ -97,6 +98,87 @@ def _count_media_assets_without_embeddings(db, *, limit: int = 0) -> int:
 
 def _content_hash(text: str) -> str:
     return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
+
+
+def _metadata_dict(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("metadata") or {}
+    if isinstance(raw, dict):
+        return dict(raw)
+    try:
+        loaded = json.loads(str(raw))
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def _normalization_sample(row: dict[str, Any], normalized) -> dict[str, Any]:
+    return {
+        "source_chunk_id": str(row.get("source_chunk_id") or ""),
+        "source_type": str(row.get("source_type") or ""),
+        "original_query_fact_type": normalized.original_query_fact_type,
+        "normalized_query_fact_type": normalized.normalized_query_fact_type,
+        "original_evidence_role": normalized.original_evidence_role,
+        "normalized_evidence_role": normalized.normalized_evidence_role,
+        "reason": normalized.reason,
+        "text_preview": str(row.get("chunk_text") or "")[:140],
+    }
+
+
+def normalize_pgvector_metadata(
+    *,
+    apply: bool = False,
+    limit: int = 0,
+    batch_size: int = 500,
+    json_output: str = "",
+    pg_service: PgVectorRetrieverService | None = None,
+) -> dict[str, Any]:
+    pg_service = pg_service or PgVectorRetrieverService()
+    rows = pg_service.fetch_rows_for_metadata_normalization(limit=limit)
+    updates: list[dict[str, Any]] = []
+    samples: list[dict[str, Any]] = []
+    high_risk_blocked_count = 0
+    unchanged_count = 0
+    for row in rows:
+        normalized = normalize_pgvector_fact_type_metadata(row)
+        if normalized.high_risk_blocked:
+            high_risk_blocked_count += 1
+        if not normalized.changed:
+            unchanged_count += 1
+            continue
+        metadata = _metadata_dict(row)
+        metadata.setdefault("original_query_fact_type", normalized.original_query_fact_type)
+        metadata.setdefault("original_evidence_role", normalized.original_evidence_role)
+        metadata["normalized_query_fact_type"] = normalized.normalized_query_fact_type
+        metadata["normalized_evidence_role"] = normalized.normalized_evidence_role
+        metadata["normalization_reason"] = normalized.reason
+        metadata["normalization_source"] = "sync_pgvector_kb_chunks.normalize_metadata"
+        updates.append({
+            "source_chunk_id": str(row.get("source_chunk_id") or ""),
+            "query_fact_type": normalized.normalized_query_fact_type,
+            "evidence_role": normalized.normalized_evidence_role,
+            "metadata": json.dumps(metadata, ensure_ascii=False),
+        })
+        if len(samples) < 10:
+            samples.append(_normalization_sample(row, normalized))
+    apply_result = {"updated_count": 0, "failed_count": 0}
+    if apply and updates:
+        apply_result = pg_service.apply_metadata_normalization_updates(updates, batch_size=batch_size)
+    result = {
+        "dry_run": not apply,
+        "apply": bool(apply),
+        "normalize_metadata": True,
+        "scanned_count": len(rows),
+        "would_update_count": len(updates),
+        "updated_count": int(apply_result.get("updated_count") or 0),
+        "unchanged_count": unchanged_count,
+        "high_risk_blocked_count": high_risk_blocked_count,
+        "failed_count": int(apply_result.get("failed_count") or 0),
+        "samples": samples,
+    }
+    if apply_result.get("error"):
+        result["error"] = apply_result.get("error")
+    _write_json(json_output, result)
+    return sanitize_obj(result)
 
 
 def _row_base(
@@ -312,9 +394,17 @@ def run(
     include_generic_rules: bool = False,
     include_media_assets: bool = False,
     generate_missing_embeddings: bool = False,
+    normalize_metadata: bool = False,
     json_output: str = "",
     db_factory=SessionLocal,
 ) -> dict:
+    if normalize_metadata:
+        return normalize_pgvector_metadata(
+            apply=apply,
+            limit=limit,
+            batch_size=batch_size,
+            json_output=json_output,
+        )
     db = db_factory()
     try:
         selected_sources = _source_type_plan(
@@ -417,6 +507,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--include-generic-rules", action="store_true")
     parser.add_argument("--include-media-assets", action="store_true")
     parser.add_argument("--generate-missing-embeddings", action="store_true")
+    parser.add_argument("--normalize-metadata", action="store_true")
     parser.add_argument("--json-output", default="")
     args = parser.parse_args(argv)
     init_db()
@@ -429,6 +520,7 @@ def main(argv: list[str] | None = None) -> int:
         include_generic_rules=args.include_generic_rules,
         include_media_assets=args.include_media_assets,
         generate_missing_embeddings=args.generate_missing_embeddings,
+        normalize_metadata=args.normalize_metadata,
         json_output=args.json_output,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
