@@ -26,6 +26,7 @@ from app.services.real_conversation_sidecar_context_service import (
     build_sidecar_context,
 )
 from app.services.real_context_product_identity_service import build_conversation_media_reference, merge_product_candidates
+from app.services.pgvector_shadow_trace_service import build_pgvector_shadow_trace
 
 
 FAILURE_TYPES = {
@@ -214,6 +215,8 @@ class ReplayOptions:
     external_tool_timeout_seconds: int | float = 0
     agent_turn_timeout_seconds: int | float = 0
     progress_log: bool = False
+    enable_pgvector_shadow_trace: bool = False
+    pgvector_shadow_top_k: int = 5
 
 
 def _new_run_uid() -> str:
@@ -888,6 +891,8 @@ class RealConversationReplayService:
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
             "agent_turn_timeout_seconds": _agent_turn_timeout_seconds(options),
             "progress_log": bool(options.progress_log),
+            "enable_pgvector_shadow_trace": bool(options.enable_pgvector_shadow_trace),
+            "pgvector_shadow_top_k": max(1, min(int(options.pgvector_shadow_top_k or 5), 20)),
         })
         db = SessionLocal()
         try:
@@ -922,6 +927,16 @@ class RealConversationReplayService:
                 "agent_accuracy_failed": 0,
                 "context_gap": 0,
                 "replay_turn_timeout_count": 0,
+                "pgvector_shadow_enabled_trace_count": 0,
+                "pgvector_shadow_available_count": 0,
+                "pgvector_shadow_error_count": 0,
+                "pgvector_product_fact_hit_count": 0,
+                "pgvector_direct_answerable_count": 0,
+                "pgvector_service_action_hit_count": 0,
+                "pgvector_media_reference_hit_count": 0,
+                "current_sqlite_no_evidence_but_pgvector_direct_count": 0,
+                "current_sqlite_safe_handoff_but_pgvector_service_action_count": 0,
+                "pgvector_media_reference_without_reply_blocks_count": 0,
             }
             if options.sample_only:
                 run.status = "sampled"
@@ -1139,6 +1154,38 @@ class RealConversationReplayService:
                         totals["passed"] += 1
 
                     selected, rejected = _extract_evidence(response)
+                    pgvector_shadow = {}
+                    if bool(eval_replay_options.get("enable_pgvector_shadow_trace")):
+                        pgvector_shadow = build_pgvector_shadow_trace(
+                            query_text=turn.sanitized_text,
+                            query_fact_type=turn_understanding.get("effective_query_fact_type")
+                            or turn_understanding.get("query_fact_type")
+                            or _extract_query_fact_type(response),
+                            sidecar=sidecar_context,
+                            top_k=int(eval_replay_options.get("pgvector_shadow_top_k") or 5),
+                        )
+                        totals["pgvector_shadow_enabled_trace_count"] += 1
+                        if pgvector_shadow.get("available"):
+                            totals["pgvector_shadow_available_count"] += 1
+                        if pgvector_shadow.get("error"):
+                            totals["pgvector_shadow_error_count"] += 1
+                        product_fact = pgvector_shadow.get("product_fact") or {}
+                        service_action = pgvector_shadow.get("service_action") or {}
+                        media_reference = pgvector_shadow.get("media_reference") or {}
+                        if int(product_fact.get("candidate_count") or 0) > 0:
+                            totals["pgvector_product_fact_hit_count"] += 1
+                        if int(product_fact.get("direct_answerable_count") or 0) > 0:
+                            totals["pgvector_direct_answerable_count"] += 1
+                            if not selected:
+                                totals["current_sqlite_no_evidence_but_pgvector_direct_count"] += 1
+                        if int(service_action.get("hit_count") or 0) > 0:
+                            totals["pgvector_service_action_hit_count"] += 1
+                            if quality_bucket.get("quality_bucket") == "safe_handoff":
+                                totals["current_sqlite_safe_handoff_but_pgvector_service_action_count"] += 1
+                        if int(media_reference.get("candidate_count") or 0) > 0:
+                            totals["pgvector_media_reference_hit_count"] += 1
+                            if not _has_reply_media_delivery(response):
+                                totals["pgvector_media_reference_without_reply_blocks_count"] += 1
                     trace = EvalTrace(
                         run_uid=run_uid,
                         case_uid=case.case_uid,
@@ -1170,6 +1217,7 @@ class RealConversationReplayService:
                         "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
                         "conversation_media_reference": conversation_media_reference,
                         "eval_replay_options": eval_replay_options,
+                        **({"pgvector_shadow": pgvector_shadow} if pgvector_shadow else {}),
                     }))
                     trace.set_final_audit(sanitize_obj(response.get("final_answer_audit") or response.get("final_audit") or {}))
                     trace.set_semantic_compiler(sanitize_obj(response.get("semantic_compiler") or response.get("semantic_compiler_debug") or {}))
@@ -1197,6 +1245,7 @@ class RealConversationReplayService:
                         "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
                         "conversation_media_reference": conversation_media_reference,
                         "eval_replay_options": eval_replay_options,
+                        **({"pgvector_shadow": pgvector_shadow} if pgvector_shadow else {}),
                     }))
                     db.add(trace)
                     for failure in failures:
@@ -1231,6 +1280,24 @@ class RealConversationReplayService:
             run.passed_turns = totals["passed"]
             run.failed_turns = totals["failed"]
             run.requires_review_turns = totals["requires_review"]
+            if totals["pgvector_shadow_enabled_trace_count"]:
+                current_metadata = run.get_metadata()
+                current_metadata["pgvector_shadow_summary"] = {
+                    key: totals[key]
+                    for key in (
+                        "pgvector_shadow_enabled_trace_count",
+                        "pgvector_shadow_available_count",
+                        "pgvector_shadow_error_count",
+                        "pgvector_product_fact_hit_count",
+                        "pgvector_direct_answerable_count",
+                        "pgvector_service_action_hit_count",
+                        "pgvector_media_reference_hit_count",
+                        "current_sqlite_no_evidence_but_pgvector_direct_count",
+                        "current_sqlite_safe_handoff_but_pgvector_service_action_count",
+                        "pgvector_media_reference_without_reply_blocks_count",
+                    )
+                }
+                run.set_metadata(current_metadata)
             db.commit()
             return {"run_uid": run_uid, "status": run.status, **totals, "total_cases": len(cases)}
         except Exception:

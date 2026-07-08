@@ -45,6 +45,8 @@ class DailyReplayOptions:
     external_tool_timeout_seconds: int | float = 0
     agent_turn_timeout_seconds: int | float = 0
     progress_log: bool = False
+    enable_pgvector_shadow_trace: bool = False
+    pgvector_shadow_top_k: int = 5
 
 
 def _pass_rate(passed: int, total: int) -> float:
@@ -93,6 +95,8 @@ def _daily_metadata(
                 "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
                 "agent_turn_timeout_seconds": float(options.agent_turn_timeout_seconds or 0),
                 "progress_log": bool(options.progress_log),
+                "enable_pgvector_shadow_trace": bool(options.enable_pgvector_shadow_trace),
+                "pgvector_shadow_top_k": max(1, min(int(options.pgvector_shadow_top_k or 5), 20)),
             }),
         }
     })
@@ -137,6 +141,8 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         external_tool_timeout_seconds=float(options.external_tool_timeout_seconds or 0),
         agent_turn_timeout_seconds=float(options.agent_turn_timeout_seconds or 0),
         progress_log=bool(options.progress_log),
+        enable_pgvector_shadow_trace=bool(options.enable_pgvector_shadow_trace),
+        pgvector_shadow_top_k=max(1, min(int(options.pgvector_shadow_top_k or 5), 20)),
     )
     schedule_uid = _new_schedule_uid(options.run_date)
     run_uid = _new_run_uid(schedule_uid)
@@ -156,6 +162,8 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
             "agent_turn_timeout_seconds": float(options.agent_turn_timeout_seconds or 0),
             "progress_log": bool(options.progress_log),
+            "enable_pgvector_shadow_trace": bool(options.enable_pgvector_shadow_trace),
+            "pgvector_shadow_top_k": max(1, min(int(options.pgvector_shadow_top_k or 5), 20)),
         }),
     }
 
@@ -195,6 +203,8 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
                     external_tool_timeout_seconds=options.external_tool_timeout_seconds,
                     agent_turn_timeout_seconds=options.agent_turn_timeout_seconds,
                     progress_log=options.progress_log,
+                    enable_pgvector_shadow_trace=options.enable_pgvector_shadow_trace,
+                    pgvector_shadow_top_k=options.pgvector_shadow_top_k,
                 )
             )
         report["replay"] = replay

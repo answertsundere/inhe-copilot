@@ -1281,6 +1281,120 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
         db.close()
 
 
+def test_replay_default_does_not_write_pgvector_shadow(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _seed_case(session_factory)
+
+    class ShadowDefaultReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            return {
+                "suggested_reply": "Need human review.",
+                "can_send": False,
+                "requires_human_review": True,
+                "evidence_debug": {"query_fact_type": "material", "selected_evidence": []},
+                "answer_trace": {"query_fact_type": "material", "required_fact_types": ["material"]},
+            }
+
+    ShadowDefaultReplayService(_FixedTurnUnderstanding("material")).replay_cases(
+        ReplayOptions(run_uid="run_no_pgvector_shadow")
+    )
+
+    db = session_factory()
+    try:
+        traces = db.query(EvalTrace).all()
+        assert len(traces) == 2
+        assert all("pgvector_shadow" not in trace.get_answer_trace() for trace in traces)
+        assert all("pgvector_shadow" not in trace.get_raw_response() for trace in traces)
+    finally:
+        db.close()
+
+
+def test_replay_records_pgvector_shadow_without_changing_delivery(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _seed_case(session_factory)
+
+    def fake_shadow(**kwargs):
+        return {
+            "enabled": True,
+            "available": True,
+            "latency_ms": 1.2,
+            "error": "",
+            "product_fact": {
+                "candidate_count": 1,
+                "direct_answerable_count": 1,
+                "source_type_distribution": {"faq": 1},
+                "evidence_role_distribution": {"faq_direct": 1},
+                "top_candidates": [{"id": "pgvector:1", "preview": "preview"}],
+            },
+            "service_action": {
+                "candidate_count": 1,
+                "hit_count": 1,
+                "source_type_distribution": {"generic_rule": 1},
+                "evidence_role_distribution": {"service_action": 1},
+                "top_candidates": [{"id": "pgvector:service", "preview": "service"}],
+            },
+            "media_reference": {
+                "candidate_count": 1,
+                "media_role_distribution": {"installation_diagram": 1},
+                "top_candidates": [{"id": "pgvector:media", "preview": "media"}],
+            },
+            "safety": {
+                "direct_answerable_excludes_service_action": True,
+                "can_send_unchanged": True,
+                "selected_evidence_unchanged": True,
+                "used_for_generation": False,
+            },
+        }
+
+    monkeypatch.setattr(
+        "app.services.real_conversation_replay_service.build_pgvector_shadow_trace",
+        fake_shadow,
+    )
+
+    class ShadowReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            return {
+                "suggested_reply": "Need human review.",
+                "sendable_reply": "",
+                "can_send": False,
+                "requires_human_review": True,
+                "reply_blocks": [],
+                "evidence_debug": {
+                    "query_fact_type": "material",
+                    "selected_evidence": [{"fact_type": "material", "content": "selected by sqlite"}],
+                },
+                "answer_trace": {"query_fact_type": "material", "required_fact_types": ["material"]},
+            }
+
+    result = ShadowReplayService(_FixedTurnUnderstanding("material")).replay_cases(
+        ReplayOptions(
+            run_uid="run_pgvector_shadow",
+            enable_pgvector_shadow_trace=True,
+            pgvector_shadow_top_k=3,
+        )
+    )
+
+    assert result["pgvector_shadow_enabled_trace_count"] == 2
+    assert result["pgvector_shadow_available_count"] == 2
+    assert result["pgvector_direct_answerable_count"] == 2
+    assert result["pgvector_service_action_hit_count"] == 2
+    assert result["pgvector_media_reference_hit_count"] == 2
+    assert result["pgvector_media_reference_without_reply_blocks_count"] == 2
+    db = session_factory()
+    try:
+        run = db.query(EvalRun).filter(EvalRun.run_uid == "run_pgvector_shadow").one()
+        assert run.get_metadata()["pgvector_shadow_summary"]["pgvector_direct_answerable_count"] == 2
+        trace = db.query(EvalTrace).order_by(EvalTrace.turn_index.asc()).first()
+        shadow = trace.get_answer_trace()["pgvector_shadow"]
+        assert shadow["product_fact"]["direct_answerable_count"] == 1
+        assert shadow["service_action"]["hit_count"] == 1
+        assert shadow["safety"]["used_for_generation"] is False
+        assert trace.get_selected_evidence() == [{"fact_type": "material", "content": "selected by sqlite"}]
+        assert trace.get_raw_response()["pgvector_shadow"]["media_reference"]["candidate_count"] == 1
+    finally:
+        db.close()
+
+
 def test_replay_agent_turn_timeout_returns_safe_handoff():
     import time
 

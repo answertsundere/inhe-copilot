@@ -63,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="eval replay only: per-turn Agent hard timeout",
     )
     parser.add_argument("--progress-log", action="store_true", help="eval replay only: print sanitized per-turn progress")
+    parser.add_argument(
+        "--enable-pgvector-shadow-trace",
+        action="store_true",
+        help="eval replay only: record read-only pgvector shadow diagnostics in replay traces",
+    )
+    parser.add_argument("--pgvector-shadow-top-k", type=int, default=5, help="eval replay only: pgvector shadow top_k")
     return parser
 
 
@@ -106,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
         external_tool_timeout_seconds=args.external_tool_timeout_seconds,
         agent_turn_timeout_seconds=args.agent_turn_timeout_seconds,
         progress_log=args.progress_log,
+        enable_pgvector_shadow_trace=args.enable_pgvector_shadow_trace,
+        pgvector_shadow_top_k=args.pgvector_shadow_top_k,
     ))
     output = _json_for_file(report)
     if args.json_output:

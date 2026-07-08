@@ -181,3 +181,39 @@ def test_daily_replay_apply_can_generate_repair_tasks(tmp_path, monkeypatch):
         assert db.query(EvalRepairTask).count() >= 1
     finally:
         db.close()
+
+
+def test_daily_replay_passes_pgvector_shadow_options(tmp_path, monkeypatch):
+    _patch_test_db(monkeypatch)
+    source = _write_source(tmp_path)
+    seen_options = []
+
+    def fake_replay_cases(self, options):
+        seen_options.append(options)
+        return {
+            "run_uid": options.run_uid,
+            "status": "completed",
+            "turns": 0,
+            "passed": 0,
+            "failed": 0,
+            "total_cases": 0,
+            "pgvector_shadow_enabled_trace_count": 0,
+        }
+
+    monkeypatch.setattr(RealConversationReplayService, "replay_cases", fake_replay_cases)
+
+    report = run_daily_real_conversation_replay(DailyReplayOptions(
+        source_dir=str(source),
+        sample_limit=1,
+        run_date="2026-06-23",
+        apply=True,
+        enable_pgvector_shadow_trace=True,
+        pgvector_shadow_top_k=3,
+    ))
+
+    assert report["status"] == "completed"
+    assert seen_options
+    assert seen_options[0].enable_pgvector_shadow_trace is True
+    assert seen_options[0].pgvector_shadow_top_k == 3
+    assert report["schedule"]["eval_replay_options"]["enable_pgvector_shadow_trace"] is True
+    assert report["schedule"]["eval_replay_options"]["pgvector_shadow_top_k"] == 3

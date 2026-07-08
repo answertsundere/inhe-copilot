@@ -41,6 +41,16 @@ POLICY_FACT_TYPES = {"aftersales", "aftersales_policy", "promotion_policy", "act
 ORDER_FACT_TYPES = {"logistics", "delivery_not_received", "order_status", "aftersales", "aftersales_policy"}
 
 
+QUALITY_BUCKETS = (
+    "auto_sendable",
+    "safe_handoff",
+    "knowledge_gap",
+    "context_gap",
+    "agent_error",
+    "unscored_or_noise",
+)
+
+
 def _count(values) -> dict[str, int]:
     counter = Counter(str(value or "unknown") for value in values)
     return dict(counter.most_common())
@@ -75,6 +85,69 @@ def _answer_trace_summary(answer_trace: dict[str, Any]) -> dict[str, Any]:
         "block_reasons": answer_trace.get("block_reasons", []),
         "final_audit": answer_trace.get("final_audit", {}),
     })
+
+
+def _pgvector_shadow_from_trace(trace: EvalTrace) -> dict[str, Any]:
+    answer = trace.get_answer_trace() or {}
+    raw = trace.get_raw_response() or {}
+    shadow = answer.get("pgvector_shadow") if isinstance(answer.get("pgvector_shadow"), dict) else {}
+    if not shadow:
+        shadow = raw.get("pgvector_shadow") if isinstance(raw.get("pgvector_shadow"), dict) else {}
+    return shadow or {}
+
+
+def _has_media_reply_block(trace: EvalTrace) -> bool:
+    raw = trace.get_raw_response() or {}
+    answer = trace.get_answer_trace() or {}
+    blocks = raw.get("reply_blocks") if isinstance(raw.get("reply_blocks"), list) else answer.get("reply_blocks")
+    for block in blocks or []:
+        if not isinstance(block, dict):
+            continue
+        if str(block.get("type") or block.get("block_type") or "").lower() in {"image", "video"}:
+            return True
+    return False
+
+
+def _pgvector_shadow_summary(traces: list[EvalTrace]) -> dict[str, int]:
+    summary = {
+        "pgvector_shadow_enabled_trace_count": 0,
+        "pgvector_shadow_available_count": 0,
+        "pgvector_shadow_error_count": 0,
+        "pgvector_product_fact_hit_count": 0,
+        "pgvector_direct_answerable_count": 0,
+        "pgvector_service_action_hit_count": 0,
+        "pgvector_media_reference_hit_count": 0,
+        "current_sqlite_no_evidence_but_pgvector_direct_count": 0,
+        "current_sqlite_safe_handoff_but_pgvector_service_action_count": 0,
+        "pgvector_media_reference_without_reply_blocks_count": 0,
+    }
+    for trace in traces:
+        shadow = _pgvector_shadow_from_trace(trace)
+        if not shadow:
+            continue
+        summary["pgvector_shadow_enabled_trace_count"] += 1
+        if shadow.get("available"):
+            summary["pgvector_shadow_available_count"] += 1
+        if shadow.get("error"):
+            summary["pgvector_shadow_error_count"] += 1
+        product_fact = shadow.get("product_fact") if isinstance(shadow.get("product_fact"), dict) else {}
+        service_action = shadow.get("service_action") if isinstance(shadow.get("service_action"), dict) else {}
+        media_reference = shadow.get("media_reference") if isinstance(shadow.get("media_reference"), dict) else {}
+        if int(product_fact.get("candidate_count") or 0) > 0:
+            summary["pgvector_product_fact_hit_count"] += 1
+        if int(product_fact.get("direct_answerable_count") or 0) > 0:
+            summary["pgvector_direct_answerable_count"] += 1
+            if not (trace.get_selected_evidence() or []):
+                summary["current_sqlite_no_evidence_but_pgvector_direct_count"] += 1
+        if int(service_action.get("hit_count") or 0) > 0:
+            summary["pgvector_service_action_hit_count"] += 1
+            if _quality_bucket(trace) == SAFE_HANDOFF:
+                summary["current_sqlite_safe_handoff_but_pgvector_service_action_count"] += 1
+        if int(media_reference.get("candidate_count") or 0) > 0:
+            summary["pgvector_media_reference_hit_count"] += 1
+            if not _has_media_reply_block(trace):
+                summary["pgvector_media_reference_without_reply_blocks_count"] += 1
+    return summary
 
 
 def _has_media_context(trace: EvalTrace) -> bool:
@@ -301,12 +374,60 @@ def _recommendations(samples: list[dict[str, Any]], total_failed: int) -> list[d
     return result
 
 
-def diagnose_latest_run(limit: int = 20, run_uid: str = "") -> dict[str, Any]:
+def _bucket_counts(traces: list[EvalTrace], failures_by_turn: dict[str, list[EvalFailure]]) -> dict[str, int]:
+    counts = {bucket: 0 for bucket in QUALITY_BUCKETS}
+    for trace in traces:
+        bucket = _quality_bucket(trace)
+        if bucket not in counts:
+            bucket = AGENT_ERROR
+        counts[bucket] += 1
+    return counts
+
+
+def _representative_samples_by_bucket(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {bucket: [] for bucket in QUALITY_BUCKETS}
+    for record in records:
+        bucket = sanitize_text(record.get("quality_bucket")) or AGENT_ERROR
+        if bucket not in grouped:
+            grouped[bucket] = []
+        if len(grouped[bucket]) < 5:
+            grouped[bucket].append(record)
+    return grouped
+
+
+def _diagnosis_notes(bucket_counts: dict[str, int], failure_counts: dict[str, int]) -> list[dict[str, str]]:
+    notes = []
+    if bucket_counts.get(SAFE_HANDOFF, 0):
+        notes.append({
+            "type": SAFE_HANDOFF,
+            "meaning": "safe_handoff is a controlled human handoff, not an Agent wrong answer.",
+        })
+    if bucket_counts.get(KNOWLEDGE_GAP, 0) or failure_counts.get("rag_miss", 0):
+        notes.append({
+            "type": KNOWLEDGE_GAP,
+            "meaning": "knowledge_gap/rag_miss should be handled by product facts, media, or policy evidence governance.",
+        })
+    if bucket_counts.get(CONTEXT_GAP, 0):
+        notes.append({
+            "type": CONTEXT_GAP,
+            "meaning": "context_gap means the replay sample lacks product/order/media context for fair Agent scoring.",
+        })
+    if bucket_counts.get(AGENT_ERROR, 0):
+        notes.append({
+            "type": AGENT_ERROR,
+            "meaning": "agent_error samples are the priority input for the next Agent main-chain fix.",
+        })
+    return notes
+
+
+def diagnose_latest_run(limit: int = 20, run_uid: str = "", include_samples: bool = False) -> dict[str, Any]:
     db = SessionLocal()
     try:
         query = db.query(EvalRun).filter(EvalRun.source_type == "real_conversation")
         if run_uid:
             query = query.filter(EvalRun.run_uid == sanitize_text(run_uid))
+        else:
+            query = query.filter(EvalRun.status == "completed")
         run = query.order_by(EvalRun.created_at.desc(), EvalRun.id.desc()).first()
         if run is None:
             return {"ok": False, "error": "no real_conversation eval run found"}
@@ -339,36 +460,71 @@ def diagnose_latest_run(limit: int = 20, run_uid: str = "") -> dict[str, Any]:
         ))
         top_samples = records[: max(1, limit)]
         total_failed = len(failed_traces)
+        bucket_counts = _bucket_counts(traces, failures_by_turn)
+        failure_counts = _count(
+            label
+            for trace in failed_traces
+            for label in _failure_labels(trace, failures_by_turn.get(trace.turn_uid, []))
+        )
+        suggested_fix_area_counts = _count(
+            failure.suggested_fix_area or "unknown"
+            for failure in failures
+            if failure.turn_uid in {trace.turn_uid for trace in failed_traces}
+        )
+        suggested_owner_counts = _count(
+            failure.suggested_owner or "unknown"
+            for failure in failures
+            if failure.turn_uid in {trace.turn_uid for trace in failed_traces}
+        )
+        turn_actionability_counts = _count(
+            (trace.get_turn_understanding() or {}).get("turn_actionability") or "unknown"
+            for trace in traces
+        )
+        pgvector_shadow_summary = _pgvector_shadow_summary(traces)
         summary = {
             "run_uid": run.run_uid,
             "status": run.status,
             "created_at": run.created_at.isoformat() if run.created_at else None,
+            "total_traces": len(traces),
             "trace_count": len(traces),
             "total_turns": run.total_turns or sum(1 for trace in traces if counts_in_quality(trace)),
+            "passed_count": run.passed_turns or sum(1 for trace in traces if counts_in_quality(trace) and trace.passed),
+            "failed_count": run.failed_turns or total_failed,
+            "requires_human_review_count": sum(1 for trace in traces if trace.requires_human_review),
             "passed_turns": run.passed_turns or sum(1 for trace in traces if counts_in_quality(trace) and trace.passed),
             "failed_turns": run.failed_turns or total_failed,
-            "unscored_or_noise_turns": sum(1 for trace in traces if _quality_bucket(trace) == "unscored_or_noise"),
-            "context_gap_turns": sum(1 for trace in traces if _quality_bucket(trace) == "context_gap"),
-            "quality_bucket_distribution": _count(_quality_bucket(trace) for trace in traces),
-            "failure_type_distribution": _count(
-                label
-                for trace in failed_traces
-                for label in _failure_labels(trace, failures_by_turn.get(trace.turn_uid, []))
-            ),
+            "unscored_or_noise_turns": bucket_counts["unscored_or_noise"],
+            "context_gap_turns": bucket_counts[CONTEXT_GAP],
+            "quality_bucket_counts": bucket_counts,
+            "quality_bucket_distribution": bucket_counts,
+            "failure_type_counts": failure_counts,
+            "failure_type_distribution": failure_counts,
+            "suggested_fix_area_counts": suggested_fix_area_counts,
+            "suggested_fix_area_distribution": suggested_fix_area_counts,
+            "suggested_owner_counts": suggested_owner_counts,
+            "query_fact_type_counts": _count(trace.query_fact_type for trace in traces),
             "query_fact_type_distribution": _count(trace.query_fact_type for trace in traces),
-            "suggested_fix_area_distribution": _count(
-                failure.suggested_fix_area or "unknown"
-                for failure in failures
-                if failure.turn_uid in {trace.turn_uid for trace in failed_traces}
-            ),
+            "turn_actionability_counts": turn_actionability_counts,
+            "context_gap_count": bucket_counts[CONTEXT_GAP],
+            "knowledge_gap_count": bucket_counts[KNOWLEDGE_GAP],
+            "safe_handoff_count": bucket_counts[SAFE_HANDOFF],
+            "agent_error_count": bucket_counts[AGENT_ERROR],
+            "auto_sendable_count": bucket_counts["auto_sendable"],
+            "unscored_or_noise_count": bucket_counts["unscored_or_noise"],
+            "rag_miss_count": failure_counts.get("rag_miss", 0),
+            **pgvector_shadow_summary,
         }
         recommendations = _recommendations(records, total_failed)
-        return sanitize_obj({
+        response = {
             "ok": True,
             "summary": summary,
-            "top_samples": top_samples,
+            "representative_samples_by_bucket": _representative_samples_by_bucket(records),
+            "diagnosis_notes": _diagnosis_notes(bucket_counts, failure_counts),
             "top_recommendations": recommendations[:20],
-        })
+        }
+        if include_samples:
+            response["top_samples"] = top_samples
+        return sanitize_obj(response)
     finally:
         db.close()
 
@@ -380,14 +536,31 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=20, help="Top failed turn samples to print.")
     parser.add_argument("--run-uid", default="", help="Optional specific real_conversation run_uid.")
     parser.add_argument("--json-output", default="", help="Optional sanitized JSON output path.")
+    parser.add_argument("--include-samples", action="store_true", help="Include sanitized failed turn samples in JSON output.")
     args = parser.parse_args()
 
-    result = diagnose_latest_run(limit=args.limit, run_uid=args.run_uid)
-    print(_safe_json(result))
+    result = diagnose_latest_run(limit=args.limit, run_uid=args.run_uid, include_samples=args.include_samples)
     if args.json_output:
         with open(args.json_output, "w", encoding="utf-8") as fh:
             fh.write(_safe_json(result))
             fh.write("\n")
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    console = {
+        "ok": result.get("ok"),
+        "run_uid": summary.get("run_uid", ""),
+        "total_traces": summary.get("total_traces", 0),
+        "passed_count": summary.get("passed_count", 0),
+        "failed_count": summary.get("failed_count", 0),
+        "requires_human_review_count": summary.get("requires_human_review_count", 0),
+        "auto_sendable_count": summary.get("auto_sendable_count", 0),
+        "safe_handoff_count": summary.get("safe_handoff_count", 0),
+        "knowledge_gap_count": summary.get("knowledge_gap_count", 0),
+        "context_gap_count": summary.get("context_gap_count", 0),
+        "agent_error_count": summary.get("agent_error_count", 0),
+        "rag_miss_count": summary.get("rag_miss_count", 0),
+        "json_output": args.json_output or "",
+    }
+    print(json.dumps(console, ensure_ascii=True, indent=2))
     return 0 if result.get("ok") else 1
 
 
