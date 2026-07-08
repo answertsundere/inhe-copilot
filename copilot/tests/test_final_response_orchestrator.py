@@ -146,6 +146,15 @@ def test_final_response_orchestrator_rejects_repolish_that_drops_short_display_n
         {
             "suggested_reply": original,
             "display_product_name": display_name,
+            "recommended_assets": [{
+                "asset_type": "size_image",
+                "asset_url": "https://example.com/size.png",
+                "auto_send_level": "auto",
+            }],
+            "reply_blocks": [
+                {"type": "text", "content": original},
+                {"type": "image", "url": "https://example.com/size.png", "send_mode": "auto_when_platform_connected"},
+            ],
         },
         customer_message="这个尺寸多大？",
     )
@@ -262,6 +271,8 @@ def test_final_response_orchestrator_reapplies_no_evidence_policy_after_polish(m
     assert "商品图/尺寸图" not in result["suggested_reply"]
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_dimensions_for_known_product"
     assert result["reply_blocks"][0]["content"] == result["suggested_reply"]
+    assert result["final_answer_audit"]["passed"] is True
+    assert result["final_answer_audit"]["mode"] == "no_evidence_controlled_reply"
 
 
 def test_final_response_orchestrator_keeps_placement_scene_no_evidence_handoff():
@@ -381,6 +392,15 @@ def test_final_response_orchestrator_rejects_llm_polish_that_shortens_display_na
         {
             "suggested_reply": original,
             "display_product_name": display_name,
+            "recommended_assets": [{
+                "asset_type": "size_image",
+                "asset_url": "https://example.com/size.png",
+                "auto_send_level": "auto",
+            }],
+            "reply_blocks": [
+                {"type": "text", "content": original},
+                {"type": "image", "url": "https://example.com/size.png", "send_mode": "auto_when_platform_connected"},
+            ],
         },
         customer_message="可以告诉我产品大小吗",
     )

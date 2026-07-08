@@ -188,6 +188,41 @@ def test_final_semantic_fit_blocks_installation_answered_with_product_facts(monk
     assert "installation_answered_with_unrelated_product_fact" in result["issues"]
 
 
+def test_final_semantic_fit_does_not_accept_recommended_asset_without_reply_block(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u4e0b\u9762\u56fe\u7247/\u89c6\u9891\u53ef\u53c2\u8003\uff0c\u6211\u518d\u53d1\u60a8\u5bf9\u5e94\u7684\u5b89\u88c5\u56fe\u6216\u89c6\u9891\u3002",
+        "requires_human_review": False,
+        "recommended_assets": [{
+            "asset_type": "pack_guide_image",
+            "asset_url": "https://asset.example/install.png",
+            "auto_send_level": "auto",
+        }],
+        "reply_blocks": [],
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "product_context_pack_summary": {
+                "evidence_pack": {
+                    "answerability": "missing_product_fact",
+                    "query_fact_type": "installation",
+                    "missing_fields": ["installation"],
+                    "matched_facts": [],
+                }
+            },
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u9632\u5012\u5de5\u5177\u600e\u4e48\u7528",
+    )
+
+    assert result["passed"] is False
+    assert "missing_evidence_without_human_review" in result["issues"]
+
+
 def test_final_semantic_fit_allows_installation_handoff_about_materials(monkeypatch):
     from app import config
 
@@ -208,6 +243,39 @@ def test_final_semantic_fit_allows_installation_handoff_about_materials(monkeypa
     )
 
     assert result["passed"] is True
+
+
+def test_final_semantic_fit_accepts_controlled_no_evidence_installation_handoff(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": (
+            "\u4eb2\uff0c\u5b89\u88c5\u8d44\u6599\u6211\u5e2e\u60a8\u6309\u8fd9\u6b3e\u6838\u5bf9\u4e00\u4e0b\u3002"
+            "\u60a8\u5982\u679c\u5361\u5728\u54ea\u4e00\u6b65\uff0c\u4e5f\u53ef\u4ee5\u628a\u5f53\u524d\u4f4d\u7f6e\u62cd\u7ed9\u6211\uff0c\u6211\u4e00\u8d77\u770b\uff1b"
+            "\u6211\u786e\u8ba4\u540e\u7ed9\u60a8\u51c6\u786e\u56de\u590d\u3002"
+        ),
+        "requires_human_review": True,
+        "answer_trace": {
+            "query_fact_type": "installation",
+            "no_evidence_reply_policy": {
+                "reply_strategy": "verify_installation_asset_before_send",
+                "requires_human_review": True,
+            },
+        },
+        "evidence_debug": {
+            "answer_mode": "no_evidence_controlled_reply",
+            "query_fact_type": "installation",
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="\u9632\u5012\u5de5\u5177\u600e\u4e48\u7528\uff1f",
+    )
+
+    assert result["passed"] is True
+    assert result["reason"] == "Controlled no-evidence handoff reply accepted deterministically."
 
 
 def test_final_semantic_fit_blocks_structure_function_answered_with_scene(monkeypatch):

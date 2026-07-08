@@ -187,6 +187,43 @@ def test_final_answer_auditor_dimension_fallback_does_not_promise_media_without_
     assert "\u6838\u5bf9" in audited["suggested_reply"]
 
 
+def test_final_answer_auditor_blocks_media_promise_without_reply_blocks():
+    response = {
+        "intent": "product_question",
+        "product_name": "\u6d4b\u8bd5\u4e66\u67b6",
+        "suggested_reply": (
+            "\u4eb2\uff0c\u5b89\u88c5\u53ef\u4ee5\u53c2\u8003\u8bf4\u660e\u4e66\u4e0a\u7684\u6b65\u9aa4\u54e6\u3002"
+            "\u53e6\u5916\uff0c\u4e0b\u9762\u56fe\u7247/\u89c6\u9891\u53ef\u53c2\u8003\uff0c"
+            "\u6211\u8fd9\u8fb9\u518d\u53d1\u60a8\u5bf9\u5e94\u7684\u5b89\u88c5\u56fe\u6216\u89c6\u9891\u3002"
+        ),
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "answer_mode": "no_evidence_controlled_reply",
+        },
+        "answer_trace": {
+            "query_fact_type": "installation",
+            "no_evidence_reply_policy": {
+                "reply_strategy": "verify_installation_asset_before_send",
+                "requires_human_review": True,
+            },
+        },
+        "recommended_assets": [{
+            "asset_type": "pack_guide_image",
+            "asset_url": "https://asset.example/install.png",
+            "auto_send_level": "auto",
+        }],
+        "reply_blocks": [],
+    }
+
+    audited = audit_final_answer(response, customer_message="\u9632\u5012\u5de5\u5177\u600e\u4e48\u7528")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "unsupported_media_claim" in audited["final_answer_audit"]["issues"]
+    assert audited["requires_human_review"] is True
+    assert "\u4e0b\u9762\u56fe\u7247/\u89c6\u9891\u53ef\u53c2\u8003" not in audited["suggested_reply"]
+
+
 def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
     from app import config
     from app.llm import client as llm_client

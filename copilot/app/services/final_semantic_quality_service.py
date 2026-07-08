@@ -49,6 +49,14 @@ def audit_customer_reply_semantic_fit(
             "deterministic",
         )
 
+    if _no_evidence_controlled_reply_acceptable(response):
+        return _result(
+            True,
+            [],
+            "Controlled no-evidence handoff reply accepted deterministically.",
+            "deterministic",
+        )
+
     # Generic-rule fallbacks are intentionally conservative policy replies.
     # When a matching generic rule exists and the reply avoids forbidden claims,
     # accept it without calling the LLM judge.
@@ -365,16 +373,44 @@ def _is_visual_media_answer(response: dict[str, Any]) -> bool:
     visual_fact_types = {"dimensions", "space_fit", "installation", "detachable", "accessories", "packaging"}
     if fact_type not in visual_fact_types:
         return False
-    has_media = bool(
-        (response.get("recommended_assets") or [])
-        or [b for b in (response.get("reply_blocks") or []) if isinstance(b, dict) and b.get("type") in {"image", "video"}]
-    )
+    has_media = bool([
+        b
+        for b in (response.get("reply_blocks") or [])
+        if isinstance(b, dict) and b.get("type") in {"image", "video"}
+    ])
     if not has_media:
         return False
     reply = str(response.get("suggested_reply") or "").lower()
     return any(term in reply for term in (
         "图", "图片", "尺寸图", "视频", "安装视频", "参考下面", "下面发您",
     ))
+
+
+def _no_evidence_controlled_reply_acceptable(response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") or {}
+    mode = str(debug.get("answer_mode") or response.get("answer_mode") or "")
+    if mode not in {"no_evidence_controlled_reply", "no_evidence_clarification"}:
+        return False
+    if not response.get("requires_human_review"):
+        return False
+    trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    policy = trace.get("no_evidence_reply_policy") or debug.get("no_evidence_reply_policy") or {}
+    if not isinstance(policy, dict) or not policy.get("reply_strategy"):
+        return False
+    try:
+        from app.services.no_evidence_reply_policy_service import (
+            contains_unsupported_media_promise,
+            has_attached_sendable_media_asset,
+        )
+
+        if contains_unsupported_media_promise(
+            str(response.get("suggested_reply") or ""),
+            has_attached_sendable_media_asset(response),
+        ):
+            return False
+    except Exception:
+        return False
+    return True
 
 
 def _generic_rule_fallback_acceptable(

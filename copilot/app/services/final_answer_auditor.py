@@ -419,10 +419,10 @@ def _no_evidence_controlled_reply_acceptable(
     try:
         from app.services.no_evidence_reply_policy_service import (
             contains_unsupported_media_promise,
-            has_sendable_media_asset,
+            has_attached_sendable_media_asset,
         )
 
-        if contains_unsupported_media_promise(reply, has_sendable_media_asset(response)):
+        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
             return False
     except Exception:
         return False
@@ -524,6 +524,17 @@ def _audit_issues(
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
 
+    try:
+        from app.services.no_evidence_reply_policy_service import (
+            contains_unsupported_media_promise,
+            has_attached_sendable_media_asset,
+        )
+
+        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
+            issues.append("unsupported_media_claim")
+    except Exception:
+        pass
+
     return _dedupe(issues)
 
 
@@ -542,6 +553,16 @@ def _hard_safety_issues(
         issues.append("asks_for_existing_order_id")
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
+    try:
+        from app.services.no_evidence_reply_policy_service import (
+            contains_unsupported_media_promise,
+            has_attached_sendable_media_asset,
+        )
+
+        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
+            issues.append("unsupported_media_claim")
+    except Exception:
+        pass
     return _dedupe(issues)
 
 

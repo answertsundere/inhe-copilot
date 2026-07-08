@@ -21,6 +21,18 @@ MEDIA_PROMISE_TERMS = (
     "可以发安装视频",
     "发您参考",
     "图片发您",
+    "下面图片",
+    "下面视频",
+    "图片可参考",
+    "视频可参考",
+    "图片/视频可参考",
+    "图片视频可参考",
+    "再发您对应的安装图",
+    "再发您对应的安装视频",
+    "再发您安装图",
+    "再发您安装视频",
+    "发安装图",
+    "发说明书",
 )
 
 PRODUCT_CONTEXT_REQUEST_TERMS = (
@@ -968,7 +980,22 @@ def contains_unsupported_media_promise(reply: str, has_sendable: bool) -> bool:
     if has_sendable:
         return False
     value = str(reply or "")
-    return any(term in value for term in MEDIA_PROMISE_TERMS)
+    if any(term in value for term in MEDIA_PROMISE_TERMS):
+        return True
+    promises_reference_media = (
+        ("下面" in value or "下方" in value)
+        and any(term in value for term in ("图片", "图纸", "视频", "说明书"))
+        and any(term in value for term in ("参考", "查看", "看一下"))
+    )
+    promises_followup_send = (
+        any(term in value for term in ("再发您", "发您", "给您发", "发给您"))
+        and any(term in value for term in ("安装图", "安装视频", "说明书", "图纸", "图片", "视频"))
+    )
+    return promises_reference_media or promises_followup_send
+
+
+def has_attached_sendable_media_asset(response: dict[str, Any]) -> bool:
+    return _has_media_blocks(response.get("reply_blocks"))
 
 
 def _promises_installation_video(reply: str) -> bool:

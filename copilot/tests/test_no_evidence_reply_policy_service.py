@@ -3,6 +3,7 @@
     build_no_evidence_reply_policy,
     contains_unsupported_media_promise,
     get_sendable_media_asset_types,
+    has_attached_sendable_media_asset,
     has_sendable_media_asset,
 )
 from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
@@ -446,6 +447,39 @@ def test_unsupported_media_promise_with_real_chinese_terms_is_rewritten():
     assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_dimensions_for_known_product"
 
 
+def test_installation_media_promise_without_reply_blocks_is_rewritten():
+    response = {
+        "suggested_reply": (
+            "亲，防倒工具的安装可以参考说明书上的步骤哦。"
+            "另外，下面图片/视频可参考，我这边再发您对应的安装图或视频。"
+        ),
+        "query_fact_type": "installation",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "selected_evidence": [{"fact_type": "installation", "content": "安装说明可参考说明书步骤。"}],
+        },
+        "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
+        "recommended_assets": [],
+        "reply_blocks": [],
+    }
+    context = {
+        "turn_understanding": {"turn_actionability": "actionable_question", "query_fact_type": "installation"},
+        "product_name": "demo product",
+        "media_context": {},
+    }
+
+    result = apply_no_evidence_reply_policy(response, context)
+
+    assert result["requires_human_review"] is True
+    assert result["generation_mode"] == "no_evidence_reply_policy"
+    assert result["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert "下面图片/视频可参考" not in result["suggested_reply"]
+    assert "再发您对应的安装图或视频" not in result["suggested_reply"]
+    assert "安装资料" in result["suggested_reply"]
+    _assert_customer_facing_safe_handoff(result["suggested_reply"])
+
+
 def test_gross_weight_with_known_product_context_does_not_answer_dimensions_or_capacity():
     result = _policy(query_fact_type="gross_weight", has_product_context=True)
 
@@ -607,8 +641,12 @@ def test_deictic_followup_asks_for_position_without_expanding_product_facts():
 
 def test_media_promise_gate_uses_actual_sendable_status():
     assert contains_unsupported_media_promise("亲，我把视频发您参考。", False) is True
+    assert contains_unsupported_media_promise("亲，下面图片/视频可参考。", False) is True
+    assert contains_unsupported_media_promise("亲，我这边再发您对应的安装图或视频。", False) is True
     assert contains_unsupported_media_promise("亲，我把视频发您参考。", True) is False
     assert has_sendable_media_asset({"recommended_assets": [{"asset_url": "https://asset.example/video.mp4", "auto_send_level": "auto"}]}) is True
+    assert has_attached_sendable_media_asset({"recommended_assets": [{"asset_url": "https://asset.example/video.mp4", "auto_send_level": "auto"}]}) is False
+    assert has_attached_sendable_media_asset({"reply_blocks": [{"type": "image", "url": "https://asset.example/install.png"}]}) is True
     assert has_sendable_media_asset({"recommended_assets": [{"asset_url": "https://asset.example/video.mp4", "auto_send_level": "review"}]}) is False
 
 
