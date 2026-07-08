@@ -26,6 +26,17 @@ from app.services.fact_type_alias_service import (  # noqa: E402
 )
 from app.services.pgvector_retriever_service import PgVectorRetrieverService  # noqa: E402
 
+SERVICE_ACTION_SOURCE_TYPES = ["generic_rule", "generic_rules", "response_templates"]
+SERVICE_ACTION_EVIDENCE_ROLES = ["service_action", "fallback_only"]
+FILTER_ABLATION_MODES = (
+    "strict",
+    "no_fact_type",
+    "product_only",
+    "no_product",
+    "fact_type_alias",
+    "service_action_merge",
+)
+
 
 def _write_json(path: str, payload: dict) -> None:
     if not path:
@@ -160,6 +171,11 @@ def _safe_alias_candidates(
     return [row for row in candidates if row.get("alias_direct_answer_safe") is True]
 
 
+def _service_action_fact_types(query_fact_type: str) -> list[str]:
+    values = expand_fact_type_aliases(query_fact_type, context="retrieval")
+    return values or ([query_fact_type] if query_fact_type else [])
+
+
 def _retrieve_pgvector(
     pg_service: PgVectorRetrieverService,
     *,
@@ -245,6 +261,18 @@ def _retrieve_pgvector(
                 alias_values=alias_values,
             )
             rows = rows[:5]
+        elif mode == "service_action_merge":
+            rows = pg_service.retrieve(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                i_id="",
+                sku_code="",
+                query_fact_types=_service_action_fact_types(query_fact_type),
+                allowed_source_types=SERVICE_ACTION_SOURCE_TYPES,
+                allowed_evidence_roles=SERVICE_ACTION_EVIDENCE_ROLES,
+                top_k=5,
+                allow_broad_search=True,
+            )
         else:
             rows = []
     except Exception:
@@ -318,6 +346,10 @@ def compare_retrieval(
                 "pgvector_avg_latency_ms": 0.0,
                 "pgvector_timeout_count": 0,
                 "pgvector_direct_answerable_count": 0,
+                "service_action_merge_candidate_count": 0,
+                "service_action_merge_hit_count": 0,
+                "service_action_merge_helped_count": 0,
+                "service_action_merge_kept_as_fallback_count": 0,
                 "overlap_count": 0,
                 "pgvector_only_direct_candidates": 0,
                 "pgvector_error": pg_check.get("error") or "pgvector_unavailable",
@@ -343,6 +375,13 @@ def compare_retrieval(
     strict_empty_but_product_only_has_candidates_count = 0
     fact_type_alias_helped_count = 0
     high_risk_alias_blocked_count = 0
+    service_action_merge_candidate_count = 0
+    service_action_merge_hit_count = 0
+    service_action_merge_helped_count = 0
+    service_action_merge_kept_as_fallback_count = 0
+    service_action_merge_fact_type_distribution: dict[str, int] = {}
+    service_action_merge_source_type_distribution: dict[str, int] = {}
+    service_action_merge_evidence_role_distribution: dict[str, int] = {}
     evidence_misuse_risk_samples: list[dict[str, Any]] = []
 
     for trace in traces:
@@ -379,7 +418,7 @@ def compare_retrieval(
         if pg_check.get("pgvector_available"):
             embedding = embedding_provider([query_text])
             query_embedding = embedding[0] if embedding else []
-            for mode in ("strict", "no_fact_type", "product_only", "no_product", "fact_type_alias"):
+            for mode in FILTER_ABLATION_MODES:
                 mode_rows, mode_latency, mode_timed_out = _retrieve_pgvector(
                     pg_service,
                     query_text=query_text,
@@ -399,6 +438,28 @@ def compare_retrieval(
                 if mode == "strict":
                     pg_rows = mode_rows
                     pg_latency = mode_latency
+                if mode == "service_action_merge":
+                    service_role_counts = _role_counts(mode_rows)
+                    service_action_merge_candidate_count += len(mode_rows)
+                    if mode_rows:
+                        service_action_merge_hit_count += 1
+                    if not ablation.get("strict", {}).get("candidate_count", 0) and mode_rows:
+                        service_action_merge_helped_count += 1
+                    service_action_merge_kept_as_fallback_count += service_role_counts["service_action"]
+                    pgvector_service_action_count += service_role_counts["service_action"]
+                    for row in mode_rows:
+                        fact_type = str(row.get("fact_type") or row.get("query_fact_type") or "__empty__")
+                        source_type = str(row.get("source_type") or "__empty__")
+                        evidence_role = str(row.get("evidence_role") or "__empty__")
+                        service_action_merge_fact_type_distribution[fact_type] = (
+                            service_action_merge_fact_type_distribution.get(fact_type, 0) + 1
+                        )
+                        service_action_merge_source_type_distribution[source_type] = (
+                            service_action_merge_source_type_distribution.get(source_type, 0) + 1
+                        )
+                        service_action_merge_evidence_role_distribution[evidence_role] = (
+                            service_action_merge_evidence_role_distribution.get(evidence_role, 0) + 1
+                        )
             if ablation.get("strict", {}).get("candidate_count", 0) == 0 and ablation.get("product_only", {}).get("candidate_count", 0) > 0:
                 strict_empty_but_product_only_has_candidates_count += 1
             alias_helped = any(row.get("fact_type_alias_used") for row in pg_rows)
@@ -473,6 +534,19 @@ def compare_retrieval(
         "strict_empty_but_product_only_has_candidates_count": strict_empty_but_product_only_has_candidates_count,
         "fact_type_alias_helped_count": fact_type_alias_helped_count,
         "high_risk_alias_blocked_count": high_risk_alias_blocked_count,
+        "service_action_merge_candidate_count": service_action_merge_candidate_count,
+        "service_action_merge_hit_count": service_action_merge_hit_count,
+        "service_action_merge_helped_count": service_action_merge_helped_count,
+        "service_action_merge_kept_as_fallback_count": service_action_merge_kept_as_fallback_count,
+        "service_action_merge_fact_type_distribution": dict(
+            sorted(service_action_merge_fact_type_distribution.items(), key=lambda item: item[1], reverse=True)
+        ),
+        "service_action_merge_source_type_distribution": dict(
+            sorted(service_action_merge_source_type_distribution.items(), key=lambda item: item[1], reverse=True)
+        ),
+        "service_action_merge_evidence_role_distribution": dict(
+            sorted(service_action_merge_evidence_role_distribution.items(), key=lambda item: item[1], reverse=True)
+        ),
         "evidence_misuse_risk_samples": evidence_misuse_risk_samples[:5],
         "pgvector_error": pg_check.get("error") or "",
     }

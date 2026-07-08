@@ -21,6 +21,7 @@ from app.services.fact_type_alias_service import is_high_risk_fact_type  # noqa:
 from app.services.pgvector_retriever_service import PgVectorRetrieverService  # noqa: E402
 from scripts.compare_sqlite_pgvector_retrieval import (  # noqa: E402
     _candidate_role,
+    FILTER_ABLATION_MODES,
     _has_direct_answerable,
     _ids,
     _latest_run_uid,
@@ -32,7 +33,7 @@ from scripts.compare_sqlite_pgvector_retrieval import (  # noqa: E402
 )
 
 
-FILTER_MODES = ("strict", "no_fact_type", "product_only", "no_product", "fact_type_alias")
+FILTER_MODES = FILTER_ABLATION_MODES
 UNKNOWN_MEDIA_ROLES = {"", "unknown", "other", "image", "product_photo", "sku_image"}
 
 
@@ -129,6 +130,8 @@ def _exclusion_reason(
         return "evidence_role_filter_empty"
     if mode_results.get("no_product", {}).get("candidate_count", 0) > 0:
         return "no_product_identity"
+    if mode_results.get("service_action_merge", {}).get("candidate_count", 0) > 0:
+        return "service_action_fallback_only"
     return "no_embedding"
 
 
@@ -185,6 +188,13 @@ def trace_pgvector_shadow(
     media_reference_with_unknown_role_count = 0
     fact_type_alias_helped_count = 0
     high_risk_alias_blocked_count = 0
+    service_action_merge_candidate_count = 0
+    service_action_merge_hit_count = 0
+    service_action_merge_helped_count = 0
+    service_action_merge_kept_as_fallback_count = 0
+    service_action_merge_fact_type_counter: Counter[str] = Counter()
+    service_action_merge_source_type_counter: Counter[str] = Counter()
+    service_action_merge_evidence_role_counter: Counter[str] = Counter()
 
     for trace in traces:
         query_text = sanitize_text(getattr(trace, "buyer_message", "") or "")
@@ -230,11 +240,23 @@ def trace_pgvector_shadow(
                 mode_results[mode] = _mode_result([], 0.0, pg_check.get("error") or embedding_error)
 
         strict_rows = raw_mode_rows.get("strict", [])
+        service_action_merge_rows = raw_mode_rows.get("service_action_merge", [])
         role_counts = _role_counts(strict_rows)
+        service_action_role_counts = _role_counts(service_action_merge_rows)
         pgvector_product_fact_direct_count += role_counts["product_fact_direct"]
         pgvector_faq_direct_count += role_counts["faq_direct"]
-        pgvector_service_action_count += role_counts["service_action"]
+        pgvector_service_action_count += role_counts["service_action"] + service_action_role_counts["service_action"]
         pgvector_media_reference_count += role_counts["media_reference"]
+        service_action_merge_candidate_count += len(service_action_merge_rows)
+        service_action_merge_kept_as_fallback_count += service_action_role_counts["service_action"]
+        if service_action_merge_rows:
+            service_action_merge_hit_count += 1
+        for row in service_action_merge_rows:
+            service_action_merge_fact_type_counter[
+                str(row.get("fact_type") or row.get("query_fact_type") or "__empty__")
+            ] += 1
+            service_action_merge_source_type_counter[str(row.get("source_type") or "__empty__")] += 1
+            service_action_merge_evidence_role_counter[str(row.get("evidence_role") or "__empty__")] += 1
         media_reference_with_unknown_role_count += _media_reference_unknown_role_count(strict_rows)
         if _has_direct_answerable(strict_rows):
             pgvector_direct_answerable_count += 1
@@ -255,6 +277,8 @@ def trace_pgvector_shadow(
             product_only_helped_count += 1
         elif no_product_count > 0:
             no_product_only_helped_count += 1
+        elif service_action_merge_rows:
+            service_action_merge_helped_count += 1
         if is_high_risk_fact_type(query_fact_type) and strict_count == 0 and no_fact_type_count > 0:
             high_risk_alias_blocked_count += 1
 
@@ -304,6 +328,14 @@ def trace_pgvector_shadow(
         "media_reference_with_unknown_role_count": media_reference_with_unknown_role_count,
         "fact_type_alias_helped_count": fact_type_alias_helped_count,
         "high_risk_alias_blocked_count": high_risk_alias_blocked_count,
+        "service_action_merge_candidate_count": service_action_merge_candidate_count,
+        "service_action_merge_hit_count": service_action_merge_hit_count,
+        "service_action_merge_helped_count": service_action_merge_helped_count,
+        "service_action_merge_kept_as_fallback_count": service_action_merge_kept_as_fallback_count,
+        "service_action_merge_fact_type_distribution": dict(service_action_merge_fact_type_counter.most_common()),
+        "service_action_merge_source_type_distribution": dict(service_action_merge_source_type_counter.most_common()),
+        "service_action_merge_evidence_role_distribution": dict(service_action_merge_evidence_role_counter.most_common()),
+        "evidence_misuse_risk_samples": [],
         "filter_exclusion_reason_counts": dict(filter_reason_counts.most_common()),
         "avg_latency_ms_by_mode": avg_latency,
         "p95_latency_ms_by_mode": p95_latency,

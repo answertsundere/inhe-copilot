@@ -17,6 +17,11 @@ class _FakeSQLiteRetriever:
         return [{"chunk_id": "1", "chunk_text": "安装说明", "source_type": "faq"}]
 
 
+class _EmptySQLiteRetriever:
+    def retrieve(self, **kwargs):
+        return []
+
+
 class _FakePgService:
     def check(self):
         return {"pgvector_available": True, "extension_available": True, "error": ""}
@@ -40,6 +45,27 @@ class _FakePgService:
                 "usable_for_agent": True,
             }
         }
+
+
+class _ServiceActionPgService:
+    def check(self):
+        return {"pgvector_available": True, "extension_available": True, "error": ""}
+
+    def retrieve(self, **kwargs):
+        if kwargs.get("allowed_source_types") and kwargs.get("allowed_evidence_roles") and not (
+            kwargs.get("i_id") or kwargs.get("sku_code")
+        ):
+            return [{
+                "chunk_id": "pgvector:generic_rule:promotion",
+                "chunk_text": "check current activity rules",
+                "source_type": "generic_rule",
+                "fact_type": "promotion_policy",
+                "evidence_role": "service_action",
+            }]
+        return []
+
+    def fetch_rows_by_source_ids(self, source_chunk_ids):
+        return {}
 
 
 class _UnavailablePgService:
@@ -146,3 +172,55 @@ def test_shadow_compare_skips_cleanly_when_pgvector_unavailable(tmp_path):
     assert report["summary"]["pgvector_available"] is False
     assert report["summary"]["skipped_reason"] == "pgvector_unavailable"
     assert report["rows"] == []
+
+
+def test_shadow_compare_merges_service_action_without_direct_answerable(tmp_path):
+    from app.models.eval_tables import EvalRun, EvalTrace
+    from scripts.compare_sqlite_pgvector_retrieval import compare_retrieval
+
+    Session = _session_factory(tmp_path)
+    db = Session()
+    try:
+        db.add(EvalRun(run_uid="run-service-action", source_type="real_conversation", status="completed", total_turns=1))
+        trace = EvalTrace(
+            run_uid="run-service-action",
+            case_uid="case-1",
+            turn_uid="turn-1",
+            turn_index=1,
+            buyer_message="鏈夋椿鍔ㄥ悧",
+            query_fact_type="promotion_policy",
+        )
+        trace.set_raw_response({
+            "copilot_context": {
+                "sidecar_context": {
+                    "product_title": "Shelf",
+                    "sku_code": "SKU-1",
+                    "i_id": "IID-1",
+                }
+            }
+        })
+        db.add(trace)
+        db.commit()
+    finally:
+        db.close()
+
+    report = compare_retrieval(
+        run_uid="run-service-action",
+        limit=10,
+        sqlite_retriever=_EmptySQLiteRetriever(),
+        pg_service=_ServiceActionPgService(),
+        embedding_provider=lambda texts: [[0.01] * 1024 for _ in texts],
+        db_factory=Session,
+    )
+
+    summary = report["summary"]
+    row = report["rows"][0]
+    assert summary["pgvector_direct_answerable_count"] == 0
+    assert summary["pgvector_service_action_count"] == 1
+    assert summary["service_action_merge_hit_count"] == 1
+    assert summary["service_action_merge_helped_count"] == 1
+    assert summary["service_action_merge_kept_as_fallback_count"] == 1
+    assert row["pgvector_candidate_count"] == 0
+    assert row["whether_pgvector_has_direct_answerable"] is False
+    assert row["filter_ablation"]["service_action_merge"]["candidate_count"] == 1
+    assert row["filter_ablation"]["service_action_merge"]["direct_answerable"] is False

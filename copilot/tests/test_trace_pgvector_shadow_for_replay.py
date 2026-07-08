@@ -45,7 +45,11 @@ class _PgService:
     def retrieve(self, **kwargs):
         if not self.available:
             return []
-        if not kwargs.get("i_id") and not kwargs.get("sku_code"):
+        if kwargs.get("allowed_source_types") and kwargs.get("allowed_evidence_roles") and not (
+            kwargs.get("i_id") or kwargs.get("sku_code")
+        ):
+            mode = "service_action_merge"
+        elif not kwargs.get("i_id") and not kwargs.get("sku_code"):
             mode = "no_product"
         elif kwargs.get("query_fact_types"):
             mode = "fact_type_alias"
@@ -168,3 +172,36 @@ def test_trace_pgvector_shadow_counts_safe_alias_help(monkeypatch):
     assert summary["fact_type_alias_helped_count"] == 1
     assert strict["fact_type_alias_used_count"] == 1
     assert strict["direct_answerable_count"] == 1
+
+
+def test_trace_pgvector_shadow_merges_service_action_as_fallback_only(monkeypatch):
+    import scripts.trace_pgvector_shadow_for_replay as script
+
+    monkeypatch.setattr(script, "_load_traces", lambda db, run_uid, limit: [_Trace(query_fact_type="promotion_policy")])
+    pg_service = _PgService(rows_by_mode={
+        "service_action_merge": [{
+            "chunk_id": "pgvector:generic_rule:promotion",
+            "source_type": "generic_rule",
+            "fact_type": "promotion_policy",
+            "evidence_role": "service_action",
+            "chunk_text": "service action",
+        }]
+    })
+
+    result = script.trace_pgvector_shadow(
+        run_uid="run-1",
+        pg_service=pg_service,
+        embedding_provider=_embedding_provider,
+        db_factory=lambda: _Db(),
+    )
+
+    summary = result["summary"]
+    service_mode = result["rows"][0]["pgvector_shadow"]["filter_mode_results"]["service_action_merge"]
+    assert summary["strict_hit_count"] == 0
+    assert summary["service_action_merge_hit_count"] == 1
+    assert summary["service_action_merge_helped_count"] == 1
+    assert summary["service_action_merge_kept_as_fallback_count"] == 1
+    assert summary["pgvector_service_action_count"] == 1
+    assert summary["pgvector_direct_answerable_count"] == 0
+    assert service_mode["service_action_count"] == 1
+    assert service_mode["direct_answerable_count"] == 0
