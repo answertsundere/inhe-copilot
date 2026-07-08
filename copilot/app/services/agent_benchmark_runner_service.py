@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from typing import Any, Callable
@@ -43,6 +44,26 @@ def _contains(text: str, needle: str) -> bool:
     return sanitize_text(needle).lower() in sanitize_text(text).lower()
 
 
+def _mentions_specific_current_product_context(text: str) -> bool:
+    normalized_text = sanitize_text(text)
+    direct_aliases = (
+        "\u5f53\u524d\u8fd9\u6b3e",
+        "\u8fd9\u6b3e\u5546\u54c1",
+        "\u6309\u5f53\u524d\u8fd9\u6b3e",
+        "\u6309\u8fd9\u6b3e",
+        "\u6309\u60a8\u8fd9\u6b3e",
+        "\u60a8\u8fd9\u6b3e",
+        "\u8fd9\u6b3e\u300c",
+        "\u8fd9\u6b3e\u7684",
+    )
+    if any(alias in normalized_text for alias in direct_aliases):
+        return True
+    return bool(re.search(
+        r"\u8fd9\u6b3e[\u300c\u300a]?[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff·\-\s]{1,30}[\u300d\u300b]?(?:\u7684|\u5546\u54c1|\u8d44\u6599|\u5b89\u88c5|\u7ed3\u6784|\u914d\u4ef6|\u5c3a\u5bf8|\u627f\u91cd|\u4f18\u60e0|\u6d3b\u52a8|\u552e\u540e)",
+        normalized_text,
+    ))
+
+
 def _key_point_satisfied(text: str, key_point: str) -> bool:
     if _contains(text, key_point):
         return True
@@ -65,6 +86,8 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
     if any(term in normalized_key for term in ("不直接承诺有安装视频", "不承诺有安装视频")):
         video_promises = ("一定有安装视频", "可以发安装视频", "我把安装视频发您", "把安装视频发您", "发安装视频")
         return not any(term in normalized_text for term in video_promises)
+    if any(term in normalized_key for term in ("\u5f53\u524d\u5546\u54c1", "\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1", "\u6309\u5f53\u524d\u5546\u54c1", "\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1")):
+        return _mentions_specific_current_product_context(normalized_text)
     alias_groups = [
         (
             ("\u5b89\u88c5\u56fe", "\u8bf4\u660e\u4e66", "\u5b89\u88c5\u56fe\u6216\u8bf4\u660e\u4e66"),

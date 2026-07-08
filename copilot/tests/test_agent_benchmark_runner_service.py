@@ -300,6 +300,58 @@ def test_current_product_key_point_accepts_your_style_alias(monkeypatch):
     assert item["missing_key_points"] == []
 
 
+def test_current_product_key_point_accepts_specific_product_name_context(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "Verify against this product.",
+            "key_points": ["\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "\u4eb2\uff0c\u8fd9\u6b3e\u6d4b\u8bd5\u4e66\u67b6\u7684\u5b89\u88c5\u8d44\u6599\u6211\u5e2e\u60a8\u6838\u5bf9\u4e00\u4e0b\uff0c\u786e\u8ba4\u540e\u56de\u590d\u60a8\u3002",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
+def test_current_product_key_point_rejects_generic_deictic_without_product_context(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "Verify against this product.",
+            "key_points": ["\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "\u4eb2\uff0c\u8fd9\u4e2a\u6211\u5e2e\u60a8\u6838\u5bf9\u4e00\u4e0b\uff0c\u90a3\u4e2a\u60c5\u51b5\u786e\u8ba4\u540e\u56de\u590d\u60a8\u3002",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["failed"] == 1
+    assert item["missing_key_points"] == ["\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"]
+
+
 def test_current_product_key_point_rejects_page_only_reply(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(
