@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.services.embedding_service import EmbeddingService  # noqa: E402
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # noqa: E402
+from app.services.fact_type_alias_service import is_high_risk_fact_type  # noqa: E402
 from app.services.pgvector_retriever_service import PgVectorRetrieverService  # noqa: E402
 from scripts.compare_sqlite_pgvector_retrieval import (  # noqa: E402
     _candidate_role,
@@ -31,7 +32,7 @@ from scripts.compare_sqlite_pgvector_retrieval import (  # noqa: E402
 )
 
 
-FILTER_MODES = ("strict", "no_fact_type", "product_only", "no_product")
+FILTER_MODES = ("strict", "no_fact_type", "product_only", "no_product", "fact_type_alias")
 UNKNOWN_MEDIA_ROLES = {"", "unknown", "other", "image", "product_photo", "sku_image"}
 
 
@@ -60,6 +61,11 @@ def _top_candidates(rows: list[dict[str, Any]], limit: int = 3) -> list[dict[str
             "evidence_role": str(row.get("evidence_role") or ""),
             "media_role": str(row.get("media_role") or ""),
             "query_fact_type": str(row.get("fact_type") or row.get("query_fact_type") or ""),
+            "fact_type_alias_used": bool(row.get("fact_type_alias_used")),
+            "alias_requested": str(row.get("alias_requested") or ""),
+            "alias_expanded": row.get("alias_expanded") or [],
+            "alias_candidate_matched": str(row.get("alias_candidate_matched") or ""),
+            "alias_direct_answer_safe": row.get("alias_direct_answer_safe"),
             "score": row.get("score") or row.get("vector_score") or 0,
             "preview": sanitize_text(str(row.get("chunk_text") or ""))[:120],
         })
@@ -74,6 +80,8 @@ def _mode_result(rows: list[dict[str, Any]], latency_ms: float, error: str = "")
         "error": error,
         "top_source_types": _top_counts(rows, "source_type"),
         "top_evidence_roles": _top_counts(rows, "evidence_role"),
+        "fact_type_alias_used_count": sum(1 for row in rows if row.get("fact_type_alias_used")),
+        "alias_direct_answer_safe_count": sum(1 for row in rows if row.get("alias_direct_answer_safe") is True),
         "product_fact_direct_count": role_counts["product_fact_direct"],
         "faq_direct_count": role_counts["faq_direct"],
         "service_action_count": role_counts["service_action"],
@@ -175,6 +183,8 @@ def trace_pgvector_shadow(
     pgvector_media_reference_count = 0
     pgvector_direct_answerable_count = 0
     media_reference_with_unknown_role_count = 0
+    fact_type_alias_helped_count = 0
+    high_risk_alias_blocked_count = 0
 
     for trace in traces:
         query_text = sanitize_text(getattr(trace, "buyer_message", "") or "")
@@ -234,14 +244,19 @@ def trace_pgvector_shadow(
         no_fact_type_count = mode_results["no_fact_type"]["candidate_count"]
         product_only_count = mode_results["product_only"]["candidate_count"]
         no_product_count = mode_results["no_product"]["candidate_count"]
+        alias_used = any(row.get("fact_type_alias_used") for row in strict_rows)
         if strict_count > 0:
             strict_hit_count += 1
+            if alias_used:
+                fact_type_alias_helped_count += 1
         elif no_fact_type_count > 0:
             no_fact_type_helped_count += 1
         elif product_only_count > 0:
             product_only_helped_count += 1
         elif no_product_count > 0:
             no_product_only_helped_count += 1
+        if is_high_risk_fact_type(query_fact_type) and strict_count == 0 and no_fact_type_count > 0:
+            high_risk_alias_blocked_count += 1
 
         reason = _exclusion_reason(
             sidecar=sidecar,
@@ -287,6 +302,8 @@ def trace_pgvector_shadow(
         "pgvector_media_reference_count": pgvector_media_reference_count,
         "pgvector_direct_answerable_count": pgvector_direct_answerable_count,
         "media_reference_with_unknown_role_count": media_reference_with_unknown_role_count,
+        "fact_type_alias_helped_count": fact_type_alias_helped_count,
+        "high_risk_alias_blocked_count": high_risk_alias_blocked_count,
         "filter_exclusion_reason_counts": dict(filter_reason_counts.most_common()),
         "avg_latency_ms_by_mode": avg_latency,
         "p95_latency_ms_by_mode": p95_latency,

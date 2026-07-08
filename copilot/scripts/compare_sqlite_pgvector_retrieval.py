@@ -19,19 +19,12 @@ from app.models.eval_tables import EvalRun, EvalTrace  # noqa: E402
 from app.retrieval.current_sqlite_retriever import CurrentSQLiteRetriever  # noqa: E402
 from app.services.embedding_service import EmbeddingService  # noqa: E402
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # noqa: E402
+from app.services.fact_type_alias_service import (  # noqa: E402
+    expand_fact_type_aliases,
+    is_alias_safe_for_direct_answer,
+    is_high_risk_fact_type,
+)
 from app.services.pgvector_retriever_service import PgVectorRetrieverService  # noqa: E402
-
-
-_SHADOW_FACT_TYPE_ALIASES = {
-    "promotion_policy": ["promotion_policy", "price_negotiation"],
-    "price_negotiation": ["price_negotiation", "promotion_policy"],
-    "aftersales": ["aftersales", "aftersales_policy"],
-    "aftersales_policy": ["aftersales_policy", "return_pickup", "refund_policy", "replacement_policy"],
-    "return_pickup": ["return_pickup", "aftersales_policy"],
-    "refund_policy": ["refund_policy", "aftersales_policy"],
-    "replacement_policy": ["replacement_policy", "aftersales_policy"],
-    "space_fit": ["space_fit", "dimensions"],
-}
 
 
 def _write_json(path: str, payload: dict) -> None:
@@ -102,6 +95,8 @@ def _has_direct_answerable(rows: list[dict[str, Any]]) -> bool:
 
 
 def _candidate_role(row: dict[str, Any]) -> str:
+    if row.get("alias_direct_answer_safe") is False:
+        return "reference_only"
     evidence_role = str(row.get("evidence_role") or "").strip()
     source_type = str(row.get("source_type") or "").strip()
     if evidence_role in {"product_fact_direct", "faq_direct", "service_action", "fallback_only", "media_reference"}:
@@ -135,9 +130,34 @@ def _role_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def _fact_type_aliases(query_fact_type: str) -> list[str]:
-    values = _SHADOW_FACT_TYPE_ALIASES.get(str(query_fact_type or ""), [str(query_fact_type or "")])
-    return [item for item in dict.fromkeys(values) if item]
+def _annotate_alias_candidate(row: dict[str, Any], *, requested_fact_type: str, alias_values: list[str]) -> dict[str, Any]:
+    candidate = dict(row)
+    candidate_fact_type = str(candidate.get("fact_type") or candidate.get("query_fact_type") or "")
+    alias_used = bool(candidate_fact_type and candidate_fact_type != requested_fact_type)
+    candidate["fact_type_alias_used"] = alias_used
+    candidate["alias_requested"] = requested_fact_type
+    candidate["alias_expanded"] = alias_values
+    candidate["alias_candidate_matched"] = candidate_fact_type
+    candidate["alias_direct_answer_safe"] = is_alias_safe_for_direct_answer(
+        requested_fact_type,
+        candidate_fact_type,
+        str(candidate.get("evidence_role") or ""),
+        str(candidate.get("source_type") or ""),
+    )
+    return candidate
+
+
+def _safe_alias_candidates(
+    rows: list[dict[str, Any]],
+    *,
+    requested_fact_type: str,
+    alias_values: list[str],
+) -> list[dict[str, Any]]:
+    candidates = [
+        _annotate_alias_candidate(row, requested_fact_type=requested_fact_type, alias_values=alias_values)
+        for row in rows
+    ]
+    return [row for row in candidates if row.get("alias_direct_answer_safe") is True]
 
 
 def _retrieve_pgvector(
@@ -161,6 +181,23 @@ def _retrieve_pgvector(
                 query_fact_type=query_fact_type,
                 top_k=5,
             )
+            if not rows and query_fact_type:
+                alias_values = expand_fact_type_aliases(query_fact_type, context="retrieval")
+                alias_only = [item for item in alias_values if item != query_fact_type]
+                if alias_only:
+                    alias_rows = pg_service.retrieve(
+                        query_text=query_text,
+                        query_embedding=query_embedding,
+                        i_id=sidecar["i_id"],
+                        sku_code=sidecar["sku_code"],
+                        query_fact_types=alias_only,
+                        top_k=5,
+                    )
+                    rows = _safe_alias_candidates(
+                        alias_rows,
+                        requested_fact_type=query_fact_type,
+                        alias_values=alias_values,
+                    )
         elif mode == "no_fact_type":
             rows = pg_service.retrieve(
                 query_text=query_text,
@@ -192,22 +229,21 @@ def _retrieve_pgvector(
                 allow_broad_search=True,
             )
         elif mode == "fact_type_alias":
-            rows = []
-            seen: set[str] = set()
-            for alias in _fact_type_aliases(query_fact_type):
-                for item in pg_service.retrieve(
-                    query_text=query_text,
-                    query_embedding=query_embedding,
-                    i_id=sidecar["i_id"],
-                    sku_code=sidecar["sku_code"],
-                    query_fact_type=alias,
-                    top_k=5,
-                ):
-                    item_id = str(item.get("chunk_id") or item.get("source_chunk_id") or "")
-                    if item_id in seen:
-                        continue
-                    seen.add(item_id)
-                    rows.append(item)
+            alias_values = expand_fact_type_aliases(query_fact_type, context="retrieval")
+            alias_only = [item for item in alias_values if item != query_fact_type]
+            alias_rows = pg_service.retrieve(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                i_id=sidecar["i_id"],
+                sku_code=sidecar["sku_code"],
+                query_fact_types=alias_only,
+                top_k=5,
+            ) if alias_only else []
+            rows = _safe_alias_candidates(
+                alias_rows,
+                requested_fact_type=query_fact_type,
+                alias_values=alias_values,
+            )
             rows = rows[:5]
         else:
             rows = []
@@ -252,7 +288,7 @@ def _metadata_mismatches(sqlite_rows: list[dict[str, Any]], pg_rows_by_id: dict[
 def compare_retrieval(
     *,
     run_uid: str = "",
-    limit: int = 50,
+    limit: int = 0,
     json_output: str = "",
     sqlite_retriever=None,
     pg_service: PgVectorRetrieverService | None = None,
@@ -306,6 +342,8 @@ def compare_retrieval(
     metadata_mismatch_count = 0
     strict_empty_but_product_only_has_candidates_count = 0
     fact_type_alias_helped_count = 0
+    high_risk_alias_blocked_count = 0
+    evidence_misuse_risk_samples: list[dict[str, Any]] = []
 
     for trace in traces:
         qft = _query_fact_type(trace)
@@ -363,8 +401,18 @@ def compare_retrieval(
                     pg_latency = mode_latency
             if ablation.get("strict", {}).get("candidate_count", 0) == 0 and ablation.get("product_only", {}).get("candidate_count", 0) > 0:
                 strict_empty_but_product_only_has_candidates_count += 1
-            if ablation.get("strict", {}).get("candidate_count", 0) == 0 and ablation.get("fact_type_alias", {}).get("candidate_count", 0) > 0:
+            alias_helped = any(row.get("fact_type_alias_used") for row in pg_rows)
+            if alias_helped or (
+                ablation.get("strict", {}).get("candidate_count", 0) == 0
+                and ablation.get("fact_type_alias", {}).get("candidate_count", 0) > 0
+            ):
                 fact_type_alias_helped_count += 1
+            if (
+                is_high_risk_fact_type(qft)
+                and ablation.get("strict", {}).get("candidate_count", 0) == 0
+                and ablation.get("no_fact_type", {}).get("candidate_count", 0) > 0
+            ):
+                high_risk_alias_blocked_count += 1
             pg_latencies.append(pg_latency)
 
         sqlite_ids = set(_ids(sqlite_rows))
@@ -424,6 +472,8 @@ def compare_retrieval(
         "metadata_mismatch_count": metadata_mismatch_count,
         "strict_empty_but_product_only_has_candidates_count": strict_empty_but_product_only_has_candidates_count,
         "fact_type_alias_helped_count": fact_type_alias_helped_count,
+        "high_risk_alias_blocked_count": high_risk_alias_blocked_count,
+        "evidence_misuse_risk_samples": evidence_misuse_risk_samples[:5],
         "pgvector_error": pg_check.get("error") or "",
     }
     result = sanitize_obj({"summary": summary, "rows": rows})
@@ -436,7 +486,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Shadow compare current SQLite retrieval against pgvector retrieval.")
     parser.add_argument("--run-uid", default="")
-    parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--json-output", default="")
     args = parser.parse_args(argv)
     init_db()

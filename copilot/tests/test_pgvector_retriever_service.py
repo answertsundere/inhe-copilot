@@ -42,6 +42,20 @@ def test_retrieve_sql_applies_metadata_filters():
     assert params["top_k"] == 7
 
 
+def test_retrieve_sql_supports_multiple_fact_types_for_shadow_aliases():
+    from app.services.pgvector_retriever_service import build_retrieve_sql
+
+    sql, params = build_retrieve_sql(
+        i_id="IID-1",
+        query_fact_types=["promotion_policy", "price_negotiation"],
+        top_k=5,
+    )
+
+    assert "query_fact_type = ANY(%(query_fact_types)s)" in sql
+    assert "query_fact_type = %(query_fact_type)s" not in sql
+    assert params["query_fact_types"] == ["promotion_policy", "price_negotiation"]
+
+
 def test_retriever_blocks_broad_search_without_identity_or_filters():
     from app.services.pgvector_retriever_service import PgVectorRetrieverService
 

@@ -47,6 +47,8 @@ class _PgService:
             return []
         if not kwargs.get("i_id") and not kwargs.get("sku_code"):
             mode = "no_product"
+        elif kwargs.get("query_fact_types"):
+            mode = "fact_type_alias"
         elif not kwargs.get("query_fact_type"):
             mode = "no_fact_type"
         else:
@@ -132,3 +134,37 @@ def test_trace_pgvector_shadow_handles_unavailable_pgvector(monkeypatch):
     assert summary["pgvector_error_count"] == 1
     assert summary["filter_exclusion_reason_counts"] == {"pgvector_unavailable": 1}
     assert result["rows"][0]["pgvector_shadow"]["available"] is False
+
+
+def test_trace_pgvector_shadow_counts_safe_alias_help(monkeypatch):
+    import scripts.trace_pgvector_shadow_for_replay as script
+
+    monkeypatch.setattr(
+        script,
+        "_load_traces",
+        lambda db, run_uid, limit: [_Trace(query_fact_type="promotion_policy")],
+    )
+    pg_service = _PgService(rows_by_mode={
+        "fact_type_alias": [{
+            "chunk_id": "pgvector:product_facts:1",
+            "source_type": "product_facts",
+            "fact_type": "price_negotiation",
+            "evidence_role": "product_fact_direct",
+            "chunk_text": "promotion policy",
+        }]
+    })
+
+    result = script.trace_pgvector_shadow(
+        run_uid="run-1",
+        pg_service=pg_service,
+        embedding_provider=_embedding_provider,
+        db_factory=lambda: _Db(),
+    )
+
+    summary = result["summary"]
+    strict = result["rows"][0]["pgvector_shadow"]["filter_mode_results"]["strict"]
+    assert summary["strict_hit_count"] == 1
+    assert summary["no_fact_type_helped_count"] == 0
+    assert summary["fact_type_alias_helped_count"] == 1
+    assert strict["fact_type_alias_used_count"] == 1
+    assert strict["direct_answerable_count"] == 1

@@ -180,6 +180,7 @@ def build_retrieve_sql(
     i_id: str = "",
     sku_code: str = "",
     query_fact_type: str = "",
+    query_fact_types: list[str] | None = None,
     allowed_source_types: list[str] | None = None,
     allowed_evidence_roles: list[str] | None = None,
     top_k: int = 5,
@@ -196,7 +197,11 @@ def build_retrieve_sql(
     if sku_code:
         where.append("sku_code = %(sku_code)s")
         params["sku_code"] = sku_code
-    if query_fact_type:
+    clean_fact_types = [str(item).strip() for item in (query_fact_types or []) if str(item).strip()]
+    if clean_fact_types:
+        where.append("query_fact_type = ANY(%(query_fact_types)s)")
+        params["query_fact_types"] = clean_fact_types
+    elif query_fact_type:
         where.append("query_fact_type = %(query_fact_type)s")
         params["query_fact_type"] = query_fact_type
     if allowed_source_types:
@@ -382,6 +387,7 @@ class PgVectorRetrieverService:
         i_id: str = "",
         sku_code: str = "",
         query_fact_type: str = "",
+        query_fact_types: list[str] | None = None,
         allowed_source_types: list[str] | None = None,
         allowed_evidence_roles: list[str] | None = None,
         top_k: int = 5,
@@ -390,7 +396,10 @@ class PgVectorRetrieverService:
         embedding = validate_embedding(query_embedding)
         if embedding is None:
             return []
-        if not allow_broad_search and not (i_id or sku_code or query_fact_type or allowed_source_types or allowed_evidence_roles):
+        clean_fact_types = [str(item).strip() for item in (query_fact_types or []) if str(item).strip()]
+        if not allow_broad_search and not (
+            i_id or sku_code or query_fact_type or clean_fact_types or allowed_source_types or allowed_evidence_roles
+        ):
             return []
         if not self.dsn:
             return []
@@ -399,6 +408,7 @@ class PgVectorRetrieverService:
             i_id=i_id,
             sku_code=sku_code,
             query_fact_type=query_fact_type,
+            query_fact_types=clean_fact_types,
             allowed_source_types=allowed_source_types,
             allowed_evidence_roles=allowed_evidence_roles,
             top_k=top_k,
