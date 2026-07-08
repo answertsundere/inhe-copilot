@@ -321,7 +321,13 @@ def run(*, trace_json: str, json_output: str = "") -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Analyze pgvector strict-empty/product-only-hit retrieval gaps.")
-    parser.add_argument("--trace-json", required=True, help="Path to trace_pgvector_shadow_for_replay JSON output.")
+    parser.add_argument(
+        "--trace-json",
+        "--input",
+        dest="trace_json",
+        required=True,
+        help="Path to trace_pgvector_shadow_for_replay JSON output.",
+    )
     parser.add_argument("--json-output", default="")
     args = parser.parse_args(argv)
     result = run(trace_json=args.trace_json, json_output=args.json_output)
