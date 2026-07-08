@@ -108,6 +108,8 @@ def test_replay_high_frequency_service_and_product_terms_get_fact_type():
         "\u8fd9\u4e2a\u4e0d\u662f\u80cc\u80f6\u561b": "installation",
         "\u4f60\u4eec\u6709\u4e9b\u87ba\u5e3d\u6ed1\u7259\uff0c\u600e\u4e48\u529e": "aftersales",
         "\u8fd9\u4e24\u6b3e\u54ea\u4e2a\u627f\u653e\u7684\u6570\u91cf\u66f4\u591a": "variant_compare",
+        "\u4eb2\u5e2e\u6211\u53d1\u5230\u8fd9\u4e2a\u5730\u5740\uff0c\u521a\u521a\u4e0b\u5355\u7684\u5730\u5740\u9519\u4e86": "order_assistance",
+        "\u4e2d\u95f4\u518d\u52a0\u4e2a\u53cc\u5c42\u9694\u677f\u53ef\u4ee5\u653e32.5\u516c\u65a4\u5417": "load_capacity",
     }
     for message, fact_type in cases.items():
         result = _understand(message)
@@ -213,6 +215,8 @@ def test_structure_function_questions_are_not_space_or_scene_questions():
         "这个护栏能补一面吗",
         "这个侧板能单独配吗",
         "这个配件能不能装这款",
+        "下面的螺丝孔位能不能对上",
+        "背板预留孔可以加装吗",
     )
     for message in cases:
         result = _understand(message)

@@ -15,7 +15,7 @@ from app.services.eval_sanitizer_service import sanitize_text
 
 
 PRODUCT_FACT_TOPICS = {
-    "dimensions": ("尺寸", "长宽高", "多大", "多高", "多宽", "多长", "高度", "宽度", "深度", "最窄", "规格"),
+    "dimensions": ("尺寸", "长宽高", "多大", "多高", "多宽", "多长", "多厚", "厚度", "高度", "宽度", "深度", "最窄", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间", "占地方", "占地", "几平方", "平方"),
     "load_capacity": ("承重", "载重", "多重", "压弯", "压塌", "结实", "放很多书", "容量", "承放"),
     "material": ("材质", "材料", "板材", "塑料", "什么塑料", "环保", "防潮", "受潮", "防水", "甲醛", "气味", "material"),
@@ -34,7 +34,11 @@ PRODUCT_FACT_TOPICS = {
     ),
     "variant_compare": ("两款", "哪款", "哪个更", "哪款更", "区别", "差别", "对比", "数量更多"),
     "invoice_policy": ("发票", "开发票", "开票", "抬头", "税号"),
-    "order_assistance": ("改地址", "改一下地址", "修改地址", "换地址", "改收货地址", "地址没改", "怎么下单", "怎样下单", "下单链接", "规格怎么选"),
+    "order_assistance": (
+        "改地址", "改一下地址", "修改地址", "换地址", "改收货地址", "地址没改",
+        "地址错", "下单的地址错", "发到这个地址", "发这个地址", "新地址",
+        "怎么下单", "怎样下单", "下单链接", "规格怎么选",
+    ),
 }
 
 PROMOTION_TERMS = (
@@ -171,8 +175,8 @@ ACCESSORY_RETENTION_COMPONENT_TERMS = (*ACCESSORY_COMPONENT_TERMS, "螺丝刀", 
 ACCESSORY_RETENTION_TERMS = ("留下", "留着", "保留", "还要用", "还需要用", "后面要用", "后面还要用", "后面还需要用")
 MISSING_QUANTITY_OBJECT_TERMS = ("配件", "零件", "部件", "螺丝", "板子", "面板", "层板", "抽屉", "件")
 MISSING_QUANTITY_TERMS = ("只有", "只发", "只收到", "少了", "少", "缺", "差一个", "还差")
-STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背")
-STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动")
+STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背", "背板", "隔板", "层板", "顶板", "底板", "孔位", "螺丝孔", "预留孔")
+STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动", "加装", "加个", "再加", "补", "补配", "打孔", "对上", "对齐", "匹配")
 STRUCTURE_COMPATIBILITY_OBJECT_TERMS = (*STRUCTURE_OBJECT_TERMS, "配件", "第四面", "一面")
 STRUCTURE_COMPATIBILITY_ACTION_TERMS = (
     "补第四面",
@@ -195,6 +199,8 @@ STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "�
 STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
 SPACE_FIT_OBJECT_TERMS = ("柜子", "床", "床垫", "书架", "收纳柜", "置物架", "架子", "桌子", "鞋柜")
 SPACE_FIT_ACTION_TERMS = ("能不能放下", "能放下", "放得下", "放的下", "摆得下", "摆的下", "够不够放", "放不放得下")
+LOAD_CAPACITY_UNIT_TERMS = ("公斤", "kg", "KG", "斤")
+LOAD_CAPACITY_CONTEXT_TERMS = ("承重", "载重", "能放", "放书", "压弯", "压扁", "压塌", "压坏", "架子", "隔板", "层板", "顶板", "底板")
 
 
 @dataclass
@@ -456,6 +462,8 @@ def infer_query_fact_types(text: str) -> tuple[str, list[str]]:
         return "variant_compare", []
     if _is_logistics_query(value):
         return "stock_shipping", []
+    if _is_load_capacity_with_weight_unit(value):
+        return "load_capacity", []
     if _is_structure_function_query(value):
         return "structure_function", []
     if _is_space_fit_query(value):
@@ -598,10 +606,23 @@ def _is_variant_compare_query(text: str) -> bool:
 
 def _is_order_address_followup(text: str, history: list[dict[str, Any]] | None) -> bool:
     value = str(text or "")
+    direct_address_action = (
+        any(term in value for term in ("地址错", "下单的地址错", "发到这个地址", "发这个地址", "新地址", "改地址", "修改地址", "换地址"))
+        and any(term in value for term in ("地址", "发到", "发这个", "收货"))
+    )
+    if direct_address_action:
+        return True
     if not any(term in value for term in ("没改", "没有改", "还没改", "显示没改")):
         return False
     recent = " ".join(str(item.get("text") or item.get("content") or item.get("message") or "") for item in (history or [])[-6:])
     return any(term in recent for term in ("改地址", "修改地址", "换地址", "收货地址", "地址"))
+
+
+def _is_load_capacity_with_weight_unit(text: str) -> bool:
+    value = str(text or "")
+    return any(term in value for term in LOAD_CAPACITY_UNIT_TERMS) and any(
+        term in value for term in LOAD_CAPACITY_CONTEXT_TERMS
+    )
 
 
 def _is_return_pickup_query(text: str) -> bool:
@@ -613,7 +634,7 @@ def _is_structure_function_query(text: str) -> bool:
     value = str(text or "")
     if any(term in value for term in STRUCTURE_SCENE_BLOCKERS):
         return False
-    if any(term in value for term in STRUCTURE_SPACE_BLOCKERS):
+    if any(term in value for term in STRUCTURE_SPACE_BLOCKERS if term != "预留" or "预留孔" not in value):
         return False
     has_object = any(term in value for term in STRUCTURE_OBJECT_TERMS)
     has_action = any(term in value for term in STRUCTURE_ACTION_TERMS)

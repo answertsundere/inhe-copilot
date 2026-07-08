@@ -72,7 +72,7 @@ _TOPIC_CUES = {
     "dimensions": ("尺寸", "多高", "多宽", "多长", "长宽高", "占地", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
-    "structure_function": ("一边", "侧边", "侧板", "护栏", "围栏", "挡板", "板子", "抽屉", "靠背", "放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节"),
+    "structure_function": ("一边", "侧边", "侧板", "护栏", "围栏", "挡板", "板子", "抽屉", "靠背", "孔位", "结构件", "配件规格", "补配", "加装", "适配", "翻下来", "翻起", "打开", "收起", "折叠", "调节"),
     "age_range": ("适合多大", "适合几岁", "多大宝宝", "宝宝多大", "宝宝能不能用", "小孩能不能用", "儿童适用", "周岁", "两岁", "月龄", "年龄"),
     "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "有味", "无味", "无异味", "异味", "刺鼻", "散味", "闻着", "通风"),
@@ -102,7 +102,7 @@ _UNICODE_TOPIC_CUES = {
     "dimensions": ("尺寸", "多高", "多宽", "多长", "长宽高", "占地", "规格"),
     "space_fit": ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留"),
     "placement_scene": ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放"),
-    "structure_function": ("一边", "侧边", "侧板", "护栏", "围栏", "挡板", "板子", "抽屉", "靠背", "放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节"),
+    "structure_function": ("一边", "侧边", "侧板", "护栏", "围栏", "挡板", "板子", "抽屉", "靠背", "孔位", "结构件", "配件规格", "补配", "加装", "适配", "翻下来", "翻起", "打开", "收起", "折叠", "调节"),
     "age_range": ("适合多大", "适合几岁", "多大宝宝", "宝宝多大", "宝宝能不能用", "小孩能不能用", "儿童适用", "周岁", "两岁", "月龄", "年龄"),
     "cleaning": ("清洁", "清理", "水洗", "怎么洗", "擦洗", "保养"),
     "odor": ("气味", "味道", "味儿", "有味", "无味", "无异味", "无毒无味", "异味", "刺鼻", "散味", "闻着", "通风"),
@@ -162,6 +162,30 @@ _PRODUCT_CARD_REQUIRED_FACT_TYPES = {
 # installation expectation when the message is a 补发/少件 aftersales request.
 _INSTALLATION_AMBIGUOUS_CUES = ("螺丝", "配件", "说明书")
 _INSTALLATION_STRONG_CUES = ("安装", "组装", "怎么装", "装不上", "教程", "打孔", "租房")
+
+_INSTALLATION_STRUCTURE_FACT_TYPES = {"installation", "structure_function", "accessory_usage"}
+_INSTALLATION_MEDIA_ASSET_TYPES = {
+    "install_video",
+    "installation_video",
+    "video",
+    "install_image",
+    "pack_guide_image",
+    "installation_guide",
+    "manual",
+    "manual_image",
+}
+_UNSUPPORTED_INSTALLATION_STRUCTURE_TERMS = (
+    "\u81a8\u80c0\u87ba\u4e1d",
+    "\u56fa\u5b9a\u5728\u5899",
+    "\u56fa\u5b9a\u5230\u5899",
+    "\u56fa\u5b9a\u5230\u5899\u4e0a",
+    "\u6253\u81a8\u80c0",
+)
+_UNSUPPORTED_INSTALLATION_STRUCTURE_TERM_GROUPS = (
+    ("\u9632\u6b62\u503e\u5012", "\u56fa\u5b9a"),
+    ("\u9632\u503e\u5012", "\u56fa\u5b9a"),
+    ("\u66f4\u5b89\u5168", "\u56fa\u5b9a"),
+)
 
 _CONFLICTS = {
     "pinch_safety": {"small_parts_battery", "material", "load_capacity", "dimensions", "cleaning", "gift", "invoice"},
@@ -524,6 +548,9 @@ def _audit_issues(
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
 
+    if _unsupported_installation_structure_claim(reply, response, expected):
+        issues.append("unsupported_installation_structure_claim")
+
     try:
         from app.services.no_evidence_reply_policy_service import (
             contains_unsupported_media_promise,
@@ -553,6 +580,8 @@ def _hard_safety_issues(
         issues.append("asks_for_existing_order_id")
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
+    if _unsupported_installation_structure_claim(reply, response):
+        issues.append("unsupported_installation_structure_claim")
     try:
         from app.services.no_evidence_reply_policy_service import (
             contains_unsupported_media_promise,
@@ -564,6 +593,77 @@ def _hard_safety_issues(
     except Exception:
         pass
     return _dedupe(issues)
+
+
+def _unsupported_installation_structure_claim(
+    reply: str,
+    response: dict[str, Any],
+    expected: set[str] | None = None,
+) -> bool:
+    if not _is_installation_structure_scope(response, expected):
+        return False
+    value = str(reply or "")
+    if not value:
+        return False
+    has_claim = any(term in value for term in _UNSUPPORTED_INSTALLATION_STRUCTURE_TERMS)
+    if not has_claim:
+        has_claim = any(all(term in value for term in group) for group in _UNSUPPORTED_INSTALLATION_STRUCTURE_TERM_GROUPS)
+    if not has_claim:
+        return False
+    if _has_installation_reply_grounding(response):
+        return False
+    return True
+
+
+def _is_installation_structure_scope(
+    response: dict[str, Any],
+    expected: set[str] | None = None,
+) -> bool:
+    if expected and (set(expected) & {"installation", "structure_function"}):
+        return True
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    fact_type = str(
+        response.get("query_fact_type")
+        or response.get("missing_fact_type")
+        or debug.get("query_fact_type")
+        or trace.get("query_fact_type")
+        or ""
+    )
+    return fact_type in _INSTALLATION_STRUCTURE_FACT_TYPES
+
+
+def _has_installation_reply_grounding(response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    if debug.get("evidence_sufficient") is True and _selected_evidence_count(response) > 0:
+        return True
+    for block in response.get("reply_blocks") or []:
+        if not isinstance(block, dict) or block.get("type") not in {"image", "video"}:
+            continue
+        if _asset_has_installation_role(block):
+            return True
+    for asset in response.get("recommended_assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        if _asset_has_installation_role(asset) and (asset.get("asset_url") or asset.get("url")):
+            return True
+    return False
+
+
+def _asset_has_installation_role(asset: dict[str, Any]) -> bool:
+    values = {
+        str(asset.get(key) or "").strip().lower()
+        for key in (
+            "asset_type",
+            "media_type",
+            "source_type",
+            "evidence_role",
+            "role",
+            "purpose",
+        )
+        if asset.get(key)
+    }
+    return bool(values & _INSTALLATION_MEDIA_ASSET_TYPES)
 
 
 def _is_generic_handoff(reply: str) -> bool:
@@ -651,12 +751,7 @@ def _fallback_reply(response: dict[str, Any], message: str, expected: set[str]) 
             "如果您不确定某个配件是否适合宝宝接触，可以把配件图发我，我帮您一起看一下。"
         )
     if "installation" in expected:
-        return (
-            f"亲亲，您问的是「{product}」的安装方式对吗？\n"
-            "这款一般是卡扣/螺丝固定结构（以实际产品为准），附赠安装工具和说明书，通常不需要额外准备工具，租房用一般也不用打孔。\n"
-            "建议您先按说明书把配件全部核对齐，再从主体框架开始安装，卡扣/螺丝位置不要一次性拧太紧，整体对齐后再固定会更稳。\n"
-            "如果安装到某一步卡住，可以把当前步骤或卡住的位置拍给我，我帮您对照处理。"
-        )
+        return customer_facing_safe_handoff_reply("installation", inputs={"product_name": product})
     if "detachable" in expected:
         return (
             f"亲亲，您问的是「{product}」能不能拆装对吗？\n"

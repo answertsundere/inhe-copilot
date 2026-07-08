@@ -326,6 +326,32 @@ def test_current_product_key_point_accepts_specific_product_name_context(monkeyp
     assert item["missing_key_points"] == []
 
 
+def test_current_product_key_point_accepts_this_product_installation_context(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "按当前这款商品核对安装资料。",
+            "key_points": ["\u6309\u5f53\u524d\u8fd9\u6b3e\u5546\u54c1"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "亲，这款三层火箭书架安装时需要核对配套螺丝和安装资料，您拍下当前位置我一起帮您看。",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
 def test_current_product_key_point_rejects_generic_deictic_without_product_context(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _add_scenario(
@@ -500,6 +526,32 @@ def test_installation_video_negative_key_point_accepts_no_video_promise(monkeypa
         "can_send": False,
         "requires_human_review": True,
         "draft_reply": "\u4eb2\uff0c\u8fd9\u4e2a\u9700\u8981\u6309\u60a8\u8fd9\u6b3e\u7684\u7ed3\u6784\u548c\u914d\u4ef6\u89c4\u683c\u6838\u5bf9\uff0c\u6211\u8fd9\u8fb9\u8f6c\u4eba\u5de5\u786e\u8ba4\u662f\u5426\u9002\u914d\u3002",
+        "answer_trace": {"query_fact_type": "installation"},
+    }).run_scenarios(db_factory=session_factory)
+
+    item = result["per_scenario_result"][0]
+    assert result["passed"] == 1
+    assert item["missing_key_points"] == []
+
+
+def test_handoff_key_point_accepts_confirm_then_reply_copy(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    _add_scenario(
+        session_factory,
+        scenario_type="installation",
+        expected={
+            "expected_reply": "转人工核对后回复。",
+            "key_points": ["\u8f6c\u4eba\u5de5"],
+            "forbidden_claims": [],
+            "must_handoff": True,
+            "auto_send_allowed": False,
+        },
+    )
+
+    result = AgentBenchmarkRunnerService(agent_callable=lambda _payload: {
+        "can_send": False,
+        "requires_human_review": True,
+        "draft_reply": "亲，我帮您核对一下安装资料，您方便把当前位置拍给我吗？我一起帮您看看，确认后马上回复您。",
         "answer_trace": {"query_fact_type": "installation"},
     }).run_scenarios(db_factory=session_factory)
 

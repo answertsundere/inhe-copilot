@@ -73,6 +73,59 @@ def test_installation_with_non_install_media_asset_requires_review():
     assert result["reason"]
 
 
+def test_unsupported_installation_wall_fix_reply_is_rewritten_without_fact_type():
+    response = {
+        "suggested_reply": (
+            "\u4eb2\uff5e\u60a8\u770b\u5230\u7684\u87ba\u4e1d\u5b54\u662f\u7528\u6765\u56fa\u5b9a\u4e66\u67b6\u5230\u5899\u4e0a\u7684\uff0c"
+            "\u9632\u6b62\u503e\u5012\u3002\u5982\u679c\u5e8a\u57ab\u8584\u538b\u4e0d\u4f4f\uff0c"
+            "\u5efa\u8bae\u7528\u87ba\u4e1d\u5b54\u6253\u5899\u56fa\u5b9a\u4f1a\u66f4\u5b89\u5168\u3002"
+        ),
+        "requires_human_review": True,
+        "reply_blocks": [],
+        "recommended_assets": [],
+    }
+
+    updated = apply_no_evidence_reply_policy(
+        response,
+        {"current_query": "\u6211\u770b\u5230\u4e0b\u9762\u662f\u6709\u87ba\u4e1d\u5b54\u7684"},
+    )
+
+    assert updated["generation_mode"] == "no_evidence_reply_policy"
+    assert updated["query_fact_type"] == "installation"
+    assert updated["requires_human_review"] is True
+    if "sendable_reply" in updated:
+        assert updated["sendable_reply"] == ""
+    assert "\u81a8\u80c0\u87ba\u4e1d" not in updated["suggested_reply"]
+    assert "\u6253\u5899\u56fa\u5b9a" not in updated["suggested_reply"]
+    assert "\u9632\u6b62\u503e\u5012" not in updated["suggested_reply"]
+    assert "\u5b89\u88c5\u8d44\u6599" in updated["suggested_reply"]
+    assert "\u6838\u5bf9" in updated["suggested_reply"]
+
+
+def test_supported_installation_image_block_is_not_rewritten_as_no_evidence():
+    response = {
+        "suggested_reply": (
+            "\u4eb2\uff0c\u8fd9\u5f20\u5b89\u88c5\u56fe\u4e0a\u6807\u7684\u4f4d\u7f6e\u662f\u56fa\u5b9a\u7528\u7684\uff0c"
+            "\u60a8\u53ef\u4ee5\u5148\u5bf9\u7167\u56fe\u4e0a\u87ba\u4e1d\u5b54\u4f4d\u770b\u4e00\u4e0b\u3002"
+        ),
+        "requires_human_review": False,
+        "reply_blocks": [{
+            "type": "image",
+            "asset_type": "pack_guide_image",
+            "asset_url": "https://asset.example/install.png",
+        }],
+        "recommended_assets": [],
+    }
+
+    updated = apply_no_evidence_reply_policy(
+        response,
+        {"current_query": "\u6211\u770b\u5230\u4e0b\u9762\u662f\u6709\u87ba\u4e1d\u5b54\u7684"},
+    )
+
+    assert updated.get("generation_mode") != "no_evidence_reply_policy"
+    assert updated["suggested_reply"] == response["suggested_reply"]
+
+
 def test_installation_with_diagram_but_no_video_uses_diagram_reply():
     result = _policy(
         query_fact_type="installation",

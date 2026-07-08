@@ -224,6 +224,73 @@ def test_final_answer_auditor_blocks_media_promise_without_reply_blocks():
     assert "\u4e0b\u9762\u56fe\u7247/\u89c6\u9891\u53ef\u53c2\u8003" not in audited["suggested_reply"]
 
 
+def test_final_answer_auditor_blocks_unsupported_installation_wall_fix_claim_without_evidence():
+    response = {
+        "intent": "product_question",
+        "product_name": "\u6d4b\u8bd5\u4e66\u67b6",
+        "suggested_reply": (
+            "\u4eb2\uff5e\u60a8\u770b\u5230\u7684\u87ba\u4e1d\u5b54\u662f\u7528\u6765\u56fa\u5b9a\u4e66\u67b6\u7684\uff0c"
+            "\u9632\u6b62\u503e\u5012\u3002\u5982\u679c\u5bb6\u91cc\u6709\u5c0f\u5b69\uff0c"
+            "\u5efa\u8bae\u7528\u81a8\u80c0\u87ba\u4e1d\u56fa\u5b9a\u5728\u5899\u4e0a\uff0c\u8fd9\u6837\u66f4\u5b89\u5168\u3002"
+            "\u60a8\u65b9\u4fbf\u62cd\u4e00\u4e0b\u87ba\u4e1d\u5b54\u7684\u4f4d\u7f6e\u5417\uff1f\u6211\u5e2e\u60a8\u786e\u8ba4\u5177\u4f53\u600e\u4e48\u5b89\u88c5\u3002"
+        ),
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "answer_mode": "no_evidence_controlled_reply",
+        },
+        "answer_trace": {
+            "query_fact_type": "installation",
+            "no_evidence_reply_policy": {
+                "reply_strategy": "verify_installation_asset_before_send",
+                "requires_human_review": True,
+            },
+        },
+        "reply_blocks": [],
+        "recommended_assets": [],
+    }
+
+    audited = audit_final_answer(response, customer_message="\u8fd9\u4e2a\u87ba\u4e1d\u5b54\u600e\u4e48\u56fa\u5b9a")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "unsupported_installation_structure_claim" in audited["final_answer_audit"]["issues"]
+    assert audited["requires_human_review"] is True
+    assert "\u81a8\u80c0\u87ba\u4e1d" not in audited["suggested_reply"]
+    assert "\u56fa\u5b9a\u5728\u5899" not in audited["suggested_reply"]
+    assert "\u9632\u6b62\u503e\u5012" not in audited["suggested_reply"]
+    assert "\u5b89\u88c5\u8d44\u6599" in audited["suggested_reply"]
+    assert "\u6838\u5bf9" in audited["suggested_reply"]
+
+
+def test_final_answer_auditor_allows_installation_guidance_with_attached_install_asset():
+    response = {
+        "intent": "product_question",
+        "product_name": "\u6d4b\u8bd5\u4e66\u67b6",
+        "suggested_reply": (
+            "\u4eb2\uff0c\u8fd9\u5f20\u5b89\u88c5\u56fe\u4e0a\u6807\u7684\u4f4d\u7f6e\u662f\u56fa\u5b9a\u7528\u7684\uff0c"
+            "\u60a8\u53ef\u4ee5\u5148\u5bf9\u7167\u56fe\u4e0a\u87ba\u4e1d\u5b54\u4f4d\u770b\u4e00\u4e0b\u3002"
+        ),
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "evidence_sufficient": True,
+            "selected_evidence": [{"fact_type": "installation"}],
+        },
+        "reply_blocks": [{
+            "type": "image",
+            "asset_type": "pack_guide_image",
+            "asset_url": "https://asset.example/install.png",
+        }],
+        "recommended_assets": [],
+    }
+
+    audited = audit_final_answer(response, customer_message="\u8fd9\u4e2a\u87ba\u4e1d\u5b54\u600e\u4e48\u56fa\u5b9a")
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert "unsupported_installation_structure_claim" not in audited["final_answer_audit"]["issues"]
+    assert audited["suggested_reply"] == response["suggested_reply"]
+
+
 def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
     from app import config
     from app.llm import client as llm_client

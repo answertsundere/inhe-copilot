@@ -47,6 +47,7 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u8fd9\u4e2a\u4e0d\u662f\u80cc\u80f6\u5417": "installation",
         "\u87ba\u5e3d\u6ed1\u7259\u600e\u4e48\u529e": "aftersales_policy",
         "\u5e2e\u6211\u6539\u4e00\u4e0b\u5730\u5740": "order_assistance",
+        "\u4eb2\u5e2e\u6211\u53d1\u5230\u8fd9\u4e2a\u5730\u5740\uff0c\u521a\u521a\u4e0b\u5355\u7684\u5730\u5740\u9519\u4e86": "order_assistance",
         "\u9001\u8d27\u4e0a\u95e8\u5417": "stock_shipping",
         "\u8fd9\u4e24\u6b3e\u54ea\u4e2a\u627f\u653e\u7684\u6570\u91cf\u66f4\u591a": "variant_compare",
     }
@@ -80,7 +81,7 @@ def test_service_aliases_do_not_steal_ambiguous_short_turns():
 
 
 def test_weight_units_with_pressure_context_are_load_capacity():
-    for message in ("放几斤不压扁", "放多少斤会不会压弯", "能放几斤书"):
+    for message in ("放几斤不压扁", "放多少斤会不会压弯", "能放几斤书", "中间再加个双层隔板可以放32.5公斤吗"):
         result = classify_query_fact_type(message, "product_question")
         assert result["query_fact_type"] == "load_capacity"
 
@@ -89,6 +90,12 @@ def test_plain_product_weight_questions_remain_gross_weight():
     for message in ("这个多重", "毛重多少", "商品重量几斤"):
         result = classify_query_fact_type(message, "product_question")
         assert result["query_fact_type"] == "gross_weight"
+
+
+def test_structure_or_capacity_terms_do_not_steal_space_fit():
+    result = classify_query_fact_type("这个柜子能不能放阳台", "product_question")
+
+    assert result["query_fact_type"] == "placement_scene"
 
 
 def test_child_suitability_age_terms_are_age_range():

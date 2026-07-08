@@ -45,6 +45,20 @@ def test_child_safety_handoff_is_natural_without_age_or_safety_promise():
     _assert_no_internal_redline(reply)
 
 
+def test_safe_handoff_does_not_expose_redacted_identifier_as_product_name():
+    reply = customer_facing_safe_handoff_reply(
+        "load_capacity",
+        inputs={"product_title": "[LONG_ID_REDACTED:228d73b3a4]"},
+    )
+
+    assert "[LONG_ID_REDACTED" not in reply
+    assert "这款商品" in reply
+    assert "承重" in reply
+    assert "结构说明" in reply
+    assert "分散摆放" in reply
+    _assert_no_internal_redline(reply)
+
+
 def test_context_request_policy_is_not_overwritten_by_safe_handoff_copy():
     policy = {
         "requires_human_review": True,

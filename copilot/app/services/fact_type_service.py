@@ -69,7 +69,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u7a33\u5417",
     )),
     ("load_capacity", ("承重", "能放多重", "放多重", "结实", "稳不稳", "会不会倒", "放多少本", "能放多少本", "多少本", "放几本", "能放多少", "装多少", "能装多少", "放多少", "放很多", "压弯", "会不会压弯")),
-    ("dimensions", ("尺寸", "多大", "多高", "多宽", "多长", "高度", "长度", "宽度", "占地")),
+    ("dimensions", ("尺寸", "多大", "多高", "多宽", "多长", "多厚", "厚度", "高度", "长度", "宽度", "占地")),
     ("detachable", ("可拆", "可拆卸", "拆卸", "拆开", "拆下来", "能拆", "拆装")),
     ("installation", ("安装", "怎么装", "装不上", "螺丝", "配件", "说明书", "安装视频", "教程", "组装", "拼接", "打孔", "需要打孔", "免打孔", "租房")),
     ("material", ("材质", "材料", "什么料", "用料", "板材", "实木", "环保", "安全吗", "安全", "受潮", "防潮", "生锈")),
@@ -257,6 +257,11 @@ _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
         "\u6362\u5730\u5740",
         "\u6539\u6536\u8d27\u5730\u5740",
         "\u5730\u5740\u6ca1\u6539",
+        "\u5730\u5740\u9519",
+        "\u4e0b\u5355\u7684\u5730\u5740\u9519",
+        "\u53d1\u5230\u8fd9\u4e2a\u5730\u5740",
+        "\u53d1\u8fd9\u4e2a\u5730\u5740",
+        "\u65b0\u5730\u5740",
     )),
     ("cleaning_care", ("\u6e05\u6d01", "\u6e05\u7406", "\u6c34\u6d17", "\u600e\u4e48\u6d17", "\u4fdd\u517b")),
     ("odor", ("\u6c14\u5473", "\u5473\u9053", "\u6709\u5473", "\u65e0\u5473", "\u65e0\u5f02\u5473", "\u5f02\u5473", "\u523a\u9f3b", "\u6563\u5473")),
@@ -347,6 +352,22 @@ _LOAD_CAPACITY_BLOCKERS_FOR_WEIGHT = (
     "压坏",
     "放多少",
 )
+_LOAD_CAPACITY_UNIT_TERMS = ("公斤", "kg", "KG", "斤")
+_LOAD_CAPACITY_CONTEXT_TERMS = (
+    "承重",
+    "载重",
+    "能放",
+    "放书",
+    "压弯",
+    "压扁",
+    "压塌",
+    "压坏",
+    "架子",
+    "隔板",
+    "层板",
+    "顶板",
+    "底板",
+)
 _ACCESSORY_OBJECT_TERMS = ("配件", "小篮子", "篮子", "零件", "部件", "防倒器", "双面贴")
 _ACCESSORY_AVAILABILITY_TERMS = (
     "有卖",
@@ -374,8 +395,8 @@ _ACCESSORY_USAGE_BLOCKERS = (
     "用法",
     "装哪里",
 )
-_STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背")
-_STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动")
+_STRUCTURE_OBJECT_TERMS = ("一边", "侧边", "侧板", "护栏", "围栏", "门", "挡板", "板子", "抽屉", "靠背", "背板", "隔板", "层板", "顶板", "底板", "孔位", "螺丝孔", "预留孔")
+_STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开", "收起", "折叠", "调节", "拆下来", "拆卸", "固定", "活动", "能动", "加装", "加个", "再加", "补", "补配", "打孔", "对上", "对齐", "匹配")
 _STRUCTURE_CONFIRM_TERMS = ("不是可以", "可以吗", "能不能", "是不是", "怎么", "有吗", "吗", "呢")
 _STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间")
 _STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
@@ -391,6 +412,18 @@ def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
         return {
             "query_fact_type": "gross_weight",
             "query_fact_type_label": FACT_TYPE_LABELS.get("gross_weight", "gross_weight"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
+    if (
+        any(term in msg for term in _LOAD_CAPACITY_UNIT_TERMS)
+        and any(term in msg for term in _LOAD_CAPACITY_CONTEXT_TERMS)
+    ):
+        matched = [term for term in (*_LOAD_CAPACITY_UNIT_TERMS, *_LOAD_CAPACITY_CONTEXT_TERMS) if term in msg]
+        return {
+            "query_fact_type": "load_capacity",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("load_capacity", "load_capacity"),
             "confidence": 0.88,
             "matched_terms": matched[:5],
             "source": "product_fact_boundary_rule",
@@ -424,7 +457,7 @@ def _is_structure_function_query(msg: str) -> bool:
     value = str(msg or "")
     if any(term in value for term in _STRUCTURE_SCENE_BLOCKERS):
         return False
-    if any(term in value for term in _STRUCTURE_SPACE_BLOCKERS):
+    if any(term in value for term in _STRUCTURE_SPACE_BLOCKERS if term != "预留" or "预留孔" not in value):
         return False
     has_object = any(term in value for term in _STRUCTURE_OBJECT_TERMS)
     has_action = any(term in value for term in _STRUCTURE_ACTION_TERMS)

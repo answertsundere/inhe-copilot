@@ -182,6 +182,20 @@ DAMAGED_ITEM_TERMS = (
 )
 INSTALLATION_VIDEO_ASSET_TYPES = {"install_video", "installation_video", "video"}
 INSTALLATION_DIAGRAM_ASSET_TYPES = {"install_image", "pack_guide_image", "installation_guide", "manual", "manual_image"}
+UNSUPPORTED_INSTALLATION_STRUCTURE_TERMS = (
+    "\u81a8\u80c0\u87ba\u4e1d",
+    "\u56fa\u5b9a\u5728\u5899",
+    "\u56fa\u5b9a\u5230\u5899",
+    "\u56fa\u5b9a\u5230\u5899\u4e0a",
+    "\u56fa\u5b9a\u4e66\u67b6\u5230\u5899",
+    "\u6253\u5899\u56fa\u5b9a",
+    "\u6253\u81a8\u80c0",
+)
+UNSUPPORTED_INSTALLATION_STRUCTURE_TERM_GROUPS = (
+    ("\u9632\u6b62\u503e\u5012", "\u56fa\u5b9a"),
+    ("\u9632\u503e\u5012", "\u56fa\u5b9a"),
+    ("\u66f4\u5b89\u5168", "\u56fa\u5b9a"),
+)
 VIDEO_PROMISE_TERMS = ("安装视频", "视频发", "发视频", "把视频", "录制安装视频")
 _POLICY_FACT_TYPES = (
     INSTALLATION_FACT_TYPES
@@ -803,6 +817,17 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
         or answer_trace.get("query_fact_type")
         or ""
     ).strip()
+    customer_message = str(
+        response.get("customer_message")
+        or context.get("customer_message")
+        or context.get("current_query")
+        or debug.get("current_query")
+        or semantic_query.get("current_query")
+        or answer_trace.get("customer_message")
+        or ""
+    )
+    if not fact_type and _looks_like_installation_structure_context(customer_message, response.get("suggested_reply")):
+        fact_type = "installation"
     response_summary = response.get("real_context") if isinstance(response.get("real_context"), dict) else {}
     summary = context.get("real_context_summary") if isinstance(context.get("real_context_summary"), dict) else response_summary
     identity = context.get("real_context_product_identity") if isinstance(context.get("real_context_product_identity"), dict) else {}
@@ -855,15 +880,7 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
             or ""
         ),
         "real_context_summary": summary,
-        "customer_message": str(
-            response.get("customer_message")
-            or context.get("customer_message")
-            or context.get("current_query")
-            or debug.get("current_query")
-            or semantic_query.get("current_query")
-            or answer_trace.get("customer_message")
-            or ""
-        ),
+        "customer_message": customer_message,
     }
 
 
@@ -879,6 +896,15 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
         fact_type in INSTALLATION_FACT_TYPES
         and _promises_installation_video(reply)
         and not (set(inputs.get("sendable_media_asset_types") or []) & INSTALLATION_VIDEO_ASSET_TYPES)
+    ):
+        return True
+    if (
+        (fact_type in INSTALLATION_FACT_TYPES or _looks_like_installation_structure_context(inputs.get("customer_message"), reply))
+        and _has_unsupported_installation_structure_claim(reply)
+        and not (
+            set(inputs.get("sendable_media_asset_types") or [])
+            & (INSTALLATION_VIDEO_ASSET_TYPES | INSTALLATION_DIAGRAM_ASSET_TYPES)
+        )
     ):
         return True
     if (
@@ -927,6 +953,43 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES and not selected_count:
         return True
     return False
+
+
+def _looks_like_installation_structure_context(*values: Any) -> bool:
+    text = " ".join(str(value or "") for value in values)
+    if not text:
+        return False
+    structure_terms = (
+        "\u87ba\u4e1d\u5b54",
+        "\u5b54\u4f4d",
+        "\u56fa\u5b9a\u5b54",
+        "\u5b89\u88c5\u4f4d\u7f6e",
+        "\u56fa\u5b9a\u4f4d\u7f6e",
+        "\u56fa\u5b9a\u5728\u5899",
+        "\u56fa\u5b9a\u5230\u5899",
+        "\u6253\u5899",
+        "\u81a8\u80c0\u87ba\u4e1d",
+    )
+    installation_terms = (
+        "\u5b89\u88c5",
+        "\u56fa\u5b9a",
+        "\u87ba\u4e1d",
+        "\u9632\u6b62\u503e\u5012",
+        "\u9632\u503e\u5012",
+    )
+    return any(term in text for term in structure_terms) or (
+        any(term in text for term in installation_terms)
+        and any(term in text for term in ("\u5899", "\u5b54", "\u5b54\u4f4d", "\u87ba\u4e1d"))
+    )
+
+
+def _has_unsupported_installation_structure_claim(reply: str) -> bool:
+    value = str(reply or "")
+    if not value:
+        return False
+    if any(term in value for term in UNSUPPORTED_INSTALLATION_STRUCTURE_TERMS):
+        return True
+    return any(all(term in value for term in group) for group in UNSUPPORTED_INSTALLATION_STRUCTURE_TERM_GROUPS)
 
 
 def has_sendable_media_asset(response: dict[str, Any]) -> bool:

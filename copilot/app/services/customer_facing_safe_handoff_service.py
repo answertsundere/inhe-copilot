@@ -6,6 +6,7 @@ translates an evidence-missing state into language a customer should see.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
@@ -80,8 +81,8 @@ def customer_facing_safe_handoff_reply(
         )
     if fact_type in LOAD_CAPACITY_FACT_TYPES:
         return (
-            f"亲，承重和稳定性我帮您按{product_hint}资料核对一下，避免说错。"
-            "日常使用建议先分散摆放，不要集中压在一处；具体口径我确认后给您准确回复。"
+            f"亲，承重和稳定性我帮您按{product_hint}的承重标注和结构说明核对一下，避免说错。"
+            "日常使用建议先分散摆放，不要集中压在一处；具体能放多少、怎么放更稳，我确认后给您准确回复。"
         )
     if fact_type in GROSS_WEIGHT_FACT_TYPES:
         return (
@@ -191,7 +192,21 @@ def _product_hint(inputs: dict[str, Any]) -> str:
         or inputs.get("display_product_name")
         or ""
     )
+    if _looks_like_redacted_or_identifier(product):
+        return "这款商品"
     return f"这款「{product}」" if product else "这款商品"
+
+
+def _looks_like_redacted_or_identifier(value: str) -> bool:
+    text = sanitize_text(value)
+    if not text:
+        return False
+    upper = text.upper()
+    if "REDACTED" in upper or "[LONG_ID" in upper or "[SKU" in upper:
+        return True
+    if len(text) >= 18 and re.fullmatch(r"[A-Za-z0-9_\-:]+", text):
+        return True
+    return False
 
 
 def _has_order_context(inputs: dict[str, Any]) -> bool:

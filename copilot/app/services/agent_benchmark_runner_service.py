@@ -58,6 +58,11 @@ def _mentions_specific_current_product_context(text: str) -> bool:
     )
     if any(alias in normalized_text for alias in direct_aliases):
         return True
+    if "这款" in normalized_text and any(
+        term in normalized_text
+        for term in ("安装", "结构", "资料", "配套", "螺丝", "配件", "承重", "材质", "尺寸")
+    ):
+        return True
     return bool(re.search(
         r"\u8fd9\u6b3e[\u300c\u300a]?[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff·\-\s]{1,30}[\u300d\u300b]?(?:\u7684|\u5546\u54c1|\u8d44\u6599|\u5b89\u88c5|\u7ed3\u6784|\u914d\u4ef6|\u5c3a\u5bf8|\u627f\u91cd|\u4f18\u60e0|\u6d3b\u52a8|\u552e\u540e)",
         normalized_text,
@@ -80,6 +85,7 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
             "\u6838\u5bf9\u540e\u5904\u7406",
             "\u51c6\u786e\u56de\u590d",
             "\u786e\u8ba4\u540e\u56de\u590d",
+            "\u786e\u8ba4\u540e\u9a6c\u4e0a\u56de\u590d",
             "\u6211\u4e00\u8d77\u5e2e\u60a8\u6838\u5bf9",
         )
         return any(alias in normalized_text for alias in handoff_aliases)
@@ -138,6 +144,7 @@ def _key_point_satisfied(text: str, key_point: str) -> bool:
             "\u6838\u5bf9\u540e\u5904\u7406",
             "\u51c6\u786e\u56de\u590d",
             "\u786e\u8ba4\u540e\u56de\u590d",
+            "\u786e\u8ba4\u540e\u9a6c\u4e0a\u56de\u590d",
             "\u6211\u4e00\u8d77\u5e2e\u60a8\u6838\u5bf9",
         ),
     ))
