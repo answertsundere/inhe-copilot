@@ -6,7 +6,13 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models.eval_tables import AgentAnswerMemory
 from app.services import answer_memory_service as memory_module
-from app.services.answer_memory_adapter_service import AnswerMemoryAdapterService, build_answer_memory_guidance
+from app.services.answer_memory_adapter_service import (
+    AnswerMemoryAdapterService,
+    build_answer_memory_guidance,
+    guidance_copy_text,
+    has_internal_jargon_guidance,
+    has_mojibake_guidance,
+)
 
 
 @pytest.fixture()
@@ -54,6 +60,25 @@ def _add_memory(factory, **kwargs):
     return row.memory_uid
 
 
+def _assert_guidance_copy_clean(guidance):
+    copy_text = guidance_copy_text(guidance)
+    assert copy_text
+    assert has_mojibake_guidance(guidance) is False
+    assert has_internal_jargon_guidance(guidance) is False
+    for term in (
+        "RAG",
+        "final gate",
+        "Evidence",
+        "query_fact_type",
+        "used_for_fact",
+        "can_change_can_send",
+        "reference_only",
+        "风控",
+        "证据不足",
+    ):
+        assert term not in copy_text
+
+
 def test_adapter_guidance_is_reference_only_and_cannot_change_sendability(monkeypatch):
     factory = _session_factory(monkeypatch)
     _add_memory(factory)
@@ -71,6 +96,7 @@ def test_adapter_guidance_is_reference_only_and_cannot_change_sendability(monkey
     assert guidance["can_change_can_send"] is False
     assert guidance["matched_memories"][0]["used_for_fact"] is False
     assert guidance["matched_memories"][0]["can_change_can_send"] is False
+    _assert_guidance_copy_clean(guidance)
 
 
 def test_high_risk_memory_remains_human_review_only(monkeypatch):
@@ -95,6 +121,27 @@ def test_high_risk_memory_remains_human_review_only(monkeypatch):
     assert guidance["forbidden_claims"] == ["non-toxic", "certified"]
     assert guidance["matched_memories"][0]["requires_human_review"] is True
     assert guidance["can_change_can_send"] is False
+    _assert_guidance_copy_clean(guidance)
+
+
+def test_adapter_does_not_copy_internal_jargon_from_memory_answer(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    _add_memory(
+        factory,
+        memory_uid="adapter_memory_internal_words",
+        approved_answer="Use RAG evidence and final gate before reply.",
+    )
+
+    guidance = AnswerMemoryAdapterService().build_for_context(
+        customer_message="Do you have an install video?",
+        product_title="Memory Product",
+        query_fact_type="installation",
+        scenario_type="installation",
+    )
+
+    assert guidance["matched_memories"]
+    assert guidance["used_for_fact"] is False
+    _assert_guidance_copy_clean(guidance)
 
 
 def test_attach_shadow_guidance_preserves_response_contract(monkeypatch):

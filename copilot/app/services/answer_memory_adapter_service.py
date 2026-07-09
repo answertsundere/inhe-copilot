@@ -13,6 +13,34 @@ from app.services.answer_memory_service import AnswerMemoryService, infer_scenar
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.fact_type_service import classify_query_fact_type
 
+MOJIBAKE_GUIDANCE_MARKERS = (
+    "锛",
+    "銆",
+    "绛",
+    "鍏",
+    "瀹",
+    "鏍",
+    "闂",
+    "鐢",
+    "搴",
+    "",
+    "€",
+    "鈥",
+    "�",
+)
+
+INTERNAL_GUIDANCE_TERMS = (
+    "rag",
+    "final gate",
+    "evidence",
+    "query_fact_type",
+    "used_for_fact",
+    "can_change_can_send",
+    "reference_only",
+    "风控",
+    "证据不足",
+)
+
 
 def answer_memory_shadow_enabled() -> bool:
     return str(os.getenv("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED", "")).strip().lower() in {
@@ -42,31 +70,46 @@ def _unique(values: list[Any]) -> list[str]:
     return result
 
 
+def guidance_copy_text(guidance: dict[str, Any]) -> str:
+    parts = []
+    parts.extend(guidance.get("style_hints") or [])
+    parts.extend(guidance.get("action_hints") or [])
+    parts.append(guidance.get("draft_guidance") or "")
+    return "\n".join(sanitize_text(part) for part in parts if sanitize_text(part))
+
+
+def has_mojibake_guidance(guidance: dict[str, Any]) -> bool:
+    text = guidance_copy_text(guidance)
+    return any(marker in text for marker in MOJIBAKE_GUIDANCE_MARKERS)
+
+
+def has_internal_jargon_guidance(guidance: dict[str, Any]) -> bool:
+    text = guidance_copy_text(guidance).lower()
+    return any(term.lower() in text for term in INTERNAL_GUIDANCE_TERMS)
+
+
 def _action_hints_from_memory(memory: dict[str, Any]) -> list[str]:
     hints: list[str] = []
-    answer = sanitize_text(memory.get("answer_text"))
     scenario = sanitize_text(memory.get("scenario_type"))
-    if answer:
-        hints.append(_clip(answer, 160))
     if scenario == "aftersales":
-        hints.append("先安抚客户，再核对订单和问题信息，必要时转人工确认处理方案")
+        hints.append("先承接情绪，再核对订单和问题信息；需要时请买家补充照片、位置或包装信息。")
     elif scenario == "installation":
-        hints.append("围绕安装资料、步骤、卡住位置或配件位置组织回复，不扩展无关商品事实")
+        hints.append("围绕安装步骤、卡住的位置、配件位置或说明书页组织回复；不要扩展无关商品事实。")
     elif scenario == "promotion":
-        hints.append("围绕当前页面活动、优惠券、满减或赠品规则核对，不承诺额外优惠")
+        hints.append("围绕当前页面活动、优惠券、满减或赠品规则核对；不要承诺额外优惠。")
     elif scenario == "logistics":
-        hints.append("围绕当前订单物流或配送服务核对，不承诺后台状态")
+        hints.append("围绕当前订单物流、发货或配送服务核对；不要承诺后台状态。")
     return _unique(hints)
 
 
 def _style_hints_from_memory(memory: dict[str, Any]) -> list[str]:
     scenario = sanitize_text(memory.get("scenario_type"))
     risk = sanitize_text(memory.get("risk_level"))
-    hints = ["用自然客服语气表达，避免系统风控措辞"]
+    hints = ["用自然客服语气表达，像人工接待一样先回应客户关切。"]
     if risk == "high":
-        hints.append("高风险事实用核对资料的客服动作表达，不直接承诺结论")
+        hints.append("高风险事实只给安全边界和待确认项，不直接下结论。")
     if scenario == "aftersales":
-        hints.append("先承接情绪，再说明核对动作和下一步")
+        hints.append("先承接情绪，再说明核对动作和下一步。")
     return _unique(hints)
 
 

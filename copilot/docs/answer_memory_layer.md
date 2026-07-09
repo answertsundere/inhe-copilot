@@ -142,6 +142,24 @@ non_reference_count = 0
 
 Future grounded reasoning work can decide how to consume `style_hints`, `action_hints`, `required_fact_types`, and `forbidden_claims`, but final gate and verified evidence remain authoritative.
 
+## Guidance Copy Quality
+
+Adapter guidance may later be used as grounded-reasoning prompt context. For that reason, customer-facing hint fields must be normal Chinese copy:
+
+- `style_hints`
+- `action_hints`
+- `draft_guidance`
+
+These hint fields must not contain mojibake, console encoding artifacts, or internal system terms such as `RAG`, `final gate`, `evidence`, `query_fact_type`, `used_for_fact`, `can_change_can_send`, or `reference_only`.
+
+Structured machine-contract fields can still keep those exact names:
+
+- `reference_only`
+- `used_for_fact`
+- `can_change_can_send`
+
+The boundary is intentional: machines need explicit contract fields, but future prompt-visible guidance should read like customer-service strategy, not debug output.
+
 ## Non-Goals
 
 - No formal knowledge-base writes.

@@ -17,7 +17,11 @@ if str(ROOT) not in sys.path:
 
 from app.models.eval_tables import AgentAnswerMemory  # noqa: F401 - register table
 from app.db import init_db
-from app.services.answer_memory_adapter_service import AnswerMemoryAdapterService
+from app.services.answer_memory_adapter_service import (
+    AnswerMemoryAdapterService,
+    has_internal_jargon_guidance,
+    has_mojibake_guidance,
+)
 from app.services.answer_memory_service import infer_scenario_type, plain_text
 from app.services.eval_sanitizer_service import sanitize_text
 from app.services.fact_type_service import classify_query_fact_type
@@ -47,6 +51,8 @@ def trace_samples(samples: list[dict], *, limit: int = 5000) -> dict:
     used_for_fact_count = 0
     non_reference_count = 0
     high_risk_without_review_count = 0
+    mojibake_guidance_count = 0
+    internal_jargon_guidance_count = 0
     for sample in samples[: max(1, min(int(limit or 5000), 5000))]:
         question = sanitize_text(plain_text(sample.get("customer_quote")))
         fact = classify_query_fact_type(question, intent="")
@@ -72,6 +78,10 @@ def trace_samples(samples: list[dict], *, limit: int = 5000) -> dict:
             used_for_fact_count += 1
         if guidance.get("reference_only") is not True:
             non_reference_count += 1
+        if has_mojibake_guidance(guidance):
+            mojibake_guidance_count += 1
+        if has_internal_jargon_guidance(guidance):
+            internal_jargon_guidance_count += 1
         high_risk_without_review_count += sum(
             1
             for hit in hits
@@ -97,6 +107,8 @@ def trace_samples(samples: list[dict], *, limit: int = 5000) -> dict:
         "used_for_fact_count": used_for_fact_count,
         "non_reference_count": non_reference_count,
         "high_risk_without_review_count": high_risk_without_review_count,
+        "mojibake_guidance_count": mojibake_guidance_count,
+        "internal_jargon_guidance_count": internal_jargon_guidance_count,
         "rows": rows,
     }
 

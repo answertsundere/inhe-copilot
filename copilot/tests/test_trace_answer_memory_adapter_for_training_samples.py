@@ -53,6 +53,8 @@ def test_trace_adapter_reports_shadow_contract_counts(monkeypatch):
     assert result["can_change_can_send_count"] == 0
     assert result["used_for_fact_count"] == 0
     assert result["non_reference_count"] == 0
+    assert result["mojibake_guidance_count"] == 0
+    assert result["internal_jargon_guidance_count"] == 0
 
 
 def test_trace_adapter_keeps_high_risk_human_review(monkeypatch):
@@ -90,3 +92,5 @@ def test_trace_adapter_keeps_high_risk_human_review(monkeypatch):
     assert result["high_risk_guidance_count"] == 1
     assert result["high_risk_without_review_count"] == 0
     assert result["forbidden_claims_count"] == 1
+    assert result["mojibake_guidance_count"] == 0
+    assert result["internal_jargon_guidance_count"] == 0
