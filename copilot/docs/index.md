@@ -16,6 +16,7 @@ This index lists durable design and operating documents for the INHE customer-se
 ## Answer Memory
 
 - `docs/answer_memory_layer.md` - Answer Memory Layer design, safety contract, data model, import flow, and shadow trace.
+- `docs/grounded_reasoning_draft_layer.md` - shadow-only grounded reasoning draft contract that consumes verified facts and Answer Memory action/style hints without changing sendability.
 
 Current status: MVP implemented as a shadow/reference layer. The optional shadow-to-draft adapter can append `answer_memory_guidance` to analyze responses when `COPILOT_ANSWER_MEMORY_SHADOW_ENABLED=true`, but it cannot change `can_send`.
 

@@ -452,6 +452,23 @@ def api_analyze():
             except Exception as exc:
                 response.setdefault("evidence_debug", {})["answer_memory_guidance_error"] = str(exc)
 
+        if str(os.getenv("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED", "")).strip().lower() in {"1", "true", "yes", "on"}:
+            try:
+                from app.services.grounded_reasoning_draft_service import GroundedReasoningDraftService
+
+                response = GroundedReasoningDraftService().attach_shadow_draft(
+                    response,
+                    customer_message=message,
+                    product_identity={
+                        "product_name": product_name or "",
+                        "sku_code": sku_code or "",
+                        "i_id": i_id or "",
+                    },
+                    answer_memory_guidance=response.get("answer_memory_guidance") if isinstance(response.get("answer_memory_guidance"), dict) else {},
+                )
+            except Exception as exc:
+                response.setdefault("evidence_debug", {})["grounded_reasoning_draft_error"] = str(exc)
+
         status_code = 500 if response.get("error") else 200
         return jsonify(response), status_code
     except Exception as e:

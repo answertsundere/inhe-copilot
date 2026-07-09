@@ -160,6 +160,20 @@ Structured machine-contract fields can still keep those exact names:
 
 The boundary is intentional: machines need explicit contract fields, but future prompt-visible guidance should read like customer-service strategy, not debug output.
 
+## Grounded Reasoning Shadow Consumer
+
+The first downstream consumer is the Grounded Reasoning Draft Layer. It is also shadow-only and controlled by `COPILOT_GROUNDED_REASONING_SHADOW_ENABLED`.
+
+Answer Memory enters that layer only as:
+
+- customer-service tone hints
+- handling-step hints
+- forbidden-claim reminders
+
+It does not enter `used_facts`, does not become selected evidence, and cannot change `can_send`. Product facts must still come from selected evidence, product context packs, verified product facts, approved media, or other formal evidence sources.
+
+This boundary is important because historical answer patterns can be good service examples but are not proof that the current product has a material, dimension, age range, certificate, installation video, discount, refund status, or other factual property.
+
 ## Non-Goals
 
 - No formal knowledge-base writes.
