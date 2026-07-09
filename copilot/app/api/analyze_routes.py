@@ -438,6 +438,20 @@ def api_analyze():
         except Exception:
             pass
 
+        if str(os.getenv("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED", "")).strip().lower() in {"1", "true", "yes", "on"}:
+            try:
+                from app.services.answer_memory_adapter_service import AnswerMemoryAdapterService
+                response = AnswerMemoryAdapterService().attach_shadow_guidance(
+                    response,
+                    customer_message=message,
+                    product_i_id=i_id,
+                    sku_code=sku_code,
+                    product_title=product_name or "",
+                    copilot_context=copilot_context if isinstance(copilot_context, dict) else None,
+                )
+            except Exception as exc:
+                response.setdefault("evidence_debug", {})["answer_memory_guidance_error"] = str(exc)
+
         status_code = 500 if response.get("error") else 200
         return jsonify(response), status_code
     except Exception as e:

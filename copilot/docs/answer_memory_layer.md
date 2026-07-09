@@ -88,6 +88,60 @@ python scripts\trace_answer_memory_for_training_samples.py --input outputs\train
 
 The trace script is diagnostic only and does not change `can_send`.
 
+## Shadow-to-Draft Adapter
+
+`app/services/answer_memory_adapter_service.py` converts Answer Memory search hits into generation guidance:
+
+```json
+{
+  "enabled": true,
+  "reference_only": true,
+  "used_for_fact": false,
+  "can_change_can_send": false,
+  "matched_memories": [],
+  "style_hints": [],
+  "action_hints": [],
+  "forbidden_claims": [],
+  "required_fact_types": [],
+  "risk_level": "",
+  "draft_guidance": ""
+}
+```
+
+The adapter is controlled by `COPILOT_ANSWER_MEMORY_SHADOW_ENABLED`.
+Default is disabled. When enabled, `/ask/api/analyze` appends:
+
+- `response.answer_memory_guidance`
+- `response.evidence_debug.answer_memory_guidance`
+- `response.answer_trace.answer_memory_guidance`
+
+The adapter does not:
+
+- enter `selected_evidence`
+- change `suggested_reply`
+- change `sendable_reply`
+- change `can_send`
+- change `requires_human_review`
+- replace verified product facts
+
+`verified_answer` memories are stronger style/action references, but they still are not product facts. `reference_reply` memories provide only tone and handling steps. High-risk memories remain human-review guidance.
+
+Adapter trace script:
+
+```powershell
+python scripts\trace_answer_memory_adapter_for_training_samples.py --input outputs\training_samples_reviewed_snapshot_20260709.json --json-output outputs\answer_memory_adapter_trace_20260709.json
+```
+
+The expected invariant is:
+
+```text
+can_change_can_send_count = 0
+used_for_fact_count = 0
+non_reference_count = 0
+```
+
+Future grounded reasoning work can decide how to consume `style_hints`, `action_hints`, `required_fact_types`, and `forbidden_claims`, but final gate and verified evidence remain authoritative.
+
 ## Non-Goals
 
 - No formal knowledge-base writes.

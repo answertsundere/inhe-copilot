@@ -17,7 +17,15 @@ This index lists durable design and operating documents for the INHE customer-se
 
 - `docs/answer_memory_layer.md` - Answer Memory Layer design, safety contract, data model, import flow, and shadow trace.
 
-Current status: MVP implemented as a shadow/reference layer. It is not connected to live Agent reply generation and cannot change `can_send`.
+Current status: MVP implemented as a shadow/reference layer. The optional shadow-to-draft adapter can append `answer_memory_guidance` to analyze responses when `COPILOT_ANSWER_MEMORY_SHADOW_ENABLED=true`, but it cannot change `can_send`.
+
+Entry points:
+
+- `app/services/answer_memory_service.py`
+- `app/services/answer_memory_adapter_service.py`
+- `scripts/import_answer_memory_from_training_samples.py`
+- `scripts/trace_answer_memory_for_training_samples.py`
+- `scripts/trace_answer_memory_adapter_for_training_samples.py`
 
 ## Retrieval And Shadow Experiments
 
