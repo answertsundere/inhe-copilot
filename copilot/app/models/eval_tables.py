@@ -901,6 +901,98 @@ class AIProvisionalKnowledge(Base):
         }
 
 
+class AgentAnswerMemory(Base):
+    __tablename__ = "agent_answer_memory"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    memory_uid = Column(String(64), nullable=False, unique=True, index=True)
+    product_i_id = Column(String(64), nullable=False, default="", index=True)
+    sku_code = Column(String(64), nullable=False, default="", index=True)
+    product_title = Column(String(255), nullable=False, default="", index=True)
+    product_family = Column(String(128), nullable=False, default="", index=True)
+    scenario_type = Column(String(64), nullable=False, default="", index=True)
+    query_fact_type = Column(String(64), nullable=False, default="", index=True)
+    customer_question_pattern = Column(Text, nullable=False, default="")
+    approved_answer = Column(Text, nullable=False, default="")
+    reference_reply = Column(Text, nullable=False, default="")
+    required_fact_types_json = Column(Text, nullable=False, default="[]")
+    required_evidence_roles_json = Column(Text, nullable=False, default="[]")
+    forbidden_claims_json = Column(Text, nullable=False, default="[]")
+    risk_level = Column(String(16), nullable=False, default="medium", index=True)
+    review_status = Column(String(32), nullable=False, default="reference_only", index=True)
+    answer_quality = Column(String(32), nullable=False, default="candidate", index=True)
+    can_auto_send = Column(Boolean, nullable=False, default=False, index=True)
+    requires_human_review = Column(Boolean, nullable=False, default=True, index=True)
+    source_type = Column(String(64), nullable=False, default="", index=True)
+    source_id = Column(String(128), nullable=False, default="", index=True)
+    source_conversation_id = Column(String(128), nullable=False, default="", index=True)
+    source_order_id_hash = Column(String(64), nullable=False, default="", index=True)
+    reviewer = Column(String(64), nullable=False, default="")
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_agent_answer_memory_lookup", "product_i_id", "sku_code", "query_fact_type", "review_status"),
+        Index("idx_agent_answer_memory_scenario", "scenario_type", "query_fact_type", "review_status"),
+    )
+
+    def get_required_fact_types(self):
+        return _json_load(self.required_fact_types_json, [])
+
+    def set_required_fact_types(self, value):
+        self.required_fact_types_json = _json_dump(value, [])
+
+    def get_required_evidence_roles(self):
+        return _json_load(self.required_evidence_roles_json, [])
+
+    def set_required_evidence_roles(self, value):
+        self.required_evidence_roles_json = _json_dump(value, [])
+
+    def get_forbidden_claims(self):
+        return _json_load(self.forbidden_claims_json, [])
+
+    def set_forbidden_claims(self, value):
+        self.forbidden_claims_json = _json_dump(value, [])
+
+    def get_metadata(self):
+        return _json_load(self.metadata_json, {})
+
+    def set_metadata(self, value):
+        self.metadata_json = _json_dump(value, {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "memory_uid": self.memory_uid,
+            "product_i_id": self.product_i_id,
+            "sku_code": self.sku_code,
+            "product_title": self.product_title,
+            "product_family": self.product_family,
+            "scenario_type": self.scenario_type,
+            "query_fact_type": self.query_fact_type,
+            "customer_question_pattern": self.customer_question_pattern,
+            "approved_answer": self.approved_answer,
+            "reference_reply": self.reference_reply,
+            "required_fact_types": self.get_required_fact_types(),
+            "required_evidence_roles": self.get_required_evidence_roles(),
+            "forbidden_claims": self.get_forbidden_claims(),
+            "risk_level": self.risk_level,
+            "review_status": self.review_status,
+            "answer_quality": self.answer_quality,
+            "can_auto_send": bool(self.can_auto_send),
+            "requires_human_review": bool(self.requires_human_review),
+            "source_type": self.source_type,
+            "source_id": self.source_id,
+            "source_conversation_id": self.source_conversation_id,
+            "source_order_id_hash": self.source_order_id_hash,
+            "reviewer": self.reviewer,
+            "metadata": self.get_metadata(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class AgentBenchmarkScenario(Base):
     __tablename__ = "agent_benchmark_scenarios"
 
