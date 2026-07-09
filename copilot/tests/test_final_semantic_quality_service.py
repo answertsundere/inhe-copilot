@@ -278,6 +278,44 @@ def test_final_semantic_fit_accepts_controlled_no_evidence_installation_handoff(
     assert result["reason"] == "Controlled no-evidence handoff reply accepted deterministically."
 
 
+def test_material_semantic_fallback_is_customer_facing_without_process_language():
+    from app.services.final_semantic_quality_service import apply_semantic_fit_result
+
+    response = {
+        "suggested_reply": "亲，这款防潮还可以。",
+        "display_product_name": "英禾防夹滑门收纳架整理客厅零食桌面儿童玩具卧室可拼搭储物抽屉",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "filtered_evidence_summary": [
+                {
+                    "evidence_fact_type": "material",
+                    "chunk_preview": "这款产品主要采用冷轧钢管/环保PP/无纺布等材质，金属部分经过防锈喷涂处理，具有一定的防潮能力。",
+                }
+            ],
+        },
+    }
+
+    updated = apply_semantic_fit_result(
+        response,
+        {
+            "checked": True,
+            "passed": False,
+            "issues": ["material_safety_incomplete"],
+            "reason": "material safety was not fully answered",
+        },
+    )
+
+    reply = updated["suggested_reply"]
+    assert updated["requires_human_review"] is True
+    assert "材质和防潮相关说明" in reply
+    assert "安全、气味或检测" in reply
+    assert "转人工" not in reply
+    assert "口径" not in reply
+    assert "复核" not in reply
+    assert "英禾防夹滑门收纳架" not in reply
+
+
 def test_final_semantic_fit_blocks_structure_function_answered_with_scene(monkeypatch):
     from app import config
 

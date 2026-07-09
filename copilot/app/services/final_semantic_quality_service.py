@@ -19,6 +19,7 @@ import json
 from typing import Any
 
 from app import config
+from app.services.customer_facing_safe_handoff_service import customer_facing_safe_handoff_reply
 from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
 
 
@@ -515,11 +516,44 @@ def _query_fact_type(response: dict[str, Any], evidence_pack: dict[str, Any]) ->
 
 def _semantic_fit_fallback(response: dict[str, Any]) -> str:
     display_name = str(response.get("display_product_name") or "").strip()
-    product = f"「{display_name}」" if display_name else "这款商品"
+    evidence_pack = _evidence_pack(response)
+    query_fact_type = _query_fact_type(response, evidence_pack)
+    if query_fact_type in {"material", "material_safety", "certification_report", "odor"}:
+        if _has_material_or_moisture_evidence(response):
+            return (
+                "亲，我先帮您看了下这款的资料，里面有材质和防潮相关说明；"
+                "您问的安全、气味或检测这块我再对一下详情页，确认后回您。"
+            )
+        return "亲，我先帮您对一下这款的材质、安全和防潮说明，确认后回您。"
+    if query_fact_type:
+        reply = customer_facing_safe_handoff_reply(query_fact_type, inputs={"product_name": display_name})
+        if reply:
+            return reply
+    product = "这款" if display_name else "这款商品"
     return (
-        f"亲～{product}这个问题需要结合对应资料复核，避免口径不准确。\n"
-        "我先转人工确认后，再给您准确处理建议。"
+        f"亲，{product}我再帮您对一下资料，确认清楚后回您。"
     )
+
+
+def _has_material_or_moisture_evidence(response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") or {}
+    texts: list[str] = []
+    for key in ("filtered_evidence_summary", "knowledge_evidence_summary", "selected_evidence"):
+        for item in debug.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            text = " ".join(
+                str(item.get(field) or "")
+                for field in ("chunk_preview", "fact", "content", "text", "matched_title")
+            )
+            if text:
+                texts.append(text)
+    pack = _evidence_pack(response)
+    for item in pack.get("matched_facts") or []:
+        if isinstance(item, dict):
+            texts.append(" ".join(str(item.get(field) or "") for field in ("fact", "content", "text")))
+    combined = "\n".join(texts)
+    return any(term in combined for term in ("材质", "材料", "防潮", "受潮", "气味", "检测"))
 
 
 def _append_reason(existing: str, reason: str) -> str:
