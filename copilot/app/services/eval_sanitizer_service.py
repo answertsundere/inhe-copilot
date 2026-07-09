@@ -30,6 +30,24 @@ _SAFE_INTERNAL_ID_KEYS = {
     "turn_uid",
     "conversation_uid",
 }
+_PRODUCT_TITLE_KEYS = {
+    "product_name",
+    "product_title",
+    "platform_product_title",
+    "display_product_name",
+    "front_product_title",
+    "sidecar_front_title",
+    "item_title",
+    "order_product_title",
+    "matched_product_name",
+    "internal_product_name",
+}
+_PRODUCT_TITLE_CANDIDATE_TYPES = (
+    "product_candidate",
+    "product_title",
+    "order_product_title",
+    "product_name",
+)
 
 
 def stable_hash(value: str, length: int = 16) -> str:
@@ -78,6 +96,27 @@ def sanitize_text(text: str | None) -> str:
     return value.strip()
 
 
+def sanitize_product_title(text: str | None) -> str:
+    """Sanitize a product title without treating room/category words as address PII.
+
+    QianNiu product titles often contain words like 客厅、卧室、桌面、儿童. The generic
+    address regex is intentionally broad for buyer messages, but it can erase
+    product identity and break downstream SKU/i_id resolution. Product-title
+    fields still go through URL, secret, phone/account, and long-id redaction.
+    """
+    value = str(text or "")
+    if not value:
+        return ""
+    value = _DATA_URL_RE.sub("[BASE64_IMAGE_REDACTED]", value)
+    value = _BARE_BASE64_RE.sub("[BASE64_REDACTED]", value)
+    value = _URL_RE.sub(lambda m: _sanitize_url(m.group(0)), value)
+    value = _SECRET_RE.sub(lambda m: f"{m.group(1)}=[SECRET_REDACTED]", value)
+    value = _PHONE_RE.sub("[PHONE_REDACTED]", value)
+    value = _ACCOUNT_RE.sub("[ACCOUNT_REDACTED]", value)
+    value = _LONG_ID_RE.sub(_redact_long_id, value)
+    return value.strip()
+
+
 def sanitize_obj(value):
     """Recursively sanitize text fields in JSON-like objects."""
     if isinstance(value, str):
@@ -88,12 +127,24 @@ def sanitize_obj(value):
         return [sanitize_obj(item) for item in value]
     if isinstance(value, dict):
         sanitized = {}
+        candidate_type = str(value.get("type") or value.get("identifier_type") or "").lower()
+        title_like_candidate = (
+            any(token in candidate_type for token in _PRODUCT_TITLE_CANDIDATE_TYPES)
+            and "product_id" not in candidate_type
+            and "item_id" not in candidate_type
+        )
         for key, item in value.items():
             key_text = str(key)
+            key_lower = key_text.lower()
             if key_text.lower() in {"token", "secret", "password", "api_key", "apikey", "signature"}:
                 sanitized[key_text] = "[SECRET_REDACTED]"
-            elif key_text.lower() in _SAFE_INTERNAL_ID_KEYS:
+            elif key_lower in _SAFE_INTERNAL_ID_KEYS:
                 sanitized[key_text] = str(item or "")
+            elif (
+                key_lower in _PRODUCT_TITLE_KEYS
+                or (title_like_candidate and key_lower in {"value", "title", "name"})
+            ):
+                sanitized[key_text] = sanitize_product_title(item)
             else:
                 sanitized[key_text] = sanitize_obj(item)
         return sanitized

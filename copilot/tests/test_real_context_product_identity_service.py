@@ -3,7 +3,7 @@ from app.services.real_context_product_identity_service import (
     build_conversation_media_reference,
     build_real_context_product_identity,
 )
-from app.services.eval_sanitizer_service import hash_sensitive
+from app.services.eval_sanitizer_service import hash_sensitive, sanitize_obj, sanitize_product_title
 
 
 def test_builds_product_candidates_from_product_and_order_context():
@@ -83,3 +83,31 @@ def test_repository_scope_scoring_accepts_structured_scope_candidates():
     )
 
     assert score > 0
+
+
+def test_product_title_sanitizer_does_not_redact_room_words_as_address():
+    title = "\u82f1\u79be\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67b6\u6574\u7406\u5ba2\u5385\u96f6\u98df\u684c\u9762\u513f\u7ae5\u73a9\u5177\u5367\u5ba4\u53ef\u62fc\u642d\u50a8\u7269\u62bd\u5c49"
+
+    assert sanitize_product_title(title) == title
+    sanitized = sanitize_obj({
+        "product_title": title,
+        "product_candidates": [{"type": "product_candidate", "value": title}],
+    })
+
+    assert sanitized["product_title"] == title
+    assert sanitized["product_candidates"][0]["value"] == title
+    assert "[ADDRESS_REDACTED]" not in sanitized["product_title"]
+
+
+def test_real_context_identity_preserves_qianniu_product_title():
+    title = "\u82f1\u79be\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67b6\u6574\u7406\u5ba2\u5385\u96f6\u98df\u684c\u9762\u513f\u7ae5\u73a9\u5177\u5367\u5ba4\u53ef\u62fc\u642d\u50a8\u7269\u62bd\u5c49"
+
+    identity = build_real_context_product_identity({
+        "product_title": title,
+        "product_candidates": [{"type": "product_candidate", "value": title}],
+    })
+
+    assert identity["product_title"] == title
+    assert identity["display_product_name"] == title
+    assert identity["product_candidates"][0]["value"] == title
+    assert "[ADDRESS_REDACTED]" not in str(identity)

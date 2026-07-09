@@ -6,7 +6,7 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.eval_sanitizer_service import sanitize_obj, sanitize_product_title, sanitize_text
 
 
 INTERNAL_PRODUCT_CODE_RE = re.compile(r"^YH[A-Za-z0-9_-]{4,40}$", re.I)
@@ -25,7 +25,7 @@ def build_real_context_product_identity(copilot_context: dict[str, Any] | None) 
     product = real_context.get("product") if isinstance(real_context.get("product"), dict) else {}
     order = real_context.get("order") if isinstance(real_context.get("order"), dict) else {}
 
-    product_title = _first_text(
+    product_title = _first_product_title_text(
         product.get("product_title"),
         ctx.get("product_title"),
         ctx.get("platform_product_title"),
@@ -33,7 +33,7 @@ def build_real_context_product_identity(copilot_context: dict[str, Any] | None) 
         ctx.get("item_title"),
         ctx.get("product_name"),
     )
-    order_product_title = _first_text(
+    order_product_title = _first_product_title_text(
         order.get("order_product_title"),
         ctx.get("order_product_title"),
     )
@@ -212,7 +212,10 @@ def merge_product_candidates(*candidate_lists: list[dict[str, Any]] | None) -> l
 
 
 def _add_candidate(candidates: list[dict[str, Any]], candidate_type: str, value: str, source: str, **extra: Any) -> None:
-    text = sanitize_text(value).strip()
+    if candidate_type in {"product_title", "order_product_title", "product_name"}:
+        text = sanitize_product_title(value).strip()
+    else:
+        text = sanitize_text(value).strip()
     if not text:
         return
     candidate = {
@@ -243,6 +246,14 @@ def _sku_family(value: str) -> str:
 def _first_text(*values: Any) -> str:
     for value in values:
         text = sanitize_text(str(value or "")).strip()
+        if text:
+            return text
+    return ""
+
+
+def _first_product_title_text(*values: Any) -> str:
+    for value in values:
+        text = sanitize_product_title(str(value or "")).strip()
         if text:
             return text
     return ""
