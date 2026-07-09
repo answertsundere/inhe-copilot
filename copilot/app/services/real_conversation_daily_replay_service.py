@@ -41,6 +41,7 @@ class DailyReplayOptions:
     generate_repair_tasks: bool = False
     created_by: str = "system"
     eval_sidecar_context: dict[str, Any] | None = None
+    eval_sidecar_mode: str = "global"
     disable_external_tools: bool = False
     external_tool_timeout_seconds: int | float = 0
     agent_turn_timeout_seconds: int | float = 0
@@ -90,6 +91,7 @@ def _daily_metadata(
             "created_by": sanitize_text(options.created_by),
             "generate_repair_tasks": bool(options.generate_repair_tasks),
             "eval_sidecar_context": sanitize_obj(options.eval_sidecar_context or {}),
+            "eval_sidecar_mode": sanitize_text(options.eval_sidecar_mode) or "global",
             "eval_replay_options": sanitize_obj({
                 "disable_external_tools": bool(options.disable_external_tools),
                 "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
@@ -137,6 +139,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         generate_repair_tasks=bool(options.generate_repair_tasks),
         created_by=sanitize_text(options.created_by) or "system",
         eval_sidecar_context=sanitize_obj(options.eval_sidecar_context or {}),
+        eval_sidecar_mode=sanitize_text(options.eval_sidecar_mode) or "global",
         disable_external_tools=bool(options.disable_external_tools),
         external_tool_timeout_seconds=float(options.external_tool_timeout_seconds or 0),
         agent_turn_timeout_seconds=float(options.agent_turn_timeout_seconds or 0),
@@ -157,6 +160,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
         "date": options.run_date,
         "generate_repair_tasks": options.generate_repair_tasks,
         "eval_sidecar_context": sanitize_obj(options.eval_sidecar_context or {}),
+        "eval_sidecar_mode": sanitize_text(options.eval_sidecar_mode) or "global",
         "eval_replay_options": sanitize_obj({
             "disable_external_tools": bool(options.disable_external_tools),
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
@@ -199,6 +203,7 @@ def run_daily_real_conversation_replay(options: DailyReplayOptions) -> dict[str,
                     run_uid=run_uid,
                     case_uids=imported_case_uids or None,
                     eval_sidecar_context=options.eval_sidecar_context,
+                    eval_sidecar_mode=options.eval_sidecar_mode,
                     disable_external_tools=options.disable_external_tools,
                     external_tool_timeout_seconds=options.external_tool_timeout_seconds,
                     agent_turn_timeout_seconds=options.agent_turn_timeout_seconds,

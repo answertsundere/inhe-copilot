@@ -1281,6 +1281,120 @@ def test_replay_can_inject_eval_sidecar_context_for_local_testing(monkeypatch):
         db.close()
 
 
+def test_replay_per_sample_sidecar_mode_ignores_global_fixture(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        real_context = {
+            "conversation_type": "presales",
+            "source_page": "product_detail",
+            "product": {
+                "item_id_hash": "hash-item",
+                "product_url": "https://item.example/item?id=123456",
+            },
+            "order": {},
+        }
+        case = EvalCase(case_uid="case_per_sample_missing", source_type="real_conversation", message="dimensions")
+        case.set_metadata({"real_context": real_context})
+        db.add(case)
+        db.add(EvalConversationTurn(
+            case_uid="case_per_sample_missing",
+            conversation_uid="conv_per_sample_missing",
+            turn_uid="turn_per_sample_missing",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="dimensions?",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    payloads = []
+
+    class PerSampleReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            payloads.append(payload)
+            return {
+                "suggested_reply": "Need human review for this product fact.",
+                "requires_human_review": True,
+                "query_fact_type": "dimensions",
+                "answer_trace": {"query_fact_type": "dimensions", "required_fact_types": ["dimensions"]},
+            }
+
+    result = PerSampleReplayService(_FixedTurnUnderstanding("dimensions")).replay_cases(
+        ReplayOptions(
+            run_uid="run_per_sample_missing",
+            eval_sidecar_mode="per_sample",
+            eval_sidecar_context={
+                "sidecar_product_title": "global fixture product",
+                "sidecar_sku_code": "GLOBAL-SKU",
+            },
+        )
+    )
+
+    assert result["context_gap"] == 1
+    assert payloads[0]["product_name"] == ""
+    assert payloads[0]["sku_code"] == ""
+    assert payloads[0]["copilot_context"]["sidecar_context_quality"] == "missing"
+    assert payloads[0]["copilot_context"]["sidecar_mode"] == "per_sample"
+    assert payloads[0]["copilot_context"]["sidecar_fixture_used"] is False
+    db = session_factory()
+    try:
+        run = db.query(EvalRun).filter(EvalRun.run_uid == "run_per_sample_missing").one()
+        assert run.get_metadata()["eval_sidecar_mode"] == "per_sample"
+        trace = db.query(EvalTrace).one()
+        understanding = trace.get_turn_understanding()
+        assert understanding["sidecar_mode"] == "per_sample"
+        assert understanding["sidecar_fixture_used"] is False
+        assert understanding["context_sufficiency"]["is_sufficient"] is False
+        assert "context_gap" in trace.get_failure_labels()
+    finally:
+        db.close()
+
+
+def test_replay_per_sample_sidecar_mode_uses_turn_metadata(monkeypatch):
+    session_factory = _patch_test_db(monkeypatch)
+    db = session_factory()
+    try:
+        db.add(EvalCase(case_uid="case_per_sample_present", source_type="real_conversation", message="gross weight"))
+        turn = EvalConversationTurn(
+            case_uid="case_per_sample_present",
+            conversation_uid="conv_per_sample_present",
+            turn_uid="turn_per_sample_present",
+            turn_index=0,
+            speaker="buyer",
+            sanitized_text="gross weight?",
+        )
+        turn.set_metadata({"sidecar_product_title": "per sample product", "sidecar_sku_code": "PER-SAMPLE-SKU"})
+        db.add(turn)
+        db.commit()
+    finally:
+        db.close()
+
+    payloads = []
+
+    class PerSampleReplayService(RealConversationReplayService):
+        def _call_agent(self, payload):
+            payloads.append(payload)
+            return {
+                "suggested_reply": "Need human review for this product fact.",
+                "requires_human_review": True,
+                "query_fact_type": "gross_weight",
+                "answer_trace": {"query_fact_type": "gross_weight", "required_fact_types": ["gross_weight"]},
+            }
+
+    result = PerSampleReplayService(_FixedTurnUnderstanding("gross_weight")).replay_cases(
+        ReplayOptions(run_uid="run_per_sample_present", eval_sidecar_mode="per_sample")
+    )
+
+    assert result["context_gap"] == 0
+    assert payloads[0]["product_name"] == "per sample product"
+    assert payloads[0]["sku_code"] == "PER-SAMPLE-SKU"
+    assert payloads[0]["copilot_context"]["sidecar_context_quality"] == "complete"
+    assert payloads[0]["copilot_context"]["sidecar_mode"] == "per_sample"
+    assert payloads[0]["copilot_context"]["sidecar_fixture_used"] is False
+
+
 def test_replay_default_does_not_write_pgvector_shadow(monkeypatch):
     session_factory = _patch_test_db(monkeypatch)
     _seed_case(session_factory)

@@ -211,6 +211,7 @@ class ReplayOptions:
     source_type: str = "real_conversation"
     run_metadata: dict[str, Any] | None = None
     eval_sidecar_context: dict[str, Any] | None = None
+    eval_sidecar_mode: str = "global"
     disable_external_tools: bool = False
     external_tool_timeout_seconds: int | float = 0
     agent_turn_timeout_seconds: int | float = 0
@@ -228,6 +229,32 @@ def _agent_turn_timeout_seconds(options: "ReplayOptions") -> float:
     if explicit_timeout > 0:
         return explicit_timeout
     return 0.0
+
+
+def _normalize_eval_sidecar_mode(value: str, eval_sidecar_context: dict[str, Any] | None = None) -> str:
+    mode = sanitize_text(value).lower()
+    if mode in {"none", "global", "per_sample"}:
+        return mode
+    return "global" if eval_sidecar_context else "none"
+
+
+def _sidecar_product_mismatch_marker(
+    *,
+    sidecar_context: dict[str, Any],
+    real_context_identity: dict[str, Any],
+    sidecar_fixture_used: bool,
+) -> str:
+    if not sidecar_fixture_used:
+        return "unknown"
+    sidecar_title = sanitize_text(sidecar_context.get("product_title") or sidecar_context.get("product_name"))
+    real_title = sanitize_text(
+        real_context_identity.get("product_title")
+        or real_context_identity.get("order_product_title")
+        or real_context_identity.get("display_product_name")
+    )
+    if sidecar_title and real_title:
+        return "true" if sidecar_title != real_title else "false"
+    return "unknown"
 
 
 def _message_preview(value: str, limit: int = 80) -> str:
@@ -886,6 +913,7 @@ class RealConversationReplayService:
         case_uid_filter = set(options.case_uids or [])
         turn_uid_filter = set(options.turn_uids or [])
         eval_sidecar_context = sanitize_obj(options.eval_sidecar_context or {})
+        eval_sidecar_mode = _normalize_eval_sidecar_mode(options.eval_sidecar_mode, eval_sidecar_context)
         eval_replay_options = sanitize_obj({
             "disable_external_tools": bool(options.disable_external_tools),
             "external_tool_timeout_seconds": float(options.external_tool_timeout_seconds or 0),
@@ -893,6 +921,7 @@ class RealConversationReplayService:
             "progress_log": bool(options.progress_log),
             "enable_pgvector_shadow_trace": bool(options.enable_pgvector_shadow_trace),
             "pgvector_shadow_top_k": max(1, min(int(options.pgvector_shadow_top_k or 5), 20)),
+            "eval_sidecar_mode": eval_sidecar_mode,
         })
         db = SessionLocal()
         try:
@@ -912,6 +941,7 @@ class RealConversationReplayService:
                 "sample_only": options.sample_only,
                 **sanitize_obj(options.run_metadata or {}),
                 "eval_sidecar_context": eval_sidecar_context,
+                "eval_sidecar_mode": eval_sidecar_mode,
                 "eval_replay_options": eval_replay_options,
             })
             db.add(run)
@@ -961,7 +991,8 @@ class RealConversationReplayService:
                     conversation_history = history[:-1]
                     real_context = _real_context_for_turn(case, turn)
                     agent_real_context = build_agent_context_from_real_context(real_context)
-                    if eval_sidecar_context:
+                    sidecar_fixture_used = bool(eval_sidecar_context and eval_sidecar_mode == "global")
+                    if sidecar_fixture_used:
                         agent_real_context.update(eval_sidecar_context)
                     product_name = turn.product_hint or agent_real_context.get("product_name", "")
                     case_metadata = case.get_metadata() or {}
@@ -1020,12 +1051,22 @@ class RealConversationReplayService:
                         real_context_identity=real_context_identity,
                     ).to_dict()
                     context_sufficiency = apply_sidecar_to_context_sufficiency(context_sufficiency, sidecar_context)
+                    sidecar_product_mismatch = _sidecar_product_mismatch_marker(
+                        sidecar_context=sidecar_context,
+                        real_context_identity=real_context_identity,
+                        sidecar_fixture_used=sidecar_fixture_used,
+                    )
+                    eval_fixture_gap = sidecar_fixture_used and sidecar_product_mismatch == "true"
                     turn_understanding["context_sufficiency"] = context_sufficiency
                     turn_understanding["sidecar_context_quality"] = sidecar_context.get("sidecar_context_quality", "")
                     turn_understanding["sidecar_context_sources"] = sidecar_context.get("sidecar_context_sources", [])
                     turn_understanding["missing_context_fields"] = sidecar_context.get("missing_context_fields", [])
                     turn_understanding["has_sidecar_product_context"] = bool(sidecar_context.get("has_sidecar_product_context"))
                     turn_understanding["has_sidecar_order_context"] = bool(sidecar_context.get("has_sidecar_order_context"))
+                    turn_understanding["sidecar_mode"] = eval_sidecar_mode
+                    turn_understanding["sidecar_fixture_used"] = sidecar_fixture_used
+                    turn_understanding["sidecar_product_mismatch"] = sidecar_product_mismatch
+                    turn_understanding["eval_fixture_gap"] = eval_fixture_gap
                     should_score = bool(turn_understanding.get("should_score"))
                     if should_score:
                         totals["turns"] += 1
@@ -1053,6 +1094,10 @@ class RealConversationReplayService:
                             "missing_context_fields": sidecar_context.get("missing_context_fields", []),
                             "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
                             "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
+                            "sidecar_mode": eval_sidecar_mode,
+                            "sidecar_fixture_used": sidecar_fixture_used,
+                            "sidecar_product_mismatch": sidecar_product_mismatch,
+                            "eval_fixture_gap": eval_fixture_gap,
                             "product_candidates": product_candidates,
                             "product_name": product_name,
                             "product_title": sidecar_context.get("product_title") or product_name,
@@ -1215,6 +1260,10 @@ class RealConversationReplayService:
                         "missing_context_fields": sidecar_context.get("missing_context_fields", []),
                         "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
                         "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
+                        "sidecar_mode": eval_sidecar_mode,
+                        "sidecar_fixture_used": sidecar_fixture_used,
+                        "sidecar_product_mismatch": sidecar_product_mismatch,
+                        "eval_fixture_gap": eval_fixture_gap,
                         "conversation_media_reference": conversation_media_reference,
                         "eval_replay_options": eval_replay_options,
                         **({"pgvector_shadow": pgvector_shadow} if pgvector_shadow else {}),
@@ -1243,6 +1292,10 @@ class RealConversationReplayService:
                         "missing_context_fields": sidecar_context.get("missing_context_fields", []),
                         "has_sidecar_product_context": bool(sidecar_context.get("has_sidecar_product_context")),
                         "has_sidecar_order_context": bool(sidecar_context.get("has_sidecar_order_context")),
+                        "sidecar_mode": eval_sidecar_mode,
+                        "sidecar_fixture_used": sidecar_fixture_used,
+                        "sidecar_product_mismatch": sidecar_product_mismatch,
+                        "eval_fixture_gap": eval_fixture_gap,
                         "conversation_media_reference": conversation_media_reference,
                         "eval_replay_options": eval_replay_options,
                         **({"pgvector_shadow": pgvector_shadow} if pgvector_shadow else {}),

@@ -75,6 +75,10 @@ def _dig(value: Any, *path: str) -> Any:
 def _sidecar(trace: EvalTrace) -> dict[str, Any]:
     raw = trace.get_raw_response() or {}
     identity = trace.get_product_identity() or {}
+    answer = trace.get_answer_trace() or {}
+    replay_options = raw.get("eval_replay_options") if isinstance(raw.get("eval_replay_options"), dict) else {}
+    if not replay_options and isinstance(answer.get("eval_replay_options"), dict):
+        replay_options = answer.get("eval_replay_options") or {}
     sidecar = raw.get("sidecar_context") if isinstance(raw.get("sidecar_context"), dict) else {}
     if not sidecar:
         sidecar = _dig(raw, "copilot_context", "sidecar_context") or {}
@@ -87,6 +91,8 @@ def _sidecar(trace: EvalTrace) -> dict[str, Any]:
         "order_id": sanitize_text(sidecar.get("order_id")),
         "quality": sanitize_text(sidecar.get("sidecar_context_quality") or raw.get("sidecar_context_quality")),
         "sources": sidecar.get("sidecar_context_sources") or raw.get("sidecar_context_sources") or [],
+        "mode": sanitize_text(raw.get("sidecar_mode") or answer.get("sidecar_mode") or replay_options.get("eval_sidecar_mode")),
+        "fixture_used": bool(raw.get("sidecar_fixture_used") or answer.get("sidecar_fixture_used")),
     }
 
 
@@ -168,11 +174,17 @@ def _classify_row(trace: EvalTrace) -> dict[str, Any]:
     evidence_ids = set(evidence.get("product_ids") or {})
     sidecar_ids = {sidecar.get("i_id"), sidecar.get("sku_code")} - {""}
     evidence_product_mismatch = bool(evidence_ids and sidecar_ids and not (evidence_ids & sidecar_ids))
+    mode = sidecar.get("mode") or "unknown"
+    fixture_used = bool(sidecar.get("fixture_used")) or mode == "global"
 
-    if sidecar_missing:
-        category = "insufficient_product_context"
-    elif real_vs_sidecar or buyer_cross:
-        category = "likely_sidecar_fixture_mismatch"
+    if sidecar_missing and mode == "per_sample":
+        category = "per_sample_missing_context"
+    elif sidecar_missing:
+        category = "unknown"
+    elif real_vs_sidecar and fixture_used:
+        category = "global_fixture_mismatch"
+    elif buyer_cross:
+        category = "buyer_mentions_other_product"
     elif evidence_product_mismatch:
         category = "evidence_product_mismatch"
     else:
@@ -180,7 +192,7 @@ def _classify_row(trace: EvalTrace) -> dict[str, Any]:
 
     quality_bucket = trace.get_quality_bucket() or {}
     adjusted_bucket = quality_bucket.get("quality_bucket", "")
-    if category == "likely_sidecar_fixture_mismatch" and adjusted_bucket == "agent_error":
+    if category in {"global_fixture_mismatch", "buyer_mentions_other_product"} and adjusted_bucket == "agent_error":
         adjusted_bucket = "eval_fixture_gap"
 
     return {
@@ -205,6 +217,14 @@ def _classify_row(trace: EvalTrace) -> dict[str, Any]:
 
 
 def _suggested_action(category: str) -> str:
+    if category == "global_fixture_mismatch":
+        return "isolate from Agent error as eval_fixture_gap; rerun with per-sample sidecar before judging Agent"
+    if category == "per_sample_missing_context":
+        return "source/import lacks per-sample sidecar context; fix source fields instead of Agent rules"
+    if category == "buyer_mentions_other_product":
+        return "buyer text references another product category; verify replay input before scoring Agent"
+    if category == "unknown":
+        return "insufficient trace signals; inspect source metadata and sidecar context"
     if category == "likely_sidecar_fixture_mismatch":
         return "将该轮从 Agent 主链路错误中隔离为 eval fixture gap；使用真实千牛侧栏或按样本注入正确商品后再评估"
     if category == "evidence_product_mismatch":
