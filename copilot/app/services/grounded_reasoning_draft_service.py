@@ -211,6 +211,8 @@ def _admission_reason(item: dict[str, Any], query_fact_type: str, product_identi
     actual = {key: sanitize_text(item.get(key)) for key in identity_keys if sanitize_text(item.get(key))}
     if is_product_fact and expected and not actual:
         return "product_identity_missing"
+    if expected and actual and not set(expected).intersection(actual):
+        return "product_identity_namespace_missing"
     for key, expected_value in expected.items():
         if key in actual and actual[key] != expected_value:
             return "product_identity_mismatch"
@@ -256,6 +258,7 @@ def _collect_used_facts(
     facts: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
+    conflicted_attributes: set[str] = set()
 
     def add_fact(source: str, item: dict[str, Any]) -> None:
         fact_type = _fact_type_of(item)
@@ -270,16 +273,20 @@ def _collect_used_facts(
         attribute_key = _attribute_key(item, fact_type)
         normalized_value = _normalized_value(item, text)
         if not attribute_key:
-            rejected.append({"source": source, "reason": "conflict_check_skipped", "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
-            facts.append({"source": source, "fact_type": fact_type or query_fact_type, "role": role, "attribute_key": "", "normalized_value": "", "text": _clip(text, 180)})
+            facts.append({"source": source, "fact_type": fact_type or query_fact_type, "role": role, "attribute_key": "", "normalized_value": "", "text": _clip(text, 180), "admission_warning": "conflict_check_skipped"})
+            return
+        if attribute_key in conflicted_attributes:
+            rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": role, "attribute_key": attribute_key, "normalized_value": normalized_value})
             return
         same_attribute = [fact for fact in facts if fact.get("attribute_key") == attribute_key]
         if any(fact.get("normalized_value") == normalized_value for fact in same_attribute):
             return
         if same_attribute and normalized_value and all(fact.get("normalized_value") for fact in same_attribute):
-            rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
+            conflicted_attributes.add(attribute_key)
             for fact in list(same_attribute):
                 facts.remove(fact)
+                rejected.append({**fact, "reason": "conflicting_evidence"})
+            rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": role, "attribute_key": attribute_key, "normalized_value": normalized_value})
             return
         key = (source, fact_type, text)
         if key in seen:
