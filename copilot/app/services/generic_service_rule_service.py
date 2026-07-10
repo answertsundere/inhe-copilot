@@ -12,6 +12,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from app.services.claim_polarity_service import contains_asserted_claim
+
 
 FORBIDDEN_CUSTOMER_CLAIMS = (
     "0甲醛",
@@ -596,19 +598,7 @@ def render_generic_service_reply(rule: dict[str, Any], *, product_name: str = ""
 
 def unsafe_promise_terms(text: str) -> list[str]:
     value = str(text or "")
-    found = []
-    for term in FORBIDDEN_CUSTOMER_CLAIMS:
-        start = 0
-        while True:
-            idx = value.find(term, start)
-            if idx < 0:
-                break
-            prefix = value[max(0, idx - 10):idx]
-            if not re.search(r"(不|不能|不会|无法|不直接|不先|不能直接).{0,8}$", prefix):
-                found.append(term)
-                break
-            start = idx + len(term)
-    return found
+    return [term for term in FORBIDDEN_CUSTOMER_CLAIMS if contains_asserted_claim(value, term)]
 
 
 def _load_db_rules(db, RuleModel) -> list[dict[str, Any]]:

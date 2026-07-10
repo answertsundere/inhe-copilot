@@ -18,6 +18,7 @@ should have one authoritative owner even when several modules consume it.
 | Product evidence pack | `app/services/product_context_pack_service.py` | formal | Preserve fact, service action, and media role separation |
 | No-evidence behavior | `app/services/no_evidence_reply_policy_service.py` | formal but oversized | Select safe strategy; do not become a second fact engine |
 | Customer-facing handoff copy | `app/services/customer_facing_safe_handoff_service.py` | formal | Translate a decision into natural wording without changing risk |
+| Claim polarity | `app/services/claim_polarity_service.py` | formal utility | Distinguish affirmative claims from safe negation/uncertainty; consumers still own their claim lists and decisions |
 | Final answer audit | `app/services/final_answer_auditor.py` | formal | Check claims and delivery contract; avoid duplicating routing |
 | Semantic fit | `app/services/final_semantic_quality_service.py` | formal | Verify answer-question fit after facts and policy are settled |
 | Final response orchestration | `app/services/final_response_orchestrator.py` | formal | One authoritative final stage shared by every entry point |

@@ -227,6 +227,12 @@ def test_unsafe_promise_terms_detects_customer_forbidden_claims():
     assert "宝宝可以直接用" in terms
 
 
+def test_unsafe_promise_terms_ignore_safe_negation_and_uncertainty():
+    from app.services.generic_service_rule_service import unsafe_promise_terms
+
+    assert unsafe_promise_terms("这不代表绝对安全，也不能确认是否0甲醛。") == []
+
+
 def test_validate_rule_rejects_unsafe_customer_promise():
     from app.services.generic_service_rule_service import validate_rule
 

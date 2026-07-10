@@ -62,6 +62,9 @@ def test_trace_grounded_reasoning_reports_shadow_safety_counts(monkeypatch):
     assert result["forbidden_claim_violation_count"] == 0
     assert result["unsupported_media_claim_count"] == 0
     assert "generic_handoff_only_count" in result
+    assert "admission_warning_count" in result
+    assert "conflicting_evidence_group_count" in result
+    assert "conflict_check_skipped_count" in result
     assert result["requires_human_review_count"] >= 1
 
 

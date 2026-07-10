@@ -23,6 +23,8 @@ The layer output keeps an explicit machine contract:
   "can_change_can_send": false,
   "grounded_draft": "",
   "used_facts": [],
+  "rejected_evidence": [],
+  "admission_warnings": [],
   "inferred_points": [],
   "safety_boundaries": [],
   "forbidden_claims": [],
@@ -50,8 +52,27 @@ Direct-looking source labels are not enough: product facts require explicit
 direct eligibility, an allowed gate, reviewed/verified/published status, and a
 matching identity namespace (`sku_code`, `i_id`, or `product_id`). Global FAQ
 must declare `fact_scope=global` or `product_scope=all`. Numeric candidates are
-deduplicated and compared by structured attribute key and normalized value;
-conflicting values for one attribute are all excluded and require review.
+deduplicated and compared by structured attribute key and normalized value.
+Product facts require at least one identity key in the same namespace; unrelated
+identity namespaces are not guessed or cross-mapped inside this layer. Only an
+explicit global FAQ may omit product identity.
+
+Conflict handling is order-independent and runs after evidence admission:
+
+1. Candidates are admitted with their source, role, fact type, identity, raw
+   value, structured attribute key, unit domain, and normalized value.
+2. Candidates are grouped by the structured attribute key. Equivalent values in
+   one unit domain are deduplicated, while every candidate in a conflicting group
+   is excluded and retained in `rejected_evidence` with provenance.
+
+`kg`, `公斤`, `千克`, `g`, and `克` normalize to a metric-mass domain. Metric
+length units normalize separately. `斤` remains a separate domain until the
+project declares a trusted conversion contract. Values in incomparable domains
+are excluded as `incomparable_unit_domain`, not mislabeled as numeric conflicts.
+Width, height, length, gross weight, and load capacity remain distinct attribute
+slots. Missing slots or values that cannot be normalized do not participate in
+deduplication or conflict comparison; they are recorded in `admission_warnings`
+as `conflict_check_skipped` rather than being mislabeled as rejected evidence.
 
 Answer Memory can only provide style and action hints. It must never become a product fact. A remembered reply can suggest how to handle an installation, aftersales, or promotion conversation, but it cannot prove a material, weight, size, certificate, age range, discount, refund state, or media asset.
 
@@ -92,6 +113,12 @@ answer_leakage_count = 0
 ```
 
 `generic_handoff_only_count` is tracked to avoid producing drafts that are only generic "check and confirm" wording.
+
+Forbidden-claim diagnostics use the same claim-polarity helper as the formal
+unsafe-promise scanner. Affirmative unsupported claims are flagged, while safe
+negation and uncertainty such as "不能确认是否无毒" or "这不代表无毒" are not.
+This diagnostic remains shadow-only and cannot change the final reply or
+sendability.
 
 Reviewed training-sample `correct_answer` is an offline comparison reference.
 It must never be injected into selected evidence, product facts, prompts, or

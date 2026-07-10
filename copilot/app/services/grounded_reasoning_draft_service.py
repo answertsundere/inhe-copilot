@@ -11,6 +11,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.services.claim_polarity_service import contains_asserted_claim
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.fact_type_service import classify_query_fact_type
 
@@ -209,17 +210,15 @@ def _admission_reason(item: dict[str, Any], query_fact_type: str, product_identi
     identity_keys = ("sku_code", "i_id", "product_id")
     expected = {key: sanitize_text(product_identity.get(key)) for key in identity_keys if sanitize_text(product_identity.get(key))}
     actual = {key: sanitize_text(item.get(key)) for key in identity_keys if sanitize_text(item.get(key))}
-    if is_product_fact and expected and not actual:
+    is_faq = sanitize_text(item.get("evidence_role")).lower() == "faq_direct"
+    identity_required = is_product_fact or (is_faq and not is_global)
+    if identity_required and (not expected or not actual):
         return "product_identity_missing"
-    if expected and actual and not set(expected).intersection(actual):
+    if identity_required and not set(expected).intersection(actual):
         return "product_identity_namespace_missing"
     for key, expected_value in expected.items():
         if key in actual and actual[key] != expected_value:
             return "product_identity_mismatch"
-    if not expected and is_product_fact and not is_global:
-        return "product_identity_missing"
-    if not expected and not is_global and sanitize_text(item.get("evidence_role")).lower() == "faq_direct":
-        return "product_identity_missing"
     return ""
 
 
@@ -230,23 +229,32 @@ def _attribute_key(item: dict[str, Any], fact_type: str) -> str:
     ).lower()
 
 
-def _normalized_value(item: dict[str, Any], text: str) -> str:
+def _normalized_quantity(item: dict[str, Any], text: str) -> tuple[str, str, str]:
     value = sanitize_text(item.get("value") or item.get("fact_value") or text).lower()
-    match = re.search(r"(\d+(?:\.\d+)?)\s*(kg|公斤|千克|g|克|斤)?", value)
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(kg|公斤|千克|g|克|斤|mm|毫米|cm|厘米|m|米)?",
+        value,
+    )
     if not match:
-        return ""
+        return value, "", ""
     try:
         amount = Decimal(match.group(1))
     except InvalidOperation:
-        return ""
+        return value, "", ""
     unit = match.group(2) or ""
     if unit in {"kg", "公斤", "千克"}:
-        return f"mass_g:{(amount * Decimal(1000)).normalize()}"
+        return value, "mass_metric", f"mass_g:{(amount * Decimal(1000)).normalize()}"
     if unit in {"g", "克"}:
-        return f"mass_g:{amount.normalize()}"
+        return value, "mass_metric", f"mass_g:{amount.normalize()}"
     if unit == "斤":
-        return f"jin:{amount.normalize()}"
-    return ""
+        return value, "mass_jin", f"jin:{amount.normalize()}"
+    if unit in {"m", "米"}:
+        return value, "length_metric", f"length_mm:{(amount * Decimal(1000)).normalize()}"
+    if unit in {"cm", "厘米"}:
+        return value, "length_metric", f"length_mm:{(amount * Decimal(10)).normalize()}"
+    if unit in {"mm", "毫米"}:
+        return value, "length_metric", f"length_mm:{amount.normalize()}"
+    return value, "", ""
 
 
 def _collect_used_facts(
@@ -254,11 +262,10 @@ def _collect_used_facts(
     product_context_pack: dict[str, Any] | None,
     query_fact_type: str,
     product_identity: dict[str, Any] | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    facts: list[dict[str, Any]] = []
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    candidates: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
-    conflicted_attributes: set[str] = set()
+    warnings: list[dict[str, Any]] = []
 
     def add_fact(source: str, item: dict[str, Any]) -> None:
         fact_type = _fact_type_of(item)
@@ -271,33 +278,15 @@ def _collect_used_facts(
             rejected.append({"source": source, "reason": reason, "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
             return
         attribute_key = _attribute_key(item, fact_type)
-        normalized_value = _normalized_value(item, text)
-        if not attribute_key:
-            facts.append({"source": source, "fact_type": fact_type or query_fact_type, "role": role, "attribute_key": "", "normalized_value": "", "text": _clip(text, 180), "admission_warning": "conflict_check_skipped"})
-            return
-        if attribute_key in conflicted_attributes:
-            rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": role, "attribute_key": attribute_key, "normalized_value": normalized_value})
-            return
-        same_attribute = [fact for fact in facts if fact.get("attribute_key") == attribute_key]
-        if any(fact.get("normalized_value") == normalized_value for fact in same_attribute):
-            return
-        if same_attribute and normalized_value and all(fact.get("normalized_value") for fact in same_attribute):
-            conflicted_attributes.add(attribute_key)
-            for fact in list(same_attribute):
-                facts.remove(fact)
-                rejected.append({**fact, "reason": "conflicting_evidence"})
-            rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": role, "attribute_key": attribute_key, "normalized_value": normalized_value})
-            return
-        key = (source, fact_type, text)
-        if key in seen:
-            return
-        seen.add(key)
-        facts.append(
+        original_value, unit_domain, normalized_value = _normalized_quantity(item, text)
+        candidates.append(
             {
                 "source": source,
                 "fact_type": fact_type or query_fact_type,
                 "role": role,
                 "attribute_key": attribute_key,
+                "original_value": original_value,
+                "unit_domain": unit_domain,
                 "normalized_value": normalized_value,
                 "text": _clip(text, 180),
             }
@@ -308,7 +297,46 @@ def _collect_used_facts(
             add_fact("selected_evidence", item)
     for source, item in _collect_pack_candidates(_as_dict(product_context_pack)):
         add_fact(source, item)
-    return facts[:8], rejected[:20]
+
+    facts: list[dict[str, Any]] = []
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for candidate in candidates:
+        attribute_key = sanitize_text(candidate.get("attribute_key"))
+        if not attribute_key:
+            facts.append(candidate)
+            warnings.append({**candidate, "reason": "conflict_check_skipped"})
+            continue
+        groups.setdefault(attribute_key, []).append(candidate)
+
+    for attribute_key in sorted(groups):
+        group = sorted(
+            groups[attribute_key],
+            key=lambda item: (
+                sanitize_text(item.get("unit_domain")),
+                sanitize_text(item.get("normalized_value")),
+                sanitize_text(item.get("text")),
+                sanitize_text(item.get("source")),
+            ),
+        )
+        comparable = [item for item in group if sanitize_text(item.get("normalized_value"))]
+        if len(comparable) != len(group):
+            facts.extend(group)
+            for item in group:
+                if not sanitize_text(item.get("normalized_value")):
+                    warnings.append({**item, "reason": "conflict_check_skipped"})
+            continue
+        domains = {sanitize_text(item.get("unit_domain")) for item in group}
+        if len(domains) > 1:
+            rejected.extend({**item, "reason": "incomparable_unit_domain"} for item in group)
+            continue
+        values = {sanitize_text(item.get("normalized_value")) for item in group}
+        if len(values) > 1:
+            rejected.extend({**item, "reason": "conflicting_evidence"} for item in group)
+            continue
+        facts.append(group[0])
+        rejected.extend({**item, "reason": "duplicate_evidence"} for item in group[1:])
+
+    return facts[:8], rejected, warnings
 
 
 def _reply_blocks_have_media(reply_blocks: list[dict[str, Any]] | None, media_type: str = "") -> bool:
@@ -467,7 +495,12 @@ def build_grounded_reasoning_draft(
 ) -> dict[str, Any]:
     message = sanitize_text(customer_message)
     fact_type = _infer_fact_type(message, query_fact_type)
-    used_facts, rejected_evidence = _collect_used_facts(selected_evidence, product_context_pack, fact_type, product_identity)
+    used_facts, rejected_evidence, admission_warnings = _collect_used_facts(
+        selected_evidence,
+        product_context_pack,
+        fact_type,
+        product_identity,
+    )
     has_video = _reply_blocks_have_media(reply_blocks, "video")
     has_image = _reply_blocks_have_media(reply_blocks, "image")
 
@@ -486,7 +519,7 @@ def build_grounded_reasoning_draft(
 
     risk = sanitize_text(risk_level) or ("high" if fact_type in HIGH_RISK_FACT_TYPES else "medium")
     forbidden_claims = _unique(_default_forbidden_claims(fact_type) + _as_list(_as_dict(answer_memory_guidance).get("forbidden_claims")))
-    if any(item.get("reason") == "conflicting_evidence" for item in rejected_evidence):
+    if any(item.get("reason") in {"conflicting_evidence", "incomparable_unit_domain"} for item in rejected_evidence):
         missing.append("conflicting evidence requires review")
     requires_review = risk == "high" or bool(missing)
     safety_boundaries = [
@@ -509,6 +542,7 @@ def build_grounded_reasoning_draft(
         "grounded_draft": sanitize_text(draft),
         "used_facts": used_facts,
         "rejected_evidence": rejected_evidence,
+        "admission_warnings": admission_warnings,
         "inferred_points": _unique(inferred),
         "safety_boundaries": _unique(safety_boundaries),
         "forbidden_claims": forbidden_claims,
@@ -545,15 +579,7 @@ def has_internal_jargon_draft(draft: dict[str, Any]) -> bool:
 def has_forbidden_claim_violation(draft: dict[str, Any]) -> bool:
     text = sanitize_text(draft.get("grounded_draft"))
     forbidden = _unique(list(ABSOLUTE_CLAIM_TERMS) + _as_list(draft.get("forbidden_claims")))
-    for term in forbidden:
-        position = text.find(term)
-        if position < 0:
-            continue
-        prefix = text[max(0, position - 10):position]
-        if any(marker in prefix for marker in ("不能确认", "无法确认", "没有", "暂无", "不确定", "缺少")):
-            continue
-        return True
-    return False
+    return any(contains_asserted_claim(text, term) for term in forbidden)
 
 
 def has_unsupported_media_claim(draft: dict[str, Any], reply_blocks: list[dict[str, Any]] | None = None) -> bool:

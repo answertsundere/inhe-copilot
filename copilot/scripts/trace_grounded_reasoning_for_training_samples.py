@@ -80,6 +80,10 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
     admitted_fact_count = 0
     rejected_evidence_count = 0
     rejected_evidence_by_reason: dict[str, int] = {}
+    admission_warning_count = 0
+    admission_warnings_by_reason: dict[str, int] = {}
+    conflicting_evidence_group_count = 0
+    conflict_check_skipped_count = 0
     answer_leakage_count = 0
 
     for sample in samples[: max(1, min(int(limit or 5000), 5000))]:
@@ -146,6 +150,19 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
         for item in draft.get("rejected_evidence") or []:
             reason = str(item.get("reason") or "unknown")
             rejected_evidence_by_reason[reason] = rejected_evidence_by_reason.get(reason, 0) + 1
+        conflict_groups = {
+            str(item.get("attribute_key") or "")
+            for item in draft.get("rejected_evidence") or []
+            if item.get("reason") == "conflicting_evidence" and item.get("attribute_key")
+        }
+        conflicting_evidence_group_count += len(conflict_groups)
+        warnings = draft.get("admission_warnings") or []
+        admission_warning_count += len(warnings)
+        for item in warnings:
+            reason = str(item.get("reason") or "unknown")
+            admission_warnings_by_reason[reason] = admission_warnings_by_reason.get(reason, 0) + 1
+            if reason == "conflict_check_skipped":
+                conflict_check_skipped_count += 1
         if any("correct_answer" in str(item.get("source") or "") for item in draft.get("used_facts") or []):
             answer_leakage_count += 1
         rows.append(
@@ -175,6 +192,10 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
         "admitted_fact_count": admitted_fact_count,
         "rejected_evidence_count": rejected_evidence_count,
         "rejected_evidence_by_reason": rejected_evidence_by_reason,
+        "admission_warning_count": admission_warning_count,
+        "admission_warnings_by_reason": admission_warnings_by_reason,
+        "conflicting_evidence_group_count": conflicting_evidence_group_count,
+        "conflict_check_skipped_count": conflict_check_skipped_count,
         "rows": rows,
     }
 
