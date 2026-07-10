@@ -293,6 +293,18 @@ def test_missing_attribute_key_is_warning_not_rejection():
     assert draft["admission_warnings"][0]["reason"] == "conflict_check_skipped"
 
 
+def test_unparseable_candidate_does_not_bypass_comparable_conflict_group():
+    draft = _grounded_with_facts([
+        _direct_fact(fact_type="gross_weight", attribute_key="gross_weight", value="10kg"),
+        _direct_fact(fact_type="gross_weight", attribute_key="gross_weight", value="12kg"),
+        _direct_fact(fact_type="gross_weight", attribute_key="gross_weight", value="approximately ten"),
+    ])
+
+    assert all(item["normalized_value"] == "" for item in draft["used_facts"])
+    assert {item["reason"] for item in draft["rejected_evidence"]} == {"conflicting_evidence"}
+    assert draft["admission_warnings"][0]["reason"] == "conflict_check_skipped"
+
+
 def test_incomparable_mass_unit_domains_are_not_reported_as_numeric_conflict():
     draft = _grounded_with_facts(
         [

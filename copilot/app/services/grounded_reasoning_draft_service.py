@@ -319,22 +319,21 @@ def _collect_used_facts(
             ),
         )
         comparable = [item for item in group if sanitize_text(item.get("normalized_value"))]
-        if len(comparable) != len(group):
-            facts.extend(group)
-            for item in group:
-                if not sanitize_text(item.get("normalized_value")):
-                    warnings.append({**item, "reason": "conflict_check_skipped"})
+        incomparable = [item for item in group if not sanitize_text(item.get("normalized_value"))]
+        facts.extend(incomparable)
+        warnings.extend({**item, "reason": "conflict_check_skipped"} for item in incomparable)
+        if not comparable:
             continue
-        domains = {sanitize_text(item.get("unit_domain")) for item in group}
+        domains = {sanitize_text(item.get("unit_domain")) for item in comparable}
         if len(domains) > 1:
-            rejected.extend({**item, "reason": "incomparable_unit_domain"} for item in group)
+            rejected.extend({**item, "reason": "incomparable_unit_domain"} for item in comparable)
             continue
-        values = {sanitize_text(item.get("normalized_value")) for item in group}
+        values = {sanitize_text(item.get("normalized_value")) for item in comparable}
         if len(values) > 1:
-            rejected.extend({**item, "reason": "conflicting_evidence"} for item in group)
+            rejected.extend({**item, "reason": "conflicting_evidence"} for item in comparable)
             continue
-        facts.append(group[0])
-        rejected.extend({**item, "reason": "duplicate_evidence"} for item in group[1:])
+        facts.append(comparable[0])
+        rejected.extend({**item, "reason": "duplicate_evidence"} for item in comparable[1:])
 
     return facts[:8], rejected, warnings
 
