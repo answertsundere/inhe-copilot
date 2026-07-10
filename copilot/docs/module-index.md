@@ -8,7 +8,7 @@ should have one authoritative owner even when several modules consume it.
 | Web application and dependency setup | `app/main.py` | legacy/converging | Must not remain the worker scheduler or domain service locator |
 | Public analyze API | `app/api/analyze_routes.py` | formal but divergent | Must delegate all answer stages to one AnalysisPipeline |
 | Sidecar/copilot API | `app/api/copilot_routes.py` | formal but divergent | Platform context must be normalized before analysis |
-| Shared execution | `app/services/analysis_execution_service.py` | formal, P0 convergence | Must return, persist, and trace the same final response |
+| Shared execution | `app/services/analysis_execution_service.py` | formal, Phase 0.1 contract complete / entry convergence pending | Persists one response contract for the stages it executes; routes that add post-processing afterward remain outside this guarantee until Phase 0.2 |
 | Agent graph | `app/agent/graph.py`, `app/agent/nodes/` | formal | Domain decisions only; no platform-native API branches |
 | Product identity | product identity services and resolver nodes | formal | External title -> JST/internal identity -> scoped evidence |
 | Fact classification | `app/services/fact_type_service.py` and turn understanding | formal but fragmented | Move toward one versioned fact-type registry |

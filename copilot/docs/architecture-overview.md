@@ -55,8 +55,17 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 
 - `/api/analyze`, `/api/copilot/context`, benchmark, and replay currently execute
   different media, final-orchestration, and shadow stages.
-- `AnalysisExecutionService` builds a final response, while snapshot and trace
-  persistence still receive the pre-final graph result.
+- Phase 0.1 establishes the persistence contract inside
+  `AnalysisExecutionService`: when it executes final orchestration, SQLite
+  snapshots, file snapshots, trace outcomes, and the returned response share
+  one `final_response_contract`. Non-final and error paths are explicitly
+  labelled `graph_result`, `pre_final`, or `error` instead of being presented as
+  delivered output.
+- `/api/analyze` and `/api/copilot/context` still call shared execution with
+  `final_orchestration=false`, then add media and final orchestration in their
+  route handlers. Their post-route final response is therefore not yet covered
+  by the Phase 0.1 persistence guarantee. Full user-entry consistency remains a
+  Phase 0.2 P0 task.
 - Grounded Reasoning trace currently risks treating reviewed answers or
   ineligible evidence as facts and must not be promoted.
 
@@ -86,9 +95,11 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 
 ## Convergence Order
 
-1. Fix final response, trace, and snapshot consistency with regression tests.
-2. Move media, final orchestration, Answer Memory shadow, and Grounded shadow
-   behind one AnalysisPipeline used by every entry point.
+1. Move route-level media, final orchestration, Answer Memory shadow, and
+   Grounded shadow behind one AnalysisPipeline used by every entry point while
+   preserving the Phase 0.1 persistence contract.
+2. Verify each user and evaluation entry point's delivered response against its
+   trace and snapshots.
 3. Correct Grounded Reasoning evidence admission and evaluation inputs.
 4. Establish canonical fact-type, evidence-role, risk, and delivery registries.
 5. Define canonical conversation, Agent decision, and platform port schemas.

@@ -13,6 +13,7 @@ import json
 import logging
 import time
 import uuid
+from copy import deepcopy
 
 from app.config import (
     APP_VERSION, GRAPH_VERSION, PROMPT_VERSION,
@@ -20,6 +21,23 @@ from app.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_FINAL_RESPONSE_CONTRACT_FIELDS = (
+    "suggested_reply",
+    "draft_reply",
+    "sendable_reply",
+    "can_send",
+    "requires_human_review",
+    "reply_status",
+    "reply_blocks",
+    "reply_delivery",
+    "recommended_assets",
+    "final_answer_audit",
+    "final_semantic_fit_audit",
+    "trace_response_stage",
+    "final_response_pipeline_version",
+)
 
 
 def _gen_request_id() -> str:
@@ -120,7 +138,8 @@ def execute_analysis(
         final_orchestration=final_orchestration,
     )
 
-    # Save tracing snapshot
+    # Persist the same response object returned to the caller. The graph result
+    # may differ after final orchestration and must not be recorded as delivery.
     if result and trace_id:
         _save_snapshot(
             trace_id=trace_id,
@@ -130,7 +149,7 @@ def execute_analysis(
             source=source,
             scenario=scenario,
             customer_message=customer_message,
-            result=result,
+            response=response,
         )
 
     # Save file-based snapshot for feedback/bad-case lookups
@@ -142,7 +161,7 @@ def execute_analysis(
             source=source,
             scenario=scenario,
             customer_message=customer_message,
-            result=result,
+            response=response,
             copilot_context=copilot_context,
         )
 
@@ -151,7 +170,7 @@ def execute_analysis(
         _end_trace_safely(
             trace_id=trace_id,
             root_span_id=root_span_id,
-            result=result,
+            response=response,
             error=error,
         )
 
@@ -179,6 +198,8 @@ def _build_response(
             "message_id": message_id,
             "trace_id": trace_id,
             "conversation_id": conversation_id,
+            "trace_response_stage": "error",
+            "final_response_pipeline_version": "",
         }
 
     response = result.to_dict()
@@ -187,6 +208,7 @@ def _build_response(
     response["trace_id"] = trace_id
     response["conversation_id"] = conversation_id
 
+    orchestration_applied = False
     if final_orchestration:
         try:
             from app.services.final_response_orchestrator import orchestrate_final_response
@@ -196,8 +218,21 @@ def _build_response(
                 customer_message=customer_message,
                 copilot_context=copilot_context,
             )
+            orchestration_applied = True
         except Exception as e:
             logger.warning("final_response_orchestration failed: %s", e)
+
+    if orchestration_applied:
+        response["trace_response_stage"] = "final"
+        response["final_response_pipeline_version"] = str(
+            (response.get("final_response_pipeline") or {}).get("version") or ""
+        )
+    elif final_orchestration:
+        response["trace_response_stage"] = "pre_final"
+        response["final_response_pipeline_version"] = ""
+    else:
+        response["trace_response_stage"] = "graph_result"
+        response["final_response_pipeline_version"] = ""
 
     # Build trace summary from execution_debug if present
     ed = response.get("execution_debug", {})
@@ -216,6 +251,24 @@ def _build_response(
     return response
 
 
+def _final_response_contract(response: dict) -> dict:
+    """Return the auditable final delivery fields without graph-only state."""
+    return {
+        field: deepcopy(response.get(field))
+        for field in _FINAL_RESPONSE_CONTRACT_FIELDS
+    }
+
+
+def _snapshot_execution_debug(response: dict, contract: dict) -> dict:
+    execution_debug = deepcopy(response.get("execution_debug") or {})
+    execution_debug["trace_response_stage"] = response.get("trace_response_stage", "")
+    execution_debug["final_response_pipeline_version"] = response.get(
+        "final_response_pipeline_version", ""
+    )
+    execution_debug["final_response_contract"] = contract
+    return execution_debug
+
+
 def _save_snapshot(
     trace_id: str,
     request_id: str,
@@ -224,13 +277,14 @@ def _save_snapshot(
     source: str,
     scenario: str,
     customer_message: str,
-    result,
+    response: dict,
 ) -> None:
     """Save analysis snapshot to SQLite."""
     try:
         from app.tracing.recorder import save_analysis_snapshot
 
-        data = result.to_dict() if hasattr(result, "to_dict") else {}
+        data = response if isinstance(response, dict) else {}
+        contract = _final_response_contract(data)
         save_analysis_snapshot(
             trace_id=trace_id,
             request_id=request_id,
@@ -243,7 +297,7 @@ def _save_snapshot(
             intent=data.get("intent", ""),
             risk_level=data.get("risk_level", "low"),
             need_human_review=data.get("requires_human_review", False),
-            execution_debug=data.get("execution_debug", {}),
+            execution_debug=_snapshot_execution_debug(data, contract),
             evidence_debug=data.get("evidence_debug", {}),
             trace_steps=data.get("trace_steps", []),
             used_knowledge_entry_ids=data.get("context_used", {}).get("used_knowledge_entry_ids", []),
@@ -261,14 +315,15 @@ def _save_file_snapshot(
     source: str,
     scenario: str,
     customer_message: str,
-    result,
+    response: dict,
     copilot_context: dict | None,
 ) -> None:
     """Save file-based snapshot for feedback/bad-case lookups."""
     try:
         from app.services.analysis_snapshot import save_snapshot
 
-        data = result.to_dict() if hasattr(result, "to_dict") else {}
+        data = response if isinstance(response, dict) else {}
+        contract = _final_response_contract(data)
         save_snapshot(
             request_id=request_id,
             message_id=message_id,
@@ -280,12 +335,13 @@ def _save_file_snapshot(
             intent=data.get("intent", ""),
             risk_level=data.get("risk_level", "low"),
             need_human_review=data.get("requires_human_review", False),
-            execution_debug=data.get("execution_debug", {}),
+            execution_debug=_snapshot_execution_debug(data, contract),
             evidence_debug=data.get("evidence_debug", {}),
             trace_steps=data.get("trace_steps", []),
             used_knowledge_entry_ids=data.get("evidence_debug", {}).get("used_knowledge_entry_ids", []),
             used_fact_tools=data.get("used_fact_tool", ""),
-            copilot_context=copilot_context or {},
+            copilot_context=data.get("copilot_context") or copilot_context or {},
+            final_response_contract=contract,
         )
     except Exception as e:
         logger.warning("file snapshot save failed: %s", e)
@@ -294,7 +350,7 @@ def _save_file_snapshot(
 def _end_trace_safely(
     trace_id: str,
     root_span_id: str,
-    result,
+    response: dict,
     error,
 ) -> None:
     """End trace and root span, catching any failures."""
@@ -305,16 +361,23 @@ def _end_trace_safely(
             status = "error" if error else "success"
             end_span(root_span_id, status=status)
 
-        outcome = {}
-        if result:
-            data = result.to_dict() if hasattr(result, "to_dict") else {}
+        outcome = {
+            "trace_response_stage": str(response.get("trace_response_stage") or "error"),
+            "final_response_pipeline_version": str(
+                response.get("final_response_pipeline_version") or ""
+            ),
+        }
+        if response and not error:
+            data = response
             outcome = {
+                **outcome,
                 "intent": data.get("intent", ""),
                 "risk_level": data.get("risk_level", "low"),
                 "answer_mode": data.get("execution_debug", {}).get("generation", {}).get("answer_mode", ""),
                 "need_human_review": data.get("requires_human_review", False),
                 "reply_generated": bool(data.get("suggested_reply", "")),
                 "fallback_used": data.get("execution_debug", {}).get("outcome", {}).get("fallback_used", False),
+                "final_response_contract": _final_response_contract(data),
             }
 
         end_trace(

@@ -57,6 +57,7 @@ def save_snapshot(
     used_knowledge_entry_ids: list | None = None,
     used_fact_tools: str = "",
     copilot_context: dict | None = None,
+    final_response_contract: dict | None = None,
 ) -> dict:
     """保存分析快照到磁盘。"""
     _ensure_dir()
@@ -77,6 +78,7 @@ def save_snapshot(
         "used_knowledge_entry_ids_json": json.dumps(used_knowledge_entry_ids or [], ensure_ascii=False),
         "used_fact_tools_json": used_fact_tools or "",
         "copilot_context_json": json.dumps(copilot_context or {}, ensure_ascii=False),
+        "final_response_contract": final_response_contract or {},
         "created_at": _now(),
     }
 

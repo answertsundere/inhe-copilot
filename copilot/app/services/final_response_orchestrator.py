@@ -25,6 +25,9 @@ from app.services.generic_service_rule_service import unsafe_promise_terms
 from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
 
 
+FINAL_RESPONSE_PIPELINE_VERSION = "final-response-orchestrator-v1"
+
+
 _POST_POLISH_INTERNAL_TERMS = (
     "RAG",
     "Evidence Gate",
@@ -189,7 +192,7 @@ def orchestrate_final_response(
         response.setdefault("evidence_debug", {})["answer_relevance_passed"] = True
 
     response["final_response_pipeline"] = {
-        "version": "final-response-orchestrator-v1",
+        "version": FINAL_RESPONSE_PIPELINE_VERSION,
         "order": [
             "semantic_and_redline_audit",
             "customer_language_polish",
