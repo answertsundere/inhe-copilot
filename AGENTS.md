@@ -63,3 +63,17 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## Copilot Project Documentation
+
+When a task affects `copilot/`, continue startup reading in this order:
+
+1. `copilot/AGENTS.md`
+2. `copilot/docs/index.md`
+3. The charter, architecture overview, module index, and topic documents required
+   by that index
+
+`copilot/docs/index.md` is the only active architecture and durable-document
+index for the customer-service Copilot. Workspace-root acceptance reports, the
+workspace-root `docs/` collection, and the `客服系统/` visual maps are historical
+references and must not override the current charter or verified code behavior.

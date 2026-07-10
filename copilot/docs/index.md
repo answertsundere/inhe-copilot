@@ -1,39 +1,115 @@
 # Project Documentation Index
 
-This index lists durable design and operating documents for the INHE customer-service Copilot.
+This is the durable documentation entry point for the INHE customer-service Copilot. New agents should start here, then read the documents relevant to the module they are changing.
 
-## Current Status And Roadmap
+## Mandatory Reading Order
 
-- `docs/current-system-status.md` - historical system-status snapshot.
-- `docs/top_rag_development_roadmap.md` - top-level RAG development roadmap.
+Every AI or engineer must read these before implementation:
 
-## Real Replay And Evaluation
+1. Parent workspace `AGENTS.md` and project `AGENTS.md`.
+2. `docs/PROJECT_CHARTER.md` - business mission, truth flow, non-goals, and quality definition.
+3. `docs/architecture-overview.md` - current system, target system, confirmed gaps, and convergence order.
+4. `docs/module-index.md` - behavior ownership and cross-cutting change checklist.
+5. The topic-specific documents below.
 
-- `docs/REAL_REPLAY_SIDECAR_DATA_REQUIREMENTS.md` - QianNiu sidecar data requirements for real replay.
+For major features or architecture changes, review maintained external solutions first and record durable findings under `docs/research/`. Record production-flow or module-ownership decisions under `docs/adr/` before implementation.
+
+## Document Center
+
+This file is the only active architecture and project-documentation index.
+
+- `docs/document-location-policy.md` - explains which Markdown belongs in this documentation center, which root entry files must stay in place, and which module-local or historical documents must not be treated as current architecture.
+
+Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md`, project `AGENTS.md`, and module-local README files remain in their discovery locations and point back to this center.
+
+## Business Architecture Invariants
+
+- External product titles resolve through JST/internal product identity before product facts are selected.
+- The knowledge base stores reviewed base facts and described media; bounded reasoning may connect eligible facts but may not invent strong safety, compliance, order, refund, replacement, compensation, or platform claims.
+- Product facts, policy facts, service actions, media references, and Answer Memory are separate roles.
+- Historical reviewed answers teach handling and wording, not product truth.
+- A media candidate is not sent media. Actual delivery requires an eligible role, platform support, and matching reply blocks.
+- High-risk or human-only work creates a durable handoff task for the cross-platform supervisor queue.
+- QianNiu, Pinduoduo, and JD remain adapters around one platform-neutral Agent and control plane.
+- Benchmark and replay results are valid only when they exercise the same final pipeline and context contract as the user-facing path.
+
+## Current Architecture Direction
+
+- `docs/PROJECT_CHARTER.md` - authoritative business direction and non-negotiable boundaries.
+- `docs/architecture-overview.md` - authoritative current/target architecture and convergence order.
+- `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
+- `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
+- `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
+- `docs/langgraph-architecture.md` - current LangGraph topology and migration notes.
+
+## Architecture Decisions And Research
+
+- `docs/adr/README.md` - ADR rules and required format.
+- `docs/research/mature-customer-service-systems.md` - official-source comparison of mature routing, handoff, task, AI, and self-hosted control-plane patterns.
+
+The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
+
+## Agent Graph Reference
+
+- `docs/agent/customer_service_graph_nodes.md` - graph node inventory.
+- `docs/agent/customer_service_graph_edges.md` - graph edges and routing paths.
+- `docs/agent/customer_service_graph_traces.md` - graph trace and observability notes.
+
+These documents describe the Agent graph. They do not replace the application-level pipeline, delivery contract, or platform adapter design.
+
+## Evidence, Retrieval, And Reasoning
+
+- `docs/embedding_config.md` - local embedding configuration and preflight process.
+- `docs/llamaindex_shadow_poc.md` - historical LlamaIndex shadow experiment.
+- `docs/answer_memory_layer.md` - Answer Memory safety contract, data model, import flow, and shadow guidance.
+- `docs/grounded_reasoning_draft_layer.md` - shadow-only grounded reasoning draft contract.
+
+Current boundaries:
+
+- pgvector remains shadow-only until the formal retriever contract is implemented and evaluated.
+- Answer Memory is action/style guidance, not product fact evidence.
+- Grounded Reasoning is shadow-only and cannot change `can_send` or the final reply.
+- `service_action` and `media_reference` cannot be promoted to product facts.
+
+## Replay, Evaluation, And Training Data
+
+- `docs/REAL_REPLAY_SIDECAR_DATA_REQUIREMENTS.md` - required per-sample product and order context for realistic replay.
 - `docs/real_conversation_daily_replay.md` - daily real-conversation replay process.
-- `docs/training_sample_eval_set_conversion.md` - reviewed training-sample evaluation-set conversion.
+- `docs/training_sample_eval_set_conversion.md` - reviewed training-sample conversion into evaluation scenarios.
+- `docs/training_sample_report.md` - historical training-sample UI and workflow delivery report.
+- `docs/real_golden_delivery_report.md` - historical real-golden delivery report.
 
-## Answer Memory
+Evaluation results are valid only when the evaluated entry point, context, media stage, final pipeline, and delivery contract match the real user-facing path.
 
-- `docs/answer_memory_layer.md` - Answer Memory Layer design, safety contract, data model, import flow, and shadow trace.
-- `docs/grounded_reasoning_draft_layer.md` - shadow-only grounded reasoning draft contract that consumes verified facts and Answer Memory action/style hints without changing sendability.
+## Operations And Platform Setup
 
-Current status: MVP implemented as a shadow/reference layer. The optional shadow-to-draft adapter can append `answer_memory_guidance` to analyze responses when `COPILOT_ANSWER_MEMORY_SHADOW_ENABLED=true`, but it cannot change `can_send`.
+- `docs/sidecar_client_setup.md` - current local sidecar setup notes. Treat QianNiu-specific details as adapter guidance, not Agent-domain contracts.
+- `docs/gray_trial_readiness_report.md` - historical gray-trial readiness snapshot.
 
-Entry points:
+## Historical Status Snapshots
 
-- `app/services/answer_memory_service.py`
-- `app/services/answer_memory_adapter_service.py`
-- `scripts/import_answer_memory_from_training_samples.py`
-- `scripts/trace_answer_memory_for_training_samples.py`
-- `scripts/trace_answer_memory_adapter_for_training_samples.py`
+- `docs/current-system-status.md` - system snapshot dated 2026-06-01. It is not the current architecture source of truth.
 
-## Retrieval And Shadow Experiments
+Historical reports must keep their date and must not be used as current completion evidence without live verification.
 
-- `docs/llamaindex_shadow_poc.md` - LlamaIndex shadow proof of concept.
-- `docs/embedding_config.md` - embedding configuration notes.
+Workspace-root `docs/`, `验收报告*.md`, and `客服系统/` are historical or generated documentation collections. They are intentionally not moved into the authoritative center because some are untracked, contain Obsidian links, or describe older implementations. Their location and authority are recorded in `docs/document-location-policy.md`.
 
-## Architecture
+## Documentation Rules
 
-- `docs/langgraph-architecture.md` - LangGraph architecture.
-- `docs/sidecar_client_setup.md` - sidecar client setup notes.
+- Long-lived modules, contracts, and architecture decisions must be linked from this index.
+- Narrow bug fixes should update an existing relevant document when behavior or a contract changes; they do not require a new document each time.
+- New platform integrations must use the canonical conversation and decision contracts described in `docs/omnichannel-control-plane.md`.
+- New retrieval, reasoning, memory, safety, or delivery modules must declare whether they are `formal`, `shadow`, `legacy`, or `planned`.
+- Architecture decisions that change module ownership or production data flow must be recorded under `docs/adr/` before implementation.
+- New major capabilities must document what maintained external products or open-source systems were evaluated for reuse.
+- Every new durable document must be linked from this index; historical snapshots must keep their date and status.
+
+## Known Architecture Gaps
+
+- `/api/analyze`, `/api/copilot/context`, benchmark, and replay do not yet share one identical application pipeline.
+- Trace and snapshot persistence must be verified against the final delivered response rather than only the pre-final graph result.
+- `app.main` still combines dependency initialization, Flask routing, and resident background workers.
+- Fact-type and safety group definitions remain distributed across multiple modules.
+- A project-level governance baseline now exists, but CI enforcement and accepted ADRs are still missing.
+
+These gaps are the next architecture-convergence work. They should be addressed before adding platform-specific behavior to the Agent core.
