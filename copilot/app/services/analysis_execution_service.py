@@ -14,6 +14,7 @@ import logging
 import time
 import uuid
 from copy import deepcopy
+from collections.abc import Callable
 
 from app.config import (
     APP_VERSION, GRAPH_VERSION, PROMPT_VERSION,
@@ -61,6 +62,7 @@ def execute_analysis(
     source: str = "api",
     scenario: str = "",
     final_orchestration: bool = True,
+    response_post_processor: Callable[[dict], dict] | None = None,
 ) -> dict:
     """
     Execute a full analysis with trace lifecycle management.
@@ -136,6 +138,7 @@ def execute_analysis(
         customer_message=customer_message,
         copilot_context=copilot_context,
         final_orchestration=final_orchestration,
+        response_post_processor=response_post_processor,
     )
 
     # Persist the same response object returned to the caller. The graph result
@@ -189,6 +192,7 @@ def _build_response(
     customer_message: str,
     copilot_context: dict | None,
     final_orchestration: bool = True,
+    response_post_processor: Callable[[dict], dict] | None = None,
 ) -> dict:
     """Build the API response dict."""
     if error:
@@ -222,7 +226,33 @@ def _build_response(
         except Exception as e:
             logger.warning("final_response_orchestration failed: %s", e)
 
-    if orchestration_applied:
+    post_processor_applied = False
+    post_processor_finalized = False
+    if response_post_processor is not None:
+        try:
+            processed = response_post_processor(response)
+            if not isinstance(processed, dict):
+                raise TypeError("response_post_processor must return a dict")
+            response = processed
+            post_processor_applied = True
+            post_processor_finalized = bool(
+                (response.get("analysis_pipeline") or {}).get(
+                    "final_orchestration_completed"
+                )
+            )
+        except Exception as exc:
+            logger.warning("analysis response post-processing failed: %s", exc, exc_info=True)
+            response.setdefault("evidence_debug", {})["analysis_pipeline_post_processor_error"] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+
+    if response_post_processor is not None:
+        response["trace_response_stage"] = "final" if post_processor_finalized else "pre_final"
+        response["final_response_pipeline_version"] = str(
+            (response.get("final_response_pipeline") or {}).get("version") or ""
+        ) if post_processor_finalized else ""
+    elif orchestration_applied:
         response["trace_response_stage"] = "final"
         response["final_response_pipeline_version"] = str(
             (response.get("final_response_pipeline") or {}).get("version") or ""

@@ -45,6 +45,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 ## Architecture Decisions And Research
 
 - `docs/adr/README.md` - ADR rules and required format.
+- `docs/adr/0001-unified-analysis-pipeline.md` - accepted decision establishing
+  one formal AnalysisPipeline before any service decomposition.
 - `docs/research/mature-customer-service-systems.md` - official-source comparison of mature routing, handoff, task, AI, and self-hosted control-plane patterns.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
@@ -106,8 +108,12 @@ Workspace-root `docs/`, `验收报告*.md`, and `客服系统/` are historical o
 
 ## Known Architecture Gaps
 
-- `/api/analyze`, `/api/copilot/context`, benchmark, and replay do not yet share one identical application pipeline.
-- Trace and snapshot persistence must be verified against the final delivered response rather than only the pre-final graph result.
+- `/api/analyze`, `/api/copilot/context`, benchmark, and replay now use the
+  formal AnalysisPipeline. Presentation and HTTP metadata remain intentionally
+  route-specific.
+- Final response persistence is covered by Phase 0.1 and Pipeline contract
+  tests; legacy direct callers still need inventory before they are treated as
+  formal entry points.
 - `app.main` still combines dependency initialization, Flask routing, and resident background workers.
 - Fact-type and safety group definitions remain distributed across multiple modules.
 - A project-level governance baseline now exists, but CI enforcement and accepted ADRs are still missing.

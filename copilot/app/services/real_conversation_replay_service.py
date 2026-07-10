@@ -825,17 +825,19 @@ class RealConversationReplayService:
 
     def _call_agent(self, payload: dict[str, Any]) -> dict[str, Any]:
         from app.main import get_reply_service
-        from app.services.analysis_execution_service import execute_analysis
+        from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
 
-        response = execute_analysis(
-            reply_service=get_reply_service(),
-            customer_message=payload.get("message", ""),
-            conversation_id=payload.get("conversation_id", "real_conversation_eval"),
-            product_name=payload.get("product_name", ""),
-            copilot_context=payload.get("copilot_context") or {},
-            source="real_conversation_eval",
-            scenario="daily_replay",
-            final_orchestration=True,
+        response = AnalysisPipelineService().run(
+            AnalysisPipelineRequest(
+                reply_service=get_reply_service(),
+                customer_message=payload.get("message", ""),
+                delivery_message=payload.get("message", ""),
+                conversation_id=payload.get("conversation_id", "real_conversation_eval"),
+                product_name=payload.get("product_name", ""),
+                copilot_context=payload.get("copilot_context") or {},
+                source="real_conversation_eval",
+                scenario="daily_replay",
+            )
         )
         return response
 

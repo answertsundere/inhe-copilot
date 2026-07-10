@@ -231,73 +231,36 @@ def api_copilot_context():
     scenario = payload.get("scenario", "")
     conversation_id = context.get("conversation_id", "qianniu")
 
-    # 5. Delegate to unified AnalysisExecutionService
+    # 5. Build one canonical request and delegate all formal stages to pipeline.
     reply_service = get_reply_service()
-    from app.services.analysis_execution_service import execute_analysis
-    response = execute_analysis(
-        reply_service=reply_service,
-        customer_message=analysis_message,
-        order_id=order_id,
-        tracking_no=tracking_no,
-        conversation_id=conversation_id,
-        product_name=product_name,
-        product_candidates=context.get("product_candidates", []),
-        copilot_context=context,
-        source=source,
-        scenario=scenario,
-        final_orchestration=False,
+    from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
+
+    response = AnalysisPipelineService().run(
+        AnalysisPipelineRequest(
+            reply_service=reply_service,
+            customer_message=analysis_message,
+            delivery_message=message,
+            order_id=order_id,
+            tracking_no=tracking_no,
+            conversation_id=conversation_id,
+            product_name=product_name,
+            product_candidates=context.get("product_candidates", []),
+            copilot_context=context,
+            source=source,
+            scenario=scenario,
+            capabilities=payload.get("capabilities") if isinstance(payload.get("capabilities"), dict) else {},
+        )
     )
 
-    # 6. 推荐已审核素材（不自动发送，仅作客服参考）
-    recommended_assets = []
-    reply_blocks = []
-    reply_delivery = {"mode": "blocks", "auto_send_ready": False, "reason": "not_built"}
-    try:
-        from app.services.media_asset_service import build_reply_blocks, recommend_for_analyze_response, select_delivery_assets
-        reco_i_id, reco_sku, reco_product_name, reco_product_id = _extract_media_identifiers(context)
-        reco = recommend_for_analyze_response(
-            response,
-            customer_message=message,
-            product_name=reco_product_name or None,
-            i_id=reco_i_id,
-            sku_code=reco_sku,
-            product_id=reco_product_id,
-        )
-        recommended_assets = select_delivery_assets(reco.get("recommended_assets") or [], max_assets=1)
-        block_result = build_reply_blocks(
-            response.get("suggested_reply", ""),
-            recommended_assets,
-            requires_human_review=bool(response.get("requires_human_review")),
-        )
-        reply_blocks = block_result["reply_blocks"]
-        reply_delivery = block_result["reply_delivery"]
-    except Exception:
-        pass
-
-    try:
-        from app.services.final_response_orchestrator import orchestrate_final_response
-        response["recommended_assets"] = recommended_assets
-        response["reply_blocks"] = reply_blocks
-        response["reply_delivery"] = reply_delivery
-        response = orchestrate_final_response(
-            response,
-            customer_message=message,
-            copilot_context=context,
-        )
-        reply_blocks = response.get("reply_blocks", reply_blocks)
-        reply_delivery = response.get("reply_delivery", reply_delivery)
-    except Exception:
-        pass
-
-    # 7. Transform to copilot panel response format
+    # 6. Transform canonical AgentDecision into the copilot panel presentation.
     duration_ms = int((time.time() - t0) * 1000)
     response = _to_copilot_response(
         response,
         context,
         duration_ms,
-        recommended_assets=recommended_assets,
-        reply_blocks=reply_blocks,
-        reply_delivery=reply_delivery,
+        recommended_assets=response.get("recommended_assets") or [],
+        reply_blocks=response.get("reply_blocks") or [],
+        reply_delivery=response.get("reply_delivery") or {},
     )
 
     return jsonify(response)

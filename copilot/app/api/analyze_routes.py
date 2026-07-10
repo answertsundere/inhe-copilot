@@ -282,7 +282,6 @@ def api_analyze():
 
         reply_service = get_services()
 
-        from app.services.analysis_execution_service import execute_analysis
         # Build copilot_context with platform identifiers if provided
         if platform_order_id or platform_trade_id:
             copilot_context = copilot_context or {}
@@ -291,57 +290,24 @@ def api_analyze():
             if platform_trade_id:
                 copilot_context.setdefault("platform_trade_id", platform_trade_id)
 
-        skip_image_vlm = bool(
-            image_attachments
-            and _has_text_product_question(message)
-            and _has_product_or_order_context(
-                product_name=product_name,
-                product_candidates=product_candidates,
-                order_id=order_id,
-                tracking_no=tracking_no,
-                platform_order_id=platform_order_id,
-                platform_trade_id=platform_trade_id,
-                copilot_context=copilot_context,
+        from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
+
+        response = AnalysisPipelineService().run(
+            AnalysisPipelineRequest(
+                reply_service=reply_service,
+                customer_message=message,
+                delivery_message=message,
+                order_id=order_id or "",
+                tracking_no=tracking_no or "",
+                conversation_id=conversation_id,
+                product_name=product_name or "",
+                product_candidates=product_candidates or [],
+                copilot_context=copilot_context or {},
+                image_attachments=image_attachments,
+                source="api",
+                scenario=str(data.get("scenario") or ""),
+                capabilities=data.get("capabilities") if isinstance(data.get("capabilities"), dict) else {},
             )
-        )
-
-        if image_attachments and skip_image_vlm:
-            copilot_context = copilot_context or {}
-            copilot_context["has_image_attachment"] = True
-            copilot_context["image_analysis_skipped"] = "text_product_question_with_known_context"
-            for attachment in image_attachments:
-                if isinstance(attachment, dict):
-                    attachment.setdefault("vlm_analysis", {
-                        "source": "customer_image_metadata",
-                        "skipped": True,
-                        "reason": "text_product_question_with_known_context",
-                    })
-        elif image_attachments:
-            from app.services.customer_image_vlm_service import analyze_customer_images
-            image_analysis = analyze_customer_images(image_attachments)
-            if image_analysis:
-                copilot_context = copilot_context or {}
-                copilot_context["image_analysis"] = image_analysis
-                copilot_context["has_image_attachment"] = True
-                for idx, analysis in enumerate(image_analysis):
-                    if idx >= len(image_attachments) or not isinstance(image_attachments[idx], dict):
-                        continue
-                    if analysis.get("summary") and not image_attachments[idx].get("description"):
-                        image_attachments[idx]["description"] = analysis.get("summary")
-                    image_attachments[idx]["vlm_analysis"] = analysis
-
-        response = execute_analysis(
-            reply_service=reply_service,
-            customer_message=message,
-            order_id=order_id or "",
-            tracking_no=tracking_no or "",
-            conversation_id=conversation_id,
-            product_name=product_name or "",
-            product_candidates=product_candidates,
-            copilot_context=copilot_context,
-            image_attachments=image_attachments,
-            source="api",
-            final_orchestration=False,
         )
 
         duration_ms = int((_time.time() - t0) * 1000)
@@ -371,103 +337,6 @@ def api_analyze():
             "input_copilot_product_candidates_count": len((copilot_context or {}).get("product_candidates", [])) if isinstance(copilot_context, dict) else 0,
             "input_has_product_name": bool(product_name),
         }
-
-        # 素材推荐（轻量接入，不重构主链路）：
-        # 只推荐已审核可用素材，AI 不自动发送，客服人工确认后发送。
-        try:
-            from app.services.media_asset_service import build_reply_blocks, recommend_for_analyze_response, select_delivery_assets
-            reco_i_id, reco_sku, reco_product_id = _extract_identifiers(product_candidates)            reco = recommend_for_analyze_response(
-                response, customer_message=message,
-                product_name=product_name or None,
-                i_id=reco_i_id,
-                sku_code=reco_sku,
-                product_id=reco_product_id,
-            )
-            product_context_pack = (response.get("context_used") or {}).get("product_context_pack") or {}
-            pack_assets = product_context_pack.get("recommended_assets") or []
-            allow_media_delivery = _is_visual_media_question(message, response)
-            if pack_assets and allow_media_delivery:
-                reco = {
-                    "recommended_assets": pack_assets,
-                    "priority_types": [a.get("asset_type", "") for a in pack_assets if a.get("asset_type")],
-                    "has_unapproved": False,
-                    "source": "product_context_pack",
-                }
-            response["recommended_assets"] = (
-                select_delivery_assets(reco.get("recommended_assets") or [], max_assets=1)
-                if allow_media_delivery else []
-            )
-            response["suggested_reply"] = _sanitize_media_promise_without_assets(
-                response.get("suggested_reply", ""),
-                response["recommended_assets"],
-            )
-            response["suggested_reply"] = _align_media_promise_with_assets(
-                response.get("suggested_reply", ""),
-                response["recommended_assets"],
-            )
-            response["recommended_assets_meta"] = {
-                "priority_types": reco.get("priority_types", []),
-                "has_unapproved": reco.get("has_unapproved", False),
-                "source": reco.get("source", "media_asset_service"),
-            }
-            response.update(build_reply_blocks(
-                response.get("suggested_reply", ""),
-                response["recommended_assets"],
-                requires_human_review=bool(response.get("requires_human_review")),
-            ))
-        except Exception:
-            response["recommended_assets"] = []
-            response["recommended_assets_meta"] = {"priority_types": [], "has_unapproved": False}
-            response["reply_blocks"] = (
-                [{"type": "text", "content": response.get("suggested_reply", ""), "send_mode": "auto_when_platform_connected"}]
-                if response.get("suggested_reply") else []
-            )
-            response["reply_delivery"] = {
-                "mode": "blocks",
-                "auto_send_ready": False,
-                "reason": "media_block_build_failed",
-            }
-
-        try:
-            from app.services.final_response_orchestrator import orchestrate_final_response
-            response = orchestrate_final_response(
-                response,
-                customer_message=message,
-                copilot_context=copilot_context,
-            )
-        except Exception:
-            pass
-
-        if str(os.getenv("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED", "")).strip().lower() in {"1", "true", "yes", "on"}:
-            try:
-                from app.services.answer_memory_adapter_service import AnswerMemoryAdapterService
-                response = AnswerMemoryAdapterService().attach_shadow_guidance(
-                    response,
-                    customer_message=message,
-                    product_i_id=i_id,
-                    sku_code=sku_code,
-                    product_title=product_name or "",
-                    copilot_context=copilot_context if isinstance(copilot_context, dict) else None,
-                )
-            except Exception as exc:
-                response.setdefault("evidence_debug", {})["answer_memory_guidance_error"] = str(exc)
-
-        if str(os.getenv("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED", "")).strip().lower() in {"1", "true", "yes", "on"}:
-            try:
-                from app.services.grounded_reasoning_draft_service import GroundedReasoningDraftService
-
-                response = GroundedReasoningDraftService().attach_shadow_draft(
-                    response,
-                    customer_message=message,
-                    product_identity={
-                        "product_name": product_name or "",
-                        "sku_code": sku_code or "",
-                        "i_id": i_id or "",
-                    },
-                    answer_memory_guidance=response.get("answer_memory_guidance") if isinstance(response.get("answer_memory_guidance"), dict) else {},
-                )
-            except Exception as exc:
-                response.setdefault("evidence_debug", {})["grounded_reasoning_draft_error"] = str(exc)
 
         status_code = 500 if response.get("error") else 200
         return jsonify(response), status_code

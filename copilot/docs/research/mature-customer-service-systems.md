@@ -59,3 +59,29 @@ The comparison must cover Chinese commerce adapter needs, data ownership,
 permissions, deployment burden, customization limits, auditability, and total
 operating cost. QianNiu, Pinduoduo, and JD adapters will likely remain custom even
 if inbox and handoff infrastructure is reused.
+
+## Phase 0.2 Pipeline Decision
+
+For the current modular-monolith convergence work, three official references
+support a single explicit application pipeline without introducing new runtime
+infrastructure:
+
+- Flask application factories keep route registration and application lifecycle
+  separate from reusable services, and make multiple configured instances
+  practical for testing. This supports routes delegating to one service rather
+  than owning delivery behavior.
+  - https://flask.palletsprojects.com/en/stable/patterns/appfactories/
+- OpenTelemetry defines a trace as structured spans with attributes, events, and
+  status. The project adopts the smaller idea of named ordered pipeline stages
+  and final outcome metadata; it does not add the OpenTelemetry dependency or a
+  collector in this phase.
+  - https://opentelemetry.io/docs/concepts/signals/traces/
+- Rasa documents flows as explicit ordered actions, data collection, backend
+  access, and response delivery. The project borrows the boundary clarity, not
+  Rasa's runtime or a second dialogue manager.
+  - https://rasa.com/docs/learn/concepts/dialogue-management/
+
+The reviewed external strategy report recommends queues, Kafka, Flink, vector
+infrastructure, and Kubernetes at larger scale. Those are not adopted here:
+the verified problem is duplicated in-process stage ownership, so a single
+pipeline and final-response trace contract are the smallest reversible repair.

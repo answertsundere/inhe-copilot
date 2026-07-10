@@ -275,17 +275,19 @@ class AgentBenchmarkRunnerService:
         if self.agent_callable is not None:
             return self.agent_callable(payload) or {}
         from app.main import get_reply_service
-        from app.services.analysis_execution_service import execute_analysis
+        from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
 
-        return execute_analysis(
-            reply_service=get_reply_service(),
-            customer_message=payload.get("message", ""),
-            conversation_id=payload.get("conversation_id", "agent_benchmark"),
-            product_name=payload.get("product_name", ""),
-            copilot_context=payload.get("copilot_context") or {},
-            source="agent_benchmark",
-            scenario="benchmark",
-            final_orchestration=True,
+        return AnalysisPipelineService().run(
+            AnalysisPipelineRequest(
+                reply_service=get_reply_service(),
+                customer_message=payload.get("message", ""),
+                delivery_message=payload.get("message", ""),
+                conversation_id=payload.get("conversation_id", "agent_benchmark"),
+                product_name=payload.get("product_name", ""),
+                copilot_context=payload.get("copilot_context") or {},
+                source="agent_benchmark",
+                scenario="benchmark",
+            )
         ) or {}
 
     def run_scenarios(
