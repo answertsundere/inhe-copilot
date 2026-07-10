@@ -1,6 +1,11 @@
 import pytest
 
 
+def _run_post_processor(kwargs, response):
+    post_processor = kwargs.get("response_post_processor")
+    return post_processor(response) if callable(post_processor) else response
+
+
 @pytest.fixture()
 def client():
     import app.models.kb_tables  # noqa: F401
@@ -17,7 +22,7 @@ def test_analyze_final_output_polishes_after_media_stage(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "material_safety",
             "suggested_reply": (
                 "亲～\n"
@@ -31,7 +36,7 @@ def test_analyze_final_output_polishes_after_media_stage(client, monkeypatch):
                 }
             },
             "evidence_debug": {"query_fact_type": "material"},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
 
@@ -56,7 +61,7 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "installation",
             "suggested_reply": "亲～安装视频我一起发您参考。",
             "requires_human_review": False,
@@ -76,7 +81,7 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
                 },
             },
             "evidence_debug": {"query_fact_type": "installation"},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
 
@@ -98,7 +103,7 @@ def test_analyze_allows_space_fit_pack_media_as_send_blocks(client, monkeypatch)
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "product_question",
             "suggested_reply": "Please measure width, depth and height, then compare with the size image.",
             "requires_human_review": False,
@@ -118,7 +123,7 @@ def test_analyze_allows_space_fit_pack_media_as_send_blocks(client, monkeypatch)
                 },
             },
             "evidence_debug": {"query_fact_type": "space_fit"},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
 
@@ -139,7 +144,7 @@ def test_analyze_blocks_space_fit_plain_sku_image_auto_send(client, monkeypatch)
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "product_question",
             "suggested_reply": "Please compare with the product image.",
             "requires_human_review": False,
@@ -159,7 +164,7 @@ def test_analyze_blocks_space_fit_plain_sku_image_auto_send(client, monkeypatch)
                 },
             },
             "evidence_debug": {"query_fact_type": "space_fit"},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
 
@@ -181,7 +186,7 @@ def test_analyze_keeps_pack_media_preview_only_when_review_required(client, monk
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "material_safety",
             "suggested_reply": "亲～这个我帮您确认后回复。",
             "requires_human_review": True,
@@ -200,7 +205,7 @@ def test_analyze_keeps_pack_media_preview_only_when_review_required(client, monk
                 },
             },
             "evidence_debug": {"query_fact_type": "material"},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
 

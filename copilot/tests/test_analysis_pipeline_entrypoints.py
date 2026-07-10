@@ -99,7 +99,24 @@ def test_same_canonical_payload_keeps_core_decision_for_all_entrypoints(pipeline
         assert {field: decision.get(field) for field in _DECISION_FIELDS} == expected
         assert decision["analysis_pipeline"]["final_orchestration_completed"] is True
         assert decision["analysis_pipeline"]["stages"]
+        assert {
+            stage["stage"] for stage in decision["analysis_pipeline"]["stages"]
+        } >= {
+            "canonical_input",
+            "graph_execution",
+            "media_delivery",
+            "final_response_orchestration",
+            "answer_memory_shadow",
+            "grounded_reasoning_shadow",
+        }
     assert pipeline_harness["final"] == 4
+
+
+def test_final_orchestration_runs_once_for_one_pipeline_request(pipeline_harness):
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert response["analysis_pipeline"]["final_orchestration_completed"] is True
+    assert pipeline_harness["final"] == 1
 
 
 def test_media_exception_degrades_without_sendable_media(monkeypatch, pipeline_harness):
@@ -112,6 +129,84 @@ def test_media_exception_degrades_without_sendable_media(monkeypatch, pipeline_h
     assert response["recommended_assets"] == []
     assert response["reply_delivery"]["auto_send_ready"] is False
     assert response["evidence_debug"]["analysis_pipeline_media_error"]["type"] == "RuntimeError"
+
+
+def test_final_failure_disables_auto_media_delivery(monkeypatch, pipeline_harness):
+    import app.services.final_response_orchestrator as final_orchestrator
+    import app.services.media_asset_service as media
+
+    monkeypatch.setattr(
+        final_orchestrator,
+        "orchestrate_final_response",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("final failed")),
+    )
+    monkeypatch.setattr(
+        media,
+        "recommend_for_analyze_response",
+        lambda *args, **kwargs: {"recommended_assets": [{"asset_type": "install_video", "asset_url": "https://example.com/install.mp4"}]},
+    )
+    monkeypatch.setattr(media, "select_delivery_assets", lambda assets, **kwargs: list(assets))
+    monkeypatch.setattr(
+        media,
+        "build_reply_blocks",
+        lambda reply, assets, **kwargs: {
+            "reply_blocks": [
+                {"type": "text", "content": reply},
+                {"type": "video", "url": "https://example.com/install.mp4", "send_mode": "auto_when_platform_connected"},
+            ],
+            "reply_delivery": {"mode": "blocks", "auto_send_ready": True},
+        },
+    )
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert response["analysis_pipeline"]["final_orchestration_completed"] is False
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+    assert response["reply_status"] == "needs_human_review"
+    assert response["reply_delivery"] == {
+        "mode": "blocks",
+        "auto_send_ready": False,
+        "reason": "final_orchestration_failed",
+    }
+    assert response["reply_blocks"][1]["send_mode"] == "manual"
+
+
+def test_pipeline_does_not_retry_after_post_processor_failure(monkeypatch):
+    import app.services.analysis_execution_service as execution
+
+    calls = {"complete": 0}
+    service = AnalysisPipelineService()
+
+    def fail_complete(response, request):
+        calls["complete"] += 1
+        raise RuntimeError("post processor failed")
+
+    def fake_execute_analysis(**kwargs):
+        try:
+            kwargs["response_post_processor"](deepcopy(_graph_response()))
+        except RuntimeError:
+            return {
+                **_graph_response(),
+                "can_send": False,
+                "requires_human_review": True,
+                "sendable_reply": "",
+                "reply_status": "needs_human_review",
+                "trace_response_stage": "pre_final",
+                "evidence_debug": {"analysis_pipeline_post_processor_error": {"type": "RuntimeError"}},
+            }
+        raise AssertionError("test double must execute response_post_processor")
+
+    monkeypatch.setattr(service, "_complete_response", fail_complete)
+    monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+
+    response = service.run(_request("api"))
+
+    assert calls["complete"] == 1
+    assert response["trace_response_stage"] == "pre_final"
+    assert response["can_send"] is False
+    assert response["sendable_reply"] == ""
 
 
 def test_shadow_layers_do_not_change_formal_decision(monkeypatch, pipeline_harness):
@@ -141,6 +236,43 @@ def test_shadow_layers_do_not_change_formal_decision(monkeypatch, pipeline_harne
     assert response["grounded_reasoning_draft"]["used_for_final_reply"] is False
     assert response["grounded_reasoning_draft"]["can_change_can_send"] is False
     assert response["can_send"] is True
+
+
+def test_shadow_contract_restores_malicious_formal_mutations(monkeypatch, pipeline_harness):
+    import app.services.answer_memory_adapter_service as answer_memory
+    import app.services.grounded_reasoning_draft_service as grounded
+
+    class MutatingAnswerMemory:
+        def attach_shadow_guidance(self, response, **kwargs):
+            response["suggested_reply"] = "mutated"
+            response["can_send"] = False
+            response["reply_blocks"] = [{"type": "image", "url": "https://example.com/unsafe.png"}]
+            response["answer_memory_guidance"] = {"reference_only": True}
+            return response
+
+    class MutatingGroundedReasoning:
+        def attach_shadow_draft(self, response, **kwargs):
+            response["sendable_reply"] = "mutated"
+            response["reply_delivery"] = {"auto_send_ready": True}
+            response["grounded_reasoning_draft"] = {"used_for_final_reply": False}
+            return response
+
+    monkeypatch.setenv("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED", "true")
+    monkeypatch.setattr(answer_memory, "AnswerMemoryAdapterService", MutatingAnswerMemory)
+    monkeypatch.setattr(grounded, "GroundedReasoningDraftService", MutatingGroundedReasoning)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert response["suggested_reply"] == _graph_response()["suggested_reply"]
+    assert response["can_send"] is True
+    assert response["sendable_reply"] == _graph_response()["suggested_reply"]
+    assert response["reply_blocks"][0]["type"] == "text"
+    violations = response["evidence_debug"]["shadow_contract_violation"]
+    assert {item["stage"] for item in violations} == {
+        "answer_memory_shadow",
+        "grounded_reasoning_shadow",
+    }
 
 
 def test_benchmark_and_replay_delegate_to_pipeline(monkeypatch):

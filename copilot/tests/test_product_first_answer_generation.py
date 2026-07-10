@@ -3,6 +3,11 @@ from __future__ import annotations
 import pytest
 
 
+def _run_post_processor(kwargs, response):
+    post_processor = kwargs.get("response_post_processor")
+    return post_processor(response) if callable(post_processor) else response
+
+
 @pytest.fixture()
 def client():
     from app.main import create_app
@@ -224,7 +229,7 @@ def test_api_analyze_preserves_product_first_trace_and_sendable_contract(client,
     pack = _structured_pack("material", "This product material is steel and PP.")
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "product_question",
             "suggested_reply": "亲亲，这款商品的材质是 steel and PP。",
             "requires_human_review": False,
@@ -238,7 +243,7 @@ def test_api_analyze_preserves_product_first_trace_and_sendable_contract(client,
                 "required_fact_types": ["material"],
                 "selected_product_first_evidence": pack["product_structured_facts"][0],
             },
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
     response = client.post("/api/analyze", json={"message": "material?", "product_name": "Test product"})
@@ -254,7 +259,7 @@ def test_api_analyze_missing_product_first_evidence_clears_sendable_reply(client
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "product_question",
             "suggested_reply": "我先帮您核对是否有安装视频。",
             "requires_human_review": True,
@@ -269,7 +274,7 @@ def test_api_analyze_missing_product_first_evidence_clears_sendable_reply(client
             },
             "evidence_debug": {"query_fact_type": "installation", "selected_evidence": []},
             "answer_trace": {"query_fact_type": "installation", "required_fact_types": ["installation"]},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
     response = client.post("/api/analyze", json={"message": "installation video?", "product_name": "Test product"})

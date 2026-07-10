@@ -4,11 +4,26 @@ from __future__ import annotations
 
 import os
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
 
 PIPELINE_VERSION = "analysis-pipeline-v1"
+_FORMAL_DECISION_FIELDS = (
+    "suggested_reply",
+    "draft_reply",
+    "sendable_reply",
+    "can_send",
+    "requires_human_review",
+    "reply_status",
+    "block_reasons",
+    "recommended_assets",
+    "reply_blocks",
+    "reply_delivery",
+    "final_answer_audit",
+    "final_semantic_fit_audit",
+)
 _IMAGE_MARKER_RE = re.compile(r"\[\s*图片\d*\s*\]")
 _TEXT_PRODUCT_QUESTION_TERMS = (
     "吗", "呢", "怎么", "如何", "可以", "能不能", "是不是", "有没有", "会不会",
@@ -67,17 +82,16 @@ class AnalysisPipelineService:
             ),
         )
 
-        # Test doubles and third-party callers may not yet support the hook.
-        # Keep their response behavior equivalent without treating it as a second
-        # production path; real execution always uses the hook before persistence.
-        if not response.get("error") and not isinstance(response.get("analysis_pipeline"), dict):
-            response = self._complete_response(response, prepared)
         return response
 
     def _prepare_request(self, request: AnalysisPipelineRequest) -> AnalysisPipelineRequest:
         context = dict(request.copilot_context or {})
         attachments = [dict(item) for item in (request.image_attachments or []) if isinstance(item, dict)]
-        stages: list[dict[str, Any]] = []
+        stages: list[dict[str, Any]] = [{
+            "stage": "canonical_input",
+            "status": "completed",
+            "source": request.source,
+        }]
         if attachments:
             context["has_image_attachment"] = True
             if self._skip_image_vlm(request, context):
@@ -119,6 +133,7 @@ class AnalysisPipelineService:
     ) -> dict[str, Any]:
         response = dict(response or {})
         stages = list((request.copilot_context or {}).get("analysis_pipeline_input_stages") or [])
+        stages.append({"stage": "graph_execution", "status": "completed"})
         identity = self._identity(request)
 
         response, media_stage = self._apply_media_delivery(response, request, identity)
@@ -136,13 +151,15 @@ class AnalysisPipelineService:
             final_completed = True
             stages.append({"stage": "final_response_orchestration", "status": "completed"})
         except Exception as exc:
+            from app.services.analysis_execution_service import apply_pre_final_response_safety
+
             response.setdefault("evidence_debug", {})["analysis_pipeline_final_error"] = {
                 "type": type(exc).__name__, "message": str(exc),
             }
-            response["requires_human_review"] = True
-            response["can_send"] = False
-            response["sendable_reply"] = ""
-            response["reply_status"] = "needs_human_review"
+            response = apply_pre_final_response_safety(
+                response,
+                "final_orchestration_failed",
+            )
             stages.append({"stage": "final_response_orchestration", "status": "failed", "reason": type(exc).__name__})
 
         response, shadow_stages = self._attach_shadow_layers(response, request, identity)
@@ -159,7 +176,7 @@ class AnalysisPipelineService:
         response.setdefault("trace_steps", []).append({
             "node": "analysis_pipeline",
             "status": "completed" if final_completed else "degraded",
-            "summary": "graph, media delivery, final response, shadow, persistence",
+            "summary": "graph, media delivery, final response, shadow; persistence follows in AnalysisExecutionService",
             "stages": stages,
         })
         return response
@@ -240,15 +257,19 @@ class AnalysisPipelineService:
             try:
                 from app.services.answer_memory_adapter_service import AnswerMemoryAdapterService
 
-                response = AnswerMemoryAdapterService().attach_shadow_guidance(
+                response, stage = self._run_shadow_stage(
                     response,
-                    customer_message=request.delivery_message or request.customer_message,
-                    product_i_id=identity["i_id"],
-                    sku_code=identity["sku_code"],
-                    product_title=identity["product_name"],
-                    copilot_context=request.copilot_context,
+                    "answer_memory_shadow",
+                    lambda shadow_response: AnswerMemoryAdapterService().attach_shadow_guidance(
+                        shadow_response,
+                        customer_message=request.delivery_message or request.customer_message,
+                        product_i_id=identity["i_id"],
+                        sku_code=identity["sku_code"],
+                        product_title=identity["product_name"],
+                        copilot_context=request.copilot_context,
+                    ),
                 )
-                stages.append({"stage": "answer_memory_shadow", "status": "completed"})
+                stages.append(stage)
             except Exception as exc:
                 response.setdefault("evidence_debug", {})["answer_memory_guidance_error"] = str(exc)
                 stages.append({"stage": "answer_memory_shadow", "status": "degraded", "reason": type(exc).__name__})
@@ -259,19 +280,55 @@ class AnalysisPipelineService:
             try:
                 from app.services.grounded_reasoning_draft_service import GroundedReasoningDraftService
 
-                response = GroundedReasoningDraftService().attach_shadow_draft(
+                response, stage = self._run_shadow_stage(
                     response,
-                    customer_message=request.delivery_message or request.customer_message,
-                    product_identity=identity,
-                    answer_memory_guidance=response.get("answer_memory_guidance") if isinstance(response.get("answer_memory_guidance"), dict) else {},
+                    "grounded_reasoning_shadow",
+                    lambda shadow_response: GroundedReasoningDraftService().attach_shadow_draft(
+                        shadow_response,
+                        customer_message=request.delivery_message or request.customer_message,
+                        product_identity=identity,
+                        answer_memory_guidance=shadow_response.get("answer_memory_guidance") if isinstance(shadow_response.get("answer_memory_guidance"), dict) else {},
+                    ),
                 )
-                stages.append({"stage": "grounded_reasoning_shadow", "status": "completed"})
+                stages.append(stage)
             except Exception as exc:
                 response.setdefault("evidence_debug", {})["grounded_reasoning_draft_error"] = str(exc)
                 stages.append({"stage": "grounded_reasoning_shadow", "status": "degraded", "reason": type(exc).__name__})
         else:
             stages.append({"stage": "grounded_reasoning_shadow", "status": "disabled"})
         return response, stages
+
+    @staticmethod
+    def _run_shadow_stage(
+        response: dict[str, Any],
+        stage_name: str,
+        attach,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        baseline = {
+            field: deepcopy(response.get(field))
+            for field in _FORMAL_DECISION_FIELDS
+        }
+        updated = attach(deepcopy(response))
+        if not isinstance(updated, dict):
+            raise TypeError(f"{stage_name} must return a dict")
+
+        changed_fields = [
+            field for field, value in baseline.items()
+            if updated.get(field) != value
+        ]
+        if not changed_fields:
+            return updated, {"stage": stage_name, "status": "completed"}
+
+        for field in changed_fields:
+            updated[field] = deepcopy(baseline[field])
+        updated.setdefault("evidence_debug", {}).setdefault(
+            "shadow_contract_violation", []
+        ).append({"stage": stage_name, "fields": changed_fields})
+        return updated, {
+            "stage": stage_name,
+            "status": "contract_violation",
+            "fields": changed_fields,
+        }
 
     @staticmethod
     def _env_enabled(name: str) -> bool:

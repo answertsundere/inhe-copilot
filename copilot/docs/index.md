@@ -112,8 +112,9 @@ Workspace-root `docs/`, `验收报告*.md`, and `客服系统/` are historical o
   formal AnalysisPipeline. Presentation and HTTP metadata remain intentionally
   route-specific.
 - Final response persistence is covered by Phase 0.1 and Pipeline contract
-  tests; legacy direct callers still need inventory before they are treated as
-  formal entry points.
+  tests. Pipeline failures return and persist one review-only `pre_final`
+  contract; legacy direct callers still need inventory before they are treated
+  as formal entry points.
 - `app.main` still combines dependency initialization, Flask routing, and resident background workers.
 - Fact-type and safety group definitions remain distributed across multiple modules.
 - A project-level governance baseline now exists, but CI enforcement and accepted ADRs are still missing.

@@ -8,8 +8,8 @@ should have one authoritative owner even when several modules consume it.
 | Web application and dependency setup | `app/main.py` | legacy/converging | Must not remain the worker scheduler or domain service locator |
 | Public analyze API | `app/api/analyze_routes.py` | formal | Parses HTTP input and presents the canonical Pipeline decision |
 | Sidecar/copilot API | `app/api/copilot_routes.py` | formal | Normalizes sidecar context, calls Pipeline, then adapts panel presentation |
-| Analysis pipeline | `app/services/analysis_pipeline_service.py` | formal | Owns graph-to-delivery stage order for API, copilot, replay, and benchmark |
-| Shared execution | `app/services/analysis_execution_service.py` | formal, Phase 0.1 contract complete | Owns graph execution, trace lifecycle, and final response persistence after Pipeline post-processing |
+| Analysis pipeline | `app/services/analysis_pipeline_service.py` | formal | Owns canonical input, graph-to-delivery stage order, shadow isolation, and safe final-stage degradation for API, copilot, replay, and benchmark |
+| Shared execution | `app/services/analysis_execution_service.py` | formal, Phase 0.1 contract complete | Owns graph execution, trace lifecycle, one pre-persistence post-processor call, and final response persistence |
 | Agent graph | `app/agent/graph.py`, `app/agent/nodes/` | formal | Domain decisions only; no platform-native API branches |
 | Product identity | product identity services and resolver nodes | formal | External title -> JST/internal identity -> scoped evidence |
 | Fact classification | `app/services/fact_type_service.py` and turn understanding | formal but fragmented | Move toward one versioned fact-type registry |

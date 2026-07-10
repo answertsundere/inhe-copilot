@@ -189,6 +189,53 @@ def test_final_orchestration_failure_is_not_marked_final(monkeypatch, persistenc
     ] == "pre_final"
 
 
+def test_post_processor_failure_is_persisted_once_as_safe_pre_final(persistence_capture):
+    from app.services.analysis_execution_service import execute_analysis
+
+    calls = {"post_processor": 0}
+
+    def fail_post_processor(response):
+        calls["post_processor"] += 1
+        raise RuntimeError("pipeline failed")
+
+    response = execute_analysis(
+        reply_service=_ReplyService(_graph_payload()),
+        customer_message="test message",
+        final_orchestration=False,
+        response_post_processor=fail_post_processor,
+    )
+
+    expected = {
+        key: response.get(key)
+        for key in (
+            "suggested_reply",
+            "draft_reply",
+            "sendable_reply",
+            "can_send",
+            "requires_human_review",
+            "reply_status",
+            "reply_blocks",
+            "reply_delivery",
+            "recommended_assets",
+            "final_answer_audit",
+            "final_semantic_fit_audit",
+            "trace_response_stage",
+            "final_response_pipeline_version",
+        )
+    }
+
+    assert calls["post_processor"] == 1
+    assert response["trace_response_stage"] == "pre_final"
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+    assert response["reply_delivery"]["auto_send_ready"] is False
+    assert response["evidence_debug"]["analysis_pipeline_post_processor_error"]["type"] == "RuntimeError"
+    assert persistence_capture["sqlite"]["execution_debug"]["final_response_contract"] == expected
+    assert persistence_capture["file"]["final_response_contract"] == expected
+    assert persistence_capture["trace"]["outcome"]["final_response_contract"] == expected
+
+
 def test_error_response_has_explicit_trace_stage(persistence_capture):
     from app.services.analysis_execution_service import execute_analysis
 

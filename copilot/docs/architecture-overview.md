@@ -66,6 +66,13 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 - Routes now retain only canonical input construction, authorization/HTTP work,
   metrics, and presentation. The Pipeline performs delivery and final stages
   before Phase 0.1 persistence runs.
+- Phase 0.2.1 removes post-persistence Pipeline retries. A post-processor or
+  final-orchestration failure returns and persists one review-only `pre_final`
+  decision with delivery auto-send disabled; it cannot produce a newer reply
+  after the trace or snapshot has been saved.
+- Pipeline runtime stages are observed from the response itself. Final
+  persistence is owned and observed by `AnalysisExecutionService`, not claimed
+  as a completed Pipeline runtime stage before persistence happens.
 - Grounded Reasoning trace currently risks treating reviewed answers or
   ineligible evidence as facts and must not be promoted.
 

@@ -49,6 +49,35 @@ def _gen_message_id() -> str:
     return f"msg_{uuid.uuid4().hex[:12]}"
 
 
+def apply_pre_final_response_safety(response: dict, failure_reason: str) -> dict:
+    """Keep a failed final stage review-only without auto-delivering media."""
+    response = dict(response or {})
+    response["requires_human_review"] = True
+    response["can_send"] = False
+    response["sendable_reply"] = ""
+    response["reply_status"] = "needs_human_review"
+
+    delivery = dict(response.get("reply_delivery") or {})
+    delivery["auto_send_ready"] = False
+    delivery["reason"] = failure_reason
+    response["reply_delivery"] = delivery
+
+    manual_blocks = []
+    for block in response.get("reply_blocks") or []:
+        if not isinstance(block, dict):
+            manual_blocks.append(block)
+            continue
+        item = dict(block)
+        if item.get("type") in {"image", "video"}:
+            item["send_mode"] = "manual"
+        manual_blocks.append(item)
+    response["reply_blocks"] = manual_blocks
+    response.setdefault("evidence_debug", {})["pre_final_safety_contract"] = {
+        "reason": failure_reason,
+    }
+    return response
+
+
 def execute_analysis(
     reply_service,
     customer_message: str,
@@ -225,6 +254,14 @@ def _build_response(
             orchestration_applied = True
         except Exception as e:
             logger.warning("final_response_orchestration failed: %s", e)
+            response.setdefault("evidence_debug", {})["final_response_orchestration_error"] = {
+                "type": type(e).__name__,
+                "message": str(e),
+            }
+            response = apply_pre_final_response_safety(
+                response,
+                "final_orchestration_failed",
+            )
 
     post_processor_applied = False
     post_processor_finalized = False
@@ -246,6 +283,10 @@ def _build_response(
                 "type": type(exc).__name__,
                 "message": str(exc),
             }
+            response = apply_pre_final_response_safety(
+                response,
+                "analysis_pipeline_post_processor_failed",
+            )
 
     if response_post_processor is not None:
         response["trace_response_stage"] = "final" if post_processor_finalized else "pre_final"

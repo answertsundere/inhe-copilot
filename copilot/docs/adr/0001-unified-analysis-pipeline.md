@@ -28,6 +28,11 @@ post-graph processor so `AnalysisPipelineService` can complete formal stages
 before the final response contract is saved. Routes keep HTTP parsing,
 authorization, canonical input construction, metrics, and presentation only.
 
+Phase 0.2.1 clarifies failure ownership: the post-graph processor runs exactly
+once before persistence. If it fails, the returned response, SQLite snapshot,
+file snapshot, and trace outcome remain the same review-only `pre_final`
+response. The pipeline must never retry a formal stage after persistence.
+
 Answer Memory and Grounded Reasoning remain shadow-only. Platform capabilities
 are passed as canonical options; no platform name is used inside Agent-domain
 branching.
@@ -50,6 +55,12 @@ branching.
 - Media selection happens before the final audit and delivery contract.
 - Missing media, media errors, final-stage errors, and shadow errors are
   recorded as diagnostics and degrade safely rather than being silently hidden.
+- A failed final stage forces `can_send=false`, clears `sendable_reply`, marks
+  human review, disables delivery auto-send, and changes image/video blocks to
+  manual reference blocks.
+- Shadow services receive a copy of the decision. Attempts to modify formal
+  reply, delivery, audit, or sendability fields are restored and recorded as a
+  contract violation before persistence.
 - The pipeline does not alter FactType, evidence eligibility, response policy,
   or the `can_send` standard.
 
@@ -67,3 +78,7 @@ platform API migration is introduced.
 - Phase 0.1 tests verify final response persistence.
 - The read-only entrypoint diagnostic reports whether each formal caller uses
   the pipeline and whether it retains route-level formal stages.
+- Runtime stage observations come from `response.analysis_pipeline.stages`.
+  `AnalysisExecutionService` remains the persistence owner, so the pipeline
+  does not report final persistence as a completed runtime stage before the
+  save actually occurs.

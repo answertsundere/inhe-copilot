@@ -11,6 +11,11 @@ from app.services.grounded_reasoning_draft_service import (
 )
 
 
+def _run_post_processor(kwargs, response):
+    post_processor = kwargs.get("response_post_processor")
+    return post_processor(response) if callable(post_processor) else response
+
+
 @pytest.fixture()
 def client():
     import app.models.kb_tables  # noqa: F401
@@ -178,7 +183,7 @@ def test_analyze_grounded_reasoning_shadow_is_env_gated(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
-        return {
+        return _run_post_processor(kwargs, {
             "intent": "product_question",
             "suggested_reply": "Need review.",
             "requires_human_review": True,
@@ -187,7 +192,7 @@ def test_analyze_grounded_reasoning_shadow_is_env_gated(client, monkeypatch):
             "selected_evidence": [{"fact_type": "installation", "content": "安装说明"}],
             "evidence_debug": {"query_fact_type": "installation"},
             "answer_trace": {"query_fact_type": "installation"},
-        }
+        })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
     monkeypatch.delenv("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED", raising=False)
