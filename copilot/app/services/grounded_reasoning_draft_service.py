@@ -397,7 +397,7 @@ def _build_child_draft(customer_message: str, used_facts: list[dict[str, Any]], 
 
 
 def _build_material_draft(customer_message: str, used_facts: list[dict[str, Any]]) -> tuple[str, list[str], list[str]]:
-    material_facts = _fact_texts_by_type(used_facts, "material", "材质", "odor", "气味")
+    material_facts = _fact_texts_by_type(used_facts, "material", "材质", "odor", "气味", "certification_report")
     fact_part = f"这款资料里能看到的材质信息是：{material_facts[0]}。" if material_facts else ""
     if _contains_any(customer_message, ("咬", "啃", "入口", "吃到")):
         draft = (
@@ -425,7 +425,16 @@ def _build_installation_draft(
     has_video_block: bool,
     has_image_block: bool,
 ) -> tuple[str, list[str], list[str]]:
-    install_facts = _fact_texts_by_type(used_facts, "installation", "安装", "manual", "说明书", "配件", "accessory")
+    install_facts = _fact_texts_by_type(
+        used_facts,
+        "installation",
+        "安装",
+        "manual",
+        "说明书",
+        "配件",
+        "accessory",
+        "structure_function",
+    )
     if has_video_block:
         media_part = "下面的视频可以先参考。"
         missing: list[str] = []
@@ -468,7 +477,18 @@ def _build_weight_draft(used_facts: list[dict[str, Any]]) -> tuple[str, list[str
     return draft, inferred, missing
 
 
-def _build_general_draft(customer_message: str, answer_memory_guidance: dict[str, Any] | None) -> tuple[str, list[str], list[str]]:
+def _build_general_draft(
+    customer_message: str,
+    answer_memory_guidance: dict[str, Any] | None,
+    used_facts: list[dict[str, Any]],
+) -> tuple[str, list[str], list[str]]:
+    fact_text = sanitize_text(used_facts[0].get("text")) if used_facts else ""
+    if fact_text:
+        return (
+            f"亲，这款资料里写的是：{fact_text}。如果您还想确认具体使用情况，我再按页面说明帮您对一下。",
+            ["只围绕已准入的商品事实组织说明"],
+            [],
+        )
     hints = _answer_memory_action_hints(answer_memory_guidance)
     if hints:
         draft = f"亲，我先按当前商品和您的问题核对一下。{hints[0]}我确认清楚后给您准确回复。"
@@ -514,7 +534,7 @@ def build_grounded_reasoning_draft(
     elif fact_type in VISUAL_FACT_TYPES:
         draft, inferred, missing = _build_visual_draft(message, used_facts)
     else:
-        draft, inferred, missing = _build_general_draft(message, answer_memory_guidance)
+        draft, inferred, missing = _build_general_draft(message, answer_memory_guidance, used_facts)
 
     risk = sanitize_text(risk_level) or ("high" if fact_type in HIGH_RISK_FACT_TYPES else "medium")
     forbidden_claims = _unique(_default_forbidden_claims(fact_type) + _as_list(_as_dict(answer_memory_guidance).get("forbidden_claims")))

@@ -96,6 +96,34 @@ Product pack media availability alone is not enough. The current reply must actu
 
 ## Diagnostics
 
+## Positive Capability Evaluation
+
+Phase 0.4A adds a read-only positive evaluation baseline. It keeps synthetic
+contract fixtures separate from the current production knowledge inventory,
+because historical training traces often carry sidecar identity but not formal
+direct/scoped facts. The fixtures are never written to the knowledge base and
+their expected facts, draft terms, rejection expectations, and claim rules are
+only used after the shadow draft is built.
+
+The evaluation tiers are:
+
+- `L0`: direct reviewed facts;
+- `L1`: low-risk combinations of compatible facts from one product;
+- `L2`: bounded explanation with an explicit condition or limit;
+- `L3`: high-risk controls that must stay review-only without explicit evidence.
+
+The runner reports admission/rejection, expected fact coverage, answer
+relevance, unsupported inference, identity and Answer Memory leakage, conflict
+blocking, high-risk handoff, forbidden claims, and the unchanged
+`can_change_can_send` invariant. It is an offline diagnostic and cannot alter
+the formal reply, evidence selection, media blocks, or sendability.
+
+The first synthetic contract baseline contains 37 scenarios (`L0=12`, `L1=8`,
+`L2=5`, `L3=12`). It is intentionally reported separately from the read-only
+knowledge inventory: a reviewed product or FAQ row is not automatically an
+eligible direct fact until it has the role, gate, structured attribute, and
+identity metadata required by this layer.
+
 Trace script:
 
 ```powershell

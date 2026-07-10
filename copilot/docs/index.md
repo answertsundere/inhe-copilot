@@ -48,6 +48,7 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/adr/0001-unified-analysis-pipeline.md` - accepted decision establishing
   one formal AnalysisPipeline before any service decomposition.
 - `docs/research/mature-customer-service-systems.md` - official-source comparison of mature routing, handoff, task, AI, and self-hosted control-plane patterns.
+- `docs/research/grounded-reasoning-evaluation.md` - official-source-informed, deterministic evaluation contract for the shadow Grounded Reasoning layer.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 
