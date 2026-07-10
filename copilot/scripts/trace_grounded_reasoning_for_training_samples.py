@@ -48,15 +48,16 @@ def _selected_evidence_from_sample(sample: dict[str, Any], query_fact_type: str)
     for key, fact_type in (
         ("product_title", "product_identity"),
         ("sku", "sku_code"),
-        ("correct_answer", "reviewed_action_reference"),
     ):
         value = sanitize_text(sample.get(key))
         if value:
             facts.append(
                 {
                     "source_type": "training_sample_context",
-                    "fact_type": fact_type if fact_type != "reviewed_action_reference" else query_fact_type,
+                    "fact_type": fact_type,
                     "content": value,
+                    "source_type": "training_sample_context",
+                    "reference_only": True,
                 }
             )
     return facts
@@ -75,12 +76,26 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
     forbidden_claim_violation_count = 0
     unsupported_media_claim_count = 0
     generic_handoff_only_count = 0
+    skipped_by_reason: dict[str, int] = {}
+    admitted_fact_count = 0
+    rejected_evidence_count = 0
+    rejected_evidence_by_reason: dict[str, int] = {}
+    answer_leakage_count = 0
 
     for sample in samples[: max(1, min(int(limit or 5000), 5000))]:
         question = sanitize_text(plain_text(sample.get("customer_quote")))
         if not question:
+            reason = "missing_context"
+        elif question.startswith("http"):
+            reason = "link_only"
+        elif "图片" in question and len(question) <= 8:
+            reason = "image_only"
+        else:
+            reason = ""
+        if reason:
             skipped_count += 1
-            rows.append({"sample_id": sample.get("id"), "skipped": True, "skip_reason": "empty_customer_message"})
+            skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + 1
+            rows.append({"sample_id": sample.get("id"), "skipped": True, "skip_reason": reason})
             continue
         fact = classify_query_fact_type(question, intent="")
         query_fact_type = sanitize_text(fact.get("query_fact_type"))
@@ -126,6 +141,13 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
             unsupported_media_claim_count += 1
         if is_generic_handoff_only(draft):
             generic_handoff_only_count += 1
+        admitted_fact_count += len(draft.get("used_facts") or [])
+        rejected_evidence_count += len(draft.get("rejected_evidence") or [])
+        for item in draft.get("rejected_evidence") or []:
+            reason = str(item.get("reason") or "unknown")
+            rejected_evidence_by_reason[reason] = rejected_evidence_by_reason.get(reason, 0) + 1
+        if any("correct_answer" in str(item.get("source") or "") for item in draft.get("used_facts") or []):
+            answer_leakage_count += 1
         rows.append(
             {
                 "sample_id": sample.get("id"),
@@ -137,6 +159,8 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
 
     return {
         "total": len(rows),
+        "scanned_count": len(samples[: max(1, min(int(limit or 5000), 5000))]),
+        "eligible_count": generated_count,
         "generated_count": generated_count,
         "skipped_count": skipped_count,
         "high_risk_count": high_risk_count,
@@ -146,6 +170,11 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
         "forbidden_claim_violation_count": forbidden_claim_violation_count,
         "unsupported_media_claim_count": unsupported_media_claim_count,
         "generic_handoff_only_count": generic_handoff_only_count,
+        "skipped_by_reason": skipped_by_reason,
+        "answer_leakage_count": answer_leakage_count,
+        "admitted_fact_count": admitted_fact_count,
+        "rejected_evidence_count": rejected_evidence_count,
+        "rejected_evidence_by_reason": rejected_evidence_by_reason,
         "rows": rows,
     }
 

@@ -37,9 +37,14 @@ The layer output keeps an explicit machine contract:
 
 `used_facts` can only come from:
 
-- `selected_evidence`
-- `product_context_pack`
-- `product_first_evidence_pack`
+- direct product facts or direct FAQ evidence that pass evidence admission
+- reviewed, identity-scoped, fact-type-compatible product context entries
+
+Evidence admission rejects `blocked`, `reference_only`, `fallback_only`,
+`service_action`, `media_reference`, pending/provisional content, Answer
+Memory, expected answers, rubrics, incompatible fact types, mismatched product
+identity, and conflicting numeric facts. Rejected candidates remain diagnostic
+metadata only and never enter `used_facts`.
 
 Answer Memory can only provide style and action hints. It must never become a product fact. A remembered reply can suggest how to handle an installation, aftersales, or promotion conversation, but it cannot prove a material, weight, size, certificate, age range, discount, refund state, or media asset.
 
@@ -76,9 +81,15 @@ can_change_can_send_count = 0
 used_answer_memory_as_fact_count = 0
 forbidden_claim_violation_count = 0
 unsupported_media_claim_count = 0
+answer_leakage_count = 0
 ```
 
 `generic_handoff_only_count` is tracked to avoid producing drafts that are only generic "check and confirm" wording.
+
+Reviewed training-sample `correct_answer` is an offline comparison reference.
+It must never be injected into selected evidence, product facts, prompts, or
+Grounded Reasoning `used_facts`. Image-only, link-only, unreadable, and missing
+context samples are counted as skipped instead of being treated as text QA.
 
 ## Non-Goals
 

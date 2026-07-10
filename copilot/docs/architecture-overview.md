@@ -74,7 +74,9 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
   persistence is owned and observed by `AnalysisExecutionService`, not claimed
   as a completed Pipeline runtime stage before persistence happens.
 - Grounded Reasoning trace currently risks treating reviewed answers or
-  ineligible evidence as facts and must not be promoted.
+  ineligible evidence as facts and must not be promoted. Phase 0.3 keeps it
+  shadow-only and records evidence-admission rejections; reviewed answers are
+  offline references, never reasoning facts.
 
 ### P1: Contract Fragmentation
 

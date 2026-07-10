@@ -7,6 +7,7 @@ It never changes final replies, selected evidence, or sendability.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
@@ -169,18 +170,67 @@ def _collect_pack_candidates(product_context_pack: dict[str, Any]) -> list[tuple
     return candidates
 
 
+_DIRECT_SOURCE_TYPES = {"product_fact_direct", "product_facts", "product_fact", "product_spec", "faq_direct", "faq", "installation_guide"}
+_REJECTED_ROLES = {"service_action", "fallback_only", "media_reference", "answer_memory", "correct_answer", "expected_reply", "rubric"}
+_COMPATIBLE_FACT_TYPES = {
+    "material_safety": {"material", "odor", "certification_report"},
+    "pinch_safety": {"structure_function", "structure", "material"},
+    "child_safety": {"structure_function", "structure", "material"},
+    "child_suitability": {"structure_function", "structure", "material", "age_range"},
+    "installation_media": {"installation", "installation_media", "installation_media_request"},
+}
+
+
+def _admission_reason(item: dict[str, Any], query_fact_type: str, product_identity: dict[str, Any]) -> str:
+    role = sanitize_text(item.get("evidence_role") or item.get("source_type") or item.get("type")).lower()
+    gate = sanitize_text(item.get("gate_status")).lower()
+    status = sanitize_text(item.get("fact_review_status") or item.get("review_status") or item.get("verification_status")).lower()
+    if role in _REJECTED_ROLES or gate in {"blocked", "reference_only", "rejected"}:
+        return "ineligible_role_or_gate"
+    if item.get("reference_only") is True or item.get("fallback_only") is True:
+        return "reference_only"
+    if status in {"pending", "pending_review", "unverified", "provisional", "rejected"}:
+        return "unreviewed_fact"
+    if not (item.get("direct_answer_allowed") is True or item.get("can_direct_answer") is True or role in _DIRECT_SOURCE_TYPES):
+        return "not_direct_answerable"
+    item_type = _fact_type_of(item)
+    compatible = _COMPATIBLE_FACT_TYPES.get(query_fact_type, set())
+    if query_fact_type and item_type and item_type not in {query_fact_type, "product_identity", "sku_code", *compatible}:
+        return "fact_type_incompatible"
+    expected = {sanitize_text(product_identity.get(key)) for key in ("i_id", "sku_code", "product_id") if sanitize_text(product_identity.get(key))}
+    actual = {sanitize_text(item.get(key)) for key in ("i_id", "sku_code", "product_id") if sanitize_text(item.get(key))}
+    if expected and actual and not expected.intersection(actual):
+        return "product_identity_mismatch"
+    return ""
+
+
 def _collect_used_facts(
     selected_evidence: list[dict[str, Any]] | None,
     product_context_pack: dict[str, Any] | None,
     query_fact_type: str,
-) -> list[dict[str, Any]]:
+    product_identity: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     facts: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
     def add_fact(source: str, item: dict[str, Any]) -> None:
         fact_type = _fact_type_of(item)
         text = _text_of_fact(item)
         if not text:
+            return
+        reason = _admission_reason(item, query_fact_type, product_identity or {})
+        if reason:
+            rejected.append({"source": source, "reason": reason, "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
+            return
+        if any(
+            existing.get("fact_type") == fact_type
+            and re.search(r"\d", existing.get("text", ""))
+            and re.search(r"\d", text)
+            and existing.get("text") != _clip(text, 180)
+            for existing in facts
+        ):
+            rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
             return
         key = (source, fact_type, text)
         if key in seen:
@@ -201,7 +251,7 @@ def _collect_used_facts(
             add_fact("selected_evidence", item)
     for source, item in _collect_pack_candidates(_as_dict(product_context_pack)):
         add_fact(source, item)
-    return facts[:8]
+    return facts[:8], rejected[:20]
 
 
 def _reply_blocks_have_media(reply_blocks: list[dict[str, Any]] | None, media_type: str = "") -> bool:
@@ -360,7 +410,7 @@ def build_grounded_reasoning_draft(
 ) -> dict[str, Any]:
     message = sanitize_text(customer_message)
     fact_type = _infer_fact_type(message, query_fact_type)
-    used_facts = _collect_used_facts(selected_evidence, product_context_pack, fact_type)
+    used_facts, rejected_evidence = _collect_used_facts(selected_evidence, product_context_pack, fact_type, product_identity)
     has_video = _reply_blocks_have_media(reply_blocks, "video")
     has_image = _reply_blocks_have_media(reply_blocks, "image")
 
@@ -379,6 +429,8 @@ def build_grounded_reasoning_draft(
 
     risk = sanitize_text(risk_level) or ("high" if fact_type in HIGH_RISK_FACT_TYPES else "medium")
     forbidden_claims = _unique(_default_forbidden_claims(fact_type) + _as_list(_as_dict(answer_memory_guidance).get("forbidden_claims")))
+    if any(item.get("reason") == "conflicting_evidence" for item in rejected_evidence):
+        missing.append("conflicting evidence requires review")
     requires_review = risk == "high" or bool(missing)
     safety_boundaries = [
         "只使用已选证据和当前商品资料中的事实",
@@ -399,6 +451,7 @@ def build_grounded_reasoning_draft(
         "can_change_can_send": False,
         "grounded_draft": sanitize_text(draft),
         "used_facts": used_facts,
+        "rejected_evidence": rejected_evidence,
         "inferred_points": _unique(inferred),
         "safety_boundaries": _unique(safety_boundaries),
         "forbidden_claims": forbidden_claims,
@@ -434,7 +487,8 @@ def has_internal_jargon_draft(draft: dict[str, Any]) -> bool:
 
 def has_forbidden_claim_violation(draft: dict[str, Any]) -> bool:
     text = sanitize_text(draft.get("grounded_draft"))
-    return any(term in text for term in ABSOLUTE_CLAIM_TERMS)
+    forbidden = _unique(list(ABSOLUTE_CLAIM_TERMS) + _as_list(draft.get("forbidden_claims")))
+    return any(term in text for term in forbidden)
 
 
 def has_unsupported_media_claim(draft: dict[str, Any], reply_blocks: list[dict[str, Any]] | None = None) -> bool:

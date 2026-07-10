@@ -133,6 +133,37 @@ def test_answer_memory_contributes_hints_but_not_used_facts():
     assert used_answer_memory_as_fact(draft) is False
 
 
+def test_evidence_admission_rejects_non_factual_or_incompatible_candidates():
+    draft = build_grounded_reasoning_draft(
+        customer_message="这个多重？",
+        query_fact_type="gross_weight",
+        product_identity={"sku_code": "SKU-A"},
+        selected_evidence=[
+            {"source_type": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "sku_code": "SKU-A"},
+            {"source_type": "service_action", "fact_type": "gross_weight", "content": "请人工核对"},
+            {"source_type": "media_reference", "fact_type": "gross_weight", "content": "图片资料"},
+            {"source_type": "product_fact_direct", "fact_type": "dimensions", "content": "宽 80cm", "can_direct_answer": True, "sku_code": "SKU-A"},
+            {"source_type": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 12kg", "can_direct_answer": True, "sku_code": "SKU-A"},
+            {"source_type": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "sku_code": "SKU-B"},
+        ],
+    )
+
+    assert [fact["text"] for fact in draft["used_facts"]] == ["包装毛重 10kg"]
+    assert {item["reason"] for item in draft["rejected_evidence"]} >= {
+        "ineligible_role_or_gate",
+        "fact_type_incompatible",
+        "conflicting_evidence",
+        "product_identity_mismatch",
+    }
+    assert draft["requires_human_review"] is True
+
+
+def test_forbidden_claims_from_shadow_guidance_are_checked_without_changing_reply():
+    draft = {"grounded_draft": "这款安全无毒。", "forbidden_claims": ["安全无毒"]}
+
+    assert has_forbidden_claim_violation(draft) is True
+
+
 def test_shadow_local_fact_type_fallback_covers_high_value_unclassified_questions():
     bite = build_grounded_reasoning_draft(
         customer_message="宝宝咬了一下会不会中毒？",

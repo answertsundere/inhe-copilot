@@ -58,6 +58,7 @@ def test_trace_grounded_reasoning_reports_shadow_safety_counts(monkeypatch):
     assert result["skipped_count"] == 0
     assert result["can_change_can_send_count"] == 0
     assert result["used_answer_memory_as_fact_count"] == 0
+    assert result["answer_leakage_count"] == 0
     assert result["forbidden_claim_violation_count"] == 0
     assert result["unsupported_media_claim_count"] == 0
     assert "generic_handoff_only_count" in result
@@ -70,4 +71,16 @@ def test_trace_grounded_reasoning_skips_empty_question():
     assert result["total"] == 1
     assert result["generated_count"] == 0
     assert result["skipped_count"] == 1
-    assert result["rows"][0]["skip_reason"] == "empty_customer_message"
+    assert result["rows"][0]["skip_reason"] == "missing_context"
+
+
+def test_trace_does_not_admit_correct_answer_or_image_link_only_questions():
+    result = trace_samples([
+        {"id": "answer", "customer_quote": "安装怎么弄", "correct_answer": "标准答案不能当证据"},
+        {"id": "image", "customer_quote": "图片"},
+        {"id": "link", "customer_quote": "https://example.test/item"},
+    ])
+
+    assert result["answer_leakage_count"] == 0
+    assert result["admitted_fact_count"] == 0
+    assert result["skipped_by_reason"] == {"image_only": 1, "link_only": 1}
