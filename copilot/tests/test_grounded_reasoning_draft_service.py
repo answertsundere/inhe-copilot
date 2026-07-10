@@ -142,11 +142,11 @@ def test_evidence_admission_rejects_non_factual_or_incompatible_candidates():
         query_fact_type="gross_weight",
         product_identity={"sku_code": "SKU-A"},
         selected_evidence=[
-            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
+            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "attribute_key": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
             {"source_type": "service_action", "fact_type": "gross_weight", "content": "请人工核对"},
             {"source_type": "media_reference", "fact_type": "gross_weight", "content": "图片资料"},
             {"evidence_role": "product_fact_direct", "fact_type": "dimensions", "content": "宽 80cm", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
-            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 12kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
+            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "attribute_key": "gross_weight", "content": "包装毛重 12kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
             {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-B"},
         ],
     )

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
@@ -223,14 +224,27 @@ def _admission_reason(item: dict[str, Any], query_fact_type: str, product_identi
 def _attribute_key(item: dict[str, Any], fact_type: str) -> str:
     return sanitize_text(
         item.get("attribute_key") or item.get("field_name") or item.get("fact_key")
-        or item.get("structured_field") or fact_type
+        or item.get("structured_field")
     ).lower()
 
 
 def _normalized_value(item: dict[str, Any], text: str) -> str:
     value = sanitize_text(item.get("value") or item.get("fact_value") or text).lower()
-    value = re.sub(r"\s+", "", value)
-    return value.replace("公斤", "kg")
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(kg|公斤|千克|g|克|斤)?", value)
+    if not match:
+        return ""
+    try:
+        amount = Decimal(match.group(1))
+    except InvalidOperation:
+        return ""
+    unit = match.group(2) or ""
+    if unit in {"kg", "公斤", "千克"}:
+        return f"mass_g:{(amount * Decimal(1000)).normalize()}"
+    if unit in {"g", "克"}:
+        return f"mass_g:{amount.normalize()}"
+    if unit == "斤":
+        return f"jin:{amount.normalize()}"
+    return ""
 
 
 def _collect_used_facts(
@@ -246,6 +260,7 @@ def _collect_used_facts(
     def add_fact(source: str, item: dict[str, Any]) -> None:
         fact_type = _fact_type_of(item)
         text = _text_of_fact(item)
+        role = sanitize_text(item.get("evidence_role") or item.get("source_type") or item.get("type"))
         if not text:
             return
         reason = _admission_reason(item, query_fact_type, product_identity or {})
@@ -254,6 +269,10 @@ def _collect_used_facts(
             return
         attribute_key = _attribute_key(item, fact_type)
         normalized_value = _normalized_value(item, text)
+        if not attribute_key:
+            rejected.append({"source": source, "reason": "conflict_check_skipped", "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
+            facts.append({"source": source, "fact_type": fact_type or query_fact_type, "role": role, "attribute_key": "", "normalized_value": "", "text": _clip(text, 180)})
+            return
         same_attribute = [fact for fact in facts if fact.get("attribute_key") == attribute_key]
         if any(fact.get("normalized_value") == normalized_value for fact in same_attribute):
             return
@@ -266,7 +285,6 @@ def _collect_used_facts(
         if key in seen:
             return
         seen.add(key)
-        role = sanitize_text(item.get("evidence_role") or item.get("source_type") or item.get("type"))
         facts.append(
             {
                 "source": source,
@@ -520,7 +538,15 @@ def has_internal_jargon_draft(draft: dict[str, Any]) -> bool:
 def has_forbidden_claim_violation(draft: dict[str, Any]) -> bool:
     text = sanitize_text(draft.get("grounded_draft"))
     forbidden = _unique(list(ABSOLUTE_CLAIM_TERMS) + _as_list(draft.get("forbidden_claims")))
-    return any(term in text for term in forbidden)
+    for term in forbidden:
+        position = text.find(term)
+        if position < 0:
+            continue
+        prefix = text[max(0, position - 10):position]
+        if any(marker in prefix for marker in ("不能确认", "无法确认", "没有", "暂无", "不确定", "缺少")):
+            continue
+        return True
+    return False
 
 
 def has_unsupported_media_claim(draft: dict[str, Any], reply_blocks: list[dict[str, Any]] | None = None) -> bool:
