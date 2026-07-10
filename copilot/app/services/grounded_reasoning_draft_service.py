@@ -170,7 +170,7 @@ def _collect_pack_candidates(product_context_pack: dict[str, Any]) -> list[tuple
     return candidates
 
 
-_DIRECT_SOURCE_TYPES = {"product_fact_direct", "product_facts", "product_fact", "product_spec", "faq_direct", "faq", "installation_guide"}
+_DIRECT_EVIDENCE_ROLES = {"product_fact_direct", "faq_direct"}
 _REJECTED_ROLES = {"service_action", "fallback_only", "media_reference", "answer_memory", "correct_answer", "expected_reply", "rubric"}
 _COMPATIBLE_FACT_TYPES = {
     "material_safety": {"material", "odor", "certification_report"},
@@ -191,17 +191,46 @@ def _admission_reason(item: dict[str, Any], query_fact_type: str, product_identi
         return "reference_only"
     if status in {"pending", "pending_review", "unverified", "provisional", "rejected"}:
         return "unreviewed_fact"
-    if not (item.get("direct_answer_allowed") is True or item.get("can_direct_answer") is True or role in _DIRECT_SOURCE_TYPES):
+    if item.get("direct_answer_allowed") is not True and item.get("can_direct_answer") is not True:
         return "not_direct_answerable"
+    if sanitize_text(item.get("evidence_role")).lower() not in _DIRECT_EVIDENCE_ROLES:
+        return "evidence_role_not_direct"
+    if gate and gate not in {"allowed", "approved", "passed"}:
+        return "gate_not_allowed"
+    if status not in {"reviewed", "verified", "published", "approved"}:
+        return "review_status_missing"
     item_type = _fact_type_of(item)
     compatible = _COMPATIBLE_FACT_TYPES.get(query_fact_type, set())
     if query_fact_type and item_type and item_type not in {query_fact_type, "product_identity", "sku_code", *compatible}:
         return "fact_type_incompatible"
-    expected = {sanitize_text(product_identity.get(key)) for key in ("i_id", "sku_code", "product_id") if sanitize_text(product_identity.get(key))}
-    actual = {sanitize_text(item.get(key)) for key in ("i_id", "sku_code", "product_id") if sanitize_text(item.get(key))}
-    if expected and actual and not expected.intersection(actual):
-        return "product_identity_mismatch"
+    is_global = sanitize_text(item.get("fact_scope") or item.get("product_scope")).lower() in {"global", "all"}
+    is_product_fact = sanitize_text(item.get("evidence_role")).lower() == "product_fact_direct"
+    identity_keys = ("sku_code", "i_id", "product_id")
+    expected = {key: sanitize_text(product_identity.get(key)) for key in identity_keys if sanitize_text(product_identity.get(key))}
+    actual = {key: sanitize_text(item.get(key)) for key in identity_keys if sanitize_text(item.get(key))}
+    if is_product_fact and expected and not actual:
+        return "product_identity_missing"
+    for key, expected_value in expected.items():
+        if key in actual and actual[key] != expected_value:
+            return "product_identity_mismatch"
+    if not expected and is_product_fact and not is_global:
+        return "product_identity_missing"
+    if not expected and not is_global and sanitize_text(item.get("evidence_role")).lower() == "faq_direct":
+        return "product_identity_missing"
     return ""
+
+
+def _attribute_key(item: dict[str, Any], fact_type: str) -> str:
+    return sanitize_text(
+        item.get("attribute_key") or item.get("field_name") or item.get("fact_key")
+        or item.get("structured_field") or fact_type
+    ).lower()
+
+
+def _normalized_value(item: dict[str, Any], text: str) -> str:
+    value = sanitize_text(item.get("value") or item.get("fact_value") or text).lower()
+    value = re.sub(r"\s+", "", value)
+    return value.replace("公斤", "kg")
 
 
 def _collect_used_facts(
@@ -223,14 +252,15 @@ def _collect_used_facts(
         if reason:
             rejected.append({"source": source, "reason": reason, "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
             return
-        if any(
-            existing.get("fact_type") == fact_type
-            and re.search(r"\d", existing.get("text", ""))
-            and re.search(r"\d", text)
-            and existing.get("text") != _clip(text, 180)
-            for existing in facts
-        ):
+        attribute_key = _attribute_key(item, fact_type)
+        normalized_value = _normalized_value(item, text)
+        same_attribute = [fact for fact in facts if fact.get("attribute_key") == attribute_key]
+        if any(fact.get("normalized_value") == normalized_value for fact in same_attribute):
+            return
+        if same_attribute and normalized_value and all(fact.get("normalized_value") for fact in same_attribute):
             rejected.append({"source": source, "reason": "conflicting_evidence", "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
+            for fact in list(same_attribute):
+                facts.remove(fact)
             return
         key = (source, fact_type, text)
         if key in seen:
@@ -242,6 +272,8 @@ def _collect_used_facts(
                 "source": source,
                 "fact_type": fact_type or query_fact_type,
                 "role": role,
+                "attribute_key": attribute_key,
+                "normalized_value": normalized_value,
                 "text": _clip(text, 180),
             }
         )

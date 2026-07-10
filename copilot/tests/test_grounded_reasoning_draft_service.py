@@ -43,11 +43,13 @@ def test_child_safety_uses_structure_boundary_without_age_or_absolute_safety_cla
         query_fact_type="pinch_safety",
         selected_evidence=[
             {
-                "source_type": "product_facts",
+                "evidence_role": "product_fact_direct",
                 "fact_type": "structure_function",
                 "content": "柜门为滑门结构，使用时需要沿轨道推拉。",
+                "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A",
             }
-        ],
+            ],
+        product_identity={"sku_code": "SKU-A"},
         answer_memory_guidance={"action_hints": ["先回应宝宝安全关切，再提醒按结构说明核对。"]},
     )
 
@@ -66,8 +68,9 @@ def test_material_safety_mentions_material_but_not_non_toxic_or_certificate_clai
         customer_message="宝宝咬了一下会不会中毒？",
         query_fact_type="material_safety",
         selected_evidence=[
-            {"source_type": "product_facts", "fact_type": "material", "content": "主体材质：PP。"}
-        ],
+                {"evidence_role": "product_fact_direct", "fact_type": "material", "content": "主体材质：PP。", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"}
+            ],
+        product_identity={"sku_code": "SKU-A"},
         answer_memory_guidance={"action_hints": ["误咬场景先让客户检查破损和误吞。"]},
     )
 
@@ -139,16 +142,16 @@ def test_evidence_admission_rejects_non_factual_or_incompatible_candidates():
         query_fact_type="gross_weight",
         product_identity={"sku_code": "SKU-A"},
         selected_evidence=[
-            {"source_type": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "sku_code": "SKU-A"},
+            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
             {"source_type": "service_action", "fact_type": "gross_weight", "content": "请人工核对"},
             {"source_type": "media_reference", "fact_type": "gross_weight", "content": "图片资料"},
-            {"source_type": "product_fact_direct", "fact_type": "dimensions", "content": "宽 80cm", "can_direct_answer": True, "sku_code": "SKU-A"},
-            {"source_type": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 12kg", "can_direct_answer": True, "sku_code": "SKU-A"},
-            {"source_type": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "sku_code": "SKU-B"},
+            {"evidence_role": "product_fact_direct", "fact_type": "dimensions", "content": "宽 80cm", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
+            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 12kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"},
+            {"evidence_role": "product_fact_direct", "fact_type": "gross_weight", "content": "包装毛重 10kg", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-B"},
         ],
     )
 
-    assert [fact["text"] for fact in draft["used_facts"]] == ["包装毛重 10kg"]
+    assert draft["used_facts"] == []
     assert {item["reason"] for item in draft["rejected_evidence"]} >= {
         "ineligible_role_or_gate",
         "fact_type_incompatible",

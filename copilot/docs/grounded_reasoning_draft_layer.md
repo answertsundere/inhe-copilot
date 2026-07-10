@@ -46,6 +46,13 @@ Memory, expected answers, rubrics, incompatible fact types, mismatched product
 identity, and conflicting numeric facts. Rejected candidates remain diagnostic
 metadata only and never enter `used_facts`.
 
+Direct-looking source labels are not enough: product facts require explicit
+direct eligibility, an allowed gate, reviewed/verified/published status, and a
+matching identity namespace (`sku_code`, `i_id`, or `product_id`). Global FAQ
+must declare `fact_scope=global` or `product_scope=all`. Numeric candidates are
+deduplicated and compared by structured attribute key and normalized value;
+conflicting values for one attribute are all excluded and require review.
+
 Answer Memory can only provide style and action hints. It must never become a product fact. A remembered reply can suggest how to handle an installation, aftersales, or promotion conversation, but it cannot prove a material, weight, size, certificate, age range, discount, refund state, or media asset.
 
 ## Safe Inference
