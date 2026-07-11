@@ -199,6 +199,16 @@ are counted separately as no-evidence/missing diagnostics; an empty plan never
 passes by vacuous truth. Real traces expose numerator, denominator, scope
 counts, and contract-conflict counts without treating zero coverage as success.
 
+Available-evidence coverage and explicit-request completeness are intentionally
+different metrics. Coverage can be `1.0` when every available requested fact was
+selected, even if another requested attribute has no evidence. Completeness is
+only true when there is available evidence, all available attributes are
+selected, no requested attribute lacks evidence, and no unrequested attribute
+was selected. The evaluator records `requested_attribute_not_selected`,
+`requested_attribute_no_evidence`, and `unexpected_attribute_selected` as
+offline failure reasons. Positive fixtures remain separate from evaluator-only
+negative mutations that prove these cases fail.
+
 Trace script:
 
 ```powershell

@@ -177,25 +177,38 @@ def _requested_selection_checks(
     }
     selected_keys = {str(item.get("attribute_key") or "") for item in selected}
     missing = requested - selected_keys
+    no_evidence = requested - available
+    not_selected = available - selected_keys
     unexpected = selected_keys - requested
-    numerator = len(available & selected_keys)
-    denominator = len(available)
+    coverage_numerator = len(available & selected_keys)
+    coverage_denominator = len(available)
+    coverage_rate = round(coverage_numerator / coverage_denominator, 4) if coverage_denominator else None
+    coverage_pass = bool(coverage_denominator) and coverage_numerator == coverage_denominator
+    complete = bool(coverage_denominator) and coverage_pass and not missing and not no_evidence and not unexpected
     return [
         {
             "requested_attribute_keys": sorted(requested),
             "requested_attribute_count": len(requested),
-            "available_requested_attribute_count": denominator,
+            "available_requested_attribute_count": coverage_denominator,
             "selected_requested_attribute_count": len(selected_keys & requested),
             "missing_requested_attribute_count": len(missing),
             "missing_requested_attribute_keys": sorted(missing),
-            "no_evidence_requested_attribute_count": len(requested - available),
+            "no_evidence_requested_attribute_count": len(no_evidence),
+            "no_evidence_requested_attribute_keys": sorted(no_evidence),
             "unexpected_selected_attribute_count": len(unexpected),
             "unexpected_selected_attribute_keys": sorted(unexpected),
-            "numerator": numerator,
-            "denominator": denominator,
-            "rate": round(numerator / denominator, 4) if denominator else None,
+            "coverage_numerator": coverage_numerator,
+            "coverage_denominator": coverage_denominator,
+            "coverage_rate": coverage_rate,
+            "available_evidence_coverage_pass": coverage_pass,
+            "explicit_request_complete": complete,
+            # Compatibility aliases: these always describe available-evidence coverage.
+            "numerator": coverage_numerator,
+            "denominator": coverage_denominator,
+            "rate": coverage_rate,
             "selected_attribute_keys": sorted(selected_keys),
-            "passed": bool(denominator) and numerator == denominator and not unexpected,
+            "not_selected_requested_attribute_keys": sorted(not_selected),
+            "passed": complete,
         }
     ]
 
@@ -262,6 +275,9 @@ def evaluate_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
         ("required_fact_attribution_failure", required_fact_attribution_failure_count > 0),
         ("draft_integrity_violation", integrity["draft_integrity_violation_count"] > 0),
         ("irrelevant_fact_inclusion", irrelevant_fact_inclusion_count > 0),
+        ("requested_attribute_not_selected", any(item["not_selected_requested_attribute_keys"] for item in selection_checks)),
+        ("requested_attribute_no_evidence", any(item["no_evidence_requested_attribute_keys"] for item in selection_checks)),
+        ("unexpected_attribute_selected", any(item["unexpected_selected_attribute_keys"] for item in selection_checks)),
         ("composition_order_instability", composition_order_instability),
         ("shadow_contract_violation", draft.get("can_change_can_send") is not False or draft.get("used_for_final_reply") is not False),
     ):
@@ -332,15 +348,27 @@ def run_eval(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "plan_fact_coverage_rate": _metric(sum(check["passed"] for check in plan), len(plan)),
         "rendered_fact_coverage_rate": _metric(sum(check["passed"] for check in rendered), len(rendered)),
         "explicit_attribute_selection_rate": _metric(
-            sum(check["numerator"] for check in requested_selection),
-            sum(check["denominator"] for check in requested_selection),
+            sum(check["coverage_numerator"] for check in requested_selection),
+            sum(check["coverage_denominator"] for check in requested_selection),
+        ),
+        "available_evidence_coverage_rate": _metric(
+            sum(check["coverage_numerator"] for check in requested_selection),
+            sum(check["coverage_denominator"] for check in requested_selection),
+        ),
+        "explicit_request_completeness_rate": _metric(
+            sum(check["explicit_request_complete"] for check in requested_selection),
+            len(requested_selection),
         ),
         "explicit_request_count": len(requested_selection),
+        "explicit_request_complete_count": sum(check["explicit_request_complete"] for check in requested_selection),
+        "explicit_request_incomplete_count": sum(not check["explicit_request_complete"] for check in requested_selection),
+        "explicit_request_no_evidence_count": sum(bool(check["no_evidence_requested_attribute_count"]) for check in requested_selection),
         "requested_attribute_count": sum(check["requested_attribute_count"] for check in requested_selection),
         "available_requested_attribute_count": sum(check["available_requested_attribute_count"] for check in requested_selection),
         "selected_requested_attribute_count": sum(check["selected_requested_attribute_count"] for check in requested_selection),
         "missing_requested_attribute_count": sum(check["missing_requested_attribute_count"] for check in requested_selection),
         "unexpected_selected_attribute_count": sum(check["unexpected_selected_attribute_count"] for check in requested_selection),
+        "requested_attribute_no_evidence_count": sum(check["no_evidence_requested_attribute_count"] for check in requested_selection),
         "answer_relevance_rate": _metric(sum(row["answer_relevance_pass"] is True for row in rows if row["answer_relevance_pass"] is not None), sum(row["answer_relevance_pass"] is not None for row in rows)),
         "declared_unsupported_claim_rate": _metric(sum(row["declared_unsupported_claim"] for row in declared), len(declared)),
         "forbidden_claim_violation_rate": _metric(sum(row["forbidden_claim_violation"] for row in rows), len(rows)),

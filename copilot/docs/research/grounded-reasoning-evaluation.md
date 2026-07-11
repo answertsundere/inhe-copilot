@@ -76,6 +76,14 @@ admitted evidence remain a separate no-evidence diagnostic, and an empty clause
 set cannot pass automatically. The evaluator also reports unexpected selected
 attributes so a broad fact-type match cannot be mistaken for request coverage.
 
+This coverage metric is not customer-request completeness. A request with one
+selected, evidenced attribute and one un-evidenced attribute may have coverage
+of `1.0`, but it is incomplete and fails the scenario. Completeness requires a
+nonzero coverage denominator, complete coverage, no no-evidence requested
+attributes, and no unexpected attributes. The deterministic negative mutations
+exercise this distinction outside the positive baseline rather than weakening
+the positive fixtures.
+
 Request metadata candidates are ranked as explicit-with-attributes, explicit,
 broad, then unavailable. Same-level disagreement is surfaced as a contract
 conflict under stable container precedence, never combined into a wider request.

@@ -331,6 +331,67 @@ def test_explicit_selection_without_available_fact_is_no_evidence_not_success(mo
     assert check["passed"] is False
 
 
+def test_mixed_evidence_coverage_does_not_equal_explicit_request_completeness(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l1-01")
+    width_uid = next(item["evidence_uid"] for item in scenario["expected_admitted_evidence"] if item["fact_key"] == "width")
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="宽度为80cm",
+            used_facts=[{"evidence_uid": width_uid, "attribute_key": "width"}],
+            plan=_plan(width_uid, attributes={width_uid: "width"}),
+            segments=[{"type": "factual_clause", "text": "宽度为80cm", "evidence_uid": width_uid}],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+    check = row["requested_attribute_selection_checks"][0]
+
+    assert check["coverage_rate"] == 1.0
+    assert check["explicit_request_complete"] is False
+    assert check["no_evidence_requested_attribute_keys"] == ["height"]
+    assert row["passed"] is False
+    assert "requested_attribute_no_evidence" in row["failure_reasons"]
+
+
+def test_missing_available_requested_attribute_has_coverage_gap_reason(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l1-01")
+    uids = {item["fact_key"]: item["evidence_uid"] for item in scenario["expected_admitted_evidence"]}
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="宽度为80cm",
+            used_facts=[
+                {"evidence_uid": uids["width"], "attribute_key": "width"},
+                {"evidence_uid": uids["height"], "attribute_key": "height"},
+            ],
+            plan=_plan(uids["width"], attributes={uids["width"]: "width"}),
+            segments=[{"type": "factual_clause", "text": "宽度为80cm", "evidence_uid": uids["width"]}],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+    check = row["requested_attribute_selection_checks"][0]
+
+    assert check["coverage_rate"] == 0.5
+    assert check["explicit_request_complete"] is False
+    assert "requested_attribute_not_selected" in row["failure_reasons"]
+
+
+def test_non_explicit_request_does_not_enter_completeness_denominator():
+    scenario = dict(_scenario("synthetic-l0-02"), request_scope="broad")
+    result = run_eval([scenario])
+
+    assert result["explicit_request_count"] == 0
+    assert result["explicit_request_completeness_rate"] == {"numerator": 0, "denominator": 0, "rate": None}
+
+
 def test_rates_and_shadow_contract_are_explicit():
     result = run_eval(build_synthetic_eval_set())
 
