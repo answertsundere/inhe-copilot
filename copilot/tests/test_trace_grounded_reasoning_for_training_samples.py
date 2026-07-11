@@ -66,7 +66,15 @@ def test_trace_grounded_reasoning_reports_shadow_safety_counts(monkeypatch):
     assert "conflicting_evidence_group_count" in result
     assert "conflict_check_skipped_count" in result
     assert result["requested_attribute_coverage_count"] == 0
+    assert result["requested_attribute_coverage_numerator"] == 0
+    assert result["requested_attribute_coverage_denominator"] == 2
     assert result["requested_attribute_coverage_rate"] == 0.0
+    assert result["generated_with_requested_attribute_contract_count"] == 0
+    assert result["generated_without_requested_attribute_contract_count"] == 2
+    assert result["explicit_request_count"] == 0
+    assert result["broad_request_count"] == 0
+    assert result["unavailable_request_count"] == 2
+    assert result["request_contract_conflict_count"] == 0
     assert result["requested_attribute_source_counts"] == {"unavailable": 2}
     assert result["requires_human_review_count"] >= 1
 

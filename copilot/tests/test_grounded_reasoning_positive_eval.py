@@ -253,6 +253,84 @@ def test_factual_segment_cannot_reference_unplanned_or_non_fact_sources(monkeypa
     assert row["factual_clause_not_in_plan_count"] == 1
 
 
+def test_explicit_selection_empty_plan_does_not_pass(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l1-01")
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="请核对尺寸资料。",
+            used_facts=[
+                {"evidence_uid": item["evidence_uid"], "attribute_key": item["fact_key"]}
+                for item in scenario["expected_admitted_evidence"]
+            ],
+            segments=[{"type": "customer_copy", "text": "请核对尺寸资料。"}],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+    check = row["requested_attribute_selection_checks"][0]
+
+    assert check["passed"] is False
+    assert check["available_requested_attribute_count"] == 2
+    assert check["selected_requested_attribute_count"] == 0
+    assert check["missing_requested_attribute_count"] == 2
+
+
+def test_explicit_selection_detects_missing_and_unexpected_attributes(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l1-01")
+    by_key = {item["fact_key"]: item["evidence_uid"] for item in scenario["expected_admitted_evidence"]}
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="宽度为80cm 深度为35cm",
+            used_facts=[
+                {"evidence_uid": uid, "attribute_key": key}
+                for key, uid in by_key.items()
+            ],
+            plan=_plan(by_key["width"], "ev-unexpected-depth", attributes={by_key["width"]: "width", "ev-unexpected-depth": "depth"}),
+            segments=[
+                {"type": "factual_clause", "text": "宽度为80cm", "evidence_uid": by_key["width"]},
+                {"type": "factual_clause", "text": "深度为35cm", "evidence_uid": "ev-unexpected-depth"},
+            ],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+    check = row["requested_attribute_selection_checks"][0]
+
+    assert check["missing_requested_attribute_keys"] == ["height"]
+    assert check["unexpected_selected_attribute_keys"] == ["depth"]
+    assert check["passed"] is False
+
+
+def test_explicit_selection_without_available_fact_is_no_evidence_not_success(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l0-02")
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="请核对尺寸资料。",
+            segments=[{"type": "customer_copy", "text": "请核对尺寸资料。"}],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+    check = row["requested_attribute_selection_checks"][0]
+
+    assert check["denominator"] == 0
+    assert check["rate"] is None
+    assert check["no_evidence_requested_attribute_count"] == 1
+    assert check["passed"] is False
+
+
 def test_rates_and_shadow_contract_are_explicit():
     result = run_eval(build_synthetic_eval_set())
 

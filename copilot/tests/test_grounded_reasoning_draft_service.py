@@ -457,6 +457,67 @@ def test_build_for_response_reads_only_structured_requested_attributes():
     assert {item["attribute_key"] for item in plan["factual_clauses"]} == {"width", "height"}
 
 
+def test_nested_explicit_request_contract_overrides_top_level_unavailable():
+    draft = GroundedReasoningDraftService().build_for_response(
+        {
+            "query_fact_type": "dimensions",
+            "request_scope": "unavailable",
+            "requested_attribute_keys": [],
+            "turn_understanding": {
+                "request_scope": "explicit",
+                "requested_attribute_keys": ["width", "height"],
+            },
+            "selected_evidence": [
+                _direct_fact(fact_type="dimensions", attribute_key="width", value="80cm", content="宽度为80cm"),
+                _direct_fact(fact_type="dimensions", attribute_key="height", value="120cm", content="高度为120cm"),
+            ],
+        },
+        customer_message="尺寸怎么样？",
+        product_identity={"sku_code": "SKU-A"},
+    )
+
+    plan = draft["fact_coverage_plan"]
+    assert plan["request_scope"] == "explicit"
+    assert plan["requested_attribute_keys"] == ["height", "width"]
+    assert plan["request_contract_diagnostics"]["selected_container"] == "response.turn_understanding"
+
+
+def test_explicit_request_contract_has_priority_over_broad_and_records_conflicts():
+    service = GroundedReasoningDraftService()
+    common = {
+        "query_fact_type": "dimensions",
+        "request_scope": "broad",
+        "turn_understanding": {"request_scope": "explicit", "requested_attribute_keys": ["width"]},
+        "evidence_debug": {"turn_understanding": {"request_scope": "explicit", "requested_attribute_keys": ["height"]}},
+        "selected_evidence": [
+            _direct_fact(fact_type="dimensions", attribute_key="width", value="80cm", content="宽度为80cm"),
+            _direct_fact(fact_type="dimensions", attribute_key="height", value="120cm", content="高度为120cm"),
+        ],
+    }
+
+    draft = service.build_for_response(common, customer_message="尺寸怎么样？", product_identity={"sku_code": "SKU-A"})
+
+    plan = draft["fact_coverage_plan"]
+    diagnostics = plan["request_contract_diagnostics"]
+    assert plan["requested_attribute_keys"] == ["width"]
+    assert diagnostics["selected_container"] == "response.turn_understanding"
+    assert diagnostics["request_contract_conflict"] is True
+    assert diagnostics["candidate_count"] == 3
+
+
+def test_unstructured_buyer_text_does_not_create_requested_attributes():
+    draft = GroundedReasoningDraftService().build_for_response(
+        {"query_fact_type": "dimensions", "selected_evidence": []},
+        customer_message="宽和高分别多少？",
+        product_identity={"sku_code": "SKU-A"},
+    )
+
+    plan = draft["fact_coverage_plan"]
+    assert plan["request_scope"] == "unavailable"
+    assert plan["requested_attribute_keys"] == []
+    assert plan["request_contract_diagnostics"]["candidate_count"] == 0
+
+
 def test_analyze_grounded_reasoning_shadow_is_env_gated(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 

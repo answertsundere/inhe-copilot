@@ -161,16 +161,41 @@ def _draft_integrity(draft: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _requested_selection_checks(scenario: dict[str, Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
+def _requested_selection_checks(
+    scenario: dict[str, Any],
+    used_facts: list[dict[str, Any]],
+    plan: dict[str, Any],
+) -> list[dict[str, Any]]:
     requested = {str(value) for value in _as_list(scenario.get("requested_attribute_keys")) if str(value)}
     if str(scenario.get("request_scope") or "") != "explicit" or not requested:
         return []
     selected = [_as_dict(item) for item in _as_list(plan.get("factual_clauses"))]
+    available = {
+        str(item.get("attribute_key") or "")
+        for item in used_facts
+        if str(item.get("attribute_key") or "") in requested
+    }
+    selected_keys = {str(item.get("attribute_key") or "") for item in selected}
+    missing = requested - selected_keys
+    unexpected = selected_keys - requested
+    numerator = len(available & selected_keys)
+    denominator = len(available)
     return [
         {
             "requested_attribute_keys": sorted(requested),
-            "selected_attribute_keys": sorted({str(item.get("attribute_key") or "") for item in selected}),
-            "passed": all(str(item.get("attribute_key") or "") in requested for item in selected),
+            "requested_attribute_count": len(requested),
+            "available_requested_attribute_count": denominator,
+            "selected_requested_attribute_count": len(selected_keys & requested),
+            "missing_requested_attribute_count": len(missing),
+            "missing_requested_attribute_keys": sorted(missing),
+            "no_evidence_requested_attribute_count": len(requested - available),
+            "unexpected_selected_attribute_count": len(unexpected),
+            "unexpected_selected_attribute_keys": sorted(unexpected),
+            "numerator": numerator,
+            "denominator": denominator,
+            "rate": round(numerator / denominator, 4) if denominator else None,
+            "selected_attribute_keys": sorted(selected_keys),
+            "passed": bool(denominator) and numerator == denominator and not unexpected,
         }
     ]
 
@@ -189,7 +214,7 @@ def evaluate_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
     draft_text = str(draft.get("grounded_draft") or "")
     render_checks, required_fact_attribution_failure_count = _render_checks(requirements, expected_admitted, plan, draft_text)
     rejection_checks, rejection_pass, identity_leakage = _rejection_checks([_as_dict(item) for item in _as_list(scenario.get("expected_rejected_evidence"))], used_facts, rejected_evidence)
-    selection_checks = _requested_selection_checks(scenario, plan)
+    selection_checks = _requested_selection_checks(scenario, used_facts, plan)
     requested_keys = {str(value) for value in _as_list(scenario.get("requested_attribute_keys")) if str(value)}
     irrelevant_fact_inclusion_count = sum(
         str(item.get("attribute_key") or "") not in requested_keys
@@ -306,7 +331,16 @@ def run_eval(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "invalid_fact_rejection_rate": _metric(sum(check["passed"] for check in rejected), len(rejected)),
         "plan_fact_coverage_rate": _metric(sum(check["passed"] for check in plan), len(plan)),
         "rendered_fact_coverage_rate": _metric(sum(check["passed"] for check in rendered), len(rendered)),
-        "explicit_attribute_selection_rate": _metric(sum(check["passed"] for check in requested_selection), len(requested_selection)),
+        "explicit_attribute_selection_rate": _metric(
+            sum(check["numerator"] for check in requested_selection),
+            sum(check["denominator"] for check in requested_selection),
+        ),
+        "explicit_request_count": len(requested_selection),
+        "requested_attribute_count": sum(check["requested_attribute_count"] for check in requested_selection),
+        "available_requested_attribute_count": sum(check["available_requested_attribute_count"] for check in requested_selection),
+        "selected_requested_attribute_count": sum(check["selected_requested_attribute_count"] for check in requested_selection),
+        "missing_requested_attribute_count": sum(check["missing_requested_attribute_count"] for check in requested_selection),
+        "unexpected_selected_attribute_count": sum(check["unexpected_selected_attribute_count"] for check in requested_selection),
         "answer_relevance_rate": _metric(sum(row["answer_relevance_pass"] is True for row in rows if row["answer_relevance_pass"] is not None), sum(row["answer_relevance_pass"] is not None for row in rows)),
         "declared_unsupported_claim_rate": _metric(sum(row["declared_unsupported_claim"] for row in declared), len(declared)),
         "forbidden_claim_violation_rate": _metric(sum(row["forbidden_claim_violation"] for row in rows), len(rows)),

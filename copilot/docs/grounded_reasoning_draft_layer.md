@@ -165,6 +165,15 @@ their count is within the plan limit; otherwise the plan records
 `selection_ambiguous` instead of choosing alphabetically. Missing explicit
 attributes are reported as `requested_fact_missing`.
 
+Request-contract candidates are collected from the response and its allowed
+turn-understanding containers, then selected by reliability: explicit with
+non-empty attributes, explicit without attributes, broad, then unavailable.
+Within one reliability level, the documented container precedence is stable.
+Conflicting same-level contracts are never widened or merged; the selected
+container and `request_contract_conflict` diagnostic remain in the shadow plan.
+`width`, `height`, `gross_weight`, and `load_capacity` stay separate canonical
+attribute keys.
+
 Real inputs do not yet consistently populate `requested_attribute_keys`. The
 trace therefore reports coverage and source counts as an upstream-contract gap;
 it must not compensate by guessing attributes from customer wording.
@@ -182,6 +191,13 @@ The evaluator re-renders these segments and compares the result with
 clause outside the plan, and a planned fact missing from the rendered segments.
 This is an integrity check for the structured shadow draft, not a claim that it
 detects every possible natural-language hallucination.
+
+For explicit requests, selection coverage has a declared denominator: unique
+requested attributes with at least one admitted fact. The numerator is those
+available attributes selected by the plan. Requested-but-unavailable attributes
+are counted separately as no-evidence/missing diagnostics; an empty plan never
+passes by vacuous truth. Real traces expose numerator, denominator, scope
+counts, and contract-conflict counts without treating zero coverage as success.
 
 Trace script:
 

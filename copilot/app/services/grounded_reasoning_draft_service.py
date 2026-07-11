@@ -445,6 +445,7 @@ def build_fact_coverage_plan(
     requested_fact_types: list[str] | None = None,
     request_scope: str = "unavailable",
     requested_attribute_source: str = "unavailable",
+    request_contract_diagnostics: dict[str, Any] | None = None,
     max_fact_count: int = 3,
 ) -> dict[str, Any]:
     """Create a deterministic shadow-only plan from already admitted facts."""
@@ -508,6 +509,7 @@ def build_fact_coverage_plan(
         "requested_fact_types": requested_types,
         "request_scope": normalized_scope,
         "requested_attribute_source": sanitize_text(requested_attribute_source) or "unavailable",
+        "request_contract_diagnostics": sanitize_obj(request_contract_diagnostics or {}),
         "candidate_evidence_uids": [sanitize_text(item.get("evidence_uid")) for item in candidates],
         "selected_evidence_uids": [clause["evidence_uid"] for clause in clauses],
         "omitted_evidence_uids": [sanitize_text(item.get("evidence_uid")) for item in omitted],
@@ -701,6 +703,7 @@ def build_grounded_reasoning_draft(
     requested_fact_types: list[str] | None = None,
     request_scope: str = "unavailable",
     requested_attribute_source: str = "unavailable",
+    request_contract_diagnostics: dict[str, Any] | None = None,
     risk_level: str = "",
     enabled: bool = True,
 ) -> dict[str, Any]:
@@ -738,6 +741,7 @@ def build_grounded_reasoning_draft(
         requested_fact_types=requested_fact_types,
         request_scope=request_scope,
         requested_attribute_source=requested_attribute_source,
+        request_contract_diagnostics=request_contract_diagnostics,
     )
     draft_segments, fact_coverage_plan = _build_draft_segments(draft, fact_coverage_plan)
     draft = render_draft_segments(draft_segments)
@@ -845,29 +849,56 @@ def _request_contract_from_response(
 ) -> dict[str, Any]:
     """Read only upstream structured request fields; never infer them from text."""
     containers = [
-        response,
-        _as_dict(response.get("turn_understanding")),
-        _as_dict(debug.get("turn_understanding")),
-        _as_dict(trace.get("turn_understanding")),
-        _as_dict(context_used.get("turn_understanding")),
+        ("response", response),
+        ("response.turn_understanding", _as_dict(response.get("turn_understanding"))),
+        ("evidence_debug.turn_understanding", _as_dict(debug.get("turn_understanding"))),
+        ("answer_trace.turn_understanding", _as_dict(trace.get("turn_understanding"))),
+        ("context_used.turn_understanding", _as_dict(context_used.get("turn_understanding"))),
     ]
-    for container in containers:
-        keys = _unique(_as_list(container.get("requested_attribute_keys")))
-        types = _unique(_as_list(container.get("requested_fact_types")))
+    candidates: list[dict[str, Any]] = []
+    for priority, (container_name, container) in enumerate(containers):
+        keys = sorted(set(item.lower() for item in _unique(_as_list(container.get("requested_attribute_keys")))))
+        types = sorted(set(item.lower() for item in _unique(_as_list(container.get("requested_fact_types")))))
         scope = sanitize_text(container.get("request_scope")).lower()
-        source = sanitize_text(container.get("requested_attribute_source"))
-        if keys or types or scope in {"explicit", "broad", "unavailable"}:
-            return {
+        if scope not in {"explicit", "broad", "unavailable"}:
+            scope = "explicit" if keys else "unavailable"
+        if not keys and not types and scope == "unavailable":
+            continue
+        reliability = 3 if scope == "explicit" and keys else 2 if scope == "explicit" else 1 if scope == "broad" else 0
+        candidates.append(
+            {
+                "container": container_name,
+                "priority": priority,
+                "reliability": reliability,
                 "requested_attribute_keys": keys,
                 "requested_fact_types": types,
-                "request_scope": scope or ("explicit" if keys else "unavailable"),
-                "requested_attribute_source": source or "upstream_structured_contract",
+                "request_scope": scope,
+                "requested_attribute_source": sanitize_text(container.get("requested_attribute_source")) or container_name,
             }
+        )
+    if candidates:
+        candidates.sort(key=lambda item: (-int(item["reliability"]), int(item["priority"])))
+        selected = candidates[0]
+        equally_reliable = [item for item in candidates if item["reliability"] == selected["reliability"]]
+        signatures = {
+            (tuple(item["requested_attribute_keys"]), tuple(item["requested_fact_types"]), item["request_scope"])
+            for item in equally_reliable
+        }
+        return {
+            **selected,
+            "candidate_count": len(candidates),
+            "request_contract_conflict": len(signatures) > 1,
+            "request_contract_conflict_reason": "same_reliability_contract_conflict" if len(signatures) > 1 else "",
+        }
     return {
         "requested_attribute_keys": [],
         "requested_fact_types": [],
         "request_scope": "unavailable",
         "requested_attribute_source": "unavailable",
+        "container": "",
+        "candidate_count": 0,
+        "request_contract_conflict": False,
+        "request_contract_conflict_reason": "",
     }
 
 
@@ -915,6 +946,12 @@ class GroundedReasoningDraftService:
             requested_fact_types=request_contract["requested_fact_types"],
             request_scope=request_contract["request_scope"],
             requested_attribute_source=request_contract["requested_attribute_source"],
+            request_contract_diagnostics={
+                "selected_container": request_contract["container"],
+                "candidate_count": request_contract["candidate_count"],
+                "request_contract_conflict": request_contract["request_contract_conflict"],
+                "request_contract_conflict_reason": request_contract["request_contract_conflict_reason"],
+            },
             risk_level=response.get("risk_level") or debug.get("risk_level") or "",
             enabled=enabled,
         )

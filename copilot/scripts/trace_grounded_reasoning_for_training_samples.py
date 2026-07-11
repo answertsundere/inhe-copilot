@@ -87,6 +87,10 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
     answer_leakage_count = 0
     requested_attribute_coverage_count = 0
     requested_attribute_source_counts: dict[str, int] = {}
+    explicit_request_count = 0
+    broad_request_count = 0
+    unavailable_request_count = 0
+    request_contract_conflict_count = 0
 
     for sample in samples[: max(1, min(int(limit or 5000), 5000))]:
         question = sanitize_text(plain_text(sample.get("customer_quote")))
@@ -171,6 +175,15 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
         requested_keys = plan.get("requested_attribute_keys") or []
         if requested_keys:
             requested_attribute_coverage_count += 1
+        scope = str(plan.get("request_scope") or "unavailable")
+        if scope == "explicit":
+            explicit_request_count += 1
+        elif scope == "broad":
+            broad_request_count += 1
+        else:
+            unavailable_request_count += 1
+        if bool((plan.get("request_contract_diagnostics") or {}).get("request_contract_conflict")):
+            request_contract_conflict_count += 1
         source = str(plan.get("requested_attribute_source") or "unavailable")
         requested_attribute_source_counts[source] = requested_attribute_source_counts.get(source, 0) + 1
         rows.append(
@@ -198,7 +211,15 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
         "skipped_by_reason": skipped_by_reason,
         "answer_leakage_count": answer_leakage_count,
         "requested_attribute_coverage_count": requested_attribute_coverage_count,
+        "requested_attribute_coverage_numerator": requested_attribute_coverage_count,
+        "requested_attribute_coverage_denominator": generated_count,
         "requested_attribute_coverage_rate": round(requested_attribute_coverage_count / generated_count, 4) if generated_count else None,
+        "generated_with_requested_attribute_contract_count": requested_attribute_coverage_count,
+        "generated_without_requested_attribute_contract_count": generated_count - requested_attribute_coverage_count,
+        "explicit_request_count": explicit_request_count,
+        "broad_request_count": broad_request_count,
+        "unavailable_request_count": unavailable_request_count,
+        "request_contract_conflict_count": request_contract_conflict_count,
         "requested_attribute_source_counts": dict(sorted(requested_attribute_source_counts.items())),
         "admitted_fact_count": admitted_fact_count,
         "rejected_evidence_count": rejected_evidence_count,

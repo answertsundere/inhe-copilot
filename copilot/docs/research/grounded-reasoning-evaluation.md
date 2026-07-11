@@ -69,6 +69,17 @@ selection to matching admitted clauses; broad or unavailable requests with too
 many candidates produce an ambiguity diagnostic instead of silently presenting
 an arbitrary subset.
 
+The explicit-selection metric is not a scenario-level `all(...)` check. Its
+denominator is the distinct requested attributes that have admitted evidence;
+its numerator is the subset selected by the plan. Requested attributes with no
+admitted evidence remain a separate no-evidence diagnostic, and an empty clause
+set cannot pass automatically. The evaluator also reports unexpected selected
+attributes so a broad fact-type match cannot be mistaken for request coverage.
+
+Request metadata candidates are ranked as explicit-with-attributes, explicit,
+broad, then unavailable. Same-level disagreement is surfaced as a contract
+conflict under stable container precedence, never combined into a wider request.
+
 The rendered shadow draft is represented as structured customer-copy and
 factual segments. Every factual segment carries an admitted, planned evidence
 UID, and the evaluator deterministically re-renders the segments. This applies
