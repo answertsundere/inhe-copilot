@@ -49,6 +49,7 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   one formal AnalysisPipeline before any service decomposition.
 - `docs/research/mature-customer-service-systems.md` - official-source comparison of mature routing, handoff, task, AI, and self-hosted control-plane patterns.
 - `docs/research/grounded-reasoning-evaluation.md` - official-source-informed, deterministic evaluation contract for the shadow Grounded Reasoning layer.
+- `docs/research/multimodal-grounded-customer-service.md` - mature-product patterns, verified current gaps, and the target contract for product-media understanding, bounded derivation, and claim-level safety.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 
@@ -73,6 +74,8 @@ Current boundaries:
 - Answer Memory is action/style guidance, not product fact evidence.
 - Grounded Reasoning is shadow-only and cannot change `can_send` or the final reply.
 - `service_action` and `media_reference` cannot be promoted to product facts.
+- Product media roles do not prove that image contents have been understood. Model-extracted OCR or visual observations require product scope, provenance, confidence, and review state before they can support formal claims.
+- Low-risk bounded derivations must declare their inputs and assumptions. Dimensions or visible structure cannot be upgraded into load, child-safety, toxicity, certification, or installation-safety claims.
 
 ## Replay, Evaluation, And Training Data
 
@@ -118,6 +121,8 @@ Workspace-root `docs/`, `验收报告*.md`, and `客服系统/` are historical o
   as formal entry points.
 - `app.main` still combines dependency initialization, Flask routing, and resident background workers.
 - Fact-type and safety group definitions remain distributed across multiple modules.
+- Formal product-fact and exact-FAQ modes still primarily render retrieved facts instead of using an admitted-fact composition stage.
+- Customer and product media are not yet represented as reviewed, queryable visual observations. Some text product questions with known context skip image VLM analysis.
 - A project-level governance baseline now exists, but CI enforcement and accepted ADRs are still missing.
 
 These gaps are the next architecture-convergence work. They should be addressed before adding platform-specific behavior to the Agent core.

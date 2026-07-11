@@ -21,6 +21,13 @@ Reusable capabilities already exist for product identity, JST lookup, structured
 product context, evidence filtering, media governance, replay, benchmark,
 bad-case review, Answer Memory, embedding, and pgvector shadow retrieval.
 
+The formal path is currently stronger at retrieval, deterministic rendering,
+and safety blocking than at evidence composition. Product-fact and exact-FAQ
+modes primarily render selected evidence before the current LLM composition
+branch. Product media carry roles and delivery metadata, but they are not yet a
+reviewed visual-observation source that can support query-time reasoning. See
+`docs/research/multimodal-grounded-customer-service.md`.
+
 ## Target System
 
 ```text
@@ -93,6 +100,20 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 - Retriever configuration recognizes only the current SQLite backend; pgvector
   is not a formal retriever implementation yet.
 
+### P1: Multimodal Evidence And Bounded Reasoning
+
+- Text product questions with known product or order context can skip customer
+  image VLM analysis, including questions where the image contains the missing
+  structure or dimension evidence.
+- Product media are classified by role but do not yet expose reviewed OCR,
+  regions, layer counts, labelled dimensions, or other queryable observations.
+- Formal product answers primarily render retrieved facts; the admitted-fact
+  planner and segmented draft remain shadow-only.
+- There is no formal claim contract separating direct observations, bounded
+  derivations, general guidance, and high-risk facts or actions.
+- Model-extracted media facts need an explicit staging and review workflow before
+  they can enter published product knowledge.
+
 ### P1: Runtime And Data Boundaries
 
 - `app.main` combines dependency construction, Flask application setup, routes,
@@ -112,13 +133,16 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 
 1. Inventory legacy direct callers and compare their contracts before treating
    them as formal entry points.
-2. Correct Grounded Reasoning evidence admission and evaluation inputs.
-3. Establish canonical fact-type, evidence-role, risk, and delivery registries.
-4. Define canonical conversation, Agent decision, and platform port schemas.
-5. Add durable handoff tasks, assignment, SLA, acknowledgement, and audit.
-6. Separate web and worker processes; adopt managed schema migrations and CI.
-7. Promote retrieval/reasoning shadow modules only after acceptance gates pass.
-8. Connect QianNiu, Pinduoduo, and JD through adapters without changing Agent
+2. Define a reviewed Product Media Observation contract and prove a shadow
+   dimension/structure vertical slice without changing formal answers.
+3. Correct Grounded Reasoning evidence admission and add a claim plan for direct
+   observations, bounded derivations, guidance, and prohibited claims.
+4. Establish canonical fact-type, evidence-role, risk, and delivery registries.
+5. Define canonical conversation, Agent decision, and platform port schemas.
+6. Add durable handoff tasks, assignment, SLA, acknowledgement, and audit.
+7. Separate web and worker processes; adopt managed schema migrations and CI.
+8. Promote retrieval/reasoning shadow modules only after acceptance gates pass.
+9. Connect QianNiu, Pinduoduo, and JD through adapters without changing Agent
    domain logic.
 
 Feature work that conflicts with this order requires an ADR.
