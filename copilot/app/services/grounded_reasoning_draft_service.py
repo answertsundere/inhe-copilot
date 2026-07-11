@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from hashlib import sha256
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -229,6 +230,45 @@ def _attribute_key(item: dict[str, Any], fact_type: str) -> str:
     ).lower()
 
 
+def _identity_scope(item: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {"namespace": key, "value": value}
+        for key in ("sku_code", "i_id", "product_id")
+        if (value := sanitize_text(item.get(key)))
+    ]
+
+
+def _evidence_provenance(source: str, item: dict[str, Any], fact_type: str, role: str, text: str) -> dict[str, Any]:
+    scopes = _identity_scope(item)
+    explicit_uid = sanitize_text(item.get("evidence_uid"))
+    stable_input = explicit_uid
+    if not stable_input:
+        stable_input = "|".join(
+            [
+                source,
+                fact_type,
+                role,
+                _attribute_key(item, fact_type),
+                text,
+                *(f"{scope['namespace']}={scope['value']}" for scope in scopes),
+            ]
+        )
+    if re.fullmatch(r"ev-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}", explicit_uid):
+        evidence_uid = explicit_uid
+    else:
+        digest = sha256(stable_input.encode("utf-8")).hexdigest()[:12]
+        evidence_uid = f"ev-{digest[:4]}-{digest[4:8]}-{digest[8:12]}"
+    primary_scope = scopes[0] if scopes else {"namespace": "", "value": ""}
+    return {
+        "evidence_uid": evidence_uid,
+        "source": source,
+        "evidence_role": role,
+        "identity_namespace": primary_scope["namespace"],
+        "identity_value": primary_scope["value"],
+        "identity_scopes": scopes,
+    }
+
+
 def _normalized_quantity(item: dict[str, Any], text: str) -> tuple[str, str, str]:
     value = sanitize_text(item.get("value") or item.get("fact_value") or text).lower()
     match = re.search(
@@ -273,15 +313,22 @@ def _collect_used_facts(
         role = sanitize_text(item.get("evidence_role") or item.get("source_type") or item.get("type"))
         if not text:
             return
+        provenance = _evidence_provenance(source, item, fact_type, role, text)
         reason = _admission_reason(item, query_fact_type, product_identity or {})
         if reason:
-            rejected.append({"source": source, "reason": reason, "fact_type": fact_type, "evidence_role": sanitize_text(item.get("evidence_role") or item.get("source_type"))})
+            rejected.append(
+                {
+                    **provenance,
+                    "reason": reason,
+                    "fact_type": fact_type,
+                }
+            )
             return
         attribute_key = _attribute_key(item, fact_type)
         original_value, unit_domain, normalized_value = _normalized_quantity(item, text)
         candidates.append(
             {
-                "source": source,
+                **provenance,
                 "fact_type": fact_type or query_fact_type,
                 "role": role,
                 "attribute_key": attribute_key,

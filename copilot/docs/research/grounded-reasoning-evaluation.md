@@ -24,13 +24,28 @@ without validating the earlier failure boundary.
   rejection reasons, and claim rules outside the input passed to Grounded
   Reasoning, so the evaluator cannot leak an answer into the shadow draft.
 
-## Metrics
+## Deterministic Scoring Contract
 
-The evaluation emits direct-fact admission, invalid-evidence rejection, expected
-fact coverage, draft relevance, unsupported inference, identity leakage, Answer
-Memory leakage, conflict blocking, high-risk handoff, forbidden claims, and the
-shadow `can_change_can_send` invariant. Results are grouped by reasoning tier
-and fact type.
+The evaluator reports separate numerator, denominator, and rate values for:
+
+- fact admission: every required legal evidence UID entered `used_facts`;
+- invalid fact rejection: every expected rejected evidence UID has the expected
+  reason and never appears in `used_facts`;
+- draft fact coverage: each required fact has its own deterministic text matcher;
+- answer relevance: every required fact for a scored scenario is covered;
+- declared unsupported claims and formal forbidden-claim diagnostics;
+- conflict blocking and high-risk handoff.
+
+Identity leakage is based on an expected rejected evidence UID appearing in
+`used_facts`, not on a source-name substring. Evidence provenance carries a
+stable, non-secret `evidence_uid`, source, role, attribute key, and identity
+scope for this diagnostic only.
+
+`allowed_inferences` is retained as scenario documentation and explicitly marked
+`not_scored`. A deterministic matcher cannot discover arbitrary open-ended
+hallucinations. Full faithfulness evaluation needs human labels or a calibrated
+judge after the deterministic contract is accepted; it must not be approximated
+with a growing phrase blacklist.
 
 ## Non-Decision
 

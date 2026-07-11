@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 from collections import Counter
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ def _direct_fact(
     value: str,
     identity: dict[str, str],
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "evidence_role": "product_fact_direct",
         "fact_type": fact_type,
         "attribute_key": attribute_key,
@@ -35,6 +36,18 @@ def _direct_fact(
         "review_status": "reviewed",
         **identity,
     }
+    stable_input = "|".join(str(payload.get(key) or "") for key in ("fact_type", "attribute_key", "value", "i_id", "sku_code"))
+    digest = sha256(stable_input.encode("utf-8")).hexdigest()[:12]
+    payload["evidence_uid"] = f"ev-{digest[:4]}-{digest[4:8]}-{digest[8:12]}"
+    return payload
+
+
+def _identity_scope(item: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {"namespace": key, "value": str(item.get(key) or "")}
+        for key in ("sku_code", "i_id", "product_id")
+        if str(item.get(key) or "")
+    ]
 
 
 def _scenario(
@@ -47,12 +60,50 @@ def _scenario(
     expected_fact_keys: list[str] | None = None,
     expected_rejection_reasons: list[str] | None = None,
     expected_draft_terms: list[str] | None = None,
+    required_draft_facts: list[dict[str, Any]] | None = None,
+    expected_admitted_evidence: list[dict[str, str]] | None = None,
+    expected_rejected_evidence: list[dict[str, str]] | None = None,
     allowed_inferences: list[str] | None = None,
     forbidden_claims: list[str] | None = None,
+    declared_forbidden_inferences: list[str] | None = None,
     must_handoff: bool = False,
     notes: str = "",
     product_identity: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    expected_fact_keys = expected_fact_keys or []
+    expected_rejection_reasons = expected_rejection_reasons or []
+    fact_by_key = {
+        str(item.get("attribute_key") or ""): item
+        for item in selected_evidence
+        if isinstance(item, dict)
+    }
+    if expected_admitted_evidence is None:
+        expected_admitted_evidence = [
+            {"evidence_uid": str(fact_by_key[key].get("evidence_uid") or ""), "fact_key": key}
+            for key in expected_fact_keys
+            if key in fact_by_key
+        ]
+    if required_draft_facts is None:
+        required_draft_facts = [
+            {
+                "fact_key": key,
+                "required_terms": [str(fact_by_key[key].get("value") or "")],
+                "matcher": "all_terms",
+            }
+            for key in expected_fact_keys
+            if key in fact_by_key
+        ]
+    if expected_rejected_evidence is None and expected_rejection_reasons:
+        expected_rejected_evidence = [
+            {
+                "evidence_uid": str(item.get("evidence_uid") or ""),
+                "expected_reason": reason,
+                "identity_scope": _identity_scope(item),
+            }
+            for reason in expected_rejection_reasons
+            for item in selected_evidence
+            if isinstance(item, dict)
+        ]
     return {
         "scenario_uid": scenario_uid,
         "source": "synthetic_fixture",
@@ -66,11 +117,15 @@ def _scenario(
             "action_hints": ["先围绕当前问题组织处理动作。"],
         },
         "reasoning_tier": reasoning_tier,
-        "expected_fact_keys": expected_fact_keys or [],
-        "expected_rejection_reasons": expected_rejection_reasons or [],
+        "expected_fact_keys": expected_fact_keys,
+        "expected_admitted_evidence": expected_admitted_evidence,
+        "expected_rejection_reasons": expected_rejection_reasons,
+        "expected_rejected_evidence": expected_rejected_evidence or [],
         "expected_draft_terms": expected_draft_terms or [],
+        "required_draft_facts": required_draft_facts,
         "allowed_inferences": allowed_inferences or [],
         "forbidden_claims": forbidden_claims or [],
+        "declared_forbidden_inferences": declared_forbidden_inferences or [],
         "must_handoff": must_handoff,
         "notes": notes,
     }
@@ -180,7 +235,8 @@ def build_synthetic_eval_set() -> list[dict[str, Any]]:
                 query_fact_type=fact_type,
                 reasoning_tier="L3",
                 selected_evidence=[],
-                forbidden_claims=[forbidden],
+        forbidden_claims=[forbidden],
+        declared_forbidden_inferences=[forbidden],
                 must_handoff=True,
                 notes=note,
             )

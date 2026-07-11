@@ -112,17 +112,27 @@ The evaluation tiers are:
 - `L2`: bounded explanation with an explicit condition or limit;
 - `L3`: high-risk controls that must stay review-only without explicit evidence.
 
-The runner reports admission/rejection, expected fact coverage, answer
-relevance, unsupported inference, identity and Answer Memory leakage, conflict
-blocking, high-risk handoff, forbidden claims, and the unchanged
-`can_change_can_send` invariant. It is an offline diagnostic and cannot alter
-the formal reply, evidence selection, media blocks, or sendability.
+The runner reports fact admission, invalid-fact rejection, draft-fact coverage,
+answer relevance, declared unsupported claims, identity and Answer Memory
+leakage, conflict blocking, high-risk handoff, forbidden claims, and the
+unchanged `can_change_can_send` invariant. Every rate contains an explicit
+numerator and denominator. It is an offline diagnostic and cannot alter the
+formal reply, evidence selection, media blocks, or sendability.
 
-The first synthetic contract baseline contains 37 scenarios (`L0=12`, `L1=8`,
-`L2=5`, `L3=12`). It is intentionally reported separately from the read-only
-knowledge inventory: a reviewed product or FAQ row is not automatically an
-eligible direct fact until it has the role, gate, structured attribute, and
-identity metadata required by this layer.
+The first integrity baseline contains 37 synthetic scenarios (`L0=12`, `L1=8`,
+`L2=5`, `L3=12`). It intentionally reports the L1 multi-fact gap instead of
+masking it: admission can be correct while the draft presents only one required
+fact. It is reported separately from the read-only knowledge inventory: a
+reviewed product or FAQ row is not automatically an eligible direct fact until
+it has the role, gate, structured attribute, and identity metadata required by
+this layer. Real training trace counts remain their own input-quality signal and
+must not be replaced by synthetic results.
+
+Current real-input baseline (2026-07-11) scanned 147 reviewed training samples:
+45 produced a shadow draft, 102 were skipped for link/image-only input, zero
+formal direct facts were admitted, and 17 reference-only candidates were
+rejected. Answer leakage and `can_change_can_send` were both zero. This is an
+input-evidence coverage result, not a positive-capability score.
 
 Trace script:
 
