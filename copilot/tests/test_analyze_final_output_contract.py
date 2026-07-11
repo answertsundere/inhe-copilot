@@ -95,7 +95,8 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
     data = response.get_json()
     assert data["recommended_assets"][0]["asset_type"] == "install_video"
     assert [block["type"] for block in data["reply_blocks"]] == ["text", "video"]
-    assert data["reply_delivery"]["auto_send_ready"] is True
+    assert data["reply_delivery"]["auto_send_ready"] is False
+    assert data["reply_delivery"]["reason"] == "final_sendable_contract_blocked"
     assert data["reply_blocks"][1]["send_mode"] == "auto_when_platform_connected"
 
 

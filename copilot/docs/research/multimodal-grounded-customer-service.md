@@ -148,3 +148,42 @@ The first implementation phase should prove one narrow vertical slice:
 product-scoped dimension and structure images for low-risk spatial questions.
 It must not include load capacity, child safety, material toxicity,
 certification, installation prescriptions, or automatic send promotion.
+
+## Shadow Observation MVP
+
+Phase 0.4D adds an offline `ProductMediaObservation` extractor. It reuses the
+existing OpenAI-compatible VLM configuration but is not connected to the
+Analysis Pipeline, Product Evidence Pack, Grounded Reasoning inputs, or any
+formal persistence path. The extractor reads only approved, agent-usable media
+that has an internal `i_id` and stable media content hash, then writes a
+sanitized JSON report under `outputs/`.
+
+Each candidate remains `pending_review`, `direct_answer_allowed=false`,
+`used_for_generation=false`, and `can_change_can_send=false`. Its provenance
+contains the source media ID, media hash, product identity namespaces, role,
+model/version, confidence, and optional region. No model result is written to
+`KBProduct`, published knowledge, or a review state in this phase.
+
+When a future caller supplies a target product identity, the extractor requires
+at least one common namespace with an exact matching value. An explicit value
+mismatch is rejected, and `i_id`/SKU/product-ID namespaces are never guessed
+to be equivalent.
+
+The only accepted observation types are `layer_count`, `compartment_count`,
+`labelled_dimension`, `visible_structure`, and `visible_text`. A labelled
+dimension must come from a `size_image` and preserve raw OCR plus a normalized
+metric-length value. A role alone never proves content: a `sku_image` cannot
+become a dimension fact merely because a scenario asks about size. High-risk
+signals such as load capacity, child safety, toxicity, certification,
+stability, or installation prescriptions are rejected as out of scope.
+
+The command is deliberately bounded and read-only:
+
+```powershell
+python scripts\extract_product_media_observations.py --media-role size_image --limit 30 --json-output outputs\product_media_observations_shadow.json
+```
+
+Missing VLM configuration, unreadable media, malformed model output, incomplete
+identity, low confidence, or missing provenance fail closed and are reported as
+diagnostics. A future staging/review workflow requires its own ownership
+decision and ADR before observations can enter any formal evidence path.

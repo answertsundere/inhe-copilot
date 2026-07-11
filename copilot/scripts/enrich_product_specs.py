@@ -9,7 +9,7 @@
     --limit N       最多处理 N 个商品
     --dry-run       只打印 VLM 输出，不写入数据库
     --model MODEL   模型名，默认 gpt-4o
-    --apply         把结果写回 specs_json（默认不写，需配合 --dry-run=false）
+    --apply         已禁用；模型结果必须先停留在 shadow/pending 观察层
 
 安全说明：
 - API Key 请通过环境变量 OPENAI_API_KEY 传入，不要写进脚本或命令历史。
@@ -178,6 +178,11 @@ def merge_specs(existing: dict, extracted: dict) -> dict:
 
 
 def enrich_products(limit: Optional[int], dry_run: bool, apply: bool, model: str) -> None:
+    if apply:
+        raise RuntimeError(
+            "Direct VLM writes to KBProduct specs are disabled. "
+            "Use extract_product_media_observations.py to create pending shadow observations."
+        )
     api_key = os.environ.get("OPENAI_API_KEY")
     base_url = os.environ.get("OPENAI_BASE_URL", "https://apihub.agnes-ai.com/v1")
     if not api_key:
@@ -298,12 +303,17 @@ def main():
     parser = argparse.ArgumentParser(description="用 VLM 从规格图提取商品规格草稿")
     parser.add_argument("--limit", type=int, default=None, help="最多处理 N 个商品")
     parser.add_argument("--dry-run", action="store_true", help="只打印 VLM 输出，不写入数据库")
-    parser.add_argument("--apply", action="store_true", help="确认把结果写回数据库")
+    parser.add_argument("--apply", action="store_true", help="已禁用，禁止模型结果直接写入数据库")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="模型名，默认 gpt-4o")
     args = parser.parse_args()
 
-    if not args.dry_run and not args.apply:
-        print("提示：未加 --apply，结果不会写入数据库。如需写入请加上 --apply。", file=sys.stderr)
+    if args.apply:
+        parser.error(
+            "--apply is disabled: model-derived observations must stay shadow-only and pending review"
+        )
+
+    if not args.dry_run:
+        print("提示：模型结果只能用于 shadow/pending 观察，当前脚本不会写入数据库。", file=sys.stderr)
 
     enrich_products(args.limit, args.dry_run, args.apply, args.model)
 

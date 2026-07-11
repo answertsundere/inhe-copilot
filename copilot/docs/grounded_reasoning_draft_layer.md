@@ -94,6 +94,11 @@ The draft cannot promise pictures or videos unless the current response already 
 
 Product pack media availability alone is not enough. The current reply must actually attach the block before any media-send wording is allowed.
 
+Pending `ProductMediaObservation` JSON reports are not a Grounded Reasoning
+input. Grounded Reasoning continues to admit only reviewed direct product facts
+or direct FAQ evidence; it cannot read a pending OCR, layer count, structure,
+or dimension observation from `outputs/`.
+
 ## Diagnostics
 
 ## Positive Capability Evaluation
