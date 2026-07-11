@@ -285,7 +285,6 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
         block_reasons.extend(str(item) for item in (semantic_fit.get("issues") or []))
         if semantic_fit.get("reason"):
             block_reasons.append(str(semantic_fit.get("reason")))
-    block_reasons.extend(str(item) for item in (semantic_fit.get("fallback_from_issues") or []))
     block_reasons.extend(str(item) for item in (post_issues or []))
     if response.get("requires_human_review"):
         block_reasons.append(str(response.get("reason_for_review") or response.get("review_reason") or "requires_human_review"))

@@ -575,5 +575,5 @@ def test_final_response_orchestrator_exposes_blocked_sendable_contract(monkeypat
     assert result["sendable_reply"] == ""
     assert result["can_send"] is False
     assert result["reply_status"] == "needs_human_review"
-    assert "gross_weight_answered_with_load_capacity" in result["block_reasons"]
+    assert result["block_reasons"] == ["最终回复语义一致性未通过"]
     assert result["reply_delivery"]["auto_send_ready"] is False
