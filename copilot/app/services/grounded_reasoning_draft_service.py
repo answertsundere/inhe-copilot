@@ -335,6 +335,7 @@ def _collect_used_facts(
                 "original_value": original_value,
                 "unit_domain": unit_domain,
                 "normalized_value": normalized_value,
+                "fact_scope": sanitize_text(item.get("fact_scope") or item.get("product_scope")).lower(),
                 "text": _clip(text, 180),
             }
         )
@@ -409,6 +410,107 @@ def _fact_texts_by_type(used_facts: list[dict[str, Any]], *keywords: str) -> lis
         if any(keyword.lower() in haystack for keyword in keywords):
             result.append(sanitize_text(fact.get("text")))
     return _unique(result)[:3]
+
+
+def _plan_fact_type_compatible(fact: dict[str, Any], query_fact_type: str) -> bool:
+    fact_type = sanitize_text(fact.get("fact_type"))
+    compatible = _COMPATIBLE_FACT_TYPES.get(query_fact_type, set())
+    return not query_fact_type or not fact_type or fact_type in {query_fact_type, *compatible}
+
+
+def _plan_identity_compatible(fact: dict[str, Any], product_identity: dict[str, Any]) -> bool:
+    if sanitize_text(fact.get("fact_scope")).lower() in {"global", "all"}:
+        return True
+    expected = {
+        key: sanitize_text(product_identity.get(key))
+        for key in ("sku_code", "i_id", "product_id")
+        if sanitize_text(product_identity.get(key))
+    }
+    scopes = {
+        sanitize_text(scope.get("namespace")): sanitize_text(scope.get("value"))
+        for scope in _as_list(fact.get("identity_scopes"))
+        if isinstance(scope, dict)
+    }
+    if not expected or not scopes:
+        return False
+    return any(scopes.get(key) == value for key, value in expected.items())
+
+
+def build_fact_coverage_plan(
+    used_facts: list[dict[str, Any]],
+    *,
+    query_fact_type: str,
+    product_identity: dict[str, Any] | None = None,
+    max_fact_count: int = 3,
+) -> dict[str, Any]:
+    """Create a deterministic shadow-only plan from already admitted facts."""
+    candidates = [
+        fact
+        for fact in used_facts
+        if sanitize_text(fact.get("evidence_uid"))
+        and sanitize_text(fact.get("text"))
+        and _plan_fact_type_compatible(fact, query_fact_type)
+        and _plan_identity_compatible(fact, product_identity or {})
+    ]
+    candidates = sorted(
+        candidates,
+        key=lambda item: (
+            sanitize_text(item.get("attribute_key")),
+            sanitize_text(item.get("evidence_uid")),
+            sanitize_text(item.get("text")),
+        ),
+    )
+    selected = candidates[:max_fact_count]
+    omitted = candidates[max_fact_count:]
+    clauses = [
+        {
+            "evidence_uid": sanitize_text(item.get("evidence_uid")),
+            "attribute_key": sanitize_text(item.get("attribute_key")),
+            "fact_type": sanitize_text(item.get("fact_type")),
+            "source": sanitize_text(item.get("source")),
+            "evidence_role": sanitize_text(item.get("evidence_role") or item.get("role")),
+            "text": sanitize_text(item.get("text")),
+            "identity_scope": _as_list(item.get("identity_scopes")),
+        }
+        for item in selected
+    ]
+    warnings = []
+    if omitted:
+        warnings.append("max_fact_count_reached")
+    return {
+        "composition_mode": "fact_bound_multi_clause" if len(clauses) > 1 else "single_fact" if clauses else "no_fact",
+        "requested_fact_type": query_fact_type,
+        "candidate_evidence_uids": [sanitize_text(item.get("evidence_uid")) for item in candidates],
+        "selected_evidence_uids": [clause["evidence_uid"] for clause in clauses],
+        "omitted_evidence_uids": [sanitize_text(item.get("evidence_uid")) for item in omitted],
+        "factual_clauses": clauses,
+        "coverage_warnings": warnings,
+        "max_fact_count": max_fact_count,
+        "used_for_final_reply": False,
+        "can_change_can_send": False,
+    }
+
+
+def _render_fact_coverage_plan(draft: str, plan: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    clauses = [item for item in _as_list(plan.get("factual_clauses")) if isinstance(item, dict)]
+    missing = [item for item in clauses if sanitize_text(item.get("text")) not in draft]
+    if missing:
+        rendered_text = "；".join(sanitize_text(item.get("text")) for item in missing)
+        draft = f"{draft} 补充当前已审核资料：{rendered_text}。"
+    rendered = [
+        sanitize_text(item.get("evidence_uid"))
+        for item in clauses
+        if sanitize_text(item.get("text")) in draft
+    ]
+    plan = {
+        **plan,
+        "rendered_evidence_uids": rendered,
+        "coverage_warnings": _unique(
+            list(_as_list(plan.get("coverage_warnings")))
+            + (["planned_fact_not_rendered"] if len(rendered) != len(clauses) else [])
+        ),
+    }
+    return draft, plan
 
 
 def _has_explicit_certificate_fact(used_facts: list[dict[str, Any]]) -> bool:
@@ -583,6 +685,13 @@ def build_grounded_reasoning_draft(
     else:
         draft, inferred, missing = _build_general_draft(message, answer_memory_guidance, used_facts)
 
+    fact_coverage_plan = build_fact_coverage_plan(
+        used_facts,
+        query_fact_type=fact_type,
+        product_identity=product_identity,
+    )
+    draft, fact_coverage_plan = _render_fact_coverage_plan(draft, fact_coverage_plan)
+
     risk = sanitize_text(risk_level) or ("high" if fact_type in HIGH_RISK_FACT_TYPES else "medium")
     forbidden_claims = _unique(_default_forbidden_claims(fact_type) + _as_list(_as_dict(answer_memory_guidance).get("forbidden_claims")))
     if any(item.get("reason") in {"conflicting_evidence", "incomparable_unit_domain"} for item in rejected_evidence):
@@ -607,6 +716,7 @@ def build_grounded_reasoning_draft(
         "can_change_can_send": False,
         "grounded_draft": sanitize_text(draft),
         "used_facts": used_facts,
+        "fact_coverage_plan": fact_coverage_plan,
         "rejected_evidence": rejected_evidence,
         "admission_warnings": admission_warnings,
         "inferred_points": _unique(inferred),
@@ -744,5 +854,7 @@ class GroundedReasoningDraftService:
             "requires_human_review": bool(draft.get("requires_human_review")),
             "risk_level": draft.get("risk_level"),
             "query_fact_type": draft.get("query_fact_type"),
+            "composition_mode": _as_dict(draft.get("fact_coverage_plan")).get("composition_mode"),
+            "planned_fact_count": len(_as_list(_as_dict(draft.get("fact_coverage_plan")).get("factual_clauses"))),
         }
         return response

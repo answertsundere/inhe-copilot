@@ -41,6 +41,24 @@ Identity leakage is based on an expected rejected evidence UID appearing in
 stable, non-secret `evidence_uid`, source, role, attribute key, and identity
 scope for this diagnostic only.
 
+## Multi-Fact Composition Evaluation
+
+Admission, planning, and rendering are separate checks. A legal fact can be
+admitted but omitted by the plan, or planned but absent from the rendered draft;
+neither case is a successful answer. The evaluator therefore checks every
+required fact's evidence UID through all three states and records unattributed
+or irrelevant clauses separately. It also rebuilds each scenario with reversed
+evidence order and compares selected/rendered UID sets, so a hidden input-order
+dependency is observable.
+
+The plan is a small deterministic data structure rather than a new response
+engine: it can only restate selected fact text and cannot infer conclusions.
+This follows the general structured-output principle of validating a schema at
+the boundary, while keeping the current formal generation path unchanged.
+See [OpenAI Structured Outputs](https://openai.com/index/introducing-structured-outputs-in-the-api/)
+for the general schema-adherence principle; this project keeps the plan local
+and deterministic rather than introducing a model call for shadow composition.
+
 `allowed_inferences` is retained as scenario documentation and explicitly marked
 `not_scored`. A deterministic matcher cannot discover arbitrary open-ended
 hallucinations. Full faithfulness evaluation needs human labels or a calibrated

@@ -134,6 +134,25 @@ formal direct facts were admitted, and 17 reference-only candidates were
 rejected. Answer leakage and `can_change_can_send` were both zero. This is an
 input-evidence coverage result, not a positive-capability score.
 
+## Multi-Fact Composition Plan
+
+The shadow layer owns a deterministic `fact_coverage_plan`; it is not a second
+formal reply engine. The plan only consumes `used_facts` that already passed
+admission and emits at most three same-scope, fact-type-compatible clauses.
+Each clause carries its `evidence_uid`, attribute key, fact type, source, text,
+and identity scope. Conflicting, rejected, service-action, media-reference, and
+Answer Memory entries cannot enter the plan because they cannot enter
+`used_facts`.
+
+The plan records candidate, selected, omitted, and rendered evidence UIDs plus
+coverage warnings. The renderer joins only missing clause text and adds no
+causal, safety, suitability, performance, delivery, or order conclusion. This
+keeps L1 as a parallel statement of verified facts; L2 inference is unchanged.
+
+The positive evaluator separately reports plan coverage, rendered coverage,
+unattributed clauses, irrelevant inclusions, and order instability. All remain
+shadow diagnostics and cannot alter the final reply or `can_send`.
+
 Trace script:
 
 ```powershell
