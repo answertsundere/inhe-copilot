@@ -151,8 +151,9 @@ certification, installation prescriptions, or automatic send promotion.
 
 ## Shadow Observation MVP
 
-Phase 0.4D adds an offline `ProductMediaObservation` extractor. It reuses the
-existing OpenAI-compatible VLM configuration but is not connected to the
+Phase 0.4D adds an offline `ProductMediaObservation` extractor. It loads the
+existing project `.env` without overriding exported process variables, then
+reuses the OpenAI-compatible VLM configuration. It is not connected to the
 Analysis Pipeline, Product Evidence Pack, Grounded Reasoning inputs, or any
 formal persistence path. The extractor reads only approved, agent-usable media
 that has an internal `i_id` and stable media content hash, then writes a
@@ -169,19 +170,135 @@ at least one common namespace with an exact matching value. An explicit value
 mismatch is rejected, and `i_id`/SKU/product-ID namespaces are never guessed
 to be equivalent.
 
-The only accepted observation types are `layer_count`, `compartment_count`,
-`labelled_dimension`, `visible_structure`, and `visible_text`. A labelled
-dimension must come from a `size_image` and preserve raw OCR plus a normalized
-metric-length value. A role alone never proves content: a `sku_image` cannot
-become a dimension fact merely because a scenario asks about size. High-risk
-signals such as load capacity, child safety, toxicity, certification,
-stability, or installation prescriptions are rejected as out of scope.
+The contract uses a positive `(observation_type, attribute_key)` allowlist plus
+a canonical high-risk deny registry. The only accepted observation types are
+`layer_count`, `compartment_count`, `labelled_dimension`,
+`visible_structure`, and `visible_text`; unknown attributes fail closed. A
+labelled dimension must come from a `size_image` and preserve raw OCR plus a
+normalized metric-length value. `visible_text` is OCR only and cannot bypass
+the attribute restriction. A role alone never proves content: a `sku_image`
+cannot become a dimension fact merely because a scenario asks about size.
+Age/child suitability, pinch safety, load, toxicity, food grade,
+certification, stability, wall fixing, drilling, expansion screws, and
+structural modification are rejected as out of scope in English and Chinese.
+
+The extractor computes SHA-256 from the actual bytes sent to the VLM. Candidate
+UIDs use that observed hash, while the legacy asset hash is retained separately.
+Comparable 64-character SHA-256 values must match; legacy or non-comparable
+asset hashes create an explicit warning, and a mismatch rejects the asset. No
+base64 image body or signed URL is persisted in the report.
+
+SQLite is opened with `PRAGMA query_only=ON` for inventory, preflight, and
+extraction. An internal before/after fingerprint covers `KBProduct`,
+`KnowledgeEntry`, and `KBMediaAsset` without exporting their contents. The
+report records query-only state, state-unchanged status, and measured SQL write
+attempts rather than a hardcoded mutation count.
 
 The command is deliberately bounded and read-only:
 
 ```powershell
 python scripts\extract_product_media_observations.py --media-role size_image --limit 30 --json-output outputs\product_media_observations_shadow.json
 ```
+
+Use `--preflight` first. It verifies only configuration booleans and one bounded
+visual request; it creates no observation. A companion read-only provider
+diagnosis compares the response-format and plain-JSON transport profiles using
+the same readable asset, but records only hashes, booleans, token counts, finish
+reasons, and sanitized error categories. It never stores model text, reasoning
+content, image data, signed URLs, or credentials.
+
+The transport contract permits exactly one plain-JSON retry only when the
+provider explicitly reports that `response_format` is unsupported. Authentication,
+permission, rate-limit, timeout, connection, and server failures do not retry.
+Only whitespace and one complete outer JSON code fence can be normalized. Empty,
+truncated, natural-language, or schema-invalid responses produce no observation;
+reasoning content is never used as an answer.
+
+On 2026-07-11 the local configuration loaded successfully and current media
+were readable, but the compatibility probe saw bounded timeouts and the formal
+single-image preflight returned `truncated_response`. This is a provider
+completion block, not a successful extraction. No 30-image scan or manual
+review was started, and no candidate was generated.
+
+### Local Qwen3-VL qualification
+
+The offline shadow extractor can also use a locally hosted, OpenAI-compatible
+visual model through process-local configuration. This does not replace the
+project's configured formal VLM connection, and it does not connect model
+output to the Analysis Pipeline, product evidence pack, Grounded Reasoning, or
+delivery path.
+
+`Qwen/Qwen3-VL-8B-Instruct` was qualified locally on 2026-07-11 with five
+bounded image requests, a 45-second request limit, a 1024-token completion
+cap, and at most five observations per image. All five responses were
+schema-valid JSON, with no timeout, truncation, empty response, or high-risk
+admission. The median request time was about 22 seconds. The model card and
+the maintained Qwen repository document visual input and OpenAI-compatible
+vLLM serving; they do not grant any product-claim authority by themselves:
+
+- https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct
+- https://github.com/QwenLM/Qwen3-VL
+
+The subsequent 30-image `size_image` shadow scan completed 29 model calls and
+produced 107 pending-review candidates. It rejected five high-risk observations
+and 33 dimensions that had multiple values for the same attribute but no
+variant scope. A ten-image visual review found no unsupported pixel claim in
+the sampled low-risk output, three correct strong-claim rejections, and one
+correct ambiguous-variant rejection. All candidates stayed
+`direct_answer_allowed=false`, `used_for_generation=false`, and
+`can_change_can_send=false`.
+
+The extractor prompt declares exact observation type/key pairs and requires a
+structured region object or `null`; the parser remains fail-closed. Short age
+claims such as an age threshold and formaldehyde-free claims are high-risk even
+when a model splits them into short OCR fragments. Multiple different
+dimensions for the same attribute in one image are rejected as
+`ambiguous_variant_dimension_scope` until an explicit variant-level scope
+exists.
+
+The long scan reported zero SQL write attempts but an unstable before/after
+formal-table fingerprint while the local application remained active. That is
+an external-concurrency diagnostic, not evidence that the extractor wrote
+knowledge. A stable snapshot or paused concurrent writer is required before a
+future run can use that fingerprint as a formal no-change acceptance proof.
+
+### Provider qualification status
+
+Phase 0.4D.1 adds a bounded qualification matrix whose candidate connection is
+supplied only through command-line environment-variable names. It uses one
+readable, identity-scoped image and records no credentials, endpoints, image
+bytes, model text, or reasoning content. A candidate must complete all three
+initial requests with parseable schema-valid JSON and no timeout or truncation
+before it can receive a five-request confirmation run.
+
+The current configured OpenAI-compatible visual model did not qualify on
+2026-07-11. Its response-format profile timed out on all three requests. Its
+plain-JSON profile completed one of three requests but timed out twice, so its
+stable JSON rate was only one-third. No five-request confirmation, 30-image
+extraction, or manual sampling was run.
+The project's existing DeepSeek text connection is also excluded as a visual
+candidate: its official API documentation confirms OpenAI-compatible chat and
+JSON Output, but does not document image input support. A future visual
+candidate requires official image-input documentation and an already configured
+credential; the project does not create keys, change providers, or spend money
+automatically.
+
+Official references used for that exclusion:
+
+- https://api-docs.deepseek.com/
+- https://api-docs.deepseek.com/guides/json_mode/
+
+### Agnes image-model probe
+
+The configured Agnes-compatible model list can be authenticated and includes
+models whose names contain `image`. A model-list name is not capability proof:
+there is no verified official documentation establishing that the listed image
+model accepts an OpenAI Chat Completions image-message request for visual
+understanding. A single bounded plain-JSON probe against the listed image model
+returned a 4xx not-found response under that contract. It is therefore not a
+direct VLM candidate for this application. The project does not guess a
+different endpoint, treat an image-generation model as a vision-understanding
+model, or add a provider-specific client without official API evidence.
 
 Missing VLM configuration, unreadable media, malformed model output, incomplete
 identity, low confidence, or missing provenance fail closed and are reported as

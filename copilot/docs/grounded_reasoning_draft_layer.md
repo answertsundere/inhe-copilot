@@ -99,6 +99,11 @@ input. Grounded Reasoning continues to admit only reviewed direct product facts
 or direct FAQ evidence; it cannot read a pending OCR, layer count, structure,
 or dimension observation from `outputs/`.
 
+The observation extractor enforces a low-risk attribute allowlist, actual-image
+SHA-256 provenance, and SQLite query-only reads before an observation can even
+be reviewed. Those pending candidates remain outside this layer regardless of
+confidence or an apparent OCR match.
+
 ## Diagnostics
 
 ## Positive Capability Evaluation
