@@ -441,12 +441,9 @@ def _no_evidence_controlled_reply_acceptable(
     if _hard_safety_issues(reply, response, copilot_context):
         return False
     try:
-        from app.services.no_evidence_reply_policy_service import (
-            contains_unsupported_media_promise,
-            has_attached_sendable_media_asset,
-        )
+        from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
 
-        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
+        if media_delivery_claim_issues(response, reply, copilot_context):
             return False
     except Exception:
         return False
@@ -548,16 +545,13 @@ def _audit_issues(
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
 
-    if _unsupported_installation_structure_claim(reply, response, expected):
+    if _unsupported_installation_structure_claim(reply, response, expected, copilot_context):
         issues.append("unsupported_installation_structure_claim")
 
     try:
-        from app.services.no_evidence_reply_policy_service import (
-            contains_unsupported_media_promise,
-            has_attached_sendable_media_asset,
-        )
+        from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
 
-        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
+        if media_delivery_claim_issues(response, reply, copilot_context):
             issues.append("unsupported_media_claim")
     except Exception:
         pass
@@ -580,15 +574,12 @@ def _hard_safety_issues(
         issues.append("asks_for_existing_order_id")
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
-    if _unsupported_installation_structure_claim(reply, response):
+    if _unsupported_installation_structure_claim(reply, response, copilot_context=copilot_context):
         issues.append("unsupported_installation_structure_claim")
     try:
-        from app.services.no_evidence_reply_policy_service import (
-            contains_unsupported_media_promise,
-            has_attached_sendable_media_asset,
-        )
+        from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
 
-        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
+        if media_delivery_claim_issues(response, reply, copilot_context):
             issues.append("unsupported_media_claim")
     except Exception:
         pass
@@ -599,20 +590,124 @@ def _unsupported_installation_structure_claim(
     reply: str,
     response: dict[str, Any],
     expected: set[str] | None = None,
+    copilot_context: dict[str, Any] | None = None,
 ) -> bool:
     if not _is_installation_structure_scope(response, expected):
         return False
     value = str(reply or "")
     if not value:
         return False
-    has_claim = any(term in value for term in _UNSUPPORTED_INSTALLATION_STRUCTURE_TERMS)
-    if not has_claim:
-        has_claim = any(all(term in value for term in group) for group in _UNSUPPORTED_INSTALLATION_STRUCTURE_TERM_GROUPS)
-    if not has_claim:
+    topics = _installation_prescription_topics(value)
+    if not topics:
         return False
-    if _has_installation_reply_grounding(response):
+    if _has_verified_installation_prescription_evidence(
+        response,
+        topics,
+        copilot_context,
+    ):
         return False
     return True
+
+
+def _installation_prescription_topics(reply: str) -> set[str]:
+    value = str(reply or "")
+    topics: set[str] = set()
+    if any(term in value for term in _UNSUPPORTED_INSTALLATION_STRUCTURE_TERMS) or any(
+        all(term in value for term in group)
+        for group in _UNSUPPORTED_INSTALLATION_STRUCTURE_TERM_GROUPS
+    ):
+        topics.add("wall_fixing")
+    if any(term in value for term in ("改装", "加装", "补配", "拆除", "拆掉")):
+        topics.add("modification")
+    if any(term in value for term in ("具体承重", "承重", "更稳固", "更安全")):
+        topics.add("stability_or_load")
+    return topics
+
+
+def _has_verified_installation_prescription_evidence(
+    response: dict[str, Any],
+    topics: set[str],
+    copilot_context: dict[str, Any] | None,
+) -> bool:
+    if not topics:
+        return False
+    evidence_texts = _verified_installation_evidence_texts(response, copilot_context)
+    if not evidence_texts:
+        return False
+    support_terms = {
+        "wall_fixing": ("固定在墙", "固定到墙", "墙面固定", "膨胀螺丝", "防倾倒"),
+        "modification": ("改装", "加装", "补配", "拆除", "拆掉"),
+        "stability_or_load": ("承重", "稳固", "固定方式"),
+    }
+    return all(
+        any(any(term in text for term in support_terms[topic]) for text in evidence_texts)
+        for topic in topics
+    )
+
+
+def _verified_installation_evidence_texts(
+    response: dict[str, Any],
+    copilot_context: dict[str, Any] | None,
+) -> list[str]:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    candidates: list[dict[str, Any]] = []
+    for value in (
+        response.get("selected_evidence"),
+        debug.get("selected_evidence"),
+        debug.get("evidence_selected"),
+    ):
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+    expected = {
+        "i_id": str(response.get("i_id") or (copilot_context or {}).get("i_id") or "").strip(),
+        "sku_code": str(response.get("sku_code") or (copilot_context or {}).get("sku_code") or "").strip(),
+    }
+    texts: list[str] = []
+    for item in candidates:
+        if item.get("reference_only") is True:
+            continue
+        if str(item.get("gate_status") or "").strip().lower() in {"blocked", "reference_only"}:
+            continue
+        if item.get("direct_answer_allowed") is False or item.get("can_direct_answer") is False:
+            continue
+        status_values = {
+            str(item.get(key) or "").strip().lower()
+            for key in ("status", "review_status", "verification_status")
+            if item.get(key)
+        }
+        if not (item.get("verified") is True or status_values & {"approved", "reviewed", "verified", "published"}):
+            continue
+        fact_type = str(item.get("fact_type") or "").strip().lower()
+        role = str(item.get("evidence_role") or item.get("role") or "").strip().lower()
+        if fact_type not in _INSTALLATION_STRUCTURE_FACT_TYPES and not any(
+            marker in role for marker in ("installation", "manual", "structure")
+        ):
+            continue
+        if not _evidence_identity_matches_current_product(item, expected):
+            continue
+        text = " ".join(
+            str(item.get(key) or "")
+            for key in ("content", "value", "text", "answer", "structured_value", "field_value")
+        ).strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
+def _evidence_identity_matches_current_product(item: dict[str, Any], expected: dict[str, str]) -> bool:
+    """High-risk product facts require one exact shared identity namespace."""
+    expected_values = {key: value for key, value in expected.items() if value}
+    if not expected_values:
+        return False
+    matched = False
+    for namespace, expected_value in expected_values.items():
+        actual_value = str(item.get(namespace) or "").strip()
+        if not actual_value:
+            continue
+        if actual_value != expected_value:
+            return False
+        matched = True
+    return matched
 
 
 def _is_installation_structure_scope(

@@ -333,6 +333,143 @@ def test_final_response_orchestrator_can_use_llm_language_expert(monkeypatch):
     assert result["reply_blocks"][0]["content"] == result["suggested_reply"]
 
 
+def test_final_response_orchestrator_aligns_combined_media_reference_to_attached_block(monkeypatch):
+    from app import config
+    from app.llm import client as llm_client
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_POLISH_LLM_ENABLED", True)
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: response)
+    monkeypatch.setattr(orchestrator, "apply_no_evidence_reply_policy", lambda response, copilot_context=None: response)
+    monkeypatch.setattr(
+        llm_client,
+        "get_llm_client",
+        lambda: _FakeClient('{"reply": "亲，下面图片/视频可参考。", "reason": "polished"}'),
+    )
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "draft",
+            "query_fact_type": "installation",
+            "i_id": "IID-A",
+            "reply_blocks": [
+                {"type": "text", "content": "draft"},
+                {
+                    "type": "image",
+                    "url": "https://asset.example/guide.png",
+                    "asset_type": "pack_guide_image",
+                    "i_id": "IID-A",
+                },
+            ],
+        },
+        customer_message="有安装资料吗",
+    )
+
+    assert "图片可参考" in result["suggested_reply"]
+    assert "图片/视频" not in result["suggested_reply"]
+    assert result["evidence_debug"]["media_reference_alignment"]["source"] == "attached_reply_blocks"
+
+
+def test_final_response_orchestrator_reaudits_final_text_after_semantic_fallback(monkeypatch):
+    audit_inputs = []
+    semantic_calls = []
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        audit_inputs.append(response["suggested_reply"])
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_semantic(response, *, customer_message, copilot_context=None):
+        semantic_calls.append(response["suggested_reply"])
+        if len(semantic_calls) > 1:
+            return {"passed": True, "issues": [], "reason": "settled"}
+        return {"passed": False, "issues": ["unsupported_media_claim"], "reason": "fake"}
+
+    def fake_apply_semantic(response, result, *, copilot_context=None):
+        response["suggested_reply"] = "亲，我先按当前情况核对安装资料，确认后给您准确回复。"
+        response["requires_human_review"] = True
+        result["fallback_used"] = True
+        response["final_semantic_fit_audit"] = result
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "audit_customer_reply_semantic_fit", fake_semantic)
+    monkeypatch.setattr(orchestrator, "apply_semantic_fit_result", fake_apply_semantic)
+    monkeypatch.setattr(orchestrator, "apply_no_evidence_reply_policy", lambda response, copilot_context=None: response)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: response)
+
+    result = orchestrator.orchestrate_final_response(
+        {"suggested_reply": "亲，下面视频可参考。"},
+        customer_message="有安装资料吗",
+    )
+
+    assert audit_inputs[-1] == result["suggested_reply"]
+    assert len(audit_inputs) == 2
+    assert result["final_response_pipeline"]["order"].count("post_semantic_fallback_audit") == 1
+    assert result["final_semantic_fit_audit"]["passed"] is True
+
+
+def test_final_response_orchestrator_reaudits_non_media_semantic_fallback(monkeypatch):
+    audit_inputs = []
+    semantic_calls = []
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        audit_inputs.append(response["suggested_reply"])
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_semantic(response, *, customer_message, copilot_context=None):
+        semantic_calls.append(response["suggested_reply"])
+        return {"passed": len(semantic_calls) > 1, "issues": ["semantic_mismatch"] if len(semantic_calls) == 1 else []}
+
+    def fake_apply_semantic(response, result, *, copilot_context=None):
+        response["suggested_reply"] = "亲，我先按当前情况核对后给您回复。"
+        response["requires_human_review"] = True
+        result["fallback_used"] = True
+        response["final_semantic_fit_audit"] = result
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "audit_customer_reply_semantic_fit", fake_semantic)
+    monkeypatch.setattr(orchestrator, "apply_semantic_fit_result", fake_apply_semantic)
+    monkeypatch.setattr(orchestrator, "apply_no_evidence_reply_policy", lambda response, copilot_context=None: response)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: response)
+    result = orchestrator.orchestrate_final_response({"suggested_reply": "原回复"}, customer_message="问题")
+    assert len(audit_inputs) == 2
+    assert result["final_semantic_fit_audit"]["passed"] is True
+
+
+def test_final_response_orchestrator_rejects_llm_polish_that_drops_current_product_anchor(monkeypatch):
+    from app import config
+    from app.llm import client as llm_client
+
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    original = "亲，我先按当前这款商品核对安装资料，确认后给您准确回复。"
+    monkeypatch.setattr(config, "COPILOT_FINAL_POLISH_LLM_ENABLED", True)
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: response)
+    monkeypatch.setattr(
+        llm_client,
+        "get_llm_client",
+        lambda: _FakeClient('{"reply": "亲，您已经看到视频了是吧？我帮您一起看。", "reason": "polished"}'),
+    )
+
+    result = orchestrator.orchestrate_final_response(
+        {"suggested_reply": original},
+        customer_message="上面有视频啊",
+    )
+
+    assert "按当前这款商品" in result["suggested_reply"]
+    assert result["evidence_debug"]["llm_customer_language_polish_rejected"]["reason"] == "current_product_anchor_dropped"
+
+
 def test_final_response_orchestrator_rejects_llm_polish_with_internal_language(monkeypatch):
     from app import config
     from app.llm import client as llm_client

@@ -117,6 +117,20 @@ def apply_semantic_fit_result(
 def _structural_semantic_checks(response: dict[str, Any]) -> dict[str, Any]:
     evidence_pack = _evidence_pack(response)
     query_fact_type = _query_fact_type(response, evidence_pack)
+    try:
+        from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
+
+        media_issues = media_delivery_claim_issues(response)
+        if media_issues:
+            return {
+                "issues": ["unsupported_media_claim"],
+                "reason": "Customer-facing media wording does not match the attached reply blocks.",
+            }
+    except Exception:
+        return {
+            "issues": ["media_delivery_contract_check_failed"],
+            "reason": "Media delivery contract could not be validated.",
+        }
     if not query_fact_type:
         return {"issues": [], "reason": ""}
 
@@ -374,6 +388,13 @@ def _is_visual_media_answer(response: dict[str, Any]) -> bool:
     visual_fact_types = {"dimensions", "space_fit", "installation", "detachable", "accessories", "packaging"}
     if fact_type not in visual_fact_types:
         return False
+    try:
+        from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
+
+        if media_delivery_claim_issues(response):
+            return False
+    except Exception:
+        return False
     has_media = bool([
         b
         for b in (response.get("reply_blocks") or [])
@@ -399,15 +420,9 @@ def _no_evidence_controlled_reply_acceptable(response: dict[str, Any]) -> bool:
     if not isinstance(policy, dict) or not policy.get("reply_strategy"):
         return False
     try:
-        from app.services.no_evidence_reply_policy_service import (
-            contains_unsupported_media_promise,
-            has_attached_sendable_media_asset,
-        )
+        from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
 
-        if contains_unsupported_media_promise(
-            str(response.get("suggested_reply") or ""),
-            has_attached_sendable_media_asset(response),
-        ):
+        if media_delivery_claim_issues(response):
             return False
     except Exception:
         return False

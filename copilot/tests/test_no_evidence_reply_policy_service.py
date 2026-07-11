@@ -5,6 +5,7 @@
     get_sendable_media_asset_types,
     has_attached_sendable_media_asset,
     has_sendable_media_asset,
+    media_delivery_claim_issues,
 )
 from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
 
@@ -701,6 +702,71 @@ def test_media_promise_gate_uses_actual_sendable_status():
     assert has_attached_sendable_media_asset({"recommended_assets": [{"asset_url": "https://asset.example/video.mp4", "auto_send_level": "auto"}]}) is False
     assert has_attached_sendable_media_asset({"reply_blocks": [{"type": "image", "url": "https://asset.example/install.png"}]}) is True
     assert has_sendable_media_asset({"recommended_assets": [{"asset_url": "https://asset.example/video.mp4", "auto_send_level": "review"}]}) is False
+
+
+def test_media_delivery_claim_requires_each_attached_media_type():
+    response = {
+        "query_fact_type": "installation",
+        "i_id": "IID-A",
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/guide.png",
+            "asset_type": "pack_guide_image",
+            "media_purpose": "packing_list_image",
+            "i_id": "IID-A",
+        }],
+    }
+
+    issues = media_delivery_claim_issues(
+        response,
+        "亲，下面图片/视频可参考。",
+    )
+
+    assert issues == ["missing_attached_video_block"]
+
+
+def test_media_delivery_claim_rejects_catalog_only_wrong_role_and_identity():
+    catalog_only = {
+        "query_fact_type": "installation",
+        "recommended_assets": [{
+            "asset_type": "install_image",
+            "asset_url": "https://asset.example/guide.png",
+            "auto_send_level": "auto",
+        }],
+        "reply_blocks": [],
+    }
+    wrong_role = {
+        "query_fact_type": "installation",
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/product.png",
+            "asset_type": "sku_image",
+        }],
+    }
+    wrong_identity = {
+        "query_fact_type": "installation",
+        "i_id": "IID-A",
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/guide.png",
+            "asset_type": "install_image",
+            "i_id": "IID-B",
+        }],
+    }
+    missing_identity = {
+        "query_fact_type": "installation",
+        "i_id": "IID-A",
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/guide.png",
+            "asset_type": "install_image",
+        }],
+    }
+
+    assert media_delivery_claim_issues(catalog_only, "亲，下面图片可参考。") == ["missing_attached_image_block"]
+    assert media_delivery_claim_issues(wrong_role, "亲，下面图片可参考。") == ["installation_image_role_mismatch"]
+    assert media_delivery_claim_issues(wrong_identity, "亲，下面图片可参考。") == ["image_block_identity_mismatch"]
+    assert media_delivery_claim_issues(missing_identity, "亲，下面图片可参考。") == ["image_block_identity_mismatch"]
 
 
 def test_sendable_media_asset_types_reads_installation_image_assets():

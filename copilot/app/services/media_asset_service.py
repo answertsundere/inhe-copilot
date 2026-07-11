@@ -713,8 +713,12 @@ def build_reply_blocks(
             "url": url,
             "asset_id": asset.get("asset_id") or asset.get("id"),
             "asset_type": asset_type,
+            "media_purpose": asset.get("media_purpose") or "",
             "title": asset.get("asset_title") or asset_type,
             "product_name": asset.get("product_name") or "",
+            "product_id": asset.get("product_id"),
+            "i_id": asset.get("i_id") or "",
+            "sku_code": asset.get("sku_code") or "",
             "send_mode": "auto_when_platform_connected",
         })
         added += 1

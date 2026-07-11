@@ -22,7 +22,10 @@ from app.services.final_semantic_quality_service import (
     audit_customer_reply_semantic_fit,
 )
 from app.services.generic_service_rule_service import unsafe_promise_terms
-from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
+from app.services.no_evidence_reply_policy_service import (
+    align_delivery_media_reference,
+    apply_no_evidence_reply_policy,
+)
 
 
 FINAL_RESPONSE_PIPELINE_VERSION = "final-response-orchestrator-v1"
@@ -94,11 +97,20 @@ def orchestrate_final_response(
         "changed": before_polish != str(response.get("suggested_reply") or ""),
     })
 
+    pre_llm_polish_reply = str(response.get("suggested_reply") or "")
     llm_polish = _optional_llm_language_polish(
         response,
         customer_message=customer_message,
         copilot_context=copilot_context or {},
     )
+    if llm_polish and not _preserves_current_product_anchor(
+        pre_llm_polish_reply,
+        llm_polish["reply"],
+    ):
+        response.setdefault("evidence_debug", {})["llm_customer_language_polish_rejected"] = {
+            "reason": "current_product_anchor_dropped",
+        }
+        llm_polish = None
     if llm_polish:
         response["suggested_reply"] = llm_polish["reply"]
         response["llm_customer_language_polish"] = {
@@ -119,24 +131,43 @@ def orchestrate_final_response(
         response.setdefault("evidence_debug", {})["customer_reply_repolish_rejected"] = {
             "reason": "display_product_name_dropped",
         }
+    before_media_alignment = str(response.get("suggested_reply") or "")
+    response["suggested_reply"] = align_delivery_media_reference(
+        before_media_alignment,
+        response,
+    )
+    media_alignment_changed = str(response.get("suggested_reply") or "") != before_media_alignment
+    if media_alignment_changed:
+        response.setdefault("evidence_debug", {})["media_reference_alignment"] = {
+            "applied": True,
+            "source": "attached_reply_blocks",
+        }
     before_second_policy_reply = str(response.get("suggested_reply") or "")
     response = apply_no_evidence_reply_policy(response, copilot_context)
-    if (
-        str(response.get("suggested_reply") or "") != before_second_policy_reply
-        and _is_no_evidence_controlled_response(response)
-    ):
+    policy_changed = str(response.get("suggested_reply") or "") != before_second_policy_reply
+    if llm_polish or media_alignment_changed or policy_changed:
         response = audit_final_answer(
             response,
             customer_message=customer_message,
             copilot_context=copilot_context,
         )
-    if _is_no_evidence_controlled_response(response):
+    if (
+        _is_no_evidence_controlled_response(response)
+        and bool((response.get("final_answer_audit") or {}).get("passed", False))
+    ):
         _mark_no_evidence_final_answer_audit_passed(response)
 
     pipeline.append({
         "stage": "llm_customer_language_polish",
         "enabled": bool(config.COPILOT_FINAL_POLISH_LLM_ENABLED),
         "applied": bool(llm_polish),
+    })
+    pipeline.append({
+        "stage": "post_polish_final_audit",
+        "changed_by_policy": policy_changed,
+        "required": bool(llm_polish or media_alignment_changed or policy_changed),
+        "passed": bool((response.get("final_answer_audit") or {}).get("passed", True)),
+        "issues": (response.get("final_answer_audit") or {}).get("issues", []),
     })
 
     semantic_fit = audit_customer_reply_semantic_fit(
@@ -151,6 +182,30 @@ def orchestrate_final_response(
         "mode": semantic_fit.get("mode", ""),
         "issues": semantic_fit.get("issues", []),
     })
+    if semantic_fit.get("fallback_used"):
+        response = audit_final_answer(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
+        settled_semantic_fit = audit_customer_reply_semantic_fit(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
+        settled_semantic_fit["fallback_from_issues"] = list(semantic_fit.get("issues") or [])
+        response["final_semantic_fit_audit"] = settled_semantic_fit
+        response.setdefault("evidence_debug", {})["final_semantic_fit_audit"] = settled_semantic_fit
+        pipeline.append({
+            "stage": "post_semantic_fallback_audit",
+            "passed": bool((response.get("final_answer_audit") or {}).get("passed", True)),
+            "issues": (response.get("final_answer_audit") or {}).get("issues", []),
+        })
+        pipeline.append({
+            "stage": "post_semantic_fallback_fit",
+            "passed": bool(settled_semantic_fit.get("passed", True)),
+            "issues": settled_semantic_fit.get("issues", []),
+        })
 
     post_issues = _post_polish_redline_issues(str(response.get("suggested_reply") or ""))
     if post_issues:
@@ -197,7 +252,10 @@ def orchestrate_final_response(
             "semantic_and_redline_audit",
             "customer_language_polish",
             "llm_customer_language_polish",
+            "post_polish_final_audit",
             "final_semantic_fit_audit",
+            "post_semantic_fallback_audit",
+            "post_semantic_fallback_fit",
             "post_polish_redline",
             "reply_block_sync",
         ],
@@ -227,6 +285,7 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
         block_reasons.extend(str(item) for item in (semantic_fit.get("issues") or []))
         if semantic_fit.get("reason"):
             block_reasons.append(str(semantic_fit.get("reason")))
+    block_reasons.extend(str(item) for item in (semantic_fit.get("fallback_from_issues") or []))
     block_reasons.extend(str(item) for item in (post_issues or []))
     if response.get("requires_human_review"):
         block_reasons.append(str(response.get("reason_for_review") or response.get("review_reason") or "requires_human_review"))
@@ -403,7 +462,8 @@ def _optional_llm_language_polish(
                         "你只负责把 draft_reply 改写成自然、专业、可直接发给客户的话。"
                         "禁止新增事实、禁止编造尺寸/材质/承重/优惠/物流，禁止改变是否需要人工跟进的业务决定。"
                         "如果 draft_reply 表示需要跟进，就把它改写成客户能接受的服务话术，不要说系统、资料库、RAG、已审核资料、fact_type。"
-                        "如果有图片/视频 reply_blocks 或 recommended_assets，只能用自然语言提示“下面图片/视频可参考”，不要把链接当正文发。"
+                        "只有 reply_blocks 中实际附带的素材才能提及；只附图片就说图片，只附视频就说视频，不能把单一素材说成图片和视频。"
+                        "recommended_assets 只是候选，不能据此承诺已经发送素材；不要把链接当正文发。"
                         "不要输出思考过程。只输出 JSON: {\"reply\": string, \"reason\": string}。"
                     ),
                 },
@@ -452,6 +512,31 @@ def _preserves_customer_product_name(
     if display_name not in original_reply:
         return True
     return display_name in polished_reply
+
+
+def _preserves_current_product_anchor(original_reply: str, polished_reply: str) -> bool:
+    """Keep scoped product verification from becoming an unscoped handoff."""
+    anchor_terms = (
+        "当前这款",
+        "按当前这款",
+        "按当前商品",
+        "这款商品",
+        "按这款",
+        "按您这款",
+        "您这款",
+        "这款「",
+    )
+    context_terms = (
+        "安装", "结构", "配件", "资料", "尺寸", "材质", "承重",
+        "优惠", "活动", "售后", "核对",
+    )
+    original = str(original_reply or "")
+    if not any(term in original for term in anchor_terms):
+        return True
+    if not any(term in original for term in context_terms):
+        return True
+    polished = str(polished_reply or "")
+    return any(term in polished for term in anchor_terms)
 
 
 def _sync_text_reply_block(response: dict[str, Any]) -> None:

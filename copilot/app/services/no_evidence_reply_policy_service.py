@@ -890,6 +890,8 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
     reply = str(response.get("suggested_reply") or "")
     selected_count = _selected_evidence_count(response)
 
+    if media_delivery_claim_issues(response, reply):
+        return True
     if contains_unsupported_media_promise(reply, bool(inputs.get("has_sendable_media_asset"))):
         return True
     if (
@@ -1055,6 +1057,132 @@ def contains_unsupported_media_promise(reply: str, has_sendable: bool) -> bool:
         and any(term in value for term in ("安装图", "安装视频", "说明书", "图纸", "图片", "视频"))
     )
     return promises_reference_media or promises_followup_send
+
+
+def media_delivery_claim_issues(
+    response: dict[str, Any],
+    reply: str | None = None,
+    copilot_context: dict[str, Any] | None = None,
+) -> list[str]:
+    """Validate delivery wording against media blocks attached to this reply.
+
+    Catalog recommendations are intentionally excluded.  A customer-facing
+    delivery statement is only supportable by an actual image/video block with
+    a matching media role.  Explicit scoped identities on a block must also
+    agree with the current product; absent legacy metadata is not guessed.
+    """
+    value = str(reply if reply is not None else response.get("suggested_reply") or "")
+    claimed_kinds = _claimed_delivery_media_kinds(value)
+    if not claimed_kinds:
+        return []
+
+    fact_type = str(
+        response.get("query_fact_type")
+        or (response.get("evidence_debug") or {}).get("query_fact_type")
+        or (response.get("answer_trace") or {}).get("query_fact_type")
+        or ""
+    )
+    attached = _attached_delivery_media_blocks(response)
+    issues: list[str] = []
+    for kind in sorted(claimed_kinds):
+        candidates = attached.get(kind, [])
+        if not candidates:
+            issues.append(f"missing_attached_{kind}_block")
+            continue
+        if fact_type in INSTALLATION_FACT_TYPES:
+            candidates = [block for block in candidates if _block_has_installation_role(block)]
+            if not candidates:
+                issues.append(f"installation_{kind}_role_mismatch")
+                continue
+        if fact_type in INSTALLATION_FACT_TYPES and not any(
+            _block_identity_matches_current_product(block, response, copilot_context)
+            for block in candidates
+        ):
+            issues.append(f"{kind}_block_identity_mismatch")
+    return issues
+
+
+def align_delivery_media_reference(reply: str, response: dict[str, Any]) -> str:
+    """Narrow combined image/video wording to the media actually attached.
+
+    This is deliberately limited to generic combined delivery language.  A
+    specific unsupported promise (for example, a video when only an image is
+    attached) is left for the safety policy/auditor to replace with a handoff.
+    """
+    value = str(reply or "")
+    attached = _attached_delivery_media_blocks(response)
+    available = {kind for kind, blocks in attached.items() if blocks}
+    if available == {"image"}:
+        return value.replace("图片/视频", "图片").replace("图片或视频", "图片")
+    if available == {"video"}:
+        return value.replace("图片/视频", "视频").replace("图片或视频", "视频")
+    return value
+
+
+def _claimed_delivery_media_kinds(reply: str) -> set[str]:
+    value = str(reply or "")
+    if not value:
+        return set()
+    delivery_cues = ("下面", "下方", "发您", "发给您", "给您发", "已发")
+    if not any(cue in value for cue in delivery_cues):
+        return set()
+    kinds: set[str] = set()
+    if any(term in value for term in ("图片", "图纸", "安装图", "说明书")):
+        kinds.add("image")
+    if any(term in value for term in ("视频", "安装视频")):
+        kinds.add("video")
+    return kinds
+
+
+def _attached_delivery_media_blocks(response: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    attached: dict[str, list[dict[str, Any]]] = {"image": [], "video": []}
+    for block in response.get("reply_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        kind = str(block.get("type") or "").lower()
+        if kind not in attached:
+            continue
+        if not str(block.get("url") or block.get("asset_url") or "").strip():
+            continue
+        attached[kind].append(block)
+    return attached
+
+
+def _block_has_installation_role(block: dict[str, Any]) -> bool:
+    values = {
+        str(block.get(key) or "").strip().lower()
+        for key in ("asset_type", "media_purpose", "evidence_role", "role", "purpose")
+        if block.get(key)
+    }
+    return bool(values & (INSTALLATION_VIDEO_ASSET_TYPES | INSTALLATION_DIAGRAM_ASSET_TYPES | {"install_image", "install_video", "packing_list_image"}))
+
+
+def _block_identity_matches_current_product(
+    block: dict[str, Any],
+    response: dict[str, Any],
+    copilot_context: dict[str, Any] | None,
+) -> bool:
+    context = copilot_context or {}
+    expected = {
+        "i_id": str(response.get("i_id") or context.get("i_id") or "").strip(),
+        "sku_code": str(response.get("sku_code") or context.get("sku_code") or "").strip(),
+    }
+    actual = {
+        "i_id": str(block.get("i_id") or "").strip(),
+        "sku_code": str(block.get("sku_code") or "").strip(),
+    }
+    expected_values = {namespace: value for namespace, value in expected.items() if value}
+    if not expected_values:
+        return False
+    matched = False
+    for namespace, expected_value in expected_values.items():
+        actual_value = actual.get(namespace) or ""
+        if not actual_value:
+            continue
+        if expected_value != actual_value:
+            return False
+        matched = True
+    return matched
 
 
 def has_attached_sendable_media_asset(response: dict[str, Any]) -> bool:

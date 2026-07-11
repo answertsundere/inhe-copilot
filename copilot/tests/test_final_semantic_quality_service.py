@@ -220,7 +220,38 @@ def test_final_semantic_fit_does_not_accept_recommended_asset_without_reply_bloc
     )
 
     assert result["passed"] is False
-    assert "missing_evidence_without_human_review" in result["issues"]
+    assert "unsupported_media_claim" in result["issues"]
+
+
+def test_final_semantic_fit_rejects_combined_media_claim_when_only_image_is_attached(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", False)
+    response = {
+        "suggested_reply": "亲，下面图片/视频可参考。",
+        "requires_human_review": True,
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/guide.png",
+            "asset_type": "pack_guide_image",
+        }],
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "answer_mode": "no_evidence_controlled_reply",
+            "no_evidence_reply_policy": {"reply_strategy": "verify_installation_asset_before_send"},
+        },
+        "answer_trace": {
+            "query_fact_type": "installation",
+            "no_evidence_reply_policy": {"reply_strategy": "verify_installation_asset_before_send"},
+        },
+    }
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="有安装资料吗",
+    )
+
+    assert result["passed"] is False
 
 
 def test_final_semantic_fit_allows_installation_handoff_about_materials(monkeypatch):

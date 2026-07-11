@@ -291,6 +291,83 @@ def test_final_answer_auditor_allows_installation_guidance_with_attached_install
     assert audited["suggested_reply"] == response["suggested_reply"]
 
 
+def test_final_answer_auditor_blocks_wall_fix_prescription_without_direct_verified_evidence():
+    response = {
+        "intent": "product_question",
+        "i_id": "IID-A",
+        "suggested_reply": "亲，可以用膨胀螺丝固定到墙上，这样更稳固安全。",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "evidence_sufficient": True,
+            "selected_evidence": [{"fact_type": "installation"}],
+        },
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/guide.png",
+            "asset_type": "pack_guide_image",
+            "i_id": "IID-A",
+        }],
+    }
+
+    audited = audit_final_answer(response, customer_message="这个孔位怎么固定")
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "unsupported_installation_structure_claim" in audited["final_answer_audit"]["issues"]
+    assert "膨胀螺丝" not in audited["suggested_reply"]
+
+
+def test_final_answer_auditor_allows_verified_direct_wall_fix_manual_evidence():
+    response = {
+        "intent": "product_question",
+        "i_id": "IID-A",
+        "suggested_reply": "亲，说明书要求使用膨胀螺丝固定到墙面，请按图示孔位操作。",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "selected_evidence": [{
+                "fact_type": "installation",
+                "evidence_role": "installation_manual",
+                "verification_status": "reviewed",
+                "i_id": "IID-A",
+                "content": "说明书要求使用膨胀螺丝固定到墙面，防止倾倒。",
+            }],
+        },
+        "reply_blocks": [],
+    }
+
+    audited = audit_final_answer(response, customer_message="这个孔位怎么固定")
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["suggested_reply"] == response["suggested_reply"]
+
+
+def test_final_answer_auditor_rejects_ineligible_or_unscoped_wall_fix_evidence():
+    base = {
+        "fact_type": "installation",
+        "evidence_role": "installation_manual",
+        "verification_status": "reviewed",
+        "i_id": "IID-A",
+        "content": "说明书要求使用膨胀螺丝固定到墙面，防止倾倒。",
+    }
+    variants = [
+        {**base, "reference_only": True},
+        {**base, "gate_status": "blocked"},
+        {**base, "direct_answer_allowed": False},
+        {**base, "i_id": "IID-B"},
+        {key: value for key, value in base.items() if key != "i_id"},
+    ]
+    for evidence in variants:
+        response = {
+            "i_id": "IID-A",
+            "suggested_reply": "亲，可以用膨胀螺丝固定到墙上，这样更稳固安全。",
+            "requires_human_review": True,
+            "evidence_debug": {"query_fact_type": "installation", "selected_evidence": [evidence]},
+        }
+        audited = audit_final_answer(response, customer_message="这个孔位怎么固定")
+        assert "unsupported_installation_structure_claim" in audited["final_answer_audit"]["issues"]
+
+
 def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
     from app import config
     from app.llm import client as llm_client

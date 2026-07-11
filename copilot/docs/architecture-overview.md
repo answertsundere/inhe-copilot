@@ -44,7 +44,13 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 - Product facts require product-scoped eligible evidence.
 - Service actions are fallback handling guidance, not product facts.
 - Media references are candidates; actual sending requires approved role,
-  supported platform capability, and matching reply blocks.
+  supported platform capability, matching product identity, and matching reply
+  blocks. Final customer wording must name only the media types actually
+  attached to those blocks.
+- Installation safety prescriptions such as wall fixing, anti-tip measures,
+  expansion screws, structural modification, or stability/load guarantees need
+  direct reviewed installation evidence for the current product. A generic
+  installation image or catalog recommendation is not sufficient support.
 - Answer Memory is action/style reference only.
 - pgvector and Grounded Reasoning remain shadow until their promotion contracts
   pass replay and safety acceptance.
