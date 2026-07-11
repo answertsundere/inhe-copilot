@@ -23,7 +23,7 @@ should have one authoritative owner even when several modules consume it.
 | Semantic fit | `app/services/final_semantic_quality_service.py` | formal | Verify answer-question fit after facts and policy are settled |
 | Final response orchestration | `app/services/final_response_orchestrator.py` | formal | One authoritative final stage shared by every entry point |
 | Answer Memory | Answer Memory model/services | shadow/reference | Handling and style only, never product truth or send permission |
-| Grounded Reasoning Draft | `app/services/grounded_reasoning_draft_service.py`, `scripts/*grounded_reasoning_positive_eval*` | shadow/blocked from promotion | Owns admitted-fact coverage planning and read-only evaluation; all clauses retain evidence UID provenance and cannot affect formal decisions |
+| Grounded Reasoning Draft | `app/services/grounded_reasoning_draft_service.py`, `scripts/*grounded_reasoning_positive_eval*` | shadow/blocked from promotion | Owns admitted-fact planning from structured requested attributes and deterministic segmented-draft evaluation; every factual clause retains evidence UID provenance and cannot affect formal decisions |
 | Media governance | media asset services and product context pack | formal | Media role is evidence metadata; actual send requires reply blocks |
 | Real replay | real-conversation replay services and scripts | evaluation | Must use per-sample canonical context and the production pipeline |
 | Agent benchmark | benchmark dataset/runner services | evaluation | Measures reviewed scenarios; not production readiness by itself |

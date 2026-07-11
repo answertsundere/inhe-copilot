@@ -8,20 +8,25 @@ def _scenario(uid: str):
     return next(item for item in build_synthetic_eval_set() if item["scenario_uid"] == uid)
 
 
-def _plan(*uids, rendered=None):
+def _plan(*uids, rendered=None, attributes=None):
+    attributes = attributes or {}
     return {
         "composition_mode": "fact_bound_multi_clause" if len(uids) > 1 else "single_fact",
         "selected_evidence_uids": list(uids),
         "rendered_evidence_uids": list(uids if rendered is None else rendered),
-        "factual_clauses": [{"evidence_uid": uid, "text": "fixture fact"} for uid in uids],
+        "factual_clauses": [
+            {"evidence_uid": uid, "attribute_key": attributes.get(uid, "width"), "text": "fixture fact"}
+            for uid in uids
+        ],
         "used_for_final_reply": False,
         "can_change_can_send": False,
     }
 
 
-def _fake_draft(*, text="", used_facts=None, rejected_evidence=None, plan=None):
+def _fake_draft(*, text="", used_facts=None, rejected_evidence=None, plan=None, segments=None):
     return {
         "grounded_draft": text,
+        "draft_segments": segments if segments is not None else [],
         "used_facts": used_facts or [],
         "rejected_evidence": rejected_evidence or [],
         "fact_coverage_plan": plan or _plan(),
@@ -47,6 +52,7 @@ def test_multifact_plan_renders_every_admitted_required_fact():
 
     assert row["passed"] is True
     assert len(row["fact_coverage_plan"]["factual_clauses"]) == 2
+    assert {item["attribute_key"] for item in row["fact_coverage_plan"]["factual_clauses"]} == {"width", "height"}
     assert all(check["passed"] for check in row["plan_fact_coverage_checks"])
     assert all(check["passed"] for check in row["rendered_fact_coverage_checks"])
 
@@ -91,7 +97,7 @@ def test_irrelevant_used_fact_is_not_included_in_plan(monkeypatch):
         lambda **_: _fake_draft(
             text="宽度为80cm",
             used_facts=[{"evidence_uid": expected_uid}],
-            plan=_plan(expected_uid, "ev-9999-9999-9999"),
+            plan=_plan(expected_uid, "ev-9999-9999-9999", attributes={expected_uid: "width", "ev-9999-9999-9999": "depth"}),
         ),
     )
 
@@ -142,8 +148,8 @@ def test_rendered_claim_without_evidence_uid_fails(monkeypatch):
 
     row = runner.evaluate_scenario(scenario)
 
-    assert row["unattributed_clause_count"] == 1
-    assert "unattributed_clause" in row["failure_reasons"]
+    assert row["required_fact_attribution_failure_count"] == 1
+    assert "required_fact_attribution_failure" in row["failure_reasons"]
 
 
 def test_answer_memory_cannot_enter_factual_plan(monkeypatch):
@@ -179,6 +185,74 @@ def test_expectations_are_never_forwarded_to_the_draft_builder(monkeypatch):
     assert not {"expected_admitted_evidence", "required_draft_facts", "allowed_inferences", "declared_forbidden_inferences"}.intersection(captured)
 
 
+def test_draft_outside_segments_fails_render_integrity(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l0-02")
+    uid = scenario["expected_admitted_evidence"][0]["evidence_uid"]
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="宽度为80cm 还可以长期泡水使用",
+            used_facts=[{"evidence_uid": uid}],
+            plan=_plan(uid),
+            segments=[{"type": "factual_clause", "text": "宽度为80cm", "evidence_uid": uid}],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+
+    assert row["draft_render_integrity_pass"] is False
+    assert "draft_integrity_violation" in row["failure_reasons"]
+
+
+def test_factual_segment_requires_selected_evidence_uid(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l0-02")
+    uid = scenario["expected_admitted_evidence"][0]["evidence_uid"]
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="宽度为80cm",
+            used_facts=[{"evidence_uid": uid}],
+            plan=_plan(uid),
+            segments=[{"type": "factual_clause", "text": "宽度为80cm"}],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+
+    assert row["factual_clause_without_evidence_count"] == 1
+    assert row["unrendered_planned_fact_count"] == 1
+
+
+def test_factual_segment_cannot_reference_unplanned_or_non_fact_sources(monkeypatch):
+    import scripts.run_grounded_reasoning_positive_eval as runner
+
+    scenario = _scenario("synthetic-l0-02")
+    uid = scenario["expected_admitted_evidence"][0]["evidence_uid"]
+    monkeypatch.setattr(
+        runner,
+        "build_grounded_reasoning_draft",
+        lambda **_: _fake_draft(
+            text="宽度为80cm 安装资料可参考",
+            used_facts=[{"evidence_uid": uid}],
+            plan=_plan(uid),
+            segments=[
+                {"type": "factual_clause", "text": "宽度为80cm", "evidence_uid": uid},
+                {"type": "factual_clause", "text": "安装资料可参考", "evidence_uid": "memory-or-media"},
+            ],
+        ),
+    )
+
+    row = runner.evaluate_scenario(scenario)
+
+    assert row["factual_clause_not_in_plan_count"] == 1
+
+
 def test_rates_and_shadow_contract_are_explicit():
     result = run_eval(build_synthetic_eval_set())
 
@@ -188,7 +262,8 @@ def test_rates_and_shadow_contract_are_explicit():
         "forbidden_claim_violation_rate", "conflict_block_rate", "high_risk_handoff_rate",
     ):
         assert set(result[name]) == {"numerator", "denominator", "rate"}
-    assert result["unattributed_clause_count"] == 0
+    assert result["required_fact_attribution_failure_count"] == 0
+    assert result["draft_integrity_violation_count"] == 0
     assert result["irrelevant_fact_inclusion_count"] == 0
     assert result["composition_order_instability_count"] == 0
     assert result["can_change_can_send_count"] == 0

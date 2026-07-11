@@ -153,6 +153,36 @@ The positive evaluator separately reports plan coverage, rendered coverage,
 unattributed clauses, irrelevant inclusions, and order instability. All remain
 shadow diagnostics and cannot alter the final reply or `can_send`.
 
+### Requested Attribute And Draft Integrity Contract
+
+The planner accepts only upstream structured request metadata:
+`requested_attribute_keys`, `requested_fact_types`, `request_scope`, and
+`requested_attribute_source`. It does not derive requested attributes from the
+buyer text. When the upstream contract is `explicit`, only admitted clauses
+whose structured attribute keys match the requested keys may be selected. A
+broad or unavailable request may include all compatible candidates only when
+their count is within the plan limit; otherwise the plan records
+`selection_ambiguous` instead of choosing alphabetically. Missing explicit
+attributes are reported as `requested_fact_missing`.
+
+Real inputs do not yet consistently populate `requested_attribute_keys`. The
+trace therefore reports coverage and source counts as an upstream-contract gap;
+it must not compensate by guessing attributes from customer wording.
+
+The shadow draft is rendered deterministically from `draft_segments`:
+
+- `customer_copy` may contain only handling actions, conditions, or safety
+  boundaries;
+- each `factual_clause` must carry one selected `evidence_uid` and its
+  structured attribute key;
+- `safety_boundary` may state a limit but cannot introduce a product fact.
+
+The evaluator re-renders these segments and compares the result with
+`grounded_draft`. It separately counts a factual clause without evidence, a
+clause outside the plan, and a planned fact missing from the rendered segments.
+This is an integrity check for the structured shadow draft, not a claim that it
+detects every possible natural-language hallucination.
+
 Trace script:
 
 ```powershell

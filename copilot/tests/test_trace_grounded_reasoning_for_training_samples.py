@@ -65,6 +65,9 @@ def test_trace_grounded_reasoning_reports_shadow_safety_counts(monkeypatch):
     assert "admission_warning_count" in result
     assert "conflicting_evidence_group_count" in result
     assert "conflict_check_skipped_count" in result
+    assert result["requested_attribute_coverage_count"] == 0
+    assert result["requested_attribute_coverage_rate"] == 0.0
+    assert result["requested_attribute_source_counts"] == {"unavailable": 2}
     assert result["requires_human_review_count"] >= 1
 
 

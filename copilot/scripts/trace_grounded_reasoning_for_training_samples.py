@@ -85,6 +85,8 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
     conflicting_evidence_group_count = 0
     conflict_check_skipped_count = 0
     answer_leakage_count = 0
+    requested_attribute_coverage_count = 0
+    requested_attribute_source_counts: dict[str, int] = {}
 
     for sample in samples[: max(1, min(int(limit or 5000), 5000))]:
         question = sanitize_text(plain_text(sample.get("customer_quote")))
@@ -165,6 +167,12 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
                 conflict_check_skipped_count += 1
         if any("correct_answer" in str(item.get("source") or "") for item in draft.get("used_facts") or []):
             answer_leakage_count += 1
+        plan = draft.get("fact_coverage_plan") or {}
+        requested_keys = plan.get("requested_attribute_keys") or []
+        if requested_keys:
+            requested_attribute_coverage_count += 1
+        source = str(plan.get("requested_attribute_source") or "unavailable")
+        requested_attribute_source_counts[source] = requested_attribute_source_counts.get(source, 0) + 1
         rows.append(
             {
                 "sample_id": sample.get("id"),
@@ -189,6 +197,9 @@ def trace_samples(samples: list[dict[str, Any]], *, limit: int = 5000) -> dict[s
         "generic_handoff_only_count": generic_handoff_only_count,
         "skipped_by_reason": skipped_by_reason,
         "answer_leakage_count": answer_leakage_count,
+        "requested_attribute_coverage_count": requested_attribute_coverage_count,
+        "requested_attribute_coverage_rate": round(requested_attribute_coverage_count / generated_count, 4) if generated_count else None,
+        "requested_attribute_source_counts": dict(sorted(requested_attribute_source_counts.items())),
         "admitted_fact_count": admitted_fact_count,
         "rejected_evidence_count": rejected_evidence_count,
         "rejected_evidence_by_reason": rejected_evidence_by_reason,

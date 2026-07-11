@@ -441,9 +441,18 @@ def build_fact_coverage_plan(
     *,
     query_fact_type: str,
     product_identity: dict[str, Any] | None = None,
+    requested_attribute_keys: list[str] | None = None,
+    requested_fact_types: list[str] | None = None,
+    request_scope: str = "unavailable",
+    requested_attribute_source: str = "unavailable",
     max_fact_count: int = 3,
 ) -> dict[str, Any]:
     """Create a deterministic shadow-only plan from already admitted facts."""
+    requested_keys = sorted(set(_unique(requested_attribute_keys or [])))
+    requested_types = sorted(set(_unique(requested_fact_types or [])))
+    normalized_scope = sanitize_text(request_scope).lower()
+    if normalized_scope not in {"explicit", "broad", "unavailable"}:
+        normalized_scope = "unavailable"
     candidates = [
         fact
         for fact in used_facts
@@ -460,8 +469,26 @@ def build_fact_coverage_plan(
             sanitize_text(item.get("text")),
         ),
     )
-    selected = candidates[:max_fact_count]
-    omitted = candidates[max_fact_count:]
+    warnings: list[str] = []
+    if normalized_scope == "explicit" and requested_keys:
+        selected = [
+            item for item in candidates
+            if sanitize_text(item.get("attribute_key")) in requested_keys
+        ][:max_fact_count]
+        selected_uids = {sanitize_text(item.get("evidence_uid")) for item in selected}
+        omitted = [item for item in candidates if sanitize_text(item.get("evidence_uid")) not in selected_uids]
+        available_keys = {sanitize_text(item.get("attribute_key")) for item in candidates}
+        if any(key not in available_keys for key in requested_keys):
+            warnings.append("requested_fact_missing")
+        if len(selected) < len([item for item in candidates if sanitize_text(item.get("attribute_key")) in requested_keys]):
+            warnings.append("max_fact_count_reached")
+    elif len(candidates) <= max_fact_count:
+        selected = candidates
+        omitted = []
+    else:
+        selected = []
+        omitted = candidates
+        warnings.append("selection_ambiguous")
     clauses = [
         {
             "evidence_uid": sanitize_text(item.get("evidence_uid")),
@@ -474,12 +501,13 @@ def build_fact_coverage_plan(
         }
         for item in selected
     ]
-    warnings = []
-    if omitted:
-        warnings.append("max_fact_count_reached")
     return {
         "composition_mode": "fact_bound_multi_clause" if len(clauses) > 1 else "single_fact" if clauses else "no_fact",
         "requested_fact_type": query_fact_type,
+        "requested_attribute_keys": requested_keys,
+        "requested_fact_types": requested_types,
+        "request_scope": normalized_scope,
+        "requested_attribute_source": sanitize_text(requested_attribute_source) or "unavailable",
         "candidate_evidence_uids": [sanitize_text(item.get("evidence_uid")) for item in candidates],
         "selected_evidence_uids": [clause["evidence_uid"] for clause in clauses],
         "omitted_evidence_uids": [sanitize_text(item.get("evidence_uid")) for item in omitted],
@@ -491,26 +519,37 @@ def build_fact_coverage_plan(
     }
 
 
-def _render_fact_coverage_plan(draft: str, plan: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def render_draft_segments(segments: list[dict[str, Any]] | None) -> str:
+    """Render the shadow draft from auditable segments only."""
+    parts = [sanitize_text(item.get("text")) for item in _as_list(segments) if isinstance(item, dict)]
+    return " ".join(part for part in parts if part).strip()
+
+
+def _build_draft_segments(customer_copy: str, plan: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     clauses = [item for item in _as_list(plan.get("factual_clauses")) if isinstance(item, dict)]
-    missing = [item for item in clauses if sanitize_text(item.get("text")) not in draft]
-    if missing:
-        rendered_text = "；".join(sanitize_text(item.get("text")) for item in missing)
-        draft = f"{draft} 补充当前已审核资料：{rendered_text}。"
-    rendered = [
+    segments: list[dict[str, Any]] = []
+    if sanitize_text(customer_copy):
+        segments.append({"type": "customer_copy", "text": sanitize_text(customer_copy)})
+    for clause in clauses:
+        segments.append(
+            {
+                "type": "factual_clause",
+                "text": sanitize_text(clause.get("text")),
+                "evidence_uid": sanitize_text(clause.get("evidence_uid")),
+                "attribute_key": sanitize_text(clause.get("attribute_key")),
+            }
+        )
+    rendered_uids = [
         sanitize_text(item.get("evidence_uid"))
-        for item in clauses
-        if sanitize_text(item.get("text")) in draft
+        for item in segments
+        if item.get("type") == "factual_clause" and sanitize_text(item.get("evidence_uid"))
     ]
-    plan = {
+    rendered = render_draft_segments(segments)
+    return segments, {
         **plan,
-        "rendered_evidence_uids": rendered,
-        "coverage_warnings": _unique(
-            list(_as_list(plan.get("coverage_warnings")))
-            + (["planned_fact_not_rendered"] if len(rendered) != len(clauses) else [])
-        ),
+        "rendered_evidence_uids": rendered_uids,
+        "rendered_draft_hash": sha256(rendered.encode("utf-8")).hexdigest(),
     }
-    return draft, plan
 
 
 def _has_explicit_certificate_fact(used_facts: list[dict[str, Any]]) -> bool:
@@ -658,6 +697,10 @@ def build_grounded_reasoning_draft(
     product_context_pack: dict[str, Any] | None = None,
     answer_memory_guidance: dict[str, Any] | None = None,
     reply_blocks: list[dict[str, Any]] | None = None,
+    requested_attribute_keys: list[str] | None = None,
+    requested_fact_types: list[str] | None = None,
+    request_scope: str = "unavailable",
+    requested_attribute_source: str = "unavailable",
     risk_level: str = "",
     enabled: bool = True,
 ) -> dict[str, Any]:
@@ -672,25 +715,32 @@ def build_grounded_reasoning_draft(
     has_video = _reply_blocks_have_media(reply_blocks, "video")
     has_image = _reply_blocks_have_media(reply_blocks, "image")
 
+    # The customer-copy builders may describe actions and safety boundaries, but
+    # dynamic product facts are rendered only from the coverage plan below.
     if fact_type in CHILD_FACT_TYPES:
-        draft, inferred, missing = _build_child_draft(message, used_facts, has_video, has_image)
+        draft, inferred, missing = _build_child_draft(message, [], has_video, has_image)
     elif fact_type in MATERIAL_FACT_TYPES:
-        draft, inferred, missing = _build_material_draft(message, used_facts)
+        draft, inferred, missing = _build_material_draft(message, [])
     elif fact_type in INSTALLATION_FACT_TYPES:
-        draft, inferred, missing = _build_installation_draft(message, used_facts, has_video, has_image)
+        draft, inferred, missing = _build_installation_draft(message, [], has_video, has_image)
     elif fact_type in WEIGHT_FACT_TYPES:
-        draft, inferred, missing = _build_weight_draft(used_facts)
+        draft, inferred, missing = _build_weight_draft([])
     elif fact_type in VISUAL_FACT_TYPES:
-        draft, inferred, missing = _build_visual_draft(message, used_facts)
+        draft, inferred, missing = _build_visual_draft(message, [])
     else:
-        draft, inferred, missing = _build_general_draft(message, answer_memory_guidance, used_facts)
+        draft, inferred, missing = _build_general_draft(message, answer_memory_guidance, [])
 
     fact_coverage_plan = build_fact_coverage_plan(
         used_facts,
         query_fact_type=fact_type,
         product_identity=product_identity,
+        requested_attribute_keys=requested_attribute_keys,
+        requested_fact_types=requested_fact_types,
+        request_scope=request_scope,
+        requested_attribute_source=requested_attribute_source,
     )
-    draft, fact_coverage_plan = _render_fact_coverage_plan(draft, fact_coverage_plan)
+    draft_segments, fact_coverage_plan = _build_draft_segments(draft, fact_coverage_plan)
+    draft = render_draft_segments(draft_segments)
 
     risk = sanitize_text(risk_level) or ("high" if fact_type in HIGH_RISK_FACT_TYPES else "medium")
     forbidden_claims = _unique(_default_forbidden_claims(fact_type) + _as_list(_as_dict(answer_memory_guidance).get("forbidden_claims")))
@@ -715,6 +765,8 @@ def build_grounded_reasoning_draft(
         "used_for_final_reply": False,
         "can_change_can_send": False,
         "grounded_draft": sanitize_text(draft),
+        "draft_segments": draft_segments,
+        "draft_render_integrity_pass": True,
         "used_facts": used_facts,
         "fact_coverage_plan": fact_coverage_plan,
         "rejected_evidence": rejected_evidence,
@@ -785,6 +837,40 @@ def is_generic_handoff_only(draft: dict[str, Any]) -> bool:
     return all(term in text for term in generic_terms[:2]) and not any(term in text for term in specific_terms)
 
 
+def _request_contract_from_response(
+    response: dict[str, Any],
+    debug: dict[str, Any],
+    trace: dict[str, Any],
+    context_used: dict[str, Any],
+) -> dict[str, Any]:
+    """Read only upstream structured request fields; never infer them from text."""
+    containers = [
+        response,
+        _as_dict(response.get("turn_understanding")),
+        _as_dict(debug.get("turn_understanding")),
+        _as_dict(trace.get("turn_understanding")),
+        _as_dict(context_used.get("turn_understanding")),
+    ]
+    for container in containers:
+        keys = _unique(_as_list(container.get("requested_attribute_keys")))
+        types = _unique(_as_list(container.get("requested_fact_types")))
+        scope = sanitize_text(container.get("request_scope")).lower()
+        source = sanitize_text(container.get("requested_attribute_source"))
+        if keys or types or scope in {"explicit", "broad", "unavailable"}:
+            return {
+                "requested_attribute_keys": keys,
+                "requested_fact_types": types,
+                "request_scope": scope or ("explicit" if keys else "unavailable"),
+                "requested_attribute_source": source or "upstream_structured_contract",
+            }
+    return {
+        "requested_attribute_keys": [],
+        "requested_fact_types": [],
+        "request_scope": "unavailable",
+        "requested_attribute_source": "unavailable",
+    }
+
+
 class GroundedReasoningDraftService:
     def build_for_response(
         self,
@@ -816,6 +902,7 @@ class GroundedReasoningDraftService:
             "sku_code": response.get("sku_code") or debug.get("sku_code"),
             "i_id": response.get("i_id") or debug.get("i_id"),
         }
+        request_contract = _request_contract_from_response(response, debug, trace, context_used)
         return build_grounded_reasoning_draft(
             customer_message=customer_message,
             query_fact_type=sanitize_text(fact_type),
@@ -824,6 +911,10 @@ class GroundedReasoningDraftService:
             product_context_pack=product_pack,
             answer_memory_guidance=answer_memory_guidance or response.get("answer_memory_guidance") or {},
             reply_blocks=response.get("reply_blocks") if isinstance(response.get("reply_blocks"), list) else [],
+            requested_attribute_keys=request_contract["requested_attribute_keys"],
+            requested_fact_types=request_contract["requested_fact_types"],
+            request_scope=request_contract["request_scope"],
+            requested_attribute_source=request_contract["requested_attribute_source"],
             risk_level=response.get("risk_level") or debug.get("risk_level") or "",
             enabled=enabled,
         )
@@ -856,5 +947,7 @@ class GroundedReasoningDraftService:
             "query_fact_type": draft.get("query_fact_type"),
             "composition_mode": _as_dict(draft.get("fact_coverage_plan")).get("composition_mode"),
             "planned_fact_count": len(_as_list(_as_dict(draft.get("fact_coverage_plan")).get("factual_clauses"))),
+            "requested_attribute_keys": _as_list(_as_dict(draft.get("fact_coverage_plan")).get("requested_attribute_keys")),
+            "request_scope": _as_dict(draft.get("fact_coverage_plan")).get("request_scope"),
         }
         return response

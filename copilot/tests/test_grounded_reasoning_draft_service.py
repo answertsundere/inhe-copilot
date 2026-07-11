@@ -263,6 +263,31 @@ def test_attribute_slots_keep_width_height_and_weight_concepts_separate():
     assert {item["attribute_key"] for item in weight["used_facts"]} == {"gross_weight", "load_capacity"}
 
 
+def test_explicit_requested_attributes_select_only_matching_admitted_facts():
+    draft = build_grounded_reasoning_draft(
+        customer_message="请核对尺寸。",
+        query_fact_type="dimensions",
+        product_identity={"sku_code": "SKU-A"},
+        requested_attribute_keys=["width", "height"],
+        requested_fact_types=["dimensions"],
+        request_scope="explicit",
+        requested_attribute_source="turn_understanding",
+        selected_evidence=[
+            _direct_fact(fact_type="dimensions", attribute_key="width", value="80cm", content="宽度为80cm"),
+            _direct_fact(fact_type="dimensions", attribute_key="height", value="120cm", content="高度为120cm"),
+            _direct_fact(fact_type="dimensions", attribute_key="depth", value="35cm", content="深度为35cm"),
+            _direct_fact(fact_type="dimensions", attribute_key="length", value="60cm", content="长度为60cm"),
+        ],
+    )
+
+    plan = draft["fact_coverage_plan"]
+    assert {item["attribute_key"] for item in plan["factual_clauses"]} == {"width", "height"}
+    assert len(plan["omitted_evidence_uids"]) == 2
+    assert "深度为35cm" not in draft["grounded_draft"]
+    assert "长度为60cm" not in draft["grounded_draft"]
+    assert draft["draft_render_integrity_pass"] is True
+
+
 def test_same_width_with_different_values_is_not_silently_deduplicated():
     draft = _grounded_with_facts(
         [
@@ -404,6 +429,32 @@ def test_attach_shadow_draft_does_not_change_response_contract():
     assert updated["selected_evidence"] == [{"fact_type": "material", "content": "主体材质：PP"}]
     assert updated["grounded_reasoning_draft"]["used_for_final_reply"] is False
     assert updated["evidence_debug"]["grounded_reasoning_draft"]["can_change_can_send"] is False
+
+
+def test_build_for_response_reads_only_structured_requested_attributes():
+    draft = GroundedReasoningDraftService().build_for_response(
+        {
+            "query_fact_type": "dimensions",
+            "turn_understanding": {
+                "requested_attribute_keys": ["width", "height"],
+                "requested_fact_types": ["dimensions"],
+                "request_scope": "explicit",
+                "requested_attribute_source": "turn_understanding",
+            },
+            "selected_evidence": [
+                _direct_fact(fact_type="dimensions", attribute_key="width", value="80cm", content="宽度为80cm"),
+                _direct_fact(fact_type="dimensions", attribute_key="height", value="120cm", content="高度为120cm"),
+                _direct_fact(fact_type="dimensions", attribute_key="depth", value="35cm", content="深度为35cm"),
+            ],
+        },
+        customer_message="尺寸怎么样？",
+        product_identity={"sku_code": "SKU-A"},
+    )
+
+    plan = draft["fact_coverage_plan"]
+    assert plan["requested_attribute_keys"] == ["height", "width"]
+    assert plan["requested_attribute_source"] == "turn_understanding"
+    assert {item["attribute_key"] for item in plan["factual_clauses"]} == {"width", "height"}
 
 
 def test_analyze_grounded_reasoning_shadow_is_env_gated(client, monkeypatch):

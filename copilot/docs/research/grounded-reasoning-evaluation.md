@@ -59,6 +59,22 @@ See [OpenAI Structured Outputs](https://openai.com/index/introducing-structured-
 for the general schema-adherence principle; this project keeps the plan local
 and deterministic rather than introducing a model call for shadow composition.
 
+### Requested Attributes And Render Integrity
+
+Multi-fact relevance cannot be inferred from stable sort order. The local
+planner therefore consumes only canonical structured request attributes from
+upstream and treats their absence as observable input quality, rather than
+parsing buyer wording with a new keyword layer. Explicit attributes restrict
+selection to matching admitted clauses; broad or unavailable requests with too
+many candidates produce an ambiguity diagnostic instead of silently presenting
+an arbitrary subset.
+
+The rendered shadow draft is represented as structured customer-copy and
+factual segments. Every factual segment carries an admitted, planned evidence
+UID, and the evaluator deterministically re-renders the segments. This applies
+the schema-boundary principle above without adding a model call or treating
+deterministic segment checks as complete semantic-faithfulness evaluation.
+
 `allowed_inferences` is retained as scenario documentation and explicitly marked
 `not_scored`. A deterministic matcher cannot discover arbitrary open-ended
 hallucinations. Full faithfulness evaluation needs human labels or a calibrated

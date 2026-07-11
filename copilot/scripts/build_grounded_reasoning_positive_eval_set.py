@@ -69,6 +69,10 @@ def _scenario(
     must_handoff: bool = False,
     notes: str = "",
     product_identity: dict[str, str] | None = None,
+    requested_attribute_keys: list[str] | None = None,
+    requested_fact_types: list[str] | None = None,
+    request_scope: str = "unavailable",
+    requested_attribute_source: str = "synthetic_canonical_contract",
 ) -> dict[str, Any]:
     expected_fact_keys = expected_fact_keys or []
     expected_rejection_reasons = expected_rejection_reasons or []
@@ -109,6 +113,10 @@ def _scenario(
         "source": "synthetic_fixture",
         "customer_message": customer_message,
         "query_fact_type": query_fact_type,
+        "requested_attribute_keys": list(requested_attribute_keys or []),
+        "requested_fact_types": list(requested_fact_types or [query_fact_type]),
+        "request_scope": request_scope,
+        "requested_attribute_source": requested_attribute_source,
         "product_identity": product_identity or {"i_id": "EVAL-IID-01", "sku_code": "EVAL-SKU-01"},
         "selected_evidence": selected_evidence,
         "product_context_pack": {},
@@ -167,13 +175,15 @@ def build_synthetic_eval_set() -> list[dict[str, Any]]:
                 selected_evidence=[direct(fact_type, key, value)],
                 expected_fact_keys=[key],
                 expected_draft_terms=[term],
+                requested_attribute_keys=[key],
+                request_scope="explicit",
                 notes="Reviewed direct product fact.",
             )
         )
 
     # L1: same product and compatible attributes can be considered together.
     l1_cases = [
-        ("dimensions", "放在这里尺寸合适吗？", [("width", "宽度为80cm"), ("height", "高度为120cm")], ["width", "height"]),
+        ("dimensions", "放在这里尺寸合适吗？", [("width", "宽度为80cm"), ("height", "高度为120cm"), ("depth", "深度为35cm"), ("length", "长度为60cm")], ["width", "height"]),
         ("dimensions", "深度和长度分别多少？", [("depth", "深度为35cm"), ("length", "长度为60cm")], ["depth", "length"]),
         ("installation", "安装时先看哪一步？", [("installation_manual", "说明书列出安装步骤"), ("hole_position", "说明书标注孔位顺序")], ["installation_manual", "hole_position"]),
         ("installation", "配件位置怎么确认？", [("accessory_position", "说明书标出配件位置"), ("installation_manual", "说明书包含安装步骤")], ["accessory_position", "installation_manual"]),
@@ -191,6 +201,8 @@ def build_synthetic_eval_set() -> list[dict[str, Any]]:
                 reasoning_tier="L1",
                 selected_evidence=[direct(fact_type, key, value) for key, value in facts],
                 expected_fact_keys=keys,
+                requested_attribute_keys=keys,
+                request_scope="explicit",
                 allowed_inferences=["May combine compatible facts from the same scoped product."],
                 notes="Low-risk same-product combination.",
             )
@@ -214,6 +226,8 @@ def build_synthetic_eval_set() -> list[dict[str, Any]]:
                 selected_evidence=[direct(fact_type, key, value)],
                 expected_fact_keys=[key],
                 expected_draft_terms=[term],
+                requested_attribute_keys=[key],
+                request_scope="explicit",
                 allowed_inferences=["State the verified setup condition without expanding to safety or order commitments."],
                 notes="Conditioned, low-risk explanation only.",
             )
