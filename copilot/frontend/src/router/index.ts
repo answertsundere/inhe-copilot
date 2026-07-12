@@ -25,7 +25,7 @@ const router = createRouter({
           path: 'media-observation-review',
           name: 'media-observation-review',
           component: () => import('../views/ProductMediaObservationReviewPage.vue'),
-          meta: { title: 'AI visual observation review', hidden: true },
+          meta: { title: 'AI 视觉观察审核', hidden: true },
         },
         {
           path: 'service-rules',

@@ -49,6 +49,26 @@ def _supervisor_headers():
     return {"X-User-Role": "supervisor", "X-User-Name": "media-test"}
 
 
+def test_upload_route_can_read_legacy_media_directory(tmp_path, monkeypatch):
+    from flask import Flask
+    from app.api import media_routes
+
+    current_dir = tmp_path / "current"
+    legacy_dir = tmp_path / "legacy"
+    legacy_file = legacy_dir / "2026-06-17" / "preview.jpg"
+    legacy_file.parent.mkdir(parents=True)
+    legacy_file.write_bytes(b"legacy-preview")
+    monkeypatch.setattr(media_routes, "_UPLOAD_DIR", str(current_dir))
+    monkeypatch.setattr(media_routes, "_LEGACY_UPLOAD_DIR", str(legacy_dir))
+
+    test_app = Flask(__name__)
+    test_app.register_blueprint(media_routes.media_bp)
+    response = test_app.test_client().get("/api/media-assets/uploads/2026-06-17/preview.jpg")
+
+    assert response.status_code == 200
+    assert response.data == b"legacy-preview"
+
+
 @pytest.fixture(autouse=True)
 def _clean_test_assets():
     """每个测试前后清理 TEST_IID_001 测试素材，保证导入测试相互隔离。"""

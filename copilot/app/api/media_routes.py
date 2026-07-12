@@ -27,6 +27,7 @@ _UPLOAD_DIR = os.environ.get(
     "COPILOT_MEDIA_ASSET_UPLOAD_DIR",
     os.path.join(BASE_DIR, "data", "media_asset_uploads"),
 )
+_LEGACY_UPLOAD_DIR = os.path.join(BASE_DIR, "app", "media_uploads")
 
 _ALLOWED_MEDIA_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".mov"}
 _ALLOWED_MEDIA_MIMES = {
@@ -332,8 +333,13 @@ def upload_asset():
 def serve_upload(filename):
     """访问本地上传的素材文件。"""
     from werkzeug.utils import safe_join
-    file_path = safe_join(_UPLOAD_DIR, filename)
-    if not file_path or not os.path.exists(file_path):
+    file_path = None
+    for upload_dir in (_UPLOAD_DIR, _LEGACY_UPLOAD_DIR):
+        candidate = safe_join(upload_dir, filename)
+        if candidate and os.path.isfile(candidate):
+            file_path = candidate
+            break
+    if not file_path:
         return jsonify({"error": "文件不存在"}), 404
     mime = None
     if filename.lower().endswith((".mp4", ".webm", ".mov")):

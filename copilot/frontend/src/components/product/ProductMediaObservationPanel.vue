@@ -15,6 +15,67 @@ const productId = computed(() => props.product?.i_id || '')
 const title = computed(() => props.queueMode ? 'AI 视觉观察审核队列' : 'AI 视觉观察（Shadow）')
 const emptyDescription = computed(() => props.queueMode ? '当前没有待审核的 AI 视觉观察' : '当前商品没有 AI 视觉观察候选')
 
+const statusLabels: Record<string, string> = {
+  pending_review: '待审核',
+  approved_shadow: '已采用（Shadow）',
+  rejected: '已拒绝',
+  invalidated: '已失效',
+  superseded: '已替代',
+}
+const typeLabels: Record<string, string> = {
+  labelled_dimension: '图片标注尺寸',
+  visible_text: '图片可见文字',
+  visible_structure: '图片可见结构',
+  layer_count: '可见层数',
+  compartment_count: '可见格数',
+}
+const attributeLabels: Record<string, string> = {
+  width: '宽度',
+  height: '高度',
+  depth: '深度',
+  length: '长度',
+  layer_count: '层数',
+  compartment_count: '格数',
+  visible_text: '可见文字',
+  visible_structure: '可见结构',
+  shelf_layout: '层板结构',
+  open_compartment: '开放格结构',
+  door_layout: '柜门结构',
+  drawer_layout: '抽屉结构',
+  partition_layout: '隔板结构',
+}
+const valueLabels: Record<string, string> = {
+  'two-step structure': '两级结构',
+}
+
+function statusLabel(value: string) {
+  return statusLabels[value] || value || '未知'
+}
+
+function typeLabel(value: string) {
+  return typeLabels[value] || value || '未分类'
+}
+
+function attributeLabel(value: string) {
+  return attributeLabels[value] || value || '未分类'
+}
+
+function observationValue(row: any) {
+  const value = String(row.raw_observation || '').trim()
+  return valueLabels[value.toLowerCase()] || value || '未识别到内容'
+}
+
+function reviewPrompt(row: any) {
+  const value = observationValue(row)
+  if (row.observation_type === 'labelled_dimension') {
+    return `核对图片是否明确标注“${attributeLabel(row.attribute_key)} ${value}”`
+  }
+  if (row.observation_type === 'layer_count') return `数一下图片中的可见层数是否为 ${value}`
+  if (row.observation_type === 'compartment_count') return `数一下图片中的可见格数是否为 ${value}`
+  if (row.observation_type === 'visible_structure') return `核对图片展示的结构是否确实为“${value}”`
+  return `核对图片中是否清楚出现文字“${value}”`
+}
+
 async function load() {
   if (!props.queueMode && !productId.value) return
   loading.value = true
@@ -90,6 +151,12 @@ onMounted(load)
       :title="title"
       description="这是离线模型候选，未写入正式商品知识，也不会影响客服回复或自动发送。审核时请以来源图片为准。"
     />
+    <div class="review-guide">
+      <strong>你只需要核对三件事：</strong>
+      <span>① 图片是不是这个商品；② 图片上是否真的有对应尺寸、文字、层数或结构；③ 观察值是否抄对。</span>
+      <span>完全正确点“采用”，内容基本正确但表述有误点“修改后采用”，看不清或不一致点“拒绝”。</span>
+      <span class="risk-note">不要采用承重、安全、无毒、儿童适用、认证或安装处方等高风险推断。</span>
+    </div>
     <div v-if="!queueMode" class="queue-link-row">
       <span>当前商品没有候选时，可在集中队列审核其他商品。</span>
       <el-button link type="primary" @click="openReviewQueue">打开集中审核队列</el-button>
@@ -115,26 +182,22 @@ onMounted(load)
           <span v-else class="readonly">无预览</span>
         </template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" width="118">
+      <el-table-column label="识别内容" min-width="135">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'pending_review' ? 'warning' : 'info'">{{ row.status }}</el-tag>
+          <div>{{ typeLabel(row.observation_type) }}</div>
+          <small>{{ attributeLabel(row.attribute_key) }}</small>
         </template>
       </el-table-column>
-      <el-table-column prop="observation_type" label="类型" min-width="130" />
-      <el-table-column prop="attribute_key" label="属性" min-width="110" />
-      <el-table-column label="观察值" min-width="180">
+      <el-table-column label="模型观察值" min-width="180">
         <template #default="{ row }">
-          <span>{{ row.raw_observation }}</span>
-          <span v-if="row.normalized_value">（{{ row.normalized_value }} {{ row.normalized_unit || '' }}）</span>
+          <div>{{ observationValue(row) }}</div>
+          <small>模型置信度 {{ Math.round((row.confidence || 0) * 100) }}% · {{ statusLabel(row.status) }}</small>
         </template>
       </el-table-column>
-      <el-table-column prop="confidence" label="置信度" width="90">
-        <template #default="{ row }">{{ Math.round((row.confidence || 0) * 100) }}%</template>
+      <el-table-column label="你要核对什么" min-width="285">
+        <template #default="{ row }">{{ reviewPrompt(row) }}</template>
       </el-table-column>
-      <el-table-column label="Hash" min-width="160">
-        <template #default="{ row }"><span class="hash">{{ row.hash_comparison_status }}</span></template>
-      </el-table-column>
-      <el-table-column v-if="canAudit" label="操作" width="240" fixed="right">
+      <el-table-column v-if="canAudit" label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <template v-if="row.status === 'pending_review' && row.risk_class === 'low' && !row.conflict_status">
             <el-button link type="primary" @click="action(row, 'approve')">采用</el-button>
@@ -151,6 +214,8 @@ onMounted(load)
 <style scoped lang="scss">
 .observation-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .queue-link-row { display: flex; align-items: center; gap: 4px; color: var(--kb-text-secondary); font-size: 13px; }
+.review-guide { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid var(--kb-border); background: var(--kb-bg-soft, #f7f8fa); font-size: 13px; line-height: 1.6; }
+.risk-note { color: var(--el-color-danger); }
 .observation-table { width: 100%; }
 .media-preview { width: 72px; height: 56px; border-radius: 4px; border: 1px solid var(--kb-border); cursor: zoom-in; }
 .hash, .readonly { color: var(--kb-text-secondary); font-size: 12px; overflow-wrap: anywhere; }
