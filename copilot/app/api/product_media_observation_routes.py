@@ -9,7 +9,7 @@ from app.db import SessionLocal
 from app.models.product_media_observation import ProductMediaObservationCandidate
 from app.services.product_media_observation_review_service import ObservationReviewError, candidate_events, transition_candidate
 
-product_media_observation_bp = Blueprint("product_media_observations", __name__, url_prefix="/api/product-media-observations")
+product_media_observation_bp = Blueprint("product_media_observations", __name__, url_prefix="/api/kb/product-media-observations")
 
 
 @product_media_observation_bp.get("")

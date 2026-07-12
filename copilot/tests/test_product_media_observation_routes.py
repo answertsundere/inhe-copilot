@@ -22,8 +22,8 @@ def test_observation_review_api_requires_supervisor_and_returns_shadow_contract(
     app = Flask(__name__)
     app.register_blueprint(routes.product_media_observation_bp)
     client = app.test_client()
-    assert client.get("/api/product-media-observations").status_code == 403
-    response = client.get("/api/product-media-observations", headers={"X-User-Role": "supervisor"})
+    assert client.get("/api/kb/product-media-observations").status_code == 403
+    response = client.get("/api/kb/product-media-observations", headers={"X-User-Role": "supervisor"})
     assert response.status_code == 200
     item = response.get_json()["items"][0]
     assert item["direct_answer_allowed"] is False
