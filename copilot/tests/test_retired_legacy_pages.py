@@ -25,6 +25,7 @@ def test_kb_admin_spa_is_served_from_ask_root():
     with app.test_client() as client:
         assert client.get("/").status_code == 200
         assert client.get("/products").status_code == 200
+        assert client.get("/media-observation-review").status_code == 200
 
         legacy = client.get("/kb-admin/products", follow_redirects=False)
         assert legacy.status_code == 302

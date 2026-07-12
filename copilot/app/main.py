@@ -674,6 +674,7 @@ def create_app():
 
     @app.route("/")
     @app.route("/products")
+    @app.route("/media-observation-review")
     @app.route("/shop-rules")
     @app.route("/qa")
     @app.route("/reviews")
