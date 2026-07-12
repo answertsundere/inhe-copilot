@@ -99,6 +99,16 @@ input. Grounded Reasoning continues to admit only reviewed direct product facts
 or direct FAQ evidence; it cannot read a pending OCR, layer count, structure,
 or dimension observation from `outputs/`.
 
+### Product Media Observation v3 Boundary
+
+The v3 Product Understanding Graph is a separate shadow diagnostic. It binds a
+visual observation to a structured subject scope, subject reference, optional
+state, parent relation, and object/label boxes. It does not enter Grounded
+Reasoning `used_facts`, the Product Evidence Pack, or any formal response.
+Future promotion requires a separate reviewed-v3 evidence contract. Until then,
+the graph may only be evaluated offline and must keep
+`used_for_final_reply=false` and `can_change_can_send=false`.
+
 The observation extractor enforces a low-risk attribute allowlist, actual-image
 SHA-256 provenance, and SQLite query-only reads before an observation can even
 be reviewed. Those pending candidates remain outside this layer regardless of

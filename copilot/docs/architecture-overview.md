@@ -33,6 +33,12 @@ model provenance, supervisor review, hash invalidation, and append-only audit
 events. `approved_shadow` remains isolated from Product Evidence Pack,
 Grounded Reasoning, and customer delivery until future promotion acceptance.
 
+ADR 0003 adds a separate v3 object-binding contract for product-media
+understanding. It distinguishes the product from packaging, components,
+accessories, included items, and display props before a measurement can be
+interpreted. The graph is a shadow diagnostic only; it cannot alter formal
+evidence, replies, delivery, or `can_send`.
+
 ## Target System
 
 ```text

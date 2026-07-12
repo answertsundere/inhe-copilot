@@ -58,6 +58,39 @@ The reusable lesson is not a specific vendor workflow. It is the separation of
 model interpretation, evidence retrieval, deterministic actions, bounded
 reasoning, claim-level safety, and observable handoff.
 
+### Object-bound visual observations
+
+Qwen3-VL documents OCR, object grounding, spatial understanding, and explicit
+image pixel budgets. AliMe MKG describes a multimodal product cognitive profile
+for product discovery and question answering. Amazon's attribute-extraction
+research treats e-commerce attributes as a joint product-type, attribute, text,
+and image problem rather than a collection of isolated fields. These sources
+support an object-binding contract, but none removes the need for product scope,
+human review, or high-risk claim controls.
+
+The project therefore uses v3 shadow observations with a generic subject scope
+(`product`, `packaging`, `component`, `accessory`, `included_item`, or
+`display_prop`), optional state, parent relationship, measurement axis, and
+object/label boxes. A packaging or component measurement is not a product
+dimension; visible text remains reference-only. The resulting Product
+Understanding Graph records direct `part_of` and `measured_as` edges only. It
+does not infer load, safety, toxicity, certification, child suitability, wall
+fixing, drilling, modification, or customer-specific geometry.
+
+Primary sources:
+
+- https://github.com/QwenLM/Qwen3-VL
+- https://arxiv.org/abs/2109.07411
+- https://assets.amazon.science/fd/40/a7e49bb0418392466e9f6c6f4744/large-scale-generative-multimodal-attribute-extraction-for-e-commerce-attributes.pdf
+
+The first bounded v3 qualification on 2026-07-12 scanned ten approved source
+images with the qualified offline vLLM 0.12.0 candidate. It admitted zero
+observations: 32 candidates lacked required object boxes, 12 were
+reference-only visible text, one was high-risk, and one source image could not
+be read. This is a contract failure, not a reason to relax object binding. The
+30-image scan was deliberately not run. V2's 105 pending candidates remain
+legacy read-only data and do not count toward any v3 review or evaluation gate.
+
 ### Model prediction review lifecycle
 
 For the Product Media Observation review lifecycle, the project also reviewed
