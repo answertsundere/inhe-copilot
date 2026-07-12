@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api import product_media_observation_routes as routes
 from app.db import Base
+from app.models.kb_tables import KBMediaAsset
 from app.models.product_media_observation import ProductMediaObservationCandidate
 
 
@@ -13,6 +14,8 @@ def test_observation_review_api_requires_supervisor_and_returns_shadow_contract(
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
+    session.add(KBMediaAsset(id=1, i_id="IID-1", status="approved", usable_for_agent=1,
+                             asset_url="https://example.test/source.png", asset_title="source", product_name="Product"))
     session.add(ProductMediaObservationCandidate(
         observation_uid="route-test", media_asset_id=1, i_id="IID-1", observed_media_sha256="a" * 64,
         observation_type="labelled_dimension", attribute_key="width", raw_observation="80cm",
@@ -29,4 +32,10 @@ def test_observation_review_api_requires_supervisor_and_returns_shadow_contract(
     assert item["direct_answer_allowed"] is False
     assert item["used_for_generation"] is False
     assert item["can_change_can_send"] is False
+    assert item["source_media"] == {
+        "asset_id": 1,
+        "asset_url": "https://example.test/source.png",
+        "asset_title": "source",
+        "product_name": "Product",
+    }
     session.close()

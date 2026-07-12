@@ -6,10 +6,23 @@ from flask import Blueprint, jsonify, request
 
 from app.api.admin_auth import current_user_name, require_supervisor
 from app.db import SessionLocal
+from app.models.kb_tables import KBMediaAsset
 from app.models.product_media_observation import ProductMediaObservationCandidate
 from app.services.product_media_observation_review_service import ObservationReviewError, candidate_events, transition_candidate
 
 product_media_observation_bp = Blueprint("product_media_observations", __name__, url_prefix="/api/kb/product-media-observations")
+
+
+def _candidate_item(candidate: ProductMediaObservationCandidate, assets: dict[int, KBMediaAsset]) -> dict:
+    item = candidate.to_dict()
+    asset = assets.get(candidate.media_asset_id)
+    item["source_media"] = {
+        "asset_id": candidate.media_asset_id,
+        "asset_url": str(asset.asset_url or "") if asset else "",
+        "asset_title": str(asset.asset_title or "") if asset else "",
+        "product_name": str(asset.product_name or "") if asset else "",
+    }
+    return item
 
 
 @product_media_observation_bp.get("")
@@ -23,7 +36,12 @@ def list_candidates():
             if value:
                 query = query.filter(getattr(ProductMediaObservationCandidate, field) == value)
         rows = query.order_by(ProductMediaObservationCandidate.updated_at.desc()).all()
-        return jsonify({"items": [row.to_dict() for row in rows], "total": len(rows)})
+        asset_ids = {row.media_asset_id for row in rows}
+        assets = {
+            asset.id: asset
+            for asset in db.query(KBMediaAsset).filter(KBMediaAsset.id.in_(asset_ids)).all()
+        } if asset_ids else {}
+        return jsonify({"items": [_candidate_item(row, assets) for row in rows], "total": len(rows)})
     finally:
         db.close()
 

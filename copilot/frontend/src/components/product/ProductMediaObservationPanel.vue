@@ -1,20 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getProductMediaObservations, reviewProductMediaObservation } from '../../api/product'
 import { useCurrentUser } from '../../composables/useCurrentUser'
 
-const props = defineProps<{ product: any }>()
+const props = withDefaults(defineProps<{ product?: any; queueMode?: boolean }>(), { queueMode: false })
+const router = useRouter()
 const { canAudit } = useCurrentUser()
 const loading = ref(false)
 const rows = ref<any[]>([])
 
 const productId = computed(() => props.product?.i_id || '')
+const title = computed(() => props.queueMode ? 'AI 视觉观察审核队列' : 'AI 视觉观察（Shadow）')
+const emptyDescription = computed(() => props.queueMode ? '当前没有待审核的 AI 视觉观察' : '当前商品没有 AI 视觉观察候选')
+
 async function load() {
-  if (!productId.value) return
+  if (!props.queueMode && !productId.value) return
   loading.value = true
   try {
-    const { data } = await getProductMediaObservations({ i_id: productId.value })
+    const params = props.queueMode ? { status: 'pending_review' } : { i_id: productId.value }
+    const { data } = await getProductMediaObservations(params)
     rows.value = data.items || []
   } catch {
     ElMessage.error('加载 AI 视觉观察失败')
@@ -67,6 +73,10 @@ async function editAndApprove(row: any) {
   }
 }
 
+function openReviewQueue() {
+  router.push('/media-observation-review')
+}
+
 watch(productId, load, { immediate: true })
 onMounted(load)
 </script>
@@ -77,11 +87,34 @@ onMounted(load)
       type="info"
       :closable="false"
       show-icon
-      title="AI 视觉观察（Shadow）"
-      description="这是离线模型候选，未写入正式商品知识，也不会影响客服回复或自动发送。"
+      :title="title"
+      description="这是离线模型候选，未写入正式商品知识，也不会影响客服回复或自动发送。审核时请以来源图片为准。"
     />
-    <el-empty v-if="!rows.length && !loading" description="当前商品暂无待审核的 AI 视觉观察" />
+    <div v-if="!queueMode" class="queue-link-row">
+      <span>当前商品没有候选时，可在集中队列审核其他商品。</span>
+      <el-button link type="primary" @click="openReviewQueue">打开集中审核队列</el-button>
+    </div>
+    <el-empty v-if="!rows.length && !loading" :description="emptyDescription" />
     <el-table v-else :data="rows" size="small" class="observation-table">
+      <el-table-column v-if="queueMode" label="商品" min-width="150">
+        <template #default="{ row }">
+          <div>{{ row.source_media?.product_name || row.i_id }}</div>
+          <small>{{ row.i_id }}</small>
+        </template>
+      </el-table-column>
+      <el-table-column label="来源图片" width="104">
+        <template #default="{ row }">
+          <el-image
+            v-if="row.source_media?.asset_url"
+            :src="row.source_media.asset_url"
+            :preview-src-list="[row.source_media.asset_url]"
+            fit="cover"
+            class="media-preview"
+            preview-teleported
+          />
+          <span v-else class="readonly">无预览</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="118">
         <template #default="{ row }">
           <el-tag :type="row.status === 'pending_review' ? 'warning' : 'info'">{{ row.status }}</el-tag>
@@ -117,7 +150,10 @@ onMounted(load)
 
 <style scoped lang="scss">
 .observation-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.queue-link-row { display: flex; align-items: center; gap: 4px; color: var(--kb-text-secondary); font-size: 13px; }
 .observation-table { width: 100%; }
+.media-preview { width: 72px; height: 56px; border-radius: 4px; border: 1px solid var(--kb-border); cursor: zoom-in; }
 .hash, .readonly { color: var(--kb-text-secondary); font-size: 12px; overflow-wrap: anywhere; }
-@media (max-width: 760px) { .observation-table { min-width: 720px; } .observation-panel { overflow-x: auto; } }
+small { color: var(--kb-text-secondary); font-size: 12px; }
+@media (max-width: 760px) { .observation-table { min-width: 900px; } .observation-panel { overflow-x: auto; } }
 </style>

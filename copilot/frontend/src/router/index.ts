@@ -22,6 +22,12 @@ const router = createRouter({
           meta: { title: '商品资料' },
         },
         {
+          path: 'media-observation-review',
+          name: 'media-observation-review',
+          component: () => import('../views/ProductMediaObservationReviewPage.vue'),
+          meta: { title: 'AI visual observation review', hidden: true },
+        },
+        {
           path: 'service-rules',
           name: 'service-rules',
           component: () => import('../views/ServiceRulesPage.vue'),
