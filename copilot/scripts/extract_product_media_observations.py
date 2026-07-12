@@ -122,6 +122,8 @@ def _summary(rows: list[dict[str, Any]], *, guard: ReadOnlyDatabaseGuard, state_
     observations = [item for row in rows for item in row.get("observations", [])]
     rejected = [item for row in rows for item in row.get("rejected_evidence", [])]
     warnings = [warning for row in rows for warning in row.get("warnings", [])]
+    execution_failures = [item.get("category") for row in rows for item in row.get("execution_failures", [])]
+    completion_failures = [item.get("category") for row in rows for item in row.get("completion_failures", [])]
     hash_statuses = Counter(row.get("hash_comparison_status") for row in rows if row.get("hash_comparison_status"))
     return {
         "schema_version": "product_media_observation_shadow_report_v2",
@@ -135,6 +137,10 @@ def _summary(rows: list[dict[str, Any]], *, guard: ReadOnlyDatabaseGuard, state_
         "extraction_success_count": sum(1 for row in rows if row.get("model_success")),
         "observation_candidate_count": len(observations),
         "rejected_count": len(rejected),
+        "execution_failure_count": len(execution_failures),
+        "completion_failure_count": len(completion_failures),
+        "execution_failure_distribution": dict(sorted(Counter(execution_failures).items())),
+        "completion_failure_distribution": dict(sorted(Counter(completion_failures).items())),
         "identity_scoped_count": sum(1 for item in observations if item.get("i_id")),
         "observation_type_counts": dict(sorted(Counter(item.get("observation_type") for item in observations).items())),
         "rejected_reason_counts": dict(sorted(Counter(item.get("reason") for item in rejected).items())),

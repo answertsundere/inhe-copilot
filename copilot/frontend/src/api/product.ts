@@ -76,5 +76,13 @@ export function getProductActivityRules(productId: number) {
   return apiClient.get(`/products/${productId}/activity-rules`)
 }
 
+export function getProductMediaObservations(params: Record<string, any>) {
+  return apiClient.get('/product-media-observations', { params })
+}
+
+export function reviewProductMediaObservation(id: number, action: 'approve' | 'reject' | 'invalidate', data: Record<string, any>) {
+  return apiClient.post(`/product-media-observations/${id}/${action}`, data)
+}
+
 // 注意：本阶段不提供 /products/{id}/agent-test 接口。
 // 商品详情抽屉中的“资料命中预检”为纯前端模拟，不调用后端 Agent。

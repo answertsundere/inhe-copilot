@@ -18,6 +18,7 @@ import { useCurrentUser } from '../../composables/useCurrentUser'
 import ProductBasicPanel from './ProductBasicPanel.vue'
 import ProductFactsPanel from './ProductFactsPanel.vue'
 import ProductMediaPanel from './ProductMediaPanel.vue'
+import ProductMediaObservationPanel from './ProductMediaObservationPanel.vue'
 import ProductQuestionsPanel from './ProductQuestionsPanel.vue'
 import ProductActivityPanel from './ProductActivityPanel.vue'
 import ProductAgentTestPanel from './ProductAgentTestPanel.vue'
@@ -178,6 +179,9 @@ function onRefreshed() {
         </el-tab-pane>
         <el-tab-pane label="商品素材" name="media">
           <ProductMediaPanel :product="product" @refreshed="onRefreshed" />
+        </el-tab-pane>
+        <el-tab-pane label="AI 视觉观察" name="media-observations">
+          <ProductMediaObservationPanel :product="product" />
         </el-tab-pane>
         <el-tab-pane label="客户问法" name="questions">
           <ProductQuestionsPanel :product="product" @refreshed="onRefreshed" />

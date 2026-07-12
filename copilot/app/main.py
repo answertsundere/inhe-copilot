@@ -520,6 +520,7 @@ def _init_db():
     from app.db import init_db
     import app.models.eval_tables  # noqa: F401 - register evaluation replay tables
     import app.models.kb_tables  # noqa: F401 - 注册新表
+    import app.models.product_media_observation  # noqa: F401 - shadow review staging tables
     db_dir = os.path.dirname(KNOWLEDGE_DB_PATH)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
@@ -602,6 +603,7 @@ def create_app():
     from app.api.trace_routes import trace_api_bp
     from app.api.simulation_routes import simulation_bp
     from app.api.media_routes import media_bp
+    from app.api.product_media_observation_routes import product_media_observation_bp
     from app.api.training_sample_routes import training_sample_bp
     from app.api.eval_routes import eval_bp
 
@@ -623,6 +625,7 @@ def create_app():
     app.register_blueprint(trace_api_bp)
     app.register_blueprint(simulation_bp)
     app.register_blueprint(media_bp)
+    app.register_blueprint(product_media_observation_bp)
     app.register_blueprint(training_sample_bp)
     app.register_blueprint(eval_bp)
 

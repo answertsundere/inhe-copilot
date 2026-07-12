@@ -38,6 +38,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/PROJECT_CHARTER.md` - authoritative business direction and non-negotiable boundaries.
 - `docs/architecture-overview.md` - authoritative current/target architecture and convergence order.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
+- `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
+  local-VLM observation candidates, supervisor review, hash invalidation, and
+  shadow-only approval boundary.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - current LangGraph topology and migration notes.

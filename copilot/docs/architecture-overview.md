@@ -28,6 +28,11 @@ branch. Product media carry roles and delivery metadata, but they are not yet a
 reviewed visual-observation source that can support query-time reasoning. See
 `docs/research/multimodal-grounded-customer-service.md`.
 
+Candidate observations now have an ADR 0002 staging lifecycle with immutable
+model provenance, supervisor review, hash invalidation, and append-only audit
+events. `approved_shadow` remains isolated from Product Evidence Pack,
+Grounded Reasoning, and customer delivery until future promotion acceptance.
+
 ## Target System
 
 ```text

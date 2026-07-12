@@ -58,6 +58,59 @@ The reusable lesson is not a specific vendor workflow. It is the separation of
 model interpretation, evidence retrieval, deterministic actions, bounded
 reasoning, claim-level safety, and observable handoff.
 
+### Model prediction review lifecycle
+
+For the Product Media Observation review lifecycle, the project also reviewed
+the official Label Studio and Argilla documentation. Label Studio treats an
+imported prediction as model-versioned, read-only input and keeps human
+annotations distinct. Argilla presents model suggestions to annotators while
+recording the resulting human response separately. The reusable contract is
+immutable machine provenance plus human review and audit history, not a second
+published knowledge source. See ADR 0002.
+
+Primary sources:
+
+- https://labelstud.io/guide/predictions.html
+- https://docs.argilla.io/v2.0/reference/argilla/records/suggestions/
+- https://docs.argilla.io/v2.2/how_to_guides/annotate/
+
+### Offline VLM execution boundary
+
+The local Qwen worker is an offline Docker-hosted vLLM service. vLLM documents
+`/health`, `/v1/models`, `/load`, and `/metrics` as server observability
+endpoints, and documents JSON Schema structured output for supported OpenAI
+compatible servers. Qwen's model card documents the `image_url` chat message
+format used by the worker. The current worker is pinned to vLLM 0.11.0, so a
+JSON Schema request must be qualified against that running version before it
+can replace the existing strict JSON-object transport. A slow or malformed
+completion is an execution/completion failure, not a semantic observation
+rejection.
+
+Qwen's official documentation confirms Qwen3-VL support from vLLM 0.11.0 and
+pixel-budget controls. The local vLLM 0.11.0 worker did not qualify: with the
+same ten-image set, raw plain JSON reached 6/10 execution success and bounded
+pixels reached 4/10; neither profile produced a complete JSON response. An
+independent vLLM 0.12.0 candidate container, pinned to
+`sha256:6766ce0c459e24b76f3e9ba14ffc0442131ef4248c904efdcbf0d89e38be01fe`,
+then completed the bounded-pixel plain-JSON qualification at 10/10 single
+extractions and 20/20 paired extractions. The pairwise fact, attribute,
+normalized-value, identity, region, and high-risk rejection comparisons were
+all stable, with no high-risk leakage. This qualifies the candidate runtime
+for continued offline shadow use only; it does not change the default worker,
+the JSON parser, evidence admission, or any customer-facing decision.
+
+Additional official sources:
+
+- https://github.com/QwenLM/Qwen3-VL
+- https://docs.vllm.ai/en/v0.11.0/api/vllm/model_executor/models/qwen3_vl.html
+
+Primary sources:
+
+- https://docs.vllm.ai/en/latest/serving/openai_compatible_server/
+- https://docs.vllm.ai/en/stable/features/structured_outputs/
+- https://docs.vllm.ai/en/latest/usage/metrics/
+- https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct
+
 ## Verified Current Gaps
 
 The project direction is aligned with that pattern, but the formal implementation

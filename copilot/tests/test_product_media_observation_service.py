@@ -252,7 +252,10 @@ def test_model_schema_error_is_classified_without_leaking_provider_details(monke
     result = extractor.extract_asset(_asset())
 
     assert result["observations"] == []
-    assert result["rejected_evidence"][0]["reason"] == "schema_error"
+    assert result["rejected_evidence"] == []
+    assert result["execution_result"] == "success"
+    assert result["completion_result"] == "vlm_empty_response"
+    assert result["completion_failures"] == [{"category": "vlm_empty_response"}]
     assert "https://" not in " ".join(result["warnings"])
 
 

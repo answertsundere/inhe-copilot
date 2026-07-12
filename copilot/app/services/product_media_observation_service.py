@@ -426,6 +426,7 @@ def _request_variant_payload(
     variant: str,
     max_tokens: int | None = None,
     max_observations: int = 10,
+    chat_template_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profiles = {
         "product_media_response_format": {"max_tokens": PRODUCT_MEDIA_VLM_MAX_TOKENS, "response_format": True},
@@ -454,6 +455,8 @@ def _request_variant_payload(
     }
     if profile["response_format"]:
         request["response_format"] = {"type": "json_object"}
+    if chat_template_kwargs:
+        request["chat_template_kwargs"] = dict(chat_template_kwargs)
     return request
 
 
@@ -467,6 +470,7 @@ def _run_product_media_vlm_variant(
     variant: str,
     max_tokens: int | None = None,
     max_observations: int = 10,
+    chat_template_kwargs: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Run one bounded visual request and return only sanitized transport metadata."""
     has_explicit_connection = connection is not None
@@ -488,6 +492,7 @@ def _run_product_media_vlm_variant(
         variant=variant,
         max_tokens=max_tokens,
         max_observations=max_observations,
+        chat_template_kwargs=chat_template_kwargs,
     )
     try:
         response = client.chat.completions.create(**request)
@@ -573,6 +578,7 @@ def run_product_media_vlm_transport(
     request_variant: str = "product_media_response_format",
     max_tokens: int | None = None,
     max_observations: int = 10,
+    chat_template_kwargs: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Execute the production transport contract without exposing model text."""
     parsed, metadata = _run_product_media_vlm_variant(
@@ -584,6 +590,7 @@ def run_product_media_vlm_transport(
         variant=request_variant,
         max_tokens=max_tokens,
         max_observations=max_observations,
+        chat_template_kwargs=chat_template_kwargs,
     )
     metadata["retry_count"] = 0
     metadata["retry_reason"] = ""
@@ -601,6 +608,7 @@ def run_product_media_vlm_transport(
             variant="plain_json_prompt",
             max_tokens=max_tokens,
             max_observations=max_observations,
+            chat_template_kwargs=chat_template_kwargs,
         )
         metadata["retry_count"] = 1
         metadata["retry_reason"] = "unsupported_response_format"
@@ -725,10 +733,12 @@ class ProductMediaObservationExtractor:
         *,
         max_tokens: int | None = None,
         max_observations: int = 10,
+        image_preprocessor: Callable[[bytes], Any] | None = None,
     ):
         self._model_runner = model_runner
         self._max_tokens = max_tokens
         self._max_observations = max(1, min(int(max_observations), 10))
+        self._image_preprocessor = image_preprocessor
 
     def extract_asset(
         self,
@@ -752,6 +762,10 @@ class ProductMediaObservationExtractor:
             "observed_media_sha256": "",
             "asset_content_hash": _media_content_hash(asset),
             "hash_comparison_status": "not_read",
+            "execution_result": "not_started",
+            "completion_result": "not_started",
+            "execution_failures": [],
+            "completion_failures": [],
         }
         if reasons:
             result["rejected_evidence"].append({"media_asset_id": result["media_asset_id"], "reason": reasons[0]})
@@ -772,6 +786,18 @@ class ProductMediaObservationExtractor:
             result["warnings"].append("media_read_failed")
             return result
         observed_media_sha256 = hashlib.sha256(image[0]).hexdigest()
+        model_image, model_extension = image
+        if self._image_preprocessor is not None:
+            try:
+                prepared = self._image_preprocessor(image[0])
+                model_image, model_extension = prepared.data, prepared.extension
+                result["preprocessing"] = dict(prepared.provenance)
+            except Exception as exc:
+                result["execution_result"] = "preprocessing_error"
+                result["completion_result"] = "not_started"
+                result["execution_failures"].append({"category": "preprocessing_error"})
+                result["warnings"].append(f"execution_failure:{type(exc).__name__}")
+                return result
         asset_content_hash = _media_content_hash(asset)
         if _is_sha256(asset_content_hash):
             hash_comparison_status = "verified_match" if asset_content_hash.lower() == observed_media_sha256 else "mismatch"
@@ -791,29 +817,38 @@ class ProductMediaObservationExtractor:
         result["model_called"] = True
         try:
             if self._model_runner is not None:
-                raw = self._model_runner(asset, image[0], image[1], timeout_seconds)
+                raw = self._model_runner(asset, model_image, model_extension, timeout_seconds)
             else:
                 raw = call_product_media_vlm(
                     asset,
-                    image[0],
-                    image[1],
+                    model_image,
+                    model_extension,
                     timeout_seconds=timeout_seconds,
                     max_tokens=self._max_tokens,
                     max_observations=self._max_observations,
                 )
         except ProductMediaObservationSchemaError as exc:
-            result["rejected_evidence"].append({"media_asset_id": result["media_asset_id"], "reason": "schema_error"})
-            result["warnings"].append(f"schema_error:{exc}")
+            result["execution_result"] = "success"
+            result["completion_result"] = str(exc.category or "schema_invalid")
+            result["completion_failures"].append({"category": result["completion_result"]})
+            result["warnings"].append(f"completion_failure:{result['completion_result']}")
             return result
         except ProductMediaObservationProviderError as exc:
-            result["rejected_evidence"].append({"media_asset_id": result["media_asset_id"], "reason": "provider_error"})
-            result["warnings"].append(f"provider_error:{exc}")
+            category = str(exc.category or "provider_error")
+            result["execution_result"] = category
+            result["completion_result"] = "not_started"
+            result["execution_failures"].append({"category": category})
+            result["warnings"].append(f"execution_failure:{category}")
             return result
         except Exception as exc:
-            result["rejected_evidence"].append({"media_asset_id": result["media_asset_id"], "reason": "provider_error"})
-            result["warnings"].append(f"provider_error:{type(exc).__name__}")
+            result["execution_result"] = "provider_error"
+            result["completion_result"] = "not_started"
+            result["execution_failures"].append({"category": "provider_error"})
+            result["warnings"].append(f"execution_failure:{type(exc).__name__}")
             return result
         result["model_success"] = True
+        result["execution_result"] = "success"
+        result["completion_result"] = "complete_json"
         parsed = self._parse_response(
             asset,
             raw,
@@ -821,6 +856,9 @@ class ProductMediaObservationExtractor:
             hash_comparison_status=hash_comparison_status,
         )
         result["observations"] = [item.to_dict() for item in parsed["observations"]]
+        if result.get("preprocessing"):
+            for item in result["observations"]:
+                item.setdefault("provenance", {})["preprocessing"] = result["preprocessing"]
         result["rejected_evidence"].extend(parsed["rejected_evidence"])
         result["warnings"].extend(parsed["warnings"])
         return result
