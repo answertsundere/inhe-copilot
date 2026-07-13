@@ -437,6 +437,25 @@ future run can use that fingerprint as a formal no-change acceptance proof.
 
 ### Provider qualification status
 
+Phase 0.4G adds a provider-neutral, read-only qualification report for the
+same V3 panel/object/label/binding contract.  It makes execution, schema,
+normalized-box, object-label binding, leakage, high-risk, repeatability, and
+read-only database metrics comparable without treating a provider result as
+formal product knowledge.  The 10-image gate must pass before any 30-image
+provider run; a failed provider remains a diagnostic only.  See
+`docs/research/vision-grounding-provider-qualification.md` for the current
+candidate boundaries and official-source reuse assessment.
+
+The local `Qwen/Qwen3-VL-8B-Instruct` baseline was run through that 10-image
+gate on 2026-07-13 with two attempts per image.  Source reads and transport
+execution were 100%, but only 36 of 51 V3 model stages were schema-valid
+(70.59%, below the 95% gate).  The rejected stages were primarily missing
+object or label boxes.  The observations that did pass still had zero
+package/product leakage, component/overall leakage, high-risk admission,
+formal knowledge write attempts, and `can_send` changes.  The provider did not
+qualify for a 30-image run; the box rate among the smaller successful subset is
+not a qualification result.
+
 Phase 0.4D.1 adds a bounded qualification matrix whose candidate connection is
 supplied only through command-line environment-variable names. It uses one
 readable, identity-scoped image and records no credentials, endpoints, image
