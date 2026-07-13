@@ -81,6 +81,14 @@ resulting Product Understanding Graph records direct `part_of`, `measured_as`,
 load, safety, toxicity, certification, child suitability, wall fixing,
 drilling, modification, or customer-specific geometry.
 
+The composable follow-up keeps OCR deliberately narrower than visual
+understanding. The local Windows OCR runtime may expose text and text regions,
+but those are only label candidates. A dimension label still needs an
+independently qualified product, packaging, component, or accessory box plus a
+same-panel binding before it can be reviewed as an observation. This prevents
+OCR text such as a carton measurement or a safety claim from being promoted to
+a product fact merely because its characters were readable.
+
 Primary sources:
 
 - https://github.com/QwenLM/Qwen3-VL

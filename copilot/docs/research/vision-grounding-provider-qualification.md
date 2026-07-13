@@ -47,13 +47,24 @@ provide a scoped object box; geometry only considers same-panel, unambiguous
 nearest candidates; and the verifier can only accept or reject that supplied
 candidate.  A verifier-provided bbox is a schema failure.
 
-The local environment on 2026-07-13 had OpenCV but no PaddleOCR, Tesseract,
-EasyOCR, Transformers, Torch, GroundingDINO, or configured external OCR/object
-provider.  The 10-image composable run therefore reported
-`provider_not_configured`, did not emit observations, did not qualify for 30
-images, and recorded zero formal writes and `can_send` changes.  This is the
-correct fail-closed result, not a lower score to be repaired with synthetic
-boxes.
+The local environment on 2026-07-13 has OpenCV and Windows OCR, but no
+PaddleOCR, Tesseract, EasyOCR, Transformers, Torch, GroundingDINO, or
+configured external OCR/object provider. Windows OCR is the first executable
+OCR-only candidate: it returns recognised text and line positions through
+`Windows.Media.Ocr.OcrEngine`. The adapter normalises those pixel boxes to the
+project 0..1 contract and records them only as label candidates. It does not
+create observations, review records, formal facts, reply blocks, or delivery
+decisions.
+
+The prior 10-image composable run still correctly reported
+`provider_not_configured` for the full OCR-plus-object pipeline. OCR-only
+qualification is a separate strict gate. It must achieve source reads of
+100%, OCR execution/schema/text-box rates of at least 95%, repeated text and
+text-box IoU stability of at least 90%, and zero high-risk observation admissions, formal
+writes, or `can_send` changes before an OCR-only 30-image shadow scan is
+permitted. Passing OCR does not qualify an object provider or object-label
+binding. The expanded scan reports its own mode and does not re-evaluate or
+overwrite the completed 10-image gate.
 
 PaddleOCR is the preferred first OCR adapter because its documented general OCR
 pipeline produces text regions and recognition output.  Grounding DINO is a
@@ -80,6 +91,18 @@ credentials, prompts, chain-of-thought, or raw model text.  It records:
 V3 remains the owner of the actual panel/object/label validation.  The
 qualification adapter only projects its diagnostics into the common comparison
 schema and never modifies accepted or rejected observations.
+
+### OCR-only adapter contract
+
+The composable OCR adapter returns provider/model/runtime identity, image
+SHA-256, recognised `text`, a normalized text bbox, confidence, language or
+script, source image dimensions, latency, and sanitized execution/schema
+errors. OCR text is a label candidate only. Dimension, mode, packaging, and
+high-risk terms are counted for qualification diagnostics; high-risk text can
+be recorded but cannot become an observation. The adapter uses a temporary
+local file only because the Windows runtime API requires a file-backed image;
+the file is removed after each request and no image bytes are written to a
+knowledge table.
 
 ## Qualification gate
 
