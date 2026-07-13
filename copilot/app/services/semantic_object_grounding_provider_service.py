@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import os
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
@@ -41,6 +43,7 @@ def semantic_object_runtime_status() -> dict[str, Any]:
         "groundingdino": importlib.util.find_spec("groundingdino") is not None,
         "transformers": importlib.util.find_spec("transformers") is not None,
         "torch": importlib.util.find_spec("torch") is not None,
+        "pillow": importlib.util.find_spec("PIL") is not None,
     }
     cuda_available = False
     if modules["torch"]:
@@ -52,6 +55,7 @@ def semantic_object_runtime_status() -> dict[str, Any]:
     model_paths = {
         "groundingdino_config": _path_from_env("COPILOT_GROUNDINGDINO_CONFIG"),
         "groundingdino_checkpoint": _path_from_env("COPILOT_GROUNDINGDINO_CHECKPOINT"),
+        "groundingdino_model": _path_from_env("COPILOT_GROUNDINGDINO_MODEL_PATH"),
         "florence2_model": _path_from_env("COPILOT_FLORENCE2_MODEL_PATH"),
     }
     return {"modules": modules, "cuda_available": cuda_available, "model_paths": model_paths}
@@ -62,12 +66,13 @@ def preferred_semantic_object_provider(*, requested_provider: str = "auto") -> d
     requested = _text(requested_provider).lower() or "auto"
     status = semantic_object_runtime_status()
     modules, paths = status["modules"], status["model_paths"]
-    grounding_ready = modules["groundingdino"] and modules["torch"] and bool(paths["groundingdino_config"]) and bool(paths["groundingdino_checkpoint"])
+    grounding_ready = modules["transformers"] and modules["torch"] and modules["pillow"] and bool(paths["groundingdino_model"])
     florence_ready = modules["transformers"] and modules["torch"] and bool(paths["florence2_model"])
     if requested in {"auto", "groundingdino"} and grounding_ready:
         return {
             "configured": True, "provider_name": "groundingdino", "model_name": "GroundingDINO",
-            "runtime_name": "PyTorch", "class_queries": GENERIC_CLASS_QUERIES,
+            "runtime_name": "Transformers/PyTorch", "model_path": paths["groundingdino_model"],
+            "class_queries": GENERIC_CLASS_QUERIES,
             "runtime_status": status,
         }
     if requested in {"auto", "florence2"} and florence_ready:
@@ -78,7 +83,7 @@ def preferred_semantic_object_provider(*, requested_provider: str = "auto") -> d
         }
     missing = []
     if requested in {"auto", "groundingdino"}:
-        missing.extend(name for name, present in (("groundingdino", modules["groundingdino"]), ("torch", modules["torch"]), ("COPILOT_GROUNDINGDINO_CONFIG", bool(paths["groundingdino_config"])), ("COPILOT_GROUNDINGDINO_CHECKPOINT", bool(paths["groundingdino_checkpoint"]))) if not present)
+        missing.extend(name for name, present in (("transformers", modules["transformers"]), ("torch", modules["torch"]), ("pillow", modules["pillow"]), ("COPILOT_GROUNDINGDINO_MODEL_PATH", bool(paths["groundingdino_model"]))) if not present)
     if requested == "florence2":
         missing.extend(name for name, present in (("transformers", modules["transformers"]), ("torch", modules["torch"]), ("COPILOT_FLORENCE2_MODEL_PATH", bool(paths["florence2_model"]))) if not present)
     return {
@@ -86,11 +91,78 @@ def preferred_semantic_object_provider(*, requested_provider: str = "auto") -> d
         "missing_requirements": sorted(set(missing)), "runtime_status": status,
         "minimum_install_guidance": [
             "Install a PyTorch build compatible with the local CUDA driver.",
-            "Install one provider runtime and obtain its official model weights.",
-            "Set only the provider configuration and checkpoint/model-path environment variables, then rerun the 10-image shadow qualification.",
+            "Install Transformers and Pillow, then obtain official Grounding DINO weights in a local model directory.",
+            "Set only COPILOT_GROUNDINGDINO_MODEL_PATH to that local directory, then rerun the 10-image shadow qualification.",
         ],
         "class_queries": GENERIC_CLASS_QUERIES,
     }
+
+
+@lru_cache(maxsize=2)
+def _load_transformers_groundingdino(model_path: str) -> tuple[Any, Any, Any]:
+    """Load a local official Grounding DINO model only after configuration passes."""
+    import torch
+    from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
+
+    processor = AutoProcessor.from_pretrained(model_path, local_files_only=True)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_path, local_files_only=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+    return processor, model, torch
+
+
+def _infer_transformers_groundingdino(image_data: bytes, class_queries: dict[str, tuple[str, ...]], *, model_path: str) -> list[dict[str, Any]]:
+    """Run generic-category detection and return normalized, unpromoted candidates."""
+    from PIL import Image
+
+    processor, model, torch = _load_transformers_groundingdino(model_path)
+    image = Image.open(io.BytesIO(image_data)).convert("RGB")
+    query_to_type = {
+        query.lower(): object_type
+        for object_type, queries in class_queries.items()
+        for query in queries
+    }
+    labels = list(query_to_type)
+    inputs = processor(images=image, text=[labels], return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    result = processor.post_process_grounded_object_detection(
+        outputs,
+        inputs.input_ids,
+        threshold=0.35,
+        text_threshold=0.25,
+        target_sizes=[image.size[::-1]],
+    )[0]
+    width, height = image.size
+    items: list[dict[str, Any]] = []
+    detected_labels = result.get("text_labels") or result["labels"]
+    for box, score, label in zip(result["boxes"], result["scores"], detected_labels):
+        x0, y0, x1, y1 = (float(value) for value in box.tolist())
+        text_label = _text(label).lower()
+        object_type = _object_type_for_detected_label(text_label, query_to_type)
+        items.append({
+            "object_type": object_type,
+            "object_label": text_label,
+            "class_query": text_label,
+            "bbox": {
+                "x": max(0.0, x0 / width), "y": max(0.0, y0 / height),
+                "width": max(0.0, (x1 - x0) / width), "height": max(0.0, (y1 - y0) / height),
+                "coordinate_space": "normalized",
+            },
+            "confidence": float(score),
+        })
+    return items
+
+
+def _object_type_for_detected_label(label: str, query_to_type: dict[str, str]) -> str:
+    """Map model-composed generic labels only when every matching term agrees."""
+    matches = {
+        object_type
+        for query, object_type in query_to_type.items()
+        if query == label or query in label
+    }
+    return matches.pop() if len(matches) == 1 else "unknown"
 
 
 def _area(box: dict[str, Any]) -> float:
@@ -209,7 +281,10 @@ def execute_semantic_object_provider(
     if not provider.get("configured"):
         return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_not_configured"}], "execution_error": "provider_not_configured", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
     if infer is None:
-        return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_adapter_not_implemented"}], "execution_error": "provider_adapter_not_implemented", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+        if provider.get("provider_name") != "groundingdino" or not _text(provider.get("model_path")):
+            return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_adapter_not_implemented"}], "execution_error": "provider_adapter_not_implemented", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+        model_path = _text(provider.get("model_path"))
+        infer = lambda data, queries: _infer_transformers_groundingdino(data, queries, model_path=model_path)
     try:
         raw_items = infer(image_data, class_queries or GENERIC_CLASS_QUERIES)
     except Exception as exc:

@@ -115,6 +115,11 @@ single-image generic-category probe before a ten-image qualification. Missing
 runtime or weights returns a sanitised diagnostic and stops; it does not turn
 into an empty detection result, an OpenCV fallback, or an observation.
 
+A successful runtime probe is only a precondition, not qualification. The
+provider still needs to meet the fixed repeated-image object-box and semantic
+scope gates. A detector that is stable but covers too few assets remains
+shadow-only and stops before geometry binding or review-candidate creation.
+
 Primary sources:
 
 - https://github.com/QwenLM/Qwen3-VL

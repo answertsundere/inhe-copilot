@@ -43,5 +43,5 @@ def test_probe_normalizes_provider_output_and_uses_selected_generic_queries(monk
     report = script.run_probe(provider_name="groundingdino", image_path=image, queries=("product", "accessory"), infer=infer)
     assert report["execution_success"] is True
     assert report["normalized_bbox_count"] == 1
-    assert seen == {"probe": ("product", "accessory")}
+    assert seen == {"product": ("product",), "accessory": ("accessory",)}
     assert json.loads(json.dumps(report))["labels"] == ["main object"]

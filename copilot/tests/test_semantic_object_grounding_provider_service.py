@@ -16,12 +16,33 @@ def _provider() -> dict:
 
 
 def test_unconfigured_provider_reports_requirements_without_contour_fallback(monkeypatch):
-    monkeypatch.setattr(service, "semantic_object_runtime_status", lambda: {"modules": {"groundingdino": False, "transformers": False, "torch": False}, "cuda_available": False, "model_paths": {"groundingdino_config": "", "groundingdino_checkpoint": "", "florence2_model": ""}})
+    monkeypatch.setattr(service, "semantic_object_runtime_status", lambda: {"modules": {"groundingdino": False, "transformers": False, "torch": False, "pillow": False}, "cuda_available": False, "model_paths": {"groundingdino_config": "", "groundingdino_checkpoint": "", "groundingdino_model": "", "florence2_model": ""}})
     result = service.preferred_semantic_object_provider(requested_provider="auto")
     assert result["configured"] is False
     assert result["reason"] == "provider_not_configured"
-    assert "groundingdino" in result["missing_requirements"]
+    assert "transformers" in result["missing_requirements"]
     assert result["provider_name"] == "auto"
+
+
+def test_prefers_local_transformers_groundingdino_when_runtime_and_model_exist(monkeypatch):
+    monkeypatch.setattr(service, "semantic_object_runtime_status", lambda: {
+        "modules": {"groundingdino": False, "transformers": True, "torch": True, "pillow": True},
+        "cuda_available": True,
+        "model_paths": {"groundingdino_config": "", "groundingdino_checkpoint": "", "groundingdino_model": "D:/AIModels/model", "florence2_model": ""},
+    })
+    result = service.preferred_semantic_object_provider(requested_provider="groundingdino")
+    assert result["configured"] is True
+    assert result["runtime_name"] == "Transformers/PyTorch"
+    assert result["model_path"] == "D:/AIModels/model"
+
+
+def test_composed_generic_detection_label_keeps_a_single_scope():
+    assert service._object_type_for_detected_label(
+        "package shipping box", {"package": "packaging", "shipping box": "packaging", "product": "product"},
+    ) == "packaging"
+    assert service._object_type_for_detected_label(
+        "product box", {"product": "product", "box": "packaging"},
+    ) == "unknown"
 
 
 def test_normalizes_generic_semantic_product_output_without_promotion_side_effects():
@@ -118,3 +139,17 @@ def test_provider_schema_error_has_no_object_output():
     )
     assert result["objects"] == []
     assert result["schema_error"] == "provider_schema_error"
+
+
+def test_configured_transformers_provider_uses_local_infer_without_promotion(monkeypatch):
+    monkeypatch.setattr(service, "_infer_transformers_groundingdino", lambda *_args, **_kwargs: [
+        {"object_type": "product", "object_label": "product", "class_query": "product", "bbox": _box(), "confidence": 0.9},
+    ])
+    provider = {**_provider(), "model_path": "D:/AIModels/model"}
+    result = service.execute_semantic_object_provider(
+        provider=provider, image_data=b"image", image_sha256="i" * 64, image_size=None,
+        panels=_panel(), ocr_items=[],
+    )
+    assert result["execution_error"] == ""
+    assert result["objects"][0]["observation_eligible"] is False
+    assert result["objects"][0]["can_change_can_send"] is False

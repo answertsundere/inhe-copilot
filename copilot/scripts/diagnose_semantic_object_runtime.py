@@ -35,6 +35,8 @@ def _disk_summary(path: Path, *, label: str) -> dict[str, Any]:
 def build_readiness_report() -> dict[str, Any]:
     runtime = semantic_object_runtime_status()
     cache_root = Path.home() / ".cache" / "huggingface" / "hub"
+    modules, paths = runtime["modules"], runtime["model_paths"]
+    groundingdino_ready = all((modules.get("transformers"), modules.get("torch"), modules.get("pillow"), bool(paths.get("groundingdino_model"))))
     return {
         "schema_version": "semantic_object_runtime_readiness_v1",
         "python_version": platform.python_version(),
@@ -45,7 +47,7 @@ def build_readiness_report() -> dict[str, Any]:
             _directory_summary(Path("D:/AIModels"), label="ai_models"),
         ],
         "disk": [_disk_summary(Path("C:/"), label="system_drive"), _disk_summary(Path("D:/"), label="data_drive")],
-        "provider_route": "groundingdino" if runtime["modules"]["groundingdino"] else "florence2_fallback" if runtime["modules"]["transformers"] else "provider_not_configured",
+        "provider_route": "groundingdino" if groundingdino_ready else "florence2_fallback" if modules["transformers"] else "provider_not_configured",
         "shadow_only": True,
         "formal_kb_write_attempt_count": 0,
         "can_change_can_send": False,

@@ -20,8 +20,8 @@ def test_readiness_reports_missing_runtime_without_private_model_paths(monkeypat
 
 def test_readiness_prefers_groundingdino_when_runtime_is_present(monkeypatch):
     monkeypatch.setattr(script, "semantic_object_runtime_status", lambda: {
-        "modules": {"groundingdino": True, "transformers": True, "torch": True},
+        "modules": {"groundingdino": False, "transformers": True, "torch": True, "pillow": True},
         "cuda_available": True,
-        "model_paths": {"groundingdino_config": "configured", "groundingdino_checkpoint": "configured", "florence2_model": "configured"},
+        "model_paths": {"groundingdino_config": "", "groundingdino_checkpoint": "", "groundingdino_model": "D:/AIModels/model", "florence2_model": "configured"},
     })
     assert script.build_readiness_report()["provider_route"] == "groundingdino"

@@ -182,6 +182,17 @@ correct precondition failure, not a zero-box model result. Qualification was
 not run; no thirty-image scan, Geometry Binding, review candidate, formal write,
 or `can_send` change is permitted.
 
+Later that day, an isolated runtime and official `grounding-dino-tiny` model
+directory were prepared outside the repository. The adapter uses the supported
+Transformers image-text processor and local model directory, rather than the
+older separately compiled `groundingdino` package. The generic-category
+single-image probe completed model inference successfully.
+The follow-up ten-image, two-repeat qualification passed source reads,
+execution, schema, repeat type/box stability, and all safety-isolation checks,
+but failed the object-box gate at 12/20 (60%) and the semantic-scope gate at
+16/18 (88.9%). It therefore did not advance to a thirty-image scan, Geometry
+Binding, review candidates, formal writes, or `can_send` changes.
+
 ## Qualification gate
 
 The script runs a fixed, ordered set of up to ten approved `size_image` assets

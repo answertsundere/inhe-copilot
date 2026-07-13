@@ -37,6 +37,15 @@ def parse_generic_queries(value: str) -> tuple[str, ...]:
     return terms
 
 
+def probe_class_queries(queries: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    """Keep the provider's generic query-to-scope mapping during a probe."""
+    return {
+        object_type: tuple(query for query in values if query in queries)
+        for object_type, values in GENERIC_CLASS_QUERIES.items()
+        if any(query in queries for query in values)
+    }
+
+
 def run_probe(
     *, provider_name: str, image_path: Path, queries: tuple[str, ...],
     infer: Callable[[bytes, dict[str, tuple[str, ...]]], list[dict[str, Any]]] | None = None,
@@ -63,7 +72,7 @@ def run_probe(
         return base
     result = execute_semantic_object_provider(
         provider=provider, image_data=image_data, image_sha256=hashlib.sha256(image_data).hexdigest(),
-        image_size=None, panels=None, ocr_items=[], class_queries={"probe": queries}, infer=infer,
+        image_size=None, panels=None, ocr_items=[], class_queries=probe_class_queries(queries), infer=infer,
     )
     objects = list(result.get("objects") or [])
     base.update({
