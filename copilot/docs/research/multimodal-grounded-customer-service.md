@@ -108,6 +108,13 @@ predictions fail closed. No provider output is a reviewed observation or a
 customer-facing fact. This keeps an unavailable or unstable model from turning
 an unscoped large region into a product dimension.
 
+Runtime availability is also a product-safety boundary. A present GPU or an
+installed image library does not prove that a semantic detector, compatible
+weights, or a provider adapter exists. The project therefore performs a
+single-image generic-category probe before a ten-image qualification. Missing
+runtime or weights returns a sanitised diagnostic and stops; it does not turn
+into an empty detection result, an OpenCV fallback, or an observation.
+
 Primary sources:
 
 - https://github.com/QwenLM/Qwen3-VL

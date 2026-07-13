@@ -162,6 +162,26 @@ provider runtime plus its official model weights, and explicit model-path
 configuration. Installation alone is not qualification evidence; the same
 fixed ten-image gate must pass before geometry binding is enabled.
 
+### Runtime readiness and minimal probe
+
+Phase 0.4G.5 adds a read-only runtime readiness report and a one-image probe
+before any semantic ten-image run. The readiness report records Python and
+provider module availability, CUDA visibility through PyTorch when installed,
+model-cache presence, configured model-path presence, and aggregate disk space
+without exposing tokens or full private paths. The probe permits only generic
+category terms such as `product`, `packaging`, `component`, and `accessory`.
+It reports provider/runtime/weight availability, normalised box counts, labels,
+confidence, latency, and a sanitised error category. It never writes
+observations, staging records, or formal knowledge.
+
+On 2026-07-13, readiness found Python 3.11.9, an RTX A6000, and sufficient
+local disk space, but no PyTorch, Transformers, Grounding DINO, Florence-2, or
+recognised model cache. The Grounding DINO minimal probe therefore stopped
+before image/model inference with `provider_not_configured`. This is the
+correct precondition failure, not a zero-box model result. Qualification was
+not run; no thirty-image scan, Geometry Binding, review candidate, formal write,
+or `can_send` change is permitted.
+
 ## Qualification gate
 
 The script runs a fixed, ordered set of up to ten approved `size_image` assets

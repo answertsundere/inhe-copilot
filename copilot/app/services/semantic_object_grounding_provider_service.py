@@ -201,6 +201,7 @@ def normalize_semantic_object_items(
 def execute_semantic_object_provider(
     *, provider: dict[str, Any], image_data: bytes, image_sha256: str, image_size: tuple[int, int] | None,
     panels: list[dict[str, Any]] | None, ocr_items: list[dict[str, Any]] | None,
+    class_queries: dict[str, tuple[str, ...]] | None = None,
     infer: Callable[[bytes, dict[str, tuple[str, ...]]], list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Run an injected provider implementation, or fail closed until one is configured."""
@@ -210,7 +211,7 @@ def execute_semantic_object_provider(
     if infer is None:
         return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_adapter_not_implemented"}], "execution_error": "provider_adapter_not_implemented", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
     try:
-        raw_items = infer(image_data, GENERIC_CLASS_QUERIES)
+        raw_items = infer(image_data, class_queries or GENERIC_CLASS_QUERIES)
     except Exception as exc:
         return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_execution_error", "error_type": type(exc).__name__}], "execution_error": "provider_execution_error", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
     if not isinstance(raw_items, list) or not all(isinstance(item, dict) for item in raw_items):
