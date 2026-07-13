@@ -193,6 +193,24 @@ but failed the object-box gate at 12/20 (60%) and the semantic-scope gate at
 16/18 (88.9%). It therefore did not advance to a thirty-image scan, Geometry
 Binding, review candidates, formal writes, or `can_send` changes.
 
+Florence-2 Base was then evaluated as a second local candidate using the
+official Transformers `<OD>` task and the same isolated runtime. Its 0.23B
+checkpoint is small enough for the existing local GPU, and its single-image
+probe completed successfully. On the repeated ten-image gate, it achieved
+20/20 image reads, execution, schema, and accepted object boxes, with stable
+type and box results. However, only 4/30 output labels could be safely scoped
+(13.3%): the remaining labels were broad categories such as `furniture`,
+`ladder`, and `computer monitor`, which remain `unknown` under the generic
+scope contract. The run had zero package/product or component/overall leakage,
+formal writes, and `can_send` changes, but failed the 90% semantic-scope gate.
+It therefore also stops before the thirty-image scan and Geometry Binding.
+
+| Provider | Object boxes | Semantic scope | Repeatable boxes | Gate result |
+| --- | --- | --- | --- | --- |
+| OpenCV conservative baseline | 20/20 | 4/20 | 10/10 | rejected: scope only |
+| Grounding DINO Tiny | 12/20 | 16/18 | 8/8 | rejected: box coverage and scope |
+| Florence-2 Base | 20/20 | 4/30 | 10/10 | rejected: scope only |
+
 ## Qualification gate
 
 The script runs a fixed, ordered set of up to ten approved `size_image` assets

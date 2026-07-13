@@ -24,6 +24,17 @@ def test_unconfigured_provider_reports_requirements_without_contour_fallback(mon
     assert result["provider_name"] == "auto"
 
 
+def test_unconfigured_florence_provider_reports_its_local_model_requirement(monkeypatch):
+    monkeypatch.setattr(service, "semantic_object_runtime_status", lambda: {
+        "modules": {"groundingdino": False, "transformers": True, "torch": True, "pillow": True},
+        "cuda_available": True,
+        "model_paths": {"groundingdino_config": "", "groundingdino_checkpoint": "", "groundingdino_model": "", "florence2_model": ""},
+    })
+    result = service.preferred_semantic_object_provider(requested_provider="florence2")
+    assert result["configured"] is False
+    assert "COPILOT_FLORENCE2_MODEL_PATH" in result["missing_requirements"]
+
+
 def test_prefers_local_transformers_groundingdino_when_runtime_and_model_exist(monkeypatch):
     monkeypatch.setattr(service, "semantic_object_runtime_status", lambda: {
         "modules": {"groundingdino": False, "transformers": True, "torch": True, "pillow": True},
@@ -34,6 +45,18 @@ def test_prefers_local_transformers_groundingdino_when_runtime_and_model_exist(m
     assert result["configured"] is True
     assert result["runtime_name"] == "Transformers/PyTorch"
     assert result["model_path"] == "D:/AIModels/model"
+
+
+def test_prefers_local_transformers_florence2_when_model_exists(monkeypatch):
+    monkeypatch.setattr(service, "semantic_object_runtime_status", lambda: {
+        "modules": {"groundingdino": False, "transformers": True, "torch": True, "pillow": True},
+        "cuda_available": True,
+        "model_paths": {"groundingdino_config": "", "groundingdino_checkpoint": "", "groundingdino_model": "", "florence2_model": "D:/AIModels/florence"},
+    })
+    result = service.preferred_semantic_object_provider(requested_provider="florence2")
+    assert result["configured"] is True
+    assert result["provider_name"] == "florence2"
+    assert result["model_path"] == "D:/AIModels/florence"
 
 
 def test_composed_generic_detection_label_keeps_a_single_scope():
@@ -152,4 +175,18 @@ def test_configured_transformers_provider_uses_local_infer_without_promotion(mon
     )
     assert result["execution_error"] == ""
     assert result["objects"][0]["observation_eligible"] is False
+    assert result["objects"][0]["can_change_can_send"] is False
+
+
+def test_configured_florence_provider_uses_local_infer_without_promotion(monkeypatch):
+    monkeypatch.setattr(service, "_infer_transformers_florence2", lambda *_args, **_kwargs: [
+        {"object_type": "unknown", "object_label": "generic object", "class_query": "generic_object_detection", "bbox": _box(), "confidence": 0.5},
+    ])
+    provider = {"configured": True, "provider_name": "florence2", "model_name": "Florence-2", "runtime_name": "Transformers/PyTorch", "model_path": "D:/AIModels/florence"}
+    result = service.execute_semantic_object_provider(
+        provider=provider, image_data=b"image", image_sha256="j" * 64, image_size=None,
+        panels=_panel(), ocr_items=[],
+    )
+    assert result["execution_error"] == ""
+    assert result["objects"][0]["object_type"] == "unknown"
     assert result["objects"][0]["can_change_can_send"] is False

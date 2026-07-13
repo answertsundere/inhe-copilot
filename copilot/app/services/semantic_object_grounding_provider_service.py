@@ -78,7 +78,8 @@ def preferred_semantic_object_provider(*, requested_provider: str = "auto") -> d
     if requested in {"auto", "florence2"} and florence_ready:
         return {
             "configured": True, "provider_name": "florence2", "model_name": "Florence-2",
-            "runtime_name": "Transformers/PyTorch", "class_queries": GENERIC_CLASS_QUERIES,
+            "runtime_name": "Transformers/PyTorch", "model_path": paths["florence2_model"],
+            "class_queries": GENERIC_CLASS_QUERIES,
             "runtime_status": status,
         }
     missing = []
@@ -163,6 +164,59 @@ def _object_type_for_detected_label(label: str, query_to_type: dict[str, str]) -
         if query == label or query in label
     }
     return matches.pop() if len(matches) == 1 else "unknown"
+
+
+@lru_cache(maxsize=2)
+def _load_transformers_florence2(model_path: str) -> tuple[Any, Any, Any]:
+    """Load a local Florence-2 checkpoint only after its runtime contract passes."""
+    import torch
+    from transformers import AutoProcessor, Florence2ForConditionalGeneration
+
+    processor = AutoProcessor.from_pretrained(model_path, local_files_only=True)
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    model = Florence2ForConditionalGeneration.from_pretrained(model_path, local_files_only=True, dtype=dtype)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+    return processor, model, torch
+
+
+def _infer_transformers_florence2(image_data: bytes, class_queries: dict[str, tuple[str, ...]], *, model_path: str) -> list[dict[str, Any]]:
+    """Run Florence-2 generic object detection without promoting its labels to facts."""
+    from PIL import Image
+
+    processor, model, torch = _load_transformers_florence2(model_path)
+    image = Image.open(io.BytesIO(image_data)).convert("RGB")
+    task_prompt = "<OD>"
+    dtype = torch.float16 if model.device.type == "cuda" else torch.float32
+    inputs = processor(text=task_prompt, images=image, return_tensors="pt").to(model.device, dtype)
+    with torch.no_grad():
+        generated_ids = model.generate(**inputs, max_new_tokens=512, num_beams=3)
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+    parsed = processor.post_process_generation(generated_text, task=task_prompt, image_size=image.size).get(task_prompt, {})
+    query_to_type = {
+        query.lower(): object_type
+        for object_type, queries in class_queries.items()
+        for query in queries
+    }
+    items: list[dict[str, Any]] = []
+    for box, label in zip(parsed.get("bboxes") or [], parsed.get("labels") or []):
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            continue
+        x0, y0, x1, y1 = (float(value) for value in box)
+        text_label = _text(label).lower()
+        items.append({
+            "object_type": _object_type_for_detected_label(text_label, query_to_type),
+            "object_label": text_label,
+            "class_query": "generic_object_detection",
+            "bbox": {
+                "x": max(0.0, x0 / image.width), "y": max(0.0, y0 / image.height),
+                "width": max(0.0, (x1 - x0) / image.width), "height": max(0.0, (y1 - y0) / image.height),
+                "coordinate_space": "normalized",
+            },
+            "confidence": 0.5,
+        })
+    return items
 
 
 def _area(box: dict[str, Any]) -> float:
@@ -281,10 +335,13 @@ def execute_semantic_object_provider(
     if not provider.get("configured"):
         return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_not_configured"}], "execution_error": "provider_not_configured", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
     if infer is None:
-        if provider.get("provider_name") != "groundingdino" or not _text(provider.get("model_path")):
-            return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_adapter_not_implemented"}], "execution_error": "provider_adapter_not_implemented", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
         model_path = _text(provider.get("model_path"))
-        infer = lambda data, queries: _infer_transformers_groundingdino(data, queries, model_path=model_path)
+        if provider.get("provider_name") == "groundingdino" and model_path:
+            infer = lambda data, queries: _infer_transformers_groundingdino(data, queries, model_path=model_path)
+        elif provider.get("provider_name") == "florence2" and model_path:
+            infer = lambda data, queries: _infer_transformers_florence2(data, queries, model_path=model_path)
+        else:
+            return {"objects": [], "rejected": [], "diagnostics": [{"reason": "provider_adapter_not_implemented"}], "execution_error": "provider_adapter_not_implemented", "schema_error": "", "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
     try:
         raw_items = infer(image_data, class_queries or GENERIC_CLASS_QUERIES)
     except Exception as exc:

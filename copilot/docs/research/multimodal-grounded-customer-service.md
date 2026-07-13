@@ -119,6 +119,9 @@ A successful runtime probe is only a precondition, not qualification. The
 provider still needs to meet the fixed repeated-image object-box and semantic
 scope gates. A detector that is stable but covers too few assets remains
 shadow-only and stops before geometry binding or review-candidate creation.
+Likewise, a detector that consistently returns broad visual labels must keep
+them as `unknown`; stable boxes alone do not prove product, packaging, or
+component scope.
 
 Primary sources:
 
