@@ -142,6 +142,42 @@ formal table was written, and no reply or `can_send` field was changed. This is
 the intended fail-closed outcome; future work must improve the provider's panel
 localisation reliability rather than weaken panel/object/label grounding.
 
+### Deterministic panel proposal qualification
+
+Phase 0.4E.3 adds a conservative, deterministic panel-proposal step before
+multi-panel VLM grounding. It uses grayscale whitespace projection already
+available through Pillow, so it adds no layout model or resident service.
+Reliable proposals contain only normalised geometry, layout axis, confidence,
+and diagnostics; they do not describe products, parts, modes, measurements, or
+claims. The proposal step supports strong vertical, horizontal, and regular-grid
+separators. A continuous specification sheet remains a single panel even when
+it contains multiple product images, measurements, and text blocks.
+
+Qwen documents relative-coordinate visual grounding, while OpenCV documents
+standard image-processing primitives such as segmentation and contours. The
+project deliberately uses neither model coordinates nor a contour heuristic as
+formal truth: VLM boxes may accept, make small proposal-aligned adjustments, or
+merge proposal regions. A large proposal drift, cross-panel object/label
+binding, near-duplicate full-image boxes, or an out-of-panel child box fails
+closed. Adjacent non-overlapping panels may cover the full canvas; duplicate
+near-full-image panels remain blocked by IoU and center-separation checks.
+
+The 2026-07-13 qualification set did not contain reliable whitespace layouts,
+so no proposal was used to override a VLM result. The final ten-image replay
+read all images and preserved zero scope leakage, high-risk admissions, formal
+writes, and sendability changes, but the local VLM varied in object/label box
+validity and reached only 30/43 stage execution and 23/43 schema validity.
+The gate therefore remains blocked: no thirty-image scan, review candidates,
+formal evidence integration, or delivery change is permitted. This is useful
+negative evidence that the current local model needs a separately qualified
+layout/grounding strategy before promotion.
+
+Primary sources used for this design:
+
+- https://docs.opencv.org/master/d7/da8/tutorial_table_of_content_imgproc.html
+- https://github.com/QwenLM/Qwen3-VL
+- https://qwen.ai/blog?from=research.research-list&id=b550154aa5ba6b812cdebba2b9dc1156c4369d40
+
 ### Model prediction review lifecycle
 
 For the Product Media Observation review lifecycle, the project also reviewed

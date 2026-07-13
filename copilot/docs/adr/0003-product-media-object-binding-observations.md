@@ -70,9 +70,18 @@ before validated cache or URL fallback and records the observed SHA-256 only as
 shadow provenance. Multi-panel classification uses panel/object/label bounding
 boxes; a repair call may repair missing panel boxes but cannot create facts.
 Cross-panel bindings and near-duplicate full-image panel boxes are rejected.
+The v3 preflight may additionally create deterministic layout proposals from
+image geometry. Proposals are localisation-only, and a VLM may only verify,
+make a bounded alignment, merge compatible regions, or reject them. A proposal
+does not create a product fact or bypass object/label scope and containment.
 
 A ten-image retest on 2026-07-13 restored source reads to 10/10 but rejected
 one image whose two repaired panels overlapped as near-full-image duplicates.
 The execution/schema threshold was therefore still not met. A later phase must
 stabilise the worker contract before any v3 review persistence or
 evidence-promotion contract is introduced.
+
+The follow-up deterministic proposal qualification also failed the ten-image
+gate because the corpus did not yield reliable whitespace proposals and the
+local VLM's object/label boxes were not stable. The system remains shadow-only;
+this does not authorize a thirty-image scan or candidate persistence.

@@ -23,6 +23,12 @@ from app.services.product_media_observation_service import (
     media_asset_eligibility,
     resolve_product_media_image_details,
 )
+from app.services.product_media_panel_proposal_service import (
+    bbox_containment_ratio,
+    panel_geometry_diagnostics,
+    panel_proposal_alignment,
+    propose_panel_layout,
+)
 
 
 V3_SCHEMA_VERSION = "product_media_observation_v3"
@@ -54,21 +60,25 @@ def v3_model_prompt(*, max_observations: int, stage: str = "measurement_binding"
     shared = (
         f"Return one JSON object only. schema_version must be {V3_SCHEMA_VERSION}; stage must be {stage}. "
         "Never infer load, safety, toxicity, certification, child suitability, wall fixing, drilling, or installation instructions. "
-        "Use only what is visible in this image. "
+        "Use only what is visible in this image. Every bbox uses x,y as its top-left corner, with width,height extending right and down; never use center coordinates. "
     )
     prior = json.dumps(context or {}, ensure_ascii=False, separators=(",", ":"))
     if stage == "image_classification":
         return shared + (
             "Return image_primary_type as one of single_panel, multi_panel, packaging_only, product_only, mixed_packaging_product. "
             "Return panels as a list. Each panel needs panel_ref, panel_title, panel_bbox, state_or_mode. "
-            "For a single-panel image panels must be exactly []. Only use a non-empty panels list when image_primary_type is multi_panel; "
-            "then every panel_bbox is mandatory and uses x,y,width,height plus coordinate_space."
+            "For a single-panel image panels must be exactly []. A continuous specification sheet or product canvas remains single_panel even when it shows multiple parts, measurements, or text blocks. "
+            "Only use a non-empty panels list when image_primary_type is multi_panel and the image has distinct framed or gutter-separated sub-canvases; "
+            "then every panel_bbox is mandatory and uses x,y,width,height plus coordinate_space. "
+            "If Panel Proposal Context has status ready, keep each panel aligned to those proposals: accept, make only a small adjustment, "
+            "merge proposals only when they clearly form one panel, or reject the proposal. Do not return unrelated near-full-image boxes. "
+            f"Panel Proposal Context: {prior}"
         )
     if stage == PANEL_BBOX_REPAIR_STAGE:
         return shared + (
             "Return panels only. Preserve every existing panel_ref and provide only panel_ref and panel_bbox. "
             "Do not add objects, labels, measurements, facts, or text extraction. Every panel_bbox is mandatory and uses "
-            "x,y,width,height plus coordinate_space. Previous stage context: "
+            "x,y,width,height plus coordinate_space. Keep repaired boxes aligned to any supplied panel proposals; do not return full-image duplicates. Previous stage context: "
             f"{prior}"
         )
     if stage == "object_localization":
@@ -153,14 +163,6 @@ def _normalised_bbox(value: Any, *, image_size: tuple[int, int] | None = None) -
 
 def _bbox_area(bbox: dict[str, float]) -> float:
     return bbox["width"] * bbox["height"]
-
-
-def _bbox_iou(left: dict[str, float], right: dict[str, float]) -> float:
-    x1, y1 = max(left["x"], right["x"]), max(left["y"], right["y"])
-    x2, y2 = min(left["x"] + left["width"], right["x"] + right["width"]), min(left["y"] + left["height"], right["y"] + right["height"])
-    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    union = _bbox_area(left) + _bbox_area(right) - intersection
-    return intersection / union if union else 0.0
 
 
 def _valid_panel_bbox(bbox: dict[str, float] | None) -> bool:
@@ -251,8 +253,16 @@ class ProductMediaObservationV3Extractor:
         return result
 
     def _run_stages(self, asset: Any, image: bytes, extension: str, timeout_seconds: int) -> tuple[dict[str, Any] | None, list[dict[str, Any]], str]:
-        context: dict[str, Any] = {}
+        panel_proposal = propose_panel_layout(image)
+        context: dict[str, Any] = {"panel_proposal": panel_proposal}
         diagnostics: list[dict[str, Any]] = []
+        diagnostics.append({
+            "stage": "panel_proposal", "execution_status": "success",
+            "schema_status": "valid" if panel_proposal.get("status") == "ready" else "skipped",
+            "proposal_status": panel_proposal.get("status"), "reason": panel_proposal.get("reason", ""),
+            "result_count": len(panel_proposal.get("panels") or []),
+            "geometric_diagnostics": panel_proposal.get("geometric_diagnostics", {}),
+        })
         try:
             with Image.open(io.BytesIO(image)) as source:
                 image_size: tuple[int, int] | None = source.size
@@ -264,7 +274,7 @@ class ProductMediaObservationV3Extractor:
             except Exception as exc:  # external VLM boundary: record without exposing prompt/image output
                 diagnostics.append({"stage": stage, "execution_status": "error", "error_type": type(exc).__name__})
                 return None, diagnostics, "provider_error"
-            valid, compact, detail = self._validate_stage(stage, raw, image_size=image_size)
+            valid, compact, detail = self._validate_stage(stage, raw, image_size=image_size, panel_proposal=panel_proposal)
             diagnostics.append(detail)
             if not valid:
                 return None, diagnostics, detail.get("reason", "schema_validation_failed")
@@ -275,7 +285,7 @@ class ProductMediaObservationV3Extractor:
                     diagnostics.append({"stage": PANEL_BBOX_REPAIR_STAGE, "execution_status": "error", "error_type": type(exc).__name__})
                     return None, diagnostics, "provider_error"
                 repaired, repaired_compact, repair_detail = self._validate_panel_repair(
-                    repair_raw, image_size=image_size, expected_panels=compact["panels"],
+                    repair_raw, image_size=image_size, expected_panels=compact["panels"], panel_proposal=panel_proposal,
                 )
                 diagnostics.append(repair_detail)
                 if not repaired:
@@ -291,8 +301,12 @@ class ProductMediaObservationV3Extractor:
                     if item.get("panel_ref") not in panels_by_ref:
                         diagnostics.append({"stage": stage, "execution_status": "success", "schema_status": "invalid", "reason": "panel_ref_missing"})
                         return None, diagnostics, "schema_validation_failed"
+                    panel = panels_by_ref[item["panel_ref"]]
+                    box_key = "object_bbox" if stage == "object_localization" else "label_bbox"
+                    if bbox_containment_ratio(item[box_key], panel["panel_bbox"]) < 0.80:
+                        diagnostics.append({"stage": stage, "execution_status": "success", "schema_status": "invalid", "reason": "schema_validation_failed", "detail": f"{box_key}_outside_panel"})
+                        return None, diagnostics, "schema_validation_failed"
                     if stage == "object_localization":
-                        panel = panels_by_ref[item["panel_ref"]]
                         if panel["state_or_mode"] and not item["state_or_mode"]:
                             item["state_or_mode"] = panel["state_or_mode"]
         subjects = {item["subject_ref"]: item for item in context["object_localization"]["subjects"]}
@@ -323,7 +337,9 @@ class ProductMediaObservationV3Extractor:
             })
         return {"schema_version": V3_SCHEMA_VERSION, "model_version": "staged", "observations": observations, "stage_rejected_evidence": rejected}, diagnostics, ""
 
-    def _validate_stage(self, stage: str, raw: Any, *, image_size: tuple[int, int] | None) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+    def _validate_stage(
+        self, stage: str, raw: Any, *, image_size: tuple[int, int] | None, panel_proposal: dict[str, Any],
+    ) -> tuple[bool, dict[str, Any], dict[str, Any]]:
         base = {"stage": stage, "execution_status": "success", "schema_status": "invalid"}
         if not isinstance(raw, dict) or raw.get("schema_version") != V3_SCHEMA_VERSION or raw.get("stage") != stage:
             return False, {}, {**base, "field_presence": {"schema_version": bool(isinstance(raw, dict) and raw.get("schema_version")), "stage": bool(isinstance(raw, dict) and raw.get("stage"))}}
@@ -352,11 +368,21 @@ class ProductMediaObservationV3Extractor:
                 candidate_panels.append({"panel_ref": _text(item["panel_ref"]), "panel_title": title, "panel_bbox": bbox, "state_or_mode": _text(item.get("state_or_mode")) or title})
             if not candidate_panels:
                 return False, {}, {**base, "reason": "panel_bbox_missing"}
-            if repair_required:
-                return True, {"image_primary_type": image_primary_type, "panels": candidate_panels, "needs_panel_repair": True}, {**base, "schema_status": "valid", "result_count": len(candidate_panels), "warnings": ["panel_bbox_repair_required"]}
-            if any(_bbox_iou(left["panel_bbox"], right["panel_bbox"]) >= 0.9 for index, left in enumerate(candidate_panels) for right in candidate_panels[index + 1:]):
-                return False, {}, {**base, "reason": "invalid_panel_bbox"}
-            return True, {"image_primary_type": image_primary_type, "panels": candidate_panels}, {**base, "schema_status": "valid", "result_count": len(candidate_panels)}
+            geometry = panel_geometry_diagnostics(candidate_panels, layout_axis=panel_proposal.get("layout_axis", "unknown")) if not repair_required else {}
+            if repair_required or not geometry.get("valid"):
+                return True, {"image_primary_type": image_primary_type, "panels": candidate_panels, "needs_panel_repair": True}, {
+                    **base, "schema_status": "valid", "result_count": len(candidate_panels),
+                    "warnings": ["panel_bbox_repair_required"], "geometric_diagnostics": geometry,
+                }
+            alignment = panel_proposal_alignment(candidate_panels, panel_proposal)
+            if not alignment["accepted"]:
+                return False, {}, {**base, "reason": alignment["reason"], "geometric_diagnostics": geometry, "proposal_alignment": alignment}
+            for item, match in zip(candidate_panels, alignment["matches"]):
+                item["proposal_ids"] = match["proposal_ids"]
+            return True, {"image_primary_type": image_primary_type, "panels": candidate_panels}, {
+                **base, "schema_status": "valid", "result_count": len(candidate_panels),
+                "geometric_diagnostics": geometry, "proposal_alignment": alignment,
+            }
         collection = "subjects" if stage == "object_localization" else "labels" if stage == "label_localization" else "observations"
         rows = raw.get(collection)
         if not isinstance(rows, list):
@@ -385,7 +411,7 @@ class ProductMediaObservationV3Extractor:
         return True, {collection: clean}, {**base, "schema_status": "valid", "result_count": len(clean)}
 
     def _validate_panel_repair(
-        self, raw: Any, *, image_size: tuple[int, int] | None, expected_panels: list[dict[str, Any]],
+        self, raw: Any, *, image_size: tuple[int, int] | None, expected_panels: list[dict[str, Any]], panel_proposal: dict[str, Any],
     ) -> tuple[bool, dict[str, Any], dict[str, Any]]:
         base = {"stage": PANEL_BBOX_REPAIR_STAGE, "execution_status": "success", "schema_status": "invalid"}
         if not isinstance(raw, dict) or raw.get("schema_version") != V3_SCHEMA_VERSION or raw.get("stage") != PANEL_BBOX_REPAIR_STAGE:
@@ -410,9 +436,15 @@ class ProductMediaObservationV3Extractor:
         if set(repaired_by_ref) != set(expected_by_ref):
             return False, {}, {**base, "reason": "panel_bbox_missing"}
         repaired = [repaired_by_ref[item["panel_ref"]] for item in expected_panels]
-        if any(_bbox_iou(left["panel_bbox"], right["panel_bbox"]) >= 0.9 for index, left in enumerate(repaired) for right in repaired[index + 1:]):
-            return False, {}, {**base, "reason": "invalid_panel_bbox"}
-        return True, {"panels": repaired}, {**base, "schema_status": "valid", "result_count": len(repaired)}
+        geometry = panel_geometry_diagnostics(repaired, layout_axis=panel_proposal.get("layout_axis", "unknown"))
+        alignment = panel_proposal_alignment(repaired, panel_proposal)
+        if not geometry["valid"]:
+            return False, {}, {**base, "reason": "invalid_panel_bbox", "geometric_diagnostics": geometry, "proposal_alignment": alignment}
+        if not alignment["accepted"]:
+            return False, {}, {**base, "reason": alignment["reason"], "geometric_diagnostics": geometry, "proposal_alignment": alignment}
+        for item, match in zip(repaired, alignment["matches"]):
+            item["proposal_ids"] = match["proposal_ids"]
+        return True, {"panels": repaired}, {**base, "schema_status": "valid", "result_count": len(repaired), "geometric_diagnostics": geometry, "proposal_alignment": alignment}
 
     def _parse(self, asset: Any, raw: Any, observed_media_sha256: str) -> dict[str, Any]:
         asset_id = int(_asset_value(asset, "id") or _asset_value(asset, "asset_id") or 0)

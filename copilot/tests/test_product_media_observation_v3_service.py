@@ -57,6 +57,19 @@ def _patch_image(monkeypatch):
     )
 
 
+def _patch_ready_vertical_proposal(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.product_media_observation_v3_service.propose_panel_layout",
+        lambda _image: {
+            "status": "ready", "layout_axis": "vertical", "panels": [
+                {"proposal_id": "top", "panel_bbox": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 0.45}},
+                {"proposal_id": "bottom", "panel_bbox": {"x": 0.0, "y": 0.55, "width": 1.0, "height": 0.45}},
+            ],
+            "geometric_diagnostics": {"valid": True},
+        },
+    )
+
+
 def test_staged_measurement_is_bound_to_product_and_axis(monkeypatch):
     _patch_image(monkeypatch)
     result = _extractor(_stages()).extract_asset(_asset(), expected_product_identity={"i_id": "IID-1"})
@@ -66,7 +79,7 @@ def test_staged_measurement_is_bound_to_product_and_axis(monkeypatch):
     assert item["measurement_axis"] == "width"
     assert item["object_bbox"]["coordinate_space"] == "normalized"
     assert item["direct_answer_allowed"] is False
-    assert all(row["schema_status"] == "valid" for row in result["stage_diagnostics"])
+    assert all(row["schema_status"] == "valid" for row in result["stage_diagnostics"] if row["stage"] != "panel_proposal")
 
 
 def test_packaging_and_component_measurements_cannot_be_selected_as_product_dimensions(monkeypatch):
@@ -164,7 +177,7 @@ def test_impossible_pixel_bbox_uses_only_bounded_normalized_1000_fallback():
 def test_multi_panel_requires_panel_bbox_and_propagates_declared_mode(monkeypatch):
     _patch_image(monkeypatch)
     stages = _stages()
-    stages["image_classification"] = {"schema_version": "product_media_observation_v3", "stage": "image_classification", "image_primary_type": "multi_panel", "panels": [{"panel_ref": "panel-1", "panel_title": "folded view", "panel_bbox": _bbox(), "state_or_mode": "folded"}]}
+    stages["image_classification"] = {"schema_version": "product_media_observation_v3", "stage": "image_classification", "image_primary_type": "multi_panel", "panels": [{"panel_ref": "panel-1", "panel_title": "folded view", "panel_bbox": _bbox(0, 0, 900, 900), "state_or_mode": "folded"}]}
     stages["object_localization"]["subjects"][0]["panel_ref"] = "panel-1"
     result = _extractor(stages).extract_asset(_asset())
     assert result["observations"][0]["state_or_mode"] == "folded"
@@ -174,6 +187,7 @@ def test_transport_prompts_are_staged_and_json_parser_accepts_fence():
     for stage in ("image_classification", "object_localization", "label_localization", "measurement_binding"):
         prompt = v3_model_prompt(max_observations=5, stage=stage, context={})
         assert stage in prompt
+        assert "top-left" in prompt
     assert parse_v3_model_json('```json\n{"schema_version":"product_media_observation_v3","observations":[]}\n```')["observations"] == []
 
 
@@ -189,7 +203,7 @@ def test_single_panel_gets_a_synthetic_root_panel_without_forced_split(monkeypat
     result = _extractor(stages).extract_asset(_asset())
     assert result["observations"]
     assert result["observations"][0]["panel_ref"] == "root"
-    assert result["stage_diagnostics"][0]["warnings"] == ["synthetic_root_panel"]
+    assert result["stage_diagnostics"][1]["warnings"] == ["synthetic_root_panel"]
 
 
 def test_multi_panel_missing_boxes_uses_repair_and_records_panel_refs(monkeypatch):
@@ -202,7 +216,7 @@ def test_multi_panel_missing_boxes_uses_repair_and_records_panel_refs(monkeypatc
     }
     stages[PANEL_BBOX_REPAIR_STAGE] = {
         "schema_version": "product_media_observation_v3", "stage": PANEL_BBOX_REPAIR_STAGE,
-        "panels": [{"panel_ref": "left", "panel_bbox": _bbox()}],
+        "panels": [{"panel_ref": "left", "panel_bbox": _bbox(0, 0, 900, 900)}],
     }
     stages["object_localization"]["subjects"][0]["panel_ref"] = "left"
     stages["label_localization"]["labels"][0]["panel_ref"] = "left"
@@ -210,7 +224,7 @@ def test_multi_panel_missing_boxes_uses_repair_and_records_panel_refs(monkeypatc
     assert result["rejected_evidence"] == []
     assert result["observations"][0]["panel_ref"] == "left"
     assert result["observations"][0]["panel_bbox"]["coordinate_space"] == "normalized"
-    assert result["stage_diagnostics"][1]["stage"] == PANEL_BBOX_REPAIR_STAGE
+    assert result["stage_diagnostics"][2]["stage"] == PANEL_BBOX_REPAIR_STAGE
 
 
 def test_multi_panel_repair_failure_rejects_whole_image(monkeypatch):
@@ -228,6 +242,46 @@ def test_multi_panel_repair_failure_rejects_whole_image(monkeypatch):
     assert result["rejected_evidence"][0]["reason"] == "panel_bbox_missing"
 
 
+def test_panel_repair_accepts_a_reliable_proposal_without_creating_facts(monkeypatch):
+    _patch_image(monkeypatch); _patch_ready_vertical_proposal(monkeypatch)
+    stages = _stages()
+    stages["image_classification"] = {
+        "schema_version": "product_media_observation_v3", "stage": "image_classification", "image_primary_type": "multi_panel",
+        "panels": [{"panel_ref": "top", "panel_title": "top view"}, {"panel_ref": "bottom", "panel_title": "bottom view"}],
+    }
+    stages[PANEL_BBOX_REPAIR_STAGE] = {
+        "schema_version": "product_media_observation_v3", "stage": PANEL_BBOX_REPAIR_STAGE,
+        "panels": [{"panel_ref": "top", "panel_bbox": _bbox(0, 0, 1000, 450)}, {"panel_ref": "bottom", "panel_bbox": _bbox(0, 550, 1000, 450)}],
+    }
+    stages["object_localization"]["subjects"][0].update({"panel_ref": "top", "object_bbox": _bbox(10, 10, 400, 300)})
+    stages["label_localization"]["labels"][0].update({"panel_ref": "top", "label_bbox": _bbox(120, 120, 100, 100)})
+
+    result = _extractor(stages).extract_asset(_asset())
+
+    assert result["rejected_evidence"] == []
+    assert result["observations"][0]["direct_answer_allowed"] is False
+    repair = next(item for item in result["stage_diagnostics"] if item["stage"] == PANEL_BBOX_REPAIR_STAGE)
+    assert repair["proposal_alignment"]["accepted"] is True
+
+
+def test_panel_repair_rejects_large_drift_from_reliable_proposal(monkeypatch):
+    _patch_image(monkeypatch); _patch_ready_vertical_proposal(monkeypatch)
+    stages = _stages()
+    stages["image_classification"] = {
+        "schema_version": "product_media_observation_v3", "stage": "image_classification", "image_primary_type": "multi_panel",
+        "panels": [{"panel_ref": "top", "panel_title": "top view"}, {"panel_ref": "bottom", "panel_title": "bottom view"}],
+    }
+    stages[PANEL_BBOX_REPAIR_STAGE] = {
+        "schema_version": "product_media_observation_v3", "stage": PANEL_BBOX_REPAIR_STAGE,
+        "panels": [{"panel_ref": "top", "panel_bbox": _bbox(0, 0, 450, 1000)}, {"panel_ref": "bottom", "panel_bbox": _bbox(550, 0, 450, 1000)}],
+    }
+
+    result = _extractor(stages).extract_asset(_asset())
+
+    assert result["observations"] == []
+    assert result["rejected_evidence"][0]["reason"] == "proposal_drift_exceeded"
+
+
 def test_cross_panel_binding_is_rejected_without_observation(monkeypatch):
     _patch_image(monkeypatch)
     stages = _stages()
@@ -239,7 +293,7 @@ def test_cross_panel_binding_is_rejected_without_observation(monkeypatch):
         ],
     }
     stages["object_localization"]["subjects"][0]["panel_ref"] = "left"
-    stages["label_localization"]["labels"][0]["panel_ref"] = "right"
+    stages["label_localization"]["labels"][0].update({"panel_ref": "right", "label_bbox": _bbox(600)})
     result = _extractor(stages).extract_asset(_asset())
     assert result["observations"] == []
     assert result["rejected_evidence"][0]["reason"] == "cross_panel_binding_rejected"
