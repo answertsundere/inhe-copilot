@@ -232,3 +232,18 @@ Repeatability is reported separately for stable observation UIDs, semantic
 signatures, and matched-box IoU.  It is diagnostic evidence, not a reason to
 relax any gate.  Provider timeout or malformed schema is an execution failure,
 not business `rejected_evidence`.
+
+## Annotation and detector feasibility boundary
+
+The current providers failed semantic qualification for complementary reasons:
+the conservative OpenCV adapter cannot resolve product scope, Grounding DINO
+Tiny lacks enough reliable boxes, and Florence-2 Base produces broad labels
+that cannot safely resolve product/component/packaging scope. Phase 0.4H ends
+the generic-provider prompt loop rather than loosening this gate.
+
+The next input is a small human-reviewed visual-scope corpus. The project
+exports Label Studio-compatible tasks with OCR as editable model predictions
+and object-provider output as metadata. It does not persist annotations as
+observations or facts. See
+`docs/research/product-media-annotation-and-detector-feasibility.md` and ADR
+0005 for the schema and future detector boundary.

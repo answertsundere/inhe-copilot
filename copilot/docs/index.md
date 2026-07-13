@@ -47,6 +47,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/adr/0004-composable-vision-grounding-shadow-poc.md` - separates OCR,
   object proposals, geometry binding, and optional VLM verification for a
   shadow-only grounding qualification PoC.
+- `docs/adr/0005-product-media-annotation-external-authoring.md` - adopts a
+  query-only Label Studio authoring export and detector-feasibility path
+  without promoting annotations or model output into formal evidence.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - current LangGraph topology and migration notes.
@@ -60,6 +63,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/research/grounded-reasoning-evaluation.md` - official-source-informed, deterministic evaluation contract for the shadow Grounded Reasoning layer.
 - `docs/research/multimodal-grounded-customer-service.md` - mature-product patterns, verified current gaps, and the target contract for product-media understanding, bounded derivation, and claim-level safety.
 - `docs/research/vision-grounding-provider-qualification.md` - provider-neutral, read-only 10-image grounding qualification contract and reuse assessment.
+- `docs/research/product-media-annotation-and-detector-feasibility.md` -
+  product-independent visual annotation schema, external authoring rationale,
+  and bounded detector-feasibility criteria.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 

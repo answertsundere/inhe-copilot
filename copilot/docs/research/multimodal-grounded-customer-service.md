@@ -364,6 +364,17 @@ product-scoped dimension and structure images for low-risk spatial questions.
 It must not include load capacity, child safety, material toxicity,
 certification, installation prescriptions, or automatic send promotion.
 
+### Annotation-first detector feasibility
+
+Generic grounding providers are not a substitute for product-specific visual
+scope data. The project now exports an external annotation pilot that labels
+product overall, packaging, components, accessories, included items, display
+props, panels, and text regions separately. The pilot keeps OCR/provider output
+as review suggestions and excludes high-risk claims from fact labels. It is not
+a formal knowledge ingestion path and cannot alter the Agent. The reusable
+schema and tool comparison are documented in
+`docs/research/product-media-annotation-and-detector-feasibility.md`.
+
 ## Shadow Observation MVP
 
 Phase 0.4D adds an offline `ProductMediaObservation` extractor. It loads the
