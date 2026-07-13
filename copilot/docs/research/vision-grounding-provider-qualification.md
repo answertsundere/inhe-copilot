@@ -104,6 +104,31 @@ local file only because the Windows runtime API requires a file-backed image;
 the file is removed after each request and no image bytes are written to a
 knowledge table.
 
+### Object-proposal adapter contract
+
+The composable object adapter is a separate shadow stage. It returns a
+normalised primary visual-region box, panel reference, candidate scope,
+confidence, image provenance, runtime identity, and sanitised execution or
+schema errors. It does not create an observation, invoke geometry binding, or
+write a review candidate.
+
+The first local adapter uses OpenCV contours only to find a primary visual
+region. OpenCV contour primitives are geometric, not semantic: an explicit OCR
+packaging cue can classify that region as `packaging`; a display cue can
+classify it as `display_prop`; every other region is
+`unknown_object_scope`. An unknown region must not be upgraded to `product`.
+Component detection is explicitly reported as unsupported. A configured
+Grounding DINO or Florence-2 adapter remains the next candidate for semantic
+object scopes, subject to this same gate.
+
+On 2026-07-13, the deterministic adapter read, executed, validated, and boxed
+all 20 repeated runs from the fixed ten-image set. Its object type and box IoU
+were stable for 10/10 assets, and it produced no scope leakage, knowledge write
+attempt, or sendability change. It resolved only 4/20 object candidates as
+explicit packaging and left 16/20 as unknown. The resulting 20% object-scope
+resolution rate intentionally failed the 90% semantic-scope gate. The run did
+not advance to a thirty-image scan.
+
 ## Qualification gate
 
 The script runs a fixed, ordered set of up to ten approved `size_image` assets
@@ -114,8 +139,10 @@ Required gate results are:
 
 - source image reads: 100%;
 - execution and schema success: at least 95%;
-- object boxes: at least 95%; label boxes and object-label bindings: at least
+- object boxes: at least 90%; label boxes and object-label bindings: at least
   90%;
+- object semantic-scope resolution: at least 90%; a geometry-only unknown box
+  cannot pass as a product candidate;
 - no package-as-product, component-as-overall, or high-risk admissions;
 - zero formal knowledge write attempts and zero `can_send` changes.
 

@@ -89,6 +89,16 @@ same-panel binding before it can be reviewed as an observation. This prevents
 OCR text such as a carton measurement or a safety claim from being promoted to
 a product fact merely because its characters were readable.
 
+The matching object-proposal stage is equally narrow. OpenCV contour geometry
+can propose a primary visible region inside a panel, but it cannot prove that
+the region is the sellable product rather than a carton, component, accessory,
+or display prop. The current adapter therefore accepts an explicit OCR
+packaging cue only for a `packaging` candidate and reports all other contour
+regions as unknown. It has no component classifier. That fail-closed result is
+diagnostic evidence for a future qualified semantic object provider, not a
+reason to treat a large visual region as a product or to weaken the
+product/package/component separation.
+
 Primary sources:
 
 - https://github.com/QwenLM/Qwen3-VL
