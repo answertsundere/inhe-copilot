@@ -44,6 +44,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/adr/0003-product-media-object-binding-observations.md` - v3
   object-bound product-media observations and the shadow-only Product
   Understanding Graph boundary.
+- `docs/adr/0004-composable-vision-grounding-shadow-poc.md` - separates OCR,
+  object proposals, geometry binding, and optional VLM verification for a
+  shadow-only grounding qualification PoC.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - current LangGraph topology and migration notes.

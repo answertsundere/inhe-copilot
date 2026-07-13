@@ -38,6 +38,31 @@ installed.  The current local Qwen vLLM worker is the executable baseline;
 external grounding and OCR/layout entries remain configuration diagnostics until
 their adapter and credentials are explicitly supplied.
 
+## Composable grounding PoC
+
+Phase 0.4G.1 separates OCR, object proposals, deterministic geometry, and VLM
+verification.  This is not an attempt to reconstruct a full product fact from
+one model response.  OCR must provide a text box; an object provider must
+provide a scoped object box; geometry only considers same-panel, unambiguous
+nearest candidates; and the verifier can only accept or reject that supplied
+candidate.  A verifier-provided bbox is a schema failure.
+
+The local environment on 2026-07-13 had OpenCV but no PaddleOCR, Tesseract,
+EasyOCR, Transformers, Torch, GroundingDINO, or configured external OCR/object
+provider.  The 10-image composable run therefore reported
+`provider_not_configured`, did not emit observations, did not qualify for 30
+images, and recorded zero formal writes and `can_send` changes.  This is the
+correct fail-closed result, not a lower score to be repaired with synthetic
+boxes.
+
+PaddleOCR is the preferred first OCR adapter because its documented general OCR
+pipeline produces text regions and recognition output.  Grounding DINO is a
+candidate object adapter because it produces text-guided object boxes; it does
+not establish printed-label binding itself.  Florence-2 remains an alternative
+candidate because its documented tasks include OCR with regions and phrase
+grounding.  Each requires its own configured adapter and the same 10-image
+gate before a real comparison is meaningful.
+
 ## Common provider adapter contract
 
 Every stage outcome is normalized without keeping image bytes, signed URLs,

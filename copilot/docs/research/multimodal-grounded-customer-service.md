@@ -456,6 +456,14 @@ formal knowledge write attempts, and `can_send` changes.  The provider did not
 qualify for a 30-image run; the box rate among the smaller successful subset is
 not a qualification result.
 
+Phase 0.4G.1 adds a composable shadow PoC rather than broadening Qwen prompts.
+It keeps OCR text boxes, object boxes, same-panel geometry, and verifier
+acceptance separate.  On the current machine, no OCR/object runtime was
+available, so its own 10-image run correctly stopped at
+`provider_not_configured`; it created no observations, made no formal writes,
+and did not change `can_send`.  It must receive real OCR and object adapters
+before it can be compared against the local Qwen baseline.
+
 Phase 0.4D.1 adds a bounded qualification matrix whose candidate connection is
 supplied only through command-line environment-variable names. It uses one
 readable, identity-scoped image and records no credentials, endpoints, image
