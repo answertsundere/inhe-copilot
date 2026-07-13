@@ -22,11 +22,13 @@ from app.services.product_media_annotation_schema_service import (  # noqa: E402
     OBJECT_LABELS,
     canonical_annotation_label,
     canonical_annotation_relation,
+    task_authoring_labels,
 )
 
 
 _OBJECT_SCOPES = {"product_overall", "packaging", "component", "accessory", "included_item", "display_prop"}
 _TEXT_SCOPES = {"label_text_region", "dimension_label_region", "high_risk_text_region"}
+_DOCUMENT_SCOPES = {"compliance_document_region"}
 _PANEL_SCOPES = {"product_panel", "mode_panel"}
 
 
@@ -98,7 +100,7 @@ def _relation_legal(relation: str, source: str, target: str) -> bool:
     if relation == "object_active_in_mode":
         return source in {"product_overall", "component"} and target == "mode_panel"
     if relation == "label_describes_object":
-        return source in {"label_text_region", "high_risk_text_region"} and target in _OBJECT_SCOPES
+        return source in {"label_text_region", "high_risk_text_region"} and target in _OBJECT_SCOPES | _DOCUMENT_SCOPES
     return False
 
 
@@ -121,6 +123,7 @@ def validate_annotation_tasks(exported: Any, manifest: Any) -> dict[str, Any]:
         else:
             seen_uids.add(uid)
         expected_task = expected.get(uid)
+        allowed_labels = task_authoring_labels(expected_task) if expected_task else set()
         if not expected_task:
             errors.append("task_uid_not_in_manifest")
         else:
@@ -165,6 +168,9 @@ def validate_annotation_tasks(exported: Any, manifest: Any) -> dict[str, Any]:
             label = labels[0]
             if label not in OBJECT_LABELS:
                 errors.append("unknown_label")
+                continue
+            if not allowed_labels or label not in allowed_labels:
+                errors.append("task_profile_label_not_allowed")
                 continue
             if bbox is None:
                 errors.append("bbox_invalid_or_out_of_bounds")

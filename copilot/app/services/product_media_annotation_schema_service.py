@@ -10,7 +10,7 @@ import hashlib
 from typing import Any
 
 
-ANNOTATION_SCHEMA_VERSION = "product_media_annotation_v3"
+ANNOTATION_SCHEMA_VERSION = "product_media_annotation_v4"
 LABEL_STUDIO_MODEL_VERSION = "copilot_shadow_candidates_v1"
 
 OBJECT_LABELS = (
@@ -24,6 +24,7 @@ OBJECT_LABELS = (
     "dimension_label_region",
     "mode_panel",
     "product_panel",
+    "compliance_document_region",
     "high_risk_text_region",
 )
 PROHIBITED_FACT_LABELS = {
@@ -86,9 +87,30 @@ _LABEL_DISPLAY_NAMES_ZH = {
     "dimension_label_region": "尺寸标注（数值和线）",
     "mode_panel": "模式面板",
     "product_panel": "商品展示面板",
+    "compliance_document_region": "认证/检测文件（仅审核）",
     "high_risk_text_region": "高风险文字",
 }
 _DISPLAY_NAME_TO_LABEL = {display: label for label, display in _LABEL_DISPLAY_NAMES_ZH.items()}
+_AUTHORING_PROFILE_LABELS = {
+    "visual_layout": (
+        "product_panel",
+        "mode_panel",
+        "product_overall",
+        "packaging",
+        "component",
+        "accessory",
+        "included_item",
+        "display_prop",
+        "label_text_region",
+        "dimension_label_region",
+        "high_risk_text_region",
+    ),
+    "compliance_document": (
+        "compliance_document_region",
+        "label_text_region",
+        "high_risk_text_region",
+    ),
+}
 _MODEL_CANDIDATE_FIELDS = (
     "provider_name",
     "model_name",
@@ -175,19 +197,43 @@ def _task_uid(asset_id: str, image_sha256: str, reference: str) -> str:
     return "pma_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
 
 
+def annotation_profile(asset: Any) -> str:
+    """Choose a reviewer tool palette from the durable media role only."""
+    if _text(_value(asset, "asset_type")).lower() == "certificate_image":
+        return "compliance_document"
+    return "visual_layout"
+
+
+def authoring_labels(profile: str) -> list[dict[str, str]]:
+    """Return Label Studio dynamic labels for one stable authoring profile."""
+    labels = _AUTHORING_PROFILE_LABELS.get(_text(profile), ())
+    return [{"value": label_studio_display_label(label)} for label in labels]
+
+
+def task_authoring_labels(task: dict[str, Any]) -> set[str]:
+    """Return canonical labels permitted by an exported task's dynamic palette."""
+    data = task.get("data") if isinstance(task, dict) else None
+    values = data.get("authoring_labels") if isinstance(data, dict) else None
+    if not isinstance(values, list):
+        return set()
+    return {
+        canonical_annotation_label(item.get("value") if isinstance(item, dict) else item)
+        for item in values
+        if canonical_annotation_label(item.get("value") if isinstance(item, dict) else item) in OBJECT_LABELS
+    }
+
+
 def label_studio_config_xml() -> str:
     """Return an importable Chinese Label Studio config for the shared schema."""
-    labels = "\n".join(f'      <Label value="{display}" />' for display in _LABEL_DISPLAY_NAMES_ZH.values())
     relations = "\n".join(f'      <Relation value="{relation}" />' for relation in sorted(LABEL_STUDIO_RELATION_TYPES))
+    dimension_label = label_studio_display_label("dimension_label_region")
     return f"""<View>
   <Header value="商品媒体人工标注（仅审核用，不生成商品事实）" />
-  <Header value="顺序：先框模式/展示面板；再框该面板中的商品实例或部件；最后框每条尺寸的数值、单位和标注线。" />
+  <Header value="$annotation_profile_instruction" />
   <Text name="annotation_context" value="$annotation_context" valueType="text" />
   <Image name="image" value="$image" />
-  <RectangleLabels name="region_label" toName="image">
-{labels}
-  </RectangleLabels>
-  <Choices name="dimension_attribute" toName="image" perRegion="true" choice="single-radio" visibleWhen="region-selected">
+  <RectangleLabels name="region_label" toName="image" value="$authoring_labels" />
+  <Choices name="dimension_attribute" toName="image" perRegion="true" choice="single-radio" visibleWhen="region-selected" whenTagName="region_label" whenLabelValue="{dimension_label}">
       <Choice value="宽度" />
       <Choice value="高度" />
       <Choice value="深度" />
@@ -197,14 +243,14 @@ def label_studio_config_xml() -> str:
       <Choice value="层数/格数" />
       <Choice value="图中未明确" />
   </Choices>
-  <Choices name="dimension_scope" toName="image" perRegion="true" choice="single-radio" visibleWhen="region-selected">
+  <Choices name="dimension_scope" toName="image" perRegion="true" choice="single-radio" visibleWhen="region-selected" whenTagName="region_label" whenLabelValue="{dimension_label}">
       <Choice value="商品实例整体" />
       <Choice value="商品部件" />
       <Choice value="包装/纸箱" />
       <Choice value="当前模式专属" />
       <Choice value="图中未明确" />
   </Choices>
-  <TextArea name="dimension_visible_value" toName="image" perRegion="true" placeholder="仅填写图中可见的数值和单位，例如 38cm" />
+  <TextArea name="dimension_visible_value" toName="image" perRegion="true" visibleWhen="region-selected" whenTagName="region_label" whenLabelValue="{dimension_label}" placeholder="仅填写图中可见的数值和单位，例如 38cm" />
   <Relations>
 {relations}
   </Relations>
@@ -214,6 +260,8 @@ def label_studio_config_xml() -> str:
 def suggested_task_type(asset: Any) -> str:
     """Use durable media metadata only; filenames and product text are excluded."""
     role = _text(_value(asset, "asset_type")).lower()
+    if role == "certificate_image":
+        return "认证/检测文件与高风险文字区域"
     if role == "size_image":
         return "尺寸标注与对象范围"
     if role == "pack_guide_image":
@@ -240,7 +288,13 @@ def is_annotation_image_asset(asset: Any) -> bool:
     return _text(_value(asset, "asset_type")).lower().endswith("_image")
 
 
-def annotation_instructions() -> list[str]:
+def annotation_instructions(profile: str = "visual_layout") -> list[str]:
+    if profile == "compliance_document":
+        return [
+            "先框认证/检测文件本体；它仅表示图片中出现文件，不表示认证或检测结论已经成立。",
+            "认证、检测、无毒、食品级、儿童安全、承重等主张均框为高风险文字区域，不能标为商品事实。",
+            "只框图片中可见的文件、文字和标志；不要标注包装、商品尺寸或商品部件。",
+        ]
     return [
         "先框模式面板或商品展示面板；每个面板中的完整商品都标为一个商品实例，无法确认时不标为商品实例。",
         "每条尺寸标注都框住数值、单位和标注线，并用“测量对象”从尺寸标注连到商品实例、商品部件或包装/纸箱。",
@@ -336,22 +390,33 @@ def build_label_studio_task(
     source_size = details.get("source_image_size") if isinstance(details.get("source_image_size"), dict) else {}
     task_uid = _task_uid(asset_id, image_sha256, reference)
     priority, priority_reason = annotation_priority(asset)
+    profile = annotation_profile(asset)
+    allowed_labels = set(_AUTHORING_PROFILE_LABELS[profile])
     predictions = [
         prediction
         for index, item in enumerate(ocr_items or [])
         if isinstance(item, dict)
         for prediction in [_ocr_prediction(asset_id, item, index)]
         if prediction is not None
+        and canonical_annotation_label(prediction["value"]["rectanglelabels"][0]) in allowed_labels
     ]
     title = _text(_value(asset, "product_name"))
+    instructions = annotation_instructions(profile)
     context = "\n".join(filter(None, (
         f"任务编号：{task_uid}",
         f"商品标题（仅辅助识别）：{title}" if title else "",
         f"媒体角色：{_text(_value(asset, 'asset_type'))}",
+        f"标注范围：{instructions[0]}",
         "请只标注图片中可见区域；不要依据商品标题推断对象或尺寸。",
     )))
     return {
-        "data": {"image": reference, "annotation_context": context},
+        "data": {
+            "image": reference,
+            "annotation_context": context,
+            "annotation_profile": profile,
+            "annotation_profile_instruction": "；".join(instructions),
+            "authoring_labels": authoring_labels(profile),
+        },
         "meta": {
             "schema_version": ANNOTATION_SCHEMA_VERSION,
             "task_uid": task_uid,
@@ -368,7 +433,8 @@ def build_label_studio_task(
             "suggested_task_type": suggested_task_type(asset),
             "priority": priority,
             "priority_reason": priority_reason,
-            "annotation_instructions_zh": annotation_instructions(),
+            "annotation_profile": profile,
+            "annotation_instructions_zh": instructions,
             "prohibited_fact_labels": sorted(PROHIBITED_FACT_LABELS),
             "label_display_names_zh": _LABEL_DISPLAY_NAMES_ZH,
             "prediction_source_version": LABEL_STUDIO_MODEL_VERSION,
@@ -390,10 +456,13 @@ def validate_label_studio_task(task: dict[str, Any]) -> list[str]:
         errors.append("annotation_schema_version_invalid")
     elif set(meta.get("prohibited_fact_labels") or ()) != PROHIBITED_FACT_LABELS:
         errors.append("prohibited_fact_labels_invalid")
+    allowed_labels = task_authoring_labels(task)
+    if not allowed_labels:
+        errors.append("task_authoring_labels_missing")
     for prediction in task.get("predictions") or []:
         for result in prediction.get("result") or []:
             labels = ((result.get("value") or {}).get("rectanglelabels") or [])
-            if len(labels) != 1 or canonical_annotation_label(labels[0]) not in OBJECT_LABELS:
+            if len(labels) != 1 or canonical_annotation_label(labels[0]) not in allowed_labels:
                 errors.append("annotation_label_invalid")
     return errors
 
@@ -405,6 +474,9 @@ def annotation_schema() -> dict[str, Any]:
         "relation_types": sorted(RELATION_TYPES),
         "label_studio_relation_types": sorted(LABEL_STUDIO_RELATION_TYPES),
         "label_display_names_zh": _LABEL_DISPLAY_NAMES_ZH,
+        "authoring_profiles": {
+            profile: list(labels) for profile, labels in _AUTHORING_PROFILE_LABELS.items()
+        },
         "attribute_keys": sorted(ATTRIBUTE_KEYS),
         "prohibited_fact_labels": sorted(PROHIBITED_FACT_LABELS),
         "shadow_only": True,

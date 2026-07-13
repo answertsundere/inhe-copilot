@@ -87,6 +87,21 @@ def test_validator_requires_dimension_subject_and_panel_scope_when_panels_exist(
     assert "dimension_panel_scope_missing" in report["tasks"][0]["errors"]
 
 
+def test_validator_rejects_packaging_label_in_certificate_task_profile():
+    task = build_label_studio_task(
+        {
+            "id": 9,
+            "asset_url": "https://media.example.test/certificate.png",
+            "asset_type": "certificate_image",
+        }
+    )
+    exported = _completed(task, [_rectangle("packaging", "packaging", 5, 5, 70, 80)])
+
+    report = validate_annotation_tasks([exported], [task])
+
+    assert "task_profile_label_not_allowed" in report["tasks"][0]["errors"]
+
+
 def test_predictions_are_not_manual_annotations_and_duplicates_fail_quality_gate():
     task = _task()
     missing = validate_annotation_tasks([task], [task])

@@ -57,11 +57,14 @@ rackets, and other product families without using product names as labels.
 - `dimension_label_region`
 - `mode_panel`
 - `product_panel`
+- `compliance_document_region`
 - `high_risk_text_region`
 
-The first six are object scope labels, not assertions about sellability. The
-last five identify visual context. `high_risk_text_region` records a visible
-string only; it cannot become a product fact.
+The product, packaging, component, accessory, included-item, display-prop,
+and compliance-document labels describe visual scope only, not sellability or
+claim validity. The remaining labels identify visual context.
+`high_risk_text_region` records a visible string only; it cannot become a
+product fact.
 
 ### Relationships and attributes
 
@@ -76,7 +79,7 @@ Dimensions are always object- and panel-scoped:
 - a mode-specific dimension remains tied to its mode;
 - no annotation implies an overall-product dimension by itself.
 
-The v3 authoring UI exposes these as a reviewer workflow instead of a flat
+The v4 authoring UI exposes these as a reviewer workflow instead of a flat
 region list: first mark the mode or display panel, then the product instance
 inside that panel, then the component or packaging, and finally the visible
 dimension label. A dimension label must point to its measured object. When a
@@ -84,6 +87,14 @@ panel is present, that measured object must point to its panel; a mode-only
 object can additionally point to its active mode. Reviewers also record only
 the visible value/unit plus an attribute and scope choice. These fields are
 external annotation metadata, not product facts.
+
+The authoring palette is task-profiled rather than one static set of buttons.
+`certificate_image` tasks use a compliance-document profile: reviewers can
+mark the certification or test-document region, ordinary visible text, and
+high-risk claim text. Packaging, components, and dimensions are deliberately
+not offered in that profile. The document region only establishes what is
+visible in the image; it never validates certification, safety, toxicity, or
+any other product claim.
 
 `load_capacity`, `non_toxic`, `food_grade`, `certification`, `child_safety`,
 `anti_tip`, and `wall_mounting` are prohibited fact labels. If they appear in
@@ -125,7 +136,8 @@ materialize a local external-authoring copy outside the repository. Sampling is
 balanced by durable media role and existing layout tags, never by product name,
 SKU, image filename, or fixed coordinate.
 
-The Label Studio task uses Chinese region labels and five reviewer-only
+The Label Studio task uses Label Studio's dynamic per-task label input with
+Chinese region labels and five reviewer-only
 relations: belongs-to, measured-object, visible-in-panel, active-in-mode, and
 describes-object. The exported values map back to the canonical schema
 relations; they are not customer-facing text and do not create evidence.
@@ -138,4 +150,9 @@ than trying to repair annotations.
 
 Label Studio's documented JSON task format uses `data` for the image reference
 and `predictions` for editable pre-annotations; its `Relations` tag represents
-links between regions. See the official [task import guide](https://labelstud.io/guide/tasks.html), [pre-annotation guide](https://labelstud.io/guide/predictions.html), and [Relations tag reference](https://labelstud.io/tags/relations). This is suitable for a local pilot, not a production media-hosting design.
+links between regions. Its [Visual Genome template](https://labelstud.io/templates/visual_genome)
+documents dynamic `RectangleLabels` values sourced from task data. See also the
+official [task import guide](https://labelstud.io/guide/tasks.html),
+[pre-annotation guide](https://labelstud.io/guide/predictions.html), and
+[Relations tag reference](https://labelstud.io/tags/relations). This is suitable
+for a local pilot, not a production media-hosting design.
