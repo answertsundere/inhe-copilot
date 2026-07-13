@@ -74,10 +74,14 @@ def _repeatability(records: list[dict[str, Any]]) -> dict[str, Any]:
         by_asset.setdefault(int(row.get("media_asset_id") or 0), []).append(row)
     comparable = [rows for rows in by_asset.values() if len(rows) > 1]
     type_matches = 0
+    type_total = 0
     iou_matches = 0
     iou_total = 0
     for rows in comparable:
         baseline = _object_signatures(rows[0].get("object_result", {}).get("objects") or [])
+        if not baseline:
+            continue
+        type_total += 1
         stable = True
         for row in rows[1:]:
             current = _object_signatures(row.get("object_result", {}).get("objects") or [])
@@ -95,7 +99,8 @@ def _repeatability(records: list[dict[str, Any]]) -> dict[str, Any]:
         type_matches += int(stable)
     return {
         "repeated_asset_count": len(comparable),
-        "repeat_object_type_stability_rate": _rate(type_matches, len(comparable)),
+        "repeatable_object_asset_count": type_total,
+        "repeat_object_type_stability_rate": _rate(type_matches, type_total),
         "repeat_bbox_iou_stability_rate": _rate(iou_matches, iou_total),
     }
 

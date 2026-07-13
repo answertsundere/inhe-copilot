@@ -99,6 +99,15 @@ diagnostic evidence for a future qualified semantic object provider, not a
 reason to treat a large visual region as a product or to weaken the
 product/package/component separation.
 
+Semantic grounding is a separate provider responsibility, not a semantic label
+added to contour output. Its input categories must stay product-neutral, such
+as product, packaging, component, and accessory classes. A semantic box then
+passes the same panel and scope contract: packaging needs packaging evidence,
+component needs a bounded product parent, and high-overlap product/packaging
+predictions fail closed. No provider output is a reviewed observation or a
+customer-facing fact. This keeps an unavailable or unstable model from turning
+an unscoped large region into a product dimension.
+
 Primary sources:
 
 - https://github.com/QwenLM/Qwen3-VL

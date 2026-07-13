@@ -129,6 +129,39 @@ explicit packaging and left 16/20 as unknown. The resulting 20% object-scope
 resolution rate intentionally failed the 90% semantic-scope gate. The run did
 not advance to a thirty-image scan.
 
+### Semantic object-provider qualification
+
+The next provider candidate is Grounding DINO because its official project is
+an open-set detector that accepts an image and generic text categories and
+returns scored boxes. Florence-2 remains an alternative because its documented
+Transformers tasks include detection and phrase grounding. Neither category
+detector establishes object-to-label binding or product identity, so both stay
+behind the existing panel, OCR, geometry, and review contracts.
+
+The semantic adapter uses only generic category queries such as `product`,
+`box`, `carton`, `drawer`, `door`, `panel`, and `screw`; it cannot receive a
+specific product title or test phrase. Every provider result is normalised
+before use. A packaging result requires same-panel OCR packaging wording; a
+product and packaging box with high overlap are both rejected; a component must
+be inside a same-panel product box and cannot cover nearly all of it; display
+props and unknown objects remain their supplied scope. Conflicting output fails
+closed. These are shadow diagnostics only and never create observations.
+
+The local runtime inventory on 2026-07-13 found an NVIDIA RTX A6000 and
+ONNX Runtime, but no PyTorch, Transformers, Grounding DINO, model cache, or
+configured model paths. The ten-image semantic qualification therefore read
+20/20 repeated source images but returned `provider_not_configured` for all 20
+semantic attempts: execution, schema, bbox, and semantic-scope rates were 0%.
+Formal-write and `can_send` changes remained zero. Its OpenCV comparison still
+completed 20/20 boxes but only resolved 4/20 scopes. The semantic run did not
+advance to thirty images. Empty provider output is not reported as repeatable
+object detection.
+
+Minimum future preparation is a CUDA-compatible PyTorch runtime, one official
+provider runtime plus its official model weights, and explicit model-path
+configuration. Installation alone is not qualification evidence; the same
+fixed ten-image gate must pass before geometry binding is enabled.
+
 ## Qualification gate
 
 The script runs a fixed, ordered set of up to ten approved `size_image` assets
