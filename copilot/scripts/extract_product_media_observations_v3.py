@@ -62,21 +62,48 @@ def _summary(rows: list[dict], guard: ReadOnlyDatabaseGuard) -> dict:
     labelled = [item for item in observations if item["observation_type"] == "labelled_measurement"]
     stage_valid = Counter(item["stage"] for item in diagnostics if item.get("schema_status") == "valid")
     stage_execution = Counter(item["stage"] for item in diagnostics if item.get("execution_status") == "success")
-    expected_stage_count = len(rows) * 4
+    repair_expected_count = sum(
+        1 for row in rows
+        if any(item.get("stage") == "panel_bbox_repair" for item in row.get("stage_diagnostics", []))
+    )
+    expected_stage_count = len(rows) * 4 + repair_expected_count
     executed_count = sum(stage_execution.values())
     schema_count = sum(stage_valid.values())
+    resolution_rows = [row.get("media_resolution") or {} for row in rows]
+    multi_panel_rows = [
+        row for row in rows
+        if any(
+            item.get("stage") == "image_classification" and item.get("schema_status") == "valid"
+            and item.get("result_count", 0) > 1
+            for item in row.get("stage_diagnostics", [])
+        )
+    ]
+    panel_observations = [item for item in observations if item.get("panel_ref")]
     return {
         "schema_version": "product_media_observation_v3_shadow_report", "shadow_only": True,
         "database_query_only": guard.enabled, "formal_kb_write_attempt_count": guard.write_attempt_count,
         "scanned_count": len(rows), "observation_count": len(observations), "rejected_count": len(rejected),
+        "image_read_success_rate": {
+            "numerator": sum(1 for item in resolution_rows if item.get("ok")),
+            "denominator": len(rows),
+            "rate": sum(1 for item in resolution_rows if item.get("ok")) / len(rows) if rows else 0.0,
+        },
         "execution_success_rate": {"numerator": executed_count, "denominator": expected_stage_count, "rate": executed_count / expected_stage_count if expected_stage_count else 0.0},
         "schema_success_rate": {"numerator": schema_count, "denominator": expected_stage_count, "rate": schema_count / expected_stage_count if expected_stage_count else 0.0},
         "stage_execution_success_counts": dict(sorted(stage_execution.items())), "stage_schema_success_counts": dict(sorted(stage_valid.items())),
+        "panel_bbox_coverage_rate": {
+            "numerator": sum(1 for item in panel_observations if item.get("panel_bbox")),
+            "denominator": len(panel_observations),
+            "rate": sum(1 for item in panel_observations if item.get("panel_bbox")) / len(panel_observations) if panel_observations else 0.0,
+        },
+        "multi_panel_image_count": len(multi_panel_rows),
+        "panel_bbox_repair_attempt_count": repair_expected_count,
         "labelled_dimension_count": len(labelled), "labelled_dimension_bound_bbox_count": sum(1 for item in labelled if item.get("object_bbox") and item.get("label_bbox")),
         "labelled_dimension_bound_bbox_coverage_rate": (sum(1 for item in labelled if item.get("object_bbox") and item.get("label_bbox")) / len(labelled)) if labelled else 0.0,
         "subject_scope_counts": dict(sorted(Counter(item["subject_scope"] for item in observations).items())),
         "observation_type_counts": dict(sorted(Counter(item["observation_type"] for item in observations).items())),
         "rejected_reason_counts": dict(sorted(Counter(item["reason"] for item in rejected).items())),
+        "media_resolution_reason_counts": dict(sorted(Counter(item.get("reason", "resolved") for item in resolution_rows).items())),
         "packaging_product_leakage_count": sum(1 for item in observations if item["subject_scope"] == "product" and "packaging_measurement_not_product_dimension" in item.get("warning_reasons", [])),
         "component_overall_leakage_count": sum(1 for item in observations if item["subject_scope"] == "product" and "component_measurement_not_product_dimension" in item.get("warning_reasons", [])),
         "high_risk_accepted_count": sum(1 for item in observations if item.get("risk_class") == "high"),

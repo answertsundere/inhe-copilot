@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import requests
+from PIL import Image, UnidentifiedImageError
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -234,7 +236,9 @@ def media_asset_eligibility(asset: Any) -> list[str]:
         reasons.append("product_identity_incomplete")
     if not _media_content_hash(asset):
         reasons.append("media_content_hash_missing")
-    if not _text(_asset_value(asset, "asset_url")):
+    raw = _source_raw(asset)
+    has_local_source = bool(_text(raw.get("original_path"))) or any(_text(raw.get(field)) for field in _CACHE_SOURCE_FIELDS)
+    if not _text(_asset_value(asset, "asset_url")) and not has_local_source:
         reasons.append("media_source_missing")
     return reasons
 
@@ -272,27 +276,63 @@ def configured_product_media_vlm_connection() -> ProductMediaVlmConnection:
     )
 
 
-def _read_local_image(path: Path) -> tuple[bytes, str] | None:
-    if not path.is_file() or path.stat().st_size > MAX_IMAGE_BYTES:
-        return None
-    data = path.read_bytes()
-    return (data, path.suffix or ".png") if data else None
+_CACHE_SOURCE_FIELDS = ("cache_path", "local_cache_path", "cached_path", "download_path", "file_path")
 
 
-def resolve_product_media_image(asset: Any, *, timeout_seconds: int = 20) -> tuple[bytes, str] | None:
-    """Read a media asset only for the offline extractor; never persist bytes."""
-    raw = _asset_value(asset, "source_raw") or {}
+def _source_raw(asset: Any) -> dict[str, Any]:
+    raw = _asset_value(asset, "source_raw")
     if not isinstance(raw, dict) and hasattr(asset, "get_source_raw"):
         raw = asset.get_source_raw() or {}
-    url = _text(_asset_value(asset, "asset_url"))
-    if url.startswith("/ask/api/media-assets/uploads/"):
-        relative = url.removeprefix("/ask/api/media-assets/uploads/")
-        path = Path(config.BASE_DIR) / "app" / "media_uploads" / relative
-        return _read_local_image(path)
-    original_path = _text(raw.get("original_path")) if isinstance(raw, dict) else ""
-    if original_path:
-        return _read_local_image(Path(original_path))
-    if url.startswith(("http://", "https://")):
+    return raw if isinstance(raw, dict) else {}
+
+
+def _hash_comparison_status(asset: Any, observed_sha256: str) -> str:
+    expected = _media_content_hash(asset)
+    if not _is_sha256(expected):
+        return "asset_hash_not_comparable"
+    return "verified_match" if expected.lower() == observed_sha256 else "asset_hash_mismatch"
+
+
+def _validate_image_bytes(data: bytes) -> str:
+    if not data:
+        return "image_empty"
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        return "image_decode_failed"
+    return ""
+
+
+def _read_local_image_details(path: Path, *, source_kind: str, asset: Any) -> dict[str, Any]:
+    base = {"source_kind": source_kind, "source_configured": True}
+    try:
+        if not path.is_file():
+            return {**base, "ok": False, "reason": "local_file_missing"}
+        if path.stat().st_size > MAX_IMAGE_BYTES:
+            return {**base, "ok": False, "reason": "image_too_large"}
+        data = path.read_bytes()
+    except PermissionError:
+        return {**base, "ok": False, "reason": "local_file_permission_denied"}
+    except OSError:
+        return {**base, "ok": False, "reason": "local_file_read_failed"}
+    validation_reason = _validate_image_bytes(data)
+    if validation_reason:
+        return {**base, "ok": False, "reason": validation_reason}
+    observed_sha256 = hashlib.sha256(data).hexdigest()
+    return {
+        **base,
+        "ok": True,
+        "data": data,
+        "extension": path.suffix or ".png",
+        "observed_media_sha256": observed_sha256,
+        "asset_hash_comparison_status": _hash_comparison_status(asset, observed_sha256),
+    }
+
+
+def _read_remote_image_details(url: str, *, timeout_seconds: int, asset: Any) -> dict[str, Any]:
+    base = {"source_kind": "remote_url", "source_configured": True}
+    try:
         with requests.get(url, timeout=max(1, min(timeout_seconds, 30)), stream=True) as response:
             response.raise_for_status()
             chunks: list[bytes] = []
@@ -300,11 +340,91 @@ def resolve_product_media_image(asset: Any, *, timeout_seconds: int = 20) -> tup
             for chunk in response.iter_content(chunk_size=64 * 1024):
                 size += len(chunk)
                 if size > MAX_IMAGE_BYTES:
-                    return None
+                    return {**base, "ok": False, "reason": "image_too_large"}
                 chunks.append(chunk)
-        data = b"".join(chunks)
-        return (data, Path(url.split("?", 1)[0]).suffix or ".png") if data else None
-    return None
+    except requests.Timeout:
+        return {**base, "ok": False, "reason": "remote_fetch_timeout"}
+    except requests.HTTPError as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return {**base, "ok": False, "reason": f"remote_fetch_http_{status}" if status else "remote_fetch_http_error"}
+    except requests.RequestException:
+        return {**base, "ok": False, "reason": "remote_fetch_failed"}
+    data = b"".join(chunks)
+    validation_reason = _validate_image_bytes(data)
+    if validation_reason:
+        return {**base, "ok": False, "reason": validation_reason}
+    observed_sha256 = hashlib.sha256(data).hexdigest()
+    return {
+        **base,
+        "ok": True,
+        "data": data,
+        "extension": Path(url.split("?", 1)[0]).suffix or ".png",
+        "observed_media_sha256": observed_sha256,
+        "asset_hash_comparison_status": _hash_comparison_status(asset, observed_sha256),
+    }
+
+
+def resolve_product_media_image_details(asset: Any, *, timeout_seconds: int = 20) -> dict[str, Any]:
+    """Resolve an extractor image with safe, source-level diagnostics.
+
+    Original files take precedence over cached derivatives. The observed SHA-256
+    is always calculated from bytes actually read; a stored asset hash is only
+    compared for diagnostics and never trusted as image content.
+    """
+    raw = _source_raw(asset)
+    attempts: list[dict[str, Any]] = []
+    candidates: list[tuple[str, Path]] = []
+    original_path = _text(raw.get("original_path"))
+    if original_path:
+        candidates.append(("original_path", Path(original_path)))
+    for field in _CACHE_SOURCE_FIELDS:
+        value = _text(raw.get(field))
+        if value:
+            candidates.append(("validated_cache", Path(value)))
+
+    seen_paths: set[str] = set()
+    for source_kind, path in candidates:
+        key = str(path).lower()
+        if key in seen_paths:
+            continue
+        seen_paths.add(key)
+        detail = _read_local_image_details(path, source_kind=source_kind, asset=asset)
+        if detail["ok"]:
+            detail["attempts"] = attempts
+            return detail
+        attempts.append({"source_kind": source_kind, "reason": detail["reason"]})
+
+    url = _text(_asset_value(asset, "asset_url"))
+    if url.startswith("/ask/api/media-assets/uploads/"):
+        relative = url.removeprefix("/ask/api/media-assets/uploads/")
+        detail = _read_local_image_details(Path(config.BASE_DIR) / "app" / "media_uploads" / relative, source_kind="local_upload", asset=asset)
+        if detail["ok"]:
+            detail["attempts"] = attempts
+            return detail
+        attempts.append({"source_kind": "local_upload", "reason": detail["reason"]})
+    elif url.startswith(("http://", "https://")):
+        detail = _read_remote_image_details(url, timeout_seconds=timeout_seconds, asset=asset)
+        if detail["ok"]:
+            detail["attempts"] = attempts
+            return detail
+        attempts.append({"source_kind": "remote_url", "reason": detail["reason"]})
+
+    return {
+        "ok": False,
+        "reason": attempts[-1]["reason"] if attempts else "no_media_source",
+        "attempts": attempts,
+    }
+
+
+def _read_local_image(path: Path) -> tuple[bytes, str] | None:
+    detail = _read_local_image_details(path, source_kind="local_file", asset={})
+    return (detail["data"], detail["extension"]) if detail.get("ok") else None
+
+
+def resolve_product_media_image(asset: Any, *, timeout_seconds: int = 20) -> tuple[bytes, str] | None:
+    """Read a media asset only for the offline extractor; never persist bytes."""
+    detail = resolve_product_media_image_details(asset, timeout_seconds=timeout_seconds)
+    return (detail["data"], detail["extension"]) if detail.get("ok") else None
 
 
 def _image_data_url(image_bytes: bytes, extension: str) -> str:

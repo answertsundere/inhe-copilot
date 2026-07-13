@@ -115,6 +115,33 @@ or source-media failures, not grounds to relax localisation, scope, or review
 requirements. The system therefore remains shadow-only with no v3 review queue
 or formal evidence promotion.
 
+### Multi-panel and source-media qualification follow-up
+
+The next bounded v3 retest repaired a generic source-resolution defect: ORM
+assets whose raw source is exposed through `get_source_raw()` must resolve the
+original file before a cache, upload URL, thumbnail, or remote URL. The reader
+computes SHA-256 from the bytes it actually opens; a legacy database hash is
+diagnostic comparison data only. This restored all ten source images without
+changing the SQLite records.
+
+Multi-panel images now have a three-level localisation contract: panel, object,
+and label. A multi-panel classification requires a titled panel and a bounded
+panel box. If classification identifies panels but a box is missing or invalid,
+a dedicated repair call may return only the existing panel references and their
+boxes. It cannot return measurements or substitute the whole image. Objects and
+labels both retain `panel_ref`; an object-label binding across panels is
+rejected. Single-panel images use one synthetic root panel solely to make the
+same binding contract explicit.
+
+On 2026-07-13, the same ten-image candidate scan reached source-read success
+of 10/10, but not the expansion gate: one image produced two near-full-image
+repair boxes with unreasonable overlap and was rejected as
+`invalid_panel_bbox`. The result was 9/10 completed staged images, not a
+qualified thirty-image run. No v3 pending-review candidates were created, no
+formal table was written, and no reply or `can_send` field was changed. This is
+the intended fail-closed outcome; future work must improve the provider's panel
+localisation reliability rather than weaken panel/object/label grounding.
+
 ### Model prediction review lifecycle
 
 For the Product Media Observation review lifecycle, the project also reviewed

@@ -417,6 +417,69 @@ def test_observation_contract_is_not_formal_evidence_or_send_permission(extracto
     assert observation["can_change_can_send"] is False
 
 
+def test_detailed_image_resolver_prefers_original_and_calculates_observed_sha256(tmp_path):
+    from PIL import Image
+    import io
+
+    original = tmp_path / "original.png"
+    cached = tmp_path / "cached.png"
+    buffer = io.BytesIO(); Image.new("RGB", (4, 4), "white").save(buffer, format="PNG")
+    original.write_bytes(buffer.getvalue())
+    cached.write_bytes(buffer.getvalue() + b"not-used")
+    asset = _asset(content_hash="legacy-import-hash")
+    asset["asset_url"] = ""
+    asset["source_raw"] = {"original_path": str(original), "cache_path": str(cached)}
+
+    detail = observation_module.resolve_product_media_image_details(asset)
+
+    assert detail["ok"] is True
+    assert "media_source_missing" not in observation_module.media_asset_eligibility(asset)
+    assert detail["source_kind"] == "original_path"
+    assert detail["observed_media_sha256"] == __import__("hashlib").sha256(original.read_bytes()).hexdigest()
+    assert detail["asset_hash_comparison_status"] == "asset_hash_not_comparable"
+
+
+def test_detailed_image_resolver_reports_missing_original_and_uses_validated_cache(tmp_path):
+    from PIL import Image
+    import io
+
+    cached = tmp_path / "cached.png"
+    buffer = io.BytesIO(); Image.new("RGB", (4, 4), "white").save(buffer, format="PNG")
+    cached.write_bytes(buffer.getvalue())
+    asset = _asset()
+    asset["asset_url"] = ""
+    asset["source_raw"] = {"original_path": str(tmp_path / "missing.png"), "cache_path": str(cached)}
+
+    detail = observation_module.resolve_product_media_image_details(asset)
+
+    assert detail["ok"] is True
+    assert detail["source_kind"] == "validated_cache"
+    assert detail["attempts"] == [{"source_kind": "original_path", "reason": "local_file_missing"}]
+
+
+def test_detailed_image_resolver_uses_model_source_raw_accessor(tmp_path):
+    from PIL import Image
+    import io
+
+    original = tmp_path / "original.png"
+    buffer = io.BytesIO(); Image.new("RGB", (4, 4), "white").save(buffer, format="PNG")
+    original.write_bytes(buffer.getvalue())
+
+    class Asset:
+        asset_url = "/ask/api/media-assets/uploads/missing.png"
+        content_hash = "legacy-import-hash"
+        source_raw = None
+
+        @staticmethod
+        def get_source_raw():
+            return {"original_path": str(original)}
+
+    detail = observation_module.resolve_product_media_image_details(Asset())
+
+    assert detail["ok"] is True
+    assert detail["source_kind"] == "original_path"
+
+
 def test_grounded_reasoning_ignores_pending_media_observations():
     from app.services.grounded_reasoning_draft_service import build_grounded_reasoning_draft
 

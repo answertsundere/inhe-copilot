@@ -65,8 +65,14 @@ removes the v3 shadow service and leaves v2 staging and formal knowledge intact.
 
 Synthetic tests prove object/label binding, packaging/component separation,
 state/panel/parent edges, high-risk rejection, structured selection, and
-unchanged sendability. A staged ten-image source-media gate on 2026-07-13 kept
-scope leakage and sendability changes at zero but did not reach the required
-stage execution/schema reliability threshold. A later phase must stabilise that
-worker contract before any v3 review persistence or evidence-promotion contract
-is introduced.
+unchanged sendability. The staged source-media reader resolves original bytes
+before validated cache or URL fallback and records the observed SHA-256 only as
+shadow provenance. Multi-panel classification uses panel/object/label bounding
+boxes; a repair call may repair missing panel boxes but cannot create facts.
+Cross-panel bindings and near-duplicate full-image panel boxes are rejected.
+
+A ten-image retest on 2026-07-13 restored source reads to 10/10 but rejected
+one image whose two repaired panels overlapped as near-full-image duplicates.
+The execution/schema threshold was therefore still not met. A later phase must
+stabilise the worker contract before any v3 review persistence or
+evidence-promotion contract is introduced.

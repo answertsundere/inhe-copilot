@@ -21,14 +21,16 @@ from app.services.product_media_observation_service import (
     _media_content_hash,
     identity_scope_issue,
     media_asset_eligibility,
-    resolve_product_media_image,
+    resolve_product_media_image_details,
 )
 
 
 V3_SCHEMA_VERSION = "product_media_observation_v3"
 STAGES = ("image_classification", "object_localization", "label_localization", "measurement_binding")
+PANEL_BBOX_REPAIR_STAGE = "panel_bbox_repair"
 SUBJECT_SCOPES = {"product", "packaging", "component", "accessory", "included_item", "display_prop"}
-IMAGE_PRIMARY_TYPES = SUBJECT_SCOPES | {"multi_panel"}
+IMAGE_PRIMARY_TYPES = {"single_panel", "multi_panel", "packaging_only", "product_only", "mixed_packaging_product"}
+_LEGACY_SINGLE_PANEL_TYPES = SUBJECT_SCOPES
 MEASUREMENT_AXES = {"length", "width", "height", "depth", "thickness", "diameter", "capacity", "count", "unknown"}
 OBSERVATION_TYPES = {"labelled_measurement", "count", "visible_structure", "visible_text"}
 _BBOX_KEYS = {"x", "y", "width", "height"}
@@ -47,7 +49,7 @@ def v3_model_prompt(*, max_observations: int, stage: str = "measurement_binding"
     coordinates when ``coordinate_space`` is ``pixel``.  The validator turns
     every accepted box into 0..1 before it becomes a shadow observation.
     """
-    if stage not in STAGES:
+    if stage not in {*STAGES, PANEL_BBOX_REPAIR_STAGE}:
         raise ValueError("v3_stage_not_allowed")
     shared = (
         f"Return one JSON object only. schema_version must be {V3_SCHEMA_VERSION}; stage must be {stage}. "
@@ -57,10 +59,17 @@ def v3_model_prompt(*, max_observations: int, stage: str = "measurement_binding"
     prior = json.dumps(context or {}, ensure_ascii=False, separators=(",", ":"))
     if stage == "image_classification":
         return shared + (
-            "Return image_primary_type as one of product, packaging, component, accessory, included_item, display_prop, multi_panel. "
+            "Return image_primary_type as one of single_panel, multi_panel, packaging_only, product_only, mixed_packaging_product. "
             "Return panels as a list. Each panel needs panel_ref, panel_title, panel_bbox, state_or_mode. "
             "For a single-panel image panels must be exactly []. Only use a non-empty panels list when image_primary_type is multi_panel; "
             "then every panel_bbox is mandatory and uses x,y,width,height plus coordinate_space."
+        )
+    if stage == PANEL_BBOX_REPAIR_STAGE:
+        return shared + (
+            "Return panels only. Preserve every existing panel_ref and provide only panel_ref and panel_bbox. "
+            "Do not add objects, labels, measurements, facts, or text extraction. Every panel_bbox is mandatory and uses "
+            "x,y,width,height plus coordinate_space. Previous stage context: "
+            f"{prior}"
         )
     if stage == "object_localization":
         return shared + (
@@ -73,7 +82,7 @@ def v3_model_prompt(*, max_observations: int, stage: str = "measurement_binding"
     if stage == "label_localization":
         return shared + (
             "Return labels as a list of visible dimension labels, arrows, or callout lines. Each label needs label_ref, label_bbox, "
-            "evidence_text, confidence. label_bbox is required and uses x,y,width,height plus coordinate_space. OCR text is reference only. "
+            "panel_ref, evidence_text, confidence. label_bbox is required and uses x,y,width,height plus coordinate_space. OCR text is reference only. "
             f"Maximum labels: {max_observations}. Previous stage context: {prior}"
         )
     return shared + (
@@ -116,13 +125,19 @@ def _normalised_bbox(value: Any, *, image_size: tuple[int, int] | None = None) -
     elif coordinate_space in {"", "normalized_1000", "0_1000"} and maximum <= 1000:
         divisor = 1000.0
     elif coordinate_space in {"pixel", "image"} and image_size and image_size[0] > 0 and image_size[1] > 0:
-        if coords["x"] + coords["width"] > image_size[0] or coords["y"] + coords["height"] > image_size[1]:
+        if coords["x"] + coords["width"] <= image_size[0] and coords["y"] + coords["height"] <= image_size[1]:
+            return {
+                "x": coords["x"] / image_size[0], "y": coords["y"] / image_size[1],
+                "width": coords["width"] / image_size[0], "height": coords["height"] / image_size[1],
+                "coordinate_space": "normalized",
+            }
+        # Some OpenAI-compatible vision providers emit 0..1000 coordinates but
+        # label them as image pixels. Only reinterpret a declared pixel box when
+        # it is otherwise impossible for the supplied image dimensions.
+        if maximum <= 1000:
+            divisor = 1000.0
+        else:
             return None
-        return {
-            "x": coords["x"] / image_size[0], "y": coords["y"] / image_size[1],
-            "width": coords["width"] / image_size[0], "height": coords["height"] / image_size[1],
-            "coordinate_space": "normalized",
-        }
     else:
         return None
     normalised = {key: coords[key] / divisor for key in _BBOX_KEYS}
@@ -134,6 +149,22 @@ def _normalised_bbox(value: Any, *, image_size: tuple[int, int] | None = None) -
         return None
     normalised["coordinate_space"] = "normalized"
     return normalised
+
+
+def _bbox_area(bbox: dict[str, float]) -> float:
+    return bbox["width"] * bbox["height"]
+
+
+def _bbox_iou(left: dict[str, float], right: dict[str, float]) -> float:
+    x1, y1 = max(left["x"], right["x"]), max(left["y"], right["y"])
+    x2, y2 = min(left["x"] + left["width"], right["x"] + right["width"]), min(left["y"] + left["height"], right["y"] + right["height"])
+    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    union = _bbox_area(left) + _bbox_area(right) - intersection
+    return intersection / union if union else 0.0
+
+
+def _valid_panel_bbox(bbox: dict[str, float] | None) -> bool:
+    return bool(bbox and 0.01 <= _bbox_area(bbox) < 0.99)
 
 
 def _uid(*parts: str) -> str:
@@ -158,6 +189,8 @@ class ProductMediaObservationV3:
     subject_ref: str
     subject_label: str
     panel_ref: str
+    panel_bbox: dict[str, float] | None
+    panel_title: str
     state_or_mode: str
     parent_subject_ref: str
     observation_type: str
@@ -201,20 +234,23 @@ class ProductMediaObservationV3Extractor:
             result["rejected_evidence"].append({"media_asset_id": asset_id, "reason": reasons[0]})
             result["warnings"].extend(reasons)
             return result
-        image = resolve_product_media_image(asset, timeout_seconds=timeout_seconds)
-        if not image:
-            result["rejected_evidence"].append({"media_asset_id": asset_id, "reason": "media_read_failed"})
+        image = resolve_product_media_image_details(asset, timeout_seconds=timeout_seconds)
+        result["media_resolution"] = {
+            key: value for key, value in image.items() if key not in {"data"}
+        }
+        if not image.get("ok"):
+            result["rejected_evidence"].append({"media_asset_id": asset_id, "reason": "image_read_failed", "detail": image.get("reason", "image_read_failed")})
             return result
-        parsed, diagnostics = self._run_stages(asset, image[0], image[1], timeout_seconds)
+        parsed, diagnostics, failure_reason = self._run_stages(asset, image["data"], image["extension"], timeout_seconds)
         result["stage_diagnostics"] = diagnostics
         if parsed is None:
-            result["rejected_evidence"].append({"media_asset_id": asset_id, "reason": "staged_model_response_invalid"})
+            result["rejected_evidence"].append({"media_asset_id": asset_id, "reason": failure_reason or "schema_validation_failed"})
             return result
-        result.update(self._parse(asset, parsed, hashlib.sha256(image[0]).hexdigest()))
+        result.update(self._parse(asset, parsed, image["observed_media_sha256"]))
         result["stage_diagnostics"] = diagnostics
         return result
 
-    def _run_stages(self, asset: Any, image: bytes, extension: str, timeout_seconds: int) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    def _run_stages(self, asset: Any, image: bytes, extension: str, timeout_seconds: int) -> tuple[dict[str, Any] | None, list[dict[str, Any]], str]:
         context: dict[str, Any] = {}
         diagnostics: list[dict[str, Any]] = []
         try:
@@ -227,30 +263,53 @@ class ProductMediaObservationV3Extractor:
                 raw = self._stage_runner(stage, asset, image, extension, timeout_seconds, context)
             except Exception as exc:  # external VLM boundary: record without exposing prompt/image output
                 diagnostics.append({"stage": stage, "execution_status": "error", "error_type": type(exc).__name__})
-                return None, diagnostics
+                return None, diagnostics, "provider_error"
             valid, compact, detail = self._validate_stage(stage, raw, image_size=image_size)
             diagnostics.append(detail)
             if not valid:
-                return None, diagnostics
+                return None, diagnostics, detail.get("reason", "schema_validation_failed")
+            if stage == "image_classification" and compact.pop("needs_panel_repair", False):
+                try:
+                    repair_raw = self._stage_runner(PANEL_BBOX_REPAIR_STAGE, asset, image, extension, timeout_seconds, compact)
+                except Exception as exc:
+                    diagnostics.append({"stage": PANEL_BBOX_REPAIR_STAGE, "execution_status": "error", "error_type": type(exc).__name__})
+                    return None, diagnostics, "provider_error"
+                repaired, repaired_compact, repair_detail = self._validate_panel_repair(
+                    repair_raw, image_size=image_size, expected_panels=compact["panels"],
+                )
+                diagnostics.append(repair_detail)
+                if not repaired:
+                    return None, diagnostics, repair_detail.get("reason", "panel_bbox_missing")
+                compact["panels"] = repaired_compact["panels"]
             context[stage] = compact
-            if stage == "object_localization" and context["image_classification"]["image_primary_type"] == "multi_panel":
+            if stage in {"object_localization", "label_localization"}:
+                collection = "subjects" if stage == "object_localization" else "labels"
                 panels_by_ref = {item["panel_ref"]: item for item in context["image_classification"]["panels"]}
-                panel_refs = set(panels_by_ref)
-                if not panel_refs or any(item.get("panel_ref") not in panel_refs for item in compact["subjects"]):
-                    diagnostics.append({"stage": stage, "execution_status": "success", "schema_status": "invalid", "field_presence": {"multi_panel_subject_panel_ref": False}})
-                    return None, diagnostics
-                for subject in compact["subjects"]:
-                    panel_state = panels_by_ref[subject["panel_ref"]]["state_or_mode"]
-                    if panel_state and not subject["state_or_mode"]:
-                        subject["state_or_mode"] = panel_state
+                for item in compact[collection]:
+                    if not item.get("panel_ref") and len(panels_by_ref) == 1:
+                        item["panel_ref"] = next(iter(panels_by_ref))
+                    if item.get("panel_ref") not in panels_by_ref:
+                        diagnostics.append({"stage": stage, "execution_status": "success", "schema_status": "invalid", "reason": "panel_ref_missing"})
+                        return None, diagnostics, "schema_validation_failed"
+                    if stage == "object_localization":
+                        panel = panels_by_ref[item["panel_ref"]]
+                        if panel["state_or_mode"] and not item["state_or_mode"]:
+                            item["state_or_mode"] = panel["state_or_mode"]
         subjects = {item["subject_ref"]: item for item in context["object_localization"]["subjects"]}
         labels = {item["label_ref"]: item for item in context["label_localization"]["labels"]}
         observations: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
+        panels_by_ref = {item["panel_ref"]: item for item in context["image_classification"]["panels"]}
         for item in context["measurement_binding"]["observations"]:
             subject = subjects.get(_text(item.get("subject_ref")))
             label = labels.get(_text(item.get("label_ref")))
             if subject is None or label is None:
+                rejected.append({"reason": "schema_validation_failed", "subject_ref": _text(item.get("subject_ref")), "label_ref": _text(item.get("label_ref"))})
                 continue
+            if subject["panel_ref"] != label["panel_ref"]:
+                rejected.append({"reason": "cross_panel_binding_rejected", "subject_ref": subject["subject_ref"], "label_ref": label["label_ref"]})
+                continue
+            panel = panels_by_ref[subject["panel_ref"]]
             observations.append({
                 "subject_scope": subject["subject_scope"], "subject_ref": subject["subject_ref"],
                 "subject_label": subject["subject_label"], "state_or_mode": subject["state_or_mode"],
@@ -259,9 +318,10 @@ class ProductMediaObservationV3Extractor:
                 "measurement_axis": item["measurement_axis"], "raw_observation": item["raw_observation"],
                 "value": item["value"], "unit": item["unit"], "evidence_text": label["evidence_text"],
                 "object_bbox": subject["object_bbox"], "label_bbox": label["label_bbox"],
+                "panel_bbox": panel["panel_bbox"], "panel_title": panel["panel_title"],
                 "confidence": min(subject["confidence"], label["confidence"], item["confidence"]),
             })
-        return {"schema_version": V3_SCHEMA_VERSION, "model_version": "staged", "observations": observations}, diagnostics
+        return {"schema_version": V3_SCHEMA_VERSION, "model_version": "staged", "observations": observations, "stage_rejected_evidence": rejected}, diagnostics, ""
 
     def _validate_stage(self, stage: str, raw: Any, *, image_size: tuple[int, int] | None) -> tuple[bool, dict[str, Any], dict[str, Any]]:
         base = {"stage": stage, "execution_status": "success", "schema_status": "invalid"}
@@ -269,28 +329,34 @@ class ProductMediaObservationV3Extractor:
             return False, {}, {**base, "field_presence": {"schema_version": bool(isinstance(raw, dict) and raw.get("schema_version")), "stage": bool(isinstance(raw, dict) and raw.get("stage"))}}
         if stage == "image_classification":
             panels = raw.get("panels", [])
-            if raw.get("image_primary_type") not in IMAGE_PRIMARY_TYPES or not isinstance(panels, list):
-                return False, {}, base
-            # Panels are only a navigation aid for later stages. A model sometimes
-            # emits descriptive panel rows for a single image without coordinates;
-            # they cannot become visual facts, so ignore them instead of treating
-            # them as an observation or guessing a panel bbox.
-            if raw["image_primary_type"] != "multi_panel" and panels:
-                return True, {"image_primary_type": raw["image_primary_type"], "panels": []}, {
-                    **base, "schema_status": "valid", "result_count": 0,
-                    "warnings": ["single_panel_rows_ignored_without_bbox"],
+            image_primary_type = _text(raw.get("image_primary_type")).lower()
+            if image_primary_type in _LEGACY_SINGLE_PANEL_TYPES:
+                image_primary_type = "single_panel"
+            if image_primary_type not in IMAGE_PRIMARY_TYPES or not isinstance(panels, list):
+                return False, {}, {**base, "reason": "schema_validation_failed"}
+            if image_primary_type != "multi_panel":
+                return True, {"image_primary_type": image_primary_type, "panels": [{"panel_ref": "root", "panel_title": "", "panel_bbox": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0, "coordinate_space": "normalized"}, "state_or_mode": "", "synthetic_root": True}]}, {
+                    **base, "schema_status": "valid", "result_count": 1, "warnings": ["synthetic_root_panel"],
                 }
-            valid_panels = []
+            candidate_panels = []
+            repair_required = False
             for item in panels:
                 if not isinstance(item, dict) or not _text(item.get("panel_ref")):
-                    return False, {}, base
+                    return False, {}, {**base, "reason": "schema_validation_failed"}
                 bbox = _normalised_bbox(item.get("panel_bbox"), image_size=image_size)
-                if bbox is None:
-                    return False, {}, {**base, "field_presence": {"panel_bbox": False}}
-                valid_panels.append({"panel_ref": _text(item["panel_ref"]), "panel_title": _text(item.get("panel_title")), "panel_bbox": bbox, "state_or_mode": _text(item.get("state_or_mode"))})
-            if raw["image_primary_type"] == "multi_panel" and not valid_panels:
-                return False, {}, {**base, "field_presence": {"multi_panel_bbox": False}}
-            return True, {"image_primary_type": raw["image_primary_type"], "panels": valid_panels}, {**base, "schema_status": "valid", "result_count": len(valid_panels)}
+                title = _text(item.get("panel_title") or item.get("visible_heading"))
+                if not title:
+                    return False, {}, {**base, "reason": "schema_validation_failed", "field_presence": {"panel_title": False}}
+                if not _valid_panel_bbox(bbox):
+                    repair_required = True
+                candidate_panels.append({"panel_ref": _text(item["panel_ref"]), "panel_title": title, "panel_bbox": bbox, "state_or_mode": _text(item.get("state_or_mode")) or title})
+            if not candidate_panels:
+                return False, {}, {**base, "reason": "panel_bbox_missing"}
+            if repair_required:
+                return True, {"image_primary_type": image_primary_type, "panels": candidate_panels, "needs_panel_repair": True}, {**base, "schema_status": "valid", "result_count": len(candidate_panels), "warnings": ["panel_bbox_repair_required"]}
+            if any(_bbox_iou(left["panel_bbox"], right["panel_bbox"]) >= 0.9 for index, left in enumerate(candidate_panels) for right in candidate_panels[index + 1:]):
+                return False, {}, {**base, "reason": "invalid_panel_bbox"}
+            return True, {"image_primary_type": image_primary_type, "panels": candidate_panels}, {**base, "schema_status": "valid", "result_count": len(candidate_panels)}
         collection = "subjects" if stage == "object_localization" else "labels" if stage == "label_localization" else "observations"
         rows = raw.get(collection)
         if not isinstance(rows, list):
@@ -303,13 +369,13 @@ class ProductMediaObservationV3Extractor:
                 scope = _text(item.get("subject_scope")).lower()
                 bbox = _normalised_bbox(item.get("object_bbox"), image_size=image_size)
                 if scope not in SUBJECT_SCOPES or not _text(item.get("subject_ref")) or not _text(item.get("subject_label")) or bbox is None:
-                    return False, {}, {**base, "field_presence": {"object_bbox": bbox is not None}, "returned_fields": sorted(item.keys()), "bbox_shape": _bbox_shape(item.get("object_bbox"))}
+                    return False, {}, {**base, "reason": "object_bbox_missing", "field_presence": {"object_bbox": bbox is not None}, "returned_fields": sorted(item.keys()), "bbox_shape": _bbox_shape(item.get("object_bbox"))}
                 clean.append({"subject_ref": _text(item["subject_ref"]), "subject_scope": scope, "subject_label": _text(item["subject_label"]), "parent_subject_ref": _text(item.get("parent_subject_ref")), "state_or_mode": _text(item.get("state_or_mode")), "panel_ref": _text(item.get("panel_ref")), "object_bbox": bbox, "confidence": _confidence(item.get("confidence"))})
             elif stage == "label_localization":
                 bbox = _normalised_bbox(item.get("label_bbox"), image_size=image_size)
                 if not _text(item.get("label_ref")) or bbox is None or not _text(item.get("evidence_text")):
-                    return False, {}, {**base, "field_presence": {"label_bbox": bbox is not None}, "returned_fields": sorted(item.keys()), "bbox_shape": _bbox_shape(item.get("label_bbox"))}
-                clean.append({"label_ref": _text(item["label_ref"]), "label_bbox": bbox, "evidence_text": _text(item["evidence_text"]), "confidence": _confidence(item.get("confidence"))})
+                    return False, {}, {**base, "reason": "label_bbox_missing", "field_presence": {"label_bbox": bbox is not None}, "returned_fields": sorted(item.keys()), "bbox_shape": _bbox_shape(item.get("label_bbox"))}
+                clean.append({"label_ref": _text(item["label_ref"]), "panel_ref": _text(item.get("panel_ref")), "label_bbox": bbox, "evidence_text": _text(item["evidence_text"]), "confidence": _confidence(item.get("confidence"))})
             else:
                 axis = _text(item.get("measurement_axis")).lower()
                 observation_type = _text(item.get("observation_type")).lower()
@@ -318,11 +384,42 @@ class ProductMediaObservationV3Extractor:
                 clean.append({"subject_ref": _text(item["subject_ref"]), "label_ref": _text(item["label_ref"]), "observation_type": observation_type, "attribute_key": _text(item.get("attribute_key")).lower(), "measurement_axis": axis, "raw_observation": _text(item.get("raw_observation")), "value": _text(item.get("value")), "unit": _text(item.get("unit")), "confidence": _confidence(item.get("confidence"))})
         return True, {collection: clean}, {**base, "schema_status": "valid", "result_count": len(clean)}
 
+    def _validate_panel_repair(
+        self, raw: Any, *, image_size: tuple[int, int] | None, expected_panels: list[dict[str, Any]],
+    ) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+        base = {"stage": PANEL_BBOX_REPAIR_STAGE, "execution_status": "success", "schema_status": "invalid"}
+        if not isinstance(raw, dict) or raw.get("schema_version") != V3_SCHEMA_VERSION or raw.get("stage") != PANEL_BBOX_REPAIR_STAGE:
+            return False, {}, {**base, "reason": "schema_validation_failed"}
+        rows = raw.get("panels")
+        if not isinstance(rows, list):
+            return False, {}, {**base, "reason": "panel_bbox_missing"}
+        expected_by_ref = {item["panel_ref"]: item for item in expected_panels}
+        repaired_by_ref: dict[str, dict[str, Any]] = {}
+        for item in rows:
+            if not isinstance(item, dict):
+                return False, {}, {**base, "reason": "schema_validation_failed"}
+            panel_ref = _text(item.get("panel_ref"))
+            bbox = _normalised_bbox(item.get("panel_bbox"), image_size=image_size)
+            if not panel_ref or panel_ref not in expected_by_ref:
+                return False, {}, {**base, "reason": "schema_validation_failed"}
+            if bbox is None:
+                return False, {}, {**base, "reason": "panel_bbox_missing"}
+            if not _valid_panel_bbox(bbox):
+                return False, {}, {**base, "reason": "invalid_panel_bbox"}
+            repaired_by_ref[panel_ref] = {**expected_by_ref[panel_ref], "panel_bbox": bbox}
+        if set(repaired_by_ref) != set(expected_by_ref):
+            return False, {}, {**base, "reason": "panel_bbox_missing"}
+        repaired = [repaired_by_ref[item["panel_ref"]] for item in expected_panels]
+        if any(_bbox_iou(left["panel_bbox"], right["panel_bbox"]) >= 0.9 for index, left in enumerate(repaired) for right in repaired[index + 1:]):
+            return False, {}, {**base, "reason": "invalid_panel_bbox"}
+        return True, {"panels": repaired}, {**base, "schema_status": "valid", "result_count": len(repaired)}
+
     def _parse(self, asset: Any, raw: Any, observed_media_sha256: str) -> dict[str, Any]:
         asset_id = int(_asset_value(asset, "id") or _asset_value(asset, "asset_id") or 0)
         accepted: list[ProductMediaObservationV3] = []
         rejected: list[dict[str, Any]] = []
         warnings: list[str] = []
+        rejected.extend(raw.get("stage_rejected_evidence", []))
         for index, item in enumerate(raw["observations"]):
             observation, reason = self._validate(asset, item, observed_media_sha256, _text(raw.get("model_version")))
             if observation is None:
@@ -337,13 +434,15 @@ class ProductMediaObservationV3Extractor:
         scope = _text(item.get("subject_scope")).lower()
         subject_ref, subject_label = _text(item.get("subject_ref")), _text(item.get("subject_label"))
         panel_ref = _text(item.get("panel_ref"))
+        panel_bbox = _normalised_bbox(item.get("panel_bbox"))
+        panel_title = _text(item.get("panel_title"))
         state_or_mode, parent_ref = _text(item.get("state_or_mode")), _text(item.get("parent_subject_ref"))
         observation_type = _text(item.get("observation_type")).lower()
         attribute_key, axis = _text(item.get("attribute_key")).lower(), _text(item.get("measurement_axis")).lower()
         raw_observation, value, unit = _text(item.get("raw_observation")), _text(item.get("value")), _text(item.get("unit"))
         evidence_text = _text(item.get("evidence_text"))
         object_bbox, label_bbox = _normalised_bbox(item.get("object_bbox")), _normalised_bbox(item.get("label_bbox"))
-        if scope not in SUBJECT_SCOPES or not subject_ref or not subject_label or not raw_observation:
+        if scope not in SUBJECT_SCOPES or not subject_ref or not subject_label or not panel_ref or panel_bbox is None or not raw_observation:
             return None, "subject_binding_missing"
         scope_conflict = _scope_label_conflict(scope, subject_label)
         if scope_conflict:
@@ -375,7 +474,7 @@ class ProductMediaObservationV3Extractor:
         provenance = {"schema_version": V3_SCHEMA_VERSION, "model_version": model_version, "media_asset_id": asset_id, "observed_media_sha256": observed_media_sha256, "asset_content_hash": _media_content_hash(asset), "identity_scope": [{"namespace": key, "value": value} for key, value in identity.items() if value]}
         return ProductMediaObservationV3(
             observation_uid=_uid(observed_media_sha256, scope, subject_ref, state_or_mode, observation_type, attribute_key, axis, value, unit), media_asset_id=asset_id, product_identity=identity,
-            subject_scope=scope, subject_ref=subject_ref, subject_label=subject_label, panel_ref=panel_ref, state_or_mode=state_or_mode, parent_subject_ref=parent_ref,
+            subject_scope=scope, subject_ref=subject_ref, subject_label=subject_label, panel_ref=panel_ref, panel_bbox=panel_bbox, panel_title=panel_title, state_or_mode=state_or_mode, parent_subject_ref=parent_ref,
             observation_type=observation_type, attribute_key=attribute_key, measurement_axis=axis, raw_observation=raw_observation, value=value, unit=unit, evidence_text=evidence_text,
             object_bbox=object_bbox, label_bbox=label_bbox, confidence=confidence, provenance=provenance, warning_reasons=warnings,
         ), ""
@@ -420,7 +519,11 @@ def build_product_understanding_graph(observations: list[dict[str, Any]]) -> dic
         if ref:
             nodes.setdefault(ref, {"subject_ref": ref, "subject_scope": _text(item.get("subject_scope")), "subject_label": _text(item.get("subject_label")), "state_or_mode": _text(item.get("state_or_mode"))})
         if _text(item.get("panel_ref")):
-            nodes.setdefault(f"panel:{item['panel_ref']}", {"subject_ref": f"panel:{item['panel_ref']}", "subject_scope": "panel", "subject_label": _text(item["panel_ref"]), "state_or_mode": ""})
+            nodes.setdefault(f"panel:{item['panel_ref']}", {
+                "subject_ref": f"panel:{item['panel_ref']}", "subject_scope": "panel",
+                "subject_label": _text(item.get("panel_title")) or _text(item["panel_ref"]),
+                "state_or_mode": _text(item.get("state_or_mode")), "panel_bbox": item.get("panel_bbox"),
+            })
         if _text(item.get("state_or_mode")):
             nodes.setdefault(f"mode:{item['subject_ref']}:{item['state_or_mode']}", {"subject_ref": f"mode:{item['subject_ref']}:{item['state_or_mode']}", "subject_scope": "mode", "subject_label": _text(item["state_or_mode"]), "state_or_mode": _text(item["state_or_mode"])})
     for item in ordered:
