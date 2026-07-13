@@ -106,3 +106,24 @@ media-table updates. OCR is included only as a model prediction or task
 metadata, and current object-provider output remains metadata. Importing human
 labels, training a detector, and promoting any resulting observation require
 separately approved future work.
+
+## Small-batch Label Studio loop
+
+Phase 0.4H.1 uses the existing schema to export a bounded twenty-image pilot.
+The exporter reads original image bytes before task creation, calculates a
+SHA-256 from those bytes, records dimensions and identity metadata, and can
+materialize a local external-authoring copy outside the repository. Sampling is
+balanced by durable media role and existing layout tags, never by product name,
+SKU, image filename, or fixed coordinate.
+
+The Label Studio task uses Chinese region labels and four reviewer-only
+relations: `part_of`, `labelled_by`, `visible_in`, and `active_in_mode`.
+`high_risk_text_region` is the sole way to mark visible high-risk wording; it
+does not carry a claim label. The post-export validator accepts only completed
+human annotations, checks source hash/task continuity, rectangle bounds,
+relation scope, duplicate regions, unknown labels, and missing dimension
+relations. It produces a rework queue rather than trying to repair annotations.
+
+Label Studio's documented JSON task format uses `data` for the image reference
+and `predictions` for editable pre-annotations; its `Relations` tag represents
+links between regions. See the official [task import guide](https://labelstud.io/guide/tasks.html), [pre-annotation guide](https://labelstud.io/guide/predictions.html), and [Relations tag reference](https://labelstud.io/tags/relations). This is suitable for a local pilot, not a production media-hosting design.

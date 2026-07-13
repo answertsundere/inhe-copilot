@@ -53,3 +53,17 @@ requires no database migration, model deletion, or customer-path rollback.
 Tests validate the category schema, Label Studio JSON shape, prohibited
 high-risk labels, read-only guard metrics, and unchanged sendability. Exports
 are validated with standard JSON parsers before external import.
+
+## Phase 0.4H.1 Pilot boundary
+
+The first pilot is a reproducible batch of twenty approved, agent-usable image
+assets whose actual source bytes were read before export. Each task records a
+stable task UID, source-byte SHA-256, image dimensions, media identity scope,
+and an external authoring reference. The authoring package includes a Chinese
+Label Studio configuration and keeps OCR only as editable predictions.
+
+Label Studio annotations remain external review artifacts. The read-only export
+validator requires task UID and source-hash continuity, legal rectangles,
+allowed labels, legal relation endpoints, a completed human annotation, and
+annotator/time metadata. It reports rework errors per task and does not create
+an observation, pending review, product fact, or delivery change.

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 
+import scripts.export_product_media_annotation_tasks as export_tasks
+
 from scripts.diagnose_product_media_annotation_feasibility import build_report
-from scripts.export_product_media_annotation_tasks import build_tasks
+from scripts.export_product_media_annotation_tasks import build_pilot_tasks, build_tasks, select_balanced_pilot_assets
 
 
 class _Asset:
@@ -63,3 +65,32 @@ def test_feasibility_report_is_metadata_only_and_does_not_claim_object_facts():
     assert report["multi_panel_image_count"] == 1
     assert report["formal_kb_write_attempt_count"] == 0
     assert report["can_change_can_send_count"] == 0
+
+
+def test_pilot_selection_round_robins_metadata_buckets_without_names():
+    assets = [
+        _asset(id=1, asset_type="size_image", scene_tags=[]),
+        _asset(id=2, asset_type="size_image", scene_tags=[]),
+        _asset(id=3, asset_type="pack_guide_image", scene_tags=[]),
+        _asset(id=4, asset_type="sku_image", scene_tags=["packaging"]),
+    ]
+
+    selected = select_balanced_pilot_assets(assets, candidate_scan_limit=3)
+
+    assert {bucket for _asset_item, bucket in selected} == {"pack_guide_image", "size_image", "structured_layout"}
+
+
+def test_pilot_tasks_require_readable_bytes_and_keep_media_local_to_external_runtime(tmp_path, monkeypatch):
+    asset = _asset(status="approved", usable_for_agent=True, product_name="name-must-not-drive-selection")
+    monkeypatch.setattr(export_tasks, "_image_metadata", lambda _asset, timeout_seconds: ({
+        "data": b"image-bytes", "extension": ".png", "observed_media_sha256": "a" * 64,
+        "source_image_size": {"width": 100, "height": 50}, "source_kind": "fixture",
+    }, ""))
+
+    report = build_pilot_tasks([asset], limit=1, candidate_scan_limit=1, timeout_seconds=1, materialize_dir=tmp_path)
+
+    task = report["tasks"][0]
+    assert report["task_count"] == 1
+    assert task["meta"]["source_image_sha256"] == "a" * 64
+    assert task["data"]["image"] == "/data/local-files/?d=media/" + "a" * 64 + ".png"
+    assert (tmp_path / ("a" * 64 + ".png")).read_bytes() == b"image-bytes"

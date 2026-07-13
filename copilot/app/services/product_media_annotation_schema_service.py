@@ -10,7 +10,7 @@ import hashlib
 from typing import Any
 
 
-ANNOTATION_SCHEMA_VERSION = "product_media_annotation_v1"
+ANNOTATION_SCHEMA_VERSION = "product_media_annotation_v2"
 LABEL_STUDIO_MODEL_VERSION = "copilot_shadow_candidates_v1"
 
 OBJECT_LABELS = (
@@ -42,6 +42,7 @@ RELATION_TYPES = {
     "object_part_of_product",
     "object_active_in_mode",
 }
+LABEL_STUDIO_RELATION_TYPES = {"part_of", "labelled_by", "visible_in", "active_in_mode"}
 ATTRIBUTE_KEYS = {
     "width",
     "height",
@@ -60,7 +61,24 @@ _ROLE_PRIORITY = {
     "accessory_image": 2,
     "sku_image": 3,
 }
-_HIGH_RISK_TERMS = ("承重", "无毒", "食品级", "认证", "检测", "儿童安全", "防倾倒", "固定墙", "墙面固定")
+_HIGH_RISK_TERMS = (
+    "承重", "无毒", "食品级", "认证", "检测", "儿童安全", "防倾倒", "固定墙", "墙面固定",
+    "load capacity", "non-toxic", "food grade", "certification", "child safety", "anti-tip", "wall mounting",
+)
+_LABEL_DISPLAY_NAMES_ZH = {
+    "product_overall": "商品整体",
+    "packaging": "包装/纸箱",
+    "component": "商品部件",
+    "accessory": "配件",
+    "included_item": "随附物",
+    "display_prop": "展示道具",
+    "label_text_region": "图片可见文字",
+    "dimension_label_region": "图片标注尺寸",
+    "mode_panel": "模式面板",
+    "product_panel": "商品面板",
+    "high_risk_text_region": "高风险文字",
+}
+_DISPLAY_NAME_TO_LABEL = {display: label for label, display in _LABEL_DISPLAY_NAMES_ZH.items()}
 _MODEL_CANDIDATE_FIELDS = (
     "provider_name",
     "model_name",
@@ -124,6 +142,38 @@ def product_identity(asset: Any) -> dict[str, str]:
         "i_id": _text(_value(asset, "i_id")),
         "sku_code": _text(_value(asset, "sku_code")),
     }
+
+
+def label_studio_display_label(label: str) -> str:
+    """Return the Chinese authoring label while retaining a canonical schema key."""
+    return _LABEL_DISPLAY_NAMES_ZH.get(_text(label), _text(label))
+
+
+def canonical_annotation_label(label: Any) -> str:
+    value = _text(label)
+    return _DISPLAY_NAME_TO_LABEL.get(value, value)
+
+
+def _task_uid(asset_id: str, image_sha256: str, reference: str) -> str:
+    seed = "|".join((asset_id, image_sha256 or reference))
+    return "pma_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
+
+
+def label_studio_config_xml() -> str:
+    """Return an importable Chinese Label Studio config for the shared schema."""
+    labels = "\n".join(f'      <Label value="{display}" />' for display in _LABEL_DISPLAY_NAMES_ZH.values())
+    relations = "\n".join(f'      <Relation value="{relation}" />' for relation in sorted(LABEL_STUDIO_RELATION_TYPES))
+    return f"""<View>
+  <Header value="商品媒体人工标注（仅审核用，不生成商品事实）" />
+  <Text name="annotation_context" value="$annotation_context" valueType="text" />
+  <Image name="image" value="$image" />
+  <RectangleLabels name="region_label" toName="image">
+{labels}
+  </RectangleLabels>
+  <Relations>
+{relations}
+  </Relations>
+</View>"""
 
 
 def suggested_task_type(asset: Any) -> str:
@@ -215,7 +265,7 @@ def _ocr_prediction(asset_id: str, item: dict[str, Any], index: int) -> dict[str
             "width": round(bbox["width"] * 100, 4),
             "height": round(bbox["height"] * 100, 4),
             "rotation": 0,
-            "rectanglelabels": [label],
+            "rectanglelabels": [label_studio_display_label(label)],
         },
         "meta": {"text": text, "source": _text(item.get("source") or item.get("provider_name") or "ocr")},
     }
@@ -240,10 +290,15 @@ def build_label_studio_task(
     *,
     ocr_items: list[dict[str, Any]] | None = None,
     model_candidates: list[dict[str, Any]] | None = None,
+    image_details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build an importable Label Studio task with shadow suggestions only."""
     asset_id = _text(_value(asset, "id") or _value(asset, "asset_id"))
     reference, reference_kind = image_reference(asset)
+    details = image_details if isinstance(image_details, dict) else {}
+    image_sha256 = _text(details.get("observed_media_sha256"))
+    source_size = details.get("source_image_size") if isinstance(details.get("source_image_size"), dict) else {}
+    task_uid = _task_uid(asset_id, image_sha256, reference)
     priority, priority_reason = annotation_priority(asset)
     predictions = [
         prediction
@@ -252,19 +307,35 @@ def build_label_studio_task(
         for prediction in [_ocr_prediction(asset_id, item, index)]
         if prediction is not None
     ]
+    title = _text(_value(asset, "product_name"))
+    context = "\n".join(filter(None, (
+        f"任务编号：{task_uid}",
+        f"商品标题（仅辅助识别）：{title}" if title else "",
+        f"媒体角色：{_text(_value(asset, 'asset_type'))}",
+        "请只标注图片中可见区域；不要依据商品标题推断对象或尺寸。",
+    )))
     return {
-        "data": {"image": reference},
+        "data": {"image": reference, "annotation_context": context},
         "meta": {
             "schema_version": ANNOTATION_SCHEMA_VERSION,
+            "task_uid": task_uid,
             "media_asset_id": asset_id,
             "image_reference_kind": reference_kind,
+            "original_image_source": reference,
             "product_identity": product_identity(asset),
+            "product_title_for_human_aid": title,
+            "source_type": _text(_value(asset, "source")),
+            "source_image_sha256": image_sha256,
+            "source_image_size": source_size,
+            "source_image_source_kind": _text(details.get("source_kind")),
             "media_role": _text(_value(asset, "asset_type")),
             "suggested_task_type": suggested_task_type(asset),
             "priority": priority,
             "priority_reason": priority_reason,
             "annotation_instructions_zh": annotation_instructions(),
             "prohibited_fact_labels": sorted(PROHIBITED_FACT_LABELS),
+            "label_display_names_zh": _LABEL_DISPLAY_NAMES_ZH,
+            "prediction_source_version": LABEL_STUDIO_MODEL_VERSION,
             "current_model_candidates": _safe_model_candidates(model_candidates),
             "shadow_only": True,
             "used_for_generation": False,
@@ -286,7 +357,7 @@ def validate_label_studio_task(task: dict[str, Any]) -> list[str]:
     for prediction in task.get("predictions") or []:
         for result in prediction.get("result") or []:
             labels = ((result.get("value") or {}).get("rectanglelabels") or [])
-            if len(labels) != 1 or labels[0] not in OBJECT_LABELS:
+            if len(labels) != 1 or canonical_annotation_label(labels[0]) not in OBJECT_LABELS:
                 errors.append("annotation_label_invalid")
     return errors
 
@@ -296,6 +367,8 @@ def annotation_schema() -> dict[str, Any]:
         "schema_version": ANNOTATION_SCHEMA_VERSION,
         "object_labels": list(OBJECT_LABELS),
         "relation_types": sorted(RELATION_TYPES),
+        "label_studio_relation_types": sorted(LABEL_STUDIO_RELATION_TYPES),
+        "label_display_names_zh": _LABEL_DISPLAY_NAMES_ZH,
         "attribute_keys": sorted(ATTRIBUTE_KEYS),
         "prohibited_fact_labels": sorted(PROHIBITED_FACT_LABELS),
         "shadow_only": True,

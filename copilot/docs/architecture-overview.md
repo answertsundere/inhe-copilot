@@ -2,7 +2,7 @@
 
 ## Status
 
-Current architecture source of truth as of 2026-07-10. Historical status and
+Current architecture source of truth as of 2026-07-13. Historical status and
 delivery reports remain evidence of past work, not current completion claims.
 
 ## Current System
@@ -38,6 +38,12 @@ understanding. It distinguishes the product from packaging, components,
 accessories, included items, and display props before a measurement can be
 interpreted. The graph is a shadow diagnostic only; it cannot alter formal
 evidence, replies, delivery, or `can_send`.
+
+Phase 0.4H.1 adds a local external-authoring pilot for twenty source-byte
+verified media tasks. It uses human rectangle/relation annotation and a
+read-only export validator only. Generic visual providers remain unqualified
+for semantic scope grounding, OCR remains a text-box candidate, and no model
+training or annotation promotion is part of the formal evidence path.
 
 ## Target System
 
