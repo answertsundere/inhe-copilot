@@ -103,7 +103,9 @@ or dimension observation from `outputs/`.
 
 The v3 Product Understanding Graph is a separate shadow diagnostic. It binds a
 visual observation to a structured subject scope, subject reference, optional
-state, parent relation, and object/label boxes. It does not enter Grounded
+state, panel relation, and object/label boxes. It uses staged classification,
+object localisation, label localisation, and object-label binding, and stores
+accepted coordinates in a normalised `0..1` contract. It does not enter Grounded
 Reasoning `used_facts`, the Product Evidence Pack, or any formal response.
 Future promotion requires a separate reviewed-v3 evidence contract. Until then,
 the graph may only be evaluated offline and must keep

@@ -81,6 +81,7 @@ Current boundaries:
 - Grounded Reasoning is shadow-only and cannot change `can_send` or the final reply.
 - `service_action` and `media_reference` cannot be promoted to product facts.
 - Product media roles do not prove that image contents have been understood. Model-extracted OCR or visual observations require product scope, provenance, confidence, and review state before they can support formal claims.
+- Product Media Observation v3 uses staged classification, localisation, and object-label binding only for shadow diagnostics. Its normalised regions and graph relations remain outside formal evidence, customer replies, and `can_send` until a separate reviewed-evidence promotion decision.
 - Low-risk bounded derivations must declare their inputs and assumptions. Dimensions or visible structure cannot be upgraded into load, child-safety, toxicity, certification, or installation-safety claims.
 
 ## Replay, Evaluation, And Training Data

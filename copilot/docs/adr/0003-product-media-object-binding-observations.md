@@ -21,14 +21,17 @@ can be inspected in shadow diagnostics.
   `included_item`, or `display_prop`.
 - Measurements use a generic axis (`length`, `width`, `height`, `depth`,
   `thickness`, `diameter`, `capacity`, or `count`) and must include both an
-  object box and a label box.
+  object box and a label box. The extractor performs classification, object
+  localisation, label localisation, then binding as separate model stages and
+  normalises accepted boxes to `0..1` coordinates.
 - Product, packaging, and component measurements remain distinct. A packaging
   or component value is never selected as a product dimension.
 - Visible text is reference-only. High-risk safety, load, certification,
   toxicity, child-suitability, and installation-prescription content is
   rejected before graph construction.
 - The Product Understanding Graph records only direct subject/relationship and
-  measurement edges. It is shadow-only and cannot change formal evidence,
+  measurement edges (`part_of`, `measured_as`, `labelled_by`, `visible_in`, and
+  `active_in_mode`). It is shadow-only and cannot change formal evidence,
   replies, delivery, or sendability.
 
 The v2 candidate rows remain immutable legacy staging data. They are not
@@ -61,7 +64,9 @@ removes the v3 shadow service and leaves v2 staging and formal knowledge intact.
 ## Verification
 
 Synthetic tests prove object/label binding, packaging/component separation,
-state/parent edges, high-risk rejection, structured selection, and unchanged
-sendability. A later phase must qualify the v3 worker, scan source media, and
-introduce a human-review persistence contract before real v3 observations can
-be evaluated.
+state/panel/parent edges, high-risk rejection, structured selection, and
+unchanged sendability. A staged ten-image source-media gate on 2026-07-13 kept
+scope leakage and sendability changes at zero but did not reach the required
+stage execution/schema reliability threshold. A later phase must stabilise that
+worker contract before any v3 review persistence or evidence-promotion contract
+is introduced.

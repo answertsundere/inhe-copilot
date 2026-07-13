@@ -72,10 +72,14 @@ The project therefore uses v3 shadow observations with a generic subject scope
 (`product`, `packaging`, `component`, `accessory`, `included_item`, or
 `display_prop`), optional state, parent relationship, measurement axis, and
 object/label boxes. A packaging or component measurement is not a product
-dimension; visible text remains reference-only. The resulting Product
-Understanding Graph records direct `part_of` and `measured_as` edges only. It
-does not infer load, safety, toxicity, certification, child suitability, wall
-fixing, drilling, modification, or customer-specific geometry.
+dimension; visible text remains reference-only. The extractor now uses staged
+classification, object localisation, label localisation, and object-label
+binding. It normalises accepted boxes into one `0..1` coordinate system while
+recording only sanitised field-shape diagnostics for model failures. The
+resulting Product Understanding Graph records direct `part_of`, `measured_as`,
+`labelled_by`, `visible_in`, and `active_in_mode` edges only. It does not infer
+load, safety, toxicity, certification, child suitability, wall fixing,
+drilling, modification, or customer-specific geometry.
 
 Primary sources:
 
@@ -90,6 +94,26 @@ reference-only visible text, one was high-risk, and one source image could not
 be read. This is a contract failure, not a reason to relax object binding. The
 30-image scan was deliberately not run. V2's 105 pending candidates remain
 legacy read-only data and do not count toward any v3 review or evaluation gate.
+
+The follow-up staged v3 preflight on 2026-07-13 demonstrated why object
+binding must remain strict: the model initially emitted no usable boxes, then
+returned image-coordinate boxes after the four stages were separated. One
+source image contained `43`, `16.5`, and `71` centimetre labels bound to a
+packaging box. The extractor classified these as `packaging`, marked them as
+non-product dimensions, and kept every result pending review. A full ten-image
+gate is only valid after the same staged implementation completes; no v3 result
+is a product fact or customer-sendable evidence in the meantime.
+
+The staged ten-image gate on 2026-07-13 produced 28 pending-review,
+double-box-bound measurements. All accepted measurements retained
+`can_change_can_send=false`; packaging/product leakage, component/overall
+leakage, and high-risk admission were each zero. However, the gate did **not**
+qualify for a thirty-image scan: stage execution was 30/40 (75%) and schema
+success was 28/40 (70%). Two multi-panel classifications omitted required panel
+boxes and one approved source image could not be read. These are observed VLM
+or source-media failures, not grounds to relax localisation, scope, or review
+requirements. The system therefore remains shadow-only with no v3 review queue
+or formal evidence promotion.
 
 ### Model prediction review lifecycle
 
