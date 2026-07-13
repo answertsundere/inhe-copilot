@@ -10,7 +10,7 @@ import hashlib
 from typing import Any
 
 
-ANNOTATION_SCHEMA_VERSION = "product_media_annotation_v2"
+ANNOTATION_SCHEMA_VERSION = "product_media_annotation_v3"
 LABEL_STUDIO_MODEL_VERSION = "copilot_shadow_candidates_v1"
 
 OBJECT_LABELS = (
@@ -42,7 +42,17 @@ RELATION_TYPES = {
     "object_part_of_product",
     "object_active_in_mode",
 }
-LABEL_STUDIO_RELATION_TYPES = {"part_of", "labelled_by", "visible_in", "active_in_mode"}
+_LABEL_STUDIO_RELATION_DISPLAY_NAMES_ZH = {
+    "part_of": "属于",
+    "dimension_measures_object": "测量对象",
+    "panel_contains_object": "可见于面板",
+    "object_active_in_mode": "当前模式有效",
+    "label_describes_object": "说明对象",
+}
+LABEL_STUDIO_RELATION_TYPES = set(_LABEL_STUDIO_RELATION_DISPLAY_NAMES_ZH.values())
+_DISPLAY_RELATION_TO_CANONICAL = {
+    display: relation for relation, display in _LABEL_STUDIO_RELATION_DISPLAY_NAMES_ZH.items()
+}
 ATTRIBUTE_KEYS = {
     "width",
     "height",
@@ -66,16 +76,16 @@ _HIGH_RISK_TERMS = (
     "load capacity", "non-toxic", "food grade", "certification", "child safety", "anti-tip", "wall mounting",
 )
 _LABEL_DISPLAY_NAMES_ZH = {
-    "product_overall": "商品整体",
+    "product_overall": "商品实例（当前面板）",
     "packaging": "包装/纸箱",
     "component": "商品部件",
     "accessory": "配件",
     "included_item": "随附物",
     "display_prop": "展示道具",
-    "label_text_region": "图片可见文字",
-    "dimension_label_region": "图片标注尺寸",
+    "label_text_region": "图片说明文字",
+    "dimension_label_region": "尺寸标注（数值和线）",
     "mode_panel": "模式面板",
-    "product_panel": "商品面板",
+    "product_panel": "商品展示面板",
     "high_risk_text_region": "高风险文字",
 }
 _DISPLAY_NAME_TO_LABEL = {display: label for label, display in _LABEL_DISPLAY_NAMES_ZH.items()}
@@ -154,6 +164,12 @@ def canonical_annotation_label(label: Any) -> str:
     return _DISPLAY_NAME_TO_LABEL.get(value, value)
 
 
+def canonical_annotation_relation(relation: Any) -> str:
+    """Return the canonical relation key from the Chinese authoring value."""
+    value = _text(relation)
+    return _DISPLAY_RELATION_TO_CANONICAL.get(value, value)
+
+
 def _task_uid(asset_id: str, image_sha256: str, reference: str) -> str:
     seed = "|".join((asset_id, image_sha256 or reference))
     return "pma_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
@@ -165,11 +181,30 @@ def label_studio_config_xml() -> str:
     relations = "\n".join(f'      <Relation value="{relation}" />' for relation in sorted(LABEL_STUDIO_RELATION_TYPES))
     return f"""<View>
   <Header value="商品媒体人工标注（仅审核用，不生成商品事实）" />
+  <Header value="顺序：先框模式/展示面板；再框该面板中的商品实例或部件；最后框每条尺寸的数值、单位和标注线。" />
   <Text name="annotation_context" value="$annotation_context" valueType="text" />
   <Image name="image" value="$image" />
   <RectangleLabels name="region_label" toName="image">
 {labels}
   </RectangleLabels>
+  <Choices name="dimension_attribute" toName="image" perRegion="true" choice="single-radio" visibleWhen="region-selected">
+      <Choice value="宽度" />
+      <Choice value="高度" />
+      <Choice value="深度" />
+      <Choice value="长度" />
+      <Choice value="直径" />
+      <Choice value="厚度" />
+      <Choice value="层数/格数" />
+      <Choice value="图中未明确" />
+  </Choices>
+  <Choices name="dimension_scope" toName="image" perRegion="true" choice="single-radio" visibleWhen="region-selected">
+      <Choice value="商品实例整体" />
+      <Choice value="商品部件" />
+      <Choice value="包装/纸箱" />
+      <Choice value="当前模式专属" />
+      <Choice value="图中未明确" />
+  </Choices>
+  <TextArea name="dimension_visible_value" toName="image" perRegion="true" placeholder="仅填写图中可见的数值和单位，例如 38cm" />
   <Relations>
 {relations}
   </Relations>
@@ -207,9 +242,10 @@ def is_annotation_image_asset(asset: Any) -> bool:
 
 def annotation_instructions() -> list[str]:
     return [
-        "框选商品整体、包装、部件、配件、随附物、展示道具及文字区域；无法确认时不标为商品整体。",
-        "尺寸文字必须同时标注文字区域和被测对象；包装尺寸、部件尺寸和模式尺寸不得标为商品整体尺寸。",
-        "多面板图片先标模式或商品面板，再在同一面板内标对象和文字。",
+        "先框模式面板或商品展示面板；每个面板中的完整商品都标为一个商品实例，无法确认时不标为商品实例。",
+        "每条尺寸标注都框住数值、单位和标注线，并用“测量对象”从尺寸标注连到商品实例、商品部件或包装/纸箱。",
+        "多面板图片中，被测对象再用“可见于面板”连到所属面板；模式专属的对象再用“当前模式有效”连到模式面板。",
+        "尺寸区域填写图中可见数值和单位，并选择属性与作用范围；包装尺寸、部件尺寸和模式尺寸不得标为商品实例整体尺寸。",
         "承重、无毒、食品级、认证、儿童安全、防倾倒和墙面固定仅可标为高风险文字区域，不标为可回答事实。",
     ]
 

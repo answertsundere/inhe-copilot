@@ -76,6 +76,15 @@ Dimensions are always object- and panel-scoped:
 - a mode-specific dimension remains tied to its mode;
 - no annotation implies an overall-product dimension by itself.
 
+The v3 authoring UI exposes these as a reviewer workflow instead of a flat
+region list: first mark the mode or display panel, then the product instance
+inside that panel, then the component or packaging, and finally the visible
+dimension label. A dimension label must point to its measured object. When a
+panel is present, that measured object must point to its panel; a mode-only
+object can additionally point to its active mode. Reviewers also record only
+the visible value/unit plus an attribute and scope choice. These fields are
+external annotation metadata, not product facts.
+
 `load_capacity`, `non_toxic`, `food_grade`, `certification`, `child_safety`,
 `anti_tip`, and `wall_mounting` are prohibited fact labels. If they appear in
 an image, the only permitted label is `high_risk_text_region`.
@@ -116,13 +125,16 @@ materialize a local external-authoring copy outside the repository. Sampling is
 balanced by durable media role and existing layout tags, never by product name,
 SKU, image filename, or fixed coordinate.
 
-The Label Studio task uses Chinese region labels and four reviewer-only
-relations: `part_of`, `labelled_by`, `visible_in`, and `active_in_mode`.
+The Label Studio task uses Chinese region labels and five reviewer-only
+relations: belongs-to, measured-object, visible-in-panel, active-in-mode, and
+describes-object. The exported values map back to the canonical schema
+relations; they are not customer-facing text and do not create evidence.
 `high_risk_text_region` is the sole way to mark visible high-risk wording; it
 does not carry a claim label. The post-export validator accepts only completed
 human annotations, checks source hash/task continuity, rectangle bounds,
-relation scope, duplicate regions, unknown labels, and missing dimension
-relations. It produces a rework queue rather than trying to repair annotations.
+relation scope, duplicate regions, unknown labels, a missing measured object,
+and missing panel scope when panels exist. It produces a rework queue rather
+than trying to repair annotations.
 
 Label Studio's documented JSON task format uses `data` for the image reference
 and `predictions` for editable pre-annotations; its `Relations` tag represents

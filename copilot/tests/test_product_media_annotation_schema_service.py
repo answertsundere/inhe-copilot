@@ -7,6 +7,7 @@ from app.services.product_media_annotation_schema_service import (
     PROHIBITED_FACT_LABELS,
     annotation_schema,
     build_label_studio_task,
+    canonical_annotation_relation,
     label_studio_config_xml,
     validate_label_studio_task,
 )
@@ -56,7 +57,7 @@ def test_label_studio_task_keeps_ocr_as_shadow_prediction_not_product_fact():
     )
 
     assert validate_label_studio_task(task) == []
-    assert task["predictions"][0]["result"][0]["value"]["rectanglelabels"] == ["图片标注尺寸"]
+    assert task["predictions"][0]["result"][0]["value"]["rectanglelabels"] == ["尺寸标注（数值和线）"]
     assert task["meta"]["current_model_candidates"][0]["observation_eligible"] is False
     assert "raw_payload" not in task["meta"]["current_model_candidates"][0]
     assert "api_key" not in task["meta"]["current_model_candidates"][0]
@@ -84,8 +85,10 @@ def test_label_studio_config_is_chinese_and_uses_only_shared_schema_labels():
     config = label_studio_config_xml()
 
     assert ElementTree.fromstring(config).tag == "View"
-    assert "商品整体" in config
-    assert "图片标注尺寸" in config
-    assert "高风险文字" in config
-    assert "part_of" in config
+    assert "商品实例（当前面板）" in config
+    assert "尺寸标注（数值和线）" in config
+    assert 'name="dimension_attribute"' in config
+    assert 'name="dimension_scope"' in config
+    assert "测量对象" in config
+    assert canonical_annotation_relation("测量对象") == "dimension_measures_object"
     assert "load_capacity" not in config

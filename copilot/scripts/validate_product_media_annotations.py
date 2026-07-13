@@ -21,6 +21,7 @@ from app.services.product_media_annotation_schema_service import (  # noqa: E402
     LABEL_STUDIO_RELATION_TYPES,
     OBJECT_LABELS,
     canonical_annotation_label,
+    canonical_annotation_relation,
 )
 
 
@@ -88,14 +89,16 @@ def _manifest_index(manifest: Any) -> dict[str, dict[str, Any]]:
 
 
 def _relation_legal(relation: str, source: str, target: str) -> bool:
-    if relation == "part_of":
+    if relation == "object_part_of_product":
         return source in {"component", "accessory", "included_item"} and target == "product_overall"
-    if relation == "labelled_by":
-        return source in _OBJECT_SCOPES and target in {"label_text_region", "dimension_label_region"}
-    if relation == "visible_in":
+    if relation == "dimension_measures_object":
+        return source == "dimension_label_region" and target in {"product_overall", "component", "packaging"}
+    if relation == "panel_contains_object":
         return source in _OBJECT_SCOPES | _TEXT_SCOPES and target in _PANEL_SCOPES
-    if relation == "active_in_mode":
+    if relation == "object_active_in_mode":
         return source in {"product_overall", "component"} and target == "mode_panel"
+    if relation == "label_describes_object":
+        return source in {"label_text_region", "high_risk_text_region"} and target in _OBJECT_SCOPES
     return False
 
 
@@ -172,7 +175,8 @@ def validate_annotation_tasks(exported: Any, manifest: Any) -> dict[str, Any]:
             region_keys.add(key)
             regions[region_id] = label
 
-        dimension_relation_ids: set[str] = set()
+        dimension_subject_ids: dict[str, str] = {}
+        panel_relation_sources: set[str] = set()
         for relation_row in relation_rows:
             source_id = _text(relation_row.get("from_id"))
             target_id = _text(relation_row.get("to_id"))
@@ -180,7 +184,7 @@ def validate_annotation_tasks(exported: Any, manifest: Any) -> dict[str, Any]:
             if len(labels) != 1 or _text(labels[0]) not in LABEL_STUDIO_RELATION_TYPES:
                 errors.append("relation_label_invalid")
                 continue
-            relation = _text(labels[0])
+            relation = canonical_annotation_relation(labels[0])
             source = regions.get(source_id)
             target = regions.get(target_id)
             if not source or not target:
@@ -188,12 +192,19 @@ def validate_annotation_tasks(exported: Any, manifest: Any) -> dict[str, Any]:
                 continue
             if not _relation_legal(relation, source, target):
                 errors.append("relation_scope_invalid")
-            if relation == "labelled_by" and target == "dimension_label_region":
-                dimension_relation_ids.add(target_id)
+            if relation == "dimension_measures_object":
+                dimension_subject_ids[source_id] = target_id
+            if relation == "panel_contains_object":
+                panel_relation_sources.add(source_id)
 
+        has_panels = any(label in _PANEL_SCOPES for label in regions.values())
         for region_id, label in regions.items():
-            if label == "dimension_label_region" and region_id not in dimension_relation_ids:
-                errors.append("dimension_relation_missing")
+            if label == "dimension_label_region":
+                subject_id = dimension_subject_ids.get(region_id)
+                if not subject_id:
+                    errors.append("dimension_subject_missing")
+                elif has_panels and subject_id not in panel_relation_sources:
+                    errors.append("dimension_panel_scope_missing")
             if label == "high_risk_text_region":
                 continue
         for error in set(errors):

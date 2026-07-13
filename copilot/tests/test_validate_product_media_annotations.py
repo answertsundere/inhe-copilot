@@ -40,8 +40,10 @@ def test_valid_manual_annotation_requires_dimension_to_be_related_to_its_object(
     task = _task()
     results = [
         _rectangle("product", "product_overall", 5, 5, 70, 80),
+        _rectangle("mode", "mode_panel", 0, 0, 100, 50),
         _rectangle("dimension", "dimension_label_region", 80, 20, 10, 10),
-        {"type": "relation", "from_id": "product", "to_id": "dimension", "labels": ["labelled_by"]},
+        {"type": "relation", "from_id": "dimension", "to_id": "product", "labels": ["测量对象"]},
+        {"type": "relation", "from_id": "product", "to_id": "mode", "labels": ["可见于面板"]},
     ]
 
     report = validate_annotation_tasks([_completed(task, results)], [task])
@@ -58,7 +60,7 @@ def test_validator_rejects_scope_leakage_unknown_labels_out_of_bounds_and_hash_m
         _rectangle("product", "product_overall", 10, 10, 70, 70),
         _rectangle("bad", "product_overall", 90, 90, 20, 20),
         {"id": "unknown", "type": "rectanglelabels", "value": {"x": 1, "y": 1, "width": 10, "height": 10, "rectanglelabels": ["不存在标签"]}},
-        {"type": "relation", "from_id": "packaging", "to_id": "product", "labels": ["part_of"]},
+        {"type": "relation", "from_id": "packaging", "to_id": "product", "labels": ["属于"]},
     ])
     exported["meta"]["source_image_sha256"] = "b" * 64
 
@@ -69,6 +71,20 @@ def test_validator_rejects_scope_leakage_unknown_labels_out_of_bounds_and_hash_m
     assert "bbox_invalid_or_out_of_bounds" in errors
     assert "unknown_label" in errors
     assert "relation_scope_invalid" in errors
+
+
+def test_validator_requires_dimension_subject_and_panel_scope_when_panels_exist():
+    task = _task()
+    results = [
+        _rectangle("product", "product_overall", 5, 5, 70, 80),
+        _rectangle("mode", "mode_panel", 0, 0, 100, 50),
+        _rectangle("dimension", "dimension_label_region", 80, 20, 10, 10),
+        {"type": "relation", "from_id": "dimension", "to_id": "product", "labels": ["测量对象"]},
+    ]
+
+    report = validate_annotation_tasks([_completed(task, results)], [task])
+
+    assert "dimension_panel_scope_missing" in report["tasks"][0]["errors"]
 
 
 def test_predictions_are_not_manual_annotations_and_duplicates_fail_quality_gate():
