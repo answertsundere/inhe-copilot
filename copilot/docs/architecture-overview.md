@@ -2,7 +2,7 @@
 
 ## Status
 
-Current architecture source of truth as of 2026-07-13. Historical status and
+Current architecture source of truth as of 2026-07-14. Historical status and
 delivery reports remain evidence of past work, not current completion claims.
 
 ## Current System
@@ -146,6 +146,9 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
   regions, layer counts, labelled dimensions, or other queryable observations.
 - Formal product answers primarily render retrieved facts; the admitted-fact
   planner and segmented draft remain shadow-only.
+- Phase 0.5C provides a shadow-only evidence convergence trace for Product
+  Context Pack candidates that do not reach formal `selected_evidence`; it
+  does not change formal selection, reply composition, or delivery.
 - There is no formal claim contract separating direct observations, bounded
   derivations, general guidance, and high-risk facts or actions.
 - Model-extracted media facts need an explicit staging and review workflow before

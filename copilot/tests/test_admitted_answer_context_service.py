@@ -241,3 +241,62 @@ def test_uses_explicit_resolved_identity_from_evidence_pack():
 
     assert [item["evidence_uid"] for item in context["direct_product_facts"]] == ["fact-material"]
     assert context["product_identity"] == {"sku_code": "SKU-A", "i_id": "IID-A"}
+
+
+def test_reviewed_structured_pack_fact_enters_shadow_context_with_explicit_scope():
+    structured_fact = {
+        "evidence_id": "kbproduct:42:material",
+        "source_type": "product_facts",
+        "fact_type": "material",
+        "attribute_key": "material",
+        "chunk_text": "Material: verified board and steel frame.",
+        "sku_scope": ["SKU-A"],
+        "product_scope": ["IID-A"],
+        "metadata": {
+            "product_evidence_protocol": True,
+            "verification_status": "verified",
+            "can_direct_answer": True,
+        },
+    }
+    context = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"facts": [structured_fact]}},
+        product_identity={"sku_code": "SKU-A", "i_id": "IID-A"},
+        understanding=_understanding("material_composition"),
+    )
+
+    assert len(context["direct_product_facts"]) == 1
+    assert context["direct_product_facts"][0]["origin_evidence_key"] == "product_facts:kbproduct:42:material"
+    assert context["direct_product_facts"][0]["text"] == "Material: verified board and steel frame."
+    trace = context["evidence_convergence"]
+    record = trace["records"][0]
+    assert record["context_pack_candidate"] is True
+    assert record["formal_selected"] is False
+    assert record["shadow_admission"] == "admitted"
+    assert record["llm_context"] is True
+    assert trace["summary"]["context_pack_not_formal_selected_count"] == 1
+
+
+def test_structured_pack_fact_with_nonmatching_explicit_scope_stays_rejected():
+    structured_fact = {
+        "evidence_id": "kbproduct:42:material",
+        "source_type": "product_facts",
+        "fact_type": "material",
+        "attribute_key": "material",
+        "chunk_text": "Material: verified board and steel frame.",
+        "sku_scope": ["SKU-B"],
+        "product_scope": ["IID-B"],
+        "metadata": {
+            "product_evidence_protocol": True,
+            "verification_status": "verified",
+            "can_direct_answer": True,
+        },
+    }
+    context = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"facts": [structured_fact]}},
+        product_identity={"sku_code": "SKU-A", "i_id": "IID-A"},
+        understanding=_understanding("material_composition"),
+    )
+
+    assert context["direct_product_facts"] == []
+    assert context["rejected_evidence"][0]["reason"] == "product_identity_mismatch"
+    assert context["evidence_convergence"]["records"][0]["llm_context"] is False

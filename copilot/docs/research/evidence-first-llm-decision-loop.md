@@ -113,6 +113,23 @@ The internal test page may show the proposal in a separate Chinese Shadow
 preview. When the provider is unqualified, it shows the blocking reason rather
 than fabricating a candidate reply.
 
+## Evidence convergence diagnostics
+
+The Product Context Pack, formal `selected_evidence`, admission context, and
+decision-model context are separate stages. A reviewed structured product field
+can be an eligible Product Context Pack candidate even if the current formal
+response did not select it. `AdmittedAnswerContextService` normalizes only
+structured-profile protocol candidates that already declare verified status,
+direct-answer permission, and an explicit matching product or SKU scope. It
+does not promote ordinary retrieved chunks, generic rules, Answer Memory, or
+media references.
+
+The resulting `evidence_convergence` trace records the source containers,
+identity scope, formal-selection state, shadow-admission state, and the reason
+for any rejection. This makes a generic handoff diagnosable without treating a
+single product question as a new routing rule. The trace is shadow-only and
+cannot change the formal reply, delivery, review decision, or `can_send`.
+
 ## Promotion gates
 
 Promotion requires real traces with valid strict structured output, stable

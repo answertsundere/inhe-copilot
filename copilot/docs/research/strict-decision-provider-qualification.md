@@ -73,3 +73,22 @@ The candidate is therefore **not qualified**. `COPILOT_DECISION_LLM_QUALIFIED`
 and the live Decision Shadow flag must remain disabled. This records a semantic
 provider failure, not a justification to use JSON-object mode, prompt parsing,
 or an unqualified model for live shadow.
+
+## Phase 0.5C provider boundary and convergence diagnostics
+
+The configured formal Model Studio reply provider is not implicitly reused for
+Decision Shadow. Model Studio's current OpenAI-compatible documentation shows
+`json_object` structured output, not an independently verified strict-schema
+contract. JSON-object validity cannot prove required fields, literal safety
+flags, or claim-resolution fidelity, so it remains outside the Decision
+Provider boundary until an explicit strict-capability qualification succeeds.
+See the official [structured-output guide](https://help.aliyun.com/en/model-studio/qwen-structured-output)
+and [OpenAI-compatible API reference](https://help.aliyun.com/en/model-studio/qwen-api-via-openai-chat-completions).
+
+`scripts/trace_evidence_convergence.py` is a provider-free, read-only
+diagnostic. It shows whether each candidate existed in Product Context Pack,
+was formally selected, was admitted for shadow use, and would be included in
+the decision-model context. A persisted API snapshot may compact candidate
+fields for response size; the script reports that condition and can rebuild the
+current scoped context explicitly for diagnosis. Rebuilding is labelled as a
+current-context read, not as proof of the historic response.

@@ -156,6 +156,52 @@ def _identity_scope(item: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
+def _scope_values(item: dict[str, Any], field: str) -> set[str]:
+    value = item.get(field)
+    if not isinstance(value, list):
+        return set()
+    return {sanitize_text(item_value) for item_value in value if sanitize_text(item_value)}
+
+
+def _normalise_product_context_candidate(
+    source: str,
+    item: dict[str, Any],
+    product_identity: dict[str, Any],
+) -> dict[str, Any]:
+    """Promote only explicit structured-profile protocol metadata to its direct role.
+
+    Product Context Pack already creates these candidates from a reviewed
+    ``KBProduct`` field.  This adapter preserves that existing eligibility for
+    the shadow admission contract; it does not derive new facts or relax any
+    review, gate, or identity requirement for arbitrary retrieved chunks.
+    """
+    metadata = _as_dict(item.get("metadata"))
+    if not (
+        source.startswith("product_context_pack.")
+        and metadata.get("product_evidence_protocol") is True
+        and sanitize_text(metadata.get("verification_status")).lower() in REVIEWED_STATUSES
+        and metadata.get("can_direct_answer") is True
+    ):
+        return item
+
+    normalised = dict(item)
+    normalised.update({
+        "evidence_role": "product_fact_direct",
+        "fact_review_status": sanitize_text(metadata.get("verification_status")),
+        "gate_status": "allowed",
+        "direct_answer_allowed": True,
+    })
+    if not sanitize_text(normalised.get("content")):
+        normalised["content"] = sanitize_text(item.get("customer_text") or item.get("chunk_text"))
+    expected_sku = sanitize_text(product_identity.get("sku_code"))
+    expected_i_id = sanitize_text(product_identity.get("i_id"))
+    if expected_sku and expected_sku in _scope_values(item, "sku_scope"):
+        normalised["sku_code"] = expected_sku
+    if expected_i_id and expected_i_id in _scope_values(item, "product_scope"):
+        normalised["i_id"] = expected_i_id
+    return normalised
+
+
 def _evidence_uid(source: str, item: dict[str, Any], text: str) -> str:
     explicit = sanitize_text(item.get("evidence_uid") or item.get("chunk_id") or item.get("source_chunk_id"))
     if explicit:
@@ -165,6 +211,15 @@ def _evidence_uid(source: str, item: dict[str, Any], text: str) -> str:
         + [f"{scope['namespace']}={scope['value']}" for scope in _identity_scope(item)]
     )
     return f"ev-{sha256(seed.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _origin_evidence_key(item: dict[str, Any], text: str) -> str:
+    for field in ("evidence_uid", "evidence_id", "chunk_id", "entry_id", "source_id", "asset_id", "id"):
+        value = sanitize_text(item.get(field))
+        if value:
+            return f"{sanitize_text(item.get('source_table') or item.get('source_type'))}:{value}"
+    seed = "|".join((_source_type(item), _fact_type(item), _attribute_key(item), text))
+    return f"derived:{sha256(seed.encode('utf-8')).hexdigest()[:16]}"
 
 
 def _provenance(source: str, item: dict[str, Any], text: str) -> dict[str, Any]:
@@ -177,6 +232,7 @@ def _provenance(source: str, item: dict[str, Any], text: str) -> dict[str, Any]:
         "source_id": sanitize_text(item.get("source_id") or item.get("entry_id") or item.get("id")),
         "source_container": source,
         "source": legacy_source,
+        "origin_evidence_key": _origin_evidence_key(item, text),
         "evidence_role": _role(item),
         "role": _role(item),
         "product_identity_scope": scopes,
@@ -191,17 +247,36 @@ def _identity_reason(item: dict[str, Any], product_identity: dict[str, Any], *, 
     if allow_global and scope in {"global", "all"}:
         return ""
     expected = {key: sanitize_text(product_identity.get(key)) for key in _IDENTITY_KEYS if sanitize_text(product_identity.get(key))}
-    actual = {key: sanitize_text(item.get(key)) for key in _IDENTITY_KEYS if sanitize_text(item.get(key))}
-    if not actual:
-        return "product_identity_missing"
     if not expected:
         return "resolved_product_identity_missing"
+    actual = {key: sanitize_text(item.get(key)) for key in _IDENTITY_KEYS if sanitize_text(item.get(key))}
     common = set(expected).intersection(actual)
-    if not common:
-        return "product_identity_namespace_missing"
-    if any(expected[key] != actual[key] for key in common):
+    if common:
+        return "product_identity_mismatch" if any(expected[key] != actual[key] for key in common) else ""
+
+    scoped_matches = False
+    scoped_mismatches = False
+    scope_fields = {
+        "sku_code": "sku_scope",
+        "i_id": "product_scope",
+        "product_id": "product_scope",
+    }
+    for namespace, scope_field in scope_fields.items():
+        expected_value = expected.get(namespace)
+        values = _scope_values(item, scope_field)
+        if not expected_value or not values:
+            continue
+        if expected_value in values:
+            scoped_matches = True
+        else:
+            scoped_mismatches = True
+    if scoped_matches:
+        return ""
+    if scoped_mismatches:
         return "product_identity_mismatch"
-    return ""
+    if not actual:
+        return "product_identity_missing"
+    return "product_identity_namespace_missing"
 
 
 def _claim_types(item: dict[str, Any]) -> list[str]:
@@ -346,7 +421,8 @@ def collect_admitted_product_facts(
     warnings: list[dict[str, Any]] = []
     seen_inputs: set[str] = set()
 
-    for source, item in _candidate_containers(response):
+    for source, raw_item in _candidate_containers(response):
+        item = _normalise_product_context_candidate(source, raw_item, product_identity)
         text = _text(item)
         provenance = _provenance(source, item, text)
         dedupe_key = provenance["evidence_uid"]
@@ -410,6 +486,99 @@ def collect_admitted_product_facts(
     return admitted[:12], rejected, warnings
 
 
+def build_evidence_convergence_trace(
+    response: dict[str, Any],
+    *,
+    product_identity: dict[str, Any],
+    admitted_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Explain where candidate evidence is available, selected, or excluded.
+
+    This is a read-only shadow diagnostic. It reuses the same normalization and
+    admission helpers as the answer context, so it cannot report a different
+    eligibility decision from the context a future decision model would see.
+    """
+    admitted_uids = {
+        sanitize_text(item.get("evidence_uid"))
+        for item in [
+            *(admitted_context.get("direct_product_facts") or []),
+            *(admitted_context.get("direct_policy_facts") or []),
+        ]
+        if sanitize_text(item.get("evidence_uid"))
+    }
+    rejected_by_uid = {
+        sanitize_text(item.get("evidence_uid")): sanitize_text(item.get("reason"))
+        for item in admitted_context.get("rejected_evidence") or []
+        if sanitize_text(item.get("evidence_uid"))
+    }
+    records: dict[str, dict[str, Any]] = {}
+    for source, raw_item in _candidate_containers(response):
+        item = _normalise_product_context_candidate(source, raw_item, product_identity)
+        text = _text(item)
+        provenance = _provenance(source, item, text)
+        key = provenance["origin_evidence_key"]
+        record = records.setdefault(key, {
+            "origin_evidence_key": key,
+            "evidence_uids": [],
+            "source_containers": [],
+            "fact_type": _fact_type(item),
+            "attribute_key": _attribute_key(item),
+            "evidence_role": _role(item),
+            "product_identity_scope": provenance["product_identity_scope"],
+            "context_pack_candidate": False,
+            "formal_selected": False,
+            "shadow_admission": "not_evaluated",
+            "shadow_reason": "",
+            "llm_context": False,
+        })
+        if provenance["evidence_uid"] not in record["evidence_uids"]:
+            record["evidence_uids"].append(provenance["evidence_uid"])
+        if source not in record["source_containers"]:
+            record["source_containers"].append(source)
+        record["context_pack_candidate"] = record["context_pack_candidate"] or source.startswith("product_context_pack.")
+        record["formal_selected"] = record["formal_selected"] or source.endswith("selected_evidence")
+        uid = provenance["evidence_uid"]
+        if uid in admitted_uids:
+            record["shadow_admission"] = "admitted"
+            record["shadow_reason"] = ""
+            record["llm_context"] = True
+        elif uid in rejected_by_uid:
+            record["shadow_admission"] = "rejected"
+            record["shadow_reason"] = rejected_by_uid[uid]
+        elif record["shadow_admission"] == "not_evaluated":
+            record["shadow_admission"] = "not_direct_candidate"
+            record["shadow_reason"] = _admission_reason(
+                item,
+                product_identity=product_identity,
+                requested_claim_types=[],
+            ) or "not_direct_candidate"
+
+    rows = sorted(records.values(), key=lambda row: (row["origin_evidence_key"], row["evidence_uids"]))
+    rejected_reasons: dict[str, int] = {}
+    for row in rows:
+        if row["shadow_admission"] == "rejected":
+            reason = row["shadow_reason"] or "unknown"
+            rejected_reasons[reason] = rejected_reasons.get(reason, 0) + 1
+    return sanitize_obj({
+        "schema_version": "evidence-convergence-trace-v1",
+        "records": rows[:80],
+        "summary": {
+            "record_count": len(rows),
+            "context_pack_candidate_count": sum(1 for row in rows if row["context_pack_candidate"]),
+            "formal_selected_count": sum(1 for row in rows if row["formal_selected"]),
+            "shadow_admitted_count": sum(1 for row in rows if row["shadow_admission"] == "admitted"),
+            "llm_context_count": sum(1 for row in rows if row["llm_context"]),
+            "context_pack_not_formal_selected_count": sum(
+                1 for row in rows if row["context_pack_candidate"] and not row["formal_selected"]
+            ),
+            "rejected_by_reason": rejected_reasons,
+        },
+        "read_only": True,
+        "used_for_final_reply": False,
+        "can_change_can_send": False,
+    })
+
+
 def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for item in _as_list(understanding.get("requested_claims")):
@@ -449,7 +618,8 @@ class AdmittedAnswerContextService:
         actions: list[dict[str, Any]] = []
         media: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
-        for source, item in _candidate_containers(response):
+        for source, raw_item in _candidate_containers(response):
+            item = _normalise_product_context_candidate(source, raw_item, identity)
             text = _text(item)
             provenance = _provenance(source, item, text)
             key = (provenance["evidence_uid"], source)
@@ -496,7 +666,7 @@ class AdmittedAnswerContextService:
             for claim, resolution in zip(requested_claims, claim_resolutions)
             if resolution["status"] != "supported"
         ]
-        return sanitize_obj({
+        context = {
             "schema_version": "admitted-answer-context-v1",
             "direct_product_facts": direct_product,
             "direct_policy_facts": direct_policy,
@@ -512,4 +682,10 @@ class AdmittedAnswerContextService:
             "read_only": True,
             "used_for_final_reply": False,
             "can_change_can_send": False,
-        })
+        }
+        context["evidence_convergence"] = build_evidence_convergence_trace(
+            response,
+            product_identity=identity,
+            admitted_context=context,
+        )
+        return sanitize_obj(context)
