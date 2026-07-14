@@ -12,6 +12,7 @@ from hashlib import sha256
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.claim_resolution_service import build_claim_resolutions
 
 
 DIRECT_PRODUCT_ROLES = {"product_fact_direct", "faq_direct"}
@@ -479,17 +480,22 @@ class AdmittedAnswerContextService:
                     "attached_reply_block": False,
                 })
 
-        supported_claims = {
-            claim
-            for fact in [*direct_product, *direct_policy]
-            for claim in _as_list(fact.get("claim_types_supported"))
-        }
-        unresolved = [
-            {**claim, "reason": "no_admitted_direct_evidence"}
-            for claim in requested_claims
-            if claim["claim_type"] not in supported_claims
-        ]
         conflicts = [item for item in rejected if item.get("reason") in {"conflicting_evidence", "incomparable_unit_domain"}]
+        claim_resolutions = build_claim_resolutions(
+            requested_claims,
+            direct_product_facts=direct_product,
+            direct_policy_facts=direct_policy,
+            conflicts=conflicts,
+        )
+        unresolved = [
+            {
+                **claim,
+                "reason": resolution["reason"],
+                "status": resolution["status"],
+            }
+            for claim, resolution in zip(requested_claims, claim_resolutions)
+            if resolution["status"] != "supported"
+        ]
         return sanitize_obj({
             "schema_version": "admitted-answer-context-v1",
             "direct_product_facts": direct_product,
@@ -498,6 +504,7 @@ class AdmittedAnswerContextService:
             "media_candidates": media[:12],
             "rejected_evidence": rejected[:40],
             "admission_warnings": warnings[:20],
+            "claim_resolutions": claim_resolutions,
             "unresolved_claims": unresolved,
             "conflicts": conflicts,
             "requested_claims": requested_claims,

@@ -119,6 +119,19 @@ def test_final_orchestration_runs_once_for_one_pipeline_request(pipeline_harness
     assert pipeline_harness["final"] == 1
 
 
+def test_disabled_decision_shadow_reports_provider_block_without_a_candidate_reply(pipeline_harness, monkeypatch):
+    monkeypatch.delenv("COPILOT_LLM_DECISION_SHADOW_ENABLED", raising=False)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    status = response["evidence_debug"]["llm_decision_shadow_status"]
+    assert status["status"] == "disabled"
+    assert status["reason"] in {"provider_not_configured", "provider_not_qualified", "strict_capability_not_supported"}
+    assert status["used_for_final_reply"] is False
+    assert status["can_change_can_send"] is False
+    assert "llm_decision_proposal" not in response["evidence_debug"]
+
+
 def test_media_exception_degrades_without_sendable_media(monkeypatch, pipeline_harness):
     import app.services.media_asset_service as media
 

@@ -94,6 +94,25 @@ material name can support the first request. It does not resolve the other two.
 The unresolved items remain visible to the proposal and semantic judge so a
 natural controlled handoff can distinguish confirmed facts from pending facts.
 
+## Partial Answer Contract
+
+Admission produces one `claim_resolution` for every requested claim. A
+resolution is `supported`, `unresolved`, or `conflicting`, with the admitted
+evidence UIDs, admitted fact text, and the review reason. A proposal must copy
+those resolutions exactly, render one confirmed clause for every supported
+claim, and render one pending clause for every unresolved or conflicting claim.
+
+This prevents a missing high-risk fact from erasing an independently supported
+low-risk fact, without allowing a material name to imply safety, moisture
+resistance, certification, or suitability. The application validates clause
+evidence UIDs and fails the shadow proposal closed on an omitted supported claim
+or an assertion for an unresolved claim. The contract remains diagnostic: it
+cannot modify the formal reply, delivery blocks, or `can_send`.
+
+The internal test page may show the proposal in a separate Chinese Shadow
+preview. When the provider is unqualified, it shows the blocking reason rather
+than fabricating a candidate reply.
+
 ## Promotion gates
 
 Promotion requires real traces with valid strict structured output, stable

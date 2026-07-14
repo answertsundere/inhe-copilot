@@ -319,7 +319,22 @@ class AnalysisPipelineService:
                 }
                 stages.append({"stage": "llm_decision_shadow", "status": "degraded", "reason": type(exc).__name__})
         else:
-            stages.append({"stage": "llm_decision_shadow", "status": "disabled"})
+            from app.services.strict_decision_provider_service import StrictDecisionProviderService
+
+            provider = StrictDecisionProviderService()
+            metadata = provider.metadata()
+            reason = provider.config.capability_status()
+            if reason == "configured" and not provider.ready_for_shadow():
+                reason = "provider_not_qualified"
+            response.setdefault("evidence_debug", {})["llm_decision_shadow_status"] = {
+                "shadow_only": True,
+                "status": "disabled",
+                "reason": reason,
+                "provider": metadata,
+                "used_for_final_reply": False,
+                "can_change_can_send": False,
+            }
+            stages.append({"stage": "llm_decision_shadow", "status": "disabled", "reason": reason})
         return response, stages
 
     @staticmethod

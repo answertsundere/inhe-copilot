@@ -62,6 +62,19 @@ def test_strict_json_schema_request_never_uses_json_object():
     assert "tools" not in request
 
 
+def test_non_thinking_mode_is_an_explicit_provider_option():
+    client = _Client(_result())
+    provider = StrictDecisionProviderService(
+        config=_config(disable_thinking=True),
+        client_factory=lambda **_: client,
+    )
+
+    provider.request(name="sample", schema={"type": "object"}, system_prompt="x", payload={}, max_tokens=1)
+
+    assert client.calls[0]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert provider.metadata()["disable_thinking"] is True
+
+
 def test_unqualified_provider_cannot_run_shadow_but_can_be_qualified():
     client = _Client(_result())
     provider = StrictDecisionProviderService(config=_config(qualified=False), client_factory=lambda **_: client)

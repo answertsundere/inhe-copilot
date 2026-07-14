@@ -55,6 +55,14 @@ or media capabilities are explicitly deferred. The formal graph still owns
 formal tool execution, and the proposal cannot alter replies, delivery, review
 status, or `can_send`.
 
+Phase 0.5B.2 adds the Partial Answer Contract to that shadow boundary: each
+requested claim is independently marked supported, unresolved, or conflicting,
+and a valid proposal must distinguish confirmed clauses from pending clauses.
+The formal response remains unchanged. The current local Qwen3-4B candidate
+passes strict-schema transport but fails compound-claim semantic qualification,
+so live Decision Shadow remains disabled and the test-page preview reports the
+provider block rather than a fabricated proposal.
+
 ## Target System
 
 ```text

@@ -113,6 +113,12 @@ a{text-decoration:none;color:inherit}
 
 .card-section{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
 .card-section:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.shadow-preview{border:1px solid #cbd5e1;background:#f8fafc}
+.shadow-preview .reply-header h3{color:#334155}
+.shadow-preview-status{font-size:12px;color:#64748b;line-height:1.55}
+.shadow-preview-list{display:grid;gap:6px;margin-top:8px}
+.shadow-preview-row{padding:7px 8px;background:#fff;border:1px solid var(--line);border-radius:6px;font-size:12px;line-height:1.5}
+.shadow-preview-row strong{color:#334155}
 .section-title{font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;display:flex;align-items:center;gap:5px}
 .section-title svg{color:var(--muted);width:14px;height:14px}
 
@@ -575,6 +581,14 @@ button:disabled{opacity:.55;cursor:not-allowed}
               <button type="button" class="ghost" onclick="copyReply()">复制</button>
             </div>
             <div id="reply" class="reply empty">先填写左边买家的问题，再点“生成回复”。</div>
+          </div>
+
+          <div class="reply-section shadow-preview" id="decisionShadowPreview" style="display:none">
+            <div class="reply-header">
+              <h3>证据优先候选回复</h3>
+              <span class="ctrl-tag">仅用于测试，不会自动发送</span>
+            </div>
+            <div id="decisionShadowPreviewBody" class="shadow-preview-status"></div>
           </div>
 
           <!-- 建议发送素材：AI 推荐已审核素材，客服人工确认后手动发送，不自动发送 -->
@@ -2097,6 +2111,7 @@ function showResult(data,status,ms){
     $('reply').classList.toggle('empty',!data.draft_reply&&!data.suggested_reply&&!data.error);
   }
   if($('finalReply'))$('finalReply').value=data.can_send?(data.sendable_reply||''):'';
+  renderDecisionShadowPreview(data);
 
   // 建议发送素材：只展示已审核素材，客服确认后手动发送（不自动发送）
   const replyBlocks=Array.isArray(data.reply_blocks)?data.reply_blocks:[];
@@ -2192,6 +2207,41 @@ function showResult(data,status,ms){
   if(imageAnalysis.length){const img=imageAnalysis[0]||{};debugRows.push(['图片识别',`${img.image_type||''} / ${img.issue_type||''} / 置信度 ${img.confidence??''}`]);debugRows.push(['图片摘要',img.summary||''])}
   $('debugBox').innerHTML=`<table class="small-table"><tbody>${debugRows.map(r=>`<tr><th>${escapeHtml(r[0])}</th><td>${escapeHtml(r[1])}</td></tr>`).join('')}</tbody></table>${renderEvidenceGate(evidenceSummary)}`;
   $('rawBox').textContent=pretty(data);
+}
+function renderDecisionShadowPreview(data){
+  const box=$('decisionShadowPreview'), body=$('decisionShadowPreviewBody');
+  if(!box||!body)return;
+  const debug=data&&data.evidence_debug||{};
+  const proposal=debug.llm_decision_proposal||{};
+  const status=debug.llm_decision_shadow_status||{};
+  const claimLabels={
+    material_composition:'材质', material_safety:'安全说明', moisture_resistance:'防潮表现',
+    dimensions:'尺寸', installation_media:'安装资料', promotion:'优惠规则',
+    aftersales_policy:'售后处理', load_capacity:'承重说明', certification_report:'检测/认证说明'
+  };
+  const label=(value)=>claimLabels[value]||'当前问题项';
+  const shortUid=(value)=>value?String(value).slice(0,10)+'…':'';
+  const blockedReasons={
+    provider_not_configured:'尚未配置独立的候选决策模型。',
+    provider_not_qualified:'候选决策模型尚未通过严格资格验证。',
+    strict_capability_not_supported:'候选模型不支持所需的严格结构化输出。',
+    structured_output_truncated:'候选模型输出不完整，已安全停用本轮候选。'
+  };
+  box.style.display='';
+  if(proposal.shadow_status==='completed'){
+    const admitted=debug.admitted_answer_context||{};
+    const confirmed=proposal.confirmed_clauses||[];
+    const pending=proposal.pending_clauses||[];
+    const tools=admitted.shadow_tool_execution||{};
+    const toolLabels={product_resolver_tool:'商品识别',rag_search_tool:'资料检索'};
+    const executed=(tools.executed_tool_names||[]).map(item=>toolLabels[item]||'受控查询').join('、')||'本轮无需额外查询';
+    const confirmedRows=confirmed.map(item=>`<div class="shadow-preview-row"><strong>已确认 · ${escapeHtml(label(item.claim_type))}</strong><br>${escapeHtml(item.customer_facing_clause||'')}<br><span class="muted">依据：${escapeHtml((item.evidence_uids||[]).map(shortUid).join('、')||'无')}</span></div>`).join('');
+    const pendingRows=pending.map(item=>`<div class="shadow-preview-row"><strong>待核实 · ${escapeHtml(label(item.claim_type))}</strong><br>${escapeHtml(item.customer_facing_clause||'')}</div>`).join('');
+    body.innerHTML=`<div class="reply">${escapeHtml(proposal.reply_plan?.proposed_reply||'')}</div><div class="shadow-preview-list">${confirmedRows}${pendingRows}<div class="shadow-preview-row"><strong>工具状态</strong><br>${escapeHtml(executed)}</div></div>`;
+    return;
+  }
+  const reason=proposal.fallback_reason||status.reason||'';
+  body.textContent=blockedReasons[reason]||'本轮未生成证据优先候选回复，正式回复保持不变。';
 }
 function renderToolRecords(data){
   const box=$('toolRecordList');

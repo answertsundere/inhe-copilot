@@ -58,15 +58,18 @@ never sets this switch and never changes formal reply, evidence, delivery, or
 
 ## Local Runtime Check: 2026-07-14
 
-The host has a running vLLM 0.11 vision worker at localhost port 8001 using
-`Qwen/Qwen3-VL-8B-Instruct`. Its model cache is on `D:` and it remains outside
-the Decision Provider boundary. A separate vLLM 0.12 image and the same local
-model were tested at localhost port 8002 with a short context length and eager
-execution. The process loaded approximately 16.64 GiB of weights, then failed
-before serving because no KV-cache capacity remained while the vision worker
-was resident. No model was downloaded, the vision worker was not stopped, and
-the Decision endpoint remains unconfigured and unqualified.
+The host keeps its vLLM 0.11 vision worker at localhost port 8001 on
+`Qwen/Qwen3-VL-8B-Instruct`. It remains outside the Decision Provider boundary
+and was not stopped or reconfigured. A separate vLLM 0.12 candidate at
+localhost port 8002 ran `Qwen/Qwen3-4B` from the model cache on `D:` with a
+short context window and conservative GPU allocation.
 
-This is a GPU-capacity failure, not proof that vLLM 0.12 or its strict schema
-transport is incompatible. Do not enable Shadow or substitute JSON-object mode
-until a separate capacity plan or a smaller qualified local text model exists.
+The candidate passed the strict transport and Pydantic schema checks, including
+the literal `false` contract fields. It failed the semantic qualification: in
+five repeated compound-claim intakes it did not produce the required distinct
+material-composition, material-safety, and moisture-resistance claims. Turning
+off the Qwen thinking mode improved latency but did not fix that decomposition.
+The candidate is therefore **not qualified**. `COPILOT_DECISION_LLM_QUALIFIED`
+and the live Decision Shadow flag must remain disabled. This records a semantic
+provider failure, not a justification to use JSON-object mode, prompt parsing,
+or an unqualified model for live shadow.

@@ -58,6 +58,33 @@ class EvidenceSelection(BaseModel):
     unsupported_claims: list[str]
 
 
+class ClaimResolution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim_type: str
+    status: Literal["supported", "unresolved", "conflicting", "not_applicable"]
+    evidence_uids: list[str]
+    admitted_fact_texts: list[str]
+    requires_human_review: bool
+    reason: str
+
+
+class ConfirmedClause(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim_type: str
+    evidence_uids: list[str]
+    customer_facing_clause: str
+
+
+class PendingClause(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim_type: str
+    reason: str
+    customer_facing_clause: str
+
+
 class ReplyPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -80,6 +107,9 @@ class AgentDecisionProposal(BaseModel):
     understanding: DecisionUnderstanding
     tool_plan: ToolPlan
     evidence_selection: EvidenceSelection
+    claim_resolutions: list[ClaimResolution]
+    confirmed_clauses: list[ConfirmedClause]
+    pending_clauses: list[PendingClause]
     reply_plan: ReplyPlan
     delivery_intent: DeliveryIntent
     used_for_final_reply: Literal[False]
@@ -98,7 +128,9 @@ _PROPOSAL_SYSTEM_PROMPT = """You are a shadow-only customer-service decision pla
 Return only the requested strict JSON object. Product factual clauses may cite only evidence UIDs
 from direct_product_facts or direct_policy_facts. Service actions may cite only
 handoff_action_guidance. Media candidates are references, not proof that media was sent.
-Do not turn unresolved claims into facts. Do not claim refund, replacement, compensation,
+Copy claim_resolutions from the application context exactly. Create one confirmed clause for every
+supported claim and one pending clause for every unresolved or conflicting claim. Do not turn
+unresolved claims into facts. Do not claim refund, replacement, compensation,
 certification, safety, child suitability, load limits, or sent media without admitted evidence and
 an actual reply block. You propose wording; the application owns delivery and can_send."""
 
@@ -150,6 +182,9 @@ def _safe_fallback(
             "requested_evidence_uids": [],
             "unsupported_claims": ["decision_proposal_unavailable"],
         },
+        "claim_resolutions": [],
+        "confirmed_clauses": [],
+        "pending_clauses": [],
         "reply_plan": {
             "mode": "controlled_handoff",
             "factual_clause_evidence_uids": [],
@@ -256,13 +291,84 @@ def _unsupported_assertions(reply: str, unresolved_claims: list[dict[str, Any]])
         for term in _UNSUPPORTED_CLAIM_TERMS.get(claim_type, ()):
             pending_context = False
             for index in [match.start() for match in re.finditer(re.escape(term), reply)]:
-                window = reply[max(0, index - 12):min(len(reply), index + len(term) + 28)]
-                if ("需要" in window or "待" in window) and ("确认" in window or "核实" in window):
+                sentence = _sentence_containing(reply, index)
+                if ("需要" in sentence or "待" in sentence) and ("确认" in sentence or "核实" in sentence):
                     pending_context = True
                     break
             if contains_asserted_claim(reply, term) and not pending_context:
                 violations.append(claim_type)
                 break
+    return sorted(set(violations))
+
+
+def _sentence_containing(text: str, index: int) -> str:
+    start = max(text.rfind(mark, 0, index) for mark in "。！？!?；;\n") + 1
+    endings = [text.find(mark, index) for mark in "。！？!?；;\n"]
+    end = min((position for position in endings if position >= 0), default=len(text))
+    return text[start:end]
+
+
+def _partial_answer_contract_violations(
+    proposal: dict[str, Any],
+    claim_resolutions: list[dict[str, Any]],
+) -> list[str]:
+    """Ensure the model renders every supported claim and preserves every pending one."""
+    expected = {
+        sanitize_text(item.get("claim_type")): item
+        for item in claim_resolutions
+        if sanitize_text(item.get("claim_type"))
+    }
+    submitted = {
+        sanitize_text(item.get("claim_type")): item
+        for item in proposal.get("claim_resolutions") or []
+        if sanitize_text(item.get("claim_type"))
+    }
+    violations: list[str] = []
+    if submitted != expected:
+        violations.append("claim_resolution_changed")
+
+    expected_confirmed = {
+        claim_type: item for claim_type, item in expected.items()
+        if item.get("status") == "supported"
+    }
+    expected_pending = {
+        claim_type: item for claim_type, item in expected.items()
+        if item.get("status") in {"unresolved", "conflicting"}
+    }
+    confirmed = {
+        sanitize_text(item.get("claim_type")): item
+        for item in proposal.get("confirmed_clauses") or []
+        if sanitize_text(item.get("claim_type"))
+    }
+    pending = {
+        sanitize_text(item.get("claim_type")): item
+        for item in proposal.get("pending_clauses") or []
+        if sanitize_text(item.get("claim_type"))
+    }
+    if set(confirmed) != set(expected_confirmed):
+        violations.append("supported_claim_omitted")
+    if set(pending) != set(expected_pending):
+        violations.append("pending_claim_omitted")
+
+    reply = sanitize_text((proposal.get("reply_plan") or {}).get("proposed_reply"))
+    for claim_type, expected_resolution in expected_confirmed.items():
+        clause = confirmed.get(claim_type) or {}
+        clause_uids = {sanitize_text(value) for value in clause.get("evidence_uids") or [] if sanitize_text(value)}
+        allowed_uids = {
+            sanitize_text(value) for value in expected_resolution.get("evidence_uids") or [] if sanitize_text(value)
+        }
+        customer_clause = sanitize_text(clause.get("customer_facing_clause"))
+        if not clause_uids or not clause_uids.issubset(allowed_uids):
+            violations.append("confirmed_clause_evidence_invalid")
+        if not customer_clause or customer_clause not in reply:
+            violations.append("confirmed_clause_not_rendered")
+    for claim_type, expected_resolution in expected_pending.items():
+        clause = pending.get(claim_type) or {}
+        customer_clause = sanitize_text(clause.get("customer_facing_clause"))
+        if sanitize_text(clause.get("reason")) != sanitize_text(expected_resolution.get("reason")):
+            violations.append("pending_clause_reason_changed")
+        if not customer_clause or customer_clause not in reply:
+            violations.append("pending_clause_not_rendered")
     return sorted(set(violations))
 
 
@@ -469,6 +575,10 @@ class AgentDecisionProposalService:
             violations.append("invalid_requested_evidence_reference")
         if not set(proposal["delivery_intent"]["proposed_reply_block_refs"]).issubset(_reply_block_refs(response)):
             violations.append("unattached_reply_block_reference")
+        violations.extend(_partial_answer_contract_violations(
+            proposal,
+            admitted.get("claim_resolutions") or [],
+        ))
         unsupported = _unsupported_assertions(
             proposal["reply_plan"]["proposed_reply"],
             admitted.get("unresolved_claims") or [],
@@ -512,6 +622,9 @@ class AgentDecisionProposalService:
             "formal_reply": sanitize_text(original.get("suggested_reply")),
             "shadow_proposal_reply": sanitize_text((proposal.get("reply_plan") or {}).get("proposed_reply")),
             "admitted_fact_uids": [item.get("evidence_uid") for item in admitted.get("direct_product_facts") or []],
+            "claim_resolutions": proposal.get("claim_resolutions") or [],
+            "confirmed_clauses": proposal.get("confirmed_clauses") or [],
+            "pending_clauses": proposal.get("pending_clauses") or [],
             "unresolved_claims": admitted.get("unresolved_claims") or [],
             "unsupported_claims": (proposal.get("evidence_selection") or {}).get("unsupported_claims") or [],
             "formal_can_send": bool(original.get("can_send")),

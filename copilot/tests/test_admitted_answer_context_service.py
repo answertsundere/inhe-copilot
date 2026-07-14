@@ -132,6 +132,33 @@ def test_compound_claims_do_not_promote_material_into_safety_or_moisture():
         "material_safety",
         "moisture_resistance",
     }
+    resolutions = {item["claim_type"]: item for item in context["claim_resolutions"]}
+    assert resolutions["material_composition"]["status"] == "supported"
+    assert resolutions["material_composition"]["evidence_uids"] == ["fact-material"]
+    assert resolutions["material_safety"]["status"] == "unresolved"
+    assert resolutions["moisture_resistance"]["status"] == "unresolved"
+
+
+def test_conflicting_claim_is_not_reported_as_supported():
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(evidence_uid="a", value="10kg", content="承重10kg", fact_type="load_capacity", attribute_key="load_capacity"),
+                _fact(evidence_uid="b", value="15kg", content="承重15kg", fact_type="load_capacity", attribute_key="load_capacity"),
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("load_capacity"),
+    )
+
+    assert context["claim_resolutions"] == [{
+        "claim_type": "load_capacity",
+        "status": "conflicting",
+        "evidence_uids": [],
+        "admitted_fact_texts": [],
+        "requires_human_review": True,
+        "reason": "conflicting_evidence",
+    }]
 
 
 def test_roles_remain_separate():

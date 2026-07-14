@@ -35,6 +35,14 @@ and the bounded shadow lookup results. A pre-retrieval model-directed formal
 tool loop is a separate future decision because it would change formal stage
 ownership and latency.
 
+The shadow proposal uses a Partial Answer Contract. The application computes a
+claim resolution for every requested claim before the proposal call. A
+supported resolution requires admitted direct evidence and a confirmed clause;
+an unresolved or conflicting resolution requires a pending clause and cannot be
+rendered as a positive fact. The provider must copy the deterministic
+resolutions, so it cannot use fluent wording to conceal an evidence gap or let
+one unresolved claim suppress an unrelated supported fact.
+
 ## Alternatives considered
 
 1. Pass the complete product pack to the model: rejected because candidate,
@@ -54,6 +62,8 @@ ownership and latency.
   explicit non-interchangeable output buckets.
 - Material composition cannot resolve material safety or moisture resistance.
 - Invalid or truncated schemas and unknown evidence references produce no free-text proposal.
+- An unqualified provider records its blocking reason for the internal preview
+  and produces no candidate reply.
 - The optional final semantic model no longer receives `matched_facts` as if
   every candidate were selected evidence.
 - Strict structured output adds two optional model calls and, when requested,

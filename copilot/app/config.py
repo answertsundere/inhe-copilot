@@ -28,6 +28,9 @@ COPILOT_DECISION_LLM_TIMEOUT_SECONDS = int(
 COPILOT_DECISION_LLM_QUALIFIED = os.environ.get(
     "COPILOT_DECISION_LLM_QUALIFIED", "false"
 ).lower() in ("1", "true", "yes", "on")
+COPILOT_DECISION_LLM_DISABLE_THINKING = os.environ.get(
+    "COPILOT_DECISION_LLM_DISABLE_THINKING", "false"
+).lower() in ("1", "true", "yes", "on")
 
 # ============ 客户图片 VLM 配置 ============
 COPILOT_VLM_ENABLED = os.environ.get("COPILOT_VLM_ENABLED", "false").lower() in ("1", "true", "yes", "on")

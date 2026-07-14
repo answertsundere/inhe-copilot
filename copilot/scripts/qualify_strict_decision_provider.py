@@ -55,6 +55,7 @@ def _minimal_proposal_payload(intake: dict[str, Any]) -> dict[str, Any]:
             "handoff_action_guidance": [],
             "media_candidates": [],
             "unresolved_claims": [],
+            "claim_resolutions": [],
         },
         "actual_reply_block_refs": [],
     }
@@ -79,6 +80,9 @@ def _local_contract_checks() -> dict[str, bool]:
             "requested_evidence_uids": [],
             "unsupported_claims": [],
         },
+        "claim_resolutions": [],
+        "confirmed_clauses": [],
+        "pending_clauses": [],
         "reply_plan": {
             "mode": "controlled_handoff",
             "factual_clause_evidence_uids": [],

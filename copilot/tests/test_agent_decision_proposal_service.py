@@ -74,11 +74,54 @@ def _proposal():
             "requested_evidence_uids": ["fact-material"],
             "unsupported_claims": ["material_safety", "moisture_resistance"],
         },
+        "claim_resolutions": [
+            {
+                "claim_type": "material_composition",
+                "status": "supported",
+                "evidence_uids": ["fact-material"],
+                "admitted_fact_texts": ["主体材质为PP。"],
+                "requires_human_review": False,
+                "reason": "admitted_direct_evidence",
+            },
+            {
+                "claim_type": "material_safety",
+                "status": "unresolved",
+                "evidence_uids": [],
+                "admitted_fact_texts": [],
+                "requires_human_review": True,
+                "reason": "no_admitted_direct_evidence",
+            },
+            {
+                "claim_type": "moisture_resistance",
+                "status": "unresolved",
+                "evidence_uids": [],
+                "admitted_fact_texts": [],
+                "requires_human_review": True,
+                "reason": "no_admitted_direct_evidence",
+            },
+        ],
+        "confirmed_clauses": [{
+            "claim_type": "material_composition",
+            "evidence_uids": ["fact-material"],
+            "customer_facing_clause": "这款主体材质为PP。",
+        }],
+        "pending_clauses": [
+            {
+                "claim_type": "material_safety",
+                "reason": "no_admitted_direct_evidence",
+                "customer_facing_clause": "安全性还需要按商品资料确认。",
+            },
+            {
+                "claim_type": "moisture_resistance",
+                "reason": "no_admitted_direct_evidence",
+                "customer_facing_clause": "防潮表现还需要按商品资料确认。",
+            },
+        ],
         "reply_plan": {
             "mode": "controlled_handoff",
             "factual_clause_evidence_uids": ["fact-material"],
             "action_guidance_evidence_uids": [],
-            "proposed_reply": "这款主体材质为PP；安全性和防潮表现还需要按商品资料确认。",
+            "proposed_reply": "这款主体材质为PP。安全性还需要按商品资料确认。防潮表现还需要按商品资料确认。",
         },
         "delivery_intent": {"proposed_reply_block_refs": [], "requires_human_review": True},
         "used_for_final_reply": False,
@@ -114,6 +157,11 @@ def test_proposal_only_references_admitted_evidence(monkeypatch):
         "material_safety", "moisture_resistance",
     }
     assert context["shadow_tool_execution"]["executed_tool_names"] == ["rag_search_tool"]
+    trace = updated["answer_trace"]["llm_decision_shadow"]
+    assert {item["claim_type"] for item in trace["claim_resolutions"]} == {
+        "material_composition", "material_safety", "moisture_resistance",
+    }
+    assert trace["confirmed_clauses"][0]["evidence_uids"] == ["fact-material"]
 
 
 def test_invalid_schema_fails_closed(monkeypatch):
@@ -173,6 +221,43 @@ def test_unadmitted_reference_and_unsupported_claim_fail_closed(monkeypatch):
 
     assert proposal["shadow_status"] == "degraded"
     assert "unadmitted_factual_evidence_reference" in proposal["contract_violations"]
+    assert "unsupported_claim_asserted" in proposal["contract_violations"]
+
+
+def test_supported_claim_omission_fails_closed(monkeypatch):
+    service = AgentDecisionProposalService()
+    bad = _proposal()
+    bad["confirmed_clauses"] = []
+    outputs = iter([_intake(), bad])
+    monkeypatch.setattr(service, "_request_json_schema", lambda **kwargs: next(outputs))
+    _stub_tool_execution(monkeypatch, service)
+
+    proposal, _ = service.build_for_response(
+        {"selected_evidence": [_fact()]},
+        customer_message="这个材质安全吗，会不会受潮？",
+        product_identity={"sku_code": "SKU-A"},
+    )
+
+    assert proposal["shadow_status"] == "degraded"
+    assert "supported_claim_omitted" in proposal["contract_violations"]
+
+
+def test_pending_claim_must_not_be_rendered_as_a_positive_fact(monkeypatch):
+    service = AgentDecisionProposalService()
+    bad = _proposal()
+    bad["reply_plan"]["proposed_reply"] = "这款主体材质为PP。安全性还需要按商品资料确认。这款防潮表现很好。"
+    bad["pending_clauses"][1]["customer_facing_clause"] = "这款防潮表现很好。"
+    outputs = iter([_intake(), bad])
+    monkeypatch.setattr(service, "_request_json_schema", lambda **kwargs: next(outputs))
+    _stub_tool_execution(monkeypatch, service)
+
+    proposal, _ = service.build_for_response(
+        {"selected_evidence": [_fact()]},
+        customer_message="这个材质安全吗，会不会受潮？",
+        product_identity={"sku_code": "SKU-A"},
+    )
+
+    assert proposal["shadow_status"] == "degraded"
     assert "unsupported_claim_asserted" in proposal["contract_violations"]
 
 

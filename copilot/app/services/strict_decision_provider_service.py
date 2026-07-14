@@ -31,6 +31,7 @@ class StrictDecisionProviderConfig:
     capability: str
     timeout_seconds: int
     qualified: bool
+    disable_thinking: bool = False
 
     @classmethod
     def from_environment(cls) -> "StrictDecisionProviderConfig":
@@ -42,6 +43,7 @@ class StrictDecisionProviderConfig:
             capability=sanitize_text(config.COPILOT_DECISION_LLM_CAPABILITY).lower(),
             timeout_seconds=_bounded_timeout(str(config.COPILOT_DECISION_LLM_TIMEOUT_SECONDS)),
             qualified=bool(config.COPILOT_DECISION_LLM_QUALIFIED),
+            disable_thinking=bool(config.COPILOT_DECISION_LLM_DISABLE_THINKING),
         )
 
     def capability_status(self) -> str:
@@ -61,6 +63,7 @@ class StrictDecisionProviderConfig:
             "capability": self.capability,
             "configured": self.capability_status() == "configured",
             "qualified": self.qualified,
+            "disable_thinking": self.disable_thinking,
             "host_fingerprint": host_fingerprint,
         }
 
@@ -133,6 +136,9 @@ class StrictDecisionProviderService:
     ) -> dict[str, Any]:
         self._require_ready(allow_unqualified=allow_unqualified)
         started = time.perf_counter()
+        provider_options: dict[str, Any] = {}
+        if self.config.disable_thinking:
+            provider_options["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
         try:
             if self.config.capability == "strict_json_schema":
                 result = self.client.chat.completions.create(
@@ -147,6 +153,7 @@ class StrictDecisionProviderService:
                         "type": "json_schema",
                         "json_schema": {"name": name, "strict": True, "schema": schema},
                     },
+                    **provider_options,
                 )
                 choice = result.choices[0]
                 if sanitize_text(getattr(choice, "finish_reason", "")) == "length":
@@ -166,6 +173,7 @@ class StrictDecisionProviderService:
                         "function": {"name": name, "strict": True, "parameters": schema},
                     }],
                     tool_choice={"type": "function", "function": {"name": name}},
+                    **provider_options,
                 )
                 choice = result.choices[0]
                 if sanitize_text(getattr(choice, "finish_reason", "")) == "length":
