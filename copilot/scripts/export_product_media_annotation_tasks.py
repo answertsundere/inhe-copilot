@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter, defaultdict, deque
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from PIL import Image
 
@@ -78,11 +80,44 @@ def _ocr_items(asset: Any, *, include_live_ocr: bool, timeout_seconds: int) -> l
     return [item for item in result.get("items") or [] if isinstance(item, dict)]
 
 
-def build_tasks(assets: list[Any], *, include_live_ocr: bool = False, timeout_seconds: int = 20) -> list[dict[str, Any]]:
+def _annotation_image_url(reference: str, *, media_base_url: str | None) -> str:
+    """Resolve an application-relative media reference for external annotation."""
+    if not media_base_url or not reference.startswith("/") or reference.startswith("/data/local-files/"):
+        return reference
+    return f"{media_base_url.rstrip('/')}{reference}"
+
+
+def _validate_media_base_url(value: str) -> str:
+    normalized = value.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        raise ValueError("media_base_url_must_be_http_origin")
+    return normalized
+
+
+def _set_annotation_image_url(task: dict[str, Any], *, media_base_url: str | None) -> None:
+    data = task.get("data")
+    meta = task.get("meta")
+    if not isinstance(data, dict) or not isinstance(meta, dict):
+        return
+    reference = str(data.get("image") or "")
+    image_url = _annotation_image_url(reference, media_base_url=media_base_url)
+    data["image"] = image_url
+    meta["annotation_image_url"] = image_url
+    meta["annotation_image_url_mode"] = "absolute" if image_url != reference else "reference"
+
+
+def build_tasks(
+    assets: list[Any],
+    *,
+    include_live_ocr: bool = False,
+    timeout_seconds: int = 20,
+    media_base_url: str | None = None,
+) -> list[dict[str, Any]]:
     """Pure ordering wrapper used by the CLI and tests; it never filters by names."""
     image_assets = [asset for asset in assets if is_annotation_image_asset(asset)]
     ordered = sorted(image_assets, key=lambda asset: (*annotation_priority(asset), int(getattr(asset, "id", 0) or (asset.get("id", 0) if isinstance(asset, dict) else 0))))
-    return [
+    tasks = [
         build_label_studio_task(
             asset,
             ocr_items=_ocr_items(asset, include_live_ocr=include_live_ocr, timeout_seconds=timeout_seconds),
@@ -90,6 +125,9 @@ def build_tasks(assets: list[Any], *, include_live_ocr: bool = False, timeout_se
         )
         for asset in ordered
     ]
+    for task in tasks:
+        _set_annotation_image_url(task, media_base_url=media_base_url)
+    return tasks
 
 
 def _asset_id(asset: Any) -> int:
@@ -149,7 +187,15 @@ def _image_metadata(asset: Any, *, timeout_seconds: int) -> tuple[dict[str, Any]
     }, ""
 
 
-def build_pilot_tasks(assets: list[Any], *, limit: int, candidate_scan_limit: int, timeout_seconds: int, materialize_dir: Path | None = None) -> dict[str, Any]:
+def build_pilot_tasks(
+    assets: list[Any],
+    *,
+    limit: int,
+    candidate_scan_limit: int,
+    timeout_seconds: int,
+    materialize_dir: Path | None = None,
+    media_base_url: str | None = None,
+) -> dict[str, Any]:
     """Build only readable approved/usable image tasks with bytes-derived provenance."""
     approved = [
         asset for asset in assets
@@ -179,6 +225,7 @@ def build_pilot_tasks(assets: list[Any], *, limit: int, candidate_scan_limit: in
                 target.write_bytes(metadata["data"])
             task["data"]["image"] = f"/data/local-files/?d=media/{filename}"
             task["meta"]["label_studio_local_media_path"] = f"media/{filename}"
+        _set_annotation_image_url(task, media_base_url=media_base_url)
         tasks.append(task)
         distribution[bucket] += 1
         if len(tasks) >= limit:
@@ -196,7 +243,16 @@ def build_pilot_tasks(assets: list[Any], *, limit: int, candidate_scan_limit: in
     }
 
 
-def run(*, limit: int, include_live_ocr: bool, timeout_seconds: int, pilot_size: int = 0, candidate_scan_limit: int = 120, materialize_dir: Path | None = None) -> dict[str, Any]:
+def run(
+    *,
+    limit: int,
+    include_live_ocr: bool,
+    timeout_seconds: int,
+    pilot_size: int = 0,
+    candidate_scan_limit: int = 120,
+    materialize_dir: Path | None = None,
+    media_base_url: str | None = None,
+) -> dict[str, Any]:
     db = SessionLocal()
     guard = ReadOnlyDatabaseGuard(db)
     try:
@@ -204,11 +260,23 @@ def run(*, limit: int, include_live_ocr: bool, timeout_seconds: int, pilot_size:
         before = _formal_kb_state_fingerprint(db)
         assets = db.query(KBMediaAsset).order_by(KBMediaAsset.id.asc()).all()
         if pilot_size:
-            pilot = build_pilot_tasks(assets, limit=max(1, pilot_size), candidate_scan_limit=max(pilot_size, candidate_scan_limit), timeout_seconds=timeout_seconds, materialize_dir=materialize_dir)
+            pilot = build_pilot_tasks(
+                assets,
+                limit=max(1, pilot_size),
+                candidate_scan_limit=max(pilot_size, candidate_scan_limit),
+                timeout_seconds=timeout_seconds,
+                materialize_dir=materialize_dir,
+                media_base_url=media_base_url,
+            )
             tasks = pilot.pop("tasks")
         else:
             pilot = {}
-            tasks = build_tasks(assets, include_live_ocr=include_live_ocr, timeout_seconds=timeout_seconds)[:max(1, limit)]
+            tasks = build_tasks(
+                assets,
+                include_live_ocr=include_live_ocr,
+                timeout_seconds=timeout_seconds,
+                media_base_url=media_base_url,
+            )[:max(1, limit)]
         after = _formal_kb_state_fingerprint(db)
         return {
             "schema_version": "product_media_annotation_task_export_v1",
@@ -218,6 +286,7 @@ def run(*, limit: int, include_live_ocr: bool, timeout_seconds: int, pilot_size:
             "formal_kb_state_unchanged": before == after,
             "formal_kb_write_attempt_count": guard.write_attempt_count,
             "can_change_can_send_count": 0,
+            "annotation_media_base_url": media_base_url or "",
             **pilot,
             "tasks": tasks,
         }
@@ -237,8 +306,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest-output", default="")
     parser.add_argument("--label-config-output", default="")
     parser.add_argument("--materialize-dir", default="", help="Optional local Label Studio media directory outside the repository.")
+    parser.add_argument(
+        "--media-base-url",
+        default=os.environ.get("COPILOT_LABEL_STUDIO_MEDIA_BASE_URL", ""),
+        help="Public Copilot origin used to resolve application-relative media URLs for Label Studio.",
+    )
     args = parser.parse_args(argv)
-    report = run(limit=args.limit, include_live_ocr=args.include_live_ocr, timeout_seconds=args.timeout_seconds, pilot_size=args.pilot_size, candidate_scan_limit=args.candidate_scan_limit, materialize_dir=Path(args.materialize_dir) if args.materialize_dir else None)
+    media_base_url = ""
+    if args.media_base_url:
+        try:
+            media_base_url = _validate_media_base_url(args.media_base_url)
+        except ValueError as exc:
+            parser.error(str(exc))
+    elif not args.materialize_dir:
+        parser.error("--media-base-url is required unless --materialize-dir is used")
+    report = run(
+        limit=args.limit,
+        include_live_ocr=args.include_live_ocr,
+        timeout_seconds=args.timeout_seconds,
+        pilot_size=args.pilot_size,
+        candidate_scan_limit=args.candidate_scan_limit,
+        materialize_dir=Path(args.materialize_dir) if args.materialize_dir else None,
+        media_base_url=media_base_url or None,
+    )
     output = PROJECT_ROOT / args.json_output
     output.parent.mkdir(parents=True, exist_ok=True)
     # Label Studio and PowerShell require plain UTF-8 JSON; a BOM makes the

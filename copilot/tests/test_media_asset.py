@@ -69,6 +69,29 @@ def test_upload_route_can_read_legacy_media_directory(tmp_path, monkeypatch):
     assert response.data == b"legacy-preview"
 
 
+def test_upload_route_allows_configured_label_studio_origin(tmp_path, monkeypatch):
+    from flask import Flask
+    from app.api import media_routes
+
+    upload_dir = tmp_path / "uploads"
+    media_file = upload_dir / "2026-06-17" / "preview.jpg"
+    media_file.parent.mkdir(parents=True)
+    media_file.write_bytes(b"annotation-preview")
+    monkeypatch.setattr(media_routes, "_UPLOAD_DIR", str(upload_dir))
+    monkeypatch.setattr(media_routes, "_LEGACY_UPLOAD_DIR", str(tmp_path / "legacy"))
+
+    test_app = Flask(__name__)
+    test_app.register_blueprint(media_routes.media_bp)
+    response = test_app.test_client().get(
+        "/api/media-assets/uploads/2026-06-17/preview.jpg",
+        headers={"Origin": "http://127.0.0.1:8088"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:8088"
+    assert response.headers["Vary"] == "Origin"
+
+
 @pytest.fixture(autouse=True)
 def _clean_test_assets():
     """每个测试前后清理 TEST_IID_001 测试素材，保证导入测试相互隔离。"""

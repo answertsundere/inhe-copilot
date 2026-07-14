@@ -36,6 +36,12 @@ _ALLOWED_MEDIA_MIMES = {
 }
 _MEDIA_MAX_SIZE = 50 * 1024 * 1024
 
+
+def _label_studio_media_cors_origin() -> str | None:
+    """Return the single configured annotation origin for external image loading."""
+    configured = os.environ.get("COPILOT_LABEL_STUDIO_ORIGIN", "http://127.0.0.1:8088").strip().rstrip("/")
+    return configured or None
+
 # 允许操作（写）的角色
 _SUPERVISOR_ROLES = ("supervisor", "admin")
 
@@ -346,7 +352,12 @@ def serve_upload(filename):
         mime_map = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
         ext = os.path.splitext(filename.lower())[1]
         mime = mime_map.get(ext)
-    return send_file(file_path, mimetype=mime, as_attachment=False)
+    response = send_file(file_path, mimetype=mime, as_attachment=False)
+    cors_origin = _label_studio_media_cors_origin()
+    if cors_origin:
+        response.headers["Access-Control-Allow-Origin"] = cors_origin
+        response.headers["Vary"] = "Origin"
+    return response
 
 
 @media_bp.route("/batch-update-tags", methods=["POST"])

@@ -127,6 +127,14 @@ metadata, and current object-provider output remains metadata. Importing human
 labels, training a detector, and promoting any resulting observation require
 separately approved future work.
 
+For an external Label Studio instance, an application-relative media reference
+is not sufficient: Label Studio resolves it against its own origin. The export
+therefore requires a configured `--media-base-url` unless tasks are explicitly
+materialized for Label Studio local storage. The original source reference stays
+in task metadata for provenance. The media-serving endpoint permits the
+configured Label Studio origin only, so browser-based review can load the
+absolute media URL without broadening customer-facing media access.
+
 ## Small-batch Label Studio loop
 
 Phase 0.4H.1 uses the existing schema to export a bounded twenty-image pilot.

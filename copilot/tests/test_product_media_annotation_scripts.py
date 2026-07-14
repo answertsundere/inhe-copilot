@@ -96,6 +96,44 @@ def test_pilot_tasks_require_readable_bytes_and_keep_media_local_to_external_run
     assert (tmp_path / ("a" * 64 + ".png")).read_bytes() == b"image-bytes"
 
 
+def test_external_annotation_export_resolves_relative_media_url_from_configured_origin():
+    tasks = build_tasks([_asset(asset_url="/ask/api/media-assets/uploads/a.jpg")], media_base_url="http://127.0.0.1:5011")
+
+    assert tasks[0]["data"]["image"] == "http://127.0.0.1:5011/ask/api/media-assets/uploads/a.jpg"
+    assert tasks[0]["meta"]["original_image_source"] == "/ask/api/media-assets/uploads/a.jpg"
+    assert tasks[0]["meta"]["annotation_image_url_mode"] == "absolute"
+
+
+def test_materialized_label_studio_image_is_not_rebased_to_copilot_origin(tmp_path, monkeypatch):
+    asset = _asset(status="approved", usable_for_agent=True)
+    monkeypatch.setattr(export_tasks, "_image_metadata", lambda _asset, timeout_seconds: ({
+        "data": b"image-bytes", "extension": ".png", "observed_media_sha256": "a" * 64,
+        "source_image_size": {"width": 100, "height": 50}, "source_kind": "fixture",
+    }, ""))
+
+    report = build_pilot_tasks(
+        [asset],
+        limit=1,
+        candidate_scan_limit=1,
+        timeout_seconds=1,
+        materialize_dir=tmp_path,
+        media_base_url="http://127.0.0.1:5011",
+    )
+
+    assert report["tasks"][0]["data"]["image"].startswith("/data/local-files/")
+
+
+def test_cli_requires_absolute_media_origin_when_not_materializing(tmp_path, monkeypatch):
+    monkeypatch.setattr(export_tasks, "run", lambda **_kwargs: {"task_count": 0, "tasks": []})
+
+    try:
+        export_tasks.main(["--json-output", str(tmp_path / "tasks.json")])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected missing media origin validation")
+
+
 def test_label_studio_task_export_uses_plain_utf8_json(tmp_path, monkeypatch):
     output = tmp_path / "tasks.json"
     monkeypatch.setattr(export_tasks, "run", lambda **_kwargs: {
@@ -103,7 +141,10 @@ def test_label_studio_task_export_uses_plain_utf8_json(tmp_path, monkeypatch):
         "tasks": [{"data": {"image": "/ask/api/media-assets/example.jpg"}, "meta": {}}],
     })
 
-    assert export_tasks.main(["--json-output", str(output)]) == 0
+    assert export_tasks.main([
+        "--json-output", str(output),
+        "--media-base-url", "http://127.0.0.1:5011",
+    ]) == 0
 
     content = output.read_bytes()
     assert not content.startswith(b"\xef\xbb\xbf")
@@ -124,6 +165,7 @@ def test_label_studio_config_export_uses_plain_utf8_xml(tmp_path, monkeypatch):
         "--json-output", str(output),
         "--manifest-output", str(manifest),
         "--label-config-output", str(config),
+        "--media-base-url", "http://127.0.0.1:5011",
     ]) == 0
 
     assert not config.read_bytes().startswith(b"\xef\xbb\xbf")
