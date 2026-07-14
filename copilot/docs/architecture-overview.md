@@ -45,6 +45,16 @@ read-only export validator only. Generic visual providers remain unqualified
 for semantic scope grounding, OCR remains a text-box candidate, and no model
 training or annotation promotion is part of the formal evidence path.
 
+Phase 0.5A adds a post-graph Evidence-First LLM Decision Loop shadow. One
+deterministic admission service separates direct product facts, direct policy
+facts, service actions, and media candidates before a strict-schema proposal
+can cite them. Compound claims remain independently unresolved when their own
+eligible evidence is missing. The application executes only the eligible local
+read-only portion of the shadow tool plan before admission; unsupported order
+or media capabilities are explicitly deferred. The formal graph still owns
+formal tool execution, and the proposal cannot alter replies, delivery, review
+status, or `can_send`.
+
 ## Target System
 
 ```text
@@ -106,10 +116,9 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 - Pipeline runtime stages are observed from the response itself. Final
   persistence is owned and observed by `AnalysisExecutionService`, not claimed
   as a completed Pipeline runtime stage before persistence happens.
-- Grounded Reasoning trace currently risks treating reviewed answers or
-  ineligible evidence as facts and must not be promoted. Phase 0.3 keeps it
-  shadow-only and records evidence-admission rejections; reviewed answers are
-  offline references, never reasoning facts.
+- Grounded Reasoning remains shadow-only. Phase 0.5A moves its product-fact
+  eligibility checks to the shared read-only admission service; reviewed
+  answers remain offline references and never reasoning facts.
 
 ### P1: Contract Fragmentation
 

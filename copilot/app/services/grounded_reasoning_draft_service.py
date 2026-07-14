@@ -9,9 +9,12 @@ from __future__ import annotations
 import os
 import re
 from hashlib import sha256
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.services.admitted_answer_context_service import (
+    COMPATIBLE_FACT_TYPES as _COMPATIBLE_FACT_TYPES,
+    collect_admitted_product_facts,
+)
 from app.services.claim_polarity_service import contains_asserted_claim
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.fact_type_service import classify_query_fact_type
@@ -139,251 +142,6 @@ def _infer_fact_type(customer_message: str, query_fact_type: str) -> str:
         return "gross_weight"
     result = classify_query_fact_type(customer_message, intent="")
     return sanitize_text(result.get("query_fact_type"))
-
-
-def _fact_type_of(item: dict[str, Any]) -> str:
-    for key in ("fact_type", "query_fact_type", "requested_fact_type", "evidence_role", "source_type", "type"):
-        text = sanitize_text(item.get(key))
-        if text:
-            return text
-    return ""
-
-
-def _text_of_fact(item: dict[str, Any]) -> str:
-    for key in ("content", "answer", "value", "fact_value", "text", "title", "summary", "name"):
-        text = sanitize_text(item.get(key))
-        if text:
-            return text
-    return ""
-
-
-def _collect_pack_candidates(product_context_pack: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    pack = _as_dict(product_context_pack)
-    candidates: list[tuple[str, dict[str, Any]]] = []
-    for bucket in ("facts", "chunks", "product_scoped_chunks"):
-        for item in _as_list(pack.get(bucket)):
-            if isinstance(item, dict):
-                candidates.append((f"product_context_pack.{bucket}", item))
-    for pack_key in ("product_first_evidence_pack", "evidence_pack"):
-        evidence_pack = _as_dict(pack.get(pack_key))
-        for bucket in ("product_structured_facts", "product_scoped_chunks", "product_media_assets"):
-            for item in _as_list(evidence_pack.get(bucket)):
-                if isinstance(item, dict):
-                    candidates.append((f"product_context_pack.{pack_key}.{bucket}", item))
-    return candidates
-
-
-_DIRECT_EVIDENCE_ROLES = {"product_fact_direct", "faq_direct"}
-_REJECTED_ROLES = {"service_action", "fallback_only", "media_reference", "answer_memory", "correct_answer", "expected_reply", "rubric"}
-_COMPATIBLE_FACT_TYPES = {
-    "material_safety": {"material", "odor", "certification_report"},
-    "pinch_safety": {"structure_function", "structure", "material"},
-    "child_safety": {"structure_function", "structure", "material"},
-    "child_suitability": {"structure_function", "structure", "material", "age_range"},
-    "installation_media": {"installation", "installation_media", "installation_media_request"},
-}
-
-
-def _admission_reason(item: dict[str, Any], query_fact_type: str, product_identity: dict[str, Any]) -> str:
-    role = sanitize_text(item.get("evidence_role") or item.get("source_type") or item.get("type")).lower()
-    gate = sanitize_text(item.get("gate_status")).lower()
-    status = sanitize_text(item.get("fact_review_status") or item.get("review_status") or item.get("verification_status")).lower()
-    if role in _REJECTED_ROLES or gate in {"blocked", "reference_only", "rejected"}:
-        return "ineligible_role_or_gate"
-    if item.get("reference_only") is True or item.get("fallback_only") is True:
-        return "reference_only"
-    if status in {"pending", "pending_review", "unverified", "provisional", "rejected"}:
-        return "unreviewed_fact"
-    if item.get("direct_answer_allowed") is not True and item.get("can_direct_answer") is not True:
-        return "not_direct_answerable"
-    if sanitize_text(item.get("evidence_role")).lower() not in _DIRECT_EVIDENCE_ROLES:
-        return "evidence_role_not_direct"
-    if gate and gate not in {"allowed", "approved", "passed"}:
-        return "gate_not_allowed"
-    if status not in {"reviewed", "verified", "published", "approved"}:
-        return "review_status_missing"
-    item_type = _fact_type_of(item)
-    compatible = _COMPATIBLE_FACT_TYPES.get(query_fact_type, set())
-    if query_fact_type and item_type and item_type not in {query_fact_type, "product_identity", "sku_code", *compatible}:
-        return "fact_type_incompatible"
-    is_global = sanitize_text(item.get("fact_scope") or item.get("product_scope")).lower() in {"global", "all"}
-    is_product_fact = sanitize_text(item.get("evidence_role")).lower() == "product_fact_direct"
-    identity_keys = ("sku_code", "i_id", "product_id")
-    expected = {key: sanitize_text(product_identity.get(key)) for key in identity_keys if sanitize_text(product_identity.get(key))}
-    actual = {key: sanitize_text(item.get(key)) for key in identity_keys if sanitize_text(item.get(key))}
-    is_faq = sanitize_text(item.get("evidence_role")).lower() == "faq_direct"
-    identity_required = is_product_fact or (is_faq and not is_global)
-    if identity_required and (not expected or not actual):
-        return "product_identity_missing"
-    if identity_required and not set(expected).intersection(actual):
-        return "product_identity_namespace_missing"
-    for key, expected_value in expected.items():
-        if key in actual and actual[key] != expected_value:
-            return "product_identity_mismatch"
-    return ""
-
-
-def _attribute_key(item: dict[str, Any], fact_type: str) -> str:
-    return sanitize_text(
-        item.get("attribute_key") or item.get("field_name") or item.get("fact_key")
-        or item.get("structured_field")
-    ).lower()
-
-
-def _identity_scope(item: dict[str, Any]) -> list[dict[str, str]]:
-    return [
-        {"namespace": key, "value": value}
-        for key in ("sku_code", "i_id", "product_id")
-        if (value := sanitize_text(item.get(key)))
-    ]
-
-
-def _evidence_provenance(source: str, item: dict[str, Any], fact_type: str, role: str, text: str) -> dict[str, Any]:
-    scopes = _identity_scope(item)
-    explicit_uid = sanitize_text(item.get("evidence_uid"))
-    stable_input = explicit_uid
-    if not stable_input:
-        stable_input = "|".join(
-            [
-                source,
-                fact_type,
-                role,
-                _attribute_key(item, fact_type),
-                text,
-                *(f"{scope['namespace']}={scope['value']}" for scope in scopes),
-            ]
-        )
-    if re.fullmatch(r"ev-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}", explicit_uid):
-        evidence_uid = explicit_uid
-    else:
-        digest = sha256(stable_input.encode("utf-8")).hexdigest()[:12]
-        evidence_uid = f"ev-{digest[:4]}-{digest[4:8]}-{digest[8:12]}"
-    primary_scope = scopes[0] if scopes else {"namespace": "", "value": ""}
-    return {
-        "evidence_uid": evidence_uid,
-        "source": source,
-        "evidence_role": role,
-        "identity_namespace": primary_scope["namespace"],
-        "identity_value": primary_scope["value"],
-        "identity_scopes": scopes,
-    }
-
-
-def _normalized_quantity(item: dict[str, Any], text: str) -> tuple[str, str, str]:
-    value = sanitize_text(item.get("value") or item.get("fact_value") or text).lower()
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*(kg|公斤|千克|g|克|斤|mm|毫米|cm|厘米|m|米)?",
-        value,
-    )
-    if not match:
-        return value, "", ""
-    try:
-        amount = Decimal(match.group(1))
-    except InvalidOperation:
-        return value, "", ""
-    unit = match.group(2) or ""
-    if unit in {"kg", "公斤", "千克"}:
-        return value, "mass_metric", f"mass_g:{(amount * Decimal(1000)).normalize()}"
-    if unit in {"g", "克"}:
-        return value, "mass_metric", f"mass_g:{amount.normalize()}"
-    if unit == "斤":
-        return value, "mass_jin", f"jin:{amount.normalize()}"
-    if unit in {"m", "米"}:
-        return value, "length_metric", f"length_mm:{(amount * Decimal(1000)).normalize()}"
-    if unit in {"cm", "厘米"}:
-        return value, "length_metric", f"length_mm:{(amount * Decimal(10)).normalize()}"
-    if unit in {"mm", "毫米"}:
-        return value, "length_metric", f"length_mm:{amount.normalize()}"
-    return value, "", ""
-
-
-def _collect_used_facts(
-    selected_evidence: list[dict[str, Any]] | None,
-    product_context_pack: dict[str, Any] | None,
-    query_fact_type: str,
-    product_identity: dict[str, Any] | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    candidates: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def add_fact(source: str, item: dict[str, Any]) -> None:
-        fact_type = _fact_type_of(item)
-        text = _text_of_fact(item)
-        role = sanitize_text(item.get("evidence_role") or item.get("source_type") or item.get("type"))
-        if not text:
-            return
-        provenance = _evidence_provenance(source, item, fact_type, role, text)
-        reason = _admission_reason(item, query_fact_type, product_identity or {})
-        if reason:
-            rejected.append(
-                {
-                    **provenance,
-                    "reason": reason,
-                    "fact_type": fact_type,
-                }
-            )
-            return
-        attribute_key = _attribute_key(item, fact_type)
-        original_value, unit_domain, normalized_value = _normalized_quantity(item, text)
-        candidates.append(
-            {
-                **provenance,
-                "fact_type": fact_type or query_fact_type,
-                "role": role,
-                "attribute_key": attribute_key,
-                "original_value": original_value,
-                "unit_domain": unit_domain,
-                "normalized_value": normalized_value,
-                "fact_scope": sanitize_text(item.get("fact_scope") or item.get("product_scope")).lower(),
-                "text": _clip(text, 180),
-            }
-        )
-
-    for item in _as_list(selected_evidence):
-        if isinstance(item, dict):
-            add_fact("selected_evidence", item)
-    for source, item in _collect_pack_candidates(_as_dict(product_context_pack)):
-        add_fact(source, item)
-
-    facts: list[dict[str, Any]] = []
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for candidate in candidates:
-        attribute_key = sanitize_text(candidate.get("attribute_key"))
-        if not attribute_key:
-            facts.append(candidate)
-            warnings.append({**candidate, "reason": "conflict_check_skipped"})
-            continue
-        groups.setdefault(attribute_key, []).append(candidate)
-
-    for attribute_key in sorted(groups):
-        group = sorted(
-            groups[attribute_key],
-            key=lambda item: (
-                sanitize_text(item.get("unit_domain")),
-                sanitize_text(item.get("normalized_value")),
-                sanitize_text(item.get("text")),
-                sanitize_text(item.get("source")),
-            ),
-        )
-        comparable = [item for item in group if sanitize_text(item.get("normalized_value"))]
-        incomparable = [item for item in group if not sanitize_text(item.get("normalized_value"))]
-        facts.extend(incomparable)
-        warnings.extend({**item, "reason": "conflict_check_skipped"} for item in incomparable)
-        if not comparable:
-            continue
-        domains = {sanitize_text(item.get("unit_domain")) for item in comparable}
-        if len(domains) > 1:
-            rejected.extend({**item, "reason": "incomparable_unit_domain"} for item in comparable)
-            continue
-        values = {sanitize_text(item.get("normalized_value")) for item in comparable}
-        if len(values) > 1:
-            rejected.extend({**item, "reason": "conflicting_evidence"} for item in comparable)
-            continue
-        facts.append(comparable[0])
-        rejected.extend({**item, "reason": "duplicate_evidence"} for item in comparable[1:])
-
-    return facts[:8], rejected, warnings
 
 
 def _reply_blocks_have_media(reply_blocks: list[dict[str, Any]] | None, media_type: str = "") -> bool:
@@ -709,11 +467,14 @@ def build_grounded_reasoning_draft(
 ) -> dict[str, Any]:
     message = sanitize_text(customer_message)
     fact_type = _infer_fact_type(message, query_fact_type)
-    used_facts, rejected_evidence, admission_warnings = _collect_used_facts(
-        selected_evidence,
-        product_context_pack,
-        fact_type,
-        product_identity,
+    admission_response = {
+        "selected_evidence": selected_evidence or [],
+        "product_context_pack": product_context_pack or {},
+    }
+    used_facts, rejected_evidence, admission_warnings = collect_admitted_product_facts(
+        admission_response,
+        product_identity=product_identity or {},
+        requested_claim_types=[fact_type] if fact_type else [],
     )
     has_video = _reply_blocks_have_media(reply_blocks, "video")
     has_image = _reply_blocks_have_media(reply_blocks, "image")

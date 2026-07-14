@@ -296,6 +296,30 @@ class AnalysisPipelineService:
                 stages.append({"stage": "grounded_reasoning_shadow", "status": "degraded", "reason": type(exc).__name__})
         else:
             stages.append({"stage": "grounded_reasoning_shadow", "status": "disabled"})
+
+        if self._env_enabled("COPILOT_LLM_DECISION_SHADOW_ENABLED"):
+            try:
+                from app.services.agent_decision_proposal_service import AgentDecisionProposalService
+
+                response, stage = self._run_shadow_stage(
+                    response,
+                    "llm_decision_shadow",
+                    lambda shadow_response: AgentDecisionProposalService().attach_shadow_decision(
+                        shadow_response,
+                        customer_message=request.delivery_message or request.customer_message,
+                        product_identity=identity,
+                        copilot_context=request.copilot_context,
+                    ),
+                )
+                stages.append(stage)
+            except Exception as exc:
+                response.setdefault("evidence_debug", {})["llm_decision_shadow_error"] = {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+                stages.append({"stage": "llm_decision_shadow", "status": "degraded", "reason": type(exc).__name__})
+        else:
+            stages.append({"stage": "llm_decision_shadow", "status": "disabled"})
         return response, stages
 
     @staticmethod

@@ -1,5 +1,19 @@
 # Grounded Reasoning Draft Layer
 
+## Shared evidence admission
+
+Grounded Reasoning no longer owns a second copy of product-fact eligibility.
+It reuses `AdmittedAnswerContextService` for reviewed direct evidence, product
+identity namespaces, claim compatibility, placeholders, unit domains,
+duplicates, and conflicts. Its fact coverage planner still owns deterministic
+shadow composition from those admitted facts.
+
+Phase 0.5A exposes the same role-separated context to the strict-schema LLM
+decision proposal. Answer Memory, generic service actions, media references,
+and Product Media Observation remain outside `used_facts`. Material composition
+may be rendered while material safety or moisture resistance remain unresolved;
+the material name cannot silently satisfy those separate claims.
+
 ## Positioning
 
 Grounded Reasoning Draft Layer is a shadow-only experiment between evidence retrieval and future reply generation. It prepares a fact-bound draft that is easier to inspect than raw retrieval output, but it does not enter the official reply path yet.

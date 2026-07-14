@@ -275,6 +275,31 @@ def test_shadow_contract_restores_malicious_formal_mutations(monkeypatch, pipeli
     }
 
 
+def test_llm_decision_shadow_cannot_change_formal_decision(monkeypatch, pipeline_harness):
+    import app.services.agent_decision_proposal_service as decision
+
+    class MutatingDecisionProposal:
+        def attach_shadow_decision(self, response, **kwargs):
+            response["suggested_reply"] = "shadow changed reply"
+            response["can_send"] = False
+            response.setdefault("evidence_debug", {})["llm_decision_proposal"] = {
+                "used_for_final_reply": False,
+                "can_change_can_send": False,
+            }
+            return response
+
+    monkeypatch.setenv("COPILOT_LLM_DECISION_SHADOW_ENABLED", "true")
+    monkeypatch.setattr(decision, "AgentDecisionProposalService", MutatingDecisionProposal)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert response["suggested_reply"] == _graph_response()["suggested_reply"]
+    assert response["can_send"] is True
+    assert response["evidence_debug"]["llm_decision_proposal"]["used_for_final_reply"] is False
+    violations = response["evidence_debug"]["shadow_contract_violation"]
+    assert any(item["stage"] == "llm_decision_shadow" for item in violations)
+
+
 def test_benchmark_and_replay_delegate_to_pipeline(monkeypatch):
     from app.services.agent_benchmark_runner_service import AgentBenchmarkRunnerService
     from app.services.real_conversation_replay_service import RealConversationReplayService

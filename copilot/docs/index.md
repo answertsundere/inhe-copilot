@@ -50,6 +50,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/adr/0005-product-media-annotation-external-authoring.md` - adopts a
   query-only Label Studio authoring export and detector-feasibility path
   without promoting annotations or model output into formal evidence.
+- `docs/adr/0006-evidence-first-llm-decision-loop-shadow.md` - establishes one
+  deterministic admission context and a strict-schema, post-graph LLM decision
+  proposal isolated from formal reply and delivery decisions.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - current LangGraph topology and migration notes.
@@ -66,6 +69,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/research/product-media-annotation-and-detector-feasibility.md` -
   product-independent visual annotation schema, external authoring rationale,
   and bounded detector-feasibility criteria.
+- `docs/research/evidence-first-llm-decision-loop.md` - official-provider
+  structured-output and tool-use principles, evidence role separation,
+  compound-claim handling, and Phase 0.5A promotion gates.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 
@@ -83,12 +89,17 @@ These documents describe the Agent graph. They do not replace the application-le
 - `docs/llamaindex_shadow_poc.md` - historical LlamaIndex shadow experiment.
 - `docs/answer_memory_layer.md` - Answer Memory safety contract, data model, import flow, and shadow guidance.
 - `docs/grounded_reasoning_draft_layer.md` - shadow-only grounded reasoning draft contract.
+- `docs/research/evidence-first-llm-decision-loop.md` - canonical admission
+  context and strict decision-proposal shadow contract.
 
 Current boundaries:
 
 - pgvector remains shadow-only until the formal retriever contract is implemented and evaluated.
 - Answer Memory is action/style guidance, not product fact evidence.
 - Grounded Reasoning is shadow-only and cannot change `can_send` or the final reply.
+- The Evidence-First LLM Decision Loop is post-graph and shadow-only. Its tool
+  plan is diagnostic, and factual proposal clauses may cite admitted evidence
+  UIDs only.
 - `service_action` and `media_reference` cannot be promoted to product facts.
 - Product media roles do not prove that image contents have been understood. Model-extracted OCR or visual observations require product scope, provenance, confidence, and review state before they can support formal claims.
 - Product Media Observation v3 resolves observed source bytes with SHA-256 provenance and uses deterministic panel proposals plus staged panel, object, label, and object-label binding only for shadow diagnostics. Its normalised regions and graph relations remain outside formal evidence, customer replies, and `can_send` until a separate reviewed-evidence promotion decision.

@@ -300,7 +300,8 @@ def _llm_semantic_fit_check(
                     "content": (
                         "You are the final semantic quality judge for a customer-service agent. "
                         "Judge only whether final_reply can be sent as a coherent answer to customer_message. "
-                        "Use semantic_query and selected_evidence as ground truth. "
+                        "Use semantic_query and admitted_direct_facts as the only factual ground truth. "
+                        "Treat unresolved_claims as facts the reply must not assert. "
                         "Do not require exact wording. Do not judge style unless it affects answerability. "
                         "Fail if the reply answers a different fact type, asks for information already provided, "
                         "turns to human review while direct evidence is available, or claims facts not supported by evidence. "
@@ -333,6 +334,46 @@ def _semantic_payload(
 ) -> dict[str, Any]:
     debug = response.get("evidence_debug") or {}
     evidence_pack = _evidence_pack(response)
+    admitted = debug.get("admitted_answer_context")
+    if not isinstance(admitted, dict):
+        from app.services.admitted_answer_context_service import (
+            AdmittedAnswerContextService,
+            resolved_product_identity_for_response,
+        )
+
+        query_fact_type = _query_fact_type(response, evidence_pack)
+        understanding = {
+            "requested_claims": ([{
+                "claim_type": query_fact_type,
+                "question": customer_message,
+                "risk_level": str(response.get("risk_level") or debug.get("risk_level") or "medium"),
+            }] if query_fact_type else [])
+        }
+        request_identity = {
+            "sku_code": response.get("sku_code") or debug.get("sku_code") or copilot_context.get("sku_code") or "",
+            "i_id": response.get("i_id") or debug.get("i_id") or copilot_context.get("i_id") or "",
+            "product_id": response.get("product_id") or debug.get("product_id") or copilot_context.get("product_id") or "",
+        }
+        product_identity = resolved_product_identity_for_response(response, request_identity)
+        admitted = AdmittedAnswerContextService().build_for_response(
+            response,
+            product_identity=product_identity,
+            understanding=understanding,
+        )
+    admitted_facts = [
+        {
+            "evidence_uid": item.get("evidence_uid", ""),
+            "source_type": item.get("source_type", ""),
+            "evidence_role": item.get("evidence_role", ""),
+            "claim_types_supported": item.get("claim_types_supported", []),
+            "text": item.get("text", ""),
+        }
+        for item in [
+            *(admitted.get("direct_product_facts") or []),
+            *(admitted.get("direct_policy_facts") or []),
+        ][:8]
+        if isinstance(item, dict)
+    ]
     return {
         "customer_message": customer_message,
         "final_reply": response.get("suggested_reply", ""),
@@ -341,20 +382,13 @@ def _semantic_payload(
         "intent": response.get("intent", ""),
         "semantic_query": debug.get("semantic_query") or response.get("semantic_query") or {},
         "query_fact_type": _query_fact_type(response, evidence_pack),
-        "evidence_pack": {
+        "evidence_pack_status": {
             "answerability": evidence_pack.get("answerability", ""),
             "matched_fields": evidence_pack.get("matched_fields", []),
             "missing_fields": evidence_pack.get("missing_fields", []),
-            "matched_facts": [
-                {
-                    "fact_type": item.get("fact_type", ""),
-                    "direct_answer_allowed": item.get("direct_answer_allowed", True),
-                    "preview": item.get("preview", ""),
-                    "semantic_alignment": item.get("semantic_alignment", {}),
-                }
-                for item in (evidence_pack.get("matched_facts") or [])[:5]
-            ],
         },
+        "admitted_direct_facts": admitted_facts,
+        "unresolved_claims": admitted.get("unresolved_claims") or [],
         "recommended_assets": [
             {
                 "asset_type": item.get("asset_type", ""),

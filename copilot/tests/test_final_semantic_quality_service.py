@@ -456,3 +456,54 @@ def test_final_semantic_fit_allows_direct_evidence_answer(monkeypatch):
     )
 
     assert result["passed"] is True
+
+
+def test_semantic_payload_contains_only_admitted_direct_facts():
+    from app.services.final_semantic_quality_service import _semantic_payload
+
+    response = {
+        "suggested_reply": "主体材质为PP。",
+        "selected_evidence": [{
+            "evidence_uid": "direct",
+            "source_type": "product_facts",
+            "evidence_role": "product_fact_direct",
+            "fact_type": "material",
+            "attribute_key": "material",
+            "content": "主体材质为PP。",
+            "sku_code": "SKU-A",
+            "fact_review_status": "verified",
+            "gate_status": "allowed",
+            "direct_answer_allowed": True,
+        }],
+        "context_used": {
+            "product_context_pack": {
+                "matched_facts": [{
+                    "evidence_uid": "reference",
+                    "source_type": "faq",
+                    "evidence_role": "faq_direct",
+                    "fact_type": "material",
+                    "preview": "待核实材质",
+                    "reference_only": True,
+                    "direct_answer_allowed": False,
+                }],
+                "generic_rules": [{
+                    "evidence_uid": "generic",
+                    "source_type": "generic_rule",
+                    "evidence_role": "service_action",
+                    "content": "转人工核对。",
+                }],
+            }
+        },
+        "answer_memory_guidance": {"answer_text": "历史客服说安全。"},
+        "grounded_reasoning_draft": {"used_facts": [{"evidence_uid": "shadow"}]},
+        "evidence_debug": {"query_fact_type": "material"},
+    }
+
+    payload = _semantic_payload(response, "什么材质？", {"sku_code": "SKU-A"})
+
+    assert [item["evidence_uid"] for item in payload["admitted_direct_facts"]] == ["direct"]
+    serialized = str(payload)
+    assert "reference" not in serialized
+    assert "generic" not in serialized
+    assert "历史客服说安全" not in serialized
+    assert "shadow" not in serialized
