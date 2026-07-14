@@ -8,6 +8,7 @@ from app.services.product_media_annotation_schema_service import (
     annotation_schema,
     annotation_profile,
     authoring_labels,
+    authoring_image_scopes,
     build_label_studio_task,
     canonical_annotation_relation,
     label_studio_config_xml,
@@ -104,6 +105,7 @@ def test_certificate_media_uses_document_only_authoring_profile():
         "high_risk_text_region",
     }
     assert "packaging" not in task_authoring_labels(task)
+    assert task["data"]["authoring_image_scopes"] == [{"value": "文件/证书"}]
     assert "不能标为商品事实" in task["data"]["annotation_profile_instruction"]
     assert task["predictions"] == []
 
@@ -127,6 +129,11 @@ def test_task_profiles_use_durable_metadata_and_never_fall_back_to_broad_palette
     product_labels = {item["value"] for item in authoring_labels("product_specification")}
     assert "包装/纸箱" not in product_labels
     assert "模式面板" not in product_labels
+    assert authoring_image_scopes("packaging_dimension") == [{"value": "包装/纸箱"}]
+    assert authoring_image_scopes("compliance_document") == [{"value": "文件/证书"}]
+    assert {item["value"] for item in authoring_image_scopes("product_specification")} == {
+        "商品", "商品与其他对象混合", "无法确认"
+    }
 
 
 def test_explicit_annotation_task_type_has_priority_without_using_title_or_sku():
@@ -140,11 +147,19 @@ def test_explicit_annotation_task_type_has_priority_without_using_title_or_sku()
     assert annotation_profile(asset) == "mode_dimension"
 
 
+def test_task_validator_rejects_image_scope_choices_outside_its_profile():
+    task = build_label_studio_task(_asset(asset_type="certificate_image"))
+    task["data"]["authoring_image_scopes"] = [{"value": "包装/纸箱"}]
+
+    assert "task_authoring_image_scopes_invalid" in validate_label_studio_task(task)
+
+
 def test_label_studio_config_is_chinese_and_uses_only_shared_schema_labels():
     config = label_studio_config_xml()
 
     assert ElementTree.fromstring(config).tag == "View"
     assert 'value="$authoring_labels"' in config
+    assert 'value="$authoring_image_scopes"' in config
     assert "<Label value=" not in config
     assert 'name="dimension_attribute"' in config
     assert 'name="dimension_scope"' in config

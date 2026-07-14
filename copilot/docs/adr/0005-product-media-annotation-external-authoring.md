@@ -77,9 +77,10 @@ scene tags: `packaging_dimension`, `mode_dimension`,
 readable only so an existing Label Studio manifest and completed annotation are
 not rewritten.
 
-Each profile exposes only its relevant Chinese labels. In particular, a
-packaging task cannot mark the product illustration printed on a carton as a
-product instance, and a mode task cannot mark packaging, included items, or
+Each profile exposes only its relevant Chinese labels and image-scope choices.
+In particular, a packaging task cannot mark the product illustration printed
+on a carton as a product instance, a compliance-document task only offers the
+document scope, and a mode task cannot mark packaging, included items, or
 display props. High-risk copy remains a dedicated text region rather than a
 fact label.
 

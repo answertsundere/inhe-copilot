@@ -140,6 +140,14 @@ _AUTHORING_PROFILE_LABELS = {
         "high_risk_text_region",
     ),
 }
+_AUTHORING_PROFILE_IMAGE_SCOPES = {
+    "packaging_dimension": ("packaging",),
+    "mode_dimension": ("product", "mixed", "unknown"),
+    "product_specification": ("product", "mixed", "unknown"),
+    # Kept only for a legacy manifest that already used the broad palette.
+    "visual_layout": ("packaging", "product", "mixed", "document", "unknown"),
+    "compliance_document": ("document",),
+}
 _PROFILE_DISPLAY_NAMES_ZH = {
     "packaging_dimension": "包装尺寸图",
     "mode_dimension": "模式尺寸图",
@@ -349,6 +357,12 @@ def authoring_labels(profile: str) -> list[dict[str, str]]:
     return [{"value": label_studio_display_label(label)} for label in labels]
 
 
+def authoring_image_scopes(profile: str) -> list[dict[str, str]]:
+    """Return the task-specific Chinese image-scope choices for Label Studio."""
+    scopes = _AUTHORING_PROFILE_IMAGE_SCOPES.get(_text(profile), ())
+    return [{"value": _IMAGE_SCOPE_DISPLAY_NAMES_ZH[scope]} for scope in scopes]
+
+
 def task_authoring_labels(task: dict[str, Any]) -> set[str]:
     """Return canonical labels permitted by an exported task's dynamic palette."""
     data = task.get("data") if isinstance(task, dict) else None
@@ -371,9 +385,6 @@ def label_studio_config_xml() -> str:
     mode_panel_label = label_studio_display_label("mode_panel")
     label_text = label_studio_display_label("label_text_region")
     high_risk_text = label_studio_display_label("high_risk_text_region")
-    image_scope_choices = "\n".join(
-        f'      <Choice value="{display}" />' for display in _IMAGE_SCOPE_DISPLAY_NAMES_ZH.values()
-    )
     dimension_attribute_choices = "\n".join(
         f'      <Choice value="{display}" />' for display in _DIMENSION_ATTRIBUTE_DISPLAY_NAMES_ZH.values()
     )
@@ -396,9 +407,7 @@ def label_studio_config_xml() -> str:
   <Text name="annotation_context" value="$annotation_context" valueType="text" />
   <Image name="image" value="$image" />
   <RectangleLabels name="region_label" toName="image" value="$authoring_labels" />
-  <Choices name="image_scope" toName="image" choice="single-radio" required="true">
-{image_scope_choices}
-  </Choices>
+  <Choices name="image_scope" toName="image" choice="single-radio" required="true" value="$authoring_image_scopes" />
   <TextArea name="reviewed_visual_summary" toName="image" required="true" rows="2" placeholder="只写图片中看见了什么，不写安全、性能、适用或售后结论" />
   <TextArea name="variant_or_color_reference" toName="image" rows="1" placeholder="仅在图片明确展示规格或颜色时填写" />
   <TextArea name="label_visible_text" toName="image" perRegion="true" visibleWhen="region-selected" whenTagName="region_label" whenLabelValue="{label_text}" placeholder="抄录图片中可见文字" />
@@ -666,6 +675,7 @@ def build_label_studio_task(
             "annotation_profile_name_zh": _PROFILE_DISPLAY_NAMES_ZH[profile],
             "annotation_profile_instruction": "；".join(instructions),
             "authoring_labels": authoring_labels(profile),
+            "authoring_image_scopes": authoring_image_scopes(profile),
         },
         "meta": {
             "schema_version": ANNOTATION_SCHEMA_VERSION,
@@ -703,7 +713,8 @@ def build_label_studio_task(
 
 def validate_label_studio_task(task: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    if not isinstance(task, dict) or not isinstance(task.get("data"), dict) or not _text(task["data"].get("image")):
+    data = task.get("data") if isinstance(task, dict) and isinstance(task.get("data"), dict) else {}
+    if not data or not _text(data.get("image")):
         errors.append("image_reference_required")
     meta = task.get("meta") if isinstance(task, dict) else None
     if not isinstance(meta, dict) or meta.get("schema_version") != ANNOTATION_SCHEMA_VERSION:
@@ -713,6 +724,9 @@ def validate_label_studio_task(task: dict[str, Any]) -> list[str]:
     allowed_labels = task_authoring_labels(task)
     if not allowed_labels:
         errors.append("task_authoring_labels_missing")
+    profile = _text(data.get("annotation_profile"))
+    if data.get("authoring_image_scopes") != authoring_image_scopes(profile):
+        errors.append("task_authoring_image_scopes_invalid")
     for prediction in task.get("predictions") or []:
         for result in prediction.get("result") or []:
             labels = ((result.get("value") or {}).get("rectanglelabels") or [])
@@ -730,6 +744,9 @@ def annotation_schema() -> dict[str, Any]:
         "label_display_names_zh": _LABEL_DISPLAY_NAMES_ZH,
         "authoring_profiles": {
             profile: list(labels) for profile, labels in _AUTHORING_PROFILE_LABELS.items()
+        },
+        "authoring_profile_image_scopes": {
+            profile: list(scopes) for profile, scopes in _AUTHORING_PROFILE_IMAGE_SCOPES.items()
         },
         "profile_display_names_zh": _PROFILE_DISPLAY_NAMES_ZH,
         "visual_description_schema": visual_description_schema(),
