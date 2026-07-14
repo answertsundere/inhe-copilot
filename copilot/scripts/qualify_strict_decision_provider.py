@@ -169,7 +169,7 @@ def qualify(*, repeats: int = 5, provider: StrictDecisionProviderService | None 
         "local_contract_checks": local_checks,
         "required_field_success_rate": _rate(int(local_checks["missing_required_field_rejected"]), 1),
         "forbidden_extra_field_block_rate": _rate(int(local_checks["extra_field_rejected"]), 1),
-        "enum_block_rate": _rate(int(local_checks["enum_out_of_range_rejected"]), 1),
+        "invalid_enum_block_rate": _rate(int(local_checks["enum_out_of_range_rejected"]), 1),
         "literal_false_contract_rate": _rate(
             int(local_checks["used_for_final_reply_literal_false"] and local_checks["can_change_can_send_literal_false"]), 1
         ),
@@ -187,6 +187,7 @@ def qualify(*, repeats: int = 5, provider: StrictDecisionProviderService | None 
             len(signatures),
         ),
         "timeout_count": errors.get("timeout", 0),
+        "truncated_response_count": errors.get("structured_output_truncated", 0),
         "error_categories": dict(sorted(errors.items())),
         "parse_fallback_count": 0,
         "free_text_fallback_count": 0,
@@ -205,6 +206,7 @@ def qualify(*, repeats: int = 5, provider: StrictDecisionProviderService | None 
         and report["compound_claim_split_rate"]["rate"] == 1.0
         and report["repeat_structure_stability_rate"]["rate"] == 1.0
         and report["timeout_count"] == 0
+        and report["truncated_response_count"] == 0
     )
     report["qualification_status"] = "qualified" if thresholds_met else "not_qualified"
     report["shadow_enablement_allowed"] = bool(thresholds_met and metadata["qualified"])

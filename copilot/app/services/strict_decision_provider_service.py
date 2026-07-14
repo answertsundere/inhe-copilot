@@ -148,7 +148,10 @@ class StrictDecisionProviderService:
                         "json_schema": {"name": name, "strict": True, "schema": schema},
                     },
                 )
-                raw = sanitize_text(result.choices[0].message.content)
+                choice = result.choices[0]
+                if sanitize_text(getattr(choice, "finish_reason", "")) == "length":
+                    raise StrictDecisionProviderError("structured_output_truncated")
+                raw = sanitize_text(choice.message.content)
             else:
                 result = self.client.chat.completions.create(
                     model=self.config.model,
@@ -164,7 +167,10 @@ class StrictDecisionProviderService:
                     }],
                     tool_choice={"type": "function", "function": {"name": name}},
                 )
-                tool_calls = result.choices[0].message.tool_calls or []
+                choice = result.choices[0]
+                if sanitize_text(getattr(choice, "finish_reason", "")) == "length":
+                    raise StrictDecisionProviderError("structured_output_truncated")
+                tool_calls = choice.message.tool_calls or []
                 if len(tool_calls) != 1 or tool_calls[0].function.name != name:
                     raise StrictDecisionProviderError("strict_tool_call_missing")
                 raw = sanitize_text(tool_calls[0].function.arguments)

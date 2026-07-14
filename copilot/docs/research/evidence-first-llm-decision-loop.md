@@ -70,6 +70,8 @@ fail-closed unless `COPILOT_DECISION_LLM_QUALIFIED=true` for an independently
 qualified `strict_json_schema` or `tool_call_schema` transport. JSON-object and
 prompt-only JSON modes are not fallbacks. See
 [`strict-decision-provider-qualification.md`](strict-decision-provider-qualification.md).
+Truncated model responses are explicit qualification failures; the client never
+repairs or extracts a partial JSON payload.
 
 ## Evidence roles
 

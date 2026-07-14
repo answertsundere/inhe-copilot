@@ -26,6 +26,7 @@ def test_unconfigured_qualification_is_read_only_and_not_qualified():
     assert report["formal_kb_write_attempt_count"] == 0
     assert report["can_change_can_send_count"] == 0
     assert report["parse_fallback_count"] == 0
+    assert report["truncated_response_count"] == 0
 
 
 def test_qualification_report_does_not_expose_provider_secret_or_base():

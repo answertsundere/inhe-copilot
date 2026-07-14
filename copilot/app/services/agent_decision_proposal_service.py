@@ -177,6 +177,7 @@ def _safe_error_reason(stage: str, exc: Exception) -> str:
         "strict_schema_rejected",
         "strict_tool_call_missing",
         "structured_output_not_json",
+        "structured_output_truncated",
         "empty_structured_output",
         "structured_output_not_object",
         "timeout",

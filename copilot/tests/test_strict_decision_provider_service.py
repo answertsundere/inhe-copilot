@@ -21,8 +21,11 @@ class _Client:
         return self.result
 
 
-def _result(content='{"ok": true}'):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content, tool_calls=[]))])
+def _result(content='{"ok": true}', finish_reason="stop"):
+    return SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content=content, tool_calls=[]),
+        finish_reason=finish_reason,
+    )])
 
 
 def _config(**overrides):
@@ -88,6 +91,13 @@ def test_provider_error_is_safely_categorized():
 
     provider = StrictDecisionProviderService(config=_config(), client_factory=lambda **_: TimeoutClient(_result()))
     with pytest.raises(StrictDecisionProviderError, match="timeout"):
+        provider.request(name="sample", schema={}, system_prompt="x", payload={}, max_tokens=1)
+
+
+def test_truncated_structured_response_fails_without_repair():
+    client = _Client(_result('{"ok":', finish_reason="length"))
+    provider = StrictDecisionProviderService(config=_config(), client_factory=lambda **_: client)
+    with pytest.raises(StrictDecisionProviderError, match="structured_output_truncated"):
         provider.request(name="sample", schema={}, system_prompt="x", payload={}, max_tokens=1)
 
 

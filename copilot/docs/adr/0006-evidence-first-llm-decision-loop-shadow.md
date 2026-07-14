@@ -53,7 +53,7 @@ ownership and latency.
 - Direct product facts, policy facts, service actions, and media candidates have
   explicit non-interchangeable output buckets.
 - Material composition cannot resolve material safety or moisture resistance.
-- Invalid schemas and unknown evidence references produce no free-text proposal.
+- Invalid or truncated schemas and unknown evidence references produce no free-text proposal.
 - The optional final semantic model no longer receives `matched_facts` as if
   every candidate were selected evidence.
 - Strict structured output adds two optional model calls and, when requested,
@@ -66,6 +66,9 @@ The formal decision fields are frozen before the shadow call and restored if a
 shadow implementation mutates them. Disabling the environment flag removes the
 new model calls. The admission helper is read-only and performs no retrieval,
 database writes, delivery, refunds, replacements, or platform actions.
+
+The provider client rejects a `finish_reason=length` response rather than
+attempting to repair or parse its partial content.
 
 ## Verification
 
