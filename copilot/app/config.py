@@ -15,6 +15,20 @@ LLM_API_BASE = os.environ.get(
 LLM_API_KEY = os.environ.get("COPILOT_LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("COPILOT_LLM_MODEL", "qwen-plus")
 
+# The post-graph decision shadow intentionally has independent credentials and
+# transport capability.  It must never silently reuse the formal reply model.
+COPILOT_DECISION_LLM_PROVIDER = os.environ.get("COPILOT_DECISION_LLM_PROVIDER", "")
+COPILOT_DECISION_LLM_API_BASE = os.environ.get("COPILOT_DECISION_LLM_API_BASE", "")
+COPILOT_DECISION_LLM_API_KEY = os.environ.get("COPILOT_DECISION_LLM_API_KEY", "")
+COPILOT_DECISION_LLM_MODEL = os.environ.get("COPILOT_DECISION_LLM_MODEL", "")
+COPILOT_DECISION_LLM_CAPABILITY = os.environ.get("COPILOT_DECISION_LLM_CAPABILITY", "unsupported")
+COPILOT_DECISION_LLM_TIMEOUT_SECONDS = int(
+    os.environ.get("COPILOT_DECISION_LLM_TIMEOUT_SECONDS", "20")
+)
+COPILOT_DECISION_LLM_QUALIFIED = os.environ.get(
+    "COPILOT_DECISION_LLM_QUALIFIED", "false"
+).lower() in ("1", "true", "yes", "on")
+
 # ============ 客户图片 VLM 配置 ============
 COPILOT_VLM_ENABLED = os.environ.get("COPILOT_VLM_ENABLED", "false").lower() in ("1", "true", "yes", "on")
 COPILOT_VLM_API_BASE = os.environ.get(

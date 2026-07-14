@@ -72,6 +72,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/research/evidence-first-llm-decision-loop.md` - official-provider
   structured-output and tool-use principles, evidence role separation,
   compound-claim handling, and Phase 0.5A promotion gates.
+- `docs/research/strict-decision-provider-qualification.md` - strict provider
+  capability classes, isolated configuration, and read-only qualification
+  contract for the Evidence-First decision shadow.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 

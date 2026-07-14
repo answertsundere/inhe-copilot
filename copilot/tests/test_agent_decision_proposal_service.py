@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.services.agent_decision_proposal_service import AgentDecisionProposalService
+from app.services.agent_decision_proposal_service import AgentDecisionProposalService, _safe_error_reason
 
 
 def _fact():
@@ -130,6 +130,12 @@ def test_invalid_schema_fails_closed(monkeypatch):
     assert proposal["reply_plan"]["proposed_reply"] == ""
     assert proposal["delivery_intent"]["requires_human_review"] is True
     assert proposal["can_change_can_send"] is False
+
+
+def test_unqualified_decision_provider_has_a_safe_explicit_fallback_reason():
+    assert _safe_error_reason("understanding", RuntimeError("provider_not_qualified")) == (
+        "understanding_error:provider_not_qualified"
+    )
 
 
 def test_extra_send_field_is_rejected(monkeypatch):

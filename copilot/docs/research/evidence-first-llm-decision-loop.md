@@ -62,6 +62,15 @@ media delivery, refunds, replacements, or platform writes. Moving the loop
 before formal retrieval still requires parity evaluation across API, copilot,
 replay, and benchmark.
 
+## Strict Provider Qualification
+
+Decision Shadow does not reuse `COPILOT_LLM_*`, which belongs to the formal
+reply model. It uses a separately configured strict provider and remains
+fail-closed unless `COPILOT_DECISION_LLM_QUALIFIED=true` for an independently
+qualified `strict_json_schema` or `tool_call_schema` transport. JSON-object and
+prompt-only JSON modes are not fallbacks. See
+[`strict-decision-provider-qualification.md`](strict-decision-provider-qualification.md).
+
 ## Evidence roles
 
 - `product_fact_direct` and eligible scoped `faq_direct` may enter direct product

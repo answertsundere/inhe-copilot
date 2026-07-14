@@ -20,7 +20,8 @@ reuses its direct-product admission and final semantic payloads expose only its
 admitted direct facts and unresolved claims.
 
 Add a post-graph `AgentDecisionProposalService` behind
-`COPILOT_LLM_DECISION_SHADOW_ENABLED`. The service uses strict JSON Schema for
+`COPILOT_LLM_DECISION_SHADOW_ENABLED`. The service uses a separately configured
+and qualification-gated strict JSON Schema or strict tool-call provider for
 claim understanding plus tool planning and for the final proposal. Between the
 two schema calls, the application may execute only existing registered local
 read-only product-resolution and retrieval tools. Order and media requests are

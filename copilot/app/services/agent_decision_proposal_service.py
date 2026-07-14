@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from copy import deepcopy
@@ -172,8 +171,18 @@ def _safe_error_reason(stage: str, exc: Exception) -> str:
     detail = sanitize_text(str(exc)).lower()
     allowed = {
         "llm_not_configured",
+        "provider_not_configured",
+        "provider_not_qualified",
+        "strict_capability_not_supported",
+        "strict_schema_rejected",
+        "strict_tool_call_missing",
+        "structured_output_not_json",
         "empty_structured_output",
         "structured_output_not_object",
+        "timeout",
+        "rate_limited",
+        "authentication_failed",
+        "provider_request_failed",
     }
     category = detail if detail in allowed else type(exc).__name__
     return f"{stage}_error:{category}"
@@ -341,31 +350,15 @@ class AgentDecisionProposalService:
         payload: dict[str, Any],
         max_tokens: int,
     ) -> dict[str, Any]:
-        from app.llm.client import get_llm_client
+        from app.services.strict_decision_provider_service import StrictDecisionProviderService
 
-        client = get_llm_client()
-        if not client.api_key:
-            raise RuntimeError("llm_not_configured")
-        result = client.client.chat.completions.create(
-            model=client.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
-            temperature=0,
+        return StrictDecisionProviderService().request(
+            name=name,
+            schema=schema,
+            system_prompt=system_prompt,
+            payload=payload,
             max_tokens=max_tokens,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": name, "strict": True, "schema": schema},
-            },
         )
-        raw = sanitize_text(result.choices[0].message.content)
-        if not raw:
-            raise ValueError("empty_structured_output")
-        parsed = json.loads(raw)
-        if not isinstance(parsed, dict):
-            raise ValueError("structured_output_not_object")
-        return parsed
 
     def build_for_response(
         self,
