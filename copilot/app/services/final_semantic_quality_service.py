@@ -534,11 +534,6 @@ def _semantic_fit_fallback(response: dict[str, Any]) -> str:
     evidence_pack = _evidence_pack(response)
     query_fact_type = _query_fact_type(response, evidence_pack)
     if query_fact_type in {"material", "material_safety", "certification_report", "odor"}:
-        if _has_material_or_moisture_evidence(response):
-            return (
-                "亲，我先帮您看了下这款的资料，里面有材质和防潮相关说明；"
-                "您问的安全、气味或检测这块我再对一下详情页，确认后回您。"
-            )
         return "亲，我先帮您对一下这款的材质、安全和防潮说明，确认后回您。"
     if query_fact_type:
         reply = customer_facing_safe_handoff_reply(query_fact_type, inputs={"product_name": display_name})
@@ -548,27 +543,6 @@ def _semantic_fit_fallback(response: dict[str, Any]) -> str:
     return (
         f"亲，{product}我再帮您对一下资料，确认清楚后回您。"
     )
-
-
-def _has_material_or_moisture_evidence(response: dict[str, Any]) -> bool:
-    debug = response.get("evidence_debug") or {}
-    texts: list[str] = []
-    for key in ("filtered_evidence_summary", "knowledge_evidence_summary", "selected_evidence"):
-        for item in debug.get(key) or []:
-            if not isinstance(item, dict):
-                continue
-            text = " ".join(
-                str(item.get(field) or "")
-                for field in ("chunk_preview", "fact", "content", "text", "matched_title")
-            )
-            if text:
-                texts.append(text)
-    pack = _evidence_pack(response)
-    for item in pack.get("matched_facts") or []:
-        if isinstance(item, dict):
-            texts.append(" ".join(str(item.get(field) or "") for field in ("fact", "content", "text")))
-    combined = "\n".join(texts)
-    return any(term in combined for term in ("材质", "材料", "防潮", "受潮", "气味", "检测"))
 
 
 def _append_reason(existing: str, reason: str) -> str:

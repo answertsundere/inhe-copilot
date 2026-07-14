@@ -309,7 +309,7 @@ def test_final_semantic_fit_accepts_controlled_no_evidence_installation_handoff(
     assert result["reason"] == "Controlled no-evidence handoff reply accepted deterministically."
 
 
-def test_material_semantic_fallback_is_customer_facing_without_process_language():
+def test_material_semantic_fallback_does_not_present_keyword_hits_as_product_facts():
     from app.services.final_semantic_quality_service import apply_semantic_fit_result
 
     response = {
@@ -339,8 +339,8 @@ def test_material_semantic_fallback_is_customer_facing_without_process_language(
 
     reply = updated["suggested_reply"]
     assert updated["requires_human_review"] is True
-    assert "材质和防潮相关说明" in reply
-    assert "安全、气味或检测" in reply
+    assert "材质、安全和防潮说明" in reply
+    assert "里面有材质和防潮相关说明" not in reply
     assert "转人工" not in reply
     assert "口径" not in reply
     assert "复核" not in reply

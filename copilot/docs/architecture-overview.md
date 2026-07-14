@@ -66,6 +66,9 @@ See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
 - The formal answer path is `AnalysisPipelineService`, shared by `/api/analyze`,
   `/api/copilot/context`, replay, and benchmark.
 - Product facts require product-scoped eligible evidence.
+- A semantic fallback may ask to verify product information, but it must not
+  describe retrieval keyword hits or unqualified summaries as evidence already
+  available for the current product.
 - Service actions are fallback handling guidance, not product facts.
 - Media references are candidates; actual sending requires approved role,
   supported platform capability, matching product identity, and matching reply
