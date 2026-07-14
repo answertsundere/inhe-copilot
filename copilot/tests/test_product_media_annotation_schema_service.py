@@ -6,6 +6,8 @@ from app.services.product_media_annotation_schema_service import (
     OBJECT_LABELS,
     PROHIBITED_FACT_LABELS,
     annotation_schema,
+    annotation_profile,
+    authoring_labels,
     build_label_studio_task,
     canonical_annotation_relation,
     label_studio_config_xml,
@@ -64,6 +66,8 @@ def test_label_studio_task_keeps_ocr_as_shadow_prediction_not_product_fact():
     assert "api_key" not in task["meta"]["current_model_candidates"][0]
     assert task["meta"]["used_for_generation"] is False
     assert task["meta"]["can_change_can_send"] is False
+    assert "媒体角色：尺寸/规格图" in task["data"]["annotation_context"]
+    assert "size_image" not in task["data"]["annotation_context"]
 
 
 def test_high_risk_ocr_text_is_only_a_high_risk_text_region():
@@ -104,14 +108,50 @@ def test_certificate_media_uses_document_only_authoring_profile():
     assert task["predictions"] == []
 
 
+def test_task_profiles_use_durable_metadata_and_never_fall_back_to_broad_palette():
+    packaging = _asset(asset_type="size_image", scene_tags=["packaging"])
+    mode = _asset(asset_type="size_image", scene_tags=["mode"])
+    product = _asset(asset_type="size_image", scene_tags=[])
+
+    assert annotation_profile(packaging) == "packaging_dimension"
+    assert annotation_profile(mode) == "mode_dimension"
+    assert annotation_profile(product) == "product_specification"
+    assert annotation_profile(_asset(asset_type="certificate_image")) == "compliance_document"
+
+    packaging_labels = {item["value"] for item in authoring_labels("packaging_dimension")}
+    assert packaging_labels == {"包装/纸箱", "图片说明文字", "尺寸标注（数值和线）", "高风险文字"}
+    mode_labels = {item["value"] for item in authoring_labels("mode_dimension")}
+    assert "包装/纸箱" not in mode_labels
+    assert "随附物" not in mode_labels
+    assert "展示道具" not in mode_labels
+    product_labels = {item["value"] for item in authoring_labels("product_specification")}
+    assert "包装/纸箱" not in product_labels
+    assert "模式面板" not in product_labels
+
+
+def test_explicit_annotation_task_type_has_priority_without_using_title_or_sku():
+    asset = _asset(
+        asset_type="sku_image",
+        product_name="标题不参与 profile 决策",
+        sku_code="SKU-NOT-A-BRANCH",
+        source_raw={"annotation_task_type": "mode_dimension"},
+    )
+
+    assert annotation_profile(asset) == "mode_dimension"
+
+
 def test_label_studio_config_is_chinese_and_uses_only_shared_schema_labels():
     config = label_studio_config_xml()
 
     assert ElementTree.fromstring(config).tag == "View"
     assert 'value="$authoring_labels"' in config
-    assert "商品实例（当前面板）" not in config
+    assert "<Label value=" not in config
     assert 'name="dimension_attribute"' in config
     assert 'name="dimension_scope"' in config
+    assert 'name="image_scope"' in config
+    assert 'name="reviewed_visual_summary"' in config
+    assert 'name="object_representation"' in config
+    assert 'name="dimension_evidence_status"' in config
     assert 'whenTagName="region_label"' in config
     assert 'whenLabelValue="尺寸标注（数值和线）"' in config
     assert "测量对象" in config

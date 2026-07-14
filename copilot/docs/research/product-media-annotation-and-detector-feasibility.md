@@ -156,3 +156,43 @@ official [task import guide](https://labelstud.io/guide/tasks.html),
 [pre-annotation guide](https://labelstud.io/guide/predictions.html), and
 [Relations tag reference](https://labelstud.io/tags/relations). This is suitable
 for a local pilot, not a production media-hosting design.
+
+## Task-profiled authoring contract
+
+Phase 0.4H.2 replaces the default broad authoring palette for new tasks with
+four task profiles selected from durable task/media metadata, never product
+titles, SKUs, image names, or coordinates:
+
+| Profile | Reviewer labels | Scope boundary |
+|---|---|---|
+| `packaging_dimension` | packaging, visible text, dimension label, high-risk text | printed product artwork is not a product instance; every dimension remains packaging-scoped |
+| `mode_dimension` | mode/product panels, current product instance, component, visible text, dimension label, high-risk text | packaging and props are unavailable; mode dimensions require a mode relation and cannot become overall dimensions |
+| `product_specification` | product panel, current product instance, component, visible text, dimension label, high-risk text | material, colour, and layer copy remains visible text; age, safety, toxicity, load, certification, anti-tip, and wall-mounting copy is high-risk text |
+| `compliance_document` | compliance document, visible text, high-risk text | a visible certificate or report is not proof that its claim is valid |
+
+The previous `visual_layout` profile is retained only for historical manifest
+validation. The exporter never chooses it for a new task. If current media
+metadata cannot distinguish packaging or mode images, the exporter does not
+inspect titles or guess; it uses the restricted product-specification profile
+and records the metadata gap for later governance.
+
+## Structured visual-description result
+
+Completed annotations are compiled into a controlled, shadow-only description:
+
+- product context: existing identity, human-aid title, visible variant/colour
+  reference, and the source of product context;
+- image: media role, controlled image scope, a short visible-only summary,
+  visible text regions, and separately rejected high-risk text regions;
+- panels: region ID, panel type, visible mode/state, and short panel summary;
+- objects: region ID, object scope, parent panel/object relations, visible-only
+  description, and actual-versus-printed representation state;
+- dimensions: label region ID, visible value/unit, controlled attribute, measured
+  object, packaging/product/component/mode scope, and review status.
+
+Every descriptive item retains task UID, media asset ID, source-image SHA-256,
+region ID, and bbox provenance. Missing provenance, an illegal profile label,
+a printed product image marked as an actual product, a scope upgrade, or a
+high-risk conclusion in free description produces a rework error. The result
+is written only to the annotation validation report and remains outside formal
+knowledge and Agent prompts.

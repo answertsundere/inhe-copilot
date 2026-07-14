@@ -67,3 +67,28 @@ validator requires task UID and source-hash continuity, legal rectangles,
 allowed labels, legal relation endpoints, a completed human annotation, and
 annotator/time metadata. It reports rework errors per task and does not create
 an observation, pending review, product fact, or delivery change.
+
+## Phase 0.4H.2 Profiled authoring and visual descriptions
+
+New tasks no longer use the broad `visual_layout` palette. The exporter chooses
+one of four profiles from explicit annotation task type, media role, and exact
+scene tags: `packaging_dimension`, `mode_dimension`,
+`product_specification`, or `compliance_document`. The legacy palette remains
+readable only so an existing Label Studio manifest and completed annotation are
+not rewritten.
+
+Each profile exposes only its relevant Chinese labels. In particular, a
+packaging task cannot mark the product illustration printed on a carton as a
+product instance, and a mode task cannot mark packaging, included items, or
+display props. High-risk copy remains a dedicated text region rather than a
+fact label.
+
+The read-only validator compiles completed regions, controlled fields, and
+relations into a structured visual-description result. Product context, image
+scope, panels, objects, dimensions, visible text, and high-risk text retain the
+source image SHA-256 and region bounding-box provenance. A dimension is tied to
+its measured object and may remain packaging-, component-, or mode-scoped; it
+is not promoted to an overall product dimension. The compiled description is
+an external review result only. It is not stored in the knowledge base and is
+not consumed by Product Evidence Pack, Grounded Reasoning, customer replies,
+or sendability decisions.

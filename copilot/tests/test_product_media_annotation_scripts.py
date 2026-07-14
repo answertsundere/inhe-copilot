@@ -41,7 +41,7 @@ def test_export_uses_media_role_not_product_or_image_names():
     tasks = build_tasks([first, second])
 
     assert [task["meta"]["media_asset_id"] for task in tasks] == ["8", "9"]
-    assert tasks[0]["meta"]["suggested_task_type"] == "尺寸标注与对象范围"
+    assert tasks[0]["meta"]["suggested_task_type"] == "商品规格参数图"
     assert tasks[0]["meta"]["can_change_can_send"] is False
     assert json.loads(json.dumps(tasks, ensure_ascii=False))[0]["data"]["image"]
 
