@@ -241,14 +241,16 @@ def main(argv: list[str] | None = None) -> int:
     report = run(limit=args.limit, include_live_ocr=args.include_live_ocr, timeout_seconds=args.timeout_seconds, pilot_size=args.pilot_size, candidate_scan_limit=args.candidate_scan_limit, materialize_dir=Path(args.materialize_dir) if args.materialize_dir else None)
     output = PROJECT_ROOT / args.json_output
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report["tasks"], ensure_ascii=False, indent=2), encoding="utf-8-sig")
+    # Label Studio and PowerShell require plain UTF-8 JSON; a BOM makes the
+    # dataset import fail even though Python's JSON decoder accepts it.
+    output.write_text(json.dumps(report["tasks"], ensure_ascii=False, indent=2), encoding="utf-8")
     if args.pilot_size:
         manifest = PROJECT_ROOT / (args.manifest_output or f"{output.with_suffix('')}_manifest.json")
         manifest.parent.mkdir(parents=True, exist_ok=True)
-        manifest.write_text(json.dumps({key: value for key, value in report.items() if key != "tasks"} | {"tasks": report["tasks"]}, ensure_ascii=False, indent=2), encoding="utf-8-sig")
+        manifest.write_text(json.dumps({key: value for key, value in report.items() if key != "tasks"} | {"tasks": report["tasks"]}, ensure_ascii=False, indent=2), encoding="utf-8")
         config_output = PROJECT_ROOT / (args.label_config_output or "outputs/label_studio_product_media_annotation_config.xml")
         config_output.parent.mkdir(parents=True, exist_ok=True)
-        config_output.write_text(label_studio_config_xml(), encoding="utf-8-sig")
+        config_output.write_text(label_studio_config_xml(), encoding="utf-8")
     print(json.dumps({key: value for key, value in report.items() if key != "tasks"}, ensure_ascii=False))
     return 0
 

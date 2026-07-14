@@ -94,3 +94,37 @@ def test_pilot_tasks_require_readable_bytes_and_keep_media_local_to_external_run
     assert task["meta"]["source_image_sha256"] == "a" * 64
     assert task["data"]["image"] == "/data/local-files/?d=media/" + "a" * 64 + ".png"
     assert (tmp_path / ("a" * 64 + ".png")).read_bytes() == b"image-bytes"
+
+
+def test_label_studio_task_export_uses_plain_utf8_json(tmp_path, monkeypatch):
+    output = tmp_path / "tasks.json"
+    monkeypatch.setattr(export_tasks, "run", lambda **_kwargs: {
+        "task_count": 1,
+        "tasks": [{"data": {"image": "/ask/api/media-assets/example.jpg"}, "meta": {}}],
+    })
+
+    assert export_tasks.main(["--json-output", str(output)]) == 0
+
+    content = output.read_bytes()
+    assert not content.startswith(b"\xef\xbb\xbf")
+    assert json.loads(content.decode("utf-8"))[0]["data"]["image"]
+
+
+def test_label_studio_config_export_uses_plain_utf8_xml(tmp_path, monkeypatch):
+    output = tmp_path / "tasks.json"
+    manifest = tmp_path / "manifest.json"
+    config = tmp_path / "config.xml"
+    monkeypatch.setattr(export_tasks, "run", lambda **_kwargs: {
+        "task_count": 1,
+        "tasks": [{"data": {"image": "/ask/api/media-assets/example.jpg"}, "meta": {}}],
+    })
+
+    assert export_tasks.main([
+        "--pilot-size", "1",
+        "--json-output", str(output),
+        "--manifest-output", str(manifest),
+        "--label-config-output", str(config),
+    ]) == 0
+
+    assert not config.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert config.read_text(encoding="utf-8").startswith("<View>")
