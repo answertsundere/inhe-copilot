@@ -249,7 +249,9 @@ def test_feature_flag_produces_supervisor_only_preview(monkeypatch):
 
     assert [item["evidence_uid"] for item in result["selected_evidence"]] == ["material-a"]
     assert result["supervisor_candidate_preview"]["can_send"] is False
-    assert result["supervisor_candidate_preview"]["candidate_reply"] == ""
+    assert result["supervisor_candidate_preview"]["used_for_final_reply"] is False
+    assert result["supervisor_candidate_preview"]["render_mode"] == "deterministic"
+    assert "Material is PP." in result["supervisor_candidate_preview"]["candidate_text"]
 
 
 def test_formal_selection_is_the_only_product_fact_input_when_present():

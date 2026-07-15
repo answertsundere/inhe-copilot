@@ -151,14 +151,14 @@ def test_conflicting_claim_is_not_reported_as_supported():
         understanding=_understanding("load_capacity"),
     )
 
-    assert context["claim_resolutions"] == [{
-        "claim_type": "load_capacity",
-        "status": "conflicting",
-        "evidence_uids": [],
-        "admitted_fact_texts": [],
-        "requires_human_review": True,
-        "reason": "conflicting_evidence",
-    }]
+    resolution = context["claim_resolutions"][0]
+    assert resolution["claim_type"] == "load_capacity"
+    assert resolution["status"] == "conflicting"
+    assert resolution["evidence_uids"] == []
+    assert resolution["conflicting_evidence_uids"] == ["a", "b"]
+    assert resolution["requires_human_review"] is True
+    assert resolution["reason"] == "conflicting_evidence"
+    assert resolution["claim_uid"].startswith("claim-")
 
 
 def test_roles_remain_separate():

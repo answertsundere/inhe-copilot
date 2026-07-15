@@ -96,11 +96,12 @@ natural controlled handoff can distinguish confirmed facts from pending facts.
 
 ## Partial Answer Contract
 
-Admission produces one `claim_resolution` for every requested claim. A
-resolution is `supported`, `unresolved`, or `conflicting`, with the admitted
-evidence UIDs, admitted fact text, and the review reason. A proposal must copy
-those resolutions exactly, render one confirmed clause for every supported
-claim, and render one pending clause for every unresolved or conflicting claim.
+Admission produces one stable `claim_uid` for every requested claim. A
+resolution is `supported`, `unresolved`, `conflicting`, or explicitly
+`prohibited`, with admitted or conflicting evidence UIDs and the review reason.
+A proposal must copy those resolutions exactly, render one confirmed clause for
+every supported claim, and retain one pending or conflicting clause for every
+other claim.
 
 This prevents a missing high-risk fact from erasing an independently supported
 low-risk fact, without allowing a material name to imply safety, moisture
@@ -109,9 +110,12 @@ evidence UIDs and fails the shadow proposal closed on an omitted supported claim
 or an assertion for an unresolved claim. The contract remains diagnostic: it
 cannot modify the formal reply, delivery blocks, or `can_send`.
 
-The internal test page may show the proposal in a separate Chinese Shadow
-preview. When the provider is unqualified, it shows the blocking reason rather
-than fabricating a candidate reply.
+The supervisor preview is provider-independent. When the provider is
+unqualified, deterministic rendering may compose only the same admitted
+confirmed clauses and controlled pending/conflict wording. It does not parse
+free text or repair JSON. Fixture scoring separately measures claim resolution,
+supported coverage, pending/conflict retention, evidence citations, identity
+leakage, internal jargon, and formal-field mutation.
 
 ## Evidence convergence diagnostics
 

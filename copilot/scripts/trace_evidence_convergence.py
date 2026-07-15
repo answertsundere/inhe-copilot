@@ -12,7 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.services.admitted_answer_context_service import AdmittedAnswerContextService
+from app.services.admitted_answer_context_service import AdmittedAnswerContextService, build_minimal_decision_context
+from app.services.agent_decision_proposal_service import build_supervisor_partial_answer_preview
 from app.services.product_context_pack_service import build_product_context_pack
 
 
@@ -92,6 +93,11 @@ def trace_response(
         product_identity=identity,
         understanding={"requested_claims": requested_claims},
     )
+    minimal_context = build_minimal_decision_context(
+        context,
+        customer_message=customer_message or str(response.get("customer_message") or ""),
+    )
+    preview = build_supervisor_partial_answer_preview(minimal_context, provider_status="not_qualified")
     return {
         "schema_version": "evidence-convergence-report-v1",
         "product_identity": context.get("product_identity") or {},
@@ -101,6 +107,8 @@ def trace_response(
         "evidence_convergence": context.get("evidence_convergence") or {},
         "direct_product_facts": context.get("direct_product_facts") or [],
         "rejected_evidence": context.get("rejected_evidence") or [],
+        "minimal_decision_context": minimal_context,
+        "supervisor_candidate_preview": preview,
         "read_only": True,
         "used_for_final_reply": False,
         "can_change_can_send": False,

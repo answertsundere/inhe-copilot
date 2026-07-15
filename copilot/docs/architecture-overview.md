@@ -310,6 +310,11 @@ formal vertical slice.
 - expose the candidate to supervisors first with `can_send=false`;
 - qualify a strict provider before model output can affect formal decisions.
 
+The first Phase B slice is a deterministic supervisor preview. It consumes only
+the Minimal Decision Context, preserves claim-level evidence references, and
+always remains review-only; it cannot update the formal reply, delivery blocks,
+or `can_send`.
+
 ### Phase C: Simplify The Runtime
 
 - inventory duplicate understanding, routing, guard, and reply-rewrite nodes;

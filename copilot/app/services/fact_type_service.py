@@ -11,6 +11,12 @@ from typing import Any
 
 
 FACT_TYPE_LABELS = {
+    "material_composition": "\u6750\u8d28",
+    "material_safety": "\u6750\u8d28\u548c\u5b89\u5168\u8bf4\u660e",
+    "moisture_resistance": "\u9632\u6f6e\u60c5\u51b5",
+    "child_safety": "\u513f\u7ae5\u4f7f\u7528\u5b89\u5168",
+    "child_suitability": "\u513f\u7ae5\u9002\u7528\u60c5\u51b5",
+    "installation_media": "\u5b89\u88c5\u8d44\u6599",
     "material": "材质",
     "certification_report": "检测/认证报告",
     "load_capacity": "承重",

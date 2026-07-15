@@ -490,20 +490,17 @@ def _formal_evidence_convergence(
             if isinstance(item, dict) and str(item.get("tool_name") or "")
         ],
     )
+    from app.services.agent_decision_proposal_service import build_supervisor_partial_answer_preview
+
+    preview = build_supervisor_partial_answer_preview(
+        minimal_context,
+        provider_status="not_qualified",
+    )
     return {
         "selected_evidence": selected,
         "admitted_answer_context": admitted,
         "minimal_decision_context": minimal_context,
-        "supervisor_candidate_preview": {
-            "schema_version": "supervisor-partial-answer-preview-v1",
-            "claim_resolutions": admitted.get("claim_resolutions") or [],
-            "supported_evidence_uids": [item.get("evidence_uid") for item in selected],
-            "provider_status": "not_requested",
-            "candidate_reply": "",
-            "requires_human_review": True,
-            "can_send": False,
-            "used_for_final_reply": False,
-        },
+        "supervisor_candidate_preview": preview,
         "formal_evidence_convergence": admitted.get("evidence_convergence") or {},
     }
 

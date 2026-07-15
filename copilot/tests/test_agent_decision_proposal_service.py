@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from app.services.agent_decision_proposal_service import AgentDecisionProposalService, _safe_error_reason
+from app.services.claim_resolution_service import build_claim_resolutions
 
 
 def _fact():
@@ -66,7 +67,7 @@ def _stub_tool_execution(monkeypatch, service):
 
 
 def _proposal():
-    return {
+    proposal = {
         "understanding": _understanding(),
         "tool_plan": _tool_plan(),
         "evidence_selection": {
@@ -127,6 +128,17 @@ def _proposal():
         "used_for_final_reply": False,
         "can_change_can_send": False,
     }
+    proposal["claim_resolutions"] = build_claim_resolutions(
+        _understanding()["requested_claims"],
+        direct_product_facts=[{
+            "evidence_uid": "fact-material",
+            "text": proposal["claim_resolutions"][0]["admitted_fact_texts"][0],
+            "claim_types_supported": ["material", "material_composition"],
+        }],
+        direct_policy_facts=[],
+        conflicts=[],
+    )
+    return proposal
 
 
 def test_proposal_only_references_admitted_evidence(monkeypatch):

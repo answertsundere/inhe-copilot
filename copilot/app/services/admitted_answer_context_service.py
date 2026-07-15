@@ -648,8 +648,12 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
             if claim_type:
                 result.append({
                     "claim_type": claim_type,
+                    "attribute_key": sanitize_text(item.get("attribute_key")).lower(),
                     "question": _clip(item.get("question"), 160),
                     "risk_level": sanitize_text(item.get("risk_level")).lower() or "medium",
+                    "direct_handling_prohibited": item.get("direct_handling_prohibited") is True,
+                    "prohibited": item.get("prohibited") is True,
+                    "prohibition_reason": sanitize_text(item.get("prohibition_reason")),
                 })
         elif sanitize_text(item):
             result.append({"claim_type": sanitize_text(item).lower(), "question": "", "risk_level": "medium"})
@@ -718,15 +722,24 @@ class AdmittedAnswerContextService:
             direct_policy_facts=direct_policy,
             conflicts=conflicts,
         )
+        requested_by_claim = {
+            sanitize_text(item.get("claim_type")): item
+            for item in requested_claims
+            if sanitize_text(item.get("claim_type"))
+        }
         unresolved = [
             {
-                **claim,
+                **requested_by_claim.get(sanitize_text(resolution.get("claim_type")), {}),
+                "claim_uid": sanitize_text(resolution.get("claim_uid")),
                 "reason": resolution["reason"],
                 "status": resolution["status"],
+                "evidence_uids": list(resolution.get("evidence_uids") or []),
+                "conflicting_evidence_uids": list(resolution.get("conflicting_evidence_uids") or []),
             }
-            for claim, resolution in zip(requested_claims, claim_resolutions)
+            for resolution in claim_resolutions
             if resolution["status"] != "supported"
         ]
+        conflicting_claims = [item for item in unresolved if item.get("status") == "conflicting"]
         context = {
             "schema_version": "admitted-answer-context-v1",
             "direct_product_facts": direct_product,
@@ -737,6 +750,7 @@ class AdmittedAnswerContextService:
             "admission_warnings": warnings[:20],
             "claim_resolutions": claim_resolutions,
             "unresolved_claims": unresolved,
+            "conflicting_claims": conflicting_claims,
             "conflicts": conflicts,
             "requested_claims": requested_claims,
             "product_identity": identity,
@@ -860,7 +874,7 @@ def build_minimal_decision_context(
         "admitted_evidence": selected,
         "claim_resolutions": _as_list(admitted_context.get("claim_resolutions")),
         "unresolved_claims": _as_list(admitted_context.get("unresolved_claims")),
-        "conflicts": _as_list(admitted_context.get("conflicts")),
+        "conflicting_claims": _as_list(admitted_context.get("conflicting_claims")),
         "service_actions": actions,
         "media_candidates": media,
         "allowed_read_only_tools": sorted(_unique(allowed_read_only_tools or [])),
@@ -875,6 +889,13 @@ def build_minimal_decision_context(
             "admitted_evidence_source_distribution": sources,
             "estimated_token_count": max(1, len(str(selected) + str(actions) + str(media)) // 4),
             "trim_reasons": trim_reasons,
+            "excluded_context_categories": [
+                "raw_candidate_store",
+                "rejected_evidence",
+                "answer_memory_history",
+                "benchmark_expected_text",
+                "full_trace",
+            ],
         },
         "used_for_final_reply": False,
         "can_change_can_send": False,

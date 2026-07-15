@@ -45,8 +45,14 @@ stores, historical Answer Memory copy, benchmark answers/rubrics, and private
 reasoning.
 
 The supervisor partial-answer preview remains review-only. It is fixed to
-`can_send=false` and `requires_human_review=true`. An unqualified strict
-provider records a block rather than fabricating structured or free-text output.
+`can_send=false` and `requires_human_review=true`. It consumes only the
+Minimal Decision Context and records a stable claim UID for every supported,
+unresolved, conflicting, or explicitly prohibited claim. A supported clause
+must cite admitted evidence; unresolved and conflicting clauses remain visible
+without being turned into facts. When the strict provider is unqualified, the
+application renders the same admitted claim outcomes deterministically rather
+than fabricating structured or free-text model output. The preview is never
+passed into final orchestration and cannot alter a formal response.
 
 ## Consequences
 

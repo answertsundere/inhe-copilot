@@ -15,7 +15,12 @@ from app.services.admitted_answer_context_service import (
     resolved_product_identity_for_response,
 )
 from app.services.claim_polarity_service import contains_asserted_claim
+from app.services.customer_facing_safe_handoff_service import (
+    CUSTOMER_FACING_INTERNAL_REDLINE_TERMS,
+    customer_facing_safe_handoff_reply,
+)
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.fact_type_service import FACT_TYPE_LABELS
 
 
 class RequestedClaim(BaseModel):
@@ -63,9 +68,12 @@ class ClaimResolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     claim_type: str
-    status: Literal["supported", "unresolved", "conflicting", "not_applicable"]
+    claim_uid: str
+    attribute_key: str = ""
+    status: Literal["supported", "unresolved", "conflicting", "prohibited", "not_applicable"]
     evidence_uids: list[str]
     admitted_fact_texts: list[str]
+    conflicting_evidence_uids: list[str]
     requires_human_review: bool
     reason: str
 
@@ -334,7 +342,7 @@ def _partial_answer_contract_violations(
     }
     expected_pending = {
         claim_type: item for claim_type, item in expected.items()
-        if item.get("status") in {"unresolved", "conflicting"}
+        if item.get("status") in {"unresolved", "conflicting", "prohibited"}
     }
     confirmed = {
         sanitize_text(item.get("claim_type")): item
@@ -371,6 +379,184 @@ def _partial_answer_contract_violations(
         if not customer_clause or customer_clause not in reply:
             violations.append("pending_clause_not_rendered")
     return sorted(set(violations))
+
+
+_PREVIEW_INTERNAL_TERMS = (*CUSTOMER_FACING_INTERNAL_REDLINE_TERMS, "evidence_uid", "rag", "RAG")
+
+
+def _preview_claim_label(claim_type: str) -> str:
+    return sanitize_text(FACT_TYPE_LABELS.get(claim_type)) or "相关信息"
+
+
+def _preview_fact_index(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    blocked_roles = {"service_action", "fallback_only", "media_reference", "answer_memory", "correct_answer"}
+    return {
+        sanitize_text(item.get("evidence_uid")): item
+        for item in context.get("admitted_evidence") or []
+        if isinstance(item, dict)
+        and sanitize_text(item.get("evidence_uid"))
+        and sanitize_text(item.get("evidence_role")).lower() not in blocked_roles
+        and sanitize_text(item.get("source_type")).lower() not in blocked_roles
+    }
+
+
+def _preview_clause_text(facts: list[dict[str, Any]]) -> str:
+    values: list[str] = []
+    for fact in facts:
+        value = sanitize_text(fact.get("content"))
+        if value and not any(term.lower() in value.lower() for term in _PREVIEW_INTERNAL_TERMS):
+            values.append(value)
+    return "；".join(dict.fromkeys(values))
+
+
+def _preview_pending_text(claim_type: str, status: str) -> str:
+    label = _preview_claim_label(claim_type)
+    if status == "conflicting":
+        return f"{label}的现有资料存在不一致，需要进一步核对。"
+    if status == "prohibited":
+        return f"{label}属于需要谨慎确认的信息，暂不作结论。"
+    return f"{label}还需要结合当前商品资料确认。"
+
+
+def _preview_safety_validation(
+    preview: dict[str, Any],
+    *,
+    minimal_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate a preview on copies only; final orchestration never observes it."""
+    text = sanitize_text(preview.get("candidate_text"))
+    issues: list[str] = []
+    cited = set(preview.get("evidence_uids") or [])
+    known = set(_preview_fact_index(minimal_context))
+    if not cited.issubset(known):
+        issues.append("unknown_preview_evidence")
+    if any(term.lower() in text.lower() for term in _PREVIEW_INTERNAL_TERMS):
+        issues.append("internal_jargon")
+    if preview.get("can_send") is not False or preview.get("used_for_final_reply") is not False:
+        issues.append("formal_delivery_contract_violation")
+
+    # Reuse the formal audit implementations on an isolated copy as a
+    # diagnostic signal. Their output never replaces or mutates the response.
+    audit_summary: dict[str, Any] = {}
+    if text:
+        try:
+            from app.services.final_answer_auditor import audit_final_answer
+            from app.services.final_semantic_quality_service import audit_customer_reply_semantic_fit
+
+            probe = {
+                "suggested_reply": text,
+                "can_send": False,
+                "requires_human_review": True,
+                "reply_blocks": [{"type": "text", "content": text}],
+                "selected_evidence": list(minimal_context.get("admitted_evidence") or []),
+                "query_fact_type": sanitize_text(
+                    ((minimal_context.get("requested_claims") or [{}])[0] or {}).get("claim_type")
+                ),
+            }
+            audited = audit_final_answer(deepcopy(probe), customer_message=sanitize_text(minimal_context.get("customer_goal")))
+            semantic = audit_customer_reply_semantic_fit(
+                deepcopy(audited), customer_message=sanitize_text(minimal_context.get("customer_goal"))
+            )
+            audit_summary = {
+                "final_answer_audit_passed": bool((audited.get("final_answer_audit") or {}).get("passed", False)),
+                "semantic_fit_passed": bool(semantic.get("passed", False)),
+            }
+        except Exception as exc:  # Diagnostic failure must not alter the preview contract.
+            audit_summary = {"diagnostic_error": type(exc).__name__}
+    return sanitize_obj({"passed": not issues, "issues": issues, "audit_summary": audit_summary})
+
+
+def build_supervisor_partial_answer_preview(
+    minimal_context: dict[str, Any],
+    *,
+    provider_status: str = "not_qualified",
+) -> dict[str, Any]:
+    """Render only admitted claim outcomes for supervisor review.
+
+    The renderer deliberately accepts the bounded Minimal Decision Context, not
+    a response, pack, trace, or benchmark definition. It is deterministic so an
+    unqualified strict provider cannot suppress an independently supported
+    clause or turn a pending clause into a fact.
+    """
+    context = minimal_context if isinstance(minimal_context, dict) else {}
+    facts_by_uid = _preview_fact_index(context)
+    resolutions = sorted(
+        (item for item in context.get("claim_resolutions") or [] if isinstance(item, dict)),
+        key=lambda item: sanitize_text(item.get("claim_uid")) or sanitize_text(item.get("claim_type")),
+    )
+    confirmed: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    conflicting: list[dict[str, Any]] = []
+    evidence_uids: list[str] = []
+    for resolution in resolutions:
+        claim_type = sanitize_text(resolution.get("claim_type"))
+        status = sanitize_text(resolution.get("status"))
+        claim_uid = sanitize_text(resolution.get("claim_uid"))
+        if status == "supported":
+            uids = [uid for uid in resolution.get("evidence_uids") or [] if uid in facts_by_uid]
+            clause = _preview_clause_text([facts_by_uid[uid] for uid in uids])
+            if not clause:
+                pending.append({
+                    "claim_uid": claim_uid,
+                    "claim_type": claim_type,
+                    "reason": "admitted_fact_not_customer_renderable",
+                    "customer_facing_clause": _preview_pending_text(claim_type, "unresolved"),
+                })
+                continue
+            confirmed.append({
+                "claim_uid": claim_uid,
+                "claim_type": claim_type,
+                "evidence_uids": uids,
+                "customer_facing_clause": clause,
+            })
+            evidence_uids.extend(uids)
+        elif status == "conflicting":
+            conflicting.append({
+                "claim_uid": claim_uid,
+                "claim_type": claim_type,
+                "reason": sanitize_text(resolution.get("reason")),
+                "evidence_uids": list(resolution.get("conflicting_evidence_uids") or []),
+                "customer_facing_clause": _preview_pending_text(claim_type, status),
+            })
+        else:
+            pending.append({
+                "claim_uid": claim_uid,
+                "claim_type": claim_type,
+                "reason": sanitize_text(resolution.get("reason")),
+                "customer_facing_clause": _preview_pending_text(claim_type, status),
+            })
+
+    clauses = [item["customer_facing_clause"] for item in confirmed]
+    clauses.extend(item["customer_facing_clause"] for item in pending)
+    clauses.extend(item["customer_facing_clause"] for item in conflicting)
+    if clauses:
+        candidate_text = "亲，" + " ".join(clauses)
+    else:
+        requested = context.get("requested_claims") or []
+        fallback_type = sanitize_text((requested[0] if requested else {}).get("claim_type"))
+        candidate_text = customer_facing_safe_handoff_reply(fallback_type, inputs={}) if fallback_type else "亲，我先帮您核对一下当前商品资料，确认后给您回复。"
+
+    preview = {
+        "preview_version": "supervisor-partial-answer-preview-v2",
+        "render_mode": "deterministic",
+        "provider_status": provider_status or "not_qualified",
+        "customer_goal": sanitize_text(context.get("customer_goal")),
+        "claim_resolutions": resolutions,
+        "confirmed_clauses": confirmed,
+        "pending_clauses": pending,
+        "conflicting_clauses": conflicting,
+        "candidate_text": candidate_text,
+        # Kept for the existing supervisor response shape while consumers move
+        # to the explicit candidate_text field.
+        "candidate_reply": candidate_text,
+        "evidence_uids": sorted(set(evidence_uids)),
+        "requires_human_review": True,
+        "can_send": False,
+        "used_for_final_reply": False,
+        "context_metrics": dict(context.get("context_stats") or {}),
+    }
+    preview["safety_validation"] = _preview_safety_validation(preview, minimal_context=context)
+    return sanitize_obj(preview)
 
 
 class AgentDecisionProposalService:
@@ -623,22 +809,17 @@ class AgentDecisionProposalService:
         )
         response.setdefault("evidence_debug", {})["llm_decision_proposal"] = proposal
         response["evidence_debug"]["admitted_answer_context"] = admitted
-        response["evidence_debug"]["supervisor_candidate_preview"] = {
-            "schema_version": "supervisor-partial-answer-preview-v1",
-            "provider_status": proposal.get("shadow_status") or "provider_blocked",
-            "claim_resolutions": proposal.get("claim_resolutions") or admitted.get("claim_resolutions") or [],
-            "supported_evidence_uids": [
-                item.get("evidence_uid")
-                for item in [
-                    *(admitted.get("direct_product_facts") or []),
-                    *(admitted.get("direct_policy_facts") or []),
-                ]
-            ],
-            "candidate_reply": sanitize_text((proposal.get("reply_plan") or {}).get("proposed_reply")),
-            "requires_human_review": True,
-            "can_send": False,
-            "used_for_final_reply": False,
-        }
+        minimal_context = build_minimal_decision_context(
+            admitted,
+            customer_message=customer_message,
+            conversation_summary=original.get("conversation_context_summary") if isinstance(original.get("conversation_context_summary"), dict) else {},
+            channel_capabilities=(copilot_context or {}).get("channel_capabilities") if isinstance(copilot_context, dict) else {},
+            allowed_read_only_tools=list((admitted.get("shadow_tool_execution") or {}).get("executed_tool_names") or []),
+        )
+        response["evidence_debug"]["supervisor_candidate_preview"] = build_supervisor_partial_answer_preview(
+            minimal_context,
+            provider_status=("not_qualified" if proposal.get("shadow_status") != "completed" else "qualified_deterministic_guard"),
+        )
         response.setdefault("answer_trace", {})["llm_decision_shadow"] = {
             "schema_version": "agent-decision-proposal-v1",
             "shadow_only": True,
@@ -647,6 +828,7 @@ class AgentDecisionProposalService:
             "status": proposal.get("shadow_status"),
             "formal_reply": sanitize_text(original.get("suggested_reply")),
             "shadow_proposal_reply": sanitize_text((proposal.get("reply_plan") or {}).get("proposed_reply")),
+            "supervisor_candidate_preview": response["evidence_debug"]["supervisor_candidate_preview"],
             "admitted_fact_uids": [item.get("evidence_uid") for item in admitted.get("direct_product_facts") or []],
             "claim_resolutions": proposal.get("claim_resolutions") or [],
             "confirmed_clauses": proposal.get("confirmed_clauses") or [],

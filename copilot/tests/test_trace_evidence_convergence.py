@@ -31,6 +31,11 @@ def test_trace_reports_context_pack_evidence_absent_from_formal_selection():
     assert summary["llm_context_count"] == 1
     assert report["used_for_final_reply"] is False
     assert report["can_change_can_send"] is False
+    preview = report["supervisor_candidate_preview"]
+    assert preview["can_send"] is False
+    assert preview["used_for_final_reply"] is False
+    assert preview["evidence_uids"]
+    assert "rejected_evidence" not in report["minimal_decision_context"]
 
 
 def test_trace_marks_rebuilt_context_separately_from_compact_snapshot(monkeypatch):
