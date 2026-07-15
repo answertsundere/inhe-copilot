@@ -39,6 +39,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
+        '/ask': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+        },
         '/api': {
           target: apiProxyTarget,
           changeOrigin: true,
