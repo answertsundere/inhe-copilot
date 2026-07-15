@@ -14,6 +14,7 @@ Knowledge Evidence Quality Gate (Phase 2.5):
 - real_cases/feedback_records → 不作为强事实依据
 """
 
+import os
 import time
 
 from app.agent.nodes.evidence_filter_node import SOURCE_TYPE_CONFIDENCE
@@ -24,6 +25,11 @@ from app.services.evidence_quality_gate import (
 )
 from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
+from app.services.admitted_answer_context_service import (
+    AdmittedAnswerContextService,
+    build_minimal_decision_context,
+    canonical_selected_evidence,
+)
 
 # 高风险商品事实字段 — 包含这些字段的知识条目需要 fact review
 HIGH_RISK_FACT_FIELDS = (
@@ -412,6 +418,94 @@ def _enrich_evidence_item(base: dict, text: str, entry_status: str,
         base["evidence_allowed_for_direct_answer"] = True
 
     return base
+
+
+def _formal_evidence_convergence_enabled() -> bool:
+    return str(os.getenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "")).strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _formal_product_identity(state: dict) -> dict:
+    slots = state.get("slots") if isinstance(state.get("slots"), dict) else {}
+    identity = state.get("order_product_identity") if isinstance(state.get("order_product_identity"), dict) else {}
+    return {
+        "sku_code": str(slots.get("sku_code") or identity.get("sku_code") or identity.get("sku_id") or state.get("sku_code") or "").strip(),
+        "i_id": str(identity.get("i_id") or identity.get("internal_product_code") or state.get("i_id") or "").strip(),
+        "product_name": str(state.get("matched_product_name") or identity.get("matched_product_name") or state.get("product_name") or "").strip(),
+    }
+
+
+def _formal_understanding(state: dict) -> dict:
+    understanding = state.get("turn_understanding") if isinstance(state.get("turn_understanding"), dict) else {}
+    result = dict(understanding)
+    claims = result.get("requested_claims") if isinstance(result.get("requested_claims"), list) else []
+    if not claims:
+        fact_types = [state.get("query_fact_type"), *(state.get("secondary_fact_types") or [])]
+        result["requested_claims"] = [
+            {"claim_type": str(fact_type).strip(), "question": state.get("normalized_message", state.get("customer_message", ""))}
+            for fact_type in fact_types
+            if str(fact_type or "").strip()
+        ]
+    return result
+
+
+def _formal_evidence_convergence(
+    state: dict,
+    *,
+    product_facts: list[dict],
+    policy_facts: list[dict],
+    faq_evidence: list[dict],
+) -> dict:
+    """Converge already-gated evidence through the shared admission service."""
+    if not _formal_evidence_convergence_enabled():
+        return {}
+    candidates = [
+        *(state.get("knowledge_evidence") or []),
+        *(state.get("filtered_evidence") or []),
+        *product_facts,
+        *policy_facts,
+        *faq_evidence,
+    ]
+    response = {
+        "product_context_pack": state.get("product_context_pack") or {},
+        "selected_evidence": state.get("selected_evidence") or [],
+        "formal_evidence_candidates": candidates,
+    }
+    identity = _formal_product_identity(state)
+    admitted = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity=identity,
+        understanding=_formal_understanding(state),
+    )
+    selected = canonical_selected_evidence(admitted)
+    minimal_context = build_minimal_decision_context(
+        admitted,
+        customer_message=str(state.get("normalized_message", state.get("customer_message", "")) or ""),
+        conversation_summary=state.get("conversation_context_summary") if isinstance(state.get("conversation_context_summary"), dict) else {},
+        channel_capabilities=(state.get("copilot_context") or {}).get("channel_capabilities", {}) if isinstance(state.get("copilot_context"), dict) else {},
+        allowed_read_only_tools=[
+            str(item.get("tool_name") or "")
+            for item in state.get("tool_plan", [])
+            if isinstance(item, dict) and str(item.get("tool_name") or "")
+        ],
+    )
+    return {
+        "selected_evidence": selected,
+        "admitted_answer_context": admitted,
+        "minimal_decision_context": minimal_context,
+        "supervisor_candidate_preview": {
+            "schema_version": "supervisor-partial-answer-preview-v1",
+            "claim_resolutions": admitted.get("claim_resolutions") or [],
+            "supported_evidence_uids": [item.get("evidence_uid") for item in selected],
+            "provider_status": "not_requested",
+            "candidate_reply": "",
+            "requires_human_review": True,
+            "can_send": False,
+            "used_for_final_reply": False,
+        },
+        "formal_evidence_convergence": admitted.get("evidence_convergence") or {},
+    }
 
 
 def evidence_builder(state: dict) -> dict:
@@ -947,8 +1041,19 @@ def evidence_builder(state: dict) -> dict:
         "summary": f"证据分层: 订单{len(order_facts)} 物流{len(logistics_facts)} 商品{len(product_facts)} 政策{len(policy_facts)} SOP{len(sop_evidence)} 模板{len(template_evidence)} FAQ{len(faq_evidence)} 未知{len(unknowns)} 冲突{len(conflicts)}",
     }
 
+    convergence = _formal_evidence_convergence(
+        state,
+        product_facts=product_facts,
+        policy_facts=policy_facts,
+        faq_evidence=faq_evidence,
+    )
+    if convergence:
+        trace["formal_selected_evidence_count"] = len(convergence["selected_evidence"])
+        trace["formal_evidence_convergence_enabled"] = True
+
     return {
         "evidence": evidence,
         "knowledge": knowledge,
         "trace_steps": state.get("trace_steps", []) + [trace],
+        **convergence,
     }

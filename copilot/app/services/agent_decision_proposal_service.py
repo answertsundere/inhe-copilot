@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
+    build_minimal_decision_context,
     resolved_product_identity_for_response,
 )
 from app.services.claim_polarity_service import contains_asserted_claim
@@ -525,12 +526,21 @@ class AgentDecisionProposalService:
             understanding=understanding,
         )
         admitted["shadow_tool_execution"] = tool_execution
+        minimal_context = build_minimal_decision_context(
+            admitted,
+            customer_message=message,
+            conversation_summary=response.get("conversation_context_summary") if isinstance(response.get("conversation_context_summary"), dict) else {},
+            channel_capabilities=context.get("channel_capabilities") if isinstance(context.get("channel_capabilities"), dict) else {},
+            allowed_read_only_tools=[
+                sanitize_text(item)
+                for item in tool_execution.get("executed_tool_names") or []
+                if sanitize_text(item)
+            ],
+        )
         proposal_payload = {
-            "customer_message": message,
-            "understanding": understanding,
+            "minimal_decision_context": minimal_context,
             "tool_plan": tool_plan,
             "shadow_tool_execution": tool_execution,
-            "admitted_answer_context": admitted,
             "actual_reply_block_refs": sorted(_reply_block_refs(response)),
         }
         try:
@@ -613,6 +623,22 @@ class AgentDecisionProposalService:
         )
         response.setdefault("evidence_debug", {})["llm_decision_proposal"] = proposal
         response["evidence_debug"]["admitted_answer_context"] = admitted
+        response["evidence_debug"]["supervisor_candidate_preview"] = {
+            "schema_version": "supervisor-partial-answer-preview-v1",
+            "provider_status": proposal.get("shadow_status") or "provider_blocked",
+            "claim_resolutions": proposal.get("claim_resolutions") or admitted.get("claim_resolutions") or [],
+            "supported_evidence_uids": [
+                item.get("evidence_uid")
+                for item in [
+                    *(admitted.get("direct_product_facts") or []),
+                    *(admitted.get("direct_policy_facts") or []),
+                ]
+            ],
+            "candidate_reply": sanitize_text((proposal.get("reply_plan") or {}).get("proposed_reply")),
+            "requires_human_review": True,
+            "can_send": False,
+            "used_for_final_reply": False,
+        }
         response.setdefault("answer_trace", {})["llm_decision_shadow"] = {
             "schema_version": "agent-decision-proposal-v1",
             "shadow_only": True,

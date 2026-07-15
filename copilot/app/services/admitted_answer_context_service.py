@@ -202,6 +202,47 @@ def _normalise_product_context_candidate(
     return normalised
 
 
+def _normalise_formal_evidence_candidate(
+    item: dict[str, Any],
+    product_identity: dict[str, Any],
+) -> dict[str, Any]:
+    """Adapt an already-gated retrieval candidate to the shared admission contract.
+
+    The upstream evidence filter remains the owner of retrieval/gate decisions.
+    This adapter only gives an explicitly direct, reviewed candidate the role and
+    text fields required by :func:`_admission_reason`; all identity, claim-type,
+    placeholder, and conflict checks still run below.
+    """
+    source_type = _source_type(item)
+    if source_type not in {"product_facts", "faq", "installation_guide", "policy", "policy_facts"}:
+        return item
+
+    normalised = dict(item)
+    if source_type in {"policy", "policy_facts"}:
+        normalised["evidence_role"] = "policy_fact_direct"
+    elif source_type == "faq":
+        normalised["evidence_role"] = "faq_direct"
+    else:
+        normalised["evidence_role"] = "product_fact_direct"
+    if not sanitize_text(normalised.get("content")):
+        normalised["content"] = sanitize_text(
+            item.get("fact") or item.get("chunk_text") or item.get("customer_text")
+        )
+    if not sanitize_text(normalised.get("fact_review_status")):
+        normalised["fact_review_status"] = sanitize_text(
+            item.get("review_status") or item.get("verification_status") or item.get("entry_status")
+        )
+    if item.get("direct_answer_allowed") is True or item.get("evidence_allowed_for_direct_answer") is True:
+        normalised["direct_answer_allowed"] = True
+    expected_sku = sanitize_text(product_identity.get("sku_code"))
+    expected_i_id = sanitize_text(product_identity.get("i_id"))
+    if not sanitize_text(normalised.get("sku_code")) and expected_sku and expected_sku in _scope_values(item, "sku_scope"):
+        normalised["sku_code"] = expected_sku
+    if not sanitize_text(normalised.get("i_id")) and expected_i_id and expected_i_id in _scope_values(item, "product_scope"):
+        normalised["i_id"] = expected_i_id
+    return normalised
+
+
 def _evidence_uid(source: str, item: dict[str, Any], text: str) -> str:
     explicit = sanitize_text(item.get("evidence_uid") or item.get("chunk_id") or item.get("source_chunk_id"))
     if explicit:
@@ -214,6 +255,9 @@ def _evidence_uid(source: str, item: dict[str, Any], text: str) -> str:
 
 
 def _origin_evidence_key(item: dict[str, Any], text: str) -> str:
+    explicit_origin = sanitize_text(item.get("origin_evidence_key"))
+    if explicit_origin:
+        return explicit_origin
     for field in ("evidence_uid", "evidence_id", "chunk_id", "entry_id", "source_id", "asset_id", "id"):
         value = sanitize_text(item.get(field))
         if value:
@@ -381,6 +425,7 @@ def _candidate_containers(response: dict[str, Any]) -> list[tuple[str, dict[str,
     for source, values in (
         ("response.selected_evidence", response.get("selected_evidence")),
         ("evidence_debug.selected_evidence", debug.get("selected_evidence")),
+        ("response.formal_evidence_candidates", response.get("formal_evidence_candidates")),
     ):
         for item in _as_list(values):
             if isinstance(item, dict):
@@ -421,8 +466,22 @@ def collect_admitted_product_facts(
     warnings: list[dict[str, Any]] = []
     seen_inputs: set[str] = set()
 
+    prepared_candidates: list[tuple[str, dict[str, Any]]] = []
     for source, raw_item in _candidate_containers(response):
         item = _normalise_product_context_candidate(source, raw_item, product_identity)
+        if source == "response.formal_evidence_candidates":
+            item = _normalise_formal_evidence_candidate(item, product_identity)
+        prepared_candidates.append((source, item))
+
+    for source, item in sorted(
+        prepared_candidates,
+        key=lambda pair: (
+            _evidence_uid(pair[0], pair[1], _text(pair[1])),
+            0 if _role(pair[1]) in DIRECT_PRODUCT_ROLES else 1,
+            _source_type(pair[1]),
+            pair[0],
+        ),
+    ):
         text = _text(item)
         provenance = _provenance(source, item, text)
         dedupe_key = provenance["evidence_uid"]
@@ -514,6 +573,8 @@ def build_evidence_convergence_trace(
     records: dict[str, dict[str, Any]] = {}
     for source, raw_item in _candidate_containers(response):
         item = _normalise_product_context_candidate(source, raw_item, product_identity)
+        if source == "response.formal_evidence_candidates":
+            item = _normalise_formal_evidence_candidate(item, product_identity)
         text = _text(item)
         provenance = _provenance(source, item, text)
         key = provenance["origin_evidence_key"]
@@ -689,3 +750,133 @@ class AdmittedAnswerContextService:
             admitted_context=context,
         )
         return sanitize_obj(context)
+
+
+def canonical_selected_evidence(admitted_context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the deterministic, direct-evidence-only formal selection.
+
+    This is intentionally derived from the shared admitted context rather than
+    from a second set of eligibility rules.  Service actions and media remain in
+    their own non-factual context roles.
+    """
+    records: list[dict[str, Any]] = []
+    for item in [
+        *(_as_list(admitted_context.get("direct_product_facts"))),
+        *(_as_list(admitted_context.get("direct_policy_facts"))),
+    ]:
+        if not isinstance(item, dict):
+            continue
+        uid = sanitize_text(item.get("evidence_uid"))
+        if not uid:
+            continue
+        records.append({
+            "evidence_uid": uid,
+            "source": sanitize_text(item.get("source")),
+            "source_type": sanitize_text(item.get("source_type")),
+            "evidence_role": sanitize_text(item.get("evidence_role")),
+            "review_status": sanitize_text(item.get("review_status")),
+            "fact_review_status": sanitize_text(item.get("review_status")),
+            "gate_status": "allowed",
+            "direct_answer_allowed": True,
+            "product_identity_scope": _as_list(item.get("product_identity_scope")),
+            "identity_scopes": _as_list(item.get("identity_scopes")),
+            "fact_type": sanitize_text(item.get("fact_type")),
+            "attribute_key": sanitize_text(item.get("attribute_key")),
+            "content": sanitize_text(item.get("text")),
+            "value": sanitize_text(item.get("value")),
+            "original_value": sanitize_text(item.get("original_value")),
+            "provenance": {
+                "origin_evidence_key": sanitize_text(item.get("origin_evidence_key")),
+                "source_container": sanitize_text(item.get("source_container")),
+            },
+        })
+    deduplicated: dict[str, dict[str, Any]] = {}
+    for record in sorted(
+        records,
+        key=lambda item: (
+            sanitize_text(item.get("evidence_uid")),
+            sanitize_text(item.get("source_type")),
+            sanitize_text(item.get("content")),
+        ),
+    ):
+        origin_key = sanitize_text((record.get("provenance") or {}).get("origin_evidence_key"))
+        deduplicated.setdefault(origin_key or record["evidence_uid"], record)
+    return sanitize_obj(sorted(
+        deduplicated.values(),
+        key=lambda item: (
+            sanitize_text(item.get("fact_type")),
+            sanitize_text(item.get("attribute_key")),
+            sanitize_text(item.get("evidence_uid")),
+        ),
+    ))
+
+
+def build_minimal_decision_context(
+    admitted_context: dict[str, Any],
+    *,
+    customer_message: str,
+    conversation_summary: dict[str, Any] | None = None,
+    channel_capabilities: dict[str, Any] | None = None,
+    allowed_read_only_tools: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build bounded, non-reasoning context for a strict decision provider."""
+    selected = canonical_selected_evidence(admitted_context)
+    trim_reasons: list[str] = []
+    if len(selected) > 6:
+        trim_reasons.append("admitted_evidence_limit")
+        selected = selected[:6]
+    actions = [
+        {"evidence_uid": sanitize_text(item.get("evidence_uid")), "text": _clip(item.get("text")), "non_fact": True}
+        for item in _as_list(admitted_context.get("handoff_action_guidance"))[:4]
+        if isinstance(item, dict)
+    ]
+    media = [
+        {
+            "evidence_uid": sanitize_text(item.get("evidence_uid")),
+            "asset_type": sanitize_text(item.get("asset_type")),
+            "media_role": sanitize_text(item.get("media_role")),
+            "non_fact": True,
+        }
+        for item in _as_list(admitted_context.get("media_candidates"))[:4]
+        if isinstance(item, dict)
+    ]
+    sources: dict[str, int] = {}
+    for item in selected:
+        source = sanitize_text(item.get("source_type")) or "unknown"
+        sources[source] = sources.get(source, 0) + 1
+    summary = _as_dict(conversation_summary)
+    compact_summary = {
+        key: _clip(value, 180)
+        for key, value in summary.items()
+        if key in {"summary", "current_turn", "customer_concern", "unresolved_slots"}
+        and sanitize_text(value)
+    }
+    context = {
+        "schema_version": "minimal-decision-context-v1",
+        "customer_goal": _clip(customer_message, 300),
+        "requested_claims": _as_list(admitted_context.get("requested_claims")),
+        "conversation_summary": compact_summary,
+        "product_identity": _as_dict(admitted_context.get("product_identity")),
+        "admitted_evidence": selected,
+        "claim_resolutions": _as_list(admitted_context.get("claim_resolutions")),
+        "unresolved_claims": _as_list(admitted_context.get("unresolved_claims")),
+        "conflicts": _as_list(admitted_context.get("conflicts")),
+        "service_actions": actions,
+        "media_candidates": media,
+        "allowed_read_only_tools": sorted(_unique(allowed_read_only_tools or [])),
+        "channel_capabilities": _as_dict(channel_capabilities),
+        "safety_constraints": {
+            "only_admitted_evidence_for_facts": True,
+            "unresolved_or_conflicting_claims_cannot_be_asserted": True,
+            "service_actions_and_media_are_not_facts": True,
+        },
+        "context_stats": {
+            "admitted_evidence_count": len(selected),
+            "admitted_evidence_source_distribution": sources,
+            "estimated_token_count": max(1, len(str(selected) + str(actions) + str(media)) // 4),
+            "trim_reasons": trim_reasons,
+        },
+        "used_for_final_reply": False,
+        "can_change_can_send": False,
+    }
+    return sanitize_obj(context)

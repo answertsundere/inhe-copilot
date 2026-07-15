@@ -1,0 +1,74 @@
+# ADR 0007: Formal Evidence Convergence
+
+## Status
+
+Accepted, 2026-07-15.
+
+## Context
+
+`ProductContextPackService` can assemble reviewed, product-scoped structured
+facts, but the formal graph previously treated the pack only as a candidate
+source. Retrieval and evidence filtering could gate those candidates without
+ever emitting canonical `selected_evidence`. Consequently generation, final
+audit, trace, and snapshot could not consistently identify the facts eligible
+for the current reply.
+
+## Decision
+
+`AdmittedAnswerContextService` remains the single reusable admission contract.
+The existing `evidence_builder` node may opt in through
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED`. It passes already-gated retrieval
+candidates and Product Context Pack candidates to that service, then emits a
+deterministic canonical `selected_evidence` list from admitted direct product
+and direct policy facts only.
+
+The canonical selection is the only additional factual input that formal
+generation may consume while the flag is enabled. It preserves evidence UID,
+source, review status, identity scope, fact type, attribute key, original value,
+and provenance. Existing RAG and Pack duplicates deduplicate by their shared
+origin evidence key, falling back to evidence UID, in a stable order.
+
+The following roles or states never enter canonical selected evidence:
+
+- `service_action`, `fallback_only`, `media_reference`, and Answer Memory;
+- placeholder, reference-only, blocked, or non-direct candidates;
+- missing, mismatched, or namespace-incompatible product identity;
+- insufficient review status; and
+- candidates blocked by an attribute conflict.
+
+The same service also produces a bounded `minimal_decision_context` for the
+strict Decision Proposal shadow. It contains requested claims, compact
+conversation summary, resolved identity, admitted evidence, unresolved or
+conflicting claims, non-factual actions/media, read-only tools, channel
+capabilities, and safety constraints. It excludes full traces, full candidate
+stores, historical Answer Memory copy, benchmark answers/rubrics, and private
+reasoning.
+
+The supervisor partial-answer preview remains review-only. It is fixed to
+`can_send=false` and `requires_human_review=true`. An unqualified strict
+provider records a block rather than fabricating structured or free-text output.
+
+## Consequences
+
+- LangGraph keeps orchestration responsibility; it does not become an Evidence
+  Registry or a second Pipeline.
+- Final orchestration remains the sole owner of final delivery decisions.
+- This decision does not relax `can_send`, media, identity, review, or conflict
+  requirements.
+- API, copilot, replay, and benchmark reach the same graph stage through the
+  existing AnalysisPipeline.
+
+## Rollback
+
+Set `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false` or remove the variable.
+The evidence-builder node then emits no canonical selection and formal
+generation retains its preceding behavior. No data migration or knowledge-base
+write is involved.
+
+## Verification
+
+Tests cover direct Pack/RAG admission, role and gate rejection, identity and
+review rejection, whole-group conflict blocking, deterministic deduplication,
+minimal-context exclusion, partial claim resolution, and feature-flag-off
+behavior. Trace and snapshot persistence observe the selected evidence emitted
+by the graph response.

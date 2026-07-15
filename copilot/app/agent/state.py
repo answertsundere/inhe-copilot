@@ -137,6 +137,14 @@ class AgentState(TypedDict, total=False):
     rag_retrieval_mode: str
     product_context_pack: dict
     product_context_pack_stats: dict
+    # Opt-in formal evidence convergence.  These fields are emitted by the
+    # existing evidence-builder node and are intentionally separate from raw
+    # retrieval candidates and customer-facing delivery fields.
+    selected_evidence: list
+    admitted_answer_context: dict
+    minimal_decision_context: dict
+    supervisor_candidate_preview: dict
+    formal_evidence_convergence: dict
 
     # ========== LLM / 回复生成 ==========
     suggested_reply: str

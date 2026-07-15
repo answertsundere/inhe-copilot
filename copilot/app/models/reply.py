@@ -71,6 +71,11 @@ class ReplySuggestion(BaseModel):
     used_fact_tools: list = Field(default_factory=list)
     product_context_validation: dict = Field(default_factory=dict)
     generic_service_rule_used: dict = Field(default_factory=dict)
+    # Opt-in formal evidence convergence diagnostics. These are not delivery
+    # controls and remain empty while the feature flag is disabled.
+    selected_evidence: list[dict] = Field(default_factory=list)
+    minimal_decision_context: dict = Field(default_factory=dict)
+    supervisor_candidate_preview: dict = Field(default_factory=dict)
 
     def model_post_init(self, __context) -> None:
         _normalize_sendable_contract(self)
@@ -124,6 +129,12 @@ class ReplySuggestion(BaseModel):
             d.pop("product_context_validation", None)
         if not self.generic_service_rule_used:
             d.pop("generic_service_rule_used", None)
+        if not self.selected_evidence:
+            d.pop("selected_evidence", None)
+        if not self.minimal_decision_context:
+            d.pop("minimal_decision_context", None)
+        if not self.supervisor_candidate_preview:
+            d.pop("supervisor_candidate_preview", None)
         return d
 
     @classmethod
@@ -198,6 +209,9 @@ class ReplySuggestion(BaseModel):
             used_fact_tools=data.get("used_fact_tools", data.get("fact_tools", [])),
             product_context_validation=data.get("product_context_validation", {}),
             generic_service_rule_used=data.get("generic_service_rule_used", {}),
+            selected_evidence=data.get("selected_evidence", []),
+            minimal_decision_context=data.get("minimal_decision_context", {}),
+            supervisor_candidate_preview=data.get("supervisor_candidate_preview", {}),
         )
 
 

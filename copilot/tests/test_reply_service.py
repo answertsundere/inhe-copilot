@@ -510,6 +510,27 @@ def test_reply_service_preserves_graph_sendable_contract(monkeypatch):
     assert suggestion.evidence_debug["sendable_reply_contract"]["can_send"] is True
 
 
+def test_reply_service_preserves_formal_evidence_convergence_diagnostics(monkeypatch):
+    import app.agent.graph as graph
+
+    fake = _FakeGraph({
+        "intent": "general",
+        "suggested_reply": "draft reply",
+        "selected_evidence": [{"evidence_uid": "fact-1"}],
+        "minimal_decision_context": {"schema_version": "minimal-decision-context-v1"},
+        "supervisor_candidate_preview": {"can_send": False, "requires_human_review": True},
+        "evidence_debug": {},
+        "trace_steps": [],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    output = _reply_service().analyze("hello").to_dict()
+
+    assert output["selected_evidence"] == [{"evidence_uid": "fact-1"}]
+    assert output["minimal_decision_context"]["schema_version"] == "minimal-decision-context-v1"
+    assert output["supervisor_candidate_preview"]["can_send"] is False
+
+
 def test_reply_service_defaults_legacy_graph_result_to_blocked(monkeypatch):
     import app.agent.graph as graph
 

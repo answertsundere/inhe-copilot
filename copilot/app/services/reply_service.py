@@ -417,6 +417,12 @@ class ReplyService:
             "used_endpoint": result.get("used_endpoint", ""),
             "identifier_type": result.get("identifier_type", ""),
             "generic_service_rule_used": generic_service_rule_used,
+            # Formal evidence convergence is read-only diagnostic context.  It
+            # is emitted only when the graph feature flag supplies it and does
+            # not participate in the sendable-reply contract.
+            "selected_evidence": result.get("selected_evidence", []),
+            "minimal_decision_context": result.get("minimal_decision_context", {}),
+            "supervisor_candidate_preview": result.get("supervisor_candidate_preview", {}),
         }
 
         suggestion = ReplySuggestion.from_dict(data)

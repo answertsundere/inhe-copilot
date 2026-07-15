@@ -651,14 +651,18 @@ def _real_product_facts(state: dict) -> list[dict]:
     facts = []
     query_fact_type = state.get("query_fact_type", "")
     query = state.get("normalized_message", state.get("customer_message", "")) or ""
-    candidate_items = (
-        _product_first_structured_facts(state)
-        + _product_first_scoped_chunks(state)
-        +
-        list(state.get("evidence", {}).get("product_facts", []) or [])
-        + list(state.get("knowledge_evidence", []) or [])
-        + list(state.get("filtered_evidence", []) or [])
-    )
+    if "selected_evidence" in state:
+        # Formal convergence is opt-in.  Once enabled, only the canonical
+        # selection may supply customer-facing product facts.
+        candidate_items = list(state.get("selected_evidence") or [])
+    else:
+        candidate_items = (
+            _product_first_structured_facts(state)
+            + _product_first_scoped_chunks(state)
+            + list(state.get("evidence", {}).get("product_facts", []) or [])
+            + list(state.get("knowledge_evidence", []) or [])
+            + list(state.get("filtered_evidence", []) or [])
+        )
     seen = set()
     for item in candidate_items:
         source_type = item.get("source_type", "")
@@ -691,7 +695,7 @@ def _real_product_facts(state: dict) -> list[dict]:
             fact,
         ])):
             continue
-        if source_type in ("product_facts", "installation_guide", "faq") and chunk_text:
+        if (source_type in ("product_facts", "installation_guide", "faq") or item.get("evidence_role") in {"product_fact_direct", "faq_direct"}) and chunk_text:
             facts.append(item)
     facts = _drop_placeholder_product_facts_when_concrete_exists(facts)
     if query_fact_type == "odor":

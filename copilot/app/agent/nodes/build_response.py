@@ -176,6 +176,16 @@ def build_response(state: dict) -> dict:
     evidence_debug["filtered_evidence_summary"] = filtered_evidence_summary
     evidence_debug["knowledge_evidence_summary"] = knowledge_evidence_summary
     evidence_debug["evidence_gate_summary"] = _summarize_evidence_gate(knowledge_evidence_summary)
+    if "selected_evidence" in state:
+        # Persist the same canonical selection consumed by generation.  The
+        # detailed admitted context remains supervisor/debug data, never reply
+        # content or a delivery decision.
+        evidence_debug["selected_evidence"] = state.get("selected_evidence") or []
+        evidence_debug["admitted_answer_context"] = state.get("admitted_answer_context") or {}
+        evidence_debug["minimal_decision_context"] = state.get("minimal_decision_context") or {}
+        evidence_debug["formal_evidence_convergence"] = state.get("formal_evidence_convergence") or {}
+        evidence_debug["supervisor_candidate_preview"] = state.get("supervisor_candidate_preview") or {}
+
     product_context_pack = state.get("product_context_pack") or {}
     generic_service_rule_used = state.get("generic_service_rule_used") or _generic_rule_used_from_trace(state.get("trace_steps", []))
     evidence_debug["product_context_pack_stats"] = state.get("product_context_pack_stats", product_context_pack.get("stats", {}))
@@ -368,6 +378,11 @@ def build_response(state: dict) -> dict:
         "direct_answer_supported": sufficiency["direct_answer_supported"],
         "missing_required_fact_fields": sufficiency["missing_required_fact_fields"],
         "needs_clarification": sufficiency["needs_clarification"],
+        **({
+            "selected_evidence": state.get("selected_evidence") or [],
+            "minimal_decision_context": state.get("minimal_decision_context") or {},
+            "supervisor_candidate_preview": state.get("supervisor_candidate_preview") or {},
+        } if "selected_evidence" in state else {}),
     }
 
 
