@@ -585,8 +585,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
           <div class="reply-section shadow-preview" id="decisionShadowPreview" style="display:none">
             <div class="reply-header">
-              <h3>证据优先候选回复</h3>
-              <span class="ctrl-tag">仅用于测试，不会自动发送</span>
+              <h3>主管预览</h3>
+              <span class="ctrl-tag">仅供主管核对，不会自动发送</span>
             </div>
             <div id="decisionShadowPreviewBody" class="shadow-preview-status"></div>
           </div>
@@ -2212,6 +2212,7 @@ function renderDecisionShadowPreview(data){
   const box=$('decisionShadowPreview'), body=$('decisionShadowPreviewBody');
   if(!box||!body)return;
   const debug=data&&data.evidence_debug||{};
+  const preview=debug.supervisor_candidate_preview||data.supervisor_candidate_preview||{};
   const proposal=debug.llm_decision_proposal||{};
   const status=debug.llm_decision_shadow_status||{};
   const claimLabels={
@@ -2220,7 +2221,6 @@ function renderDecisionShadowPreview(data){
     aftersales_policy:'售后处理', load_capacity:'承重说明', certification_report:'检测/认证说明'
   };
   const label=(value)=>claimLabels[value]||'当前问题项';
-  const shortUid=(value)=>value?String(value).slice(0,10)+'…':'';
   const blockedReasons={
     provider_not_configured:'尚未配置独立的候选决策模型。',
     provider_not_qualified:'候选决策模型尚未通过严格资格验证。',
@@ -2228,6 +2228,21 @@ function renderDecisionShadowPreview(data){
     structured_output_truncated:'候选模型输出不完整，已安全停用本轮候选。'
   };
   box.style.display='';
+  if(preview.preview_version){
+    const confirmed=preview.confirmed_clauses||[];
+    const pending=preview.pending_clauses||[];
+    const conflicting=preview.conflicting_clauses||[];
+    const providerLabels={
+      not_qualified:'候选模型尚未通过资格验证',
+      qualified_deterministic_guard:'候选模型已通过受控校验',
+      blocked:'候选模型当前不可用'
+    };
+    const rows=(items,heading)=>items.map(item=>`<div class="shadow-preview-row"><strong>${heading} · ${escapeHtml(label(item.claim_type))}</strong><br>${escapeHtml(item.customer_facing_clause||'')}</div>`).join('');
+    const provider=providerLabels[preview.provider_status]||'候选模型状态未知';
+    const evidenceCount=Array.isArray(preview.evidence_uids)?preview.evidence_uids.length:0;
+    body.innerHTML=`<div class="reply">${escapeHtml(preview.candidate_text||preview.candidate_reply||'')}</div><div class="shadow-preview-list">${rows(confirmed,'已确认内容')}${rows(pending,'待核对内容')}${rows(conflicting,'冲突内容')}<div class="shadow-preview-row"><strong>证据数量</strong><br>本次已引用 ${evidenceCount} 条已核实资料</div><div class="shadow-preview-row"><strong>候选模型状态</strong><br>${escapeHtml(provider)}</div></div>`;
+    return;
+  }
   if(proposal.shadow_status==='completed'){
     const admitted=debug.admitted_answer_context||{};
     const confirmed=proposal.confirmed_clauses||[];
@@ -2235,7 +2250,7 @@ function renderDecisionShadowPreview(data){
     const tools=admitted.shadow_tool_execution||{};
     const toolLabels={product_resolver_tool:'商品识别',rag_search_tool:'资料检索'};
     const executed=(tools.executed_tool_names||[]).map(item=>toolLabels[item]||'受控查询').join('、')||'本轮无需额外查询';
-    const confirmedRows=confirmed.map(item=>`<div class="shadow-preview-row"><strong>已确认 · ${escapeHtml(label(item.claim_type))}</strong><br>${escapeHtml(item.customer_facing_clause||'')}<br><span class="muted">依据：${escapeHtml((item.evidence_uids||[]).map(shortUid).join('、')||'无')}</span></div>`).join('');
+    const confirmedRows=confirmed.map(item=>`<div class="shadow-preview-row"><strong>已确认内容 · ${escapeHtml(label(item.claim_type))}</strong><br>${escapeHtml(item.customer_facing_clause||'')}</div>`).join('');
     const pendingRows=pending.map(item=>`<div class="shadow-preview-row"><strong>待核实 · ${escapeHtml(label(item.claim_type))}</strong><br>${escapeHtml(item.customer_facing_clause||'')}</div>`).join('');
     body.innerHTML=`<div class="reply">${escapeHtml(proposal.reply_plan?.proposed_reply||'')}</div><div class="shadow-preview-list">${confirmedRows}${pendingRows}<div class="shadow-preview-row"><strong>工具状态</strong><br>${escapeHtml(executed)}</div></div>`;
     return;
