@@ -30,6 +30,19 @@ _TEXT_PRODUCT_QUESTION_TERMS = (
     "可拆", "拆卸", "安装", "组装", "材质", "承重", "尺寸", "清洗", "防潮",
 )
 _VISUAL_FACT_TYPES = {"installation", "detachable", "dimensions", "space_fit", "accessories", "packaging"}
+_SERVICE_OR_ORDER_FACT_TYPES = {
+    "aftersales_policy",
+    "gift_policy",
+    "invoice_policy",
+    "logistics",
+    "order_status",
+    "price_protection",
+    "promotion_policy",
+    "return_pickup",
+    "stock_shipping",
+    "after_sales",
+    "aftersales",
+}
 _VISUAL_TERMS = (
     "图片", "照片", "实物图", "商品图", "尺寸图", "视频", "安装图", "安装视频",
     "配件图", "打包图", "说明书",
@@ -97,9 +110,32 @@ class AnalysisPipelineService:
         )
         if not has_product_scope:
             return None
+        query_fact_type = AnalysisPipelineService._request_query_fact_type(request)
+        if query_fact_type in _SERVICE_OR_ORDER_FACT_TYPES:
+            return None
         from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
         return RuntimeKnowledgeReadinessService().inspect()
+
+    @staticmethod
+    def _request_query_fact_type(request: AnalysisPipelineRequest) -> str:
+        """Reuse the existing turn-understanding contract before readiness gating."""
+        context = request.copilot_context or {}
+        understanding = context.get("turn_understanding") or {}
+        explicit = (
+            context.get("query_fact_type")
+            or context.get("benchmark_query_fact_type")
+            or understanding.get("effective_query_fact_type")
+            or understanding.get("query_fact_type")
+            or understanding.get("expected_query_fact_type")
+        )
+        if explicit:
+            return str(explicit).strip()
+
+        from app.services.fact_type_service import classify_query_fact_type
+
+        classified = classify_query_fact_type(request.customer_message)
+        return str(classified.get("query_fact_type") or "").strip()
 
     @staticmethod
     def _runtime_not_ready_response(

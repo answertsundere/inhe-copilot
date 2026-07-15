@@ -255,6 +255,25 @@ def test_product_scoped_request_fails_closed_when_runtime_is_not_ready(monkeypat
     assert "knowledge_entries_empty" in response["evidence_debug"]["knowledge_db_unavailable"]
 
 
+def test_product_context_does_not_block_explicit_aftersales_contract_when_runtime_is_not_ready(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not inspect product knowledge")),
+    )
+    request = _request("api")
+    request = AnalysisPipelineRequest(
+        **{
+            **request.__dict__,
+            "copilot_context": {
+                **request.copilot_context,
+                "turn_understanding": {"query_fact_type": "aftersales_policy"},
+            },
+        }
+    )
+
+    assert AnalysisPipelineService._knowledge_readiness_for_request(request) is None
+
+
 def test_shadow_layers_do_not_change_formal_decision(monkeypatch, pipeline_harness):
     import app.services.answer_memory_adapter_service as answer_memory
     import app.services.grounded_reasoning_draft_service as grounded
