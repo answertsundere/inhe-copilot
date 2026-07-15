@@ -89,3 +89,20 @@ review rejection, whole-group conflict blocking, deterministic deduplication,
 minimal-context exclusion, partial claim resolution, and feature-flag-off
 behavior. Trace and snapshot persistence observe the selected evidence emitted
 by the graph response.
+
+## Real-Derived Positive Validation Gate
+
+Synthetic fixtures prove only the deterministic contract. Before any supervisor
+preview can be considered for promotion, a query-only export must derive a
+versioned, pseudonymous fixture from published direct product fields. The
+export records a source snapshot hash, table fingerprints before and after the
+read, provenance hashes, and a privacy scan; it never copies source identities,
+titles, URLs, row IDs, or source-database contents into Git.
+
+The vertical slice seeds an isolated temporary fixture database and executes
+the same Product Context Pack, formal convergence, admitted context, claim
+resolution, and preview path. It is not allowed to inject a fixture fact into
+admitted evidence directly. Every confirmed preview clause must cite a selected
+evidence UID, while the preview remains review-only with `can_send=false`.
+Missing attribute scope or packaging-contaminated dimensions are data-quality
+gaps, not grounds to relax evidence admission.

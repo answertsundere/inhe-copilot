@@ -147,3 +147,20 @@ Promotion requires real traces with valid strict structured output, stable
 claim decomposition, eligible evidence references only, no unsupported claims,
 no formal-field mutation, and parity across every formal entry point. Phase
 0.5A is not promoted merely because synthetic tests or active benchmark pass.
+
+## Real-derived validation fixture
+
+`export_real_derived_evidence_fixture.py` reads an explicit SQLite source in
+`PRAGMA query_only=ON` mode and exports only published, low-risk structured
+product facts. Product identities are HMAC-pseudonymised with an environment
+key that is neither emitted nor stored in the fixture. The exporter excludes
+mixed product/packaging dimension candidates rather than treating carton values
+as product dimensions. The manifest records source and fixture hashes, table
+fingerprints, privacy-scan status, and coverage gaps.
+
+`run_real_derived_evidence_vertical_slice.py` replays the sanitised fixture
+through an isolated fixture database and the real Product Context Pack ->
+convergence -> admitted context -> claim-resolution -> supervisor-preview
+chain. Expected results are scored after this chain; they are never input to a
+builder. This validates factual provenance and contract parity, not a customer
+delivery path or a `can_send` decision.
