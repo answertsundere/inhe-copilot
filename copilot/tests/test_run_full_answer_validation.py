@@ -220,6 +220,17 @@ def test_runner_exit_codes_fail_closed_and_write_parseable_reports(monkeypatch, 
     assert output["summary"]["completed_count"] == 0
 
 
+def test_runner_report_uses_portable_ascii_json_encoding(monkeypatch, tmp_path):
+    module = _module()
+    payload = _dataset()
+    payload["cases"][0]["message"] = "中文验证文本"
+    exit_code, output = _run_main(module, monkeypatch, tmp_path, payload, _response())
+
+    assert exit_code == 0
+    assert output["summary"]["passed_count"] == 1
+    assert all(ord(character) < 128 for character in (tmp_path / "result.json").read_text(encoding="utf-8"))
+
+
 def test_runner_rejects_invalid_dataset_and_runtime_commit_mismatch(monkeypatch, tmp_path):
     module = _module()
     invalid = _dataset(schema_version="")

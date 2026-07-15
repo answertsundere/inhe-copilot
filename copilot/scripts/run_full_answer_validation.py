@@ -390,7 +390,10 @@ def _runtime_db_fingerprint(path_value: str) -> dict[str, Any]:
 
 def _write_output(target: Path, output: dict[str, Any]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Windows PowerShell 5 reads UTF-8 without a BOM through its legacy code
+    # page. ASCII JSON escapes keep a report parseable by both that reader and
+    # Python's standard json.load without requiring caller-specific encodings.
+    target.write_text(json.dumps(output, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 
 
 def _invalid_run(target: Path, reason: str, metadata: dict[str, Any], *, schema_error: bool = True) -> int:
