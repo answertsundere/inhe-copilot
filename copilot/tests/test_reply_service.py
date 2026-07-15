@@ -731,7 +731,9 @@ def test_reply_service_controls_accessory_usage_without_evidence(monkeypatch):
     assert suggestion.requires_human_review is True
     assert suggestion.evidence_debug["query_fact_type"] == "installation"
     assert "我在处理" not in suggestion.suggested_reply
-    assert "部件" in suggestion.suggested_reply
+    assert suggestion.evidence_debug["no_evidence_reply_policy"]["reply_strategy"] == "verify_accessory_usage_with_photo"
+    assert suggestion.can_send is False
+    assert suggestion.sendable_reply == ""
 
 
 def test_reply_service_no_evidence_policy_does_not_request_known_product_context(monkeypatch):
@@ -762,10 +764,11 @@ def test_reply_service_no_evidence_policy_does_not_request_known_product_context
     )
 
     assert suggestion.requires_human_review is True
-    assert "已经看到当前商品信息" in suggestion.suggested_reply
     assert "商品链接" not in suggestion.suggested_reply
     assert "SKU" not in suggestion.suggested_reply
     assert suggestion.evidence_debug["no_evidence_reply_policy"]["reply_strategy"] == "verify_dimensions_for_known_product"
+    assert suggestion.can_send is False
+    assert suggestion.sendable_reply == ""
 
 
 def test_reply_service_no_evidence_policy_blocks_installation_media_promise_without_asset(monkeypatch):
@@ -796,8 +799,8 @@ def test_reply_service_no_evidence_policy_blocks_installation_media_promise_with
     )
 
     assert suggestion.requires_human_review is True
-    assert "对应安装资料" in suggestion.suggested_reply
-    assert "防止资料和款式不对应" in suggestion.suggested_reply
     assert "我把视频发您" not in suggestion.suggested_reply
     assert "发您参考" not in suggestion.suggested_reply
     assert suggestion.evidence_debug["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert suggestion.can_send is False
+    assert suggestion.sendable_reply == ""
