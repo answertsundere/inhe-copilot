@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.customer_facing_safe_handoff_service import apply_customer_facing_safe_handoff
+from app.services.media_asset_service import media_asset_matches_fact_type
 
 
 MEDIA_PROMISE_TERMS = (
@@ -1105,6 +1106,19 @@ def media_delivery_claim_issues(
             for block in candidates
         ):
             issues.append(f"{kind}_block_identity_mismatch")
+        if fact_type in {"dimensions", "space_fit"}:
+            from app.services.media_asset_service import is_delivery_media_asset_eligible
+
+            identity = _response_product_identity(response, copilot_context)
+            if not any(
+                is_delivery_media_asset_eligible(
+                    block,
+                    query_fact_type=fact_type,
+                    product_identity=identity,
+                )
+                for block in candidates
+            ):
+                issues.append(f"{fact_type}_{kind}_role_or_identity_mismatch")
     return issues
 
 
@@ -1189,6 +1203,21 @@ def _block_identity_matches_current_product(
             return False
         matched = True
     return matched
+
+
+def _response_product_identity(
+    response: dict[str, Any],
+    copilot_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    context = copilot_context or {}
+    summary = response.get("context_used") if isinstance(response.get("context_used"), dict) else {}
+    pack = summary.get("product_context_pack") if isinstance(summary.get("product_context_pack"), dict) else {}
+    pack_identity = pack.get("identity") if isinstance(pack.get("identity"), dict) else {}
+    return {
+        "product_id": response.get("product_id") or context.get("product_id") or pack_identity.get("product_id"),
+        "i_id": response.get("i_id") or context.get("i_id") or pack_identity.get("i_id"),
+        "sku_code": response.get("sku_code") or context.get("sku_code") or pack_identity.get("sku_code") or pack_identity.get("sku"),
+    }
 
 
 def has_attached_sendable_media_asset(response: dict[str, Any]) -> bool:
@@ -1354,20 +1383,12 @@ def _collect_sendable_media_asset_types(asset_types: set[str], assets: Any, *, b
         asset_type = str(asset.get("asset_type") or asset.get("type") or "").strip()
         if asset_type:
             asset_types.add(asset_type)
-        if _is_space_fit_media_asset(asset):
+        if media_asset_matches_fact_type(asset, "space_fit"):
             asset_types.add("space_fit_image")
 
 
 def _is_space_fit_media_asset(asset: dict[str, Any]) -> bool:
-    asset_type = str(asset.get("asset_type") or asset.get("type") or "").strip()
-    purpose = str(asset.get("media_purpose") or asset.get("purpose") or "").strip()
-    title = str(asset.get("asset_title") or asset.get("title") or "").strip()
-    if asset_type in SPACE_FIT_MEDIA_ASSET_TYPES or purpose in SPACE_FIT_MEDIA_ASSET_TYPES:
-        return True
-    if asset_type not in {"sku_image", "product_photo", "image"}:
-        return False
-    haystack = f"{purpose} {title}".lower()
-    return any(term.lower() in haystack for term in SPACE_FIT_MEDIA_HINT_TERMS)
+    return media_asset_matches_fact_type(asset, "space_fit")
 
 
 def _product_context_pack(response: dict[str, Any]) -> dict[str, Any]:

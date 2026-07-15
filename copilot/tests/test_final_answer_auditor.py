@@ -1,4 +1,4 @@
-from app.services.final_answer_auditor import _expected_topics, audit_final_answer
+from app.services.final_answer_auditor import _expected_topics, _is_visual_media_answer, audit_final_answer
 from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
 
 
@@ -485,6 +485,64 @@ def test_final_answer_auditor_allows_matching_pinch_handoff():
     assert audited["suggested_reply"] == response["suggested_reply"]
 
 
+def test_final_answer_auditor_blocks_material_safety_claim_from_composition_only():
+    response = {
+        "intent": "material_safety",
+        "i_id": "IID-A",
+        "suggested_reply": "亲，这款是PP材质，宝宝接触也安全，您放心使用。",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "material_safety",
+            "selected_evidence": [{
+                "evidence_uid": "composition-only",
+                "evidence_role": "product_fact_direct",
+                "fact_type": "material",
+                "content": "主体材质为PP。",
+                "verification_status": "reviewed",
+                "gate_status": "allowed",
+                "direct_answer_allowed": True,
+                "i_id": "IID-A",
+            }],
+        },
+    }
+
+    audited = audit_final_answer(response, customer_message="宝宝会咬，这个材质安全吗？")
+
+    assert audited["requires_human_review"] is True
+    assert "unsupported_high_risk_claim:material_safety" in audited["final_answer_audit"]["issues"]
+    assert "放心使用" not in audited["suggested_reply"]
+    assert audited["can_send"] is False
+    assert audited["sendable_reply"] == ""
+    assert audited["reply_status"] == "needs_human_review"
+
+
+def test_final_answer_auditor_allows_material_safety_only_with_matching_direct_evidence():
+    response = {
+        "intent": "material_safety",
+        "i_id": "IID-A",
+        "suggested_reply": "亲，这款的材质安全说明可按对应检测资料查看。",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "material_safety",
+            "selected_evidence": [{
+                "evidence_uid": "safety-direct",
+                "evidence_role": "product_fact_direct",
+                "fact_type": "material_safety",
+                "supported_claim_types": ["material_safety"],
+                "content": "该款材质安全说明以对应检测资料为准。",
+                "verification_status": "reviewed",
+                "gate_status": "allowed",
+                "direct_answer_allowed": True,
+                "i_id": "IID-A",
+            }],
+        },
+    }
+
+    audited = audit_final_answer(response, customer_message="这个材质安全吗？")
+
+    assert "unsupported_high_risk_claim:material_safety" not in audited["final_answer_audit"]["issues"]
+
+
 def test_final_answer_auditor_blocks_pinch_answered_as_generic_material():
     response = {
         "intent": "product_question",
@@ -585,3 +643,34 @@ def test_final_answer_auditor_allows_handoff_when_product_card_fact_missing():
     audited = audit_final_answer(response, customer_message="\u8fd9\u4e2a\u53ef\u4ee5\u62c6\u5378\u5417")
 
     assert audited["final_answer_audit"]["passed"] is True
+
+
+def test_visual_media_fallback_requires_attached_identity_matched_dimension_block():
+    base = {
+        "query_fact_type": "dimensions",
+        "i_id": "ITEM-A",
+        "suggested_reply": "亲，下面尺寸图您可以参考。",
+        "reply_blocks": [{
+            "type": "image",
+            "asset_type": "size_image",
+            "media_purpose": "dimension_reference",
+            "i_id": "ITEM-A",
+            "asset_url": "https://asset.example/size.png",
+        }],
+    }
+
+    assert _is_visual_media_answer(base, base["suggested_reply"], {"dimensions"}) is True
+    assert _is_visual_media_answer(
+        {**base, "reply_blocks": [{
+            **base["reply_blocks"][0],
+            "asset_type": "sku_image",
+            "media_purpose": "appearance_image",
+        }]},
+        base["suggested_reply"],
+        {"dimensions"},
+    ) is False
+    assert _is_visual_media_answer(
+        {**base, "reply_blocks": []},
+        base["suggested_reply"],
+        {"dimensions"},
+    ) is False

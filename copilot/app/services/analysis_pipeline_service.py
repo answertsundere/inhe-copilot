@@ -135,6 +135,9 @@ class AnalysisPipelineService:
         stages = list((request.copilot_context or {}).get("analysis_pipeline_input_stages") or [])
         stages.append({"stage": "graph_execution", "status": "completed"})
         identity = self._identity(request)
+        for key in ("product_id", "i_id", "sku_code"):
+            if identity.get(key) not in (None, ""):
+                response.setdefault(key, identity[key])
 
         response, media_stage = self._apply_media_delivery(response, request, identity)
         stages.append(media_stage)
@@ -204,7 +207,8 @@ class AnalysisPipelineService:
                 sku_code=identity["sku_code"] or None,
                 product_id=identity["product_id"],
             )
-            assets = self._pack_media_assets(response, message)
+            fact_type = str((response.get("evidence_debug") or {}).get("query_fact_type") or "")
+            assets = self._pack_media_assets(response, message, identity)
             if assets:
                 recommendation = {
                     "recommended_assets": assets,
@@ -214,7 +218,12 @@ class AnalysisPipelineService:
                 }
             allow_delivery = delivery_enabled and self._is_visual_media_question(message, response)
             response["recommended_assets"] = (
-                select_delivery_assets(recommendation.get("recommended_assets") or [], max_assets=1)
+                select_delivery_assets(
+                    recommendation.get("recommended_assets") or [],
+                    max_assets=1,
+                    query_fact_type=fact_type,
+                    product_identity=identity,
+                )
                 if allow_delivery else []
             )
             response["suggested_reply"] = self._sanitize_media_promise(
@@ -232,6 +241,8 @@ class AnalysisPipelineService:
                 response.get("suggested_reply", ""),
                 response["recommended_assets"],
                 requires_human_review=bool(response.get("requires_human_review")),
+                query_fact_type=fact_type,
+                product_identity=identity,
             ))
             return response, {"stage": "media_delivery", "status": "completed", "attached_media_count": sum(1 for block in response.get("reply_blocks") or [] if block.get("type") in {"image", "video"})}
         except Exception as exc:
@@ -427,19 +438,41 @@ class AnalysisPipelineService:
         return any(term in text for term in _VISUAL_TERMS)
 
     @staticmethod
-    def _pack_media_assets(response: dict[str, Any], message: str) -> list[dict[str, Any]]:
+    def _pack_media_assets(
+        response: dict[str, Any],
+        message: str,
+        product_identity: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         if not AnalysisPipelineService._is_visual_media_question(message, response):
             return []
+        from app.services.media_asset_service import is_delivery_media_asset_eligible
+
         context_used = response.get("context_used") or {}
         pack = context_used.get("product_context_pack") or response.get("product_context_pack") or {}
+        fact_type = str((response.get("evidence_debug") or {}).get("query_fact_type") or "")
         assets = list(pack.get("recommended_assets") or [])
         if assets:
-            return assets
-        fact_type = str((response.get("evidence_debug") or {}).get("query_fact_type") or "")
+            return [
+                item for item in assets
+                if isinstance(item, dict) and is_delivery_media_asset_eligible(
+                    item,
+                    query_fact_type=fact_type,
+                    product_identity=product_identity,
+                )
+            ]
         media_assets = pack.get("media_assets") or []
         if fact_type in {"installation", "detachable"}:
             assets = [item for item in media_assets if str(item.get("asset_type") or "").startswith("install") or str(item.get("media_purpose") or "").startswith("install")]
-        elif fact_type in {"dimensions", "space_fit", "accessories", "packaging"}:
+        elif fact_type in {"dimensions", "space_fit"}:
+            assets = [
+                item for item in media_assets
+                if isinstance(item, dict) and is_delivery_media_asset_eligible(
+                    item,
+                    query_fact_type=fact_type,
+                    product_identity=product_identity,
+                )
+            ]
+        elif fact_type in {"accessories", "packaging"}:
             assets = [item for item in media_assets if str(item.get("asset_type") or "") in {"sku_image", "pack_guide_image", "size_chart_image"} or str(item.get("media_purpose") or "") in {"appearance_image", "packing_list_image", "size_chart_image"}]
         else:
             assets = [item for item in media_assets if str(item.get("asset_type") or "") in {"sku_image", "install_video", "pack_guide_image", "size_chart_image"}]

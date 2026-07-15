@@ -125,7 +125,7 @@ _INTENT_DEFAULTS = {
     "gift_missing": "gift_policy",
     "cleaning_care": "cleaning_care",
     "odor_question": "odor",
-    "material_safety": "material",
+    "material_safety": "material_safety",
     "installation": "installation",
     "aftersales": "aftersales_policy",
 }

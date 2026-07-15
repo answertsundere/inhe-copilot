@@ -357,6 +357,19 @@ Before changing architecture or adding a module:
 7. update this overview only for durable responsibility or data-flow changes;
 8. record production ownership changes in an ADR before implementation.
 
+## Formal Delivery Fail-Closed
+
+The formal path treats requested claims independently. A supported material
+composition clause does not imply a material-safety, certification, child, or
+performance conclusion. Any unresolved requested high-risk claim remains
+human-review-only even when another low-risk claim is supported.
+
+Visual delivery is fact-type scoped. Dimensions and space-fit delivery may use
+only an actual reply block built from an identity-matched dimension reference;
+an appearance or SKU image is not promoted by title text, retrieval score, or
+an answer scenario label. This boundary is enforced before final delivery and
+does not change the shadow decision layers.
+
 ## External Design References
 
 - Anthropic, *Building effective agents*: prefer simple composable patterns and

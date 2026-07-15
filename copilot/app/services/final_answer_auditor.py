@@ -16,6 +16,7 @@ from typing import Any
 from app import config
 from app.services.customer_facing_safe_handoff_service import customer_facing_safe_handoff_reply
 from app.services.generic_service_rule_service import unsafe_promise_terms
+from app.services.media_asset_service import is_delivery_media_asset_eligible
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,6 @@ _INTENT_TOPIC = {
     "stock_query": "stock_shipping",
     "cleaning_care": "cleaning",
     "odor_question": "odor",
-    "material_safety": "material",
-    "child_safety": "material",
     "aftersales": "aftersales",
 }
 
@@ -164,6 +163,16 @@ _INSTALLATION_AMBIGUOUS_CUES = ("螺丝", "配件", "说明书")
 _INSTALLATION_STRONG_CUES = ("安装", "组装", "怎么装", "装不上", "教程", "打孔", "租房")
 
 _INSTALLATION_STRUCTURE_FACT_TYPES = {"installation", "structure_function", "accessory_usage"}
+_HIGH_RISK_CLAIM_TYPES = {
+    "material_safety",
+    "certification_report",
+    "child_safety",
+    "child_suitability",
+    "pinch_safety",
+    "safety_small_parts",
+    "load_capacity",
+    "stability",
+}
 _INSTALLATION_MEDIA_ASSET_TYPES = {
     "install_video",
     "installation_video",
@@ -278,6 +287,9 @@ def audit_final_answer(
         audit["mode"] = "llm_semantic_consistency_with_hard_safety"
     response["final_answer_audit"] = audit
     response.setdefault("evidence_debug", {})["final_answer_audit"] = audit
+
+    if any(str(issue).startswith("unsupported_high_risk_claim:") for issue in issues):
+        _force_high_risk_handoff_contract(response)
 
     if issues and _no_evidence_controlled_reply_acceptable(response, reply, copilot_context or {}):
         response["final_answer_audit"]["passed"] = True
@@ -547,6 +559,7 @@ def _audit_issues(
 
     if _unsupported_installation_structure_claim(reply, response, expected, copilot_context):
         issues.append("unsupported_installation_structure_claim")
+    issues.extend(_unsupported_high_risk_claims(response, copilot_context))
 
     try:
         from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
@@ -576,6 +589,7 @@ def _hard_safety_issues(
         issues.append("product_card_missing_fact_answered_as_direct")
     if _unsupported_installation_structure_claim(reply, response, copilot_context=copilot_context):
         issues.append("unsupported_installation_structure_claim")
+    issues.extend(_unsupported_high_risk_claims(response, copilot_context))
     try:
         from app.services.no_evidence_reply_policy_service import media_delivery_claim_issues
 
@@ -584,6 +598,84 @@ def _hard_safety_issues(
     except Exception:
         pass
     return _dedupe(issues)
+
+
+def _requested_high_risk_claim_types(response: dict[str, Any]) -> list[str]:
+    """Read already-classified requested claims without re-parsing customer text."""
+    claims: set[str] = set()
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    trace = response.get("answer_trace") if isinstance(response.get("answer_trace"), dict) else {}
+    for container in (
+        response.get("turn_understanding"),
+        debug.get("turn_understanding"),
+        trace.get("turn_understanding"),
+    ):
+        if not isinstance(container, dict):
+            continue
+        for claim in container.get("requested_claims") or []:
+            if isinstance(claim, dict):
+                value = str(claim.get("claim_type") or "").strip().lower()
+            else:
+                value = str(claim or "").strip().lower()
+            if value in _HIGH_RISK_CLAIM_TYPES:
+                claims.add(value)
+    fact_type = str(
+        response.get("query_fact_type")
+        or debug.get("query_fact_type")
+        or trace.get("query_fact_type")
+        or ""
+    ).strip().lower()
+    if fact_type in _HIGH_RISK_CLAIM_TYPES:
+        claims.add(fact_type)
+    intent = str(response.get("intent") or "").strip().lower()
+    if intent == "material_safety":
+        claims.add("material_safety")
+    elif intent == "child_safety":
+        claims.add("child_safety")
+    return sorted(claims)
+
+
+def _unsupported_high_risk_claims(
+    response: dict[str, Any],
+    copilot_context: dict[str, Any],
+) -> list[str]:
+    claim_types = _requested_high_risk_claim_types(response)
+    if not claim_types:
+        return []
+    # A controlled handoff is the required formal outcome when a high-risk
+    # claim is unresolved.  It stays non-sendable through the final sendable
+    # contract, so do not turn a safe handoff into an audit fallback loop.
+    if response.get("requires_human_review"):
+        return []
+    try:
+        from app.services.admitted_answer_context_service import AdmittedAnswerContextService
+
+        context = AdmittedAnswerContextService().build_for_response(
+            response,
+            product_identity={
+                "product_id": response.get("product_id") or copilot_context.get("product_id"),
+                "i_id": response.get("i_id") or copilot_context.get("i_id"),
+                "sku_code": response.get("sku_code") or copilot_context.get("sku_code"),
+            },
+            understanding={
+                "requested_claims": [
+                    {"claim_type": claim_type, "risk_level": "high"}
+                    for claim_type in claim_types
+                ]
+            },
+        )
+    except Exception:
+        return [f"unsupported_high_risk_claim:{claim_type}" for claim_type in claim_types]
+    statuses = {
+        str(item.get("claim_type") or ""): str(item.get("status") or "")
+        for item in context.get("claim_resolutions") or []
+        if isinstance(item, dict)
+    }
+    return [
+        f"unsupported_high_risk_claim:{claim_type}"
+        for claim_type in claim_types
+        if statuses.get(claim_type) != "supported"
+    ]
 
 
 def _unsupported_installation_structure_claim(
@@ -947,19 +1039,74 @@ def _is_visual_media_answer(response: dict[str, Any], reply: str, expected: set[
     visual_topics = {"dimensions", "space_fit", "installation", "detachable", "accessories", "packaging"}
     if not (expected & visual_topics):
         return False
-    has_media = bool(
-        response.get("recommended_assets")
-        or response.get("reply_blocks")
-    )
-    if not has_media:
-        return False
     media_blocks = [b for b in (response.get("reply_blocks") or []) if isinstance(b, dict) and b.get("type") in {"image", "video"}]
-    if not media_blocks and not response.get("recommended_assets"):
+    if not media_blocks:
         return False
+    if expected & {"dimensions", "space_fit"}:
+        fact_type = str(
+            response.get("query_fact_type")
+            or (response.get("evidence_debug") or {}).get("query_fact_type")
+            or "dimensions"
+        )
+        product_identity = _media_product_identity(response)
+        if not any(
+            is_delivery_media_asset_eligible(
+                block,
+                query_fact_type=fact_type,
+                product_identity=product_identity,
+            )
+            for block in media_blocks
+        ):
+            return False
     lowered = reply.lower()
     return any(term in lowered for term in (
         "图", "图片", "尺寸图", "视频", "安装视频", "参考下面", "下面发您",
     ))
+
+
+def _media_product_identity(response: dict[str, Any]) -> dict[str, Any]:
+    """Resolve only canonical product identifiers for media delivery checks."""
+    context_used = response.get("context_used") if isinstance(response.get("context_used"), dict) else {}
+    copilot_context = context_used.get("copilot_context") if isinstance(context_used.get("copilot_context"), dict) else {}
+    pack = response.get("product_context_pack") if isinstance(response.get("product_context_pack"), dict) else {}
+    if not pack and isinstance(context_used.get("product_context_pack"), dict):
+        pack = context_used["product_context_pack"]
+    pack_identity = pack.get("identity") if isinstance(pack.get("identity"), dict) else {}
+    return {
+        key: next(
+            (
+                value
+                for value in (
+                    response.get(key),
+                    copilot_context.get(key),
+                    pack_identity.get(key),
+                )
+                if str(value or "").strip()
+            ),
+            "",
+        )
+        for key in ("product_id", "i_id", "sku_code")
+    }
+
+
+def _force_high_risk_handoff_contract(response: dict[str, Any]) -> None:
+    """Keep unsupported high-risk claims in the supervisor-only path."""
+    response["can_send"] = False
+    response["requires_human_review"] = True
+    response["sendable_reply"] = ""
+    response["reply_status"] = "needs_human_review"
+    delivery = response.get("reply_delivery") if isinstance(response.get("reply_delivery"), dict) else {}
+    response["reply_delivery"] = {
+        **delivery,
+        "auto_send_ready": False,
+        "reason": "unsupported_high_risk_claim",
+    }
+    blocks = response.get("reply_blocks")
+    if isinstance(blocks, list):
+        response["reply_blocks"] = [
+            block for block in blocks
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
 
 
 def _display_product_name(response: dict[str, Any]) -> str:

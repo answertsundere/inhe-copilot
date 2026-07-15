@@ -1396,6 +1396,20 @@ def _media_facts_for_query(
     if not recommended_assets:
         return []
     asset = recommended_assets[0]
+    if query_fact_type in {"dimensions", "space_fit"}:
+        from app.services.media_asset_service import is_delivery_media_asset_eligible
+
+        identity = {
+            "product_id": profile.get("product_id"),
+            "i_id": profile.get("i_id"),
+            "sku_code": profile.get("sku_code"),
+        }
+        if not is_delivery_media_asset_eligible(
+            asset,
+            query_fact_type=query_fact_type,
+            product_identity=identity,
+        ):
+            return []
     asset_id = asset.get("asset_id") or asset.get("id")
     if not asset_id or not asset.get("asset_url"):
         return []

@@ -797,6 +797,43 @@ def test_media_delivery_claim_rejects_catalog_only_wrong_role_and_identity():
     assert media_delivery_claim_issues(missing_identity, "亲，下面图片可参考。") == ["image_block_identity_mismatch"]
 
 
+def test_dimension_delivery_requires_size_role_and_exact_identity():
+    base = {
+        "query_fact_type": "dimensions",
+        "i_id": "IID-A",
+        "reply_blocks": [{
+            "type": "image",
+            "url": "https://asset.example/size.png",
+            "asset_type": "size_image",
+            "media_purpose": "dimension_reference",
+            "i_id": "IID-A",
+        }],
+    }
+
+    assert media_delivery_claim_issues(base, "亲，下面图片可参考。") == []
+
+    ordinary_photo = {
+        **base,
+        "reply_blocks": [{
+            **base["reply_blocks"][0],
+            "asset_type": "sku_image",
+            "media_purpose": "appearance_image",
+            "title": "尺寸参考图",
+        }],
+    }
+    assert media_delivery_claim_issues(ordinary_photo, "亲，下面图片可参考。") == [
+        "dimensions_image_role_or_identity_mismatch"
+    ]
+
+    missing_identity = {
+        **base,
+        "reply_blocks": [{key: value for key, value in base["reply_blocks"][0].items() if key != "i_id"}],
+    }
+    assert media_delivery_claim_issues(missing_identity, "亲，下面图片可参考。") == [
+        "dimensions_image_role_or_identity_mismatch"
+    ]
+
+
 def test_sendable_media_asset_types_reads_installation_image_assets():
     assert get_sendable_media_asset_types({
         "recommended_assets": [{
@@ -807,7 +844,18 @@ def test_sendable_media_asset_types_reads_installation_image_assets():
     }) == {"install_image"}
 
 
-def test_sendable_media_asset_types_adds_space_fit_role_for_size_marked_sku_image():
+def test_sendable_media_asset_types_requires_a_declared_dimension_media_role():
+    assert get_sendable_media_asset_types({
+        "recommended_assets": [{
+            "asset_type": "size_image",
+            "asset_title": "Product specification image",
+            "asset_url": "https://asset.example/size.png",
+            "auto_send_level": "auto",
+        }]
+    }) == {"size_image", "space_fit_image"}
+
+
+def test_sendable_media_asset_types_does_not_promote_size_named_sku_image():
     assert get_sendable_media_asset_types({
         "recommended_assets": [{
             "asset_type": "sku_image",
@@ -815,7 +863,7 @@ def test_sendable_media_asset_types_adds_space_fit_role_for_size_marked_sku_imag
             "asset_url": "https://asset.example/size.png",
             "auto_send_level": "auto",
         }]
-    }) == {"sku_image", "space_fit_image"}
+    }) == {"sku_image"}
 
 
 def test_sendable_media_asset_types_does_not_treat_plain_sku_image_as_space_fit():

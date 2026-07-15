@@ -139,6 +139,18 @@ def test_compound_claims_do_not_promote_material_into_safety_or_moisture():
     assert resolutions["moisture_resistance"]["status"] == "unresolved"
 
 
+def test_material_composition_cannot_admit_a_material_safety_claim():
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_safety"),
+    )
+
+    assert context["direct_product_facts"] == []
+    assert context["claim_resolutions"][0]["status"] == "unresolved"
+    assert context["rejected_evidence"][0]["reason"] == "fact_type_incompatible"
+
+
 def test_conflicting_claim_is_not_reported_as_supported():
     context = AdmittedAnswerContextService().build_for_response(
         {

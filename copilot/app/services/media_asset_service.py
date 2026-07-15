@@ -86,6 +86,20 @@ _ASSET_TYPE_TO_MEDIA_PURPOSE = {
     "other": "other",
 }
 
+# Media may be useful as a customer-facing attachment only when its declared
+# role matches the fact being answered.  In particular, a product appearance
+# photo is not a dimension or space-fit reference merely because its title
+# happens to mention a size.
+_DIMENSION_MEDIA_TYPES = {"size_image", "size_chart_image", "dimension_image"}
+_DIMENSION_MEDIA_PURPOSES = {
+    "size_image",
+    "size_chart",
+    "size_chart_image",
+    "dimension_reference",
+    "space_fit_image",
+}
+_IDENTITY_KEYS = ("product_id", "i_id", "sku_code")
+
 # 旧 scene_tags → 新 answer_scenarios 兼容映射
 _SCENE_TAG_TO_ANSWER_SCENARIO = {
     "dimensions": "dimensions",
@@ -338,6 +352,61 @@ def _asset_identity_safe_for_signals(asset: KBMediaAsset, signals: dict) -> bool
             return False
 
     return _style_scope_matches(asset, signals)
+
+
+def media_asset_matches_product_identity(asset: dict, product_identity: dict | None) -> bool:
+    """Require one exact common identity namespace for fact-specific media.
+
+    Product titles are display hints, not identity namespaces.  Missing media
+    identity therefore cannot be promoted into a direct reference for a known
+    product.
+    """
+    identity = product_identity or {}
+    expected = {
+        key: str(identity.get(key) or "").strip()
+        for key in _IDENTITY_KEYS
+        if str(identity.get(key) or "").strip()
+    }
+    actual = {
+        key: str(asset.get(key) or "").strip()
+        for key in _IDENTITY_KEYS
+        if str(asset.get(key) or "").strip()
+    }
+    common = set(expected).intersection(actual)
+    if not common:
+        return False
+    return all(expected[key] == actual[key] for key in common)
+
+
+def media_asset_matches_fact_type(asset: dict, query_fact_type: str) -> bool:
+    """Return whether an asset has the declared role for a visual fact type."""
+    fact_type = str(query_fact_type or "").strip().lower()
+    asset_type = str(asset.get("asset_type") or "").strip().lower()
+    purpose = str(asset.get("media_purpose") or asset.get("purpose") or "").strip().lower()
+    if fact_type in {"dimensions", "space_fit"}:
+        # A product photo cannot become a dimension reference just because a
+        # title or purpose mentions size. The durable asset role is the
+        # contract that downstream delivery and audit stages can trust.
+        if asset_type in {"sku_image", "product_photo", "appearance_image", "packaging_image", "component_image"}:
+            return False
+        return asset_type in _DIMENSION_MEDIA_TYPES or purpose in _DIMENSION_MEDIA_PURPOSES
+    return True
+
+
+def is_delivery_media_asset_eligible(
+    asset: dict,
+    *,
+    query_fact_type: str = "",
+    product_identity: dict | None = None,
+) -> bool:
+    """Validate the narrow fact-specific delivery contract before attachment."""
+    fact_type = str(query_fact_type or "").strip().lower()
+    if fact_type not in {"dimensions", "space_fit"}:
+        return True
+    return (
+        media_asset_matches_fact_type(asset, fact_type)
+        and media_asset_matches_product_identity(asset, product_identity)
+    )
 
 
 def parse_url_expires(url: str) -> Optional[datetime]:
@@ -646,7 +715,13 @@ def recommend_for_analyze_response(
         return {"recommended_assets": [], "has_unapproved": False, "priority_types": []}
 
 
-def select_delivery_assets(recommended_assets: list[dict] | None, max_assets: int = 1) -> list[dict]:
+def select_delivery_assets(
+    recommended_assets: list[dict] | None,
+    max_assets: int = 1,
+    *,
+    query_fact_type: str = "",
+    product_identity: dict | None = None,
+) -> list[dict]:
     """Return the media blocks that should actually be attached to this reply.
 
     只有 auto_send_level == 'auto' 的素材才进入自动发送计划。
@@ -661,6 +736,12 @@ def select_delivery_assets(recommended_assets: list[dict] | None, max_assets: in
             continue
         # 非 auto 素材不进入自动发送 blocks；未标注时默认按 auto 处理（兼容旧调用/测试）
         if asset.get("auto_send_level", "auto") != "auto":
+            continue
+        if not is_delivery_media_asset_eligible(
+            asset,
+            query_fact_type=query_fact_type,
+            product_identity=product_identity,
+        ):
             continue
         key = (asset_type, url.split("?", 1)[0].lower())
         if key in seen:
@@ -680,6 +761,8 @@ def build_reply_blocks(
     *,
     requires_human_review: bool = False,
     max_assets: int = 1,
+    query_fact_type: str = "",
+    product_identity: dict | None = None,
 ) -> dict:
     """Build an ordered send plan: text first, then approved media blocks.
 
@@ -706,6 +789,13 @@ def build_reply_blocks(
             continue
         # 非 auto 素材不进入自动发送 blocks；未标注时默认按 auto 处理（兼容旧调用/测试）
         if asset.get("auto_send_level", "auto") != "auto":
+            skipped_review += 1
+            continue
+        if not is_delivery_media_asset_eligible(
+            asset,
+            query_fact_type=query_fact_type,
+            product_identity=product_identity,
+        ):
             skipped_review += 1
             continue
         blocks.append({

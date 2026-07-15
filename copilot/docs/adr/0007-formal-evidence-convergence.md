@@ -90,6 +90,21 @@ minimal-context exclusion, partial claim resolution, and feature-flag-off
 behavior. Trace and snapshot persistence observe the selected evidence emitted
 by the graph response.
 
+## Claim And Media Fail-Closed Boundaries
+
+Material composition is a separate claim from material safety. A reviewed
+direct composition field can support only composition; safety, non-toxicity,
+food-grade, formaldehyde, certification, child suitability, child safety,
+pinch safety, stability, and load claims each require reviewed, direct,
+identity-matched evidence for that same claim. An unresolved high-risk claim
+keeps the formal response in human review with an empty sendable reply.
+
+Media remains a delivery reference, not a product fact. For dimensions and
+space fit, an automatically attached image must be approved/usable, share an
+exact identity namespace with the current product, declare a size-chart or
+dimension-reference role, and appear in the current reply blocks. Appearance,
+SKU, packaging, component, and display images cannot satisfy that contract.
+
 ## Real-Derived Positive Validation Gate
 
 Synthetic fixtures prove only the deterministic contract. Before any supervisor

@@ -336,6 +336,18 @@ def _mark_no_evidence_final_answer_audit_passed(response: dict[str, Any]) -> Non
 
 
 def _media_delivery_ready(response: dict[str, Any]) -> bool:
+    from app.services.media_asset_service import is_delivery_media_asset_eligible
+
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    fact_type = str(response.get("query_fact_type") or debug.get("query_fact_type") or "")
+    context = response.get("context_used") if isinstance(response.get("context_used"), dict) else {}
+    pack = context.get("product_context_pack") if isinstance(context.get("product_context_pack"), dict) else {}
+    pack_identity = pack.get("identity") if isinstance(pack.get("identity"), dict) else {}
+    identity = {
+        "product_id": response.get("product_id") or pack_identity.get("product_id"),
+        "i_id": response.get("i_id") or pack_identity.get("i_id"),
+        "sku_code": response.get("sku_code") or pack_identity.get("sku_code") or pack_identity.get("sku"),
+    }
     media_block_urls: set[str] = set()
     for block in response.get("reply_blocks") or []:
         if not isinstance(block, dict):
@@ -346,6 +358,12 @@ def _media_delivery_ready(response: dict[str, Any]) -> bool:
         if not url:
             continue
         if block.get("send_mode") not in ("", None, "auto_when_platform_connected"):
+            continue
+        if not is_delivery_media_asset_eligible(
+            block,
+            query_fact_type=fact_type,
+            product_identity=identity,
+        ):
             continue
         media_block_urls.add(_canonical_media_url(url))
     if not media_block_urls:
@@ -359,6 +377,12 @@ def _media_delivery_ready(response: dict[str, Any]) -> bool:
         if not url:
             continue
         if str(asset.get("auto_send_level") or "auto").lower() != "auto":
+            continue
+        if not is_delivery_media_asset_eligible(
+            asset,
+            query_fact_type=fact_type,
+            product_identity=identity,
+        ):
             continue
         auto_asset_urls.add(_canonical_media_url(url))
     return bool(media_block_urls & auto_asset_urls)

@@ -100,7 +100,7 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
     assert data["reply_blocks"][1]["send_mode"] == "auto_when_platform_connected"
 
 
-def test_analyze_allows_space_fit_pack_media_as_send_blocks(client, monkeypatch):
+def test_analyze_allows_identity_matched_size_media_as_send_blocks(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 
     def fake_execute_analysis(**kwargs):
@@ -112,10 +112,11 @@ def test_analyze_allows_space_fit_pack_media_as_send_blocks(client, monkeypatch)
                 "product_context_pack": {
                     "recommended_assets": [{
                         "asset_id": 14,
-                        "asset_type": "sku_image",
-                        "asset_title": "Size marked product image",
-                        "asset_url": "https://example.com/size-marked.png",
-                        "product_name": "Test product",
+                            "asset_type": "size_image",
+                            "asset_title": "Dimension reference",
+                            "asset_url": "https://example.com/size-marked.png",
+                            "product_name": "Test product",
+                            "i_id": "IID-A",
                         "auto_send_level": "auto",
                     }]
                 },
@@ -131,12 +132,13 @@ def test_analyze_allows_space_fit_pack_media_as_send_blocks(client, monkeypatch)
     response = client.post("/api/analyze", json={
         "message": "small bedroom, can it fit?",
         "product_name": "Test product",
+        "copilot_context": {"i_id": "IID-A"},
         "conversation_id": "pytest_pack_media_space_fit",
     })
 
     assert response.status_code == 200
     data = response.get_json()
-    assert data["recommended_assets"][0]["asset_type"] == "sku_image"
+    assert data["recommended_assets"][0]["asset_type"] == "size_image"
     assert [block["type"] for block in data["reply_blocks"]] == ["text", "image"]
     assert data["reply_delivery"]["auto_send_ready"] is True
 
@@ -177,7 +179,7 @@ def test_analyze_blocks_space_fit_plain_sku_image_auto_send(client, monkeypatch)
 
     assert response.status_code == 200
     data = response.get_json()
-    assert data["recommended_assets"][0]["asset_type"] == "sku_image"
+    assert data["recommended_assets"] == []
     assert data["reply_delivery"]["auto_send_ready"] is False
     assert data["can_send"] is False
     assert data["requires_human_review"] is True

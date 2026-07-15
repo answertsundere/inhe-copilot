@@ -45,11 +45,14 @@ PLACEHOLDER_TERMS = (
 COMPATIBLE_FACT_TYPES = {
     "installation_media": {"installation", "installation_media", "installation_media_request"},
     "material_composition": {"material", "material_composition"},
-    "material_safety": {"material", "material_composition", "material_safety", "odor", "certification_report"},
+    # High-risk claims require evidence explicitly reviewed for that claim.
+    # A composition fact can answer "what is it made of", but cannot establish
+    # non-toxicity, certification, child safety, or another safety conclusion.
+    "material_safety": {"material_safety"},
     "moisture_resistance": {"moisture_resistance"},
-    "pinch_safety": {"pinch_safety", "structure_function", "structure", "material"},
-    "child_safety": {"child_safety", "structure_function", "structure", "material"},
-    "child_suitability": {"child_suitability", "structure_function", "structure", "material", "age_range"},
+    "pinch_safety": {"pinch_safety"},
+    "child_safety": {"child_safety"},
+    "child_suitability": {"child_suitability"},
 }
 
 _IDENTITY_KEYS = ("sku_code", "i_id", "product_id")

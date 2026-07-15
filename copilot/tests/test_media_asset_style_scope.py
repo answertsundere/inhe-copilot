@@ -191,12 +191,13 @@ def test_product_context_pack_respects_auto_send_level(db):
     from app.services.product_context_pack_service import _media_facts_for_query
 
     auto_asset = {"asset_id": 1, "asset_type": "size_image", "asset_url": "http://t/size.png",
-                  "asset_title": "尺寸图", "auto_send_level": "auto", "answer_scenarios": ["dimensions"],
-                  "scene_tags": [], "applicable_style": {"scope_type": "all"}, "media_purpose": "size_image"}
+                      "asset_title": "尺寸图", "auto_send_level": "auto", "answer_scenarios": ["dimensions"],
+                      "scene_tags": [], "applicable_style": {"scope_type": "all"}, "media_purpose": "size_image",
+                      "i_id": "IID-A"}
     review_asset = dict(auto_asset)
     review_asset["auto_send_level"] = "review"
 
-    facts = _media_facts_for_query({"product_name": "测试商品"}, [auto_asset], query="尺寸", query_fact_type="dimensions")
+    facts = _media_facts_for_query({"product_name": "测试商品", "i_id": "IID-A"}, [auto_asset], query="尺寸", query_fact_type="dimensions")
     assert len(facts) == 1
 
     facts = _media_facts_for_query({"product_name": "测试商品"}, [review_asset], query="尺寸", query_fact_type="dimensions")

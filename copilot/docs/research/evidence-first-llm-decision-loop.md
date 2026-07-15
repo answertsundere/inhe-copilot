@@ -124,6 +124,16 @@ unqualified request with several attribute candidates is selection-ambiguous.
 The isolated audit diagnostic is fail-closed: final-audit/semantic failures or
 diagnostic errors make the preview evaluation fail.
 
+## Formal Claim And Media Evaluation
+
+Formal delivery evaluation compares requested claims with evidence admitted for
+those same claims. Related context is not sufficient for a stronger safety,
+certification, child, or performance conclusion. The runtime records evidence
+UIDs and deterministic reasons rather than private reasoning. The read-only
+`scripts/run_full_answer_validation.py` runner records dataset/API metadata,
+deduplicated selected evidence, high-risk delivery failures, and media-role
+mismatches without sending expected outcomes to the Agent.
+
 ## Evidence convergence diagnostics
 
 The Product Context Pack, formal `selected_evidence`, admission context, and
