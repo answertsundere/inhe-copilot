@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,17 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def _configure_fixture_database_from_argv(argv: list[str]) -> None:
+    """Set the isolated fixture DB before config/app modules are imported."""
+    for index, value in enumerate(argv):
+        if value == "--benchmark-db" and index + 1 < len(argv):
+            os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = argv[index + 1]
+            return
+        if value.startswith("--benchmark-db="):
+            os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = value.split("=", 1)[1]
+            return
 
 
 def _load_dotenv_safely() -> None:
@@ -22,6 +34,7 @@ def _load_dotenv_safely() -> None:
         pass
 
 
+_configure_fixture_database_from_argv(sys.argv[1:])
 _load_dotenv_safely()
 
 from app.db import init_db
@@ -144,6 +157,7 @@ def run_benchmark_report(
     include_full_trace: bool = False,
     db_factory=None,
     agent_callable=None,
+    dataset_metadata: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     result = AgentBenchmarkRunnerService(agent_callable=agent_callable).run_scenarios(
         status=status,
@@ -153,12 +167,16 @@ def run_benchmark_report(
         run_uid=run_uid,
         include_full_trace=include_full_trace,
         db_factory=db_factory,
+        dataset_metadata=dataset_metadata,
     )
     if json_output:
         _write_json(json_output, result)
     if excel_output:
         _write_excel(excel_output, result)
-    exit_code = 1 if fail_on_failure and result.get("failed_count", result.get("failed", 0)) else 0
+    if result.get("invalid_run"):
+        exit_code = 2
+    else:
+        exit_code = 1 if fail_on_failure and result.get("failed_count", result.get("failed", 0)) else 0
     return result, exit_code
 
 
@@ -175,9 +193,37 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--excel-output", default="")
     parser.add_argument("--fail-on-failure", action="store_true")
     parser.add_argument("--include-full-trace", action="store_true")
+    parser.add_argument("--fixture", default="")
+    parser.add_argument("--fixture-manifest", default="")
+    parser.add_argument("--benchmark-db", default="")
     args = parser.parse_args(argv)
 
-    init_db()
+    db_factory = None
+    dataset_metadata = None
+    if args.fixture:
+        if not args.benchmark_db:
+            parser.error("--fixture requires --benchmark-db")
+        from app.services.agent_benchmark_fixture_service import (
+            BenchmarkFixtureError,
+            fixture_database_metadata,
+            fixture_session_factory,
+            load_fixture,
+        )
+
+        try:
+            _payload, manifest = load_fixture(args.fixture, args.fixture_manifest or None)
+            metadata = fixture_database_metadata(args.benchmark_db)
+            for key in ("dataset_id", "dataset_version", "schema_version", "fixture_sha256"):
+                if metadata.get(key) != str(manifest.get(key, "")):
+                    raise BenchmarkFixtureError(f"fixture database mismatch: {key}")
+            db_factory = fixture_session_factory(args.benchmark_db)
+            dataset_metadata = {**metadata, "database_path": str(Path(args.benchmark_db).resolve())}
+        except BenchmarkFixtureError as exc:
+            parser.error(str(exc))
+    elif args.benchmark_db:
+        parser.error("--benchmark-db is only supported with --fixture")
+    else:
+        init_db()
     result, exit_code = run_benchmark_report(
         status=args.status,
         scenario_type=args.scenario_type,
@@ -188,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         excel_output=args.excel_output,
         fail_on_failure=bool(args.fail_on_failure),
         include_full_trace=bool(args.include_full_trace),
+        db_factory=db_factory,
+        dataset_metadata=dataset_metadata,
     )
     print(json.dumps(sanitize_obj(result), ensure_ascii=False, indent=2))
     return exit_code

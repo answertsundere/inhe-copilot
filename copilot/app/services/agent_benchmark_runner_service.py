@@ -299,6 +299,7 @@ class AgentBenchmarkRunnerService:
         run_uid: str | None = None,
         include_full_trace: bool = False,
         db_factory=None,
+        dataset_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from app.db import SessionLocal
         from app.models.eval_tables import AgentBenchmarkScenario
@@ -322,6 +323,7 @@ class AgentBenchmarkRunnerService:
             results = [self._run_one(row, run_uid=benchmark_run_uid, include_full_trace=include_full_trace) for row in rows]
             passed = sum(1 for item in results if item.get("passed"))
             total = len(results)
+            invalid_run = total == 0
             failure_reasons: dict[str, int] = {}
             by_scenario_type: dict[str, dict[str, Any]] = {}
             by_query_fact_type: dict[str, dict[str, Any]] = {}
@@ -344,6 +346,9 @@ class AgentBenchmarkRunnerService:
                 "passed_count": passed,
                 "failed_count": total - passed,
                 "pass_rate": round(passed / total, 4) if total else 0,
+                "invalid_run": invalid_run,
+                "invalid_reason": "no_scenarios" if invalid_run else "",
+                "dataset": sanitize_obj(dataset_metadata or {"database_source": "default_database"}),
                 "failure_reasons": failure_reasons,
                 "by_scenario_type": by_scenario_type,
                 "by_query_fact_type": by_query_fact_type,

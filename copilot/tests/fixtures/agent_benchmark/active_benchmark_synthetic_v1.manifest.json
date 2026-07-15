@@ -1,0 +1,19 @@
+{
+  "dataset_id": "active-benchmark-synthetic-v1",
+  "dataset_version": "1.0.0",
+  "schema_version": "agent-benchmark-fixture/v1",
+  "reviewed_at": "2026-07-15",
+  "fixture_sha256": "4c2156a1867df17bbb4e4ce4d2a5ca1fc0be1079671b1983055d3fcbef87574f",
+  "scenario_count": 22,
+  "category_counts": {
+    "aftersales": 3,
+    "installation": 14,
+    "promotion": 5
+  },
+  "privacy_declaration": {
+    "contains_real_customer_conversations": false,
+    "contains_production_order_identifiers": false,
+    "contains_production_product_identifiers": false,
+    "scan_passed": true
+  }
+}

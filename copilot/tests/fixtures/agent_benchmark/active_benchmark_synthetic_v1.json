@@ -1,0 +1,1144 @@
+{
+  "dataset_id": "active-benchmark-synthetic-v1",
+  "dataset_version": "1.0.0",
+  "schema_version": "agent-benchmark-fixture/v1",
+  "reviewed_at": "2026-07-15",
+  "source": {
+    "kind": "semantic_projection_of_reviewed_active_benchmark",
+    "raw_transcript_included": false,
+    "source_identifiers_included": false,
+    "sidecar_identity_mode": "synthetic"
+  },
+  "scenarios": [
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-001",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-001",
+      "status": "active",
+      "title": "aftersales/aftersales/case-001",
+      "scenario_type": "aftersales",
+      "sidecar_context": {
+        "product_title": "基准商品 01",
+        "sku_code": "FIXTURE-SKU-01",
+        "i_id": "FIXTURE-IID-01",
+        "order_id": "FIXTURE-ORDER-01"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-001-turn-1",
+          "speaker": "buyer",
+          "text": "收到商品后发现有破损，请协助核对售后处理。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，先别着急，我帮您按当前订单和问题情况核实。麻烦您补充订单信息、问题位置和实物照片，我这边转人工确认后再给您处理补发、换货或退款方案。",
+        "key_points": [
+          "先别着急",
+          "订单信息",
+          "实物照片",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "直接补发",
+          "直接退款",
+          "一定赔付"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "aftersales",
+        "source_turn_uid": "active-benchmark-synthetic-v1-001-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-002",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-002",
+      "status": "active",
+      "title": "aftersales/aftersales/case-002",
+      "scenario_type": "aftersales",
+      "sidecar_context": {
+        "product_title": "基准商品 02",
+        "sku_code": "FIXTURE-SKU-02",
+        "i_id": "FIXTURE-IID-02",
+        "order_id": "FIXTURE-ORDER-02"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-002-turn-1",
+          "speaker": "buyer",
+          "text": "收到商品后发现有破损，请协助核对售后处理。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，先别着急，我帮您按当前订单和问题情况核实。麻烦您补充订单信息、问题位置和实物照片，我这边转人工确认后再给您处理补发、换货或退款方案。",
+        "key_points": [
+          "先别着急",
+          "订单信息",
+          "实物照片",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "直接补发",
+          "直接退款",
+          "一定赔付"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "aftersales",
+        "source_turn_uid": "active-benchmark-synthetic-v1-002-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-003",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-003",
+      "status": "active",
+      "title": "aftersales/aftersales/case-003",
+      "scenario_type": "aftersales",
+      "sidecar_context": {
+        "product_title": "基准商品 03",
+        "sku_code": "FIXTURE-SKU-03",
+        "i_id": "FIXTURE-IID-03",
+        "order_id": "FIXTURE-ORDER-03"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-003-turn-1",
+          "speaker": "buyer",
+          "text": "收到商品后发现有破损，请协助核对售后处理。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，先别着急，我帮您按当前订单和问题情况核实。麻烦您补充订单信息、问题位置和实物照片，我这边转人工确认后再给您处理补发、换货或退款方案。",
+        "key_points": [
+          "先别着急",
+          "订单信息",
+          "实物照片",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "直接补发",
+          "直接退款",
+          "一定赔付"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "aftersales",
+        "source_turn_uid": "active-benchmark-synthetic-v1-003-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-004",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-004",
+      "status": "active",
+      "title": "installation/installation/case-004",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 04",
+        "sku_code": "FIXTURE-SKU-04",
+        "i_id": "FIXTURE-IID-04",
+        "order_id": "FIXTURE-ORDER-04"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-004-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-004-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-005",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-005",
+      "status": "active",
+      "title": "installation/installation/case-005",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 05",
+        "sku_code": "FIXTURE-SKU-05",
+        "i_id": "FIXTURE-IID-05",
+        "order_id": "FIXTURE-ORDER-05"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-005-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-005-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-006",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-006",
+      "status": "active",
+      "title": "installation/installation/case-006",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 06",
+        "sku_code": "FIXTURE-SKU-06",
+        "i_id": "FIXTURE-IID-06",
+        "order_id": "FIXTURE-ORDER-06"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-006-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-006-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-007",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-007",
+      "status": "active",
+      "title": "installation/installation/case-007",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 07",
+        "sku_code": "FIXTURE-SKU-07",
+        "i_id": "FIXTURE-IID-07",
+        "order_id": "FIXTURE-ORDER-07"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-007-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-007-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-008",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-008",
+      "status": "active",
+      "title": "installation/installation/case-008",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 08",
+        "sku_code": "FIXTURE-SKU-08",
+        "i_id": "FIXTURE-IID-08",
+        "order_id": "FIXTURE-ORDER-08"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-008-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-008-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-009",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-009",
+      "status": "active",
+      "title": "installation/installation/case-009",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 09",
+        "sku_code": "FIXTURE-SKU-09",
+        "i_id": "FIXTURE-IID-09",
+        "order_id": "FIXTURE-ORDER-09"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-009-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-009-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-010",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-010",
+      "status": "active",
+      "title": "installation/installation/case-010",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 10",
+        "sku_code": "FIXTURE-SKU-10",
+        "i_id": "FIXTURE-IID-10",
+        "order_id": "FIXTURE-ORDER-10"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-010-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-010-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-011",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-011",
+      "status": "active",
+      "title": "installation/installation/case-011",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 11",
+        "sku_code": "FIXTURE-SKU-11",
+        "i_id": "FIXTURE-IID-11",
+        "order_id": "FIXTURE-ORDER-11"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-011-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-011-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-012",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-012",
+      "status": "active",
+      "title": "installation/installation/case-012",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 12",
+        "sku_code": "FIXTURE-SKU-12",
+        "i_id": "FIXTURE-IID-12",
+        "order_id": "FIXTURE-ORDER-12"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-012-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-012-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-013",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-013",
+      "status": "active",
+      "title": "installation/installation/case-013",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 13",
+        "sku_code": "FIXTURE-SKU-13",
+        "i_id": "FIXTURE-IID-13",
+        "order_id": "FIXTURE-ORDER-13"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-013-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-013-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-014",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-014",
+      "status": "active",
+      "title": "installation/installation/case-014",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 14",
+        "sku_code": "FIXTURE-SKU-14",
+        "i_id": "FIXTURE-IID-14",
+        "order_id": "FIXTURE-ORDER-14"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-014-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-014-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-015",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-015",
+      "status": "active",
+      "title": "installation/installation/case-015",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 15",
+        "sku_code": "FIXTURE-SKU-15",
+        "i_id": "FIXTURE-IID-15",
+        "order_id": "FIXTURE-ORDER-15"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-015-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-015-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-016",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-016",
+      "status": "active",
+      "title": "installation/installation/case-016",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 16",
+        "sku_code": "FIXTURE-SKU-16",
+        "i_id": "FIXTURE-IID-16",
+        "order_id": "FIXTURE-ORDER-16"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-016-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-016-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-017",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-017",
+      "status": "active",
+      "title": "installation/installation/case-017",
+      "scenario_type": "installation",
+      "sidecar_context": {
+        "product_title": "基准商品 17",
+        "sku_code": "FIXTURE-SKU-17",
+        "i_id": "FIXTURE-IID-17",
+        "order_id": "FIXTURE-ORDER-17"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-017-turn-1",
+          "speaker": "buyer",
+          "text": "请核对这款商品的安装资料和操作步骤。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，我先帮您按当前这款商品的安装资料核对。现在没有确认到可直接发送的安装视频、安装图或说明书，我不直接承诺有安装视频；您卡在哪一步可以拍照发来，我这边转人工按这款结构帮您确认。",
+        "key_points": [
+          "按当前这款商品",
+          "不直接承诺有安装视频",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "一定有安装视频",
+          "通用安装方式都适用",
+          "随便装"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "installation",
+        "source_turn_uid": "active-benchmark-synthetic-v1-017-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-018",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-018",
+      "status": "active",
+      "title": "promotion/promotion/case-018",
+      "scenario_type": "promotion",
+      "sidecar_context": {
+        "product_title": "基准商品 18",
+        "sku_code": "FIXTURE-SKU-18",
+        "i_id": "FIXTURE-IID-18",
+        "order_id": "FIXTURE-ORDER-18"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-018-turn-1",
+          "speaker": "buyer",
+          "text": "请核对当前页面可用的优惠活动。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，优惠需要按当前商品和下单页正在生效的活动核对。我不能直接承诺额外降价或最低价，您可以把下单页优惠截图发来，我这边转人工帮您确认能用的券、满减或活动口径。",
+        "key_points": [
+          "按当前商品",
+          "下单页",
+          "不能直接承诺额外降价",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "保证最低价",
+          "一定能便宜",
+          "额外优惠"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "promotion",
+        "source_turn_uid": "active-benchmark-synthetic-v1-018-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-019",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-019",
+      "status": "active",
+      "title": "promotion/promotion/case-019",
+      "scenario_type": "promotion",
+      "sidecar_context": {
+        "product_title": "基准商品 19",
+        "sku_code": "FIXTURE-SKU-19",
+        "i_id": "FIXTURE-IID-19",
+        "order_id": "FIXTURE-ORDER-19"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-019-turn-1",
+          "speaker": "buyer",
+          "text": "请核对当前页面可用的优惠活动。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，优惠需要按当前商品和下单页正在生效的活动核对。我不能直接承诺额外降价或最低价，您可以把下单页优惠截图发来，我这边转人工帮您确认能用的券、满减或活动口径。",
+        "key_points": [
+          "按当前商品",
+          "下单页",
+          "不能直接承诺额外降价",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "保证最低价",
+          "一定能便宜",
+          "额外优惠"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "promotion",
+        "source_turn_uid": "active-benchmark-synthetic-v1-019-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-020",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-020",
+      "status": "active",
+      "title": "promotion/promotion/case-020",
+      "scenario_type": "promotion",
+      "sidecar_context": {
+        "product_title": "基准商品 20",
+        "sku_code": "FIXTURE-SKU-20",
+        "i_id": "FIXTURE-IID-20",
+        "order_id": "FIXTURE-ORDER-20"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-020-turn-1",
+          "speaker": "buyer",
+          "text": "请核对当前页面可用的优惠活动。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，优惠需要按当前商品和下单页正在生效的活动核对。我不能直接承诺额外降价或最低价，您可以把下单页优惠截图发来，我这边转人工帮您确认能用的券、满减或活动口径。",
+        "key_points": [
+          "按当前商品",
+          "下单页",
+          "不能直接承诺额外降价",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "保证最低价",
+          "一定能便宜",
+          "额外优惠"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "promotion",
+        "source_turn_uid": "active-benchmark-synthetic-v1-020-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-021",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-021",
+      "status": "active",
+      "title": "promotion/promotion/case-021",
+      "scenario_type": "promotion",
+      "sidecar_context": {
+        "product_title": "基准商品 21",
+        "sku_code": "FIXTURE-SKU-21",
+        "i_id": "FIXTURE-IID-21",
+        "order_id": "FIXTURE-ORDER-21"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-021-turn-1",
+          "speaker": "buyer",
+          "text": "请核对当前页面可用的优惠活动。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，优惠需要按当前商品和下单页正在生效的活动核对。我不能直接承诺额外降价或最低价，您可以把下单页优惠截图发来，我这边转人工帮您确认能用的券、满减或活动口径。",
+        "key_points": [
+          "按当前商品",
+          "下单页",
+          "不能直接承诺额外降价",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "保证最低价",
+          "一定能便宜",
+          "额外优惠"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "promotion",
+        "source_turn_uid": "active-benchmark-synthetic-v1-021-turn-1"
+      }
+    },
+    {
+      "scenario_uid": "active-benchmark-synthetic-v1-022",
+      "source_type": "benchmark_fixture",
+      "source_uid": "active-benchmark-synthetic-v1-source-022",
+      "status": "active",
+      "title": "promotion/promotion/case-022",
+      "scenario_type": "promotion",
+      "sidecar_context": {
+        "product_title": "基准商品 22",
+        "sku_code": "FIXTURE-SKU-22",
+        "i_id": "FIXTURE-IID-22",
+        "order_id": "FIXTURE-ORDER-22"
+      },
+      "conversation_turns": [
+        {
+          "turn_uid": "active-benchmark-synthetic-v1-022-turn-1",
+          "speaker": "buyer",
+          "text": "请核对当前页面可用的优惠活动。"
+        }
+      ],
+      "expected_reply": {
+        "expected_reply": "亲，优惠需要按当前商品和下单页正在生效的活动核对。我不能直接承诺额外降价或最低价，您可以把下单页优惠截图发来，我这边转人工帮您确认能用的券、满减或活动口径。",
+        "key_points": [
+          "按当前商品",
+          "下单页",
+          "不能直接承诺额外降价",
+          "转人工"
+        ],
+        "forbidden_claims": [
+          "保证最低价",
+          "一定能便宜",
+          "额外优惠"
+        ],
+        "must_handoff": true,
+        "auto_send_allowed": false,
+        "needs_review": false,
+        "draft_source": "suggested_expected_reply",
+        "quality": "valid",
+        "block_reason": ""
+      },
+      "rubric": {
+        "fact_correctness": true,
+        "empathy": true,
+        "next_step": true,
+        "evidence_grounding": true,
+        "tone": "customer_service"
+      },
+      "metadata": {
+        "query_fact_type": "promotion",
+        "source_turn_uid": "active-benchmark-synthetic-v1-022-turn-1"
+      }
+    }
+  ]
+}
