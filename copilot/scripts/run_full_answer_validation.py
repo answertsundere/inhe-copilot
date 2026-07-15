@@ -66,6 +66,35 @@ def _evidence_uids(items: list[dict[str, Any]]) -> list[str]:
     return [value for value in values if value]
 
 
+def _evidence_summary(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Keep only provenance needed for QA; do not export full retrieved text."""
+    return [
+        {
+            "evidence_uid": str(item.get("evidence_uid") or item.get("evidence_id") or item.get("chunk_id") or ""),
+            "source": str(item.get("source") or item.get("source_type") or ""),
+            "evidence_role": str(item.get("evidence_role") or item.get("role") or ""),
+            "fact_type": str(item.get("fact_type") or ""),
+            "attribute_key": str(item.get("attribute_key") or ""),
+        }
+        for item in items
+    ]
+
+
+def _reply_block_summary(response: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "type": str(block.get("type") or ""),
+            "asset_type": str(block.get("asset_type") or ""),
+            "media_purpose": str(block.get("media_purpose") or block.get("purpose") or ""),
+            "product_id": str(block.get("product_id") or ""),
+            "i_id": str(block.get("i_id") or ""),
+            "sku_code": str(block.get("sku_code") or ""),
+        }
+        for block in (response.get("reply_blocks") or [])
+        if isinstance(block, dict)
+    ]
+
+
 def _product_identity(case: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
     context = case.get("copilot_context") if isinstance(case.get("copilot_context"), dict) else {}
     return {
@@ -144,7 +173,12 @@ def evaluate_response(case: dict[str, Any], response: dict[str, Any]) -> dict[st
         "can_send": bool(response.get("can_send")),
         "requires_human_review": bool(response.get("requires_human_review")),
         "reply_status": str(response.get("reply_status") or ""),
+        "suggested_reply": str(response.get("suggested_reply") or ""),
+        "draft_reply": str(response.get("draft_reply") or ""),
+        "sendable_reply": str(response.get("sendable_reply") or ""),
         "selected_evidence_uids": uids,
+        "selected_evidence": _evidence_summary(selected),
+        "reply_blocks": _reply_block_summary(response),
         **admission,
         "issues": issues,
         "passed": not issues,

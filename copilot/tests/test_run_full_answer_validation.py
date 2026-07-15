@@ -22,12 +22,18 @@ def test_evaluator_rejects_duplicate_evidence_and_unsafe_high_risk_delivery():
             "can_send": True,
             "requires_human_review": False,
             "sendable_reply": "unsafe",
+            "suggested_reply": "draft for the supervisor",
             "selected_evidence": [{"evidence_uid": "same"}, {"evidence_uid": "same"}],
         },
     )
     assert set(result["issues"]) == {
         "selected_evidence_duplicate", "unsafe_auto_send", "unsupported_high_risk_claim",
     }
+    assert result["suggested_reply"] == "draft for the supervisor"
+    assert result["selected_evidence"] == [
+        {"evidence_uid": "same", "source": "", "evidence_role": "", "fact_type": "", "attribute_key": ""},
+        {"evidence_uid": "same", "source": "", "evidence_role": "", "fact_type": "", "attribute_key": ""},
+    ]
 
 
 def test_evaluator_rejects_appearance_media_for_dimension_delivery():
