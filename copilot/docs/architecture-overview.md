@@ -245,6 +245,13 @@ SQLite currently mixes knowledge, operations, traces, evaluation, and memory.
 Web and resident workers also share process ownership. These are later runtime
 separation tasks, not reasons to split the domain into microservices now.
 
+The runtime exposes liveness separately from readiness. Liveness confirms that
+the Flask process can serve diagnostics. Readiness verifies the configured
+formal knowledge database through read-only SQLite access, including required
+tables and non-empty knowledge, chunk, and KBQA counts. Product-scoped analysis
+fails closed before graph execution when readiness is false; formal QA performs
+the same preflight and does not manufacture a RAG-miss evaluation run.
+
 ## Formal, Shadow, And Planned Boundaries
 
 | Capability | Status | May affect final reply or `can_send` |

@@ -347,7 +347,9 @@ def _runtime_metadata(api_url: str) -> dict[str, Any]:
     suffix = "/api/analyze"
     if not parsed.path.endswith(suffix):
         return {"status": "unavailable", "reason": "api_path_not_supported"}
-    runtime_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path[: -len(suffix)] + "/api/runtime/version", "", ""))
+    runtime_base = parsed.path[: -len(suffix)] + "/api/runtime"
+    runtime_url = urlunsplit((parsed.scheme, parsed.netloc, runtime_base + "/version", "", ""))
+    readiness_url = urlunsplit((parsed.scheme, parsed.netloc, runtime_base + "/readiness", "", ""))
     try:
         with urlopen(runtime_url, timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -355,6 +357,20 @@ def _runtime_metadata(api_url: str) -> dict[str, Any]:
         return {"status": "unavailable"}
     if not isinstance(payload, dict):
         return {"status": "unavailable"}
+    try:
+        with urlopen(readiness_url, timeout=5) as response:
+            readiness = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        if exc.code != 503:
+            return {"status": "unavailable", "reason": "runtime_readiness_unavailable"}
+        try:
+            readiness = json.loads(exc.read().decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return {"status": "unavailable", "reason": "runtime_readiness_unavailable"}
+    except (URLError, TimeoutError, json.JSONDecodeError):
+        return {"status": "unavailable", "reason": "runtime_readiness_unavailable"}
+    if not isinstance(readiness, dict):
+        return {"status": "unavailable", "reason": "runtime_readiness_unavailable"}
     return {
         "status": "available",
         "api_url": _safe_url(runtime_url),
@@ -362,6 +378,7 @@ def _runtime_metadata(api_url: str) -> dict[str, Any]:
         "branch": str(payload.get("branch") or "unavailable"),
         "boot_time": str(payload.get("boot_time") or "unavailable"),
         "feature_flags": payload.get("feature_flags") if isinstance(payload.get("feature_flags"), dict) else "unavailable",
+        "readiness": readiness,
     }
 
 
@@ -444,6 +461,13 @@ def main() -> int:
     base_metadata["runtime"] = runtime
     if args.expected_api_commit and runtime.get("runtime_commit") != args.expected_api_commit:
         return _invalid_run(target, "expected_api_commit_mismatch", base_metadata, schema_error=False)
+    readiness = runtime.get("readiness") if isinstance(runtime.get("readiness"), dict) else {}
+    if runtime.get("status") != "available" or readiness.get("ready") is not True:
+        return _invalid_run(target, "runtime_not_ready", base_metadata, schema_error=False)
+    runtime_db = base_metadata["runtime_db"]
+    reported_db = readiness.get("database") if isinstance(readiness.get("database"), dict) else {}
+    if args.runtime_db and runtime_db.get("fingerprint") != reported_db.get("fingerprint"):
+        return _invalid_run(target, "runtime_db_fingerprint_mismatch", base_metadata, schema_error=False)
 
     rows: list[dict[str, Any]] = []
     counters = {

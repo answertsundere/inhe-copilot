@@ -59,6 +59,10 @@ def pipeline_harness(monkeypatch):
         return result
 
     monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {"ready": True, "status": "ready", "reasons": [], "knowledge": {}, "database": {}},
+    )
     monkeypatch.setattr(final_orchestrator, "orchestrate_final_response", fake_final)
     monkeypatch.setattr(
         media,
@@ -212,6 +216,10 @@ def test_pipeline_does_not_retry_after_post_processor_failure(monkeypatch):
         raise AssertionError("test double must execute response_post_processor")
 
     monkeypatch.setattr(service, "_complete_response", fail_complete)
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {"ready": True, "status": "ready", "reasons": [], "knowledge": {}, "database": {}},
+    )
     monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
 
     response = service.run(_request("api"))
@@ -220,6 +228,31 @@ def test_pipeline_does_not_retry_after_post_processor_failure(monkeypatch):
     assert response["trace_response_stage"] == "pre_final"
     assert response["can_send"] is False
     assert response["sendable_reply"] == ""
+
+
+def test_product_scoped_request_fails_closed_when_runtime_is_not_ready(monkeypatch):
+    import app.services.analysis_execution_service as execution
+
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {
+            "ready": False,
+            "status": "not_ready",
+            "reasons": ["knowledge_entries_empty"],
+            "knowledge": {"entries": 0, "chunks": 0, "kb_qa": 0},
+            "database": {"basename": "knowledge_base.db"},
+        },
+    )
+    monkeypatch.setattr(execution, "execute_analysis", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not analyze")))
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+    assert response["reply_status"] == "needs_human_review"
+    assert response["evidence_debug"]["runtime_not_ready"] is True
+    assert "knowledge_entries_empty" in response["evidence_debug"]["knowledge_db_unavailable"]
 
 
 def test_shadow_layers_do_not_change_formal_decision(monkeypatch, pipeline_harness):

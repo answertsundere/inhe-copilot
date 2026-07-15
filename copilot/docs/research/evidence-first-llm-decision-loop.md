@@ -144,6 +144,12 @@ read-only diagnostics. The canonical high-risk registry is shared with
 admission and the final auditor; ordinary material composition never proves a
 safety claim.
 
+The runner first reads the runtime readiness endpoint. It must stop with exit
+code `2` before calling `/api/analyze` when the formal knowledge database is
+missing, unreadable, incomplete, empty, or inconsistent with an explicitly
+supplied read-only database fingerprint. This prevents an empty placeholder
+database from being measured as an ordinary retrieval miss.
+
 ## Evidence convergence diagnostics
 
 The Product Context Pack, formal `selected_evidence`, admission context, and

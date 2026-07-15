@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sqlite3
 import sys
 from pathlib import Path
 from urllib.error import HTTPError
@@ -59,6 +60,7 @@ def _run_main(module, monkeypatch, tmp_path, payload, response, *, expected_api_
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: response)
     monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
+        "readiness": {"ready": True, "database": {"fingerprint": "fixture-fingerprint"}},
     })
     args = [
         "run_full_answer_validation.py",
@@ -243,6 +245,46 @@ def test_runner_rejects_invalid_dataset_and_runtime_commit_mismatch(monkeypatch,
     )
     assert exit_code == 2
     assert output["summary"]["reason"] == "expected_api_commit_mismatch"
+
+
+def test_runner_blocks_before_analyze_when_runtime_is_not_ready(monkeypatch, tmp_path):
+    module = _module()
+    calls = []
+    source = tmp_path / "dataset.json"
+    output = tmp_path / "result.json"
+    source.write_text(json.dumps(_dataset()), encoding="utf-8")
+    monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: calls.append(True))
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+        "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
+        "readiness": {"ready": False, "reasons": ["knowledge_entries_empty"]},
+    })
+    monkeypatch.setattr(sys, "argv", [
+        "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output),
+    ])
+
+    assert module.main() == 2
+    assert calls == []
+    assert json.loads(output.read_text(encoding="utf-8"))["summary"]["reason"] == "runtime_not_ready"
+
+
+def test_runner_blocks_before_analyze_when_runtime_database_fingerprint_mismatches(monkeypatch, tmp_path):
+    module = _module()
+    source = tmp_path / "dataset.json"
+    output = tmp_path / "result.json"
+    database = tmp_path / "runtime.db"
+    source.write_text(json.dumps(_dataset()), encoding="utf-8")
+    sqlite3.connect(database).close()
+    monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+        "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
+        "readiness": {"ready": True, "database": {"fingerprint": "different"}},
+    })
+    monkeypatch.setattr(sys, "argv", [
+        "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output), "--runtime-db", str(database),
+    ])
+
+    assert module.main() == 2
+    assert json.loads(output.read_text(encoding="utf-8"))["summary"]["reason"] == "runtime_db_fingerprint_mismatch"
 
 
 def test_request_categorizes_http_and_non_json_failures(monkeypatch):

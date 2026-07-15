@@ -129,6 +129,13 @@ mirrored `selected_evidence` containers by evidence UID, but retain a duplicate
 within one source container as a contract error. The QA gate evaluates safety
 and delivery contracts; it is not a general product-accuracy claim.
 
+Formal QA also requires a ready runtime before it issues any Agent request. The
+runtime reports its configured knowledge database through a read-only readiness
+contract: required tables, non-empty knowledge/chunk/KBQA counts, and a
+sanitized schema fingerprint. A false readiness state or an optional local
+fingerprint mismatch is a precondition failure with exit code `2`, not a
+synthetic `rag_miss` result.
+
 ## Real-Derived Positive Validation Gate
 
 Synthetic fixtures prove only the deterministic contract. Before any supervisor

@@ -59,6 +59,9 @@ def runtime_version():
         fname = os.path.basename(main_module.__file__)
         entrypoint = fname
 
+    from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
+
+    readiness = RuntimeKnowledgeReadinessService().inspect()
     return jsonify({
         "app_version": APP_VERSION,
         "graph_version": GRAPH_VERSION,
@@ -73,6 +76,15 @@ def runtime_version():
         "runtime_commit": _git_metadata("rev-parse", "HEAD"),
         "branch": _git_metadata("branch", "--show-current"),
         "feature_flags": _feature_flags(),
+        "readiness": readiness,
         "execution_debug_enabled": True,
         "bad_case_enabled": True,
     })
+
+
+@runtime_bp.route("/api/runtime/readiness", methods=["GET"])
+def runtime_readiness():
+    from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
+
+    readiness = RuntimeKnowledgeReadinessService().inspect()
+    return jsonify(readiness), 200 if readiness["ready"] else 503

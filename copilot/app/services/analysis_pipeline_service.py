@@ -64,6 +64,9 @@ class AnalysisPipelineService:
         from app.services.analysis_execution_service import execute_analysis
 
         prepared = self._prepare_request(request)
+        readiness = self._knowledge_readiness_for_request(prepared)
+        if readiness is not None and not readiness["ready"]:
+            return self._runtime_not_ready_response(prepared, readiness)
         response = execute_analysis(
             reply_service=prepared.reply_service,
             customer_message=prepared.customer_message,
@@ -83,6 +86,62 @@ class AnalysisPipelineService:
         )
 
         return response
+
+    @staticmethod
+    def _knowledge_readiness_for_request(request: AnalysisPipelineRequest) -> dict[str, Any] | None:
+        context = request.copilot_context or {}
+        has_product_scope = bool(
+            request.product_name
+            or request.product_candidates
+            or any(context.get(key) for key in ("product_id", "i_id", "sku_code", "product_name", "product_candidates"))
+        )
+        if not has_product_scope:
+            return None
+        from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
+
+        return RuntimeKnowledgeReadinessService().inspect()
+
+    @staticmethod
+    def _runtime_not_ready_response(
+        request: AnalysisPipelineRequest,
+        readiness: dict[str, Any],
+    ) -> dict[str, Any]:
+        reasons = list(readiness.get("reasons") or ["knowledge_db_unavailable"])
+        stages = list((request.copilot_context or {}).get("analysis_pipeline_input_stages") or [])
+        stages.append({"stage": "runtime_readiness", "status": "blocked", "reasons": reasons})
+        pipeline = {
+            "version": PIPELINE_VERSION,
+            "stages": stages,
+            "final_orchestration_completed": False,
+            "capabilities": dict(request.capabilities or {}),
+        }
+        return {
+            "suggested_reply": "",
+            "draft_reply": "",
+            "sendable_reply": "",
+            "can_send": False,
+            "requires_human_review": True,
+            "reply_status": "needs_human_review",
+            "reply_blocks": [],
+            "reply_delivery": {"mode": "blocked", "auto_send_ready": False, "reason": "runtime_not_ready"},
+            "recommended_assets": [],
+            "block_reasons": ["runtime_not_ready", *reasons],
+            "trace_response_stage": "pre_final",
+            "final_response_pipeline_version": "",
+            "analysis_pipeline": pipeline,
+            "evidence_debug": {
+                "runtime_not_ready": True,
+                "knowledge_db_unavailable": reasons,
+                "runtime_readiness": readiness,
+                "analysis_pipeline": pipeline,
+            },
+            "trace_steps": [{
+                "node": "analysis_pipeline",
+                "status": "blocked",
+                "summary": "knowledge runtime readiness blocked product-scoped analysis",
+                "reasons": reasons,
+            }],
+        }
 
     def _prepare_request(self, request: AnalysisPipelineRequest) -> AnalysisPipelineRequest:
         context = dict(request.copilot_context or {})

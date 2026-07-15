@@ -17,6 +17,8 @@ if str(PROJECT_ROOT) not in sys.path:
 def _configure_fixture_database_from_argv(argv: list[str]) -> None:
     """Set the isolated fixture DB before config/app modules are imported."""
     for index, value in enumerate(argv):
+        if value == "--fixture" or value.startswith("--fixture="):
+            os.environ["COPILOT_BENCHMARK_FIXTURE_MODE"] = "true"
         if value == "--benchmark-db" and index + 1 < len(argv):
             os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = argv[index + 1]
             return

@@ -7,10 +7,15 @@ def _run_post_processor(kwargs, response):
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
     import app.models.kb_tables  # noqa: F401
     from app.db import init_db
     from app.main import create_app
+
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {"ready": True, "status": "ready", "reasons": [], "knowledge": {}, "database": {}},
+    )
 
     init_db()
     flask_app = create_app()

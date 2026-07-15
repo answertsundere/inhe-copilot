@@ -2,7 +2,6 @@
 健康检查 API 路由
 """
 
-import os
 import time
 
 from flask import Blueprint, jsonify
@@ -24,7 +23,8 @@ def api_health():
     )
     from app.config import LLM_API_KEY, LLM_MODEL, LLM_API_BASE
     from app.config import JST_APP_KEY, JST_APP_SECRET, JST_ACCESS_TOKEN
-    from app.config import KNOWLEDGE_DB_PATH, EMBEDDING_ENABLED
+    from app.config import EMBEDDING_ENABLED
+    from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
     order_repo = get_order_repo()
     product_repo = get_product_repo()
@@ -46,19 +46,9 @@ def api_health():
     except Exception:
         db_status = "error"
 
-    # 知识库数据库文件检查
-    knowledge_db_status = "ok" if os.path.exists(KNOWLEDGE_DB_PATH) else "missing"
-    knowledge_db_entries_count = 0
-    if knowledge_db_status == "ok":
-        try:
-            import sqlite3
-            conn = sqlite3.connect(KNOWLEDGE_DB_PATH)
-            try:
-                knowledge_db_entries_count = conn.execute("select count(*) from knowledge_entries").fetchone()[0]
-            finally:
-                conn.close()
-        except Exception:
-            knowledge_db_status = "error"
+    readiness = RuntimeKnowledgeReadinessService().inspect()
+    knowledge_db_status = RuntimeKnowledgeReadinessService.health_status(readiness)
+    knowledge_counts = readiness["knowledge"]
 
     return jsonify({
         "status": "ok",
@@ -69,7 +59,12 @@ def api_health():
         "embedding_enabled": bool(EMBEDDING_ENABLED),
         "db_status": db_status,
         "knowledge_db_status": knowledge_db_status,
-        "knowledge_db_entries_count": knowledge_db_entries_count,
+        "knowledge_db_entries_count": knowledge_counts["entries"],
+        "knowledge_db_chunks_count": knowledge_counts["chunks"],
+        "knowledge_db_kb_qa_count": knowledge_counts["kb_qa"],
+        "ready": readiness["ready"],
+        "readiness_status": readiness["status"],
+        "readiness_reasons": readiness["reasons"],
         "data": {
             "orders": order_repo.count_orders(),
             "skus": product_repo.count_skus(),
