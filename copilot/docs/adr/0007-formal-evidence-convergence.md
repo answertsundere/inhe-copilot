@@ -105,6 +105,30 @@ exact identity namespace with the current product, declare a size-chart or
 dimension-reference role, and appear in the current reply blocks. Appearance,
 SKU, packaging, component, and display images cannot satisfy that contract.
 
+## Formal QA Gate
+
+`app.services.fact_type_alias_service` owns the canonical high-risk claim
+registry and its aliases. Admission, final auditing, and the read-only formal
+answer evaluator normalize through that same registry; ordinary `material`
+remains a composition claim and cannot support a safety, toxicity, food-grade,
+formaldehyde, suitability, certification, load, stability, electrical, or
+small-parts assertion.
+
+The evaluator accepts only the versioned
+`formal-answer-validation-dataset-v1` schema. Its expected outcomes are
+scorer-only and never enter an Agent API payload. Invalid, empty, legacy, or
+unknown-risk datasets fail before any request with exit code `2`. A completed
+run exits `0` only when every request succeeds and every case passes; safety,
+HTTP, timeout, parse, or response-contract failures exit `1` while preserving
+a structured report.
+
+Reports identify the runner and deployed runtime independently, including
+dataset hash/version, sanitized API URL, UTC timestamps, public feature-flag
+states, and an optional read-only SQLite schema fingerprint. They deduplicate
+mirrored `selected_evidence` containers by evidence UID, but retain a duplicate
+within one source container as a contract error. The QA gate evaluates safety
+and delivery contracts; it is not a general product-accuracy claim.
+
 ## Real-Derived Positive Validation Gate
 
 Synthetic fixtures prove only the deterministic contract. Before any supervisor

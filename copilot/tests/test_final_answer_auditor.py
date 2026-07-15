@@ -656,6 +656,8 @@ def test_visual_media_fallback_requires_attached_identity_matched_dimension_bloc
             "media_purpose": "dimension_reference",
             "i_id": "ITEM-A",
             "asset_url": "https://asset.example/size.png",
+            "status": "approved",
+            "usable_for_agent": True,
         }],
     }
 

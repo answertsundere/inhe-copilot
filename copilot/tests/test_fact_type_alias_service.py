@@ -35,6 +35,33 @@ def test_high_risk_load_capacity_does_not_alias_to_weight():
     ) is False
 
 
+def test_canonical_high_risk_registry_normalizes_aliases_without_promoting_material():
+    from app.services.fact_type_alias_service import (
+        high_risk_claim_types,
+        is_alias_safe_for_direct_answer,
+        is_high_risk_fact_type,
+        normalize_high_risk_claim_type,
+    )
+
+    assert high_risk_claim_types() >= {
+        "food_grade", "non_toxic_claim", "formaldehyde_claim",
+        "material_safety", "child_safety", "child_suitability",
+        "pinch_safety", "certification_report", "electrical_safety",
+        "age_range", "load_capacity", "stability", "safety_claim",
+        "safety_small_parts",
+    }
+    assert normalize_high_risk_claim_type("non_toxic") == "non_toxic_claim"
+    assert normalize_high_risk_claim_type("formaldehyde") == "formaldehyde_claim"
+    assert normalize_high_risk_claim_type("small_parts") == "safety_small_parts"
+    assert is_high_risk_fact_type("material") is False
+    assert is_alias_safe_for_direct_answer(
+        "food_grade", "food_grade", "product_fact_direct", "product_facts"
+    ) is True
+    assert is_alias_safe_for_direct_answer(
+        "food_grade", "material", "product_fact_direct", "product_facts"
+    ) is False
+
+
 def test_service_action_and_media_reference_are_not_direct_answer_aliases():
     from app.services.fact_type_alias_service import is_alias_safe_for_direct_answer
 

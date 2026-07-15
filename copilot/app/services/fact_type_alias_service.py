@@ -28,15 +28,45 @@ MEDIUM_RISK_ALIAS_GROUPS: tuple[set[str], ...] = (
     {"material_safety"},
 )
 
-HIGH_RISK_FACT_TYPES = {
-    "certification_report",
-    "safety_claim",
-    "child_suitability",
+# The only canonical registry for claim types that require high-risk evidence.
+# Keep aliases here so admission, the final gate, and QA cannot drift apart.
+HIGH_RISK_FACT_TYPES = frozenset({
     "age_range",
-    "load_capacity",
+    "certification_report",
+    "child_safety",
+    "child_suitability",
     "electrical_safety",
     "food_grade",
+    "formaldehyde_claim",
+    "load_capacity",
+    "material_safety",
     "non_toxic_claim",
+    "pinch_safety",
+    "safety_claim",
+    "safety_small_parts",
+    "stability",
+})
+
+_HIGH_RISK_CLAIM_ALIASES = {
+    "non_toxic": "non_toxic_claim",
+    "non_toxic_claim": "non_toxic_claim",
+    "formaldehyde": "formaldehyde_claim",
+    "formaldehyde_claim": "formaldehyde_claim",
+    "material_safety": "material_safety",
+    "food_grade": "food_grade",
+    "certification_report": "certification_report",
+    "child_safety": "child_safety",
+    "child_suitability": "child_suitability",
+    "pinch_safety": "pinch_safety",
+    "safety": "safety_claim",
+    "safety_small_parts": "safety_small_parts",
+    "small_parts": "safety_small_parts",
+    "small_parts_safety": "safety_small_parts",
+    "electrical_safety": "electrical_safety",
+    "age_range": "age_range",
+    "load_capacity": "load_capacity",
+    "stability": "stability",
+    "safety_claim": "safety_claim",
 }
 
 DIRECT_SOURCE_TYPES = {
@@ -77,6 +107,16 @@ def _clean(value: Any) -> str:
     return str(value or "").strip()
 
 
+def normalize_high_risk_claim_type(value: Any) -> str:
+    """Return the canonical high-risk claim, or an empty value when unknown."""
+    return _HIGH_RISK_CLAIM_ALIASES.get(_clean(value).lower(), "")
+
+
+def high_risk_claim_types() -> frozenset[str]:
+    """Expose the immutable canonical registry to formal safety consumers."""
+    return HIGH_RISK_FACT_TYPES
+
+
 def _group_for(fact_type: str) -> set[str]:
     fact_type = _clean(fact_type)
     for group in (*LOW_RISK_ALIAS_GROUPS, *MEDIUM_RISK_ALIAS_GROUPS):
@@ -86,14 +126,14 @@ def _group_for(fact_type: str) -> set[str]:
 
 
 def is_high_risk_fact_type(fact_type: str) -> bool:
-    return _clean(fact_type) in HIGH_RISK_FACT_TYPES
+    return bool(normalize_high_risk_claim_type(fact_type))
 
 
 def risk_level_for_fact_type(fact_type: str) -> str:
     value = _clean(fact_type)
     if not value:
         return "unknown"
-    if value in HIGH_RISK_FACT_TYPES:
+    if is_high_risk_fact_type(value):
         return "high"
     if any(value in group for group in MEDIUM_RISK_ALIAS_GROUPS):
         return "medium"
@@ -112,8 +152,9 @@ def expand_fact_type_aliases(fact_type: str, context: str = "retrieval") -> list
     value = _clean(fact_type)
     if not value:
         return []
-    if is_high_risk_fact_type(value) or value == "material_safety":
-        return [value]
+    canonical_high_risk = normalize_high_risk_claim_type(value)
+    if canonical_high_risk:
+        return [canonical_high_risk]
     aliases = list(dict.fromkeys([value, *sorted(_group_for(value) - {value})]))
     return aliases
 
@@ -149,12 +190,12 @@ def is_alias_safe_for_direct_answer(
         return False
     if not _is_direct_evidence(evidence_role, source_type):
         return False
+    requested_high_risk = normalize_high_risk_claim_type(requested)
+    candidate_high_risk = normalize_high_risk_claim_type(candidate)
+    if requested_high_risk or candidate_high_risk:
+        return bool(requested_high_risk and requested_high_risk == candidate_high_risk)
     if requested == candidate:
         return True
-    if is_high_risk_fact_type(requested) or is_high_risk_fact_type(candidate):
-        return False
-    if requested == "material_safety" or candidate == "material_safety":
-        return False
     requested_group = _group_for(requested)
     candidate_group = _group_for(candidate)
     if requested_group != candidate_group:

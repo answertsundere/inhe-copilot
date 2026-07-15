@@ -15,6 +15,7 @@ from typing import Any
 
 from app import config
 from app.services.customer_facing_safe_handoff_service import customer_facing_safe_handoff_reply
+from app.services.fact_type_alias_service import normalize_high_risk_claim_type
 from app.services.generic_service_rule_service import unsafe_promise_terms
 from app.services.media_asset_service import is_delivery_media_asset_eligible
 
@@ -163,16 +164,6 @@ _INSTALLATION_AMBIGUOUS_CUES = ("螺丝", "配件", "说明书")
 _INSTALLATION_STRONG_CUES = ("安装", "组装", "怎么装", "装不上", "教程", "打孔", "租房")
 
 _INSTALLATION_STRUCTURE_FACT_TYPES = {"installation", "structure_function", "accessory_usage"}
-_HIGH_RISK_CLAIM_TYPES = {
-    "material_safety",
-    "certification_report",
-    "child_safety",
-    "child_suitability",
-    "pinch_safety",
-    "safety_small_parts",
-    "load_capacity",
-    "stability",
-}
 _INSTALLATION_MEDIA_ASSET_TYPES = {
     "install_video",
     "installation_video",
@@ -617,21 +608,22 @@ def _requested_high_risk_claim_types(response: dict[str, Any]) -> list[str]:
                 value = str(claim.get("claim_type") or "").strip().lower()
             else:
                 value = str(claim or "").strip().lower()
-            if value in _HIGH_RISK_CLAIM_TYPES:
-                claims.add(value)
+            canonical = normalize_high_risk_claim_type(value)
+            if canonical:
+                claims.add(canonical)
     fact_type = str(
         response.get("query_fact_type")
         or debug.get("query_fact_type")
         or trace.get("query_fact_type")
         or ""
     ).strip().lower()
-    if fact_type in _HIGH_RISK_CLAIM_TYPES:
-        claims.add(fact_type)
+    canonical_fact_type = normalize_high_risk_claim_type(fact_type)
+    if canonical_fact_type:
+        claims.add(canonical_fact_type)
     intent = str(response.get("intent") or "").strip().lower()
-    if intent == "material_safety":
-        claims.add("material_safety")
-    elif intent == "child_safety":
-        claims.add("child_safety")
+    canonical_intent = normalize_high_risk_claim_type(intent)
+    if canonical_intent:
+        claims.add(canonical_intent)
     return sorted(claims)
 
 

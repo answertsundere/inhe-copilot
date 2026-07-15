@@ -132,7 +132,17 @@ certification, child, or performance conclusion. The runtime records evidence
 UIDs and deterministic reasons rather than private reasoning. The read-only
 `scripts/run_full_answer_validation.py` runner records dataset/API metadata,
 deduplicated selected evidence, high-risk delivery failures, and media-role
-mismatches without sending expected outcomes to the Agent.
+mismatches without sending expected outcomes to the Agent. The formal QA input
+uses `formal-answer-validation-dataset-v1`: every case declares a nonempty
+query fact type, explicit boolean handoff boundary, and canonical high-risk
+claim list. Legacy expected fields are rejected rather than silently ignored.
+The runner returns `0` only for an all-pass/all-response run, `1` for any
+case, transport, parsing, safety, media, or response-contract failure, and
+`2` for invalid datasets or unmet preconditions. Its report distinguishes
+runner source metadata from API runtime metadata and records only sanitized,
+read-only diagnostics. The canonical high-risk registry is shared with
+admission and the final auditor; ordinary material composition never proves a
+safety claim.
 
 ## Evidence convergence diagnostics
 

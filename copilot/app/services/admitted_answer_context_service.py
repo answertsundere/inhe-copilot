@@ -13,6 +13,7 @@ from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.claim_resolution_service import build_claim_resolutions
+from app.services.fact_type_alias_service import normalize_high_risk_claim_type
 
 
 DIRECT_PRODUCT_ROLES = {"product_fact_direct", "faq_direct"}
@@ -328,8 +329,12 @@ def _identity_reason(item: dict[str, Any], product_identity: dict[str, Any], *, 
 
 def _claim_types(item: dict[str, Any]) -> list[str]:
     declared = item.get("claim_types_supported") or item.get("supported_claim_types") or []
-    values = _unique(declared if isinstance(declared, list) else [declared])
+    values = [
+        normalize_high_risk_claim_type(value) or value
+        for value in _unique(declared if isinstance(declared, list) else [declared])
+    ]
     fact_type = _fact_type(item)
+    fact_type = normalize_high_risk_claim_type(fact_type) or fact_type
     if fact_type and fact_type not in values:
         values.append(fact_type)
     if fact_type == "material" and "material_composition" not in values:
@@ -647,7 +652,8 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for item in _as_list(understanding.get("requested_claims")):
         if isinstance(item, dict):
-            claim_type = sanitize_text(item.get("claim_type")).lower()
+            raw_claim_type = sanitize_text(item.get("claim_type")).lower()
+            claim_type = normalize_high_risk_claim_type(raw_claim_type) or raw_claim_type
             if claim_type:
                 result.append({
                     "claim_type": claim_type,
@@ -659,7 +665,12 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                     "prohibition_reason": sanitize_text(item.get("prohibition_reason")),
                 })
         elif sanitize_text(item):
-            result.append({"claim_type": sanitize_text(item).lower(), "question": "", "risk_level": "medium"})
+            raw_claim_type = sanitize_text(item).lower()
+            result.append({
+                "claim_type": normalize_high_risk_claim_type(raw_claim_type) or raw_claim_type,
+                "question": "",
+                "risk_level": "medium",
+            })
     return result
 
 

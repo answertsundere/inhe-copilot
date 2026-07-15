@@ -117,6 +117,8 @@ def test_analyze_allows_identity_matched_size_media_as_send_blocks(client, monke
                             "asset_url": "https://example.com/size-marked.png",
                             "product_name": "Test product",
                             "i_id": "IID-A",
+                            "status": "approved",
+                            "usable_for_agent": True,
                         "auto_send_level": "auto",
                     }]
                 },

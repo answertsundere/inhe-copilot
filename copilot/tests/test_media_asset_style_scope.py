@@ -191,9 +191,9 @@ def test_product_context_pack_respects_auto_send_level(db):
     from app.services.product_context_pack_service import _media_facts_for_query
 
     auto_asset = {"asset_id": 1, "asset_type": "size_image", "asset_url": "http://t/size.png",
-                      "asset_title": "尺寸图", "auto_send_level": "auto", "answer_scenarios": ["dimensions"],
-                      "scene_tags": [], "applicable_style": {"scope_type": "all"}, "media_purpose": "size_image",
-                      "i_id": "IID-A"}
+                  "asset_title": "尺寸图", "auto_send_level": "auto", "answer_scenarios": ["dimensions"],
+                  "scene_tags": [], "applicable_style": {"scope_type": "all"}, "media_purpose": "size_image",
+                  "i_id": "IID-A", "status": "approved", "usable_for_agent": True}
     review_asset = dict(auto_asset)
     review_asset["auto_send_level"] = "review"
 

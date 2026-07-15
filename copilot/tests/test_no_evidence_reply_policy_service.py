@@ -807,6 +807,8 @@ def test_dimension_delivery_requires_size_role_and_exact_identity():
             "asset_type": "size_image",
             "media_purpose": "dimension_reference",
             "i_id": "IID-A",
+            "status": "approved",
+            "usable_for_agent": True,
         }],
     }
 

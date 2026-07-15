@@ -403,6 +403,10 @@ def is_delivery_media_asset_eligible(
     fact_type = str(query_fact_type or "").strip().lower()
     if fact_type not in {"dimensions", "space_fit"}:
         return True
+    status = str(asset.get("status") or asset.get("review_status") or "").strip().lower()
+    usable = asset.get("usable_for_agent")
+    if status != "approved" or usable not in {True, 1}:
+        return False
     return (
         media_asset_matches_fact_type(asset, fact_type)
         and media_asset_matches_product_identity(asset, product_identity)
@@ -809,6 +813,9 @@ def build_reply_blocks(
             "product_id": asset.get("product_id"),
             "i_id": asset.get("i_id") or "",
             "sku_code": asset.get("sku_code") or "",
+            "status": asset.get("status") or asset.get("review_status") or "",
+            "usable_for_agent": asset.get("usable_for_agent"),
+            "auto_send_level": asset.get("auto_send_level") or "",
             "send_mode": "auto_when_platform_connected",
         })
         added += 1
