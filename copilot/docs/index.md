@@ -36,7 +36,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 ## Current Architecture Direction
 
 - `docs/PROJECT_CHARTER.md` - authoritative business direction and non-negotiable boundaries.
-- `docs/architecture-overview.md` - authoritative current/target architecture and convergence order.
+- `docs/architecture-overview.md` - authoritative current/target architecture,
+  thin-LangGraph boundary, context-first reasoning model, and convergence order.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
@@ -58,7 +59,26 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   decision context without changing the final delivery contract.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
-- `docs/langgraph-architecture.md` - current LangGraph topology and migration notes.
+- `docs/langgraph-architecture.md` - LangGraph runtime responsibility, target
+  macro stages, state/context rules, and incremental migration constraints. It
+  is an implementation companion, not the overall architecture authority.
+
+The durable operating model is:
+
+```text
+platform-neutral adapters
+-> one AnalysisPipeline
+-> thin stateful LangGraph runtime
+-> compact Decision Context and admitted evidence
+-> model-led claim decision and reply composition
+-> deterministic final safety/delivery gate
+-> outbound delivery or durable HandoffTask
+```
+
+Do not optimize for graph-node count, add parallel shadow subsystems without a
+promotion path, or pass complete traces and candidate stores to the model. The
+current priority is formal evidence convergence followed by a supervisor-only
+partial-answer vertical slice.
 
 ## Architecture Decisions And Research
 
@@ -103,9 +123,10 @@ Current boundaries:
 - pgvector remains shadow-only until the formal retriever contract is implemented and evaluated.
 - Answer Memory is action/style guidance, not product fact evidence.
 - Grounded Reasoning is shadow-only and cannot change `can_send` or the final reply.
-- The Evidence-First LLM Decision Loop is post-graph and shadow-only. Its tool
-  plan is diagnostic, and factual proposal clauses may cite admitted evidence
-  UIDs only.
+- The Evidence-First LLM Decision Loop is post-graph and shadow-only. It may
+  execute only the application-owned eligible local read-only portion of a tool
+  plan; unsupported order, media, and side-effect operations remain deferred.
+  Factual proposal clauses may cite admitted evidence UIDs only.
 - `service_action` and `media_reference` cannot be promoted to product facts.
 - Product media roles do not prove that image contents have been understood. Model-extracted OCR or visual observations require product scope, provenance, confidence, and review state before they can support formal claims.
 - Product Media Observation v3 resolves observed source bytes with SHA-256 provenance and uses deterministic panel proposals plus staged panel, object, label, and object-label binding only for shadow diagnostics. Its normalised regions and graph relations remain outside formal evidence, customer replies, and `can_send` until a separate reviewed-evidence promotion decision.
@@ -155,8 +176,19 @@ Workspace-root `docs/`, `验收报告*.md`, and `客服系统/` are historical o
   as formal entry points.
 - `app.main` still combines dependency initialization, Flask routing, and resident background workers.
 - Fact-type and safety group definitions remain distributed across multiple modules.
-- Formal product-fact and exact-FAQ modes still primarily render retrieved facts instead of using an admitted-fact composition stage.
+- Formal Product Context Pack convergence is opt-in through
+  `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED`; it remains subject to the
+  existing reviewed, identity, role, claim-compatibility, placeholder, and
+  conflict admission contract.
+- Formal product-fact and exact-FAQ modes still primarily render retrieved facts
+  instead of using one compact admitted-fact, claim-level composition stage.
+- Understanding, routing, guard, fallback, semantic, and polishing
+  responsibilities overlap across the current graph and post-graph services.
+  LangGraph must be reduced incrementally after evidence and behavior parity
+  tests exist, not through a big-bang rewrite.
 - Customer and product media are not yet represented as reviewed, queryable visual observations. Some text product questions with known context skip image VLM analysis.
-- A project-level governance baseline now exists, but CI enforcement and accepted ADRs are still missing.
+- Durable platform adapters and HandoffTask workflow are not implemented.
+- A project-level governance baseline and accepted ADR history now exist, but CI
+  enforcement and managed schema migrations are still missing.
 
 These gaps are the next architecture-convergence work. They should be addressed before adding platform-specific behavior to the Agent core.

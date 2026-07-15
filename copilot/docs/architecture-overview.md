@@ -1,188 +1,364 @@
-# Architecture Overview
+# INHE Customer-Service Copilot Architecture
 
-## Status
+## Status And Authority
 
-Current architecture source of truth as of 2026-07-14. Historical status and
-delivery reports remain evidence of past work, not current completion claims.
+This document is the authoritative system-architecture overview as of
+2026-07-15. It describes the current production path, the intended target, and
+the order in which the system may converge. Historical delivery reports and
+node inventories are implementation evidence, not architecture authority.
 
-## Current System
+The project remains a modular monolith. No microservice split, message queue, or
+platform-specific Agent fork is justified until the canonical contracts and one
+formal answering path are stable.
 
-```text
-Flask API and local UI entry points
--> AnalysisPipelineService
--> AnalysisExecutionService
--> LangGraph customer-service graph
--> product identity, tools, SQLite RAG, evidence and generation nodes
--> media delivery blocks -> no-evidence policy and final safety/polish layers
--> optional shadow diagnostics -> final response, trace, replay, benchmark, and review tooling
-```
+## Architecture Decision In One Sentence
 
-Reusable capabilities already exist for product identity, JST lookup, structured
-product context, evidence filtering, media governance, replay, benchmark,
-bad-case review, Answer Memory, embedding, and pgvector shadow retrieval.
+Use LangGraph as a thin stateful orchestration runtime; build the answering
+ability around compact context, admitted evidence, model-led claim reasoning,
+deterministic safety, and durable human handoff.
 
-The formal path is currently stronger at retrieval, deterministic rendering,
-and safety blocking than at evidence composition. Product-fact and exact-FAQ
-modes primarily render selected evidence before the current LLM composition
-branch. Product media carry roles and delivery metadata, but they are not yet a
-reviewed visual-observation source that can support query-time reasoning. See
-`docs/research/multimodal-grounded-customer-service.md`.
+LangGraph is not the reasoning engine. The LLM is not the source of truth. The
+knowledge base is not the reply composer. Each layer has one responsibility.
 
-Candidate observations now have an ADR 0002 staging lifecycle with immutable
-model provenance, supervisor review, hash invalidation, and append-only audit
-events. `approved_shadow` remains isolated from Product Evidence Pack,
-Grounded Reasoning, and customer delivery until future promotion acceptance.
+## Business Goal
 
-ADR 0003 adds a separate v3 object-binding contract for product-media
-understanding. It distinguishes the product from packaging, components,
-accessories, included items, and display props before a measurement can be
-interpreted. The graph is a shadow diagnostic only; it cannot alter formal
-evidence, replies, delivery, or `can_send`.
+The system must support QianNiu, Pinduoduo, JD, and future channels through one
+platform-neutral customer-service core. For every customer turn it should:
 
-Phase 0.4H.1 adds a local external-authoring pilot for twenty source-byte
-verified media tasks. It uses human rectangle/relation annotation and a
-read-only export validator only. Generic visual providers remain unqualified
-for semantic scope grounding, OCR remains a text-box candidate, and no model
-training or annotation promotion is part of the formal evidence path.
+1. resolve the correct conversation, product, order, and channel capabilities;
+2. retrieve the smallest useful set of reviewed facts and live tool results;
+3. separate supported, unresolved, conflicting, and prohibited claims;
+4. answer supported parts naturally instead of hiding them behind a generic
+   handoff;
+5. block unsupported high-risk claims and actions;
+6. deliver through the channel or create a durable human task;
+7. persist enough provenance to reproduce the decision.
 
-Phase 0.5A adds a post-graph Evidence-First LLM Decision Loop shadow. One
-deterministic admission service separates direct product facts, direct policy
-facts, service actions, and media candidates before a strict-schema proposal
-can cite them. Compound claims remain independently unresolved when their own
-eligible evidence is missing. The application executes only the eligible local
-read-only portion of the shadow tool plan before admission; unsupported order
-or media capabilities are explicitly deferred. The formal graph still owns
-formal tool execution, and the proposal cannot alter replies, delivery, review
-status, or `can_send`.
-
-Phase 0.5B.2 adds the Partial Answer Contract to that shadow boundary: each
-requested claim is independently marked supported, unresolved, or conflicting,
-and a valid proposal must distinguish confirmed clauses from pending clauses.
-The formal response remains unchanged. The current local Qwen3-4B candidate
-passes strict-schema transport but fails compound-claim semantic qualification,
-so live Decision Shadow remains disabled and the test-page preview reports the
-provider block rather than a fabricated proposal.
-
-## Target System
+## Non-Negotiable Truth Flow
 
 ```text
-platform adapters
--> canonical ConversationEvent
--> durable event or work queue
--> one AnalysisPipeline
--> identity -> tools -> retrieval -> evidence gate
--> bounded reasoning -> one final safety and delivery gate
--> canonical AgentDecision
+channel event
+-> canonical conversation context
+-> external identity
+-> JST/internal product or order identity
+-> reviewed facts, live tool results, policies, or reviewed visual observations
+-> evidence admission and conflict handling
+-> bounded claim reasoning
+-> final safety and delivery decision
 -> outbound adapter or durable HandoffTask
--> supervisor control plane and audit stream
 ```
 
-See `docs/omnichannel-control-plane.md` for platform and handoff contracts.
+Product facts, policy facts, service actions, media references, and Answer
+Memory are different roles. Presence in a candidate pack never proves that a
+claim may be answered.
 
-## Authoritative Boundaries
+## Target Architecture
 
-- The formal answer path is `AnalysisPipelineService`, shared by `/api/analyze`,
-  `/api/copilot/context`, replay, and benchmark.
-- Product facts require product-scoped eligible evidence.
-- A semantic fallback may ask to verify product information, but it must not
-  describe retrieval keyword hits or unqualified summaries as evidence already
-  available for the current product.
-- Service actions are fallback handling guidance, not product facts.
-- Media references are candidates; actual sending requires approved role,
-  supported platform capability, matching product identity, and matching reply
-  blocks. Final customer wording must name only the media types actually
-  attached to those blocks.
-- Installation safety prescriptions such as wall fixing, anti-tip measures,
-  expansion screws, structural modification, or stability/load guarantees need
-  direct reviewed installation evidence for the current product. A generic
-  installation image or catalog recommendation is not sufficient support.
-- Answer Memory is action/style reference only.
-- pgvector and Grounded Reasoning remain shadow until their promotion contracts
-  pass replay and safety acceptance.
-- The final delivered response is the object that must be persisted and traced.
+```mermaid
+flowchart LR
+    A["Channel adapters<br/>QianNiu / PDD / JD"] --> B["Canonical ConversationEvent"]
+    B --> C["AnalysisPipeline"]
+    C --> D["Thin LangGraph runtime"]
+    D --> E["Context Builder"]
+    E --> F["Identity and read-only tools"]
+    F --> G["Evidence Admission"]
+    G --> H["LLM Claim Decision"]
+    H --> I["Reply Composition"]
+    I --> J["Deterministic Safety and Delivery Gate"]
+    J --> K["Canonical AgentDecision"]
+    K --> L["Outbound adapter"]
+    K --> M["Durable HandoffTask"]
+    K --> N["Trace / Replay / Benchmark / Supervisor"]
+```
 
-## Confirmed Architecture Gaps
+The desired center of gravity is **context-first reasoning**, not graph-node
+count. The runtime should expose clear tool and state boundaries while the model
+receives only high-signal context for the current claims.
 
-### P0: Pipeline And Trace Consistency
+## Layer Responsibilities
 
-- Phase 0.2 moves graph execution, media delivery, final orchestration, shadow
-  diagnostics, and final persistence behind one formal AnalysisPipeline for all
-  four entry points.
-- Phase 0.1 establishes the persistence contract inside
-  `AnalysisExecutionService`: when it executes final orchestration, SQLite
-  snapshots, file snapshots, trace outcomes, and the returned response share
-  one `final_response_contract`. Non-final and error paths are explicitly
-  labelled `graph_result`, `pre_final`, or `error` instead of being presented as
-  delivered output.
-- Routes now retain only canonical input construction, authorization/HTTP work,
-  metrics, and presentation. The Pipeline performs delivery and final stages
-  before Phase 0.1 persistence runs.
-- Phase 0.2.1 removes post-persistence Pipeline retries. A post-processor or
-  final-orchestration failure returns and persists one review-only `pre_final`
-  decision with delivery auto-send disabled; it cannot produce a newer reply
-  after the trace or snapshot has been saved.
-- Pipeline runtime stages are observed from the response itself. Final
-  persistence is owned and observed by `AnalysisExecutionService`, not claimed
-  as a completed Pipeline runtime stage before persistence happens.
-- Grounded Reasoning remains shadow-only. Phase 0.5A moves its product-fact
-  eligibility checks to the shared read-only admission service; reviewed
-  answers remain offline references and never reasoning facts.
+### 1. Channel Adapters
 
-### P1: Contract Fragmentation
+Adapters translate platform payloads and capabilities into canonical contracts.
+They may not introduce QianNiu-, PDD-, or JD-specific branching into Agent
+reasoning. They own authentication, platform field mapping, outbound formatting,
+and delivery capability reporting.
 
-- Fact-type, evidence eligibility, risk, and safety term groups are distributed
-  across many modules instead of one versioned registry.
-- Multiple guard, policy, audit, semantic, and polishing layers can rewrite the
-  same reply, causing drift and robotic fallback language.
-- Retriever configuration recognizes only the current SQLite backend; pgvector
-  is not a formal retriever implementation yet.
+Status: planned; QianNiu is the first adapter, not the core.
 
-### P1: Multimodal Evidence And Bounded Reasoning
+### 2. AnalysisPipeline
 
-- Text product questions with known product or order context can skip customer
-  image VLM analysis, including questions where the image contains the missing
-  structure or dimension evidence.
-- Product media are classified by role but do not yet expose reviewed OCR,
-  regions, layer counts, labelled dimensions, or other queryable observations.
-- Formal product answers primarily render retrieved facts; the admitted-fact
-  planner and segmented draft remain shadow-only.
-- Phase 0.5C provides a shadow-only evidence convergence trace for Product
-  Context Pack candidates that do not reach formal `selected_evidence`; it
-  does not change formal selection, reply composition, or delivery.
-- There is no formal claim contract separating direct observations, bounded
-  derivations, general guidance, and high-risk facts or actions.
-- Model-extracted media facts need an explicit staging and review workflow before
-  they can enter published product knowledge.
+`AnalysisPipelineService` is the only formal application execution path for
+`/api/analyze`, `/api/copilot/context`, replay, and benchmark. It owns stage
+order and failure isolation:
 
-### P1: Runtime And Data Boundaries
+```text
+canonical input
+-> graph execution
+-> media delivery preparation
+-> final orchestration
+-> isolated shadow diagnostics
+-> final persistence
+-> response
+```
 
-- `app.main` combines dependency construction, Flask application setup, routes,
-  and resident background workers.
-- SQLite stores operational, knowledge, evaluation, trace, and memory workloads,
-  and schema changes use startup-time manual migration code.
-- There is no durable platform/shop/account ownership model or production
-  HandoffTask workflow.
+Routes keep HTTP, authorization, request normalization, metrics, and
+presentation only. `AnalysisExecutionService` owns trace lifecycle and final
+persistence. A formal stage must not run again after persistence.
 
-### P2: Governance And Delivery
+Status: formal; ADR 0001.
 
-- CI, migration tooling, ADR history, and explicit module ownership are still
-  incomplete.
-- The Vue application and legacy server-rendered pages overlap.
+### 3. Thin LangGraph Runtime
 
-## Convergence Order
+LangGraph should retain only work that benefits from explicit state and control
+flow:
 
-1. Inventory legacy direct callers and compare their contracts before treating
-   them as formal entry points.
-2. Define a reviewed Product Media Observation contract and prove a shadow
-   dimension/structure vertical slice without changing formal answers.
-3. Correct Grounded Reasoning evidence admission and add a claim plan for direct
-   observations, bounded derivations, guidance, and prohibited claims.
-4. Establish canonical fact-type, evidence-role, risk, and delivery registries.
-5. Define canonical conversation, Agent decision, and platform port schemas.
-6. Add durable handoff tasks, assignment, SLA, acknowledgement, and audit.
-7. Separate web and worker processes; adopt managed schema migrations and CI.
-8. Promote retrieval/reasoning shadow modules only after acceptance gates pass.
-9. Connect QianNiu, Pinduoduo, and JD through adapters without changing Agent
-   domain logic.
+- conversation state transitions;
+- identity and tool routing;
+- bounded retries and timeouts;
+- pause/resume for human approval;
+- recoverable execution and traceable node boundaries;
+- selection between product, order, policy, clarification, and handoff flows.
 
-Feature work that conflicts with this order requires an ADR.
+LangGraph should not become the owner of:
+
+- duplicate fact, risk, or evidence registries;
+- platform-native fields;
+- repeated reply polishing;
+- phrase-specific business rules;
+- large prompt payloads or complete traces;
+- a second final-response pipeline.
+
+The current graph contains overlapping understanding, routing, guard, and
+generation responsibilities. It must be reduced incrementally after contract
+tests exist; a big-bang rewrite is prohibited. See
+`docs/langgraph-architecture.md` for the runtime boundary and current debt.
+
+Status: formal but overweight.
+
+### 4. Context Builder
+
+The Context Builder is the working-memory boundary for the model. A decision
+context should contain only:
+
+- current customer goal and requested claims;
+- necessary recent turns plus a compact conversation summary;
+- resolved product and order identity;
+- admitted evidence with stable evidence UIDs and provenance;
+- unresolved and conflicting claims;
+- available service actions and media candidates, explicitly labelled as
+  non-factual roles;
+- allowed tools and channel capabilities;
+- applicable safety constraints.
+
+It must not contain the complete trace, all retrieved chunks, unfiltered Answer
+Memory, entire product catalogs, or every historical rule. Context size and
+source counts must be observable.
+
+Status: converging. `AdmittedAnswerContextService` is the admission reuse point.
+When `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED` is enabled, the existing
+evidence-builder node emits deterministic admitted-only `selected_evidence` and
+a bounded decision context; the final delivery contract remains unchanged.
+
+### 5. Identity, Retrieval, And Tools
+
+External titles resolve through JST/internal identity before product-scoped
+facts are selected. Order, logistics, refund, replacement, and other live-state
+claims require the relevant live tool or approved policy source.
+
+Retrieval returns candidates. Admission decides eligibility. Tools return typed
+results rather than customer-facing prose. A tool set should be small,
+non-overlapping, and understandable to the model.
+
+Status: SQLite retrieval and JST paths are formal; pgvector remains shadow.
+
+### 6. Evidence Admission
+
+One versioned contract must decide whether evidence may support a claim. Direct
+product evidence requires:
+
+- reviewed, approved, verified, or published state;
+- direct-answer permission and an eligible evidence role;
+- matching identity in at least one shared namespace;
+- compatible requested fact type or attribute;
+- no unresolved conflict or placeholder status.
+
+`service_action`, `fallback_only`, `media_reference`, Answer Memory, rejected
+visual observations, and unreviewed FAQ cannot become product facts.
+
+Status: shared admission exists. Formal convergence is opt-in behind
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED`; it reuses admission rather than
+creating a second evidence registry and does not alter final delivery.
+
+### 7. LLM Claim Decision And Reply Composition
+
+The model should understand compound questions, select bounded read-only tools,
+associate evidence with individual claims, and compose natural replies. It must
+return a structured decision rather than private chain-of-thought:
+
+- requested claims;
+- evidence UIDs used for each confirmed claim;
+- unresolved or conflicting claims;
+- requested human action;
+- candidate reply;
+- concise decision reason codes.
+
+Supported claims should be answered even when another claim is unresolved. The
+model may connect verified facts only through declared low-risk reasoning. It
+may not derive toxicity, certification, age suitability, load limits, order
+status, refunds, replacements, compensation, or installation-safety promises
+without the required evidence or tool result.
+
+Status: Grounded Reasoning and the Evidence-First Decision Loop are shadow-only.
+The strict provider is not qualified for formal use. The formal path still
+leans on deterministic rendering and broad handoff fallback.
+
+### 8. Deterministic Safety And Delivery
+
+The final gate verifies claim support, product identity, high-risk policy,
+actual media blocks, platform capability, and delivery status. It alone may set
+the final `can_send` and `requires_human_review` contract.
+
+Safety should inspect the final answer once. A fallback may replace an unsafe
+reply, but resolved pre-fallback failures must not contaminate the final audit.
+Polishing may improve customer-facing language but cannot add facts, promises,
+media, or actions.
+
+Status: formal and intentionally conservative; currently stronger than reply
+composition.
+
+### 9. Human Handoff And Supervisor Control Plane
+
+A handoff is a durable task with shop, channel, conversation, reason, evidence,
+priority, SLA, assignment, acknowledgement, status, and audit history. A toast
+or customer-facing sentence is not a handoff task.
+
+Status: planned/P1. The absence of this layer blocks true omnichannel operation.
+
+### 10. Data, Evaluation, And Operations
+
+Replay and benchmark must use the same canonical context and final Pipeline as
+user-facing requests. Benchmark pass rate is not production readiness when all
+cases are review-only or real samples lack sidecar context.
+
+SQLite currently mixes knowledge, operations, traces, evaluation, and memory.
+Web and resident workers also share process ownership. These are later runtime
+separation tasks, not reasons to split the domain into microservices now.
+
+## Formal, Shadow, And Planned Boundaries
+
+| Capability | Status | May affect final reply or `can_send` |
+|---|---|---|
+| AnalysisPipeline and final orchestration | formal | yes, through final contract |
+| SQLite retrieval, identity and eligible tools | formal | yes, after admission |
+| Final audit and delivery gate | formal | yes |
+| pgvector retrieval | shadow | no |
+| Answer Memory | shadow/reference | no; style and handling only |
+| Grounded Reasoning Draft | shadow | no |
+| Product Media Observation and annotation | shadow | no |
+| Evidence-First Decision Proposal | shadow/qualification-gated | no |
+| Platform adapters and durable HandoffTask | planned | not implemented |
+
+Shadow modules may write diagnostics only. They must freeze formal decision
+fields and pass an explicit promotion gate before joining production decisions.
+
+## Current Architecture Assessment
+
+### What Is Strong
+
+- One formal Pipeline is shared by API, copilot, replay, and benchmark.
+- Final response, snapshot, and trace contracts are aligned.
+- Product identity, evidence roles, media delivery, and high-risk boundaries are
+  explicit and fail closed.
+- Replay, benchmark, provider qualification, visual review, and shadow mutation
+  guards provide useful observability.
+- The modular-monolith decision avoids premature distributed-system overhead.
+
+### What Is Blocking Business Value
+
+1. Eligible structured facts can exist in Product Context Pack without reaching
+   formal `selected_evidence`.
+2. The formal generator cannot reliably produce claim-level partial answers.
+3. Context construction is fragmented across graph state, packs, policies, and
+   shadow payloads.
+4. Multiple guard, fallback, semantic, and polishing services can rewrite the
+   same response and produce robotic handoff language.
+5. Visual understanding, Answer Memory, pgvector, and LLM decision capabilities
+   have accumulated in shadow without a promoted vertical slice.
+6. Real replay often lacks per-sample product/order context.
+7. Durable handoff and platform adapter contracts are not implemented.
+
+The primary risk is now **shadow accumulation**, not lack of experimental
+capability. New shadow subsystems should be frozen unless they unblock the next
+formal vertical slice.
+
+## Convergence Plan
+
+### Phase A: Formal Evidence Convergence
+
+- merge eligible Product Context Pack facts into one canonical selected/admitted
+  evidence contract;
+- keep role, identity, review, conflict, and provenance checks fail closed;
+- verify the same result across API, replay, benchmark, trace, and snapshot.
+
+### Phase B: Context-First Supervised Partial Answer
+
+- build the minimal Decision Context;
+- split compound questions into claim-level supported/unresolved/conflicting
+  states;
+- answer confirmed claims and defer only unresolved claims;
+- expose the candidate to supervisors first with `can_send=false`;
+- qualify a strict provider before model output can affect formal decisions.
+
+### Phase C: Simplify The Runtime
+
+- inventory duplicate understanding, routing, guard, and reply-rewrite nodes;
+- consolidate only after behavior and trace equivalence tests exist;
+- keep a small set of macro graph stages and move reusable contracts into one
+  tested owner each;
+- do not rewrite the graph and the answering contract in the same change.
+
+### Phase D: Omnichannel Operations
+
+- implement canonical platform ports;
+- add durable HandoffTask, assignment, SLA, acknowledgement, and audit;
+- connect QianNiu first, then PDD and JD without changing Agent-domain logic.
+
+### Phase E: Runtime And Data Separation
+
+- separate web and workers;
+- introduce managed migrations and CI enforcement;
+- separate operational and analytical workloads when measured contention or
+  deployment needs justify it.
+
+## Anti-Drift Rules
+
+Before changing architecture or adding a module:
+
+1. identify the earliest broken contract and its current owner;
+2. verify whether a maintained tool or existing project service already solves
+   it;
+3. avoid new policy, fallback, shadow, or index modules when an owner exists;
+4. declare the capability `formal`, `shadow`, `legacy`, or `planned`;
+5. state whether it changes evidence eligibility, final reply, `can_send`, media
+   delivery, or handoff;
+6. test API, copilot, replay, benchmark, trace, and persistence where relevant;
+7. update this overview only for durable responsibility or data-flow changes;
+8. record production ownership changes in an ADR before implementation.
+
+## External Design References
+
+- Anthropic, *Building effective agents*: prefer simple composable patterns and
+  add complexity only when evaluation demonstrates value.
+  https://www.anthropic.com/engineering/building-effective-agents
+- Anthropic, *Effective context engineering for AI agents*: treat context as a
+  finite resource and provide the smallest high-signal set of instructions,
+  tools, history, and external data.
+  https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+- LangGraph overview: use the runtime for durable execution, persistence,
+  streaming, and human-in-the-loop rather than as a replacement for model and
+  tool design.
+  https://docs.langchain.com/oss/python/langgraph/overview
+
+These references support the target direction; project business invariants and
+verified code behavior remain authoritative.
