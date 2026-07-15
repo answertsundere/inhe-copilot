@@ -54,6 +54,17 @@ application renders the same admitted claim outcomes deterministically rather
 than fabricating structured or free-text model output. The preview is never
 passed into final orchestration and cannot alter a formal response.
 
+Claim/evidence selection is attribute-aware: an explicit `attribute_key` can
+only use evidence or conflicts with the same canonical key. A missing evidence
+attribute does not satisfy an explicit request. When an unqualified request has
+multiple attribute candidates, the result is `selection_ambiguous` rather than
+an arbitrary combination. The preview evaluator accepts raw requested claims,
+admitted facts, conflicts, and context only; expected outcomes are scored after
+the actual claim-resolution and Minimal Decision Context path completes. Its
+copy and safety checks fail closed on final-audit failure, semantic-fit failure,
+diagnostic exceptions, mojibake, internal jargon, identity leakage, or a media
+promise without an attached reply block.
+
 ## Consequences
 
 - LangGraph keeps orchestration responsibility; it does not become an Evidence

@@ -115,7 +115,14 @@ unqualified, deterministic rendering may compose only the same admitted
 confirmed clauses and controlled pending/conflict wording. It does not parse
 free text or repair JSON. Fixture scoring separately measures claim resolution,
 supported coverage, pending/conflict retention, evidence citations, identity
-leakage, internal jargon, and formal-field mutation.
+leakage, internal jargon, mojibake, unsupported media promises, and
+formal-field mutation. The fixture supplies raw requested claims, admitted
+facts, conflicts, and context, never precomputed claim resolutions. Expected
+outcomes remain scorer-only. Attribute-qualified claims may use only the same
+canonical evidence attribute; missing attributes stay unresolved, and an
+unqualified request with several attribute candidates is selection-ambiguous.
+The isolated audit diagnostic is fail-closed: final-audit/semantic failures or
+diagnostic errors make the preview evaluation fail.
 
 ## Evidence convergence diagnostics
 

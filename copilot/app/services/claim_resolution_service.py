@@ -12,6 +12,7 @@ import json
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.product_media_annotation_schema_service import canonical_dimension_attribute
 
 
 def _claim_types(fact: dict[str, Any]) -> set[str]:
@@ -21,11 +22,42 @@ def _claim_types(fact: dict[str, Any]) -> set[str]:
     return {sanitize_text(value).lower() for value in values if sanitize_text(value)}
 
 
+def _attribute_key(item: dict[str, Any]) -> str:
+    value = sanitize_text(
+        item.get("attribute_key")
+        or item.get("field_name")
+        or item.get("fact_key")
+        or item.get("structured_field")
+    ).lower()
+    return canonical_dimension_attribute(value) if value else ""
+
+
 def _facts_for_claim(claim_type: str, facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         [fact for fact in facts if claim_type in _claim_types(fact)],
-        key=lambda fact: sanitize_text(fact.get("evidence_uid")),
+        key=lambda fact: ( _attribute_key(fact), sanitize_text(fact.get("evidence_uid"))),
     )
+
+
+def _select_for_attribute(
+    requested_attribute: str,
+    candidates: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str]:
+    """Select evidence by declared attribute without inferring from free text."""
+    if requested_attribute:
+        matching = [fact for fact in candidates if _attribute_key(fact) == requested_attribute]
+        if matching:
+            return matching, ""
+        if any(not _attribute_key(fact) for fact in candidates):
+            return [], "attribute_evidence_missing"
+        return [], "no_admitted_direct_evidence"
+
+    if len(candidates) <= 1:
+        return candidates, ""
+    attribute_groups = {_attribute_key(fact) or "__attribute_missing__" for fact in candidates}
+    if len(attribute_groups) == 1:
+        return candidates, ""
+    return [], "selection_ambiguous"
 
 
 def _claim_uid(requested: dict[str, Any]) -> str:
@@ -69,8 +101,17 @@ def build_claim_resolutions(
         claim_type = sanitize_text(requested.get("claim_type")).lower()
         if not claim_type:
             continue
-        matching_facts = _facts_for_claim(claim_type, direct_facts)
-        matching_conflicts = _facts_for_claim(claim_type, conflicts)
+        requested_attribute = _attribute_key(requested)
+        matching_facts, fact_selection_reason = _select_for_attribute(
+            requested_attribute,
+            _facts_for_claim(claim_type, direct_facts),
+        )
+        conflict_candidates = _facts_for_claim(claim_type, conflicts)
+        matching_conflicts, _conflict_selection_reason = (
+            _select_for_attribute(requested_attribute, conflict_candidates)
+            if conflict_candidates
+            else ([], "")
+        )
         conflict_uids = [
             sanitize_text(fact.get("evidence_uid"))
             for fact in matching_conflicts
@@ -84,6 +125,10 @@ def build_claim_resolutions(
             status = "conflicting"
             reason = sanitize_text(matching_conflicts[0].get("reason")) or "conflicting_evidence"
             facts: list[dict[str, Any]] = []
+        elif fact_selection_reason:
+            status = "unresolved"
+            reason = fact_selection_reason
+            facts = []
         elif matching_facts:
             status = "supported"
             reason = "admitted_direct_evidence"
@@ -95,7 +140,7 @@ def build_claim_resolutions(
         results.append({
             "claim_uid": _claim_uid(requested),
             "claim_type": claim_type,
-            "attribute_key": sanitize_text(requested.get("attribute_key")).lower(),
+            "attribute_key": requested_attribute,
             "status": status,
             "evidence_uids": [
                 sanitize_text(fact.get("evidence_uid")) for fact in facts if sanitize_text(fact.get("evidence_uid"))

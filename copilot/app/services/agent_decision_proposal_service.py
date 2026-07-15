@@ -21,6 +21,11 @@ from app.services.customer_facing_safe_handoff_service import (
 )
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.fact_type_service import FACT_TYPE_LABELS
+from app.services.grounded_reasoning_draft_service import has_mojibake_draft
+from app.services.no_evidence_reply_policy_service import (
+    contains_unsupported_media_promise,
+    has_attached_sendable_media_asset,
+)
 
 
 class RequestedClaim(BaseModel):
@@ -432,6 +437,21 @@ def _preview_safety_validation(
         issues.append("unknown_preview_evidence")
     if any(term.lower() in text.lower() for term in _PREVIEW_INTERNAL_TERMS):
         issues.append("internal_jargon")
+    if has_mojibake_draft({"grounded_draft": text}):
+        issues.append("mojibake")
+    identity = minimal_context.get("product_identity") or {}
+    identity_values = {
+        sanitize_text(identity.get(key))
+        for key in ("sku_code", "i_id", "product_id", "order_id", "order_id_hash", "content_hash")
+        if sanitize_text(identity.get(key))
+    }
+    if any(value in text for value in identity_values):
+        issues.append("identity_leakage")
+    if contains_unsupported_media_promise(
+        text,
+        has_attached_sendable_media_asset({"reply_blocks": preview.get("reply_blocks") or []}),
+    ):
+        issues.append("unsupported_media_promise")
     if preview.get("can_send") is not False or preview.get("used_for_final_reply") is not False:
         issues.append("formal_delivery_contract_violation")
 
@@ -461,9 +481,14 @@ def _preview_safety_validation(
                 "final_answer_audit_passed": bool((audited.get("final_answer_audit") or {}).get("passed", False)),
                 "semantic_fit_passed": bool(semantic.get("passed", False)),
             }
+            if not audit_summary["final_answer_audit_passed"]:
+                issues.append("final_answer_audit_failed")
+            if not audit_summary["semantic_fit_passed"]:
+                issues.append("semantic_fit_failed")
         except Exception as exc:  # Diagnostic failure must not alter the preview contract.
             audit_summary = {"diagnostic_error": type(exc).__name__}
-    return sanitize_obj({"passed": not issues, "issues": issues, "audit_summary": audit_summary})
+            issues.append("safety_diagnostic_error")
+    return sanitize_obj({"passed": not issues, "issues": sorted(set(issues)), "audit_summary": audit_summary})
 
 
 def build_supervisor_partial_answer_preview(

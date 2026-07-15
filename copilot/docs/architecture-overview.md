@@ -315,6 +315,12 @@ the Minimal Decision Context, preserves claim-level evidence references, and
 always remains review-only; it cannot update the formal reply, delivery blocks,
 or `can_send`.
 
+Phase B evaluation runs Claim Resolution from raw requested claims and admitted
+facts rather than accepting precomputed resolutions. Attribute-qualified claims
+select only compatible evidence and conflicts. A preview fails closed when its
+isolated final-audit or semantic-fit diagnostic fails, and synthetic success is
+not treated as a real positive-evidence promotion result.
+
 ### Phase C: Simplify The Runtime
 
 - inventory duplicate understanding, routing, guard, and reply-rewrite nodes;
