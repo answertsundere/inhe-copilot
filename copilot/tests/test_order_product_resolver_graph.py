@@ -7,7 +7,7 @@ def test_graph_order_product_identity_reaches_debug(monkeypatch):
 
     context_store.clear()
 
-    def fake_lookup(identifier, identifier_type):
+    def fake_lookup(identifier, identifier_type, **_kwargs):
         return {
             "found": True,
             "endpoint": "orders/out/simple/query",

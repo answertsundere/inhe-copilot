@@ -567,6 +567,23 @@ class TestUnknownIdentifierPerformance:
         total_api_ms = result.get("duration_ms", 0)
         assert total_api_ms <= 5 * 600  # 5 paths * 600ms max each = reasonable upper bound
 
+    def test_fast_unknown_identifier_skips_historical_scan(self):
+        """Interactive callers can reject an unresolved identifier without history scans."""
+        from app.integrations.jst.live_query import lookup_order_by_identifier
+        import unittest.mock as mock
+
+        miss = {"found": False, "duration_ms": 1, "endpoint": "x", "query_type": "x"}
+
+        with mock.patch("app.integrations.jst.live_query.lookup_outbound_by_so_id", return_value=miss), \
+             mock.patch("app.integrations.jst.live_query.lookup_order_by_order_id", return_value=miss), \
+             mock.patch("app.integrations.jst.live_query.lookup_order_by_platform_order_id", return_value=miss), \
+             mock.patch("app.integrations.jst.live_query.lookup_order_by_platform_order_id_history") as history_lookup:
+            result = lookup_order_by_identifier("opaque-identifier", "unknown_identifier", exhaustive=False)
+
+        assert result["found"] is False
+        assert result["safe_fallback_reason"] == "not_found_fast_path"
+        assert history_lookup.call_count == 0
+
 
 # ---------------------------------------------------------------------------
 # I. response_strategy: platform_trade_id 有标识符

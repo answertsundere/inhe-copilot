@@ -831,6 +831,7 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
     response_summary = response.get("real_context") if isinstance(response.get("real_context"), dict) else {}
     summary = context.get("real_context_summary") if isinstance(context.get("real_context_summary"), dict) else response_summary
     identity = context.get("real_context_product_identity") if isinstance(context.get("real_context_product_identity"), dict) else {}
+    order_identity = debug.get("order_product_identity") if isinstance(debug.get("order_product_identity"), dict) else {}
     media_context = context.get("media_context") if isinstance(context.get("media_context"), dict) else {}
     pack = _product_context_pack(response)
     stats = pack.get("stats") if isinstance(pack.get("stats"), dict) else {}
@@ -862,7 +863,12 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
             or context.get("order_id_hash")
             or context.get("platform_order_id")
             or context.get("platform_trade_id")
+            # The graph keeps an order lookup outcome in evidence_debug even
+            # when the lookup did not resolve a product. It is still enough to
+            # avoid asking the customer to provide the same order identifier.
+            or order_identity.get("identifier")
         ),
+        "order_lookup_status": str(order_identity.get("status") or ""),
         "has_media_context": bool(
             summary.get("has_media_context")
             or media_context.get("image_urls")

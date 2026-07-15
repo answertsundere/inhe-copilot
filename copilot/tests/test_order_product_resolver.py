@@ -326,7 +326,7 @@ def test_order_product_resolver_uses_sidecar_order_to_resolve_internal_product(m
 
     calls = []
 
-    def fake_lookup(identifier, identifier_type):
+    def fake_lookup(identifier, identifier_type, **_kwargs):
         calls.append((identifier, identifier_type))
         return {
             "found": True,
@@ -383,7 +383,7 @@ def test_order_product_resolver_uses_conversation_cache_without_requery(monkeypa
 
     calls = []
 
-    def fake_lookup(identifier, identifier_type):
+    def fake_lookup(identifier, identifier_type, **_kwargs):
         calls.append((identifier, identifier_type))
         return {"found": False, "safe_fallback_reason": "should_not_call"}
 
@@ -428,7 +428,7 @@ def test_order_product_resolver_uses_conversation_cache_without_requery(monkeypa
 def test_order_product_resolver_keeps_ambiguous_multi_item_order_unmatched(monkeypatch):
     from app.agent.nodes import order_product_resolver as node
 
-    def fake_lookup(identifier, identifier_type):
+    def fake_lookup(identifier, identifier_type, **_kwargs):
         return {
             "found": True,
             "data": {
@@ -465,7 +465,7 @@ def test_order_product_resolver_keeps_ambiguous_multi_item_order_unmatched(monke
 def test_order_product_resolver_selects_single_paid_item_when_order_has_gift(monkeypatch):
     from app.agent.nodes import order_product_resolver as node
 
-    def fake_lookup(identifier, identifier_type):
+    def fake_lookup(identifier, identifier_type, **_kwargs):
         return {
             "found": True,
             "data": {
@@ -506,7 +506,7 @@ def test_order_product_resolver_falls_back_to_unknown_identifier_when_typed_look
 
     calls = []
 
-    def fake_lookup(identifier, identifier_type):
+    def fake_lookup(identifier, identifier_type, **_kwargs):
         calls.append((identifier, identifier_type))
         if identifier_type == "platform_trade_id":
             return {"found": False, "safe_fallback_reason": "not_found"}

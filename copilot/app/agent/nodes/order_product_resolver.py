@@ -949,9 +949,13 @@ def order_product_resolver(state: dict) -> dict:
     try:
         from app.integrations.jst.live_query import lookup_order_by_identifier
 
-        lookup = lookup_order_by_identifier(identifier, identifier_type)
+        lookup = lookup_order_by_identifier(identifier, identifier_type, exhaustive=False)
         if not lookup.get("found") and identifier_type != "unknown_identifier":
-            fallback_lookup = lookup_order_by_identifier(identifier, "unknown_identifier")
+            fallback_lookup = lookup_order_by_identifier(
+                identifier,
+                "unknown_identifier",
+                exhaustive=False,
+            )
             if fallback_lookup.get("found"):
                 fallback_lookup["primary_lookup"] = {
                     "identifier_type": identifier_type,

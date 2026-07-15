@@ -1120,6 +1120,23 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
         r2["attempted_paths"] = _attempt_debug(r_out, r1, r2)
         return r2
 
+    # A chat request with an untyped identifier must remain bounded. Historical
+    # scans are available to callers that explicitly request exhaustive lookup,
+    # but are too expensive for the interactive product-resolution path.
+    if not exhaustive:
+        r = _make_result(
+            found=False,
+            query_type="unknown_identifier",
+            duration_ms=(
+                r_out.get("duration_ms", 0)
+                + r1.get("duration_ms", 0)
+                + r2.get("duration_ms", 0)
+            ),
+            safe_fallback_reason="not_found_fast_path",
+        )
+        r["attempted_paths"] = _attempt_debug(r_out, r1, r2)
+        return r
+
     r_hist = lookup_order_by_platform_order_id_history(identifier)
     if r_hist["found"]:
         r_hist["query_type"] = "unknown->platform_order_id_history"

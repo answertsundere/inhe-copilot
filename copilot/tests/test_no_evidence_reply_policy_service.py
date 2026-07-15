@@ -49,6 +49,34 @@ def test_installation_without_sendable_asset_requires_verified_material_before_s
     assert "可以发安装视频" not in result["reply"]
 
 
+def test_order_identifier_from_graph_prevents_reasking_for_order_context():
+    response = {
+        "suggested_reply": "亲，麻烦您发一下商品链接、订单截图或款式图，我帮您核对对应安装资料。",
+        "query_fact_type": "installation",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "installation",
+            "order_product_identity": {
+                "status": "not_found",
+                "identifier": "opaque-order-identifier",
+                "identifier_type": "unknown_identifier",
+            },
+        },
+        "recommended_assets": [],
+        "reply_blocks": [],
+    }
+
+    updated = apply_no_evidence_reply_policy(response, {"current_query": "如何安装"})
+
+    inputs = updated["evidence_debug"]["no_evidence_reply_policy_inputs"]
+    assert inputs["has_order_context"] is True
+    assert inputs["order_lookup_status"] == "not_found"
+    assert updated["answer_trace"]["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
+    assert "订单截图" not in updated["suggested_reply"]
+    assert updated["requires_human_review"] is True
+    assert updated.get("can_send") is not True
+
+
 def test_installation_with_sendable_asset_can_reference_delivery():
     result = _policy(
         query_fact_type="installation",
