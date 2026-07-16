@@ -8,6 +8,7 @@ from app.services.real_derived_evidence_fixture_service import (
     build_real_derived_fixture,
     scan_fixture_privacy,
     source_inventory,
+    validate_real_derived_fixture,
 )
 
 
@@ -49,6 +50,38 @@ def test_inventory_and_export_are_read_only_and_pseudonymous(tmp_path):
     assert all(item["identity"]["i_id"].startswith("fixture-iid-") for item in fixture["products"])
     assert "internal-1" not in json.dumps(fixture)
     assert scan_fixture_privacy(fixture)["passed"] is True
+    assert fixture["source_kind"] == "real_derived"
+    assert fixture["query_only"] is True
+    assert validate_real_derived_fixture(fixture, manifest)["dataset_id"] == fixture["dataset_id"]
+
+
+@pytest.mark.parametrize(
+    ("fixture_change", "manifest_change", "reason"),
+    [
+        ({"source_kind": "synthetic", "real_derived": False, "dataset_id": "synthetic-product-evidence-v1"}, {}, "real_derived_source_kind_required"),
+        ({"source_kind": "synthetic"}, {"source_kind": "synthetic"}, "real_derived_source_kind_required"),
+        ({"source_snapshot_hash": ""}, {"source_snapshot_hash": ""}, "source_snapshot_hash_required"),
+        ({}, {"fixture_sha256": "0" * 64}, "fixture_hash_mismatch"),
+        ({}, {"privacy_scan": {"passed": False}}, "manifest_privacy_scan_failed"),
+        ({"source_database_mutated": True}, {"source_database_mutated": True}, "source_database_mutation_detected"),
+    ],
+)
+def test_real_derived_validation_rejects_synthetic_and_invalid_provenance(
+    tmp_path, fixture_change, manifest_change, reason
+):
+    fixture, manifest = build_real_derived_fixture(_source_db(tmp_path), pseudonymization_key="test-key")
+    fixture.update(fixture_change)
+    manifest.update(manifest_change)
+
+    with pytest.raises(RealDerivedFixtureError, match=reason):
+        validate_real_derived_fixture(fixture, manifest)
+
+
+def test_real_derived_validation_requires_manifest(tmp_path):
+    fixture, _manifest = build_real_derived_fixture(_source_db(tmp_path), pseudonymization_key="test-key")
+
+    with pytest.raises(RealDerivedFixtureError, match="manifest_required"):
+        validate_real_derived_fixture(fixture, {})
 
 
 def test_export_requires_a_key_and_rejects_sensitive_customer_data(tmp_path):

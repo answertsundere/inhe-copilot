@@ -17,30 +17,16 @@ from pathlib import Path
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.admitted_answer_context_service import is_placeholder_evidence_text
 from app.services.product_structured_evidence_service import (
     build_product_spec_evidence_candidates,
 )
 
 
 FIXTURE_SCHEMA_VERSION = "real-derived-evidence-fixture-v1"
+REAL_DERIVED_SOURCE_KIND = "real_derived"
+REAL_DERIVED_DATASET_ID = "real-derived-product-evidence-v1"
 LOW_RISK_FACT_TYPES = ("material", "dimensions", "gross_weight", "detachable")
-# Keep in sync with app.services.admitted_answer_context_service.PLACEHOLDER_TERMS.
-_PLACEHOLDER_TERMS = (
-    "待核实",
-    "待确认",
-    "需要核实",
-    "需要确认",
-    "人工确认",
-    "未明确",
-    "暂无明确",
-    "以详情页为准",
-    "以实物为准",
-)
-# Variants where characters may intervene between the negation and the claim
-# (e.g. "未在现有结构资料中明确尺寸").
-_PLACEHOLDER_PATTERNS = (
-    re.compile(r"未.*明确"),
-)
 _SENSITIVE_PATTERNS = (
     re.compile(r"\b1[3-9]\d{9}\b"),
     re.compile(r"\b\d{15,18}[0-9Xx]\b"),
@@ -51,6 +37,49 @@ _SENSITIVE_PATTERNS = (
 
 class RealDerivedFixtureError(ValueError):
     """Raised when a source cannot safely produce a real-derived fixture."""
+
+
+def validate_real_derived_fixture(fixture: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
+    """Validate provenance before a real-derived vertical slice can run."""
+    if not isinstance(fixture, dict):
+        raise RealDerivedFixtureError("fixture_invalid")
+    if not isinstance(manifest, dict) or not manifest:
+        raise RealDerivedFixtureError("manifest_required")
+    if fixture.get("source_kind") != REAL_DERIVED_SOURCE_KIND:
+        raise RealDerivedFixtureError("real_derived_source_kind_required")
+    if fixture.get("real_derived") is not True:
+        raise RealDerivedFixtureError("real_derived_fixture_required")
+    if fixture.get("dataset_id") != REAL_DERIVED_DATASET_ID:
+        raise RealDerivedFixtureError("real_derived_dataset_id_required")
+    if fixture.get("schema_version") != FIXTURE_SCHEMA_VERSION:
+        raise RealDerivedFixtureError("fixture_schema_version_invalid")
+    if fixture.get("source_type") != "published_kb_product_structured_fields":
+        raise RealDerivedFixtureError("real_derived_source_type_invalid")
+    if not sanitize_text(fixture.get("source_snapshot_hash")):
+        raise RealDerivedFixtureError("source_snapshot_hash_required")
+    if not sanitize_text(fixture.get("sanitization_version")):
+        raise RealDerivedFixtureError("sanitization_version_required")
+    if fixture.get("query_only") is not True:
+        raise RealDerivedFixtureError("source_query_only_required")
+    if fixture.get("source_database_mutated") is not False:
+        raise RealDerivedFixtureError("source_database_mutation_detected")
+    privacy = scan_fixture_privacy(fixture)
+    if not privacy.get("passed"):
+        raise RealDerivedFixtureError("fixture_privacy_scan_failed")
+    expected_hash = _canonical_hash(fixture)
+    for field in (
+        "dataset_id", "dataset_version", "schema_version", "source_kind",
+        "real_derived", "source_type", "source_snapshot_hash",
+        "sanitization_version", "query_only", "source_database_mutated",
+    ):
+        if manifest.get(field) != fixture.get(field):
+            raise RealDerivedFixtureError(f"manifest_{field}_mismatch")
+    if manifest.get("fixture_sha256") != expected_hash:
+        raise RealDerivedFixtureError("fixture_hash_mismatch")
+    manifest_privacy = manifest.get("privacy_scan") if isinstance(manifest.get("privacy_scan"), dict) else {}
+    if manifest_privacy.get("passed") is not True:
+        raise RealDerivedFixtureError("manifest_privacy_scan_failed")
+    return sanitize_obj(fixture)
 
 
 def _read_only_connection(path: Path) -> sqlite3.Connection:
@@ -159,13 +188,16 @@ def build_real_derived_fixture(
         if not products:
             raise RealDerivedFixtureError("no_eligible_real_derived_products")
         fixture = {
-            "dataset_id": "real-derived-product-evidence-v1",
+            "dataset_id": REAL_DERIVED_DATASET_ID,
             "dataset_version": "1.0.0",
             "schema_version": FIXTURE_SCHEMA_VERSION,
+            "source_kind": REAL_DERIVED_SOURCE_KIND,
             "real_derived": True,
             "sanitization_version": "hmac-sha256-v1",
             "source_snapshot_hash": _database_hash(path),
             "source_type": "published_kb_product_structured_fields",
+            "query_only": True,
+            "source_database_mutated": False,
             "products": products,
             "negative_controls": [
                 {"kind": "identity_mismatch", "expected_rejection_reason": "product_identity_mismatch"},
@@ -191,6 +223,12 @@ def build_real_derived_fixture(
             "dataset_id": fixture["dataset_id"],
             "dataset_version": fixture["dataset_version"],
             "schema_version": fixture["schema_version"],
+            "source_kind": fixture["source_kind"],
+            "real_derived": fixture["real_derived"],
+            "source_type": fixture["source_type"],
+            "source_snapshot_hash": fixture["source_snapshot_hash"],
+            "sanitization_version": fixture["sanitization_version"],
+            "query_only": fixture["query_only"],
             "product_count": len(products),
             "fact_count": sum(fact_types.values()),
             "fact_type_counts": dict(sorted(fact_types.items())),
@@ -252,9 +290,7 @@ def _exportable_facts(profile: dict[str, Any]) -> list[dict[str, Any]]:
         value = sanitize_text(candidate.get("value"))
         if not value or _contains_sensitive(value):
             continue
-        if any(term in value for term in _PLACEHOLDER_TERMS) or any(
-            pattern.search(value) for pattern in _PLACEHOLDER_PATTERNS
-        ):
+        if is_placeholder_evidence_text(value):
             # Placeholder values are not reviewable product truth and must not
             # be exported as positive-evidence fixtures.
             continue

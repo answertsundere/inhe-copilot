@@ -10,16 +10,25 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-def _load(path: str) -> dict[str, Any]:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or value.get("real_derived") is not True:
-        raise ValueError("real_derived_fixture_required")
-    return value
+from app.services.real_derived_evidence_fixture_service import (
+    RealDerivedFixtureError,
+    validate_real_derived_fixture,
+)
+
+
+def _load(fixture_path: str, manifest_path: str) -> dict[str, Any]:
+    fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    return validate_real_derived_fixture(fixture, manifest)
 
 
 def _seed_fixture_database(fixture: dict[str, Any], database: Path) -> None:
@@ -108,6 +117,7 @@ def run_vertical_slice(fixture: dict[str, Any], work_database: str | Path) -> di
     successful = [row for row in rows if row["formal_selected_count"] and row["admitted_count"] and row["confirmed_clause_count"] and row["citation_valid"]]
     return {
         "dataset_id": fixture.get("dataset_id"),
+        "source_kind": fixture.get("source_kind"),
         "real_derived": True,
         "total": total,
         "passed": len(successful),
@@ -161,16 +171,17 @@ def _compound_supported_and_unresolved(fixture, converge, build_pack) -> dict[st
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture", required=True)
+    parser.add_argument("--manifest", required=True)
     parser.add_argument("--work-db", required=True)
     parser.add_argument("--json-output", required=True)
     args = parser.parse_args()
     try:
-        report = run_vertical_slice(_load(args.fixture), args.work_db)
+        report = run_vertical_slice(_load(args.fixture, args.manifest), args.work_db)
         Path(args.json_output).write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({key: report[key] for key in ("total", "passed", "failed", "safety")}, ensure_ascii=False))
         compound = report.get("compound_supported_and_unresolved") or {}
         return 0 if report["failed"] == 0 and compound.get("passed") is True else 2
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RealDerivedFixtureError) as exc:
         print(json.dumps({"status": "blocked", "reason": str(exc)}, ensure_ascii=False))
         return 2
 

@@ -185,12 +185,17 @@ no formal-field mutation, and parity across every formal entry point. Phase
 product facts. Product identities are HMAC-pseudonymised with an environment
 key that is neither emitted nor stored in the fixture. The exporter excludes
 mixed product/packaging dimension candidates rather than treating carton values
-as product dimensions. The manifest records source and fixture hashes, table
-fingerprints, privacy-scan status, and coverage gaps.
+as product dimensions. A real-derived fixture and its manifest both declare
+`source_kind=real_derived`, source snapshot identity, sanitization version,
+privacy-scan status, query-only access, and no source-database mutation.
+Synthetic fixtures use a distinct source kind and dataset identity.
 
-`run_real_derived_evidence_vertical_slice.py` replays the sanitised fixture
-through an isolated fixture database and the real Product Context Pack ->
-convergence -> admitted context -> claim-resolution -> supervisor-preview
-chain. Expected results are scored after this chain; they are never input to a
-builder. This validates factual provenance and contract parity, not a customer
-delivery path or a `can_send` decision.
+`run_real_derived_evidence_vertical_slice.py` requires both fixture and manifest
+and rejects a missing manifest, hash mismatch, source-kind conflict, missing
+source snapshot, failed privacy scan, or source mutation before calling any
+Agent code. It replays a validated sanitised fixture through an isolated fixture
+database and the real Product Context Pack -> convergence -> admitted context
+-> claim-resolution -> supervisor-preview chain. Expected results are scored
+after this chain; they are never input to a builder. This validates factual
+provenance and contract parity, not a customer delivery path or a `can_send`
+decision.

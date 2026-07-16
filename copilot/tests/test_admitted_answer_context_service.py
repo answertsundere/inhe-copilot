@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.services.admitted_answer_context_service import AdmittedAnswerContextService
+from app.services.admitted_answer_context_service import (
+    AdmittedAnswerContextService,
+    is_placeholder_evidence_text,
+)
 
 
 def _fact(**overrides):
@@ -29,6 +32,23 @@ def _understanding(*claim_types):
             for item in claim_types
         ]
     }
+
+
+def test_placeholder_semantics_reject_verification_copy_without_rejecting_real_values():
+    placeholders = (
+        "\u672a\u660e\u786e\u5c3a\u5bf8",
+        "\u672a\u5728\u73b0\u6709\u7ed3\u6784\u8d44\u6599\u4e2d\u660e\u786e\u5c3a\u5bf8",
+        "\u5f53\u524d\u8d44\u6599\u4e2d\u6682\u672a\u660e\u786e\u662f\u5426\u53ef\u62c6",
+        "\u9700\u8981\u4eba\u5de5\u6838\u5b9e",
+        "\u4ee5\u8be6\u60c5\u9875\u4e3a\u51c6",
+        "\u4ee5\u5b9e\u7269\u4e3a\u51c6",
+        "\u5f85\u786e\u8ba4",
+        "\u6682\u65e0\u660e\u786e\u6570\u636e",
+    )
+    real_values = ("\u4e3b\u4f53\u6750\u8d28 PP", "\u5bbd 38cm", "\u6bdb\u91cd 2.5kg", "\u53ef\u62c6\u5378", "\u4e0d\u53ef\u62c6\u5378")
+
+    assert all(is_placeholder_evidence_text(value) for value in placeholders)
+    assert not any(is_placeholder_evidence_text(value) for value in real_values)
 
 
 def test_admits_reviewed_scoped_direct_product_fact():
@@ -75,8 +95,15 @@ def test_rejects_reference_placeholder_identity_mismatch_and_unreviewed_faq():
     }
 
 
-def test_rejects_placeholder_with_intervening_characters():    context = AdmittedAnswerContextService().build_for_response(        {"selected_evidence": [_fact(evidence_uid="placeholder-spread", content="未在现有结构资料中明确尺寸")]},        product_identity={"sku_code": "SKU-A"},        understanding=_understanding("material_composition"),    )
-    assert context["direct_product_facts"] == []    reasons = {item["evidence_uid"]: item["reason"] for item in context["rejected_evidence"]}
+def test_rejects_placeholder_with_intervening_characters():
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact(evidence_uid="placeholder-spread", content="未在现有结构资料中明确尺寸")]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+    )
+
+    assert context["direct_product_facts"] == []
+    reasons = {item["evidence_uid"]: item["reason"] for item in context["rejected_evidence"]}
     assert reasons == {"placeholder-spread": "placeholder_evidence"}
 
 

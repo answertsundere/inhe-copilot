@@ -52,17 +52,18 @@ The default formal production boundary remains:
 - strict decision provider unqualified/disabled
 - supervisor preview read-only
 
-For the current Phase 0.5C.2D runtime smoke test, the ignored `.env` in
-`copilot-runtime/copilot` sets
-`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=true`. Both 5012 and 5011 were
-started from the runtime worktree with the new content-identity readiness
-contract. Smoke queries for real material and gross-weight facts returned
-sendable replies with no contract failures. The current runtime knowledge base
-contains placeholder values for many `size` and `detachable` fields after a
-conservative backfill, so a fresh 5-product × 4-fact real-derived fixture cannot
-be exported until those fields are repaired; a synthetic fixture is used for the
-20-fact vertical slice while the placeholder filter prevents mistaken positive
-evidence.
+The ignored runtime `.env` must keep
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false` until the real-derived
+5-product by 4-fact validation gate passes. A synthetic 20-fact vertical slice
+is a code-contract check only; it cannot justify enabling the formal flag on
+5011. Process-only 5012 experiments may enable the flag after 5011 is healthy,
+but must stop after verification.
+
+As of 2026-07-16, the query-only inventory found zero products with all four
+required reviewed low-risk facts (`material`, `dimensions`, `gross_weight`, and
+`detachable`). Real-derived promotion is therefore
+`blocked_by_product_data`. Placeholder, packaging-only, or visually inferred
+values must not be repaired automatically or treated as product facts.
 
 ## Ports And Health
 

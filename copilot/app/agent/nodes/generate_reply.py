@@ -16,6 +16,7 @@ from app import config
 from app.llm.client import get_llm_client
 from app.llm.prompts import build_system_prompt, build_user_message
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
+from app.services.admitted_answer_context_service import is_placeholder_evidence_text
 
 logger = logging.getLogger(__name__)
 
@@ -703,21 +704,9 @@ def _real_product_facts(state: dict) -> list[dict]:
     return facts
 
 
-_PLACEHOLDER_PRODUCT_FACT_MARKERS = (
-    "\u9700\u8981\u4eba\u5de5\u6838\u5b9e",
-    "\u4eba\u5de5\u590d\u6838",
-    "\u672a\u5728\u73b0\u6709\u7ed3\u6784\u5316\u8d44\u6599\u4e2d\u660e\u786e",
-    "\u672a\u660e\u786e",
-    "\u4ee5\u5546\u54c1\u8be6\u60c5\u9875",
-    "\u4ee5\u5b9e\u7269",
-)
-
-
 def _is_placeholder_product_fact(item: dict) -> bool:
     text = _fact_text(item)
-    if not text:
-        return False
-    return any(marker in text for marker in _PLACEHOLDER_PRODUCT_FACT_MARKERS)
+    return is_placeholder_evidence_text(text)
 
 
 def _drop_placeholder_product_facts_when_concrete_exists(facts: list[dict]) -> list[dict]:

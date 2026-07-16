@@ -226,6 +226,11 @@ def test_generate_reply_does_not_use_media_generic_rule_without_sendable_asset()
 def test_api_analyze_preserves_product_first_trace_and_sendable_contract(client, monkeypatch):
     import app.services.analysis_execution_service as execution_service
 
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {"ready": True, "status": "ready", "reasons": [], "knowledge": {}, "database": {}},
+    )
+
     pack = _structured_pack("material", "This product material is steel and PP.")
 
     def fake_execute_analysis(**kwargs):

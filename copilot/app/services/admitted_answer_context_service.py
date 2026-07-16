@@ -36,16 +36,18 @@ PLACEHOLDER_TERMS = (
     "待确认",
     "需要核实",
     "需要确认",
+    "需要人工核实",
     "人工确认",
     "未明确",
     "暂无明确",
+    "暂未明确",
     "以详情页为准",
     "以实物为准",
 )
 # Variants where characters may intervene between the negation and the claim
 # (e.g. "未在现有结构资料中明确尺寸").
 _PLACEHOLDER_PATTERNS = (
-    re.compile(r"未.*明确"),
+    re.compile(r"未.{0,24}明确"),
 )
 
 COMPATIBLE_FACT_TYPES = {
@@ -146,6 +148,15 @@ def _text(item: dict[str, Any]) -> str:
         if value:
             return value
     return ""
+
+
+def is_placeholder_evidence_text(value: Any) -> bool:
+    """Return whether text is a verification placeholder rather than a fact."""
+    text = sanitize_text(value)
+    return bool(text) and (
+        any(term in text for term in PLACEHOLDER_TERMS)
+        or any(pattern.search(text) for pattern in _PLACEHOLDER_PATTERNS)
+    )
 
 
 def _attribute_key(item: dict[str, Any]) -> str:
@@ -377,9 +388,7 @@ def _admission_reason(
         return "review_status_missing"
     if not text:
         return "fact_text_missing"
-    if any(term in text for term in PLACEHOLDER_TERMS) or any(
-        pattern.search(text) for pattern in _PLACEHOLDER_PATTERNS
-    ):
+    if is_placeholder_evidence_text(text):
         return "placeholder_evidence"
     if not policy:
         identity_reason = _identity_reason(item, product_identity, allow_global=role == "faq_direct")

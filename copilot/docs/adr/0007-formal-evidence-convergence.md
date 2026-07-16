@@ -143,10 +143,15 @@ with exit code `2`, not a synthetic `rag_miss` result.
 
 Synthetic fixtures prove only the deterministic contract. Before any supervisor
 preview can be considered for promotion, a query-only export must derive a
-versioned, pseudonymous fixture from published direct product fields. The
-export records a source snapshot hash, table fingerprints before and after the
-read, provenance hashes, and a privacy scan; it never copies source identities,
-titles, URLs, row IDs, or source-database contents into Git.
+versioned, pseudonymous fixture from published direct product fields. A
+real-derived fixture and manifest both declare `source_kind=real_derived`, a
+non-empty source snapshot hash, sanitization version, `query_only=true`, and
+`source_database_mutated=false`. The vertical slice validates both files,
+including fixture SHA-256, before it creates an isolated database. A synthetic
+fixture must declare `source_kind=synthetic` and is rejected by this runner.
+The export records table fingerprints before and after the read, provenance
+hashes, and a privacy scan; it never copies source identities, titles, URLs,
+row IDs, or source-database contents into Git.
 
 The vertical slice seeds an isolated temporary fixture database and executes
 the same Product Context Pack, formal convergence, admitted context, claim
@@ -156,17 +161,17 @@ evidence UID, while the preview remains review-only with `can_send=false`.
 Missing attribute scope or packaging-contaminated dimensions are data-quality
 gaps, not grounds to relax evidence admission.
 
-Real-derived fixture export filters placeholder values before they can be
-exported as positive evidence. The filter matches both exact substring terms
-(e.g. "未明确", "以详情页为准") and spread variants where characters intervene
-between the negation and the claim (e.g. "未在现有结构资料中明确尺寸"). A
-product whose only value for a low-risk fact is a placeholder is not eligible
-for the fixture, because the fixture must demonstrate reviewed product truth.
+Real-derived fixture export and Product-first generation reuse the same
+placeholder semantics before a fact reaches formal admission. The filter rejects
+verification copy, pending values, detail-page or physical-item disclaimers,
+and spread variants where explanatory words appear between a negation and a
+claim. It does not reject concrete values such as a material, dimension, gross
+weight, or either detachable state. A product whose only value for a low-risk
+fact is a placeholder is not eligible for the fixture, because the fixture must
+demonstrate reviewed product truth.
 
-As of the current runtime knowledge base, a prior conservative backfill has
-replaced many `size` and `detachable` values with placeholders. A fresh
-5-product × 4-fact real-derived fixture cannot be exported until those fields
-are repaired with reviewed real values. Pipeline validation therefore uses a
-synthetic 5×4 fixture (clearly marked as synthetic) to prove the convergence
-and reply path end-to-end, while the placeholder filter prevents placeholder
-values from being mistaken for positive evidence.
+As of 2026-07-16, the current runtime inventory does not contain five products
+with all four required reviewed low-risk facts. The real-derived promotion gate
+is blocked by product data. A synthetic 5-by-4 fixture may prove the convergence
+and preview code path only; it must never be reported as real-derived success
+or used to enable the formal production flag.
