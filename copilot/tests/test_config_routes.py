@@ -32,6 +32,18 @@ def test_llm_config_is_masked(monkeypatch, tmp_path):
 
 def test_update_llm_config_requires_admin_role(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
+    from app.api import admin_auth
+
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: admin_auth.AdminPrincipal(
+            subject="pytest-operator",
+            display_name="pytest-operator",
+            roles=frozenset({"operator"}),
+            auth_type="test",
+        ),
+    )
 
     resp = client.put("/api/config/llm", json={
         "api_base": "https://api.deepseek.com",
@@ -48,7 +60,6 @@ def test_update_llm_config_saves_env_and_does_not_return_raw_key(monkeypatch, tm
 
     resp = client.put(
         "/api/config/llm",
-        headers={"X-User-Role": "supervisor"},
         json={
             "api_base": "https://api.deepseek.com",
             "model": "deepseek-chat",
@@ -76,7 +87,6 @@ def test_update_without_api_key_keeps_existing_key(monkeypatch, tmp_path):
 
     resp = client.put(
         "/api/config/llm",
-        headers={"X-User-Role": "admin"},
         json={
             "api_base": "https://api.deepseek.com",
             "model": "deepseek-chat",
@@ -94,7 +104,6 @@ def test_clear_llm_api_key(monkeypatch, tmp_path):
 
     resp = client.put(
         "/api/config/llm",
-        headers={"X-User-Role": "admin"},
         json={
             "api_base": "https://api.deepseek.com",
             "model": "deepseek-chat",

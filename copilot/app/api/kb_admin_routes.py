@@ -9,6 +9,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 from sqlalchemy import func, Integer
+from app.api.admin_auth import current_role, current_user_name, has_any_role
 
 kb_admin_bp = Blueprint("kb_admin", __name__, url_prefix="/api/kb")
 
@@ -16,13 +17,11 @@ kb_admin_bp = Blueprint("kb_admin", __name__, url_prefix="/api/kb")
 # ============ 权限检查 ============
 
 def _get_user_info():
-    role = request.headers.get("X-User-Role", "operator")
-    name = request.headers.get("X-User-Name", "anonymous")
-    return role, name
+    return current_role(), current_user_name()
 
 
 def _require_supervisor(role):
-    return role in ("supervisor", "admin")
+    return has_any_role("supervisor", "admin")
 
 
 # ============ Dashboard ============

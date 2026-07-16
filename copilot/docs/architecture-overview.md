@@ -108,6 +108,20 @@ persistence. A formal stage must not run again after persistence.
 
 Status: formal; ADR 0001.
 
+### Management Access Boundary
+
+Cloudflare Tunnel is transport only. Management-route identity is verified from
+Cloudflare Access JWT assertions at the Flask boundary, then mapped through
+application RBAC. The origin does not trust caller-supplied role or user-name
+headers. Management reads require an authenticated principal; reviews, writes,
+and configuration use progressively narrower roles. Browser writes also pass a
+same-site source check. Public runtime diagnostics and customer-runtime entry
+points retain their separately documented contracts.
+
+Status: formal; ADR 0008. This protects the origin even before the external
+Cloudflare Access application is configured, because absent configuration fails
+management access closed.
+
 ### 3. Thin LangGraph Runtime
 
 LangGraph should retain only work that benefits from explicit state and control

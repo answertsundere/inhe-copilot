@@ -117,14 +117,16 @@ def _seed_quality_task_run(session_factory):
         db.close()
 
 
-def test_real_conversation_eval_routes_require_supervisor(monkeypatch):
+def test_real_conversation_eval_routes_require_supervisor(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_run(session_factory)
 
+    set_admin_test_principal("operator")
     assert client.get("/api/eval/real-conversation/runs").status_code == 403
-    assert client.get("/api/eval/real-conversation/runs", headers={"X-User-Role": "operator"}).status_code == 403
-    assert client.get("/api/eval/real-conversation/runs", headers={"X-User-Role": "supervisor"}).status_code == 200
-    assert client.get("/api/eval/real-conversation/runs", headers={"X-User-Role": "admin"}).status_code == 200
+    set_admin_test_principal("supervisor")
+    assert client.get("/api/eval/real-conversation/runs").status_code == 200
+    set_admin_test_principal("admin")
+    assert client.get("/api/eval/real-conversation/runs").status_code == 200
 
 
 def test_real_conversation_eval_run_detail_is_sanitized(monkeypatch):
@@ -184,9 +186,10 @@ def test_real_conversation_review_writes_only_review(monkeypatch):
     assert "13812345678" not in data["review"]["reason"]
 
 
-def test_real_conversation_review_operator_forbidden(monkeypatch):
+def test_real_conversation_review_operator_forbidden(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_run(session_factory)
+    set_admin_test_principal("operator")
 
     response = client.post(
         "/api/eval/real-conversation/reviews",
@@ -196,7 +199,6 @@ def test_real_conversation_review_operator_forbidden(monkeypatch):
             "turn_uid": "turn_api",
             "decision": "correct",
         },
-        headers={"X-User-Role": "operator"},
     )
 
     assert response.status_code == 403
@@ -268,15 +270,14 @@ def test_real_conversation_quality_tasks_routes_group_generate_and_dedupe(monkey
     assert second_data["updated"] == generatable_count
 
 
-def test_real_conversation_quality_tasks_routes_reject_operator(monkeypatch):
+def test_real_conversation_quality_tasks_routes_reject_operator(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_quality_task_run(session_factory)
+    set_admin_test_principal("operator")
 
     assert client.get(
         "/api/eval/real-conversation/runs/quality_task_api/quality-tasks",
-        headers={"X-User-Role": "operator"},
     ).status_code == 403
     assert client.post(
         "/api/eval/real-conversation/runs/quality_task_api/quality-tasks/generate",
-        headers={"X-User-Role": "operator"},
     ).status_code == 403

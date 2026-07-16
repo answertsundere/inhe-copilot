@@ -65,6 +65,27 @@ required reviewed low-risk facts (`material`, `dimensions`, `gross_weight`, and
 `blocked_by_product_data`. Placeholder, packaging-only, or visually inferred
 values must not be repaired automatically or treated as product facts.
 
+## Management Access
+
+The public Tunnel is not an authorization layer. Before a management UI or API
+is exposed, configure an ignored runtime environment with
+`COPILOT_ADMIN_AUTH_MODE=cloudflare_access`, the Cloudflare Access team domain,
+the application audience, a verified-claim role-map JSON, and allowed browser
+origins. Do not put those concrete values in Git, reports, or screenshots.
+
+Create a Cloudflare self-hosted Access application for management routes and
+separate its user/group policies from any public customer endpoint. Service
+automation must use an Access service token and an explicit local route
+allowlist; it cannot obtain permission from a request role header. The origin
+still verifies every received assertion, so Access misrouting fails closed.
+
+`/health` stays a public liveness endpoint. `/api/runtime/readiness` exposes
+only `admin_auth_mode`, `admin_auth_ready`,
+`access_audience_configured`, and `insecure_header_auth_disabled`; in a
+production runtime it is not ready if Access configuration is absent. A local
+`development_loopback` mode is for an explicitly marked development/test
+process bound to loopback only and must never be used behind the public Tunnel.
+
 ## Ports And Health
 
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the

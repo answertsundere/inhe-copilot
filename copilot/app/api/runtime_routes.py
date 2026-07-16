@@ -16,6 +16,22 @@ _PID = os.getpid()
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _with_admin_auth_readiness(readiness: dict) -> dict:
+    """Expose only non-sensitive admin-auth status and fail readiness closed."""
+    from app.api.admin_auth import admin_auth_readiness
+
+    result = dict(readiness)
+    result["reasons"] = list(readiness.get("reasons") or [])
+    auth = admin_auth_readiness()
+    result.update(auth)
+    if not auth["admin_auth_ready"]:
+        result["ready"] = False
+        result["status"] = "not_ready"
+        if auth["reason"] and auth["reason"] not in result["reasons"]:
+            result["reasons"].append(auth["reason"])
+    return result
+
+
 def _git_metadata(*args: str) -> str:
     """Read deployment metadata without exposing any runtime configuration."""
     try:
@@ -61,7 +77,7 @@ def runtime_version():
 
     from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
-    readiness = RuntimeKnowledgeReadinessService().inspect()
+    readiness = _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
     return jsonify({
         "app_version": APP_VERSION,
         "graph_version": GRAPH_VERSION,
@@ -86,5 +102,5 @@ def runtime_version():
 def runtime_readiness():
     from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
-    readiness = RuntimeKnowledgeReadinessService().inspect()
+    readiness = _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
     return jsonify(readiness), 200 if readiness["ready"] else 503

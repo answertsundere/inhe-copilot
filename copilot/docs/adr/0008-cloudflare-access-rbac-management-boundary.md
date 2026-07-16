@@ -1,0 +1,97 @@
+# ADR 0008: Cloudflare Access And RBAC Management Boundary
+
+## Status
+
+Accepted, 2026-07-16.
+
+## Context
+
+The public `/ask/*` Tunnel reaches the local Flask origin, but a Tunnel is
+transport only: it does not prove who requested a management endpoint. The
+origin previously trusted `X-User-Role` and `X-User-Name`, so any client able
+to reach it could claim a privileged role. Configuration reads were also
+available without authentication.
+
+## Decision
+
+Cloudflare Access is the identity provider for management requests. The origin
+accepts only a verified `Cf-Access-Jwt-Assertion`: PyJWT verifies the RS256
+signature using the configured Access JWKS endpoint, issuer, application
+audience, expiry, not-before time, key ID, and required subject claim. JWKS
+keys use PyJWT's bounded cache; missing configuration, unknown keys, network
+errors, and parse errors deny access.
+
+The application maps verified email, group, subject, or verified service-token
+claims through an environment-only allowlist to `operator`, `reviewer`,
+`supervisor`, `admin`, or `service`. Request role/name headers are never an
+identity source. Management routes have one explicit policy inventory:
+
+- public runtime health and version/readiness;
+- unchanged customer-runtime routes;
+- authenticated read;
+- reviewer write for review decisions;
+- supervisor write for operational changes; and
+- admin-only configuration and system management.
+
+Browser write methods require a configured same-site Origin or Referer. A
+verified service identity bypasses this browser-only check only when its route
+is explicitly allowed by configuration. A loopback development mode is allowed
+only in a development/test runtime with explicit local subject and role; it is
+not a production fallback.
+
+Readiness reports non-sensitive authentication status and fails closed when a
+production Access configuration is absent. Security events are token-free logs
+containing only a truncated subject, role set, route, method, trace ID, result,
+and reason code.
+
+## Alternatives Considered
+
+- Trust Cloudflare-added role headers: rejected because direct-origin or Tunnel
+  requests can forge them.
+- Trust only the assertion header's presence: rejected because an assertion
+  must have a valid signature and registered claims.
+- Add an application password or `AUTH_DISABLED` switch: rejected because it
+  creates a second, easily misconfigured identity authority.
+- Move access checks into LangGraph: rejected because authentication and RBAC
+  are HTTP/application boundary concerns, not Agent reasoning.
+
+## Business And Safety Consequences
+
+- Configuration reads, model connection tests, review data, media operations,
+  and evaluation operations no longer accept anonymous or self-declared roles.
+- Customer analysis contracts, Evidence Convergence, Agent reply generation,
+  `can_send`, and delivery blocks are unchanged.
+- Public liveness remains available, but it cannot claim runtime readiness when
+  the management authentication configuration is unsafe.
+- Cloudflare Access policy configuration remains an external deployment step;
+  source code cannot create or validate a dashboard application by itself.
+
+## Migration And Rollback
+
+Set `COPILOT_ADMIN_AUTH_MODE=cloudflare_access` with the local team-domain,
+audience, role-map, and allowed-origin configuration before exposing management
+routes. Configure a Cloudflare self-hosted Access application to protect the
+management path and a minimal service token policy for approved automation.
+
+Rollback is limited to disabling the Access application only after the origin
+is no longer publicly reachable. Do not roll back to trusted role headers. The
+local development mode is not a public rollback mechanism.
+
+## Verification
+
+- Route inventory asserts every matched route has a policy.
+- Tests cover valid and invalid signed assertions, unknown key IDs, forged role
+  headers, RBAC, service allowlists, CSRF, config protection, and readiness.
+- Public runtime endpoints remain reachable without management credentials;
+  `/api/analyze` retains its existing business-authentication behavior.
+
+## References
+
+- Cloudflare Access JWT validation:
+  https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
+- Cloudflare service tokens:
+  https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/
+- OWASP Authorization Cheat Sheet:
+  https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+- OWASP CSRF Prevention Cheat Sheet:
+  https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html

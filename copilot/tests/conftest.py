@@ -16,6 +16,39 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _inject_verified_test_admin(monkeypatch):
+    """Replace the verifier in tests; production never has this bypass."""
+    from app.api import admin_auth
+
+    principal = admin_auth.AdminPrincipal(
+        subject="pytest-admin",
+        display_name="pytest-admin",
+        roles=frozenset({"admin"}),
+        auth_type="test",
+    )
+    monkeypatch.setattr(admin_auth, "_verified_principal", lambda: principal)
+    yield
+
+
+@pytest.fixture
+def set_admin_test_principal(monkeypatch):
+    """Set a verifier-injected role without relying on an HTTP role header."""
+    from app.api import admin_auth
+
+    def set_principal(role: str, *, auth_type: str = "test"):
+        principal = admin_auth.AdminPrincipal(
+            subject=f"pytest-{role}",
+            display_name=f"pytest-{role}",
+            roles=frozenset({role}),
+            auth_type=auth_type,
+        )
+        monkeypatch.setattr(admin_auth, "_verified_principal", lambda: principal)
+        return principal
+
+    return set_principal
+
+
+@pytest.fixture(autouse=True)
 def _clear_global_state():
     """Clear module-level singleton caches between tests to prevent state leakage."""
     yield

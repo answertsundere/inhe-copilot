@@ -6,8 +6,11 @@ from app.main import create_app
 app = create_app()
 client = app.test_client()
 
-def api(method, path, data=None, role="operator"):
-    headers = {"Content-Type": "application/json", "X-User-Role": role, "X-User-Name": "tester"}
+def api(method, path, data=None):
+    headers = {"Content-Type": "application/json"}
+    assertion = os.environ.get("COPILOT_ADMIN_ACCESS_ASSERTION", "").strip()
+    if assertion:
+        headers["Cf-Access-Jwt-Assertion"] = assertion
     body = json.dumps(data) if data else None
     if method == "GET":
         resp = client.get(path, headers=headers)
@@ -41,7 +44,7 @@ print(f"\n创建 shipping_policy id={ship_id}")
 # 1.9 supervisor 审核通过
 print("\n--- [1.9] supervisor 审核通过 ---")
 api("POST", f"/api/knowledge/entries/{ship_id}/submit-review", {})
-s, b = api("POST", f"/api/knowledge/entries/{ship_id}/review", {"approved": True, "reviewer": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{ship_id}/review", {"approved": True, "reviewer": "supervisor_1"})
 s2, b2 = api("GET", f"/api/knowledge/entries/{ship_id}")
 print(f"review_status={s}, entry_status={b2.get('status')}")
 print(f"结果: {'通过' if s == 200 and b2.get('status') == 'published' else '失败'}")
@@ -56,7 +59,7 @@ print(f"结果: {'通过' if ship_id in ids else '失败'}")
 # 2.5 rollback / 1.10b
 print("\n--- [2.5/1.10b] rollback ---")
 api("DELETE", f"/api/knowledge/entries/{ship_id}")
-s, b = api("POST", f"/api/knowledge/entries/{ship_id}/rollback", {"version": 1, "changed_by": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{ship_id}/rollback", {"version": 1, "changed_by": "supervisor_1"})
 s2, b2 = api("GET", f"/api/knowledge/entries/{ship_id}")
 print(f"rollback_status={s}, entry_status={b2.get('status')}, version={b2.get('version')}, title={b2.get('title')}")
 print(f"结果: {'通过' if s == 200 and b2.get('status') == 'draft' else '失败'}")
@@ -71,7 +74,7 @@ s, b = api("POST", "/api/knowledge/entries", {
 })
 hr_id = b.get("id")
 api("POST", f"/api/knowledge/entries/{hr_id}/submit-review", {})
-s, b = api("POST", f"/api/knowledge/entries/{hr_id}/review", {"approved": True, "reviewer": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{hr_id}/review", {"approved": True, "reviewer": "supervisor_1"})
 s2, b2 = api("GET", f"/api/knowledge/entries/{hr_id}")
 print(f"review_status={s}, entry_status={b2.get('status')}, auto_reply={b2.get('auto_reply_allowed')}, hr={b2.get('human_review_required')}")
 print(f"结果: {'通过' if s == 200 and b2.get('status') == 'published' else '失败'}")

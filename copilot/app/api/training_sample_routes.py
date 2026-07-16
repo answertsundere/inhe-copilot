@@ -15,6 +15,7 @@ from flask import Blueprint, request, jsonify, send_file
 
 from app.config import BASE_DIR, TRAINING_SAMPLE_UPLOAD_DIR
 from app.repositories.training_sample_repository import TrainingSampleRepository
+from app.api.admin_auth import current_user_name
 
 training_sample_bp = Blueprint("training_sample", __name__, url_prefix="/api/kb")
 
@@ -26,8 +27,7 @@ _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 def _get_user_info():
-    name = request.headers.get("X-User-Name", "anonymous")
-    return name
+    return current_user_name()
 
 
 def _ensure_upload_dir():

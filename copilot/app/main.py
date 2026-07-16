@@ -629,6 +629,9 @@ def create_app():
     app.register_blueprint(training_sample_bp)
     app.register_blueprint(eval_bp)
 
+    from app.api.admin_auth import install_admin_access_control
+    install_admin_access_control(app)
+
     # 让 /api/kb/knowledge/* 兼容 /api/knowledge/* 路由
     _clone_routes_under_prefix(app, "/api/knowledge/", "/api/kb/knowledge/")
     # 让 kb-admin（base=/api/kb）也能访问素材库接口

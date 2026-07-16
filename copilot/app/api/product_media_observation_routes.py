@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from app.api.admin_auth import current_user_name, require_supervisor
+from app.api.admin_auth import current_user_name, require_authenticated, require_reviewer
 from app.db import SessionLocal
 from app.models.kb_tables import KBMediaAsset
 from app.models.product_media_observation import ProductMediaObservationCandidate
@@ -26,7 +26,7 @@ def _candidate_item(candidate: ProductMediaObservationCandidate, assets: dict[in
 
 
 @product_media_observation_bp.get("")
-@require_supervisor
+@require_authenticated
 def list_candidates():
     db = SessionLocal()
     try:
@@ -47,7 +47,7 @@ def list_candidates():
 
 
 @product_media_observation_bp.get("/conflicts")
-@require_supervisor
+@require_authenticated
 def conflicts():
     db = SessionLocal()
     try:
@@ -58,7 +58,7 @@ def conflicts():
 
 
 @product_media_observation_bp.get("/<int:candidate_id>")
-@require_supervisor
+@require_authenticated
 def candidate_detail(candidate_id: int):
     db = SessionLocal()
     try:
@@ -71,7 +71,7 @@ def candidate_detail(candidate_id: int):
 
 
 @product_media_observation_bp.post("/<int:candidate_id>/<action>")
-@require_supervisor
+@require_reviewer
 def review_candidate(candidate_id: int, action: str):
     payload = request.get_json(silent=True) or {}
     try:

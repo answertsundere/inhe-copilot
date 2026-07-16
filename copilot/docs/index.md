@@ -57,6 +57,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/adr/0007-formal-evidence-convergence.md` - makes canonical selected
   evidence an opt-in, admitted-only formal graph output and defines bounded
   decision context without changing the final delivery contract.
+- `docs/adr/0008-cloudflare-access-rbac-management-boundary.md` - defines the
+  Cloudflare Access JWT, application RBAC, CSRF, service-identity, route-policy,
+  and readiness boundary for public management routes.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - LangGraph runtime responsibility, target

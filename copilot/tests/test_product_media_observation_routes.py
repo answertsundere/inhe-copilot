@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.api import product_media_observation_routes as routes
+from app.api import admin_auth
 from app.db import Base
 from app.models.kb_tables import KBMediaAsset
 from app.models.product_media_observation import ProductMediaObservationCandidate
@@ -22,11 +23,26 @@ def test_observation_review_api_requires_supervisor_and_returns_shadow_contract(
     ))
     session.commit()
     monkeypatch.setattr(routes, "SessionLocal", lambda: session)
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: (_ for _ in ()).throw(admin_auth.AdminAuthError("access_assertion_missing")),
+    )
     app = Flask(__name__)
     app.register_blueprint(routes.product_media_observation_bp)
     client = app.test_client()
-    assert client.get("/api/kb/product-media-observations").status_code == 403
-    response = client.get("/api/kb/product-media-observations", headers={"X-User-Role": "supervisor"})
+    assert client.get("/api/kb/product-media-observations").status_code == 401
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: admin_auth.AdminPrincipal(
+            subject="pytest-reviewer",
+            display_name="pytest-reviewer",
+            roles=frozenset({"reviewer"}),
+            auth_type="test",
+        ),
+    )
+    response = client.get("/api/kb/product-media-observations")
     assert response.status_code == 200
     item = response.get_json()["items"][0]
     assert item["direct_answer_allowed"] is False

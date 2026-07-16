@@ -4,9 +4,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 BASE = "http://127.0.0.1:5000"
 
-def api(method, path, data=None, role="operator"):
+def api(method, path, data=None):
     url = f"{BASE}{path}"
-    headers = {"Content-Type": "application/json", "X-User-Role": role, "X-User-Name": "tester"}
+    headers = {"Content-Type": "application/json"}
+    assertion = os.environ.get("COPILOT_ADMIN_ACCESS_ASSERTION", "").strip()
+    if assertion:
+        headers["Cf-Access-Jwt-Assertion"] = assertion
     body = json.dumps(data).encode("utf-8") if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
@@ -64,9 +67,9 @@ for st, title, content, intent in [
         })
         eid = b.get("id")
         api("POST", f"/api/knowledge/entries/{eid}/submit-review", {})
-        s2, b2 = api("POST", f"/api/knowledge/entries/{eid}/review", {"approved": True, "reviewer": "supervisor_1"}, role="supervisor")
+        s2, b2 = api("POST", f"/api/knowledge/entries/{eid}/review", {"approved": True, "reviewer": "supervisor_1"})
         # 注意：review_approve bug 导致 status 仍是 pending_review，需要额外 publish
-        s3, b3 = api("POST", f"/api/knowledge/entries/{eid}/publish", {}, role="supervisor")
+        s3, b3 = api("POST", f"/api/knowledge/entries/{eid}/publish", {})
         print(f"  创建 {st} id={eid}, review={s2}, publish={s3}, status={b3.get('status')}")
 
 # 现在用 Graph 测试 RAG intent 检索

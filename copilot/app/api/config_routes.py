@@ -9,6 +9,8 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from app.api.admin_auth import require_admin
+
 config_bp = Blueprint("config", __name__)
 
 
@@ -82,14 +84,8 @@ def _reload_llm_runtime(api_key: str, api_base: str, model: str) -> None:
         pass
 
 
-def _require_config_admin():
-    role = (request.headers.get("X-User-Role") or "").strip().lower()
-    if role not in {"admin", "supervisor"}:
-        return jsonify({"error": "只有管理员或主管可以修改系统配置"}), 403
-    return None
-
-
 @config_bp.route("/api/config/llm")
+@require_admin
 def api_llm_config():
     """Return current LLM configuration without exposing the raw API key."""
     from app.config import LLM_API_BASE, LLM_API_KEY, LLM_MODEL
@@ -105,12 +101,9 @@ def api_llm_config():
 
 
 @config_bp.route("/api/config/llm", methods=["PUT", "POST"])
+@require_admin
 def api_update_llm_config():
     """Save local LLM settings. The raw API key is never returned."""
-    denied = _require_config_admin()
-    if denied:
-        return denied
-
     from app.config import LLM_API_BASE, LLM_API_KEY, LLM_MODEL
 
     data = request.get_json(silent=True) or {}
@@ -147,6 +140,7 @@ def api_update_llm_config():
 
 
 @config_bp.route("/api/config/llm-test")
+@require_admin
 def api_llm_test():
     """Test the current LLM connection with a tiny request."""
     from app.config import LLM_API_BASE, LLM_API_KEY, LLM_MODEL
@@ -184,12 +178,13 @@ def api_llm_test():
             "api_base": LLM_API_BASE,
             "test_response": raw,
         })
-    except Exception as e:
+    except Exception as error:
         latency = int((time.time() - t0) * 1000)
         return jsonify({
             "ok": False,
             "mode": "ai_error",
-            "message": f"LLM 连接失败: {str(e)}",
+            "message": "LLM 连接失败",
+            "error_type": type(error).__name__,
             "latency_ms": latency,
             "model": LLM_MODEL,
             "api_base": LLM_API_BASE,

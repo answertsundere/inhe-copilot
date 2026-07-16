@@ -47,6 +47,13 @@ def api_health():
         db_status = "error"
 
     readiness = RuntimeKnowledgeReadinessService().inspect()
+    from app.api.admin_auth import admin_auth_readiness
+
+    admin_auth = admin_auth_readiness()
+    readiness_reasons = list(readiness.get("reasons") or [])
+    if not admin_auth["admin_auth_ready"] and admin_auth["reason"]:
+        readiness_reasons.append(admin_auth["reason"])
+    runtime_ready = bool(readiness["ready"] and admin_auth["admin_auth_ready"])
     knowledge_db_status = RuntimeKnowledgeReadinessService.health_status(readiness)
     knowledge_counts = readiness["knowledge"]
 
@@ -62,9 +69,10 @@ def api_health():
         "knowledge_db_entries_count": knowledge_counts["entries"],
         "knowledge_db_chunks_count": knowledge_counts["chunks"],
         "knowledge_db_kb_qa_count": knowledge_counts["kb_qa"],
-        "ready": readiness["ready"],
-        "readiness_status": readiness["status"],
-        "readiness_reasons": readiness["reasons"],
+        "ready": runtime_ready,
+        "readiness_status": readiness["status"] if runtime_ready else "not_ready",
+        "readiness_reasons": readiness_reasons,
+        "admin_auth": admin_auth,
         "data": {
             "orders": order_repo.count_orders(),
             "skus": product_repo.count_skus(),

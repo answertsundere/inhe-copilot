@@ -4,9 +4,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 BASE = "http://127.0.0.1:5000"
 
-def api(method, path, data=None, role="operator"):
+
+def _admin_headers():
+    headers = {"Content-Type": "application/json"}
+    assertion = os.environ.get("COPILOT_ADMIN_ACCESS_ASSERTION", "").strip()
+    if assertion:
+        headers["Cf-Access-Jwt-Assertion"] = assertion
+    return headers
+
+
+def api(method, path, data=None):
     url = f"{BASE}{path}"
-    headers = {"Content-Type": "application/json", "X-User-Role": role, "X-User-Name": "tester"}
+    headers = _admin_headers()
     body = json.dumps(data).encode("utf-8") if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
@@ -66,7 +75,7 @@ s, b = api("POST", f"/api/knowledge/entries/{test_id}/submit-review", {})
 s2, b2 = api("GET", f"/api/knowledge/entries/{test_id}")
 log("1.8 提交审核", "PASS" if s == 200 and b2.get("status") == "pending_review" else "FAIL", f"status={s}, entry_status={b2.get('status')}", "pending_review")
 
-s, b = api("POST", f"/api/knowledge/entries/{test_id}/review", {"approved": True, "reviewer": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{test_id}/review", {"approved": True, "reviewer": "supervisor_1"})
 s2, b2 = api("GET", f"/api/knowledge/entries/{test_id}")
 log("1.9 supervisor 审核通过", "PASS" if s == 200 and b2.get("status") == "published" else "FAIL", f"review_status={s}, entry_status={b2.get('status')}", "published")
 
@@ -76,7 +85,7 @@ archived_ok = s == 200 and b2.get("status") == "archived"
 log("1.10a 归档", "PASS" if archived_ok else "FAIL", f"delete_status={s}, entry_status={b2.get('status')}", "archived")
 
 if archived_ok:
-    s3, b3 = api("POST", f"/api/knowledge/entries/{test_id}/rollback", {"target_version": 1, "changed_by": "supervisor_1"}, role="supervisor")
+    s3, b3 = api("POST", f"/api/knowledge/entries/{test_id}/rollback", {"target_version": 1, "changed_by": "supervisor_1"})
     s4, b4 = api("GET", f"/api/knowledge/entries/{test_id}")
     log("1.10b 回滚", "PASS" if s3 == 200 and b4.get("status") == "draft" else "FAIL",
         f"rollback_status={s3}, entry_status={b4.get('status')}, version={b4.get('version')}", "draft")
@@ -103,7 +112,7 @@ s, b = api("POST", "/api/knowledge/retrieve", {"query": "儿童书架发货", "s
 ids = [c.get("entry_id") for c in b.get("chunks", [])]
 log("2.2 pending_review 状态检索不到", "PASS" if ship_id not in ids else "FAIL", f"retrieved_ids={ids}", f"不包含 {ship_id}")
 
-s, b = api("POST", f"/api/knowledge/entries/{ship_id}/review", {"approved": True, "reviewer": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{ship_id}/review", {"approved": True, "reviewer": "supervisor_1"})
 print(f"  审核结果: status={s}, body={b}")
 s, b = api("POST", "/api/knowledge/retrieve", {"query": "儿童书架发货", "source_types": ["shipping_policy"], "intent": "logistics_eta", "top_k": 5})
 ids = [c.get("entry_id") for c in b.get("chunks", [])]
@@ -114,7 +123,7 @@ s, b = api("POST", "/api/knowledge/retrieve", {"query": "儿童书架发货", "s
 ids = [c.get("entry_id") for c in b.get("chunks", [])]
 log("2.4 archived 状态检索不到", "PASS" if ship_id not in ids else "FAIL", f"retrieved_ids={ids}", f"不包含 {ship_id}")
 
-s, b = api("POST", f"/api/knowledge/entries/{ship_id}/rollback", {"target_version": 1, "changed_by": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{ship_id}/rollback", {"target_version": 1, "changed_by": "supervisor_1"})
 s2, b2 = api("GET", f"/api/knowledge/entries/{ship_id}")
 log("2.5 rollback", "PASS" if s == 200 and b2.get("status") == "draft" else "FAIL",
     f"rollback_status={s}, entry_status={b2.get('status')}, version={b2.get('version')}, title={b2.get('title')}", "draft")
@@ -141,7 +150,7 @@ s2, b2 = api("GET", f"/api/knowledge/entries/{hr_id}")
 log("3.3 禁止 operator 直接发布", "PASS" if b2.get("status") == "draft" else "FAIL", f"publish_status={s}, entry_status={b2.get('status')}", "draft")
 
 api("POST", f"/api/knowledge/entries/{hr_id}/submit-review", {})
-s, b = api("POST", f"/api/knowledge/entries/{hr_id}/review", {"approved": True, "reviewer": "supervisor_1"}, role="supervisor")
+s, b = api("POST", f"/api/knowledge/entries/{hr_id}/review", {"approved": True, "reviewer": "supervisor_1"})
 s2, b2 = api("GET", f"/api/knowledge/entries/{hr_id}")
 log("3.4 必须 supervisor 审核", "PASS" if s == 200 and b2.get("status") == "published" else "FAIL", f"review_status={s}, entry_status={b2.get('status')}", "published")
 
@@ -196,7 +205,7 @@ if has_excel:
     
     # 4.3 执行导入
     print("\n[4.3] 执行导入")
-    resp2 = requests.post(f"{BASE}/api/knowledge/import", json={"items": preview.get("items", [])}, headers={"X-User-Role": "operator", "Content-Type": "application/json"})
+    resp2 = requests.post(f"{BASE}/api/knowledge/import", json={"items": preview.get("items", [])}, headers=_admin_headers())
     import_result = resp2.json()
     print(f"  import status: {resp2.status_code}")
     print(f"  success: {len(import_result.get('success', []))}")
@@ -211,7 +220,7 @@ if has_excel:
     
     # 4.5 重复检查
     print(f"\n[4.5] 重复检查: 再次导入同一 preview")
-    resp3 = requests.post(f"{BASE}/api/knowledge/import", json={"items": preview.get("items", [])}, headers={"X-User-Role": "operator", "Content-Type": "application/json"})
+    resp3 = requests.post(f"{BASE}/api/knowledge/import", json={"items": preview.get("items", [])}, headers=_admin_headers())
     dup_result = resp3.json()
     print(f"  重复导入 success: {len(dup_result.get('success', []))}, failed: {len(dup_result.get('failed', []))}")
     if dup_result.get("failed"):

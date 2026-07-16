@@ -6,7 +6,7 @@
 
 权限：
 - 列表/推荐：所有已登录后台/工作台可读。
-- 导入/审核/编辑：仅 supervisor/admin（主管/管理员），通过 X-User-Role 判断。
+- 导入/审核/编辑：仅 supervisor/admin（主管/管理员），基于已验证身份判断。
 - 本服务不会自动发送任何素材给客户，仅做「AI 推荐 + 人工确认」。
 """
 
@@ -20,6 +20,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from app.config import BASE_DIR
+from app.api.admin_auth import current_role, current_user_name, has_any_role
 
 media_bp = Blueprint("media", __name__, url_prefix="/api/media-assets")
 
@@ -47,14 +48,12 @@ _SUPERVISOR_ROLES = ("supervisor", "admin")
 
 
 def _user_info():
-    role = request.headers.get("X-User-Role", "operator")
-    name = request.headers.get("X-User-Name", "anonymous")
-    return role, name
+    return current_role(), current_user_name()
 
 
 def _require_supervisor():
     role, name = _user_info()
-    return role in _SUPERVISOR_ROLES, role, name
+    return has_any_role(*_SUPERVISOR_ROLES), role, name
 
 
 def _ensure_media_upload_dir():

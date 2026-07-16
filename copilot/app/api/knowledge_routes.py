@@ -16,6 +16,7 @@ from app.services.knowledge_import_service import KnowledgeImportService
 from app.services.knowledge_quality_service import KnowledgeQualityService
 from app.models.knowledge_base import KnowledgeEntry, KnowledgeChunk
 from app.db import SessionLocal
+from app.api.admin_auth import current_role, current_user_name, has_any_role
 
 knowledge_bp = Blueprint("knowledge", __name__)
 
@@ -23,19 +24,16 @@ knowledge_bp = Blueprint("knowledge", __name__)
 # ============ 权限检查 ============
 
 def _get_user_role():
-    """从请求头或配置中获取用户角色"""
-    return request.headers.get("X-User-Role", "operator")
+    return current_role()
 
 
 def _get_user():
-    """从请求头或配置中获取用户名"""
-    return request.headers.get("X-User-Name", "system")
+    return current_user_name()
 
 
 def _require_role(*roles):
-    role = _get_user_role()
-    if role not in roles:
-        return jsonify({"error": f"需要权限: {', '.join(roles)}, 当前: {role}"}), 403
+    if not has_any_role(*roles):
+        return jsonify({"error": "authorization_denied"}), 403
     return None
 
 
