@@ -60,7 +60,14 @@ def _run_main(module, monkeypatch, tmp_path, payload, response, *, expected_api_
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: response)
     monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
-        "readiness": {"ready": True, "database": {"fingerprint": "fixture-fingerprint"}},
+        "readiness": {
+            "ready": True,
+            "database": {
+                "content_sha256": "fixture-content-sha256",
+                "schema_fingerprint": "fixture-schema-fingerprint",
+            },
+            "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
+        },
     })
     args = [
         "run_full_answer_validation.py",
@@ -267,7 +274,7 @@ def test_runner_blocks_before_analyze_when_runtime_is_not_ready(monkeypatch, tmp
     assert json.loads(output.read_text(encoding="utf-8"))["summary"]["reason"] == "runtime_not_ready"
 
 
-def test_runner_blocks_before_analyze_when_runtime_database_fingerprint_mismatches(monkeypatch, tmp_path):
+def test_runner_blocks_before_analyze_when_runtime_database_content_sha256_mismatches(monkeypatch, tmp_path):
     module = _module()
     source = tmp_path / "dataset.json"
     output = tmp_path / "result.json"
@@ -277,14 +284,71 @@ def test_runner_blocks_before_analyze_when_runtime_database_fingerprint_mismatch
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
     monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
-        "readiness": {"ready": True, "database": {"fingerprint": "different"}},
+        "readiness": {
+            "ready": True,
+            "database": {"content_sha256": "different", "schema_fingerprint": "schema-sha"},
+            "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
+        },
     })
     monkeypatch.setattr(sys, "argv", [
         "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output), "--runtime-db", str(database),
     ])
 
     assert module.main() == 2
-    assert json.loads(output.read_text(encoding="utf-8"))["summary"]["reason"] == "runtime_db_fingerprint_mismatch"
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert result["summary"]["reason"] == "runtime_database_content_sha256_mismatch"
+    assert result["run_metadata"]["comparison_status"] == "mismatched_content_sha256"
+    assert result["run_metadata"]["runtime_database_content_sha256"] == "different"
+
+
+def test_runner_blocks_before_analyze_when_runtime_content_sha256_missing(monkeypatch, tmp_path):
+    module = _module()
+    source = tmp_path / "dataset.json"
+    output = tmp_path / "result.json"
+    database = tmp_path / "runtime.db"
+    source.write_text(json.dumps(_dataset()), encoding="utf-8")
+    sqlite3.connect(database).close()
+    monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+        "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
+        "readiness": {
+            "ready": True,
+            "database": {"schema_fingerprint": "schema-sha"},
+            "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
+        },
+    })
+    monkeypatch.setattr(sys, "argv", [
+        "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output), "--runtime-db", str(database),
+    ])
+
+    assert module.main() == 2
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert result["summary"]["reason"] == "runtime_content_sha256_missing"
+    assert result["run_metadata"]["comparison_status"] == "runtime_content_sha256_missing"
+
+
+def test_runner_blocks_before_analyze_when_runtime_changed_during_fingerprint(monkeypatch, tmp_path):
+    module = _module()
+    source = tmp_path / "dataset.json"
+    output = tmp_path / "result.json"
+    source.write_text(json.dumps(_dataset()), encoding="utf-8")
+    monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+        "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
+        "readiness": {
+            "ready": False,
+            "reasons": ["knowledge_db_changed_during_fingerprint"],
+            "database": {"content_sha256": "abc", "schema_fingerprint": "schema-sha"},
+        },
+    })
+    monkeypatch.setattr(sys, "argv", [
+        "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output),
+    ])
+
+    assert module.main() == 2
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert result["summary"]["reason"] == "runtime_database_changed_during_fingerprint"
+    assert result["run_metadata"]["comparison_status"] == "runtime_changed_during_fingerprint"
 
 
 def test_request_categorizes_http_and_non_json_failures(monkeypatch):

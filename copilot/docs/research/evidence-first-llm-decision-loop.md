@@ -146,9 +146,13 @@ safety claim.
 
 The runner first reads the runtime readiness endpoint. It must stop with exit
 code `2` before calling `/api/analyze` when the formal knowledge database is
-missing, unreadable, incomplete, empty, or inconsistent with an explicitly
-supplied read-only database fingerprint. This prevents an empty placeholder
-database from being measured as an ordinary retrieval miss.
+missing, unreadable, incomplete, empty, changed during fingerprint, or
+inconsistent with an explicitly supplied local `content_sha256`. The runner
+compares the runtime `content_sha256` (actual file content) with the local copy
+and reports `runtime_database_content_sha256`,
+`local_database_content_sha256`, `schema_fingerprint`, `counts`, and
+`comparison_status`. This prevents an empty placeholder database from being
+measured as an ordinary retrieval miss.
 
 ## Evidence convergence diagnostics
 

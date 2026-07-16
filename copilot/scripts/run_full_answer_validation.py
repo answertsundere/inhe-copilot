@@ -32,6 +32,7 @@ from app.services.fact_type_alias_service import (
 )
 from app.services.generic_service_rule_service import unsafe_promise_terms
 from app.services.media_asset_service import is_delivery_media_asset_eligible
+from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
 
 DATASET_SCHEMA_VERSION = "formal-answer-validation-dataset-v1"
@@ -389,19 +390,24 @@ def _runtime_db_fingerprint(path_value: str) -> dict[str, Any]:
     if not path.is_file():
         return {"status": "unavailable", "reason": "file_missing"}
     try:
+        content_info = RuntimeKnowledgeReadinessService.compute_content_fingerprint(path)
         connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
         try:
             schema_version = connection.execute("PRAGMA schema_version").fetchone()[0]
             table_names = [row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         finally:
             connection.close()
-    except sqlite3.Error as exc:
+    except (OSError, sqlite3.Error) as exc:
         return {"status": "unavailable", "reason": type(exc).__name__}
     return {
         "status": "read_only",
-        "fingerprint": hashlib.sha256("\n".join(table_names).encode("utf-8")).hexdigest(),
+        "content_sha256": content_info.get("content_sha256"),
+        "schema_fingerprint": RuntimeKnowledgeReadinessService.compute_schema_fingerprint(table_names),
         "schema_version": schema_version,
         "table_count": len(table_names),
+        "size_bytes": content_info["cache_key"]["size_bytes"],
+        "mtime_ns": content_info["cache_key"]["mtime_ns"],
+        "changed_during_fingerprint": bool(content_info.get("changed_during_fingerprint")),
     }
 
 
@@ -459,15 +465,44 @@ def main() -> int:
 
     runtime = _runtime_metadata(args.api_url)
     base_metadata["runtime"] = runtime
-    if args.expected_api_commit and runtime.get("runtime_commit") != args.expected_api_commit:
-        return _invalid_run(target, "expected_api_commit_mismatch", base_metadata, schema_error=False)
     readiness = runtime.get("readiness") if isinstance(runtime.get("readiness"), dict) else {}
-    if runtime.get("status") != "available" or readiness.get("ready") is not True:
-        return _invalid_run(target, "runtime_not_ready", base_metadata, schema_error=False)
-    runtime_db = base_metadata["runtime_db"]
     reported_db = readiness.get("database") if isinstance(readiness.get("database"), dict) else {}
-    if args.runtime_db and runtime_db.get("fingerprint") != reported_db.get("fingerprint"):
-        return _invalid_run(target, "runtime_db_fingerprint_mismatch", base_metadata, schema_error=False)
+    runtime_db = base_metadata["runtime_db"]
+    base_metadata.update({
+        "runtime_database_content_sha256": reported_db.get("content_sha256"),
+        "local_database_content_sha256": runtime_db.get("content_sha256"),
+        "schema_fingerprint": reported_db.get("schema_fingerprint"),
+        "schema_fingerprint_local": runtime_db.get("schema_fingerprint"),
+        "counts": readiness.get("knowledge") if isinstance(readiness.get("knowledge"), dict) else {},
+    })
+
+    if args.expected_api_commit and runtime.get("runtime_commit") != args.expected_api_commit:
+        base_metadata["comparison_status"] = "expected_commit_mismatch"
+        return _invalid_run(target, "expected_api_commit_mismatch", base_metadata, schema_error=False)
+    if runtime.get("status") != "available" or readiness.get("ready") is not True:
+        if "knowledge_db_changed_during_fingerprint" in (readiness.get("reasons") or []):
+            base_metadata["comparison_status"] = "runtime_changed_during_fingerprint"
+            return _invalid_run(target, "runtime_database_changed_during_fingerprint", base_metadata, schema_error=False)
+        base_metadata["comparison_status"] = "runtime_not_ready"
+        return _invalid_run(target, "runtime_not_ready", base_metadata, schema_error=False)
+    if runtime_db.get("changed_during_fingerprint"):
+        base_metadata["comparison_status"] = "local_changed_during_fingerprint"
+        return _invalid_run(target, "local_database_changed_during_fingerprint", base_metadata, schema_error=False)
+    if args.runtime_db:
+        runtime_content_sha256 = reported_db.get("content_sha256")
+        if not runtime_content_sha256:
+            base_metadata["comparison_status"] = "runtime_content_sha256_missing"
+            return _invalid_run(target, "runtime_content_sha256_missing", base_metadata, schema_error=False)
+        local_content_sha256 = runtime_db.get("content_sha256")
+        if not local_content_sha256:
+            base_metadata["comparison_status"] = "local_content_sha256_unavailable"
+            return _invalid_run(target, "local_database_content_sha256_unavailable", base_metadata, schema_error=False)
+        if local_content_sha256 != runtime_content_sha256:
+            base_metadata["comparison_status"] = "mismatched_content_sha256"
+            return _invalid_run(target, "runtime_database_content_sha256_mismatch", base_metadata, schema_error=False)
+        base_metadata["comparison_status"] = "matched"
+    else:
+        base_metadata["comparison_status"] = "not_requested"
 
     rows: list[dict[str, Any]] = []
     counters = {

@@ -29,8 +29,19 @@ non-empty, read-only-verified runtime database; do not rely on the default
 `data/knowledge_base.db` placeholder after a restart. Before traffic is
 accepted, verify `/api/runtime/readiness`: it checks the configured database
 through a SQLite `mode=ro` URI, requires `knowledge_entries`,
-`knowledge_chunks`, and `kb_qa`, and reports only basename, fingerprint, and
-counts. A missing, unreadable, incomplete, or empty database is not ready.
+`knowledge_chunks`, and `kb_qa`, and reports only basename, `content_sha256`,
+`schema_fingerprint`, and counts. A missing, unreadable, incomplete, empty, or
+changed-during-scan database is not ready.
+
+`content_sha256` is a SHA-256 of the actual SQLite file bytes. It proves that
+the runtime is answering from the intended database contents, not merely a
+database with the same schema. `schema_fingerprint` is a SHA-256 of the sorted
+table names and only detects schema differences. The content hash is cached per
+process using the resolved path, file size, and `mtime_ns`; the file is
+re-scanned only when metadata changes. If the file changes while it is being
+read, readiness returns `ready=false` with
+`knowledge_db_changed_during_fingerprint`.
+
 The isolated benchmark runner is the sole exception: it sets an inherited
 process-only evaluation flag and must prove its own versioned fixture metadata.
 That fixture state is never available to the web runtime or formal QA runner.

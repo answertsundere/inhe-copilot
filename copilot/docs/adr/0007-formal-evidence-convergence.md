@@ -131,10 +131,13 @@ and delivery contracts; it is not a general product-accuracy claim.
 
 Formal QA also requires a ready runtime before it issues any Agent request. The
 runtime reports its configured knowledge database through a read-only readiness
-contract: required tables, non-empty knowledge/chunk/KBQA counts, and a
-sanitized schema fingerprint. A false readiness state or an optional local
-fingerprint mismatch is a precondition failure with exit code `2`, not a
-synthetic `rag_miss` result.
+contract: required tables, non-empty knowledge/chunk/KBQA counts, a
+`content_sha256` of the actual database file, and a `schema_fingerprint` of the
+sorted table names. `content_sha256` is the authoritative identity check;
+`schema_fingerprint` only detects schema differences. A false readiness state,
+an optional local `content_sha256` mismatch, a missing runtime
+`content_sha256`, or a changed-during-scan result is a precondition failure
+with exit code `2`, not a synthetic `rag_miss` result.
 
 ## Real-Derived Positive Validation Gate
 
