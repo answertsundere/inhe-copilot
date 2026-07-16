@@ -23,26 +23,39 @@ errors, and parse errors deny access.
 
 The application maps verified email, group, subject, or verified service-token
 claims through an environment-only allowlist to `operator`, `reviewer`,
-`supervisor`, `admin`, or `service`. Request role/name headers are never an
-identity source. Management routes have one explicit policy inventory:
+`supervisor`, `admin`, or `service`. An Access-authenticated human that does
+not match this allowlist is denied; there is no implicit `operator` fallback.
+Request role/name headers are never an identity source. Management routes use
+an endpoint-and-method registry, with decorator metadata for already-decorated
+handlers and a `default_protected` supervisor boundary for new or unlisted
+routes. The registry distinguishes an explicit policy from the default rather
+than treating a non-empty fallback as route review. Policies are:
 
 - public runtime health and version/readiness;
-- unchanged customer-runtime routes;
+- only the formal customer analysis POST and feedback POST entry points;
 - authenticated read;
 - reviewer write for review decisions;
 - supervisor write for operational changes; and
 - admin-only configuration and system management.
 
+`/api/copilot/context` and `/api/copilot/feedback` are supervisor operations;
+an approved service identity may use them only through the explicit local path
+allowlist. Order, product, SKU, live-query, metric, feedback-list, and stats
+endpoints require a verified identity and cannot be anonymous customer routes.
+
 Browser write methods require a configured same-site Origin or Referer. A
 verified service identity bypasses this browser-only check only when its route
 is explicitly allowed by configuration. A loopback development mode is allowed
-only in a development/test runtime with explicit local subject and role; it is
-not a production fallback.
+only in a development/test runtime with explicit local subject and role, a
+loopback remote address and Host, and no Cloudflare or forwarded-client header;
+it is not a Tunnel or production fallback.
 
 Readiness reports non-sensitive authentication status and fails closed when a
-production Access configuration is absent. Security events are token-free logs
-containing only a truncated subject, role set, route, method, trace ID, result,
-and reason code.
+production Access configuration is absent, including a non-empty role map,
+browser-origin allowlist, and audit HMAC key. Security events are token-free
+and record an HMAC-pseudonymised actor ID, role set, route, method, trace ID,
+result, and reason code; they never record the raw subject, email, service
+token ID, assertion, or cookie.
 
 ## Alternatives Considered
 
@@ -79,7 +92,9 @@ local development mode is not a public rollback mechanism.
 
 ## Verification
 
-- Route inventory asserts every matched route has a policy.
+- Route inventory reports endpoint/method policy, source (`manifest`,
+  `decorator`, or `default`), and explicitness; unregistered routes remain
+  protected rather than becoming public.
 - Tests cover valid and invalid signed assertions, unknown key IDs, forged role
   headers, RBAC, service allowlists, CSRF, config protection, and readiness.
 - Public runtime endpoints remain reachable without management credentials;

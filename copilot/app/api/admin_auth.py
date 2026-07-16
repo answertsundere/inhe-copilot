@@ -7,6 +7,8 @@ that assertion and maps verified claims to local, least-privilege roles.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -16,7 +18,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 import jwt
-from flask import Response, g, jsonify, request
+from flask import Response, current_app, g, has_app_context, jsonify, request
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,44 @@ REVIEWER_ROLES = frozenset({"reviewer", "supervisor", "admin"})
 ALL_HUMAN_ROLES = frozenset({"operator", "reviewer", "supervisor", "admin"})
 _ASSERTION_HEADER = "Cf-Access-Jwt-Assertion"
 _JWK_CLIENTS: dict[tuple[str, str], jwt.PyJWKClient] = {}
+
+# This is intentionally endpoint-and-method based.  A route is public only
+# when it appears here; all other routes are protected by default.  Decorated
+# handlers contribute their policy metadata at registration time.
+_EXPLICIT_ROUTE_POLICIES: dict[tuple[str, str], str] = {
+    ("health.api_health", "GET"): "public_runtime",
+    ("runtime.runtime_version", "GET"): "public_runtime",
+    ("runtime.runtime_readiness", "GET"): "public_runtime",
+    ("analyze.api_analyze", "POST"): "customer_runtime",
+    ("feedback.api_feedback", "POST"): "customer_runtime",
+    ("copilot.api_copilot_context", "POST"): "supervisor_write",
+    ("copilot.api_copilot_feedback", "POST"): "supervisor_write",
+    ("copilot.api_copilot_metrics", "GET"): "authenticated_read",
+    ("feedback.api_feedback_list", "GET"): "authenticated_read",
+    ("feedback.api_feedback_stats", "GET"): "authenticated_read",
+    ("metrics.api_metrics", "GET"): "authenticated_read",
+    ("order.api_order", "GET"): "authenticated_read",
+    ("order.api_product", "GET"): "authenticated_read",
+    ("order.api_sku", "GET"): "authenticated_read",
+    ("order.api_sku_search", "GET"): "authenticated_read",
+    ("order.api_stats", "GET"): "authenticated_read",
+    ("live_query.api_live_product", "GET"): "authenticated_read",
+    ("live_query.api_live_order", "GET"): "authenticated_read",
+    ("live_query.api_live_sku", "GET"): "authenticated_read",
+    ("live_query.api_live_search", "GET"): "authenticated_read",
+    ("config.api_llm_config", "GET"): "admin_only",
+    ("config.api_llm_test", "GET"): "admin_only",
+    ("config.api_update_llm_config", "POST"): "admin_only",
+    ("config.api_update_llm_config", "PUT"): "admin_only",
+    ("kb_admin.api_ai_center_rebuild_rag", "POST"): "admin_only",
+}
+_POLICY_ALLOWED_ROLES: dict[str, frozenset[str]] = {
+    "authenticated_read": ALL_HUMAN_ROLES,
+    "reviewer_write": REVIEWER_ROLES,
+    "supervisor_write": SUPERVISOR_ROLES,
+    "admin_only": ADMIN_ROLES,
+    "default_protected": SUPERVISOR_ROLES,
+}
 
 
 @dataclass(frozen=True)
@@ -66,17 +106,17 @@ def _expected_issuer() -> str:
     return f"https://{domain}" if domain else ""
 
 
-def _role_mapping() -> dict[str, dict[str, set[str]]]:
-    """Parse a local allowlist without accepting a caller-provided role."""
+def _role_mapping() -> tuple[dict[str, dict[str, set[str]]], str]:
+    """Parse the verified-claim allowlist without trusting request headers."""
     raw = _text(os.environ.get("COPILOT_CF_ACCESS_ROLE_MAP_JSON"))
     if not raw:
-        return {}
+        return {}, "role_map_missing"
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
-        return {}
+        return {}, "role_map_invalid"
     if not isinstance(payload, dict):
-        return {}
+        return {}, "role_map_invalid"
 
     mapping: dict[str, dict[str, set[str]]] = {}
     for role, selectors in payload.items():
@@ -88,7 +128,9 @@ def _role_mapping() -> dict[str, dict[str, set[str]]]:
             if key in {"emails", "groups", "subjects", "service_token_ids"}
             and isinstance(values, list)
         }
-    return mapping
+    if not mapping or not any(selectors for selectors in mapping.values()):
+        return {}, "role_map_empty"
+    return mapping, ""
 
 
 def _claim_groups(claims: dict[str, Any]) -> set[str]:
@@ -113,7 +155,7 @@ def _principal_from_claims(claims: dict[str, Any]) -> AdminPrincipal:
     if not subject and not email:
         raise AdminAuthError("identity_claim_missing")
 
-    mapping = _role_mapping()
+    mapping, _ = _role_mapping()
     groups = _claim_groups(claims)
     roles: set[str] = set()
     for role, selectors in mapping.items():
@@ -137,9 +179,9 @@ def _principal_from_claims(claims: dict[str, Any]) -> AdminPrincipal:
             service_token_id=service_token_id,
         )
 
-    # A verified human remains a least-privilege operator unless the allowlist
-    # grants a stronger role.
-    human_roles = roles.intersection(ALL_HUMAN_ROLES) or {"operator"}
+    human_roles = roles.intersection(ALL_HUMAN_ROLES)
+    if not human_roles:
+        raise AdminAuthError("identity_not_authorized", 403)
     return AdminPrincipal(
         subject=subject or email,
         display_name=email or subject,
@@ -206,7 +248,18 @@ class CloudflareAccessJwtVerifier:
 def _development_principal() -> AdminPrincipal:
     runtime_env = _text(os.environ.get("COPILOT_RUNTIME_ENV")).lower()
     remote_addr = _text(request.remote_addr)
-    if runtime_env not in {"development", "test"} or remote_addr not in {"127.0.0.1", "::1"}:
+    parsed_host = urlparse(f"//{_text(request.host)}")
+    host = _text(parsed_host.hostname).lower()
+    has_proxy_headers = any(
+        header in request.headers
+        for header in ("Cf-Connecting-Ip", "X-Forwarded-For", "Forwarded")
+    )
+    if (
+        runtime_env not in {"development", "test"}
+        or remote_addr not in {"127.0.0.1", "::1"}
+        or host not in {"localhost", "127.0.0.1", "::1"}
+        or has_proxy_headers
+    ):
         raise AdminAuthError("development_auth_not_allowed")
     subject = _text(os.environ.get("COPILOT_ADMIN_DEV_SUBJECT"))
     role = _text(os.environ.get("COPILOT_ADMIN_DEV_ROLE")).lower()
@@ -231,13 +284,21 @@ def _verified_principal() -> AdminPrincipal:
     return principal
 
 
+def _audit_actor_id(principal: AdminPrincipal | None) -> str:
+    key = _text(os.environ.get("COPILOT_ADMIN_AUDIT_HMAC_KEY"))
+    if not principal or not key:
+        return "redacted"
+    digest = hmac.new(key.encode("utf-8"), principal.subject.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"actor_{digest[:16]}"
+
+
 def _audit(event: str, *, principal: AdminPrincipal | None = None, result: str, reason: str = "") -> None:
-    """Emit a token-free audit event for the existing application log sink."""
+    """Emit a token-free, identity-pseudonymised audit event."""
     logger.info(
-        "admin_security_audit event=%s result=%s subject=%s roles=%s path=%s method=%s trace_id=%s reason=%s",
+        "admin_security_audit event=%s result=%s actor_id=%s roles=%s path=%s method=%s trace_id=%s reason=%s",
         event,
         result,
-        (principal.subject if principal else "anonymous")[:128],
+        _audit_actor_id(principal),
         ",".join(sorted(principal.roles)) if principal else "",
         request.path,
         request.method,
@@ -290,7 +351,7 @@ def current_role() -> str:
     for role in ("admin", "supervisor", "reviewer", "service", "operator"):
         if role in principal.roles:
             return role
-    return "operator"
+    return "unknown"
 
 
 def current_user_name() -> str:
@@ -301,7 +362,7 @@ def has_any_role(*roles: str) -> bool:
     return _roles_allow(current_principal(), frozenset(roles))
 
 
-def _require(allowed_roles: frozenset[str], privilege: str) -> Callable:
+def _require(allowed_roles: frozenset[str], privilege: str, route_policy_name: str) -> Callable:
     def decorator(fn: Callable) -> Callable:
         @wraps(fn)
         def wrapper(*args: Any, **kwargs: Any):
@@ -318,25 +379,26 @@ def _require(allowed_roles: frozenset[str], privilege: str) -> Callable:
             _audit("privileged_action", principal=principal, result="allowed", reason=privilege)
             return fn(*args, **kwargs)
 
+        wrapper._admin_route_policy = route_policy_name
         return wrapper
 
     return decorator
 
 
 def require_authenticated(fn: Callable) -> Callable:
-    return _require(ALL_HUMAN_ROLES, "authenticated_read")(fn)
+    return _require(ALL_HUMAN_ROLES, "authenticated_read", "authenticated_read")(fn)
 
 
 def require_reviewer(fn: Callable) -> Callable:
-    return _require(REVIEWER_ROLES, "manual_review")(fn)
+    return _require(REVIEWER_ROLES, "manual_review", "reviewer_write")(fn)
 
 
 def require_supervisor(fn: Callable) -> Callable:
-    return _require(SUPERVISOR_ROLES, "supervisor_operation")(fn)
+    return _require(SUPERVISOR_ROLES, "supervisor_operation", "supervisor_write")(fn)
 
 
 def require_admin(fn: Callable) -> Callable:
-    return _require(ADMIN_ROLES, "system_administration")(fn)
+    return _require(ADMIN_ROLES, "system_administration", "admin_only")(fn)
 
 
 def admin_auth_readiness() -> dict[str, Any]:
@@ -344,6 +406,15 @@ def admin_auth_readiness() -> dict[str, Any]:
     runtime_env = _text(os.environ.get("COPILOT_RUNTIME_ENV") or "production").lower()
     access_audience_configured = bool(_text(os.environ.get("COPILOT_CF_ACCESS_AUD")))
     access_domain_configured = bool(_normalized_team_domain())
+    _, role_map_reason = _role_mapping()
+    role_map_configured = not bool(role_map_reason)
+    browser_origin_configured = bool(_text(os.environ.get("COPILOT_ADMIN_ALLOWED_ORIGINS")))
+    audit_actor_redaction_ready = bool(_text(os.environ.get("COPILOT_ADMIN_AUDIT_HMAC_KEY")))
+    route_policy_ready = True
+    if has_app_context():
+        route_policy_ready = not any(
+            row["policy"] == "unclassified" for row in inventory_route_policies(current_app)
+        )
     insecure_header_auth_disabled = True
     development_mode_valid = (
         mode == "development_loopback"
@@ -351,45 +422,66 @@ def admin_auth_readiness() -> dict[str, Any]:
         and bool(_text(os.environ.get("COPILOT_ADMIN_DEV_SUBJECT")))
         and _text(os.environ.get("COPILOT_ADMIN_DEV_ROLE")).lower() in ALL_HUMAN_ROLES
     )
-    cloudflare_ready = mode == "cloudflare_access" and access_audience_configured and access_domain_configured
+    cloudflare_ready = (
+        mode == "cloudflare_access"
+        and access_audience_configured
+        and access_domain_configured
+        and role_map_configured
+        and browser_origin_configured
+        and audit_actor_redaction_ready
+        and route_policy_ready
+    )
     ready = cloudflare_ready or development_mode_valid
     reason = ""
     if not ready:
-        reason = "admin_auth_configuration_missing" if mode == "cloudflare_access" else "admin_auth_mode_not_ready"
+        if mode == "cloudflare_access":
+            if not access_domain_configured or not access_audience_configured:
+                reason = "admin_auth_configuration_missing"
+            elif role_map_reason:
+                reason = role_map_reason
+            elif not browser_origin_configured:
+                reason = "browser_origin_configuration_missing"
+            elif not audit_actor_redaction_ready:
+                reason = "audit_redaction_configuration_missing"
+            elif not route_policy_ready:
+                reason = "route_policy_governance_failed"
+        else:
+            reason = "admin_auth_mode_not_ready"
     if mode == "development_loopback" and runtime_env == "production":
         ready = False
         reason = "development_auth_forbidden_in_production"
     return {
-        "admin_auth_mode": mode,
         "admin_auth_ready": ready,
+        "cloudflare_access_mode": mode == "cloudflare_access",
         "access_audience_configured": access_audience_configured,
+        "access_domain_configured": access_domain_configured,
+        "role_map_configured": role_map_configured,
+        "browser_origin_configured": browser_origin_configured,
+        "audit_actor_redaction_ready": audit_actor_redaction_ready,
+        "route_policy_ready": route_policy_ready,
         "insecure_header_auth_disabled": insecure_header_auth_disabled,
         "reason": reason,
     }
 
 
-_PUBLIC_ENDPOINTS = {"health.api_health", "runtime.runtime_version", "runtime.runtime_readiness"}
-_CUSTOMER_ENDPOINT_PREFIXES = ("analyze.", "copilot.", "order.", "feedback.", "live_query.")
-_ADMIN_ONLY_ENDPOINT_PREFIXES = ("config.",)
-_REVIEW_ENDPOINT_FRAGMENTS = ("review", "approve", "reject", "decision")
-_SYSTEM_ADMIN_PATHS = {"/api/kb/ai-center/rebuild-rag"}
+def _decorator_route_policy(endpoint: str | None) -> str:
+    if not endpoint or not has_app_context():
+        return ""
+    view = current_app.view_functions.get(endpoint)
+    return _text(getattr(view, "_admin_route_policy", ""))
 
 
-def route_policy(endpoint: str | None, path: str, method: str) -> str:
-    """Classify every matched route without using caller-controlled input."""
-    if endpoint in _PUBLIC_ENDPOINTS:
-        return "public_runtime"
-    if endpoint and endpoint.startswith(_CUSTOMER_ENDPOINT_PREFIXES):
-        return "customer_runtime"
-    if endpoint and endpoint.startswith(_ADMIN_ONLY_ENDPOINT_PREFIXES):
-        return "admin_only"
-    if path in _SYSTEM_ADMIN_PATHS:
-        return "admin_only"
-    if method in SAFE_METHODS:
-        return "authenticated_read"
-    if any(fragment in (endpoint or "") for fragment in _REVIEW_ENDPOINT_FRAGMENTS):
-        return "reviewer_write"
-    return "supervisor_write"
+def route_policy(endpoint: str | None, method: str) -> tuple[str, str]:
+    """Return the stable policy and provenance for one endpoint/method pair."""
+    if not endpoint:
+        return "unclassified", "unclassified"
+    policy = _EXPLICIT_ROUTE_POLICIES.get((endpoint, method.upper()))
+    if policy:
+        return policy, "manifest"
+    policy = _decorator_route_policy(endpoint)
+    if policy:
+        return policy, "decorator"
+    return "default_protected", "default"
 
 
 def _service_path_allowed(path: str) -> bool:
@@ -401,8 +493,9 @@ def enforce_management_route_policy() -> Response | None:
     endpoint = request.endpoint
     if endpoint is None:
         return None
-    policy = route_policy(endpoint, request.path, request.method)
+    policy, policy_source = route_policy(endpoint, request.method)
     g.admin_route_policy = policy
+    g.admin_route_policy_source = policy_source
     if policy in {"public_runtime", "customer_runtime"}:
         return None
     try:
@@ -416,12 +509,7 @@ def enforce_management_route_policy() -> Response | None:
         _audit("service_identity_used", principal=principal, result="allowed", reason=policy)
         return None
 
-    allowed_roles = {
-        "authenticated_read": ALL_HUMAN_ROLES,
-        "reviewer_write": REVIEWER_ROLES,
-        "supervisor_write": SUPERVISOR_ROLES,
-        "admin_only": ADMIN_ROLES,
-    }[policy]
+    allowed_roles = _POLICY_ALLOWED_ROLES[policy]
     if not _roles_allow(principal, allowed_roles):
         _audit("authorization_denied", principal=principal, result="denied", reason=policy)
         return jsonify({"error": "authorization_denied"}), 403
@@ -439,16 +527,19 @@ def install_admin_access_control(app: Any) -> None:
 
 
 def inventory_route_policies(app: Any) -> list[dict[str, Any]]:
-    """Return a deterministic, read-only inventory for tests and diagnostics."""
+    """Return a deterministic, read-only endpoint/method policy inventory."""
     rows = []
-    for rule in sorted(app.url_map.iter_rules(), key=lambda item: (item.rule, item.endpoint)):
-        methods = sorted(rule.methods.difference({"HEAD", "OPTIONS"}))
-        if not methods:
-            continue
-        rows.append({
-            "rule": rule.rule,
-            "endpoint": rule.endpoint,
-            "methods": methods,
-            "policy": route_policy(rule.endpoint, rule.rule, methods[0]),
-        })
+    with app.app_context():
+        for rule in sorted(app.url_map.iter_rules(), key=lambda item: (item.rule, item.endpoint)):
+            methods = sorted(rule.methods.difference({"HEAD", "OPTIONS"}))
+            for method in methods:
+                policy, source = route_policy(rule.endpoint, method)
+                rows.append({
+                    "rule": rule.rule,
+                    "endpoint": rule.endpoint,
+                    "method": method,
+                    "policy": policy,
+                    "policy_source": source,
+                    "explicit_policy": source in {"manifest", "decorator"},
+                })
     return rows

@@ -111,16 +111,23 @@ Status: formal; ADR 0001.
 ### Management Access Boundary
 
 Cloudflare Tunnel is transport only. Management-route identity is verified from
-Cloudflare Access JWT assertions at the Flask boundary, then mapped through
-application RBAC. The origin does not trust caller-supplied role or user-name
-headers. Management reads require an authenticated principal; reviews, writes,
-and configuration use progressively narrower roles. Browser writes also pass a
-same-site source check. Public runtime diagnostics and customer-runtime entry
-points retain their separately documented contracts.
+Cloudflare Access JWT assertions at the Flask boundary, then mapped through an
+explicit endpoint-and-method RBAC registry. The origin does not trust
+caller-supplied role or user-name headers, and a verified identity with no
+allowlist role is denied rather than becoming an operator. Only the formal
+customer analysis POST and feedback POST are customer-runtime entries.
+Context/feedback sidecar operations require supervisor or allowlisted service
+identity; order, product, SKU, live-query, metric, stats, and feedback-list
+routes require verified identity. All unlisted routes are
+`default_protected`, not implicitly public. Browser writes also pass a
+same-site source check, and development loopback rejects forwarded/Tunnel
+request markers.
 
 Status: formal; ADR 0008. This protects the origin even before the external
 Cloudflare Access application is configured, because absent configuration fails
-management access closed.
+management access closed. Readiness exposes only configuration booleans and
+redacted reason codes; security audit records use a keyed pseudonymous actor
+identifier rather than raw identity claims.
 
 ### 3. Thin LangGraph Runtime
 

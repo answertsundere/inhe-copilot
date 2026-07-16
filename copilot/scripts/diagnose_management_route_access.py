@@ -23,9 +23,14 @@ def build_report() -> dict:
         counts[row["policy"]] = counts.get(row["policy"], 0) + 1
     return {
         "schema_version": 1,
-        "route_count": len(routes),
+        "route_method_count": len(routes),
         "policy_counts": dict(sorted(counts.items())),
-        "unclassified_count": sum(1 for row in routes if not row["policy"]),
+        "policy_source_counts": {
+            source: sum(1 for row in routes if row["policy_source"] == source)
+            for source in sorted({row["policy_source"] for row in routes})
+        },
+        "unclassified_count": sum(1 for row in routes if row["policy"] == "unclassified"),
+        "default_protected_count": sum(1 for row in routes if row["policy"] == "default_protected"),
         "routes": routes,
     }
 
@@ -38,7 +43,9 @@ def main() -> int:
     output = Path(args.json_output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({key: report[key] for key in ("route_count", "policy_counts", "unclassified_count")}, ensure_ascii=False))
+    print(json.dumps({key: report[key] for key in (
+        "route_method_count", "policy_counts", "policy_source_counts", "default_protected_count", "unclassified_count",
+    )}, ensure_ascii=False))
     return 0 if report["unclassified_count"] == 0 else 1
 
 

@@ -153,8 +153,17 @@ def _is_visual_media_question(message: str, response: dict) -> bool:
 
 
 @analyze_bp.route("/api/analyze", methods=["POST"])
-@analyze_bp.route("/api/kb/analyze", methods=["POST"])
 def api_analyze():
+    return _analyze_customer_message()
+
+
+@analyze_bp.route("/api/kb/analyze", methods=["POST"])
+def api_kb_analyze():
+    """Legacy knowledge-workbench entry; never shares the public policy."""
+    return _analyze_customer_message()
+
+
+def _analyze_customer_message():
     """分析客户消息"""
     t0 = _time.time()
     data = request.json or {}

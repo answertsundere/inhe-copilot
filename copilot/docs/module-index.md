@@ -6,7 +6,7 @@ should have one authoritative owner even when several modules consume it.
 | Area | Current owner or entry point | Status | Boundary |
 |---|---|---|---|
 | Web application and dependency setup | `app/main.py` | legacy/converging | Must not remain the worker scheduler or domain service locator |
-| Management access control | `app/api/admin_auth.py`, app-level route policy | formal | Cloudflare Access JWT verification, verified-claim RBAC, browser-write source checks, route inventory, and token-free audit events; role/name request headers are not trusted. |
+| Management access control | `app/api/admin_auth.py`, app-level endpoint/method registry | formal | Cloudflare Access JWT verification, explicit allowlist RBAC, decorator metadata, fail-closed `default_protected`, browser-write source checks, route inventory provenance, and HMAC-pseudonymised audit events; role/name request headers are not trusted. |
 | Public analyze API | `app/api/analyze_routes.py` | formal | Parses HTTP input and presents the canonical Pipeline decision |
 | Sidecar/copilot API | `app/api/copilot_routes.py` | formal | Normalizes sidecar context, calls Pipeline, then adapts panel presentation |
 | Analysis pipeline | `app/services/analysis_pipeline_service.py` | formal | Owns canonical input, graph-to-delivery stage order, shadow isolation, and safe final-stage degradation for API, copilot, replay, and benchmark |

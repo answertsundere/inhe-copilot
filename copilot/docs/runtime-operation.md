@@ -70,8 +70,11 @@ values must not be repaired automatically or treated as product facts.
 The public Tunnel is not an authorization layer. Before a management UI or API
 is exposed, configure an ignored runtime environment with
 `COPILOT_ADMIN_AUTH_MODE=cloudflare_access`, the Cloudflare Access team domain,
-the application audience, a verified-claim role-map JSON, and allowed browser
-origins. Do not put those concrete values in Git, reports, or screenshots.
+the application audience, a non-empty verified-claim role-map JSON, allowed
+browser origins, and `COPILOT_ADMIN_AUDIT_HMAC_KEY`. Do not put those concrete
+values in Git, reports, or screenshots. Every human role, including
+`operator`, must have an explicit allowlist mapping; an authenticated but
+unmapped identity is denied.
 
 Create a Cloudflare self-hosted Access application for management routes and
 separate its user/group policies from any public customer endpoint. Service
@@ -79,12 +82,16 @@ automation must use an Access service token and an explicit local route
 allowlist; it cannot obtain permission from a request role header. The origin
 still verifies every received assertion, so Access misrouting fails closed.
 
-`/health` stays a public liveness endpoint. `/api/runtime/readiness` exposes
-only `admin_auth_mode`, `admin_auth_ready`,
-`access_audience_configured`, and `insecure_header_auth_disabled`; in a
-production runtime it is not ready if Access configuration is absent. A local
-`development_loopback` mode is for an explicitly marked development/test
-process bound to loopback only and must never be used behind the public Tunnel.
+`/health`, runtime version, and runtime readiness are the only public runtime
+diagnostics. Customer-runtime access is limited to the formal analysis POST
+and feedback POST; order, product, SKU, live-query, metrics, stats, feedback
+lists, and sidecar context are protected. `/api/runtime/readiness` exposes
+only configuration booleans and redacted reason codes; in a production runtime
+it is not ready if Access configuration, origins, role map, audit HMAC, or
+route governance is absent. A local `development_loopback` mode is for an
+explicitly marked development/test process bound to loopback with a loopback
+Host and no forwarded/Cloudflare client headers; it must never be used behind
+the public Tunnel.
 
 ## Ports And Health
 
