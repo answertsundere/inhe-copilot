@@ -24,6 +24,23 @@ from app.services.product_structured_evidence_service import (
 
 FIXTURE_SCHEMA_VERSION = "real-derived-evidence-fixture-v1"
 LOW_RISK_FACT_TYPES = ("material", "dimensions", "gross_weight", "detachable")
+# Keep in sync with app.services.admitted_answer_context_service.PLACEHOLDER_TERMS.
+_PLACEHOLDER_TERMS = (
+    "待核实",
+    "待确认",
+    "需要核实",
+    "需要确认",
+    "人工确认",
+    "未明确",
+    "暂无明确",
+    "以详情页为准",
+    "以实物为准",
+)
+# Variants where characters may intervene between the negation and the claim
+# (e.g. "未在现有结构资料中明确尺寸").
+_PLACEHOLDER_PATTERNS = (
+    re.compile(r"未.*明确"),
+)
 _SENSITIVE_PATTERNS = (
     re.compile(r"\b1[3-9]\d{9}\b"),
     re.compile(r"\b\d{15,18}[0-9Xx]\b"),
@@ -234,6 +251,12 @@ def _exportable_facts(profile: dict[str, Any]) -> list[dict[str, Any]]:
         attribute = _attribute_key(fact_type, keys)
         value = sanitize_text(candidate.get("value"))
         if not value or _contains_sensitive(value):
+            continue
+        if any(term in value for term in _PLACEHOLDER_TERMS) or any(
+            pattern.search(value) for pattern in _PLACEHOLDER_PATTERNS
+        ):
+            # Placeholder values are not reviewable product truth and must not
+            # be exported as positive-evidence fixtures.
             continue
         origin = "|".join((sanitize_text(profile.get("i_id")), fact_type, attribute, value))
         facts.append({

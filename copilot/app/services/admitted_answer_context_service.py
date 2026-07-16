@@ -42,6 +42,11 @@ PLACEHOLDER_TERMS = (
     "以详情页为准",
     "以实物为准",
 )
+# Variants where characters may intervene between the negation and the claim
+# (e.g. "未在现有结构资料中明确尺寸").
+_PLACEHOLDER_PATTERNS = (
+    re.compile(r"未.*明确"),
+)
 
 COMPATIBLE_FACT_TYPES = {
     "installation_media": {"installation", "installation_media", "installation_media_request"},
@@ -372,7 +377,9 @@ def _admission_reason(
         return "review_status_missing"
     if not text:
         return "fact_text_missing"
-    if any(term in text for term in PLACEHOLDER_TERMS):
+    if any(term in text for term in PLACEHOLDER_TERMS) or any(
+        pattern.search(text) for pattern in _PLACEHOLDER_PATTERNS
+    ):
         return "placeholder_evidence"
     if not policy:
         identity_reason = _identity_reason(item, product_identity, allow_global=role == "faq_direct")

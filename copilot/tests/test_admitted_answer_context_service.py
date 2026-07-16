@@ -75,6 +75,11 @@ def test_rejects_reference_placeholder_identity_mismatch_and_unreviewed_faq():
     }
 
 
+def test_rejects_placeholder_with_intervening_characters():    context = AdmittedAnswerContextService().build_for_response(        {"selected_evidence": [_fact(evidence_uid="placeholder-spread", content="未在现有结构资料中明确尺寸")]},        product_identity={"sku_code": "SKU-A"},        understanding=_understanding("material_composition"),    )
+    assert context["direct_product_facts"] == []    reasons = {item["evidence_uid"]: item["reason"] for item in context["rejected_evidence"]}
+    assert reasons == {"placeholder-spread": "placeholder_evidence"}
+
+
 def test_conflicting_product_fact_and_faq_are_both_blocked():
     response = {
         "selected_evidence": [

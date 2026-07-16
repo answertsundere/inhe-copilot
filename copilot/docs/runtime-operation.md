@@ -52,6 +52,18 @@ The default formal production boundary remains:
 - strict decision provider unqualified/disabled
 - supervisor preview read-only
 
+For the current Phase 0.5C.2D runtime smoke test, the ignored `.env` in
+`copilot-runtime/copilot` sets
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=true`. Both 5012 and 5011 were
+started from the runtime worktree with the new content-identity readiness
+contract. Smoke queries for real material and gross-weight facts returned
+sendable replies with no contract failures. The current runtime knowledge base
+contains placeholder values for many `size` and `detachable` fields after a
+conservative backfill, so a fresh 5-product × 4-fact real-derived fixture cannot
+be exported until those fields are repaired; a synthetic fixture is used for the
+20-fact vertical slice while the placeholder filter prevents mistaken positive
+evidence.
+
 ## Ports And Health
 
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the

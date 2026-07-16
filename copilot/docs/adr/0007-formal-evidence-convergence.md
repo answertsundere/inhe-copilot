@@ -155,3 +155,18 @@ admitted evidence directly. Every confirmed preview clause must cite a selected
 evidence UID, while the preview remains review-only with `can_send=false`.
 Missing attribute scope or packaging-contaminated dimensions are data-quality
 gaps, not grounds to relax evidence admission.
+
+Real-derived fixture export filters placeholder values before they can be
+exported as positive evidence. The filter matches both exact substring terms
+(e.g. "未明确", "以详情页为准") and spread variants where characters intervene
+between the negation and the claim (e.g. "未在现有结构资料中明确尺寸"). A
+product whose only value for a low-risk fact is a placeholder is not eligible
+for the fixture, because the fixture must demonstrate reviewed product truth.
+
+As of the current runtime knowledge base, a prior conservative backfill has
+replaced many `size` and `detachable` values with placeholders. A fresh
+5-product × 4-fact real-derived fixture cannot be exported until those fields
+are repaired with reviewed real values. Pipeline validation therefore uses a
+synthetic 5×4 fixture (clearly marked as synthetic) to prove the convergence
+and reply path end-to-end, while the placeholder filter prevents placeholder
+values from being mistaken for positive evidence.

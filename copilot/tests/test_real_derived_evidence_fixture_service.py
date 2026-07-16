@@ -81,3 +81,23 @@ def test_mixed_packaging_dimension_candidate_is_not_exported(tmp_path):
 
     with pytest.raises(RealDerivedFixtureError, match="no_eligible_real_derived_products"):
         build_real_derived_fixture(source, pseudonymization_key="test-key")
+
+
+def test_placeholder_values_are_not_exported_as_positive_evidence(tmp_path):
+    source = _source_db(tmp_path)
+    connection = sqlite3.connect(source)
+    placeholder = "未在现有结构资料中明确尺寸"
+    connection.execute(
+        "UPDATE kb_product SET specs_json=? WHERE id=1",
+        (json.dumps({"material": "PP", "size": placeholder}),),
+    )
+    connection.commit()
+    connection.close()
+
+    fixture, manifest = build_real_derived_fixture(source, pseudonymization_key="test-key")
+    assert manifest["product_count"] == 4, manifest
+    assert manifest["fact_count"] == 16, manifest
+    for product in fixture["products"]:
+        for fact in product["facts"]:
+            assert "未在现有结构资料" not in fact["content"]
+            assert "以详情页为准" not in fact["content"]
