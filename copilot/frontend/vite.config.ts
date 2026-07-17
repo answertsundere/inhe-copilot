@@ -29,9 +29,6 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules/vue') || id.includes('node_modules/vue-router') || id.includes('node_modules/pinia') || id.includes('node_modules/@vue')) {
               return 'vendor-vue'
             }
-            if (id.includes('node_modules/element-plus') || id.includes('node_modules/@element-plus')) {
-              return 'vendor-ep'
-            }
           },
         },
       },
