@@ -105,6 +105,17 @@ Rollback is limited to disabling the Access application only after the origin
 is no longer publicly reachable. Do not roll back to trusted role headers. The
 local development mode is not a public rollback mechanism.
 
+### Temporary Public Override
+
+When the deployment owner explicitly accepts a temporary public management
+surface before project-owned authentication exists, the runtime may use
+`COPILOT_ADMIN_AUTH_MODE=public_open` together with the separate acknowledgement
+`COPILOT_PUBLIC_OPEN_ACKNOWLEDGED=true`. This is not an identity provider or
+RBAC replacement: all reachable management requests receive the local `admin`
+role. The double opt-in prevents an accidental environment default from opening
+the surface. It is operationally reversible by removing either value and must
+not be used as the long-term authorization design.
+
 ## Verification
 
 - Route inventory reports endpoint/method policy, source (`manifest`,

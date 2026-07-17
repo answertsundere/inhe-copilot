@@ -272,6 +272,19 @@ def _development_principal() -> AdminPrincipal:
     return AdminPrincipal(subject=subject, display_name=subject, roles=frozenset({role}), auth_type="development")
 
 
+def _public_open_principal() -> AdminPrincipal:
+    """Return the explicitly configured temporary public management identity."""
+    acknowledged = _text(os.environ.get("COPILOT_PUBLIC_OPEN_ACKNOWLEDGED")).lower()
+    if acknowledged not in {"1", "true", "yes"}:
+        raise AdminAuthError("public_open_acknowledgement_missing")
+    return AdminPrincipal(
+        subject="public-open",
+        display_name="public-open",
+        roles=frozenset({"admin"}),
+        auth_type="public_open",
+    )
+
+
 def _verified_principal() -> AdminPrincipal:
     cached = getattr(g, "_admin_principal", None)
     if cached is not None:
@@ -282,6 +295,8 @@ def _verified_principal() -> AdminPrincipal:
         principal = CloudflareAccessJwtVerifier().verify_assertion(_text(request.headers.get(_ASSERTION_HEADER)))
     elif mode == "development_loopback":
         principal = _development_principal()
+    elif mode == "public_open":
+        principal = _public_open_principal()
     else:
         raise AdminAuthError("admin_auth_mode_invalid")
     g._admin_principal = principal
@@ -426,6 +441,10 @@ def admin_auth_readiness() -> dict[str, Any]:
         and bool(_text(os.environ.get("COPILOT_ADMIN_DEV_SUBJECT")))
         and _text(os.environ.get("COPILOT_ADMIN_DEV_ROLE")).lower() in ALL_HUMAN_ROLES
     )
+    public_open_enabled = (
+        mode == "public_open"
+        and _text(os.environ.get("COPILOT_PUBLIC_OPEN_ACKNOWLEDGED")).lower() in {"1", "true", "yes"}
+    )
     cloudflare_ready = (
         mode == "cloudflare_access"
         and access_audience_configured
@@ -435,7 +454,7 @@ def admin_auth_readiness() -> dict[str, Any]:
         and audit_actor_redaction_ready
         and route_policy_ready
     )
-    ready = cloudflare_ready or development_mode_valid
+    ready = cloudflare_ready or development_mode_valid or public_open_enabled
     reason = ""
     if not ready:
         if mode == "cloudflare_access":
@@ -449,6 +468,8 @@ def admin_auth_readiness() -> dict[str, Any]:
                 reason = "audit_redaction_configuration_missing"
             elif not route_policy_ready:
                 reason = "route_policy_governance_failed"
+        elif mode == "public_open":
+            reason = "public_open_acknowledgement_missing"
         else:
             reason = "admin_auth_mode_not_ready"
     if mode == "development_loopback" and runtime_env == "production":
@@ -457,6 +478,7 @@ def admin_auth_readiness() -> dict[str, Any]:
     return {
         "admin_auth_ready": ready,
         "cloudflare_access_mode": mode == "cloudflare_access",
+        "public_open_mode": mode == "public_open",
         "access_audience_configured": access_audience_configured,
         "access_domain_configured": access_domain_configured,
         "role_map_configured": role_map_configured,

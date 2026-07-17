@@ -12,6 +12,8 @@ from flask import Blueprint, Flask, jsonify
 from app.api import admin_auth
 from app.api.config_routes import config_bp
 
+_REAL_VERIFIED_PRINCIPAL = admin_auth._verified_principal
+
 
 class _SigningKeyClient:
     def __init__(self, public_key):
@@ -441,6 +443,43 @@ def test_development_loopback_rejects_tunnel_proxy_and_public_host(monkeypatch):
     with app.test_request_context("/", base_url="http://127.0.0.1:5011", environ_base={"REMOTE_ADDR": "127.0.0.1"}):
         with pytest.raises(admin_auth.AdminAuthError):
             admin_auth._development_principal()
+
+
+def test_public_open_mode_requires_an_explicit_runtime_acknowledgement(monkeypatch):
+    app = Flask(__name__)
+    monkeypatch.setenv("COPILOT_ADMIN_AUTH_MODE", "public_open")
+    monkeypatch.delenv("COPILOT_PUBLIC_OPEN_ACKNOWLEDGED", raising=False)
+
+    with app.test_request_context("/"):
+        with pytest.raises(admin_auth.AdminAuthError) as error:
+            _REAL_VERIFIED_PRINCIPAL()
+    assert error.value.code == "public_open_acknowledgement_missing"
+
+    monkeypatch.setenv("COPILOT_PUBLIC_OPEN_ACKNOWLEDGED", "true")
+    with app.test_request_context("/"):
+        principal = _REAL_VERIFIED_PRINCIPAL()
+    assert principal.auth_type == "public_open"
+    assert principal.roles == frozenset({"admin"})
+
+
+def test_public_open_mode_allows_management_routes_only_when_acknowledged(monkeypatch):
+    app = Flask(__name__)
+
+    @app.get("/management-read")
+    def management_read():
+        return jsonify({"ok": True})
+
+    admin_auth.install_admin_access_control(app)
+    monkeypatch.setenv("COPILOT_ADMIN_AUTH_MODE", "public_open")
+    monkeypatch.setattr(admin_auth, "_verified_principal", _REAL_VERIFIED_PRINCIPAL)
+    monkeypatch.delenv("COPILOT_PUBLIC_OPEN_ACKNOWLEDGED", raising=False)
+    assert app.test_client().get("/management-read").status_code == 401
+
+    monkeypatch.setenv("COPILOT_PUBLIC_OPEN_ACKNOWLEDGED", "1")
+    assert app.test_client().get("/management-read").status_code == 200
+    readiness = admin_auth.admin_auth_readiness()
+    assert readiness["admin_auth_ready"] is True
+    assert readiness["public_open_mode"] is True
 
 
 def test_audit_uses_hmac_actor_id_without_identity_or_credentials(monkeypatch, caplog):

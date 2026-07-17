@@ -104,6 +104,17 @@ fingerprint must call this endpoint with a short-lived Access assertion from a
 local environment variable; it must not recover the fingerprint from public
 version or readiness responses.
 
+### Temporary Public Management Override
+
+For an explicitly approved short-term public deployment, set both
+`COPILOT_ADMIN_AUTH_MODE=public_open` and
+`COPILOT_PUBLIC_OPEN_ACKNOWLEDGED=true` in the ignored runtime `.env`. This
+deliberately maps every request to the local `admin` role so the existing UI is
+usable before a project-owned login flow is available. It exposes management
+reads and writes to anyone who can reach the public URL. The mode is disabled
+unless both values are present, is reported as `public_open_mode` by runtime
+diagnostics, and must be removed when application login/RBAC is introduced.
+
 ### Cloudflare Access Rollout
 
 The current safe deployment state is `blocked_external_configuration` until a
