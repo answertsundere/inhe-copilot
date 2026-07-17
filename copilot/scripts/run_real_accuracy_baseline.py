@@ -20,14 +20,17 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # noqa: E402
+from app.services.eval_sanitizer_service import sanitize_obj  # noqa: E402
 from app.services.real_accuracy_gold_set_service import (  # noqa: E402
+    apply_approved_claim_labels,
     assert_label_not_in_agent_input,
     build_agent_payload,
     hmac_identifier,
     load_reviewed_training_samples,
     score_response,
 )
+from app.services.real_accuracy_label_service import RealAccuracyLabelStore  # noqa: E402
+from app.services.real_accuracy_privacy_service import sanitize_gold_text  # noqa: E402
 
 
 def _post(url: str, payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any], float, str]:
@@ -58,7 +61,7 @@ def _run_case(case: dict[str, Any], source: dict[str, Any], url: str, timeout: i
     score = score_response(case, response)
     debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
     admitted = (response.get("admitted_answer_context") or debug.get("admitted_answer_context") or {})
-    reply = sanitize_text(response.get("sendable_reply") or response.get("suggested_reply") or response.get("draft_reply") or "")
+    reply = sanitize_gold_text(response.get("sendable_reply") or response.get("suggested_reply") or response.get("draft_reply") or "")
     return sanitize_obj({
         "case_uid": case["case_uid"],
         "classification": case["classification"],
@@ -88,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--hmac-env", default="COPILOT_GOLD_SET_HMAC_KEY")
+    parser.add_argument("--label-db", default="", help="Optional independent human-label SQLite database")
     args = parser.parse_args(argv)
     if os.environ.get("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
         print(json.dumps({"error": "formal_evidence_convergence_must_remain_disabled"}, ensure_ascii=False))
@@ -97,13 +101,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"error": "gold_set_hmac_key_missing"}, ensure_ascii=False))
         return 2
     dataset = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
+    if (dataset.get("privacy") or {}).get("privacy_scan_status") != "passed":
+        print(json.dumps({"error": "gold_set_privacy_validation_failed"}, ensure_ascii=False))
+        return 2
+    if args.label_db:
+        labels = RealAccuracyLabelStore(args.label_db).list_for_dataset(str(dataset.get("dataset_version") or ""))
+        dataset = apply_approved_claim_labels(dataset, labels)
+    else:
+        labels = []
     source_by_case = {
         hmac_identifier(secret, "training_sample", sample.get("id")): sample
         for sample in load_reviewed_training_samples(args.source_db)
     }
     results: list[dict[str, Any]] = []
     for case in dataset.get("cases") or []:
-        if case.get("classification") not in {"accuracy_scorable", "safety_scorable"}:
+        if case.get("classification") not in {"claim_accuracy_scorable", "claim_label_pending", "safety_scorable"}:
             continue
         source = source_by_case.get(case.get("case_uid"))
         if source is None:
@@ -114,6 +126,14 @@ def main(argv: list[str] | None = None) -> int:
             break
     scorable = [item for item in results if (item.get("score") or {}).get("claim_score_available")]
     passed = [item for item in scorable if (item.get("score") or {}).get("passed")]
+    successful = [item for item in results if not item.get("error") and 200 <= int(item.get("status_code") or 0) < 300]
+    latencies = sorted(float(item.get("latency_ms") or 0) for item in results)
+
+    def percentile(value: float) -> float | None:
+        if not latencies:
+            return None
+        index = min(len(latencies) - 1, max(0, round((len(latencies) - 1) * value)))
+        return round(latencies[index], 1)
     report = {
         "schema_version": "real-accuracy-baseline-v1",
         "dataset_id": dataset.get("dataset_id"),
@@ -123,6 +143,13 @@ def main(argv: list[str] | None = None) -> int:
         "formal_evidence_convergence_enabled": False,
         "summary": {
             "executed": len(results),
+            "attempted_count": len(results),
+            "execution_success_count": len(successful),
+            "execution_error_count": len(results) - len(successful),
+            "timeout_count": sum(1 for item in results if item.get("error") == "TimeoutError"),
+            "latency_p50_ms": percentile(0.5),
+            "latency_p95_ms": percentile(0.95),
+            "claim_labeled_count": len(scorable),
             "claim_accuracy_numerator": len(passed),
             "claim_accuracy_denominator": len(scorable),
             "claim_accuracy_rate": round(len(passed) / len(scorable), 4) if scorable else None,
@@ -131,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
             "can_send_count": sum(1 for item in results if item.get("can_send")),
             "requires_human_review_count": sum(1 for item in results if item.get("requires_human_review")),
             "error_counts": dict(Counter(item.get("error") or "" for item in results if item.get("error"))),
+            "privacy_excluded_count": sum(1 for item in dataset.get("cases") or [] if item.get("classification") == "privacy_review_required"),
+            "context_excluded_count": sum(1 for item in dataset.get("cases") or [] if item.get("classification") == "context_gap"),
+            "media_excluded_count": sum(1 for item in dataset.get("cases") or [] if item.get("classification") == "media_only"),
+            "label_store_used": bool(args.label_db),
+            "approved_label_record_count": len(labels),
         },
         "results": results,
     }

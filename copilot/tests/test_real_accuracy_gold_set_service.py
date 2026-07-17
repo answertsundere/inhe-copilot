@@ -7,6 +7,7 @@ import pytest
 
 from app.services.real_accuracy_gold_set_service import (
     assert_label_not_in_agent_input,
+    apply_approved_claim_labels,
     build_agent_payload,
     build_gold_dataset,
     classify_sample,
@@ -41,8 +42,8 @@ def _sample(**overrides):
     return item
 
 
-def test_classifies_accuracy_safety_context_media_and_invalid():
-    assert classify_sample(_sample()) == "accuracy_scorable"
+def test_classifies_reference_safety_context_media_and_invalid():
+    assert classify_sample(_sample()) == "reference_available"
     assert classify_sample(_sample(correct_answer="")) == "safety_scorable"
     assert classify_sample(_sample(product_title="", sku="", order_no="")) == "context_gap"
     assert classify_sample(_sample(customer_quote="[图片消息]", correct_answer="")) == "media_only"
@@ -55,9 +56,11 @@ def test_gold_dataset_pseudonymizes_identity_and_rejects_pii():
 
     assert case["case_uid"] == hmac_identifier(SECRET, "training_sample", 1)
     assert case["sidecar_identity"]["sku"] != "SKU-TEST"
-    assert case["sidecar_identity"]["order_no"] != "ORDER-TEST"
+    assert case["sidecar_identity"]["order"] != "ORDER-TEST"
     assert "13800138000" not in case["customer_message"]
     assert "[PHONE_REDACTED]" in case["customer_message"]
+    assert "conversation_context" not in case
+    assert case["conversation"]["turns"]
     assert not validate_gold_dataset(dataset)
     assert queue[0]["case_uid"] == case["case_uid"]
 
@@ -89,6 +92,18 @@ def test_score_requires_explicit_claim_contract_and_never_uses_reference_text():
     score = score_response(case, response)
     assert score["passed"] is True
     assert score["formal_pipeline_verified"] is True
+
+
+def test_only_approved_human_claim_labels_create_accuracy_denominator():
+    dataset, _ = build_gold_dataset(SECRET, [_sample()])
+    case = dataset["cases"][0]
+    assert case["classification"] == "claim_label_pending"
+    enriched = apply_approved_claim_labels(dataset, [{
+        "case_uid": case["case_uid"], "review_status": "approved",
+        "label": {"claims": [{"claim_uid": "claim-1", "required_terms": ["核对订单"]}]},
+    }])
+    assert enriched["cases"][0]["classification"] == "claim_accuracy_scorable"
+    assert dataset["cases"][0]["reference_label"]["expected_claims"] == []
 
 
 def test_coverage_matrix_tracks_context_and_formal_selection_without_agent_logic():

@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     findings = validate_gold_dataset(dataset)
     if findings:
         print(json.dumps({"error": "gold_set_validation_failed", "findings": findings}, ensure_ascii=False))
-        return 3
+        return 2
     write_json(Path(args.json_output), dataset)
     write_json(Path(args.manual_queue_output), {
         "schema_version": "real-accuracy-manual-label-queue-v1",

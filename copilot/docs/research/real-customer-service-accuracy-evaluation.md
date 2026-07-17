@@ -23,14 +23,17 @@ long numeric identifiers, addresses, credentials, signed URLs, and image data.
 
 The data classifier separates:
 
-- `accuracy_scorable`: reviewed reference answer plus usable sidecar context;
+- `reference_available`: a reviewed free-text answer exists but is not a claim label;
+- `claim_label_pending`: a privacy-clean case is ready for human claim annotation;
+- `claim_accuracy_scorable`: at least one human-approved claim with its matching
+  contract and necessary context exists;
 - `safety_scorable`: usable question/context but no answer label;
 - `context_gap`: a text question without product, SKU, or order context;
 - `media_only`: image or link without a reliable text question;
 - `label_gap`: usable data that still needs a human label; and
 - `invalid`: no usable customer text.
 
-Only explicit claim-level labels may create a published claim-accuracy
+Only explicit, human-approved claim-level labels may create a published claim-accuracy
 denominator. A historical reviewed free-text answer may support exploratory
 action-coverage analysis, but it is not injected into the Agent and is not a
 substitute for claim labels. Until the denominator reaches 30 cases across at
@@ -88,3 +91,26 @@ python scripts\diagnose_query_driven_fact_coverage.py `
 
 The runtime database remains a source only. The scripts do not create review
 tasks, observations, knowledge rows, or delivery records.
+
+## Privacy And Human Labeling
+
+Gold build no longer stores raw `full_context` as a flattened string. It uses
+the standard HTML parser to emit only `BUYER`, `AGENT`, or `SYSTEM` turns,
+controlled link tokens, image markers, HMAC actor IDs, and sanitised text. An
+independent output scanner checks for PII, URLs, HTML/CSS, credentials, source
+identifiers, and unbounded media data. A failed scan sets
+`privacy_validation_failed`, exits with code 2, and blocks both the label
+workbench and baseline runner.
+
+Human labels live in `COPILOT_REAL_ACCURACY_LABEL_DB`, an ignored evaluation
+SQLite database separate from `knowledge_base.db`. It stores only pseudonymous
+case IDs, structured claim JSON, a pseudonymous reviewer actor, versions, and
+append-only audit events. Reviewers may draft or submit labels; only supervisors
+or administrators may approve them. Product-fact claims need formal evidence
+UIDs before approval. The `/ask/real-accuracy-labels` management view reads the
+sanitised Gold artifact and never receives raw source rows.
+
+The baseline records attempted, success, error, timeout, p50/p95 latency, and
+exclusion counts independently. A timeout is an execution error, not a human
+handoff. With no approved claims, the accuracy denominator and rate are `0`
+and `null`; that is an intentionally incomplete baseline, not a score.

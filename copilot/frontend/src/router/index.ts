@@ -99,6 +99,12 @@ const router = createRouter({
           component: () => import('../views/UsageGuidePage.vue'),
           meta: { title: '使用说明' },
         },
+        {
+          path: 'real-accuracy-labels',
+          name: 'real-accuracy-labels',
+          component: () => import('../views/RealAccuracyLabelWorkbenchPage.vue'),
+          meta: { title: '准确率人工标注', hidden: true },
+        },
       ],
     },
     {

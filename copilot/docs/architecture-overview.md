@@ -264,10 +264,13 @@ Replay and benchmark must use the same canonical context and final Pipeline as
 user-facing requests. Benchmark pass rate is not production readiness when all
 cases are review-only or real samples lack sidecar context.
 
-Real accuracy evaluation is a separate read-only Gold Set contract. It uses
-HMAC-pseudonymised reviewed samples, keeps reference labels outside the Agent
-payload, and treats fewer than 30 independently structured claim labels as an
-insufficient baseline rather than a project accuracy result. Its coverage
+Real accuracy evaluation is a separate read-only Gold Set contract. It parses
+reviewed HTML conversations into de-identified role turns, requires an
+independent output privacy scan before any label or baseline operation, keeps
+reference labels outside the Agent payload, and stores human claim labels in a
+separate evaluation database. Fewer than 30 independently structured approved
+claim labels remains an insufficient baseline rather than a project accuracy
+result. Its coverage
 matrix records where real queries lose context or admitted evidence; it does
 not activate Formal Evidence Convergence or change the formal response path.
 

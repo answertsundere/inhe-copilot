@@ -557,9 +557,7 @@ onMounted(async () => {
           <h2>训练样本收集</h2>
           <p class="subtitle">录入最新客服对话，沉淀成客服系统的训练数据。支持图文混排、一键提取。</p>
         </div>
-        <a class="header-link" href="/ask/real-test" title="返回客服工作台">
-          ← 返回工作台
-        </a>
+        <div class="header-actions"><a class="header-link" href="/ask/real-accuracy-labels" title="进入准确率标注">准确率标注</a><a class="header-link" href="/ask/real-test" title="返回客服工作台">← 返回工作台</a></div>
       </div>
 
       <!-- 统计指标 -->
@@ -1104,6 +1102,13 @@ onMounted(async () => {
       color: var(--at-fg);
       box-shadow: var(--at-shadow-hover);
     }
+  }
+
+  .header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--at-space-2);
   }
 }
 

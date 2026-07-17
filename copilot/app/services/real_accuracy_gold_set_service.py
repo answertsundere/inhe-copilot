@@ -9,6 +9,7 @@ knowledge or Agent context.
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import hmac
 import json
@@ -18,10 +19,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.services.eval_sanitizer_service import sanitize_text
+from app.services.real_accuracy_privacy_service import parse_conversation_context, sanitize_gold_text, scan_privacy_output
 
 
-DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v1"
+DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v2"
 DEFAULT_MINIMUM_GOLD_LABELS = 30
 _REQUIRED_SAMPLE_COLUMNS = {
     "id", "customer_quote", "full_context", "product_title", "sku", "order_no",
@@ -29,10 +30,6 @@ _REQUIRED_SAMPLE_COLUMNS = {
 }
 _IMAGE_OR_LINK_RE = re.compile(r"(?:\[图片[^\]]*\]|https?://\S+|data:image/)", re.I)
 _HTML_RE = re.compile(r"<[^>]+>")
-_PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
-_LONG_ID_RE = re.compile(r"(?<!\d)\d{12,}(?!\d)")
-_SECRET_RE = re.compile(r"(?i)(?:api[_-]?key|token|secret|password|authorization)\s*[:=]\s*[^\s&]+")
-
 # This taxonomy is intentionally confined to offline evaluation.  It assesses
 # whether a human-reviewed reference asks for a general service action; it is
 # never imported by the Agent or used to generate a reply.
@@ -53,7 +50,7 @@ def canonical_text(value: Any, limit: int = 1800) -> str:
     text = re.sub(r"</(?:p|div|li|tr|h\d)>", "\n", text, flags=re.I)
     text = _HTML_RE.sub(" ", text)
     text = re.sub(r"\s+", " ", text).strip()
-    text = sanitize_text(text)
+    text = sanitize_gold_text(text)
     return text[:limit].rstrip()
 
 
@@ -112,7 +109,7 @@ def _has_sidecar(sample: dict[str, Any]) -> bool:
 
 
 def classify_sample(sample: dict[str, Any]) -> str:
-    """Classify eligibility only; this does not infer a customer fact type."""
+    """Classify source availability; claim labels remain a separate human gate."""
     if _is_media_only(sample):
         return "media_only"
     if not _has_text_question(sample):
@@ -120,7 +117,7 @@ def classify_sample(sample: dict[str, Any]) -> str:
     if not _has_sidecar(sample):
         return "context_gap"
     if canonical_text(sample.get("correct_answer"), limit=120):
-        return "accuracy_scorable"
+        return "reference_available"
     if str(sample.get("risk_level") or "").strip() or str(sample.get("auto_reply_type") or "").strip():
         return "safety_scorable"
     return "label_gap"
@@ -136,7 +133,7 @@ def _identity(secret: str, sample: dict[str, Any]) -> dict[str, str]:
     for key, namespace in (("product_title", "product"), ("sku", "sku"), ("order_no", "order")):
         value = str(sample.get(key) or "").strip()
         if value:
-            result[key] = hmac_identifier(secret, namespace, value)
+            result[namespace] = hmac_identifier(secret, namespace, value)
     return result
 
 
@@ -144,13 +141,20 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
     classification = classify_sample(sample)
     source_uid = hmac_identifier(secret, "training_sample", sample.get("id"))
     reference = canonical_text(sample.get("correct_answer"), limit=1800)
-    action_points = reference_action_points(reference) if classification == "accuracy_scorable" else []
-    return {
+    conversation = parse_conversation_context(
+        sample.get("full_context"), hmac_key=secret, source_provenance="reviewed_training_sample"
+    )
+    if conversation["privacy_review_required"]:
+        classification = "privacy_review_required"
+    elif classification == "reference_available":
+        classification = "claim_label_pending"
+    action_points = reference_action_points(reference) if reference else []
+    case = {
         "case_uid": source_uid,
         "source": {"kind": "reviewed_training_sample", "pseudonymous_id": source_uid},
         "classification": classification,
         "customer_message": canonical_text(sample.get("customer_quote")),
-        "conversation_context": canonical_text(sample.get("full_context"), limit=2400),
+        "conversation": conversation,
         "query_class": canonical_text(sample.get("question_type"), limit=120) or "unclassified",
         "risk_level": canonical_text(sample.get("risk_level"), limit=40) or "unknown",
         "sidecar_identity": _identity(secret, sample),
@@ -165,12 +169,13 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
         },
         "expected_evidence": [],
         "notes": {
-            "needs_claim_level_review": bool(reference) and not action_points,
+            "needs_claim_level_review": bool(reference),
             "media_requested": bool(sample.get("need_media")),
-            "source_text_sanitized": True,
+            "source_text_sanitized": False,
             "identity_pseudonymized": True,
         },
     }
+    return case
 
 
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
@@ -181,9 +186,27 @@ def _dataset_hash(cases: list[dict[str, Any]]) -> str:
 def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     cases = [build_gold_case(secret, sample) for sample in samples]
     cases.sort(key=lambda item: item["case_uid"])
+    privacy_findings_by_case = {
+        case["case_uid"]: scan_privacy_output(case)
+        for case in cases
+    }
+    for case in cases:
+        findings = privacy_findings_by_case[case["case_uid"]]
+        if findings:
+            case["classification"] = "privacy_review_required"
+            case["notes"]["source_text_sanitized"] = False
+            case["notes"]["privacy_review_required"] = True
+            case["notes"]["privacy_reason_codes"] = [item["reason_code"] for item in findings]
+        else:
+            case["notes"]["source_text_sanitized"] = True
     counts = Counter(item["classification"] for item in cases)
-    accuracy_candidates = counts["accuracy_scorable"]
-    claim_labeled = sum(1 for item in cases if item["reference_label"]["expected_claims"])
+    claim_labeled = sum(
+        1
+        for item in cases
+        if item["classification"] == "claim_accuracy_scorable"
+        and item["reference_label"]["expected_claims"]
+    )
+    privacy_violation_count = sum(len(items) for items in privacy_findings_by_case.values())
     dataset = {
         "dataset_id": "real_customer_service_gold_v0_1",
         "dataset_version": "0.1",
@@ -191,18 +214,25 @@ def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[
         "source_provenance": "reviewed_training_samples_read_only",
         "privacy": {
             "identity_mode": "hmac_pseudonymized",
-            "source_text_sanitized": True,
-            "raw_source_identifiers_included": False,
+            "source_text_sanitized": privacy_violation_count == 0,
+            "privacy_scan_status": "passed" if privacy_violation_count == 0 else "failed",
+            "raw_source_identifiers_included": False if privacy_violation_count == 0 else None,
             "agent_input_contains_labels": False,
         },
-        "dataset_status": "ready_for_manual_claim_labeling" if claim_labeled >= DEFAULT_MINIMUM_GOLD_LABELS else "insufficient_gold_labels",
+        "dataset_status": (
+            "privacy_validation_failed" if privacy_violation_count
+            else "ready_for_manual_claim_labeling" if claim_labeled >= DEFAULT_MINIMUM_GOLD_LABELS
+            else "insufficient_gold_labels"
+        ),
         "minimum_project_accuracy_denominator": DEFAULT_MINIMUM_GOLD_LABELS,
         "summary": {
             "total_cases": len(cases),
             "classification_counts": dict(sorted(counts.items())),
-            "accuracy_candidate_count": accuracy_candidates,
+            "reference_available_count": counts["reference_available"],
+            "claim_label_pending_count": counts["claim_label_pending"],
             "claim_labeled_accuracy_count": claim_labeled,
             "project_accuracy_publishable": claim_labeled >= DEFAULT_MINIMUM_GOLD_LABELS,
+            "privacy_scan_violation_count": privacy_violation_count,
         },
         "cases": cases,
     }
@@ -217,21 +247,27 @@ def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[
             "labeling_required": ["expected_claims", "forbidden_claims", "must_handoff"],
         }
         for item in cases
-        if item["classification"] in {"accuracy_scorable", "label_gap", "safety_scorable"}
+        if item["classification"] in {"claim_label_pending", "reference_available", "label_gap", "safety_scorable"}
     ]
     return dataset, manual_queue
 
 
 def scan_sensitive_data(value: Any) -> list[str]:
-    serialized = json.dumps(value, ensure_ascii=False, sort_keys=True)
-    findings: list[str] = []
-    if _PHONE_RE.search(serialized):
-        findings.append("phone_number_detected")
-    if _LONG_ID_RE.search(serialized):
-        findings.append("long_numeric_identifier_detected")
-    if _SECRET_RE.search(serialized):
-        findings.append("credential_detected")
-    return findings
+    def scrub_metadata(item: Any) -> Any:
+        if isinstance(item, list):
+            return [scrub_metadata(child) for child in item]
+        if not isinstance(item, dict):
+            return item
+        return {
+            key: scrub_metadata(child)
+            for key, child in item.items()
+            if key not in {
+                "manifest", "case_uid", "pseudonymous_id", "speaker_uid", "sidecar_identity",
+                "content_sha256", "dataset_hash", "reviewer_actor_hash",
+            }
+        }
+
+    return sorted({item["reason_code"] for item in scan_privacy_output(scrub_metadata(value))})
 
 
 def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
@@ -248,7 +284,7 @@ def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
         if not case_uid or case_uid in seen:
             findings.append("duplicate_or_missing_case_uid")
         seen.add(case_uid)
-        if "reference_label" not in case:
+        if "reference_label" not in case or "conversation" not in case:
             findings.append("reference_label_missing")
         if any(key in case for key in ("order_no", "sku", "product_title", "sample_id")):
             findings.append("raw_identity_field_present")
@@ -259,7 +295,38 @@ def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
     if expected_hash != _dataset_hash(cases):
         findings.append("manifest_hash_mismatch")
     findings.extend(scan_sensitive_data(dataset))
+    privacy = dataset.get("privacy") or {}
+    actual_scan_passed = not scan_sensitive_data(dataset)
+    if privacy.get("privacy_scan_status") != ("passed" if actual_scan_passed else "failed"):
+        findings.append("privacy_scan_status_unverified")
+    if actual_scan_passed and privacy.get("raw_source_identifiers_included") is not False:
+        findings.append("raw_identity_claim_unverified")
     return sorted(set(findings))
+
+
+def apply_approved_claim_labels(dataset: dict[str, Any], labels: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Attach only approved human labels to an in-memory evaluation view.
+
+    The source Gold artifact remains immutable and labels never become Agent
+    payload fields.  A case with approved claims is the only claim-accuracy
+    denominator member.
+    """
+    result = copy.deepcopy(dataset)
+    by_case = {
+        str(item.get("case_uid")): item
+        for item in labels
+        if item.get("review_status") == "approved"
+    }
+    for case in result.get("cases") or []:
+        label = by_case.get(str(case.get("case_uid") or ""))
+        if not label:
+            continue
+        claims = ((label.get("label") or {}).get("claims") or [])
+        if not claims:
+            continue
+        case["reference_label"]["expected_claims"] = claims
+        case["classification"] = "claim_accuracy_scorable"
+    return result
 
 
 def build_agent_payload(sample: dict[str, Any]) -> dict[str, Any]:

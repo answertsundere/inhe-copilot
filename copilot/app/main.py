@@ -605,6 +605,7 @@ def create_app():
     from app.api.media_routes import media_bp
     from app.api.product_media_observation_routes import product_media_observation_bp
     from app.api.training_sample_routes import training_sample_bp
+    from app.api.real_accuracy_label_routes import real_accuracy_label_bp
     from app.api.eval_routes import eval_bp
 
     app.register_blueprint(health_bp)
@@ -627,6 +628,7 @@ def create_app():
     app.register_blueprint(media_bp)
     app.register_blueprint(product_media_observation_bp)
     app.register_blueprint(training_sample_bp)
+    app.register_blueprint(real_accuracy_label_bp)
     app.register_blueprint(eval_bp)
 
     from app.api.admin_auth import install_admin_access_control
