@@ -41,6 +41,9 @@ def test_label_routes_require_reviewer_and_keep_labels_out_of_knowledge(monkeypa
     case_uid = dataset["cases"][0]["case_uid"]
 
     monkeypatch.setattr(admin_auth, "_verified_principal", lambda: admin_auth.AdminPrincipal("operator", "operator", frozenset({"operator"}), "test"))
+    with app.app_context():
+        assert admin_auth.route_policy("real_accuracy_labels.list_cases", "GET")[0] == "reviewer_write"
+    assert client.get("/api/kb/real-accuracy/cases").status_code == 403
     assert client.post(f"/api/kb/real-accuracy/cases/{case_uid}/labels", json={"claims": _claim()}).status_code == 403
 
     monkeypatch.setattr(admin_auth, "_verified_principal", lambda: admin_auth.AdminPrincipal("reviewer", "reviewer", frozenset({"reviewer"}), "test"))

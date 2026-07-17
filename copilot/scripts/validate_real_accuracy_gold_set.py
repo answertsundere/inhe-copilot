@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     dataset = json.loads(Path(args.input).read_text(encoding="utf-8"))
     findings = validate_gold_dataset(dataset)
     print(json.dumps({"valid": not findings, "findings": findings}, ensure_ascii=False))
-    return 0 if not findings else 1
+    return 0 if not findings else 2
 
 
 if __name__ == "__main__":

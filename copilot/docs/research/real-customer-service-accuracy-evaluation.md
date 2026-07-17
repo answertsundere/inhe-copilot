@@ -30,6 +30,9 @@ The data classifier separates:
 - `safety_scorable`: usable question/context but no answer label;
 - `context_gap`: a text question without product, SKU, or order context;
 - `media_only`: image or link without a reliable text question;
+- `role_unresolved`: a conversation whose source DOM and explicit speaker
+  prefix do not establish a buyer, agent, or system role; it is excluded from
+  the manual claim queue;
 - `label_gap`: usable data that still needs a human label; and
 - `invalid`: no usable customer text.
 
@@ -73,6 +76,9 @@ $env:COPILOT_GOLD_SET_HMAC_KEY = [guid]::NewGuid().ToString('N')
 python scripts\diagnose_real_accuracy_data_sources.py `
   --source-db <read-only-runtime-db> `
   --json-output outputs\real_accuracy_source_inventory.json
+python scripts\diagnose_real_accuracy_conversation_structure.py `
+  --source-db <read-only-runtime-db> `
+  --json-output outputs\real_accuracy_conversation_structure.json
 python scripts\build_real_accuracy_gold_set.py `
   --source-db <read-only-runtime-db> `
   --json-output outputs\real_accuracy_gold_set.json `
@@ -94,11 +100,25 @@ tasks, observations, knowledge rows, or delivery records.
 
 ## Privacy And Human Labeling
 
-Gold build no longer stores raw `full_context` as a flattened string. It uses
-the standard HTML parser to emit only `BUYER`, `AGENT`, or `SYSTEM` turns,
-controlled link tokens, image markers, HMAC actor IDs, and sanitised text. An
-independent output scanner checks for PII, URLs, HTML/CSS, credentials, source
-identifiers, and unbounded media data. A failed scan sets
+Gold build no longer stores raw `full_context` as a flattened string. It first
+uses stable message-container metadata from the reviewed chat DOM, including
+`imui-msg-l` / `imui-msg-r` direction classes, and then uses an explicit
+speaker prefix only when DOM direction is unavailable. It emits only
+`BUYER`, `AGENT`, or `SYSTEM` roles; an unproven role is represented as a
+`role_unresolved` turn state rather than being disguised as `SYSTEM`.
+Fragments inside one message body are merged before a turn is emitted.
+The parser caps a source case at 500 merged turns and classifies an over-limit
+case as `conversation_truncated`, excluding it from the manual claim queue
+rather than silently scoring incomplete context.
+Controlled link tokens, image markers, HMAC actor IDs, and sanitised text are
+retained, while raw nicknames and source attributes are discarded.
+
+The independent output scanner checks for PII, URLs, HTML/CSS, credentials,
+source identifiers, and unbounded media data. Content scanning intentionally
+excludes generated HMAC and manifest fields; their formats are separately
+validated. Build, validation CLI, baseline runner, and the workbench all call
+the same `validate_gold_dataset()` contract. A failed scan, manifest, schema,
+or controlled-identifier validation sets
 `privacy_validation_failed`, exits with code 2, and blocks both the label
 workbench and baseline runner.
 
@@ -108,9 +128,13 @@ case IDs, structured claim JSON, a pseudonymous reviewer actor, versions, and
 append-only audit events. Reviewers may draft or submit labels; only supervisors
 or administrators may approve them. Product-fact claims need formal evidence
 UIDs before approval. The `/ask/real-accuracy-labels` management view reads the
-sanitised Gold artifact and never receives raw source rows.
+sanitised Gold artifact and never receives raw source rows. Its list and detail
+API are reviewer-or-higher only; operators and unauthenticated callers cannot
+read reference answers or de-identified conversation turns.
 
 The baseline records attempted, success, error, timeout, p50/p95 latency, and
 exclusion counts independently. A timeout is an execution error, not a human
-handoff. With no approved claims, the accuracy denominator and rate are `0`
-and `null`; that is an intentionally incomplete baseline, not a score.
+handoff. It separately reports draft, reviewed, approved, and rejected label
+records. Only an approved case with approved claims enters the accuracy
+denominator. With no approved claims, the denominator and rate are `0` and
+`null`; that is an intentionally incomplete baseline, not a score.

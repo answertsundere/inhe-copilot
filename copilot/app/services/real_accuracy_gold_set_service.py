@@ -19,7 +19,12 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.services.real_accuracy_privacy_service import parse_conversation_context, sanitize_gold_text, scan_privacy_output
+from app.services.real_accuracy_privacy_service import (
+    parse_conversation_context,
+    sanitize_gold_text,
+    scan_privacy_output,
+    validate_controlled_identifiers,
+)
 
 
 DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v2"
@@ -146,6 +151,10 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
     )
     if conversation["privacy_review_required"]:
         classification = "privacy_review_required"
+    elif conversation.get("conversation_truncated"):
+        classification = "conversation_truncated"
+    elif conversation.get("role_unresolved_count"):
+        classification = "role_unresolved"
     elif classification == "reference_available":
         classification = "claim_label_pending"
     action_points = reference_action_points(reference) if reference else []
@@ -173,6 +182,8 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
             "media_requested": bool(sample.get("need_media")),
             "source_text_sanitized": False,
             "identity_pseudonymized": True,
+            "role_unresolved": bool(conversation.get("role_unresolved_count")),
+            "conversation_truncated": bool(conversation.get("conversation_truncated")),
         },
     }
     return case
@@ -181,6 +192,50 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
     canonical = json.dumps(cases, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _percentile(values: list[int], quantile: float) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * quantile)))
+    return ordered[index]
+
+
+def _apply_dataset_label_status(dataset: dict[str, Any]) -> None:
+    cases = dataset.get("cases") or []
+    classifications = Counter(str(item.get("classification") or "unknown") for item in cases)
+    approved_claim_cases = sum(
+        1
+        for item in cases
+        if item.get("classification") == "claim_accuracy_scorable"
+        and ((item.get("reference_label") or {}).get("expected_claims") or [])
+    )
+    privacy_violation_count = sum(len(scan_privacy_output(case)) for case in cases)
+    turn_counts = [len((item.get("conversation") or {}).get("turns") or []) for item in cases]
+    roles = Counter()
+    for item in cases:
+        roles.update((item.get("conversation") or {}).get("role_counts") or {})
+    dataset["dataset_status"] = (
+        "privacy_validation_failed" if privacy_violation_count
+        else "ready_for_accuracy_baseline" if approved_claim_cases >= DEFAULT_MINIMUM_GOLD_LABELS
+        else "insufficient_gold_labels"
+    )
+    dataset["summary"] = {
+        **(dataset.get("summary") or {}),
+        "total_cases": len(cases),
+        "classification_counts": dict(sorted(classifications.items())),
+        "reference_available_count": classifications["reference_available"],
+        "claim_label_pending_count": classifications["claim_label_pending"],
+        "claim_labeled_accuracy_count": approved_claim_cases,
+        "project_accuracy_publishable": approved_claim_cases >= DEFAULT_MINIMUM_GOLD_LABELS,
+        "privacy_scan_violation_count": privacy_violation_count,
+        "role_counts": {role: int(roles.get(role, 0)) for role in ("BUYER", "AGENT", "SYSTEM")},
+        "role_unresolved_case_count": sum(1 for item in cases if (item.get("conversation") or {}).get("role_unresolved_count")),
+        "turn_count_p50": _percentile(turn_counts, 0.5),
+        "turn_count_p95": _percentile(turn_counts, 0.95),
+        "turn_count_max": max(turn_counts, default=0),
+    }
 
 
 def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -199,13 +254,6 @@ def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[
             case["notes"]["privacy_reason_codes"] = [item["reason_code"] for item in findings]
         else:
             case["notes"]["source_text_sanitized"] = True
-    counts = Counter(item["classification"] for item in cases)
-    claim_labeled = sum(
-        1
-        for item in cases
-        if item["classification"] == "claim_accuracy_scorable"
-        and item["reference_label"]["expected_claims"]
-    )
     privacy_violation_count = sum(len(items) for items in privacy_findings_by_case.values())
     dataset = {
         "dataset_id": "real_customer_service_gold_v0_1",
@@ -219,23 +267,14 @@ def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[
             "raw_source_identifiers_included": False if privacy_violation_count == 0 else None,
             "agent_input_contains_labels": False,
         },
-        "dataset_status": (
-            "privacy_validation_failed" if privacy_violation_count
-            else "ready_for_manual_claim_labeling" if claim_labeled >= DEFAULT_MINIMUM_GOLD_LABELS
-            else "insufficient_gold_labels"
-        ),
+        "dataset_status": "insufficient_gold_labels",
         "minimum_project_accuracy_denominator": DEFAULT_MINIMUM_GOLD_LABELS,
         "summary": {
             "total_cases": len(cases),
-            "classification_counts": dict(sorted(counts.items())),
-            "reference_available_count": counts["reference_available"],
-            "claim_label_pending_count": counts["claim_label_pending"],
-            "claim_labeled_accuracy_count": claim_labeled,
-            "project_accuracy_publishable": claim_labeled >= DEFAULT_MINIMUM_GOLD_LABELS,
-            "privacy_scan_violation_count": privacy_violation_count,
         },
         "cases": cases,
     }
+    _apply_dataset_label_status(dataset)
     dataset["manifest"] = {"content_sha256": _dataset_hash(cases), "case_count": len(cases)}
     manual_queue = [
         {
@@ -248,6 +287,7 @@ def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[
         }
         for item in cases
         if item["classification"] in {"claim_label_pending", "reference_available", "label_gap", "safety_scorable"}
+        and not (item.get("conversation") or {}).get("role_unresolved_count")
     ]
     return dataset, manual_queue
 
@@ -267,7 +307,9 @@ def scan_sensitive_data(value: Any) -> list[str]:
             }
         }
 
-    return sorted({item["reason_code"] for item in scan_privacy_output(scrub_metadata(value))})
+    content_findings = scan_privacy_output(scrub_metadata(value))
+    controlled_findings = validate_controlled_identifiers(value)
+    return sorted({item["reason_code"] for item in content_findings + controlled_findings})
 
 
 def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
@@ -326,6 +368,8 @@ def apply_approved_claim_labels(dataset: dict[str, Any], labels: Iterable[dict[s
             continue
         case["reference_label"]["expected_claims"] = claims
         case["classification"] = "claim_accuracy_scorable"
+    _apply_dataset_label_status(result)
+    result["manifest"] = {"content_sha256": _dataset_hash(result.get("cases") or []), "case_count": len(result.get("cases") or [])}
     return result
 
 

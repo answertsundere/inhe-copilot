@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from app.services.real_accuracy_gold_set_service import (
     score_response,
     validate_gold_dataset,
 )
+from scripts import validate_real_accuracy_gold_set
 
 
 SECRET = "test-only-hmac-key"
@@ -72,6 +74,15 @@ def test_manifest_is_stable_and_tampering_fails_validation():
     assert "manifest_hash_mismatch" in validate_gold_dataset(dataset)
 
 
+def test_validation_cli_exits_two_for_invalid_gold_set(tmp_path: Path):
+    dataset, _ = build_gold_dataset(SECRET, [_sample()])
+    dataset["privacy"]["privacy_scan_status"] = "passed"
+    dataset["cases"][0]["customer_message"] = "https://invalid.example/raw"
+    path = tmp_path / "tampered.json"
+    path.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    assert validate_real_accuracy_gold_set.main(["--input", str(path)]) == 2
+
+
 def test_agent_payload_excludes_all_evaluation_labels():
     payload = build_agent_payload(_sample())
     assert_label_not_in_agent_input(payload)
@@ -104,6 +115,26 @@ def test_only_approved_human_claim_labels_create_accuracy_denominator():
     }])
     assert enriched["cases"][0]["classification"] == "claim_accuracy_scorable"
     assert dataset["cases"][0]["reference_label"]["expected_claims"] == []
+
+
+def test_role_unresolved_case_is_excluded_from_manual_claim_queue():
+    dataset, queue = build_gold_dataset(
+        SECRET,
+        [_sample(full_context='<div class="imui-msg"><div class="msg-body-text">没有可靠角色</div></div>')],
+    )
+    assert dataset["cases"][0]["classification"] == "role_unresolved"
+    assert dataset["summary"]["role_unresolved_case_count"] == 1
+    assert queue == []
+
+
+def test_truncated_conversation_is_excluded_from_manual_claim_queue():
+    raw = "".join(
+        f'<div class="imui-msg imui-msg-l"><div class="msg-body-text">{index}</div></div>'
+        for index in range(501)
+    )
+    dataset, queue = build_gold_dataset(SECRET, [_sample(full_context=raw)])
+    assert dataset["cases"][0]["classification"] == "conversation_truncated"
+    assert queue == []
 
 
 def test_coverage_matrix_tracks_context_and_formal_selection_without_agent_logic():

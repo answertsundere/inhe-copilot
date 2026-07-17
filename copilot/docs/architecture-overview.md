@@ -265,7 +265,8 @@ user-facing requests. Benchmark pass rate is not production readiness when all
 cases are review-only or real samples lack sidecar context.
 
 Real accuracy evaluation is a separate read-only Gold Set contract. It parses
-reviewed HTML conversations into de-identified role turns, requires an
+reviewed HTML conversations into de-identified role turns using stable source
+DOM direction metadata before text prefixes, requires an
 independent output privacy scan before any label or baseline operation, keeps
 reference labels outside the Agent payload, and stores human claim labels in a
 separate evaluation database. Fewer than 30 independently structured approved

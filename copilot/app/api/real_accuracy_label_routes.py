@@ -9,7 +9,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
-from app.api.admin_auth import current_principal, has_any_role, require_authenticated, require_reviewer
+from app.api.admin_auth import current_principal, has_any_role, require_reviewer
 from app.services.real_accuracy_gold_set_service import validate_gold_dataset
 from app.services.real_accuracy_label_service import (
     LabelConflictError,
@@ -57,7 +57,7 @@ def _public_case(case: dict[str, Any], label: dict[str, Any] | None) -> dict[str
 
 
 @real_accuracy_label_bp.get("/cases")
-@require_authenticated
+@require_reviewer
 def list_cases():
     dataset, error = _load_dataset()
     if error:

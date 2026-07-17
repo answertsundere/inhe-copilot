@@ -28,6 +28,7 @@ from app.services.real_accuracy_gold_set_service import (  # noqa: E402
     hmac_identifier,
     load_reviewed_training_samples,
     score_response,
+    validate_gold_dataset,
 )
 from app.services.real_accuracy_label_service import RealAccuracyLabelStore  # noqa: E402
 from app.services.real_accuracy_privacy_service import sanitize_gold_text  # noqa: E402
@@ -101,14 +102,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"error": "gold_set_hmac_key_missing"}, ensure_ascii=False))
         return 2
     dataset = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
-    if (dataset.get("privacy") or {}).get("privacy_scan_status") != "passed":
-        print(json.dumps({"error": "gold_set_privacy_validation_failed"}, ensure_ascii=False))
+    validation_findings = validate_gold_dataset(dataset)
+    if validation_findings or (dataset.get("privacy") or {}).get("privacy_scan_status") != "passed":
+        print(json.dumps({"error": "gold_set_privacy_validation_failed", "reason_codes": validation_findings}, ensure_ascii=False))
         return 2
     if args.label_db:
-        labels = RealAccuracyLabelStore(args.label_db).list_for_dataset(str(dataset.get("dataset_version") or ""))
+        known_case_uids = {str(item.get("case_uid") or "") for item in dataset.get("cases") or []}
+        labels = [
+            item
+            for item in RealAccuracyLabelStore(args.label_db).list_for_dataset(str(dataset.get("dataset_version") or ""))
+            if str(item.get("case_uid") or "") in known_case_uids
+        ]
         dataset = apply_approved_claim_labels(dataset, labels)
     else:
         labels = []
+    label_status_counts = Counter(str(item.get("review_status") or "unknown") for item in labels)
     source_by_case = {
         hmac_identifier(secret, "training_sample", sample.get("id")): sample
         for sample in load_reviewed_training_samples(args.source_db)
@@ -153,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
             "claim_accuracy_numerator": len(passed),
             "claim_accuracy_denominator": len(scorable),
             "claim_accuracy_rate": round(len(passed) / len(scorable), 4) if scorable else None,
-            "exploratory_only": dataset.get("dataset_status") == "insufficient_gold_labels",
+            "exploratory_only": dataset.get("dataset_status") != "ready_for_accuracy_baseline",
             "formal_pipeline_verified_count": sum(1 for item in results if item.get("formal_pipeline_verified")),
             "can_send_count": sum(1 for item in results if item.get("can_send")),
             "requires_human_review_count": sum(1 for item in results if item.get("requires_human_review")),
@@ -162,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
             "context_excluded_count": sum(1 for item in dataset.get("cases") or [] if item.get("classification") == "context_gap"),
             "media_excluded_count": sum(1 for item in dataset.get("cases") or [] if item.get("classification") == "media_only"),
             "label_store_used": bool(args.label_db),
-            "approved_label_record_count": len(labels),
+            "draft_label_record_count": label_status_counts["draft"],
+            "reviewed_label_record_count": label_status_counts["reviewed"],
+            "approved_label_record_count": label_status_counts["approved"],
+            "rejected_label_record_count": label_status_counts["rejected"],
         },
         "results": results,
     }

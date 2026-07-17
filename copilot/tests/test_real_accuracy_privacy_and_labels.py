@@ -41,6 +41,37 @@ def test_parser_handles_normal_chinese_and_legacy_garbled_text_without_retaining
     assert "<div" not in legacy["turns"][0]["text"]
 
 
+def test_parser_prefers_message_direction_merges_body_fragments_and_marks_unknown_role():
+    parsed = parse_conversation_context(
+        '<div class="imui-msg imui-msg-l" data-fromnick="x"><div class="msg-body-text"><span>尺寸</span><span>多大</span></div></div>'
+        '<div class="imui-msg imui-msg-r" data-tonick="x"><div class="msg-body-html">请看规格页</div></div>'
+        '<div class="imui-msg"><div class="msg-body-text">没有可用方向</div></div>',
+        hmac_key=SECRET,
+    )
+    assert [turn["speaker_role"] for turn in parsed["turns"]] == ["BUYER", "AGENT", None]
+    assert parsed["turns"][0]["text"] == "尺寸多大"
+    assert parsed["turns"][0]["role_resolution"] == "dom_direction"
+    assert parsed["turns"][2]["role_resolution"] == "role_unresolved"
+    assert parsed["role_unresolved_count"] == 1
+
+
+def test_hmac_actor_identifier_is_excluded_from_content_scan_but_uses_stable_format():
+    parsed = parse_conversation_context('<div>买家：请问尺寸</div>', hmac_key=SECRET)
+    actor = parsed["turns"][0]["speaker_uid"]
+    assert actor.startswith("actor_")
+    assert not scan_privacy_output({"speaker_uid": actor, "conversation": parsed})
+
+
+def test_parser_caps_message_containers_and_marks_the_context_truncated():
+    raw = "".join(
+        f'<div class="imui-msg imui-msg-l"><div class="msg-body-text">{index}</div></div>'
+        for index in range(501)
+    )
+    parsed = parse_conversation_context(raw, hmac_key=SECRET)
+    assert len(parsed["turns"]) == 500
+    assert parsed["conversation_truncated"] is True
+
+
 @pytest.mark.parametrize("value,reason", [
     ("电话 13800138000", "phone_number_detected"),
     ("邮箱 a@example.com", "email_detected"),
