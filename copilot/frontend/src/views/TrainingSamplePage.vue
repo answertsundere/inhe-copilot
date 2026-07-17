@@ -32,6 +32,7 @@ import {
   uploadTrainingSampleMedia,
   type TrainingSample,
   type TrainingSampleAttachment,
+  type TrainingSampleListItem,
 } from '../api/trainingSample'
 
 const today = new Date().toISOString().split('T')[0]
@@ -62,7 +63,7 @@ const form = reactive({
   notes: '',
 })
 
-const list = ref<TrainingSample[]>([])
+const list = ref<TrainingSampleListItem[]>([])
 const total = ref(0)
 const loading = ref(false)
 const submitting = ref(false)
@@ -332,39 +333,46 @@ function handleReset() {
   fetchList()
 }
 
-async function editSample(item: TrainingSample) {
+async function editSample(item: TrainingSampleListItem | TrainingSample) {
+  let sample: TrainingSample
+  try {
+    sample = 'full_context' in item ? item : (await getTrainingSample(item.id)).data
+  } catch {
+    ElMessage.error('加载详情失败')
+    return
+  }
   customerQuoteTouched.value = true
   activeTab.value = 'form'
   Object.assign(form, {
-    id: item.id,
-    collected_at: item.collected_at ? item.collected_at.split('T')[0] : today,
-    csr_name: item.csr_name,
-    shop_platform: item.shop_platform,
-    customer_quote: item.customer_quote,
-    full_context: item.full_context,
-    product_title: item.product_title,
-    sku: item.sku,
-    order_no: item.order_no,
-    question_type: item.question_type,
-    difficulty_reason: item.difficulty_reason,
-    csr_actual_reply: item.csr_actual_reply,
-    correct_answer: item.correct_answer,
-    need_knowledge_base: item.need_knowledge_base,
-    target_knowledge_base: item.target_knowledge_base,
-    need_media: item.need_media,
-    media_links: item.media_links || [],
-    risk_level: item.risk_level,
-    auto_reply_type: item.auto_reply_type,
-    review_status: item.review_status,
-    owner: item.owner,
-    notes: item.notes,
+    id: sample.id,
+    collected_at: sample.collected_at ? sample.collected_at.split('T')[0] : today,
+    csr_name: sample.csr_name,
+    shop_platform: sample.shop_platform,
+    customer_quote: sample.customer_quote,
+    full_context: sample.full_context,
+    product_title: sample.product_title,
+    sku: sample.sku,
+    order_no: sample.order_no,
+    question_type: sample.question_type,
+    difficulty_reason: sample.difficulty_reason,
+    csr_actual_reply: sample.csr_actual_reply,
+    correct_answer: sample.correct_answer,
+    need_knowledge_base: sample.need_knowledge_base,
+    target_knowledge_base: sample.target_knowledge_base,
+    need_media: sample.need_media,
+    media_links: sample.media_links || [],
+    risk_level: sample.risk_level,
+    auto_reply_type: sample.auto_reply_type,
+    review_status: sample.review_status,
+    owner: sample.owner,
+    notes: sample.notes,
   })
   nextTick(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   })
 }
 
-async function deleteSample(item: TrainingSample) {
+async function deleteSample(item: TrainingSampleListItem) {
   try {
     await ElMessageBox.confirm(
       `确定删除样本 #${item.id} 吗？删除后不可恢复。`,
@@ -384,7 +392,7 @@ async function deleteSample(item: TrainingSample) {
   }
 }
 
-async function viewDetail(item: TrainingSample) {
+async function viewDetail(item: TrainingSampleListItem) {
   drawerVisible.value = true
   try {
     const { data } = await getTrainingSample(item.id)
@@ -508,15 +516,17 @@ function renderEmpty(html: string) {
   return html || '<span class="empty">无内容</span>'
 }
 
-function isEvalSetSample(item: TrainingSample) {
+function isEvalSetSample(item: { review_status: string }) {
   return item.review_status === '评测集' || item.review_status === '璇勬祴闆?'
 }
 
-function evalCustomerSaid(item: TrainingSample) {
+function evalCustomerSaid(item: TrainingSample | TrainingSampleListItem) {
+  if ('eval_customer_said_preview' in item) return item.eval_customer_said_preview
   return item.eval_contract?.customer_said || (isEvalSetSample(item) ? htmlToPlainText(item.customer_quote || '') : '')
 }
 
-function evalSuggestedAnswer(item: TrainingSample) {
+function evalSuggestedAnswer(item: TrainingSample | TrainingSampleListItem) {
+  if ('eval_suggested_answer_preview' in item) return item.eval_suggested_answer_preview
   return item.eval_contract?.suggested_answer || (isEvalSetSample(item) ? htmlToPlainText(item.correct_answer || '') : '')
 }
 
@@ -861,7 +871,7 @@ onMounted(async () => {
                   <p><strong>客户说：</strong>{{ evalCustomerSaid(item) || '-' }}</p>
                   <p><strong>建议回答：</strong>{{ evalSuggestedAnswer(item) || '-' }}</p>
                 </div>
-                <div v-else class="row-quote" v-html="renderEmpty(item.customer_quote)"></div>
+                <div v-else class="row-quote">{{ item.customer_quote_preview || '-' }}</div>
                 <div class="row-meta">
                   <span v-if="item.shop_platform"><el-icon><Shop /></el-icon> {{ item.shop_platform }}</span>
                   <span v-if="item.sku">SKU {{ item.sku }}</span>

@@ -31,6 +31,30 @@ export interface TrainingSample {
   attachments: TrainingSampleAttachment[]
 }
 
+export interface TrainingSampleListItem {
+  id: number
+  collected_at: string
+  csr_name: string
+  shop_platform: string
+  product_title: string
+  sku: string
+  order_no: string
+  question_type: string
+  difficulty_reason: string
+  need_knowledge_base: boolean
+  need_media: boolean
+  risk_level: string
+  auto_reply_type: string
+  review_status: string
+  owner: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  customer_quote_preview: string
+  eval_customer_said_preview: string
+  eval_suggested_answer_preview: string
+}
+
 export interface TrainingSampleAttachment {
   id: number
   sample_id: number

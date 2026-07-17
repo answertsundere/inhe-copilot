@@ -194,7 +194,7 @@ def api_list_training_samples():
             offset=offset,
         )
         return jsonify({
-            "items": [item.to_dict() for item in items],
+            "items": [item.to_list_dict() for item in items],
             "total": total,
             "limit": limit,
             "offset": offset,

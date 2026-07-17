@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 
 from flask import Flask
 from sqlalchemy import create_engine
@@ -102,6 +103,35 @@ def test_list_training_samples(monkeypatch, tmp_path):
 
     res = client.get("/api/kb/training-samples?keyword=能不能睡到")
     assert res.get_json()["total"] == 1
+
+
+def test_list_training_samples_uses_bounded_summary_and_detail_keeps_rich_content(monkeypatch, tmp_path):
+    client, _ = _make_client(monkeypatch, tmp_path)
+    rich_quote = "<p>客户问题</p><img src=\"data:image/png;base64," + ("a" * 5000) + "\">"
+    full_context = "完整上下文" * 1000
+    sample_id = _create_sample(
+        client,
+        customer_quote=rich_quote,
+        full_context=full_context,
+        csr_actual_reply="客服原回复" * 1000,
+        correct_answer="标准答案" * 1000,
+    ).get_json()["id"]
+
+    list_body = client.get("/api/kb/training-samples").get_json()
+    item = list_body["items"][0]
+    assert item["id"] == sample_id
+    assert item["customer_quote_preview"] == "客户问题"
+    assert "customer_quote" not in item
+    assert "full_context" not in item
+    assert "csr_actual_reply" not in item
+    assert "correct_answer" not in item
+    assert "attachments" not in item
+    assert "eval_contract" not in item
+    assert len(json.dumps(list_body, ensure_ascii=False)) < 3000
+
+    detail = client.get(f"/api/kb/training-samples/{sample_id}").get_json()
+    assert detail["full_context"] == full_context
+    assert detail["customer_quote"].startswith("<p>客户问题</p>")
 
 
 def test_get_training_sample_detail(monkeypatch, tmp_path):

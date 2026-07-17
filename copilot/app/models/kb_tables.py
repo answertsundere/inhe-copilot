@@ -3,7 +3,9 @@
 与现有 knowledge_entries 表并存，提供更细粒度的实体管理
 """
 
+import html
 import json
+import re
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey,
@@ -25,6 +27,15 @@ def _json_set(value, is_list=True):
     if value is None:
         return "[]" if is_list else "{}"
     return json.dumps(value, ensure_ascii=False)
+
+
+def _plain_text_preview(value, max_length=280):
+    """Return a bounded, safe list preview without embedding rich media."""
+    text = html.unescape(re.sub(r"<[^>]*>", " ", value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= max_length:
+        return text
+    return f"{text[:max_length - 1].rstrip()}…"
 
 
 # ─── 商品知识库 ───
@@ -1094,6 +1105,41 @@ class KBTrainingSample(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "attachments": [att.to_dict() for att in self.attachments],
+        }
+
+    def to_list_dict(self):
+        """Serialize only metadata and bounded text needed by the list view.
+
+        Full conversation HTML, attachments, and evaluation contracts are fetched
+        through the detail endpoint when a supervisor opens or edits a sample.
+        """
+        eval_contract = self.get_eval_contract()
+        return {
+            "id": self.id,
+            "collected_at": self.collected_at.isoformat() if self.collected_at else None,
+            "csr_name": self.csr_name,
+            "shop_platform": self.shop_platform,
+            "product_title": self.product_title,
+            "sku": self.sku,
+            "order_no": self.order_no,
+            "question_type": self.question_type,
+            "difficulty_reason": self.difficulty_reason,
+            "need_knowledge_base": bool(self.need_knowledge_base),
+            "need_media": bool(self.need_media),
+            "risk_level": self.risk_level,
+            "auto_reply_type": self.auto_reply_type,
+            "review_status": self.review_status,
+            "owner": self.owner,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "customer_quote_preview": _plain_text_preview(self.customer_quote),
+            "eval_customer_said_preview": _plain_text_preview(
+                eval_contract.get("customer_said") if isinstance(eval_contract, dict) else ""
+            ),
+            "eval_suggested_answer_preview": _plain_text_preview(
+                eval_contract.get("suggested_answer") if isinstance(eval_contract, dict) else ""
+            ),
         }
 
 

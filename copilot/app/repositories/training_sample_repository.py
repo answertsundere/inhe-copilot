@@ -71,9 +71,7 @@ class TrainingSampleRepository:
     ) -> tuple:
         db = SessionLocal()
         try:
-            q = db.query(KBTrainingSample).options(
-                joinedload(KBTrainingSample.attachments)
-            )
+            q = db.query(KBTrainingSample)
             if review_status:
                 q = q.filter(KBTrainingSample.review_status == review_status)
             if question_type:
