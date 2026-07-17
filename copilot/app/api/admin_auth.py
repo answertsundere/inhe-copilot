@@ -36,8 +36,11 @@ _JWK_CLIENTS: dict[tuple[str, str], jwt.PyJWKClient] = {}
 # handlers contribute their policy metadata at registration time.
 _EXPLICIT_ROUTE_POLICIES: dict[tuple[str, str], str] = {
     ("health.api_health", "GET"): "public_runtime",
+    ("health.api_health", "HEAD"): "public_runtime",
     ("runtime.runtime_version", "GET"): "public_runtime",
+    ("runtime.runtime_version", "HEAD"): "public_runtime",
     ("runtime.runtime_readiness", "GET"): "public_runtime",
+    ("runtime.runtime_readiness", "HEAD"): "public_runtime",
     ("runtime.runtime_diagnostics", "GET"): "admin_only",
     ("analyze.api_analyze", "POST"): "customer_runtime",
     ("feedback.api_feedback", "POST"): "customer_runtime",

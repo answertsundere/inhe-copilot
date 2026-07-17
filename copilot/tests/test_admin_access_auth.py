@@ -229,6 +229,9 @@ def test_route_inventory_distinguishes_manifest_decorator_and_default_protection
     config_rows = [row for row in rows if row["rule"] == "/api/config/llm"]
     assert {(row["policy"], row["policy_source"]) for row in config_rows} == {("admin_only", "manifest")}
     assert admin_auth.route_policy("health.api_health", "GET") == ("public_runtime", "manifest")
+    assert admin_auth.route_policy("health.api_health", "HEAD") == ("public_runtime", "manifest")
+    assert admin_auth.route_policy("runtime.runtime_version", "HEAD") == ("public_runtime", "manifest")
+    assert admin_auth.route_policy("runtime.runtime_readiness", "HEAD") == ("public_runtime", "manifest")
     assert admin_auth.route_policy("analyze.api_analyze", "POST") == ("customer_runtime", "manifest")
     assert any(row["policy"] == "default_protected" and not row["explicit_policy"] for row in rows)
 
