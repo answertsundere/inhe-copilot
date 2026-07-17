@@ -101,6 +101,10 @@ partial-answer vertical slice.
 - `docs/research/strict-decision-provider-qualification.md` - strict provider
   capability classes, isolated configuration, and read-only qualification
   contract for the Evidence-First decision shadow.
+- `docs/research/real-customer-service-accuracy-evaluation.md` - privacy-safe,
+  read-only Gold Set, claim-label boundary, formal-pipeline baseline, and
+  query-driven evidence coverage diagnostic. It does not establish production
+  accuracy until its manual claim-label gate is met.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 

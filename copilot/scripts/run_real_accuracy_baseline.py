@@ -1,0 +1,145 @@
+"""Run Gold Set cases through the formal HTTP AnalysisPipeline only.
+
+The script joins HMAC case identities with a read-only source database in
+memory.  Gold labels are deliberately absent from HTTP payloads.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text  # noqa: E402
+from app.services.real_accuracy_gold_set_service import (  # noqa: E402
+    assert_label_not_in_agent_input,
+    build_agent_payload,
+    hmac_identifier,
+    load_reviewed_training_samples,
+    score_response,
+)
+
+
+def _post(url: str, payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any], float, str]:
+    started = time.perf_counter()
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read().decode("utf-8")), (time.perf_counter() - started) * 1000, ""
+    except urllib.error.HTTPError as exc:
+        return exc.code, {}, (time.perf_counter() - started) * 1000, f"http_{exc.code}"
+    except Exception as exc:
+        return 0, {}, (time.perf_counter() - started) * 1000, type(exc).__name__
+
+
+def _safe_evidence_count(response: dict[str, Any], key: str) -> int:
+    return len(response.get(key) or []) if isinstance(response.get(key), list) else 0
+
+
+def _run_case(case: dict[str, Any], source: dict[str, Any], url: str, timeout: int) -> dict[str, Any]:
+    payload = build_agent_payload(source)
+    assert_label_not_in_agent_input(payload)
+    status, response, latency, error = _post(url, payload, timeout)
+    score = score_response(case, response)
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    admitted = (response.get("admitted_answer_context") or debug.get("admitted_answer_context") or {})
+    reply = sanitize_text(response.get("sendable_reply") or response.get("suggested_reply") or response.get("draft_reply") or "")
+    return sanitize_obj({
+        "case_uid": case["case_uid"],
+        "classification": case["classification"],
+        "query_class": case["query_class"],
+        "status_code": status,
+        "latency_ms": round(latency, 1),
+        "error": error,
+        "agent_reply": reply,
+        "formal_pipeline_verified": score["formal_pipeline_verified"],
+        "formal_selected_evidence_count": _safe_evidence_count(response, "selected_evidence"),
+        "admitted_evidence_count": len(admitted.get("direct_product_facts") or []) if isinstance(admitted, dict) else 0,
+        "unresolved_claim_count": len(admitted.get("unresolved_claims") or []) if isinstance(admitted, dict) else 0,
+        "reply_status": score["reply_status"],
+        "can_send": score["can_send"],
+        "requires_human_review": score["requires_human_review"],
+        "score": score,
+        "labels_sent_to_agent": False,
+    })
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--gold-set", required=True)
+    parser.add_argument("--source-db", required=True)
+    parser.add_argument("--analyze-url", required=True)
+    parser.add_argument("--json-output", required=True)
+    parser.add_argument("--timeout", type=int, default=45)
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--hmac-env", default="COPILOT_GOLD_SET_HMAC_KEY")
+    args = parser.parse_args(argv)
+    if os.environ.get("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        print(json.dumps({"error": "formal_evidence_convergence_must_remain_disabled"}, ensure_ascii=False))
+        return 2
+    secret = os.environ.get(args.hmac_env, "")
+    if not secret:
+        print(json.dumps({"error": "gold_set_hmac_key_missing"}, ensure_ascii=False))
+        return 2
+    dataset = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
+    source_by_case = {
+        hmac_identifier(secret, "training_sample", sample.get("id")): sample
+        for sample in load_reviewed_training_samples(args.source_db)
+    }
+    results: list[dict[str, Any]] = []
+    for case in dataset.get("cases") or []:
+        if case.get("classification") not in {"accuracy_scorable", "safety_scorable"}:
+            continue
+        source = source_by_case.get(case.get("case_uid"))
+        if source is None:
+            results.append({"case_uid": case.get("case_uid"), "error": "source_case_not_found", "formal_pipeline_verified": False})
+            continue
+        results.append(_run_case(case, source, args.analyze_url, args.timeout))
+        if args.limit and len(results) >= args.limit:
+            break
+    scorable = [item for item in results if (item.get("score") or {}).get("claim_score_available")]
+    passed = [item for item in scorable if (item.get("score") or {}).get("passed")]
+    report = {
+        "schema_version": "real-accuracy-baseline-v1",
+        "dataset_id": dataset.get("dataset_id"),
+        "dataset_hash": (dataset.get("manifest") or {}).get("content_sha256"),
+        "dataset_status": dataset.get("dataset_status"),
+        "execution_path": "http_formal_analysis_pipeline",
+        "formal_evidence_convergence_enabled": False,
+        "summary": {
+            "executed": len(results),
+            "claim_accuracy_numerator": len(passed),
+            "claim_accuracy_denominator": len(scorable),
+            "claim_accuracy_rate": round(len(passed) / len(scorable), 4) if scorable else None,
+            "exploratory_only": dataset.get("dataset_status") == "insufficient_gold_labels",
+            "formal_pipeline_verified_count": sum(1 for item in results if item.get("formal_pipeline_verified")),
+            "can_send_count": sum(1 for item in results if item.get("can_send")),
+            "requires_human_review_count": sum(1 for item in results if item.get("requires_human_review")),
+            "error_counts": dict(Counter(item.get("error") or "" for item in results if item.get("error"))),
+        },
+        "results": results,
+    }
+    output = Path(args.json_output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(report["summary"], ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -264,6 +264,13 @@ Replay and benchmark must use the same canonical context and final Pipeline as
 user-facing requests. Benchmark pass rate is not production readiness when all
 cases are review-only or real samples lack sidecar context.
 
+Real accuracy evaluation is a separate read-only Gold Set contract. It uses
+HMAC-pseudonymised reviewed samples, keeps reference labels outside the Agent
+payload, and treats fewer than 30 independently structured claim labels as an
+insufficient baseline rather than a project accuracy result. Its coverage
+matrix records where real queries lose context or admitted evidence; it does
+not activate Formal Evidence Convergence or change the formal response path.
+
 SQLite currently mixes knowledge, operations, traces, evaluation, and memory.
 Web and resident workers also share process ownership. These are later runtime
 separation tasks, not reasons to split the domain into microservices now.
