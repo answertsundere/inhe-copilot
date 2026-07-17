@@ -1,35 +1,35 @@
 from __future__ import annotations
 
 
-def test_runtime_version_exposes_sanitized_deployment_metadata(monkeypatch):
+def test_runtime_version_exposes_only_public_deployment_metadata(monkeypatch):
     from flask import Flask
     from app.api import runtime_routes
 
     monkeypatch.setattr(runtime_routes, "_git_metadata", lambda *args: "test-value")
-    monkeypatch.setattr(runtime_routes, "_feature_flags", lambda: {"formal_evidence_convergence": False})
     monkeypatch.setattr(
         "app.api.admin_auth.admin_auth_readiness",
-        lambda: {"admin_auth_ready": True, "cloudflare_access_mode": True,
-                 "access_audience_configured": True, "access_domain_configured": True,
-                 "role_map_configured": True, "browser_origin_configured": True,
-                 "audit_actor_redaction_ready": True, "route_policy_ready": True,
-                 "insecure_header_auth_disabled": True, "reason": ""},
+        lambda: {"admin_auth_ready": True, "reason": ""},
     )
     monkeypatch.setattr(
         "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
-        lambda *_args: {"ready": True, "status": "ready", "reasons": [], "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1}, "database": {"basename": "runtime.db"}},
+        lambda *_args: {
+            "ready": True,
+            "status": "ready",
+            "reasons": [],
+            "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
+            "database": {"basename": "runtime.db"},
+        },
     )
 
     app = Flask(__name__)
     with app.app_context():
-        response = runtime_routes.runtime_version()
-        payload = response.get_json()
+        payload = runtime_routes.runtime_version().get_json()
 
     assert payload["runtime_commit"] == "test-value"
-    assert payload["branch"] == "test-value"
-    assert payload["feature_flags"] == {"formal_evidence_convergence": False}
     assert payload["readiness"]["ready"] is True
-    assert "DATABASE_URL" not in payload
+    assert set(payload) == {"app_version", "runtime_commit", "readiness"}
+    assert "database" not in payload["readiness"]
+    assert "knowledge" not in payload["readiness"]
 
 
 def test_runtime_readiness_uses_503_without_exposing_database_path(monkeypatch):
@@ -38,16 +38,15 @@ def test_runtime_readiness_uses_503_without_exposing_database_path(monkeypatch):
 
     monkeypatch.setattr(
         "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
-        lambda *_args: {"ready": False, "status": "not_ready", "reasons": ["knowledge_db_missing"], "knowledge": {"entries": 0, "chunks": 0, "kb_qa": 0}, "database": {"basename": "knowledge_base.db"}},
+        lambda *_args: {
+            "ready": False,
+            "status": "not_ready",
+            "reasons": ["knowledge_db_missing"],
+            "knowledge": {"entries": 0, "chunks": 0, "kb_qa": 0},
+            "database": {"basename": "knowledge_base.db"},
+        },
     )
-    monkeypatch.setattr(
-        "app.api.admin_auth.admin_auth_readiness",
-        lambda: {"admin_auth_ready": True, "cloudflare_access_mode": True,
-                 "access_audience_configured": True, "access_domain_configured": True,
-                 "role_map_configured": True, "browser_origin_configured": True,
-                 "audit_actor_redaction_ready": True, "route_policy_ready": True,
-                 "insecure_header_auth_disabled": True, "reason": ""},
-    )
+    monkeypatch.setattr("app.api.admin_auth.admin_auth_readiness", lambda: {"admin_auth_ready": True, "reason": ""})
     app = Flask(__name__)
     app.register_blueprint(runtime_routes.runtime_bp)
 
@@ -55,4 +54,27 @@ def test_runtime_readiness_uses_503_without_exposing_database_path(monkeypatch):
 
     assert response.status_code == 503
     assert response.get_json()["reasons"] == ["knowledge_db_missing"]
-    assert "D:\\" not in response.get_data(as_text=True)
+    assert set(response.get_json()) == {"ready", "status", "reasons"}
+    assert "knowledge_base.db" not in response.get_data(as_text=True)
+
+
+def test_runtime_diagnostics_keeps_database_fingerprint_off_public_routes(monkeypatch):
+    from flask import Flask
+    from app.api import runtime_routes
+
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args: {
+            "ready": True,
+            "status": "ready",
+            "reasons": [],
+            "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
+            "database": {"basename": "runtime.db", "content_sha256": "fingerprint"},
+        },
+    )
+    monkeypatch.setattr("app.api.admin_auth.admin_auth_readiness", lambda: {"admin_auth_ready": True, "reason": ""})
+    app = Flask(__name__)
+    with app.app_context():
+        payload = runtime_routes.runtime_diagnostics().get_json()
+
+    assert payload["readiness"]["database"]["content_sha256"] == "fingerprint"

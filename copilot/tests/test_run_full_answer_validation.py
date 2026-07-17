@@ -58,7 +58,7 @@ def _run_main(module, monkeypatch, tmp_path, payload, response, *, expected_api_
     output = tmp_path / "result.json"
     source.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: response)
-    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args, **_kwargs: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
         "readiness": {
             "ready": True,
@@ -261,7 +261,7 @@ def test_runner_blocks_before_analyze_when_runtime_is_not_ready(monkeypatch, tmp
     output = tmp_path / "result.json"
     source.write_text(json.dumps(_dataset()), encoding="utf-8")
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: calls.append(True))
-    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args, **_kwargs: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
         "readiness": {"ready": False, "reasons": ["knowledge_entries_empty"]},
     })
@@ -282,13 +282,16 @@ def test_runner_blocks_before_analyze_when_runtime_database_content_sha256_misma
     source.write_text(json.dumps(_dataset()), encoding="utf-8")
     sqlite3.connect(database).close()
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
-    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args, **_kwargs: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
         "readiness": {
             "ready": True,
+        },
+        "diagnostics_status": "available",
+        "diagnostics": {"readiness": {
             "database": {"content_sha256": "different", "schema_fingerprint": "schema-sha"},
             "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
-        },
+        }},
     })
     monkeypatch.setattr(sys, "argv", [
         "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output), "--runtime-db", str(database),
@@ -309,13 +312,16 @@ def test_runner_blocks_before_analyze_when_runtime_content_sha256_missing(monkey
     source.write_text(json.dumps(_dataset()), encoding="utf-8")
     sqlite3.connect(database).close()
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
-    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args, **_kwargs: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
         "readiness": {
             "ready": True,
+        },
+        "diagnostics_status": "available",
+        "diagnostics": {"readiness": {
             "database": {"schema_fingerprint": "schema-sha"},
             "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
-        },
+        }},
     })
     monkeypatch.setattr(sys, "argv", [
         "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output), "--runtime-db", str(database),
@@ -327,13 +333,33 @@ def test_runner_blocks_before_analyze_when_runtime_content_sha256_missing(monkey
     assert result["run_metadata"]["comparison_status"] == "runtime_content_sha256_missing"
 
 
+def test_runner_requires_authenticated_diagnostics_for_runtime_database_comparison(monkeypatch, tmp_path):
+    module = _module()
+    source = tmp_path / "dataset.json"
+    output = tmp_path / "result.json"
+    database = tmp_path / "runtime.db"
+    source.write_text(json.dumps(_dataset()), encoding="utf-8")
+    sqlite3.connect(database).close()
+    monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args, **_kwargs: {
+        "status": "available", "runtime_commit": "runtime-sha", "readiness": {"ready": True},
+    })
+    monkeypatch.setattr(sys, "argv", [
+        "run_full_answer_validation.py", "--input", str(source), "--api-url", "http://example.test/ask/api/analyze", "--json-output", str(output), "--runtime-db", str(database),
+    ])
+
+    assert module.main() == 2
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert result["summary"]["reason"] == "authenticated_runtime_diagnostics_required"
+
+
 def test_runner_blocks_before_analyze_when_runtime_changed_during_fingerprint(monkeypatch, tmp_path):
     module = _module()
     source = tmp_path / "dataset.json"
     output = tmp_path / "result.json"
     source.write_text(json.dumps(_dataset()), encoding="utf-8")
     monkeypatch.setattr(module, "_request", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not request")))
-    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args: {
+    monkeypatch.setattr(module, "_runtime_metadata", lambda *_args, **_kwargs: {
         "status": "available", "runtime_commit": "runtime-sha", "feature_flags": {},
         "readiness": {
             "ready": False,

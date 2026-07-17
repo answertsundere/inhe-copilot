@@ -125,8 +125,10 @@ request markers.
 
 Status: formal; ADR 0008. This protects the origin even before the external
 Cloudflare Access application is configured, because absent configuration fails
-management access closed. Readiness exposes only configuration booleans and
-redacted reason codes; security audit records use a keyed pseudonymous actor
+management access closed. Public readiness fails closed with redacted reason
+codes; public health/version/readiness are liveness-only and
+must not expose database or runtime details. Detailed secret-free runtime
+diagnostics are `admin_only`. Security audit records use a keyed pseudonymous actor
 identifier rather than raw identity claims.
 
 ### 3. Thin LangGraph Runtime

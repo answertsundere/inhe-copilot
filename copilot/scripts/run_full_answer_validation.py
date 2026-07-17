@@ -343,7 +343,12 @@ def _request(api_url: str, case: dict[str, Any], timeout_seconds: float) -> dict
     return parsed if isinstance(parsed, dict) else {"_request_error": "response_parse_error"}
 
 
-def _runtime_metadata(api_url: str) -> dict[str, Any]:
+def _runtime_metadata(
+    api_url: str,
+    *,
+    diagnostics_url: str = "",
+    diagnostics_token_env: str = "",
+) -> dict[str, Any]:
     parsed = urlsplit(api_url)
     suffix = "/api/analyze"
     if not parsed.path.endswith(suffix):
@@ -372,15 +377,28 @@ def _runtime_metadata(api_url: str) -> dict[str, Any]:
         return {"status": "unavailable", "reason": "runtime_readiness_unavailable"}
     if not isinstance(readiness, dict):
         return {"status": "unavailable", "reason": "runtime_readiness_unavailable"}
-    return {
+    result = {
         "status": "available",
         "api_url": _safe_url(runtime_url),
         "runtime_commit": str(payload.get("runtime_commit") or "unavailable"),
-        "branch": str(payload.get("branch") or "unavailable"),
-        "boot_time": str(payload.get("boot_time") or "unavailable"),
-        "feature_flags": payload.get("feature_flags") if isinstance(payload.get("feature_flags"), dict) else "unavailable",
         "readiness": readiness,
     }
+    if not diagnostics_url:
+        return result
+
+    headers = {}
+    token = os.environ.get(diagnostics_token_env, "").strip() if diagnostics_token_env else ""
+    if token:
+        headers["Cf-Access-Jwt-Assertion"] = token
+    try:
+        request = Request(diagnostics_url, headers=headers)
+        with urlopen(request, timeout=5) as response:
+            diagnostics = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        return {**result, "diagnostics_status": "unavailable"}
+    if not isinstance(diagnostics, dict) or not isinstance(diagnostics.get("readiness"), dict):
+        return {**result, "diagnostics_status": "unavailable"}
+    return {**result, "diagnostics_status": "available", "diagnostics": diagnostics}
 
 
 def _runtime_db_fingerprint(path_value: str) -> dict[str, Any]:
@@ -442,6 +460,8 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--expected-api-commit")
     parser.add_argument("--runtime-db", help="Optional local SQLite file opened read-only for a schema fingerprint")
+    parser.add_argument("--runtime-diagnostics-url", help="Authenticated admin diagnostics URL for runtime database comparison")
+    parser.add_argument("--runtime-diagnostics-token-env", help="Environment variable containing a short-lived Access assertion")
     args = parser.parse_args()
 
     target = Path(args.json_output)
@@ -463,10 +483,16 @@ def main() -> int:
     except DatasetSchemaError as exc:
         return _invalid_run(target, str(exc), base_metadata)
 
-    runtime = _runtime_metadata(args.api_url)
+    runtime = _runtime_metadata(
+        args.api_url,
+        diagnostics_url=args.runtime_diagnostics_url or "",
+        diagnostics_token_env=args.runtime_diagnostics_token_env or "",
+    )
     base_metadata["runtime"] = runtime
     readiness = runtime.get("readiness") if isinstance(runtime.get("readiness"), dict) else {}
-    reported_db = readiness.get("database") if isinstance(readiness.get("database"), dict) else {}
+    diagnostics = runtime.get("diagnostics") if isinstance(runtime.get("diagnostics"), dict) else {}
+    diagnostic_readiness = diagnostics.get("readiness") if isinstance(diagnostics.get("readiness"), dict) else {}
+    reported_db = diagnostic_readiness.get("database") if isinstance(diagnostic_readiness.get("database"), dict) else {}
     runtime_db = base_metadata["runtime_db"]
     base_metadata.update({
         "runtime_database_content_sha256": reported_db.get("content_sha256"),
@@ -489,6 +515,9 @@ def main() -> int:
         base_metadata["comparison_status"] = "local_changed_during_fingerprint"
         return _invalid_run(target, "local_database_changed_during_fingerprint", base_metadata, schema_error=False)
     if args.runtime_db:
+        if runtime.get("diagnostics_status") != "available":
+            base_metadata["comparison_status"] = "authenticated_runtime_diagnostics_required"
+            return _invalid_run(target, "authenticated_runtime_diagnostics_required", base_metadata, schema_error=False)
         runtime_content_sha256 = reported_db.get("content_sha256")
         if not runtime_content_sha256:
             base_metadata["comparison_status"] = "runtime_content_sha256_missing"

@@ -38,6 +38,7 @@ _EXPLICIT_ROUTE_POLICIES: dict[tuple[str, str], str] = {
     ("health.api_health", "GET"): "public_runtime",
     ("runtime.runtime_version", "GET"): "public_runtime",
     ("runtime.runtime_readiness", "GET"): "public_runtime",
+    ("runtime.runtime_diagnostics", "GET"): "admin_only",
     ("analyze.api_analyze", "POST"): "customer_runtime",
     ("feedback.api_feedback", "POST"): "customer_runtime",
     ("copilot.api_copilot_context", "POST"): "supervisor_write",

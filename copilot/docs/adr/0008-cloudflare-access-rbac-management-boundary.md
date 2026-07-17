@@ -57,6 +57,21 @@ and record an HMAC-pseudonymised actor ID, role set, route, method, trace ID,
 result, and reason code; they never record the raw subject, email, service
 token ID, assertion, or cookie.
 
+Public health, version, and readiness endpoints are liveness-only. They return
+no database filename, size, fingerprint, schema detail, knowledge count,
+feature flag, process metadata, Access configuration detail, or role-map
+detail. `GET /api/admin/runtime/diagnostics` is explicitly `admin_only` in the
+endpoint-and-method registry and owns detailed, still secret-free runtime
+diagnostics. QA database consistency checks must use authenticated diagnostics
+or a local read-only readiness service, never an anonymous public response.
+
+For the current mixed caller model, the preferred external Access deployment is
+path-scoped management protection rather than a blanket `/ask/*` policy: the
+SPA/admin paths and management APIs require Access, while the two explicitly
+reviewed customer POST endpoints retain their application-layer contract. Both
+public hostnames must receive equivalent Access policies until a separately
+reviewed canonical-domain migration occurs.
+
 ## Alternatives Considered
 
 - Trust Cloudflare-added role headers: rejected because direct-origin or Tunnel
@@ -99,6 +114,8 @@ local development mode is not a public rollback mechanism.
   headers, RBAC, service allowlists, CSRF, config protection, and readiness.
 - Public runtime endpoints remain reachable without management credentials;
   `/api/analyze` retains its existing business-authentication behavior.
+- The public readiness projection contains only `ready`, `status`, and redacted
+  reason codes; detailed database diagnostics require an admin identity.
 
 ## References
 

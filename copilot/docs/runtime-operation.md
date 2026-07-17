@@ -82,16 +82,39 @@ automation must use an Access service token and an explicit local route
 allowlist; it cannot obtain permission from a request role header. The origin
 still verifies every received assertion, so Access misrouting fails closed.
 
-`/health`, runtime version, and runtime readiness are the only public runtime
-diagnostics. Customer-runtime access is limited to the formal analysis POST
+`/health`, runtime version, and runtime readiness are public liveness
+diagnostics only. They expose a status, a redacted readiness reason code, and
+the deployment commit where applicable; they never expose database fingerprints,
+knowledge counts, feature flags, process details, or Access configuration
+status. Customer-runtime access is limited to the formal analysis POST
 and feedback POST; order, product, SKU, live-query, metrics, stats, feedback
 lists, and sidecar context are protected. `/api/runtime/readiness` exposes
-only configuration booleans and redacted reason codes; in a production runtime
+only `ready`, `status`, and redacted reason codes; in a production runtime
 it is not ready if Access configuration, origins, role map, audit HMAC, or
 route governance is absent. A local `development_loopback` mode is for an
 explicitly marked development/test process bound to loopback with a loopback
 Host and no forwarded/Cloudflare client headers; it must never be used behind
 the public Tunnel.
+
+`GET /api/admin/runtime/diagnostics` is the authenticated `admin_only`
+diagnostic endpoint. It may show database readiness fingerprints, counts, and
+component versions, but never secrets, assertions, role-map values, Access
+audience values, or environment dumps. Formal QA that needs a database
+fingerprint must call this endpoint with a short-lived Access assertion from a
+local environment variable; it must not recover the fingerprint from public
+version or readiness responses.
+
+### Cloudflare Access Rollout
+
+The current safe deployment state is `blocked_external_configuration` until a
+signed-in Cloudflare administrator creates matching policies for both public
+hostnames. Keep application-layer route RBAC enabled during this step. Because
+the customer analysis and feedback POST contracts may need a non-browser
+caller, use path-scoped Access applications for management UI and management
+APIs rather than silently protecting every `/ask/*` request. Do not create an
+`Everyone` allow policy or a global bypass. A future canonical-domain decision
+may retire one hostname only after both domains have equivalent policies and
+the live login/RBAC checks have passed.
 
 ## Ports And Health
 

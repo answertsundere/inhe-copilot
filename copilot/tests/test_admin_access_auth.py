@@ -311,7 +311,39 @@ def test_public_runtime_endpoints_do_not_require_management_auth(monkeypatch):
     assert client.get("/api/runtime/version").status_code == 200
     readiness = client.get("/api/runtime/readiness")
     assert readiness.status_code != 401
-    assert readiness.get_json()["insecure_header_auth_disabled"] is True
+    assert set(readiness.get_json()) == {"ready", "status", "reasons"}
+
+
+def test_runtime_diagnostics_is_explicit_admin_only(monkeypatch):
+    from app.main import create_app
+
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args: {"ready": True, "status": "ready", "reasons": [],
+                        "knowledge": {"entries": 1, "chunks": 1, "kb_qa": 1},
+                        "database": {"basename": "runtime.db", "content_sha256": "test"}},
+    )
+    app = create_app()
+    client = app.test_client()
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: (_ for _ in ()).throw(admin_auth.AdminAuthError("access_assertion_missing")),
+    )
+    assert client.get("/api/admin/runtime/diagnostics").status_code == 401
+
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: admin_auth.AdminPrincipal("admin", "admin", frozenset({"admin"}), "test"),
+    )
+    response = client.get("/api/admin/runtime/diagnostics")
+    assert response.status_code == 200
+    assert response.get_json()["readiness"]["database"]["content_sha256"] == "test"
+
+    rows = admin_auth.inventory_route_policies(app)
+    matches = [row for row in rows if row["rule"] == "/api/admin/runtime/diagnostics"]
+    assert [(row["policy"], row["policy_source"]) for row in matches] == [("admin_only", "manifest")]
 
 
 def test_production_readiness_fails_closed_without_access_configuration(monkeypatch):

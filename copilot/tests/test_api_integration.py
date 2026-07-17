@@ -251,11 +251,9 @@ class TestFeedbackStatsAPI:
 class TestHealthAPI:
     """健康检查接口"""
 
-    def test_health_has_review_pending(self, client):
-        """GET /api/health 包含 review_queue_pending"""
+    def test_health_does_not_expose_review_queue_counters(self, client):
+        """Public health intentionally avoids operational counters."""
         resp = client.get("/api/health")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert "data" in data
-        assert "review_queue_pending" in data["data"]
-        assert "feedback_total" in data["data"]
+        assert "data" not in data

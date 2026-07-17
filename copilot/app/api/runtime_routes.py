@@ -4,6 +4,7 @@ Runtime Version API — 提供运行版本信息，解决版本冲突。
 
 import os
 import subprocess
+import sys
 import time as _time
 from pathlib import Path
 
@@ -17,7 +18,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _with_admin_auth_readiness(readiness: dict) -> dict:
-    """Expose only non-sensitive admin-auth status and fail readiness closed."""
+    """Build the detailed, admin-only runtime readiness contract."""
     from app.api.admin_auth import admin_auth_readiness
 
     result = dict(readiness)
@@ -30,6 +31,42 @@ def _with_admin_auth_readiness(readiness: dict) -> dict:
         if auth["reason"] and auth["reason"] not in result["reasons"]:
             result["reasons"].append(auth["reason"])
     return result
+
+
+def public_readiness_payload(readiness: dict) -> dict:
+    """Return a stable public readiness projection without infrastructure detail."""
+    safe_reasons = {
+        "knowledge_db_missing",
+        "knowledge_db_unreadable",
+        "knowledge_db_query_failed",
+        "knowledge_entries_empty",
+        "knowledge_chunks_empty",
+        "kb_qa_empty",
+        "knowledge_db_changed_during_fingerprint",
+        "admin_auth_configuration_missing",
+        "browser_origin_configuration_missing",
+        "audit_redaction_configuration_missing",
+        "route_policy_governance_failed",
+        "admin_auth_mode_not_ready",
+        "development_auth_forbidden_in_production",
+        "role_map_missing",
+        "role_map_invalid",
+        "role_map_empty",
+    }
+    reasons = []
+    for reason in readiness.get("reasons") or []:
+        normalized = str(reason or "").strip()
+        if normalized.startswith("required_table_missing:"):
+            normalized = "knowledge_schema_incomplete"
+        elif normalized not in safe_reasons:
+            normalized = "runtime_not_ready"
+        if normalized and normalized not in reasons:
+            reasons.append(normalized)
+    return {
+        "ready": bool(readiness.get("ready")),
+        "status": "ready" if readiness.get("ready") else "not_ready",
+        "reasons": reasons,
+    }
 
 
 def _git_metadata(*args: str) -> str:
@@ -61,46 +98,52 @@ def _feature_flags() -> dict[str, bool]:
     }
 
 
+def _runtime_identity() -> dict[str, str]:
+    from app.config import APP_VERSION
+
+    return {
+        "app_version": APP_VERSION,
+        "runtime_commit": _git_metadata("rev-parse", "HEAD"),
+    }
+
+
 @runtime_bp.route("/api/runtime/version", methods=["GET"])
 def runtime_version():
-    from app.config import (
-        GRAPH_VERSION, PROMPT_VERSION, ROUTING_CONFIG_VERSION,
-        TOOL_REGISTRY_VERSION, APP_VERSION, WEB_HOST, WEB_PORT,
-    )
-    import sys
-
-    entrypoint = "unknown"
-    main_module = sys.modules.get("__main__")
-    if main_module and hasattr(main_module, "__file__") and main_module.__file__:
-        fname = os.path.basename(main_module.__file__)
-        entrypoint = fname
-
     from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
     readiness = _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
-    return jsonify({
-        "app_version": APP_VERSION,
-        "graph_version": GRAPH_VERSION,
-        "prompt_version": PROMPT_VERSION,
-        "routing_config_version": ROUTING_CONFIG_VERSION,
-        "tool_registry_version": TOOL_REGISTRY_VERSION,
-        "pid": _PID,
-        "boot_time": _BOOT_TIME,
-        "host": WEB_HOST,
-        "port": WEB_PORT,
-        "entrypoint": entrypoint,
-        "runtime_commit": _git_metadata("rev-parse", "HEAD"),
-        "branch": _git_metadata("branch", "--show-current"),
-        "feature_flags": _feature_flags(),
-        "readiness": readiness,
-        "execution_debug_enabled": True,
-        "bad_case_enabled": True,
-    })
+    return jsonify({**_runtime_identity(), "readiness": public_readiness_payload(readiness)})
 
 
 @runtime_bp.route("/api/runtime/readiness", methods=["GET"])
 def runtime_readiness():
     from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
-    readiness = _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
+    readiness = public_readiness_payload(
+        _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
+    )
     return jsonify(readiness), 200 if readiness["ready"] else 503
+
+
+@runtime_bp.route("/api/admin/runtime/diagnostics", methods=["GET"])
+def runtime_diagnostics():
+    """Return detailed runtime state only after the app-level admin RBAC gate."""
+    from app.config import GRAPH_VERSION, PROMPT_VERSION, ROUTING_CONFIG_VERSION, TOOL_REGISTRY_VERSION
+    from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
+
+    readiness = _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
+    return jsonify({
+        "runtime": {
+            **_runtime_identity(),
+            "entrypoint": os.path.basename(getattr(sys.modules.get("__main__"), "__file__", "") or "unknown"),
+            "boot_time": _BOOT_TIME,
+            "pipeline_versions": {
+                "graph": GRAPH_VERSION,
+                "prompt": PROMPT_VERSION,
+                "routing": ROUTING_CONFIG_VERSION,
+                "tool_registry": TOOL_REGISTRY_VERSION,
+            },
+            "feature_flags": _feature_flags(),
+        },
+        "readiness": readiness,
+    })

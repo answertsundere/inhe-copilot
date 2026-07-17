@@ -6,7 +6,7 @@ should have one authoritative owner even when several modules consume it.
 | Area | Current owner or entry point | Status | Boundary |
 |---|---|---|---|
 | Web application and dependency setup | `app/main.py` | legacy/converging | Must not remain the worker scheduler or domain service locator |
-| Management access control | `app/api/admin_auth.py`, app-level endpoint/method registry | formal | Cloudflare Access JWT verification, explicit allowlist RBAC, decorator metadata, fail-closed `default_protected`, browser-write source checks, route inventory provenance, and HMAC-pseudonymised audit events; role/name request headers are not trusted. |
+| Management access control | `app/api/admin_auth.py`, app-level endpoint/method registry | formal | Cloudflare Access JWT verification, explicit allowlist RBAC, decorator metadata, fail-closed `default_protected`, browser-write source checks, route inventory provenance, and HMAC-pseudonymised audit events; role/name request headers are not trusted. Detailed runtime diagnostics are `admin_only`. |
 | Public analyze API | `app/api/analyze_routes.py` | formal | Parses HTTP input and presents the canonical Pipeline decision |
 | Sidecar/copilot API | `app/api/copilot_routes.py` | formal | Normalizes sidecar context, calls Pipeline, then adapts panel presentation |
 | Analysis pipeline | `app/services/analysis_pipeline_service.py` | formal | Owns canonical input, graph-to-delivery stage order, shadow isolation, and safe final-stage degradation for API, copilot, replay, and benchmark |
@@ -33,7 +33,7 @@ should have one authoritative owner even when several modules consume it.
 | Real replay | real-conversation replay services and scripts | evaluation | Must use per-sample canonical context and the production pipeline |
 | Agent benchmark | benchmark dataset/runner services, `app/services/agent_benchmark_fixture_service.py`, `tests/fixtures/agent_benchmark/` | evaluation | Measures reviewed scenarios; the versioned synthetic fixture and manifest own clean-worktree/CI data, initialize an isolated SQLite benchmark database, and fail closed on zero scenarios. It is not production readiness by itself. |
 | Formal-answer QA | `scripts/run_full_answer_validation.py` | evaluation / read-only | Runs only versioned scorer metadata against the public analysis contract, fails closed on invalid inputs or runtime mismatch, and records independent runner/runtime provenance without changing Agent decisions. |
-| Runtime knowledge readiness | `app/services/runtime_knowledge_readiness_service.py`, health/runtime routes | formal operations guard | Uses read-only SQLite inspection plus non-sensitive management-auth readiness; liveness remains diagnostic while product-scoped Pipeline, formal QA, and unsafe production management access fail closed. |
+| Runtime knowledge readiness | `app/services/runtime_knowledge_readiness_service.py`, health/runtime routes | formal operations guard | Uses read-only SQLite inspection plus non-sensitive management-auth readiness. Public health/version/readiness are minimal; authenticated admin diagnostics owns detailed fingerprints and component state. |
 | Knowledge governance | knowledge gap, review, publish services | formal operations | Candidate/review/publish states must remain explicit |
 | Platform adapters | not implemented | planned | QianNiu/Pinduoduo/JD implement canonical ports only |
 | Handoff tasks and supervisor queue | not implemented | planned/P1 | Durable task is source of truth; notification is a projection |
