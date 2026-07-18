@@ -305,6 +305,15 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
+### Current Phase: 0.7C.3A Operational Gate
+
+Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
+but its production flag remains disabled. The next gate is operational rather
+than another reasoning feature: restore the protected public supervisor
+workbench, collect independently approved Gold claims, and measure Tier A
+against that approved denominator. Until then, neither the convergence path nor
+any Shadow capability is a production-quality claim.
+
 ### What Is Strong
 
 - One formal Pipeline is shared by API, copilot, replay, and benchmark.
@@ -317,17 +326,20 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ### What Is Blocking Business Value
 
-1. Eligible structured facts can exist in Product Context Pack without reaching
-   formal `selected_evidence`.
-2. The formal generator cannot reliably produce claim-level partial answers.
-3. Context construction is fragmented across graph state, packs, policies, and
+1. Formal Evidence Convergence is available but intentionally disabled until
+   real Gold evidence validates the bounded, non-sendable partial-answer path.
+2. The public supervisor workbench is blocked until Cloudflare Tunnel has a
+   healthy connector and the real Access/RBAC path can be exercised.
+3. Tier A has no approved-claim denominator yet; its accuracy rate must remain
+   `null`, not be inferred from benchmark or shadow results.
+4. Context construction is fragmented across graph state, packs, policies, and
    shadow payloads.
-4. Multiple guard, fallback, semantic, and polishing services can rewrite the
+5. Multiple guard, fallback, semantic, and polishing services can rewrite the
    same response and produce robotic handoff language.
-5. Visual understanding, Answer Memory, pgvector, and LLM decision capabilities
+6. Visual understanding, Answer Memory, pgvector, and LLM decision capabilities
    have accumulated in shadow without a promoted vertical slice.
-6. Real replay often lacks per-sample product/order context.
-7. Durable handoff and platform adapter contracts are not implemented.
+7. Real replay often lacks per-sample product/order context.
+8. Durable handoff and platform adapter contracts are not implemented.
 
 The primary risk is now **shadow accumulation**, not lack of experimental
 capability. New shadow subsystems should be frozen unless they unblock the next
@@ -335,12 +347,17 @@ formal vertical slice.
 
 ## Convergence Plan
 
-### Phase A: Formal Evidence Convergence
+### Phase A: Formal Evidence Convergence (Implemented, Flag Disabled)
 
 - merge eligible Product Context Pack facts into one canonical selected/admitted
   evidence contract;
 - keep role, identity, review, conflict, and provenance checks fail closed;
 - verify the same result across API, replay, benchmark, trace, and snapshot.
+
+The implementation remains behind
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false` in the current runtime.
+Its promotion requires the Gold approval and Tier A gates described above; it
+is not a substitute for them.
 
 #### Material Field Governance
 

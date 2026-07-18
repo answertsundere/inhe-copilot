@@ -79,9 +79,11 @@ platform-neutral adapters
 ```
 
 Do not optimize for graph-node count, add parallel shadow subsystems without a
-promotion path, or pass complete traces and candidate stores to the model. The
-current priority is formal evidence convergence followed by a supervisor-only
-partial-answer vertical slice.
+promotion path, or pass complete traces and candidate stores to the model.
+Formal Evidence Convergence is implemented but disabled in the runtime. The
+current priority is a protected supervisor workbench, an independently approved
+Gold denominator, and a Tier A baseline; neither benchmark success nor Shadow
+results can replace that gate.
 
 ## Architecture Decisions And Research
 

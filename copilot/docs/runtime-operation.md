@@ -1,17 +1,22 @@
 # Runtime Operation
 
-## Canonical Runtime Directory
+## Active Runtime Worktree
 
-Use `D:\桌面文件\客服\copilot-runtime\copilot` as the local runtime worktree.
-The historical `D:\桌面文件\客服\copilot` worktree may contain uncommitted work and
-must not be used as the service source directory.
+Run the local service from a dedicated clean release worktree, never from a
+source worktree that may contain uncommitted work. During Phase 0.7C.3A the
+active loopback runtime is
+`D:\桌面文件\客服\copilot-runtime-gold-review-c3\copilot`; its
+`/api/runtime/version` response is the source of truth for the serving commit.
+The historical `D:\桌面文件\客服\copilot` and older `copilot-runtime` worktrees
+must not be assumed to be the active service source.
 
-The runtime worktree tracks `origin/codex/safe-github-sync`. Update it only
-after checking that its status is clean:
+Before updating a release worktree, check that its status is clean and that the
+target branch/commit is deliberate:
 
 ```powershell
-git -C D:\桌面文件\客服\copilot-runtime status --short
-git -C D:\桌面文件\客服\copilot-runtime pull --ff-only
+$runtime = 'D:\桌面文件\客服\copilot-runtime-gold-review-c3\copilot'
+git -C $runtime status --short
+git -C $runtime rev-parse HEAD
 ```
 
 ## Local Configuration And Data
@@ -126,6 +131,18 @@ APIs rather than silently protecting every `/ask/*` request. Do not create an
 `Everyone` allow policy or a global bypass. A future canonical-domain decision
 may retire one hostname only after both domains have equivalent policies and
 the live login/RBAC checks have passed.
+
+### Tunnel Connector Gate
+
+An HTTP `530` page carrying Cloudflare error `1033` is a Tunnel connectivity
+failure, not an application `502`: Cloudflare cannot find a healthy
+`cloudflared` connector for the hostname. Confirm the tunnel is `Active` in the
+Cloudflare dashboard, then inspect connector logs and outbound network policy.
+Only after the connector is healthy should an origin `502` be diagnosed as an
+ingress-to-local-service failure. Do not work around `1033` by publishing a
+management route without Access or by changing the application authorization
+mode. The public management acceptance sequence is: Tunnel healthy, Access
+login, application JWT/RBAC, then reviewer/supervisor workflow.
 
 ## Ports And Health
 
