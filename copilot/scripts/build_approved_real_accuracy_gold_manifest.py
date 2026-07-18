@@ -25,6 +25,53 @@ from app.services.real_accuracy_gold_set_service import (  # noqa: E402
 from app.services.real_accuracy_label_service import RealAccuracyLabelStore  # noqa: E402
 
 
+def _validate_approval_audit(
+    labels: list[dict],
+    events: list[dict],
+) -> tuple[dict[str, int], list[str]]:
+    """Require a supervisor/admin audit event for every approved atomic claim."""
+    findings: list[str] = []
+    status_counts = Counter(str(item.get("review_status") or "unknown") for item in labels)
+    events_by_case: dict[str, list[dict]] = {}
+    for event in events:
+        events_by_case.setdefault(str(event.get("case_uid") or ""), []).append(event)
+    approval_event_count = 0
+    for label in labels:
+        if label.get("review_status") != "approved":
+            continue
+        case_uid = str(label.get("case_uid") or "")
+        version = int(label.get("optimistic_lock_version") or 0)
+        case_events = events_by_case.get(case_uid, [])
+        state_versions = sorted({
+            int(event.get("version") or 0)
+            for event in case_events
+            if event.get("event_type") in {"label_created", "label_updated"}
+        })
+        if state_versions != list(range(1, version + 1)):
+            findings.append(f"optimistic_lock_history_invalid:{case_uid}")
+        claims = ((label.get("label") or {}).get("claims") or [])
+        for claim in claims:
+            claim_uid = str((claim or {}).get("claim_uid") or "")
+            matches = [
+                event for event in case_events
+                if event.get("event_type") == "claim_approved"
+                and event.get("claim_uid") == claim_uid
+                and int(event.get("version") or 0) == version
+                and str(event.get("actor_role") or "") in {"supervisor", "admin"}
+            ]
+            if not matches:
+                findings.append(f"approved_claim_audit_missing:{case_uid}:{claim_uid}")
+            else:
+                approval_event_count += len(matches)
+    return {
+        "draft": int(status_counts.get("draft", 0)),
+        "reviewed": int(status_counts.get("reviewed", 0)),
+        "approved": int(status_counts.get("approved", 0)),
+        "rejected": int(status_counts.get("rejected", 0)),
+        "approval_event_count": approval_event_count,
+    }, findings
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gold-set", required=True)
@@ -36,12 +83,16 @@ def main(argv: list[str] | None = None) -> int:
         findings = validate_gold_dataset(dataset)
         if findings or (dataset.get("privacy") or {}).get("privacy_scan_status") != "passed":
             raise ValueError("gold_set_privacy_validation_failed")
-        labels = RealAccuracyLabelStore(args.label_db).list_for_dataset(str(dataset.get("dataset_version") or ""))
+        store = RealAccuracyLabelStore(args.label_db)
+        labels = store.list_for_dataset(str(dataset.get("dataset_version") or ""))
+        events = store.list_events_for_dataset(str(dataset.get("dataset_version") or ""))
+        audit_summary, audit_findings = _validate_approval_audit(labels, events)
+        if audit_findings:
+            raise ValueError("approved_gold_audit_validation_failed")
         approved_view = apply_approved_claim_labels(dataset, labels)
         approved_findings = validate_gold_dataset(approved_view)
         if approved_findings:
             raise ValueError("approved_gold_manifest_validation_failed")
-        status_counts = Counter(str(item.get("review_status") or "unknown") for item in labels)
         approved_cases = [
             item for item in approved_view.get("cases") or []
             if item.get("classification") == "claim_accuracy_scorable"
@@ -58,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             "content_sha256": (approved_view.get("manifest") or {}).get("content_sha256"),
             "approved_case_count": len(approved_cases),
             "approved_claim_count": approved_claim_count,
-            "reviewer_audit_summary": dict(sorted(status_counts.items())),
+            "reviewer_audit_summary": audit_summary,
+            "approval_event_count": audit_summary["approval_event_count"],
             "scenario_distribution": dict(sorted(Counter(str(item.get("query_class") or "unclassified") for item in approved_cases).items())),
             "publish_status": "ready_for_accuracy_baseline" if approved_cases else "awaiting_supervisor_approval",
             "privacy_scan": {"passed": True, "finding_count": 0},

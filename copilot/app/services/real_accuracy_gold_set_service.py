@@ -310,7 +310,7 @@ def scan_sensitive_data(value: Any) -> list[str]:
             for key, child in item.items()
             if key not in {
                 "manifest", "case_uid", "turn_uid", "target_turn_uids", "pseudonymous_id", "speaker_uid", "sidecar_identity",
-                "content_sha256", "dataset_hash", "reviewer_actor_hash",
+                "content_sha256", "dataset_hash", "source_snapshot_hash", "reviewer_actor_hash",
             }
         }
 

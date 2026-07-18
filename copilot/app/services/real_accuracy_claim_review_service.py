@@ -8,6 +8,7 @@ facts, and never changes an Agent request or knowledge-base record.
 from __future__ import annotations
 
 from collections import Counter
+import re
 from typing import Any
 
 from app.services.fact_type_alias_service import is_high_risk_fact_type
@@ -74,6 +75,7 @@ _UNSCORABLE_CLASSIFICATIONS = {
     "invalid",
     "media_only",
 }
+_CONTROLLED_TOKEN_RE = re.compile(r"\[[^\]]+\]")
 
 
 def _clean(value: Any) -> str:
@@ -371,6 +373,123 @@ def build_claim_review_plan(dataset: dict[str, Any], labels: list[dict[str, Any]
         "strategy_counts": dict(sorted(Counter(item["scenario_domain"] for item in items).items())),
         "proposal_status_counts": dict(sorted(Counter(item["proposal_status"] for item in items).items())),
         "approved_case_count": sum(item["proposal_status"] == "supervisor_approved" for item in items),
+        "auto_approved_count": 0,
+        "formal_knowledge_writes": 0,
+        "can_change_can_send": False,
+    }
+
+
+def _has_reviewable_question(value: Any) -> bool:
+    """Require visible buyer text without assigning policy from its wording."""
+    return bool(_CONTROLLED_TOKEN_RE.sub("", _clean(value)).strip())
+
+
+def build_minimum_supervisor_queue(
+    plan: dict[str, Any],
+    *,
+    target_claim_count: int = 30,
+    minimum_domain_count: int = 5,
+    max_domain_fraction: float = 0.30,
+) -> dict[str, Any]:
+    """Select a deterministic, balanced, non-approving Gold review queue.
+
+    This function only rearranges the already privacy-safe review plan.  It
+    never writes labels and never converts a proposal into an approval.
+    """
+    if target_claim_count < 1 or minimum_domain_count < 1 or not 0 < max_domain_fraction <= 1:
+        raise ValueError("supervisor_queue_parameters_invalid")
+    max_per_domain = max(1, int(target_claim_count * max_domain_fraction))
+    candidates_by_domain: dict[str, list[dict[str, Any]]] = {}
+    excluded = Counter()
+    for item in plan.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        domain = _clean(item.get("scenario_domain"))
+        target = item.get("target_recommendation") or {}
+        window = item.get("conversation_window") or {}
+        roles = {str(turn.get("speaker_role") or "") for turn in window.get("turns") or [] if isinstance(turn, dict)}
+        context_follow_up = (
+            domain == "context_insufficient"
+            and any(
+                isinstance(claim, dict)
+                and claim.get("claim_kind") == "context_requirement"
+                and claim.get("expected_status") == "unresolved"
+                for claim in item.get("candidate_claims") or []
+            )
+        )
+        if item.get("label_eligibility") != "ready_for_reviewer" and not context_follow_up:
+            excluded["not_eligible"] += 1
+            continue
+        if not _has_reviewable_question(item.get("buyer_question")):
+            excluded["buyer_question_not_readable"] += 1
+            continue
+        if not target.get("turn_uids") or not {"BUYER", "AGENT"}.issubset(roles):
+            excluded["conversation_context_incomplete"] += 1
+            continue
+        for claim in item.get("candidate_claims") or []:
+            if not isinstance(claim, dict) or not _identifier(claim.get("claim_uid")):
+                excluded["claim_invalid"] += 1
+                continue
+            candidate = {
+                "case_uid": _identifier(item.get("case_uid")),
+                "scenario_domain": domain,
+                "conversation_window": item.get("conversation_window"),
+                "target_turn_uids": list(target.get("turn_uids") or []),
+                "query_fact_type": _clean(claim.get("query_fact_type")),
+                "atomic_claim": claim,
+                "required_actions": list(claim.get("required_action_points") or []),
+                "prohibited_claims": list(claim.get("forbidden_claims") or []),
+                "evidence_provenance": list(claim.get("evidence_provenance") or []),
+                "sidecar_quality": _clean(item.get("sidecar_quality")),
+                "risk_level": _clean(claim.get("risk_level") or item.get("risk_level")),
+                "review_recommendation": "supervisor_decision_required",
+                "review_focus": "verify_provenance_and_expected_boundary",
+                "exception_flags": [
+                    "formal_evidence_missing"
+                    if not claim.get("supporting_evidence_uids") else ""
+                ],
+            }
+            if context_follow_up:
+                candidate["exception_flags"].append("context_follow_up_only")
+            candidate["exception_flags"] = [item for item in candidate["exception_flags"] if item]
+            candidates_by_domain.setdefault(domain, []).append(candidate)
+
+    for domain in candidates_by_domain:
+        candidates_by_domain[domain].sort(key=lambda item: (
+            _identifier((item.get("atomic_claim") or {}).get("claim_uid")),
+            _identifier(item.get("case_uid")),
+        ))
+    selected: list[dict[str, Any]] = []
+    selected_per_domain = Counter()
+    positions = Counter()
+    while len(selected) < target_claim_count:
+        available = [
+            domain for domain, items in candidates_by_domain.items()
+            if positions[domain] < len(items) and selected_per_domain[domain] < max_per_domain
+        ]
+        if not available:
+            break
+        domain = min(available, key=lambda value: (selected_per_domain[value], value))
+        selected.append(candidates_by_domain[domain][positions[domain]])
+        positions[domain] += 1
+        selected_per_domain[domain] += 1
+
+    domain_counts = dict(sorted(selected_per_domain.items()))
+    ready = len(selected) >= target_claim_count and len(domain_counts) >= minimum_domain_count
+    return {
+        "schema_version": "real-accuracy-minimum-supervisor-queue-v1",
+        "dataset_id": _clean(plan.get("dataset_id")),
+        "dataset_version": _clean(plan.get("dataset_version")),
+        "target_claim_count": target_claim_count,
+        "selected_claim_count": len(selected),
+        "minimum_domain_count": minimum_domain_count,
+        "selected_domain_count": len(domain_counts),
+        "max_claims_per_domain": max_per_domain,
+        "domain_distribution": domain_counts,
+        "queue_status": "ready_for_supervisor_review" if ready else "insufficient_reviewable_claims",
+        "items": selected,
+        "excluded_candidate_reasons": dict(sorted(excluded.items())),
+        "supervisor_approved_claim_count": 0,
         "auto_approved_count": 0,
         "formal_knowledge_writes": 0,
         "can_change_can_send": False,

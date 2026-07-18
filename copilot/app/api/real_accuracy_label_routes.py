@@ -94,6 +94,14 @@ def _validate_target_turns(case: dict[str, Any], target_turn_uids: Any, review_s
     return sorted(normalized, key=lambda uid: int(turns_by_uid[uid].get("turn_index") or 0))
 
 
+def _current_actor_role() -> str:
+    if has_any_role("admin"):
+        return "admin"
+    if has_any_role("supervisor"):
+        return "supervisor"
+    return "reviewer"
+
+
 @real_accuracy_label_bp.get("/cases")
 @require_reviewer
 def list_cases():
@@ -174,6 +182,7 @@ def save_case_label(case_uid: str):
             target_turn_uids=target_turn_uids,
             review_status=review_status,
             actor_hash=actor_hash,
+            actor_role=_current_actor_role(),
             expected_version=payload.get("optimistic_lock_version"),
             allow_approval=has_any_role("supervisor", "admin"),
         )
@@ -220,6 +229,7 @@ def apply_proposals():
                 target_turn_uids=[],
                 review_status="draft",
                 actor_hash=actor_hash,
+                actor_role=_current_actor_role(),
                 expected_version=0,
                 allow_approval=False,
             )
@@ -277,6 +287,7 @@ def submit_batch_for_review():
             target_turn_uids=target_turn_uids,
             review_status="reviewed",
             actor_hash=actor_hash,
+            actor_role=_current_actor_role(),
             expected_version=int(label.get("optimistic_lock_version") or 0),
             allow_approval=False,
         )

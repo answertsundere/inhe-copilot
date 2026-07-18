@@ -122,12 +122,14 @@ def test_label_store_requires_evidence_and_optimistic_lock(tmp_path):
         store.save(case_uid="case-1", dataset_version="v1", claims=[_claim(supporting_evidence_uids=[])],
                    target_turn_uids=[TARGET_TURN_UID], review_status="approved", actor_hash=actor, expected_version=0, allow_approval=True)
     saved = store.save(case_uid="case-1", dataset_version="v1", claims=[_claim()], review_status="approved",
-                       target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=True)
+                       target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=True,
+                       actor_role="supervisor")
     assert saved["optimistic_lock_version"] == 1
     assert saved["label"]["target_turn_uids"] == [TARGET_TURN_UID]
     with pytest.raises(LabelConflictError):
         store.save(case_uid="case-1", dataset_version="v1", claims=[_claim()], review_status="approved",
-                   target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=True)
+                   target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=True,
+                   actor_role="supervisor")
 
 
 def test_reviewer_cannot_approve_and_high_risk_without_evidence_is_unresolved(tmp_path):

@@ -24,6 +24,7 @@ _CLAIM_KINDS = {
 }
 _EXPECTED_STATUSES = {"supported", "unresolved", "conflicting", "prohibited"}
 _REVIEW_STATUSES = {"draft", "reviewed", "approved", "rejected"}
+_APPROVAL_ACTOR_ROLES = {"supervisor", "admin"}
 _PROPOSAL_STATUSES = {
     "ai_proposed", "source_reviewed_candidate", "policy_validated", "supervisor_approved", "rejected",
 }
@@ -194,6 +195,18 @@ class RealAccuracyLabelStore:
                     created_at TEXT NOT NULL
                 )
             """)
+            columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(real_accuracy_label_event)")
+            }
+            if "actor_role" not in columns:
+                connection.execute(
+                    "ALTER TABLE real_accuracy_label_event ADD COLUMN actor_role TEXT NOT NULL DEFAULT ''"
+                )
+            if "claim_uid" not in columns:
+                connection.execute(
+                    "ALTER TABLE real_accuracy_label_event ADD COLUMN claim_uid TEXT"
+                )
 
     def get(self, case_uid: str, dataset_version: str) -> dict[str, Any] | None:
         self.initialize()
@@ -212,6 +225,16 @@ class RealAccuracyLabelStore:
             ).fetchall()
         return [self._row(row) for row in rows]
 
+    def list_events_for_dataset(self, dataset_version: str) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT event_id,case_uid,dataset_version,event_type,actor_hash,actor_role,claim_uid,version,created_at "
+                "FROM real_accuracy_label_event WHERE dataset_version=? ORDER BY event_id",
+                (dataset_version,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def save(
         self,
         *,
@@ -223,12 +246,16 @@ class RealAccuracyLabelStore:
         actor_hash: str,
         expected_version: int | None,
         allow_approval: bool,
+        actor_role: str = "",
     ) -> dict[str, Any]:
         if review_status not in _REVIEW_STATUSES:
             raise LabelValidationError("label_review_status_invalid")
         if review_status == "approved" and not allow_approval:
             raise LabelValidationError("supervisor_approval_required")
         normalized_claims = validate_claims(claims)
+        actor_role = str(actor_role or "").strip().lower()
+        if review_status == "approved" and actor_role not in _APPROVAL_ACTOR_ROLES:
+            raise LabelValidationError("supervisor_approval_role_required")
         normalized_target_turn_uids = validate_target_turn_uids(
             target_turn_uids,
             required=review_status in {"reviewed", "approved"},
@@ -271,9 +298,28 @@ class RealAccuracyLabelStore:
                 )
                 event_type = "label_created"
             connection.execute(
-                "INSERT INTO real_accuracy_label_event (case_uid,dataset_version,event_type,actor_hash,version,created_at) VALUES (?,?,?,?,?,?)",
-                (case_uid, dataset_version, event_type, actor_hash, version, now),
+                "INSERT INTO real_accuracy_label_event "
+                "(case_uid,dataset_version,event_type,actor_hash,actor_role,claim_uid,version,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (case_uid, dataset_version, event_type, actor_hash, actor_role, None, version, now),
             )
+            if review_status == "approved":
+                for claim in normalized_claims:
+                    connection.execute(
+                        "INSERT INTO real_accuracy_label_event "
+                        "(case_uid,dataset_version,event_type,actor_hash,actor_role,claim_uid,version,created_at) "
+                        "VALUES (?,?,?,?,?,?,?,?)",
+                        (
+                            case_uid,
+                            dataset_version,
+                            "claim_approved",
+                            actor_hash,
+                            actor_role,
+                            claim["claim_uid"],
+                            version,
+                            now,
+                        ),
+                    )
             connection.commit()
         return self.get(case_uid, dataset_version) or {}
 

@@ -9,6 +9,7 @@ from app.api.real_accuracy_label_routes import real_accuracy_label_bp
 from app.services.real_accuracy_claim_review_service import (
     bounded_conversation_window,
     build_claim_review_plan,
+    build_minimum_supervisor_queue,
     candidate_claims,
     strategy_group_for_case,
 )
@@ -177,3 +178,83 @@ def test_apply_proposals_creates_draft_only(monkeypatch, tmp_path):
     saved = RealAccuracyLabelStore(label_path).get(case_uid, dataset["dataset_version"])
     assert saved["review_status"] == "draft"
     assert all(claim["proposal_status"] == "policy_validated" for claim in saved["label"]["claims"])
+
+
+def test_supervisor_approval_requires_role_and_records_each_claim_event(monkeypatch, tmp_path):
+    dataset = _dataset(question_type="安装")
+    gold_path = tmp_path / "gold.json"
+    gold_path.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    label_path = tmp_path / "labels.db"
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_GOLD_SET_PATH", str(gold_path))
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_LABEL_DB", str(label_path))
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_LABEL_AUDIT_HMAC_KEY", "audit-test-key")
+    app = Flask(__name__)
+    app.register_blueprint(real_accuracy_label_bp)
+    client = app.test_client()
+    case = dataset["cases"][0]
+    buyer_turn = next(turn["turn_uid"] for turn in case["conversation"]["turns"] if turn["speaker_role"] == "BUYER")
+    claims = [{**claim, "review_status": "approved"} for claim in candidate_claims(case, "installation_accessory")]
+    payload = {"review_status": "approved", "claims": claims, "target_turn_uids": [buyer_turn], "optimistic_lock_version": 0}
+
+    monkeypatch.setattr(admin_auth, "_verified_principal", lambda: admin_auth.AdminPrincipal("reviewer", "reviewer", frozenset({"reviewer"}), "test"))
+    assert client.post(f"/api/kb/real-accuracy/cases/{case['case_uid']}/labels", json=payload).status_code == 422
+
+    monkeypatch.setattr(admin_auth, "_verified_principal", lambda: admin_auth.AdminPrincipal("supervisor", "supervisor", frozenset({"supervisor"}), "test"))
+    assert client.post(f"/api/kb/real-accuracy/cases/{case['case_uid']}/labels", json=payload).status_code == 201
+    events = RealAccuracyLabelStore(label_path).list_events_for_dataset(dataset["dataset_version"])
+    approved = [event for event in events if event["event_type"] == "claim_approved"]
+    assert len(approved) == len(claims)
+    assert {event["actor_role"] for event in approved} == {"supervisor"}
+
+
+def test_minimum_supervisor_queue_balances_atomic_claims_without_approval():
+    def item(domain, number, *, readable=True):
+        return {
+            "case_uid": f"case-{domain}-{number}",
+            "scenario_domain": domain,
+            "label_eligibility": "ready_for_reviewer",
+            "buyer_question": "可审核问题" if readable else "[图片]",
+            "target_recommendation": {"turn_uids": ["turn_ABCDEFGHIJKLMNOPQRST"]},
+            "conversation_window": {"turns": [
+                {"speaker_role": "BUYER"}, {"speaker_role": "AGENT"},
+            ]},
+            "sidecar_quality": "identity_present",
+            "risk_level": "medium",
+            "candidate_claims": [{
+                "claim_uid": f"claim-{domain}-{number}",
+                "query_fact_type": domain,
+                "required_action_points": [],
+                "forbidden_claims": [],
+                "evidence_provenance": [],
+                "supporting_evidence_uids": [],
+                "risk_level": "medium",
+            }],
+        }
+
+    domains = ["dimensions", "installation", "logistics", "aftersales", "promotion", "media"]
+    items = [item(domain, number) for domain in domains for number in range(10)]
+    queue = build_minimum_supervisor_queue({"dataset_id": "d", "dataset_version": "v", "items": items})
+    reversed_queue = build_minimum_supervisor_queue({"dataset_id": "d", "dataset_version": "v", "items": list(reversed(items))})
+
+    assert queue["queue_status"] == "ready_for_supervisor_review"
+    assert queue["selected_claim_count"] == 30
+    assert queue["selected_domain_count"] >= 5
+    assert max(queue["domain_distribution"].values()) <= 9
+    assert queue["supervisor_approved_claim_count"] == 0
+    assert queue["formal_knowledge_writes"] == 0
+    assert queue["can_change_can_send"] is False
+    assert [item["atomic_claim"]["claim_uid"] for item in queue["items"]] == [
+        item["atomic_claim"]["claim_uid"] for item in reversed_queue["items"]
+    ]
+
+
+def test_minimum_supervisor_queue_excludes_token_only_question_and_incomplete_window():
+    plan = {"dataset_id": "d", "dataset_version": "v", "items": [{
+        "case_uid": "case-1", "scenario_domain": "aftersales", "label_eligibility": "ready_for_reviewer",
+        "buyer_question": "[图片]", "target_recommendation": {"turn_uids": ["turn_ABCDEFGHIJKLMNOPQRST"]},
+        "conversation_window": {"turns": [{"speaker_role": "BUYER"}]}, "candidate_claims": [{"claim_uid": "c"}],
+    }]}
+    queue = build_minimum_supervisor_queue(plan)
+    assert queue["selected_claim_count"] == 0
+    assert queue["queue_status"] == "insufficient_reviewable_claims"
+    assert queue["excluded_candidate_reasons"]["buyer_question_not_readable"] == 1

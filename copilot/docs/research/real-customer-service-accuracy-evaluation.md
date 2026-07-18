@@ -134,6 +134,24 @@ conversation.  `scripts/build_approved_real_accuracy_gold_manifest.py`
 creates a privacy-checked, content-free approval manifest; it reports
 `awaiting_supervisor_approval` until an actual approved denominator exists.
 
+## Minimum Supervisor Queue And Tier A Gate
+
+`scripts/build_minimum_supervisor_review_queue.py` selects atomic claims from
+the existing privacy-checked review plan only.  The selection is deterministic,
+requires a readable buyer target and a bounded buyer/agent context window, and
+round-robins domains while capping any one domain at 30 percent of the target.
+An explicit missing-context claim may be included only as a
+`context_follow_up_only` review item; it is not product evidence.  The script
+does not save drafts, approve claims, call the Agent, or write knowledge.
+
+Approval remains a per-case supervisor/admin action.  The label store records
+one `claim_approved` audit event for every approved atomic claim, including the
+pseudonymous actor role and optimistic-lock version.  The approval manifest
+rejects missing claim events, non-supervisor roles, and broken state-version
+history.  Tier A remains `null` until at least 30 independently approved claims
+cover at least five business domains; that first result is a limited baseline,
+not a project-wide accuracy rate.
+
 ### Operating Commands
 
 Run the real-derived portion only against a temporary local API process and a
