@@ -24,10 +24,21 @@ export type AccuracyLabel = {
   target_turn_uids: string[]
 }
 
-export function getRealAccuracyCases() {
-  return apiClient.get('/real-accuracy/cases')
+export function getRealAccuracyCases(params: Record<string, string> = {}) {
+  return apiClient.get('/real-accuracy/cases', { params })
 }
 
 export function saveRealAccuracyLabel(caseUid: string, payload: Record<string, unknown>) {
   return apiClient.post(`/real-accuracy/cases/${encodeURIComponent(caseUid)}/labels`, payload)
+}
+
+export function applyRealAccuracyProposals(caseUids: string[]) {
+  return apiClient.post('/real-accuracy/proposals/apply', { case_uids: caseUids })
+}
+
+export function submitRealAccuracyBatchForReview(strategyGroup: string, caseUids: string[]) {
+  return apiClient.post('/real-accuracy/batches/review', {
+    strategy_group: strategyGroup,
+    case_uids: caseUids,
+  })
 }

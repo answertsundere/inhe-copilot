@@ -99,6 +99,41 @@ timeouts, media promises without blocks, service-action-as-fact, identity,
 handoff, and partial-answer observations use independent fields rather than a
 single `passed` flag.
 
+## Phase 0.7C.2 Claim Review Workflow
+
+`real_accuracy_claim_review_service` creates a review plan from the Gold
+artifact's structured query class, risk level, sidecar availability, reviewed
+reference availability, and explicit formal-evidence provenance.  It never
+uses buyer-message keywords to choose a strategy and never turns a historical
+customer-service reply into product evidence.
+
+The workbench groups review candidates into product facts, high-risk residual
+claims, order/logistics, aftersales, promotion/gift/invoice,
+installation/accessory, media, missing-context, and not-scorable policies.
+Each proposal is atomic and records its source category, evidence UID summary,
+identity scope, delivery boundary, and required action.  Product facts are
+proposed as `supported` only when the Gold record already has direct,
+reviewed, identity-matched formal evidence; otherwise they remain
+`unresolved`.
+
+The workflow states are deliberately separate:
+
+- `ai_proposed` is a machine suggestion with no reviewed source.
+- `source_reviewed_candidate` has a reviewed historical reference, not proof
+  of a product fact.
+- `policy_validated` passed deterministic privacy, provenance, conflict, and
+  high-risk checks, but is still not Gold.
+- `supervisor_approved` is the only state eligible for the Tier A denominator.
+- `rejected` remains audit data and is never evaluated as a supported claim.
+
+Batch operation may create **drafts** and submit explicit selected drafts for
+review.  It cannot batch-approve claims.  A supervisor must still select a
+buyer target turn and explicitly approve each case.  The workbench returns a
+bounded turn window around that target rather than exposing a full long
+conversation.  `scripts/build_approved_real_accuracy_gold_manifest.py`
+creates a privacy-checked, content-free approval manifest; it reports
+`awaiting_supervisor_approval` until an actual approved denominator exists.
+
 ### Operating Commands
 
 Run the real-derived portion only against a temporary local API process and a

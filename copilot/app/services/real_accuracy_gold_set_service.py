@@ -35,6 +35,7 @@ _REQUIRED_SAMPLE_COLUMNS = {
 }
 _IMAGE_OR_LINK_RE = re.compile(r"(?:\[图片[^\]]*\]|https?://\S+|data:image/)", re.I)
 _HTML_RE = re.compile(r"<[^>]+>")
+_UNSAFE_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # This taxonomy is intentionally confined to offline evaluation.  It assesses
 # whether a human-reviewed reference asks for a general service action; it is
 # never imported by the Agent or used to generate a reply.
@@ -51,6 +52,9 @@ REFERENCE_ACTIONS: dict[str, tuple[str, ...]] = {
 
 def canonical_text(value: Any, limit: int = 1800) -> str:
     text = str(value or "")
+    # Historical exported chat HTML can include invisible terminal controls.
+    # They are neither customer-visible content nor useful evaluation context.
+    text = _UNSAFE_CONTROL_CHAR_RE.sub(" ", text)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</(?:p|div|li|tr|h\d)>", "\n", text, flags=re.I)
     text = _HTML_RE.sub(" ", text)

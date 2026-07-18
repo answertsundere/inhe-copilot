@@ -16,6 +16,12 @@ from app.services.real_accuracy_label_service import (
     LabelValidationError,
     RealAccuracyLabelStore,
     reviewer_actor_hash,
+    transition_claims_for_review,
+)
+from app.services.real_accuracy_claim_review_service import (
+    STRATEGY_GROUPS,
+    bounded_conversation_window,
+    build_claim_review_plan,
 )
 
 
@@ -41,18 +47,31 @@ def _load_dataset() -> tuple[dict[str, Any] | None, tuple[dict[str, Any], int] |
     return dataset, None
 
 
-def _public_case(case: dict[str, Any], label: dict[str, Any] | None) -> dict[str, Any]:
+def _public_case(case: dict[str, Any], plan_item: dict[str, Any]) -> dict[str, Any]:
     return {
         "case_uid": case.get("case_uid"),
         "classification": case.get("classification"),
         "customer_message": case.get("customer_message"),
-        "conversation": case.get("conversation"),
+        "conversation_window": plan_item.get("conversation_window"),
+        "target_recommendation": plan_item.get("target_recommendation"),
         "query_class": case.get("query_class"),
         "risk_level": case.get("risk_level"),
         "sidecar_present": case.get("sidecar_present"),
-        "reference_label": case.get("reference_label"),
+        "reference_label": {
+            "label_status": (case.get("reference_label") or {}).get("label_status"),
+            "reference_text": (case.get("reference_label") or {}).get("reference_text"),
+        },
         "privacy_review_required": bool((case.get("notes") or {}).get("privacy_review_required")),
-        "label": label,
+        "strategy": plan_item.get("strategy"),
+        "proposal_status": plan_item.get("proposal_status"),
+        "source_reference": plan_item.get("source_reference"),
+        "candidate_claims": plan_item.get("candidate_claims"),
+        "required_actions": plan_item.get("required_actions"),
+        "prohibited_claims": plan_item.get("prohibited_claims"),
+        "formal_evidence_summary": plan_item.get("formal_evidence_summary"),
+        "label_eligibility": plan_item.get("label_eligibility"),
+        "exclusion_reason": plan_item.get("exclusion_reason"),
+        "label": plan_item.get("saved_label"),
     }
 
 
@@ -85,16 +104,50 @@ def list_cases():
     store = RealAccuracyLabelStore()
     labels = {item["case_uid"]: item for item in store.list_for_dataset(str(dataset.get("dataset_version") or ""))}
     status = str(request.args.get("status") or "").strip()
-    rows = [_public_case(case, labels.get(str(case.get("case_uid") or ""))) for case in dataset.get("cases") or []]
+    strategy_group = str(request.args.get("strategy_group") or "").strip()
+    plan = build_claim_review_plan(dataset, list(labels.values()))
+    cases_by_uid = {str(case.get("case_uid") or ""): case for case in dataset.get("cases") or []}
+    rows = [
+        _public_case(cases_by_uid[item["case_uid"]], item)
+        for item in plan["items"]
+        if item["case_uid"] in cases_by_uid
+    ]
     if status:
         rows = [item for item in rows if item.get("classification") == status]
+    if strategy_group:
+        rows = [item for item in rows if ((item.get("strategy") or {}).get("id") == strategy_group)]
     return jsonify({
         "dataset_id": dataset.get("dataset_id"),
         "dataset_version": dataset.get("dataset_version"),
         "privacy_scan_status": (dataset.get("privacy") or {}).get("privacy_scan_status"),
+        "strategy_groups": [
+            {"id": key, **value} for key, value in STRATEGY_GROUPS.items()
+        ],
+        "workflow_summary": {
+            "strategy_counts": plan.get("strategy_counts"),
+            "proposal_status_counts": plan.get("proposal_status_counts"),
+            "approved_case_count": plan.get("approved_case_count"),
+            "auto_approved_count": 0,
+        },
         "items": rows,
         "total": len(rows),
     })
+
+
+@real_accuracy_label_bp.get("/cases/<case_uid>/window")
+@require_reviewer
+def get_case_window(case_uid: str):
+    dataset, error = _load_dataset()
+    if error:
+        return error
+    assert dataset is not None
+    case = next((item for item in dataset.get("cases") or [] if item.get("case_uid") == case_uid), None)
+    if not case:
+        return jsonify({"error": "case_not_found"}), 404
+    anchor = str(request.args.get("target_turn_uid") or "").strip()
+    if not anchor:
+        return jsonify({"error": "target_turn_uid_required"}), 422
+    return jsonify({"case_uid": case_uid, "conversation_window": bounded_conversation_window(case, [anchor])})
 
 
 @real_accuracy_label_bp.post("/cases/<case_uid>/labels")
@@ -129,3 +182,108 @@ def save_case_label(case_uid: str):
     except LabelValidationError as exc:
         return jsonify({"error": str(exc)}), 422
     return jsonify({"label": saved}), 201
+
+
+@real_accuracy_label_bp.post("/proposals/apply")
+@require_reviewer
+def apply_proposals():
+    """Persist selected machine proposals as drafts only; never as Gold."""
+    dataset, error = _load_dataset()
+    if error:
+        return error
+    assert dataset is not None
+    payload = request.get_json(silent=True) or {}
+    requested = {str(item).strip() for item in payload.get("case_uids") or [] if str(item).strip()}
+    if not requested:
+        return jsonify({"error": "case_uids_required"}), 422
+    store = RealAccuracyLabelStore()
+    labels = {item["case_uid"]: item for item in store.list_for_dataset(str(dataset.get("dataset_version") or ""))}
+    plan = build_claim_review_plan(dataset, list(labels.values()))
+    actor_hash = reviewer_actor_hash(current_principal().subject)
+    created = 0
+    skipped: dict[str, str] = {}
+    for item in plan["items"]:
+        case_uid = str(item.get("case_uid") or "")
+        if case_uid not in requested:
+            continue
+        if case_uid in labels:
+            skipped[case_uid] = "existing_label"
+        elif item.get("label_eligibility") != "ready_for_reviewer":
+            skipped[case_uid] = str(item.get("exclusion_reason") or "not_eligible")
+        elif not item.get("candidate_claims"):
+            skipped[case_uid] = "proposal_missing"
+        else:
+            store.save(
+                case_uid=case_uid,
+                dataset_version=str(dataset.get("dataset_version") or ""),
+                claims=item["candidate_claims"],
+                target_turn_uids=[],
+                review_status="draft",
+                actor_hash=actor_hash,
+                expected_version=0,
+                allow_approval=False,
+            )
+            created += 1
+    return jsonify({
+        "created_draft_count": created,
+        "skipped": skipped,
+        "auto_approved_count": 0,
+        "formal_knowledge_writes": 0,
+    })
+
+
+@real_accuracy_label_bp.post("/batches/review")
+@require_reviewer
+def submit_batch_for_review():
+    """Move explicit selected drafts to reviewed; batch approval is forbidden."""
+    dataset, error = _load_dataset()
+    if error:
+        return error
+    assert dataset is not None
+    payload = request.get_json(silent=True) or {}
+    requested = {str(item).strip() for item in payload.get("case_uids") or [] if str(item).strip()}
+    strategy_group = str(payload.get("strategy_group") or "").strip()
+    if not requested or not strategy_group:
+        return jsonify({"error": "case_uids_and_strategy_group_required"}), 422
+    store = RealAccuracyLabelStore()
+    labels = {item["case_uid"]: item for item in store.list_for_dataset(str(dataset.get("dataset_version") or ""))}
+    plan = build_claim_review_plan(dataset, list(labels.values()))
+    actor_hash = reviewer_actor_hash(current_principal().subject)
+    reviewed = 0
+    skipped: dict[str, str] = {}
+    for item in plan["items"]:
+        case_uid = str(item.get("case_uid") or "")
+        if case_uid not in requested:
+            continue
+        if ((item.get("strategy") or {}).get("id") != strategy_group):
+            skipped[case_uid] = "strategy_group_mismatch"
+            continue
+        label = labels.get(case_uid)
+        if not label:
+            skipped[case_uid] = "draft_label_required"
+            continue
+        if label.get("review_status") != "draft":
+            skipped[case_uid] = "label_not_draft"
+            continue
+        target_turn_uids = ((label.get("label") or {}).get("target_turn_uids") or [])
+        if not target_turn_uids:
+            skipped[case_uid] = "target_buyer_turn_required"
+            continue
+        claims = transition_claims_for_review((label.get("label") or {}).get("claims"), review_status="reviewed")
+        store.save(
+            case_uid=case_uid,
+            dataset_version=str(dataset.get("dataset_version") or ""),
+            claims=claims,
+            target_turn_uids=target_turn_uids,
+            review_status="reviewed",
+            actor_hash=actor_hash,
+            expected_version=int(label.get("optimistic_lock_version") or 0),
+            allow_approval=False,
+        )
+        reviewed += 1
+    return jsonify({
+        "reviewed_count": reviewed,
+        "skipped": skipped,
+        "supervisor_approved_count": 0,
+        "formal_knowledge_writes": 0,
+    })

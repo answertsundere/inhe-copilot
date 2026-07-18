@@ -18,9 +18,16 @@ from pathlib import Path
 from typing import Any
 
 
-_CLAIM_KINDS = {"product_fact", "tool_action", "service_action", "handoff", "prohibited"}
+_CLAIM_KINDS = {
+    "product_fact", "factual_claim", "tool_action", "service_action", "handoff", "prohibited",
+    "unresolved_claim", "delivery_constraint", "context_requirement",
+}
 _EXPECTED_STATUSES = {"supported", "unresolved", "conflicting", "prohibited"}
 _REVIEW_STATUSES = {"draft", "reviewed", "approved", "rejected"}
+_PROPOSAL_STATUSES = {
+    "ai_proposed", "source_reviewed_candidate", "policy_validated", "supervisor_approved", "rejected",
+}
+_SOURCE_REFERENCES = {"", "ai_proposed", "source_reviewed_candidate", "reviewed_answer", "formal_evidence"}
 _TURN_UID_RE = re.compile(r"^turn_[A-Z2-7]{20}$")
 _HIGH_RISK_ATTRIBUTES = {
     "load_capacity", "non_toxic", "food_grade", "certification", "child_safety",
@@ -80,6 +87,23 @@ def validate_claims(claims: Any) -> list[dict[str, Any]]:
             "forbidden_claims": [str(item).strip() for item in raw.get("forbidden_claims") or [] if str(item).strip()],
             "partial_answer_allowed": bool(raw.get("partial_answer_allowed")),
             "review_status": str(raw.get("review_status") or "draft").strip(),
+            "proposal_status": str(raw.get("proposal_status") or "ai_proposed").strip(),
+            "source_reference": str(raw.get("source_reference") or "").strip(),
+            "evidence_provenance": [
+                {
+                    "evidence_uid": str(item.get("evidence_uid") or "").strip(),
+                    "fact_type": str(item.get("fact_type") or "").strip(),
+                    "attribute_key": str(item.get("attribute_key") or "").strip(),
+                    "review_status": str(item.get("review_status") or "").strip(),
+                    "evidence_role": str(item.get("evidence_role") or "").strip(),
+                    "identity_scope": str(item.get("identity_scope") or "").strip(),
+                }
+                for item in raw.get("evidence_provenance") or [] if isinstance(item, dict)
+            ],
+            "risk_level": str(raw.get("risk_level") or "unknown").strip(),
+            "identity_scope": str(raw.get("identity_scope") or "not_evaluated").strip(),
+            "can_support_auto_send": bool(raw.get("can_support_auto_send")),
+            "strategy_group": str(raw.get("strategy_group") or "").strip(),
         }
         if not claim["claim_uid"] or claim["claim_uid"] in seen:
             raise LabelValidationError("claim_uid_missing_or_duplicate")
@@ -88,13 +112,35 @@ def validate_claims(claims: Any) -> list[dict[str, Any]]:
             raise LabelValidationError("claim_enum_invalid")
         if claim["review_status"] not in _REVIEW_STATUSES:
             raise LabelValidationError("claim_review_status_invalid")
-        if claim["claim_kind"] == "product_fact" and claim["review_status"] == "approved" and not claim["supporting_evidence_uids"]:
+        if claim["proposal_status"] not in _PROPOSAL_STATUSES:
+            raise LabelValidationError("claim_proposal_status_invalid")
+        if claim["source_reference"] not in _SOURCE_REFERENCES:
+            raise LabelValidationError("claim_source_reference_invalid")
+        if claim["claim_kind"] in {"product_fact", "factual_claim"} and claim["review_status"] == "approved" and not claim["supporting_evidence_uids"]:
             raise LabelValidationError("approved_product_fact_evidence_required")
         high_risk = claim["attribute_key"] in _HIGH_RISK_ATTRIBUTES or claim["query_fact_type"] in _HIGH_RISK_ATTRIBUTES
         if high_risk and not claim["supporting_evidence_uids"] and claim["expected_status"] == "supported":
             raise LabelValidationError("unsupported_high_risk_claim_must_be_unresolved_or_prohibited")
         normalized.append(claim)
     return normalized
+
+
+def transition_claims_for_review(claims: Any, *, review_status: str) -> list[dict[str, Any]]:
+    """Move existing draft proposals to a reviewer-visible state without approval.
+
+    Supervisor approval is intentionally excluded.  It must remain an explicit
+    per-case action so a group rule cannot silently approve factual claims.
+    """
+    if review_status not in {"draft", "reviewed", "rejected"}:
+        raise LabelValidationError("batch_review_status_invalid")
+    transitioned = []
+    for raw in validate_claims(claims):
+        item = dict(raw)
+        item["review_status"] = review_status
+        if review_status == "rejected":
+            item["proposal_status"] = "rejected"
+        transitioned.append(item)
+    return transitioned
 
 
 def validate_target_turn_uids(target_turn_uids: Any, *, required: bool) -> list[str]:
@@ -189,6 +235,11 @@ class RealAccuracyLabelStore:
         )
         if review_status == "approved" and any(item["review_status"] != "approved" for item in normalized_claims):
             raise LabelValidationError("approved_case_requires_approved_claims")
+        if review_status == "approved":
+            normalized_claims = [
+                {**item, "proposal_status": "supervisor_approved"}
+                for item in normalized_claims
+            ]
         self.initialize()
         now = _now()
         payload = json.dumps(
