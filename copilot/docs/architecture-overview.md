@@ -432,6 +432,21 @@ composition clause does not imply a material-safety, certification, child, or
 performance conclusion. Any unresolved requested high-risk claim remains
 human-review-only even when another low-risk claim is supported.
 
+With explicit Evidence Convergence opt-in, final orchestration can render a
+constrained partial answer from the same admitted claim resolutions: supported
+clauses appear first with provenance, then unresolved or conflicting clauses
+stay review-only. This remains `can_send=false` with an empty sendable reply.
+A later customer-language or semantic fallback must preserve supported clauses
+and re-run final audit, semantic fit, claim support, and delivery checks; it
+cannot replace confirmed facts with a generic handoff.
+
+Material composition is not a product-specific care, moisture, safety,
+toxicity, certification, or food-grade fact. Cleaning and moisture instructions
+need separately reviewed, direct, identity-matched evidence with a compatible
+claim and attribute. For accidental bite or ingestion, deterministic immediate
+action is to stop use/contact and seek medical advice for swallowing or
+symptoms; the system does not diagnose or infer non-toxicity from composition.
+
 Published product status is not sufficient field provenance. A structured
 material value whose field source remains `conservative_placeholder`, or whose
 value mixes composition with a strong claim such as food-grade or environmental

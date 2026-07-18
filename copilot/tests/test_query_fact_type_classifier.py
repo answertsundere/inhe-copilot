@@ -124,6 +124,19 @@ def test_aftersales_promotion_multi_intent_keeps_promotion_secondary():
     assert "promotion_policy" in result.get("secondary_fact_types", [])
 
 
+def test_material_care_question_keeps_cleaning_and_moisture_as_independent_claims():
+    result = classify_query_fact_type("\u8fd9\u4e2a\u53ef\u4ee5\u6c34\u6d17\u5417\uff0c\u4f1a\u4e0d\u4f1a\u53d7\u6f6e\u53d1\u9709\uff1f", "product_question")
+
+    assert result["query_fact_type"] == "cleaning_care"
+    assert "moisture_resistance" in result.get("secondary_fact_types", [])
+
+
+def test_bite_or_toxicity_is_a_distinct_high_risk_fact_type():
+    result = classify_query_fact_type("\u5b69\u5b50\u8bef\u54ac\u4e86\u4e00\u4e0b\uff0c\u4f1a\u4e0d\u4f1a\u4e2d\u6bd2\uff1f", "product_question")
+
+    assert result["query_fact_type"] == "bite_or_toxicity"
+
+
 def test_api_exposes_query_fact_type_debug():
     app = create_app()
     client = app.test_client()

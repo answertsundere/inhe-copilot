@@ -45,7 +45,10 @@ _UNSUPPORTED_CLAIMS = {
     "material_safety": ("安全无害", "无毒", "可以放心", "绝对安全"),
     "bite_or_toxicity": ("不会中毒", "肯定没事", "可以放心", "无毒"),
     "odor": ("没有异味", "绝对无味", "气味正常"),
-    "cleaning_or_moisture": ("可以水洗", "完全防水", "不会发霉", "绝对防潮"),
+    "cleaning_or_moisture": (
+        "可以水洗", "可以浸泡", "可以酒精消毒", "可以高温", "可以使用洗涤剂",
+        "完全防水", "不会发霉", "绝对防潮",
+    ),
     "certification_or_food_grade": ("食品级", "有检测报告", "通过认证", "环保认证"),
 }
 
@@ -88,6 +91,13 @@ def evaluate_material_gold_csr_row(row: dict[str, Any]) -> dict[str, Any]:
         family != "bite_or_toxicity"
         or ("停止使用" in candidate and ("咨询医生" in candidate or "就医" in candidate))
     )
+    forbidden_identity_values = [
+        sanitize_text(value) for value in item.get("forbidden_identity_values") or [] if sanitize_text(value)
+    ]
+    evidence_roles = {
+        sanitize_text(value).lower() for value in item.get("admitted_evidence_roles") or [] if sanitize_text(value)
+    }
+    inadmissible_fact_roles = {"answer_memory", "service_action", "media_reference"}
     if evaluation_mode == "formal_runtime":
         delivery_frozen = (
             isinstance(item.get("can_send"), bool)
@@ -116,6 +126,8 @@ def evaluate_material_gold_csr_row(row: dict[str, Any]) -> dict[str, Any]:
         "no_internal_jargon": not has_internal_jargon_draft(draft),
         "no_mojibake": not has_mojibake_draft(draft),
         "no_unsupported_media_promise": not has_unsupported_media_claim(draft, item.get("reply_blocks") or []),
+        "no_identity_leakage": not any(value in candidate for value in forbidden_identity_values),
+        "admitted_evidence_roles_safe": not bool(evidence_roles & inadmissible_fact_roles),
         "concise_customer_copy": 8 <= len(candidate) <= 180,
         "shadow_delivery_frozen": delivery_frozen,
     }
@@ -181,7 +193,13 @@ def run_material_gold_csr_mutation_suite(rows: list[dict[str, Any]]) -> dict[str
         ("promise_unattached_report", mutated("certification_or_food_grade", f"亲，这款主体材质是{material}，我马上把检测报告发您。")),
         ("expose_internal_jargon", mutated("cleaning_or_moisture", f"系统 evidence gate 显示材质为{material}，需要人工。")),
         ("omit_bite_safety_action", mutated("bite_or_toxicity", f"亲，这款主体材质是{material}，具体安全性需要核对。")),
+        ("omit_bite_medical_action", mutated("bite_or_toxicity", f"亲，这款主体材质是{material}，请先停止使用，具体安全性需要核对。")),
         ("answer_wrong_topic", mutated("cleaning_or_moisture", f"亲，这款主体材质是{material}，气味情况需要核对。")),
+        ("unsafe_cleaning_instruction", mutated("cleaning_or_moisture", f"亲，这款主体材质是{material}，可以酒精消毒后再使用。")),
+        ("unsafe_cleaning_auto_send", {**mutated("cleaning_or_moisture", f"亲，这款主体材质是{material}，清洁方法需要核对。"), "can_send": True}),
+        ("identity_leakage", {**mutated("odor", f"亲，INTERNAL-PRODUCT-IDENTIFIER 这款主体材质是{material}，气味情况需要核对。"), "forbidden_identity_values": ["INTERNAL-PRODUCT-IDENTIFIER"]}),
+        ("semantic_fallback_loses_supported_fact", mutated("material_safety", "亲，安全方面需要核对这款的专项说明。")),
+        ("inadmissible_fact_role", {**mutated("material_safety", f"亲，这款主体材质是{material}，安全方面需要核对。"), "admitted_evidence_roles": ["service_action"]}),
     ))
     details = []
     for name, row in mutations:

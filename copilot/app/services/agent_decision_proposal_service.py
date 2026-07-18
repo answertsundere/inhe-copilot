@@ -416,6 +416,8 @@ def _preview_clause_text(facts: list[dict[str, Any]]) -> str:
 
 def _preview_pending_text(claim_type: str, status: str) -> str:
     label = _preview_claim_label(claim_type)
+    if claim_type == "bite_or_toxicity":
+        return "如果已经误入口或出现不适，建议先停止使用并及时咨询医生；具体安全说明还需要结合专项资料确认。"
     if status == "conflicting":
         return f"{label}的现有资料存在不一致，需要进一步核对。"
     if status == "prohibited":

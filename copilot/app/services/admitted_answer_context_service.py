@@ -12,7 +12,7 @@ from hashlib import sha256
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
-from app.services.claim_resolution_service import build_claim_resolutions
+from app.services.claim_resolution_service import build_claim_resolutions, expand_claim_dependencies
 from app.services.fact_type_alias_service import normalize_high_risk_claim_type
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
 
@@ -253,7 +253,10 @@ def _normalise_formal_evidence_candidate(
         normalised["fact_review_status"] = sanitize_text(
             item.get("review_status") or item.get("verification_status") or item.get("entry_status")
         )
-    if item.get("direct_answer_allowed") is True or item.get("evidence_allowed_for_direct_answer") is True:
+    if (
+        item.get("direct_answer_allowed") is True
+        or item.get("evidence_allowed_for_direct_answer") is True
+    ):
         normalised["direct_answer_allowed"] = True
     expected_sku = sanitize_text(product_identity.get("sku_code"))
     expected_i_id = sanitize_text(product_identity.get("i_id"))
@@ -695,7 +698,7 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                 "question": "",
                 "risk_level": "medium",
             })
-    return result
+    return expand_claim_dependencies(result)
 
 
 class AdmittedAnswerContextService:

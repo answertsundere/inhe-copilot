@@ -12,6 +12,7 @@ The final layer has four explicit responsibilities:
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from app import config
@@ -69,6 +70,7 @@ def orchestrate_final_response(
     pipeline: list[dict[str, Any]] = []
 
     response = apply_no_evidence_reply_policy(response, copilot_context)
+    response = _apply_formal_partial_answer(response)
 
     response = audit_final_answer(
         response,
@@ -89,6 +91,7 @@ def orchestrate_final_response(
         customer_message=customer_message,
         copilot_context=copilot_context,
     )
+    _restore_formal_partial_if_lost(response)
     polish = response.get("customer_reply_polish") or {}
     pipeline.append({
         "stage": "customer_language_polish",
@@ -126,6 +129,7 @@ def orchestrate_final_response(
     before_repolish = str(response.get("suggested_reply") or "")
     repolished = _polish_text(before_repolish)
     response["suggested_reply"] = repolished
+    _restore_formal_partial_if_lost(response)
     if not _preserves_customer_product_name(before_repolish, repolished, response):
         response["suggested_reply"] = before_repolish
         response.setdefault("evidence_debug", {})["customer_reply_repolish_rejected"] = {
@@ -270,6 +274,76 @@ def orchestrate_final_response(
     })
     _apply_sendable_reply_contract(response, post_issues=post_issues)
     return response
+
+
+def _formal_evidence_convergence_enabled() -> bool:
+    return os.getenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _apply_formal_partial_answer(response: dict[str, Any]) -> dict[str, Any]:
+    """Promote only a bounded, already-admitted partial preview.
+
+    This path is opt-in and keeps delivery blocked.  It is deliberately not a
+    second generator: each retained clause already carries the admitted
+    evidence UID from Claim Resolution.
+    """
+    if not _formal_evidence_convergence_enabled():
+        return response
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    preview = debug.get("supervisor_candidate_preview")
+    if not isinstance(preview, dict):
+        return response
+    safety = preview.get("safety_validation") if isinstance(preview.get("safety_validation"), dict) else {}
+    confirmed = [item for item in (preview.get("confirmed_clauses") or []) if isinstance(item, dict)]
+    pending = [item for item in (preview.get("pending_clauses") or []) if isinstance(item, dict)]
+    conflicting = [item for item in (preview.get("conflicting_clauses") or []) if isinstance(item, dict)]
+    text = str(preview.get("candidate_text") or "").strip()
+    if not (text and confirmed and (pending or conflicting) and safety.get("passed") is True):
+        return response
+    response["suggested_reply"] = text
+    response["can_send"] = False
+    response["requires_human_review"] = True
+    response["sendable_reply"] = ""
+    response["reply_status"] = "needs_human_review"
+    response["generation_mode"] = "formal_partial_answer_composer"
+    response["answer_mode"] = "formal_partial_evidence_answer"
+    debug["formal_partial_answer"] = {
+        "preserve_no_evidence_policy": True,
+        "candidate_text": text,
+        "supported_clauses": confirmed,
+        "unresolved_clauses": pending,
+        "conflicting_clauses": conflicting,
+        "evidence_uids": list(preview.get("evidence_uids") or []),
+    }
+    response["evidence_debug"] = debug
+    return response
+
+
+def _restore_formal_partial_if_lost(response: dict[str, Any]) -> None:
+    """Keep an admitted partial answer intact when a stylistic pass drops it."""
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    partial = debug.get("formal_partial_answer") if isinstance(debug.get("formal_partial_answer"), dict) else {}
+    candidate = str(partial.get("candidate_text") or "").strip()
+    supported = [item for item in (partial.get("supported_clauses") or []) if isinstance(item, dict)]
+    unresolved = [
+        item for item in [*(partial.get("unresolved_clauses") or []), *(partial.get("conflicting_clauses") or [])]
+        if isinstance(item, dict)
+    ]
+    current = str(response.get("suggested_reply") or "")
+    required = [
+        str(item.get("customer_facing_clause") or "").strip()
+        for item in [*supported, *unresolved]
+        if str(item.get("customer_facing_clause") or "").strip()
+    ]
+    if candidate and required and not all(clause in current for clause in required):
+        response["suggested_reply"] = candidate
+        debug["formal_partial_clause_restore"] = {
+            "reason": "stylistic_transform_dropped_claim_clause",
+            "evidence_uids": list(partial.get("evidence_uids") or []),
+        }
+        response["evidence_debug"] = debug
 
 
 def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: list[str]) -> None:

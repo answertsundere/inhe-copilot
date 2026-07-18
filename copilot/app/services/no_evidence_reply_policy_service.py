@@ -82,6 +82,7 @@ STRUCTURE_FUNCTION_FACT_TYPES = {"structure_function"}
 LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight"}
 MATERIAL_SAFETY_FACT_TYPES = {"material", "material_safety", "certification_report"}
+BITE_OR_TOXICITY_FACT_TYPES = {"bite_or_toxicity"}
 AGE_RANGE_FACT_TYPES = {"age_range", "child_suitability", "child_safety"}
 ACCESSORY_MESSAGE_TERMS = (
     "部件",
@@ -405,6 +406,17 @@ def _build_no_evidence_reply_policy_raw(inputs: dict[str, Any]) -> dict[str, Any
     missing_reason = str(inputs.get("missing_reason") or "")
 
     forbidden_claims = list(MEDIA_PROMISE_TERMS)
+    # Immediate physical-safety guidance takes precedence over a generic
+    # after-sales interpretation of the same message.
+    if fact_type in BITE_OR_TOXICITY_FACT_TYPES:
+        return {
+            "reply": "亲，如果已经误入口或出现不适，建议先停止使用并及时咨询医生。具体安全说明我再按这款的专项资料核对后回复您。",
+            "requires_human_review": True,
+            "needs_followup": False,
+            "reply_strategy": "verify_bite_or_toxicity_for_known_product",
+            "reason": missing_reason or "bite_or_toxicity_evidence_missing",
+            "forbidden_claims": forbidden_claims + ["不会中毒", "肯定没事", "无毒"],
+        }
     if actionability == "context_update":
         return {
             "reply": "亲，收到，我先记录这个情况。后续如果还有具体问题，您把对应位置或情况发我，我再帮您核对。",
@@ -818,6 +830,14 @@ def build_policy_inputs(response: dict[str, Any], copilot_context: dict[str, Any
         or answer_trace.get("query_fact_type")
         or ""
     ).strip()
+    admitted = debug.get("admitted_answer_context") if isinstance(debug.get("admitted_answer_context"), dict) else {}
+    requested_claims = admitted.get("requested_claims") if isinstance(admitted.get("requested_claims"), list) else []
+    requested_types = {
+        str(item.get("claim_type") or "").strip()
+        for item in requested_claims if isinstance(item, dict)
+    }
+    if "bite_or_toxicity" in requested_types:
+        fact_type = "bite_or_toxicity"
     customer_message = str(
         response.get("customer_message")
         or context.get("customer_message")
@@ -901,6 +921,10 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
         return True
     if contains_unsupported_media_promise(reply, bool(inputs.get("has_sendable_media_asset"))):
         return True
+    if _has_formal_partial_answer(response):
+        return False
+    if fact_type in BITE_OR_TOXICITY_FACT_TYPES:
+        return True
     if (
         fact_type in INSTALLATION_FACT_TYPES
         and _promises_installation_video(reply)
@@ -961,7 +985,40 @@ def should_apply_no_evidence_policy(response: dict[str, Any], inputs: dict[str, 
         return True
     if fact_type in ACCESSORY_AVAILABILITY_FACT_TYPES and not selected_count:
         return True
+    if fact_type in {"cleaning_care", "moisture_resistance", "odor"} and not _has_direct_evidence_for_requested_fact_type(response, fact_type):
+        return True
     return False
+
+
+def _has_direct_evidence_for_requested_fact_type(response: dict[str, Any], fact_type: str) -> bool:
+    """Do not treat material composition as product-specific care evidence."""
+    compatible = {
+        "cleaning_care": {"cleaning_care", "cleaning", "maintenance"},
+        "moisture_resistance": {"moisture_resistance", "moisture", "storage"},
+        "odor": {"odor"},
+    }.get(fact_type, {fact_type})
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    selected = response.get("selected_evidence") or debug.get("selected_evidence") or []
+    for item in selected if isinstance(selected, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("reference_only") is True or item.get("direct_answer_allowed") is False:
+            continue
+        candidate_type = str(item.get("fact_type") or item.get("evidence_fact_type") or "").strip()
+        attribute_key = str(item.get("attribute_key") or "").strip()
+        if candidate_type in compatible and attribute_key in compatible:
+            return True
+    return False
+
+
+def _has_formal_partial_answer(response: dict[str, Any]) -> bool:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    partial = debug.get("formal_partial_answer") if isinstance(debug.get("formal_partial_answer"), dict) else {}
+    return bool(
+        partial.get("preserve_no_evidence_policy") is True
+        and partial.get("supported_clauses")
+        and response.get("requires_human_review") is True
+    )
 
 
 def _looks_like_installation_structure_context(*values: Any) -> bool:

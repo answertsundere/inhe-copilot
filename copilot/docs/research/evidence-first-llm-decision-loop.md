@@ -198,9 +198,13 @@ model review:
   delivery state remains safe;
 - copy checks reject internal jargon, mojibake, generic handoff-only replies,
   irrelevant topics, and unnecessarily long customer text;
-- a negative mutation suite deletes the known fact, substitutes a wrong
-  material, asserts unsupported safety, promises an unattached report, exposes
-  system jargon, and removes bite-safety handling. Every mutation must fail.
+- a negative mutation suite removes or changes supported material, asserts
+  unsupported safety/certification, enables unsupported cleaning delivery,
+  injects washing/soaking/alcohol/temperature/detergent instructions, removes
+  either bite-safety action, replaces the answer with generic handoff, promises
+  unattached media, leaks an internal identity, drops a supported clause after
+  semantic fallback, or treats a service/action/media role as product fact.
+  Every mutation must fail.
 
 This follows the mature evaluation split between deterministic/custom metrics
 and optional LLM judges. DeepEval documents G-Eval as useful but non-
@@ -215,8 +219,10 @@ renderer. It uses real identities internally, emits only HMAC identities, and
 does not send scorer expectations to the Agent. A dated 2026-07-18 baseline
 showed that process-only Evidence Convergence made an ordinary composition
 answer traceable, while material-safety, bite/toxicity, odour, cleaning, and
-certification still failed the gold-CSR contract. The remaining defects are
-formal claim composition and delivery policy gaps, not missing manual scores.
+certification still failed the gold-CSR contract. The formal partial-answer
+path now retains a supported composition clause while unresolved derived claims
+stay non-sendable; its real-runtime results remain separate from Shadow metrics
+and never approve knowledge or alter the evaluation fixture.
 
 ## Promotion gates
 

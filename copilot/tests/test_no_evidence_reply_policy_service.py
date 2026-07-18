@@ -6,6 +6,7 @@
     has_attached_sendable_media_asset,
     has_sendable_media_asset,
     media_delivery_claim_issues,
+    should_apply_no_evidence_policy,
 )
 from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
 
@@ -1174,3 +1175,31 @@ def test_gold_placement_scene_reply_mentions_environment_and_photo_check():
     _assert_customer_facing_safe_handoff(result["reply"])
     assert "现场环境" in result["reply"]
     assert "床垫厚度" not in result["reply"]
+
+
+def test_material_composition_cannot_authorize_cleaning_or_moisture_instructions():
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u53ef\u4ee5\u6c34\u6d17\u3002",
+        "selected_evidence": [{
+            "fact_type": "material",
+            "attribute_key": "material",
+            "direct_answer_allowed": True,
+        }],
+    }
+    inputs = {"query_fact_type": "cleaning_care", "turn_actionability": "actionable_question"}
+
+    assert should_apply_no_evidence_policy(response, inputs) is True
+
+
+def test_identity_scoped_direct_care_evidence_can_satisfy_the_care_contract():
+    response = {
+        "suggested_reply": "\u4eb2\uff0c\u8bf7\u6309\u5546\u54c1\u8bf4\u660e\u6e05\u6d01\u3002",
+        "selected_evidence": [{
+            "fact_type": "cleaning_care",
+            "attribute_key": "cleaning_care",
+            "direct_answer_allowed": True,
+        }],
+    }
+    inputs = {"query_fact_type": "cleaning_care", "turn_actionability": "actionable_question"}
+
+    assert should_apply_no_evidence_policy(response, inputs) is False

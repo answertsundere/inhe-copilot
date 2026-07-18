@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.claim_resolution_service import build_claim_resolutions
+from app.services.claim_resolution_service import build_claim_resolutions, expand_claim_dependencies
 
 
 def _claim(attribute_key: str = "", claim_type: str = "dimensions") -> dict[str, str]:
@@ -92,3 +92,49 @@ def test_claim_resolution_is_stable_across_input_order():
     second = build_claim_resolutions(list(reversed(claims)), direct_product_facts=list(reversed(facts)), direct_policy_facts=[], conflicts=[])
 
     assert first == second
+
+
+def test_material_composition_dependency_is_supported_without_resolving_safety_claim():
+    requested = expand_claim_dependencies([_claim("", "material_safety")])
+    results = {
+        str(item["claim_type"]): item
+        for item in build_claim_resolutions(
+            requested,
+            direct_product_facts=[_fact("material", "", claim_type="material_composition")],
+            direct_policy_facts=[],
+            conflicts=[],
+        )
+    }
+
+    assert results["material_composition"]["status"] == "supported"
+    assert results["material_safety"]["status"] == "unresolved"
+
+
+def test_legacy_material_evidence_is_a_composition_alias_not_a_safety_alias():
+    results = {
+        str(item["claim_type"]): item
+        for item in build_claim_resolutions(
+            expand_claim_dependencies([_claim("", "material_safety")]),
+            direct_product_facts=[_fact("material", "material", claim_type="material")],
+            direct_policy_facts=[],
+            conflicts=[],
+        )
+    }
+
+    assert results["material_composition"]["status"] == "supported"
+    assert results["material_safety"]["status"] == "unresolved"
+
+
+def test_equivalent_structured_material_facts_share_the_canonical_material_slot():
+    result = build_claim_resolutions(
+        [_claim("", "material")],
+        direct_product_facts=[
+            _fact("legacy", "", claim_type="material"),
+            _fact("profile", "material", claim_type="material"),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["legacy", "profile"]

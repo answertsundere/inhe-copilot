@@ -14,6 +14,7 @@ def _fact():
         "fact_type": "material",
         "attribute_key": "material",
         "content": "主体材质为PP。",
+        "material_provenance": "structured_product_record",
         "sku_code": "SKU-A",
         "fact_review_status": "verified",
         "gate_status": "allowed",

@@ -180,9 +180,10 @@ def test_material_composition_cannot_admit_a_material_safety_claim():
         understanding=_understanding("material_safety"),
     )
 
-    assert context["direct_product_facts"] == []
-    assert context["claim_resolutions"][0]["status"] == "unresolved"
-    assert context["rejected_evidence"][0]["reason"] == "fact_type_incompatible"
+    assert [item["evidence_uid"] for item in context["direct_product_facts"]] == ["fact-material"]
+    resolutions = {item["claim_type"]: item for item in context["claim_resolutions"]}
+    assert resolutions["material_composition"]["status"] == "supported"
+    assert resolutions["material_safety"]["status"] == "unresolved"
 
 
 def test_conflicting_claim_is_not_reported_as_supported():

@@ -76,8 +76,21 @@ def test_dataset_evaluator_detects_every_negative_mutation():
 
     assert result["passed_count"] == 6
     assert result["mutation_suite"]["status"] == "passed"
-    assert result["mutation_suite"]["detected_count"] == result["mutation_suite"]["total"] == 8
+    assert result["mutation_suite"]["detected_count"] == result["mutation_suite"]["total"] == 14
     assert result["formal_contract"]["approves_product_facts"] is False
+
+
+def test_gold_csr_evaluator_rejects_identity_leakage_and_non_fact_evidence_roles():
+    row = _row()
+    row["candidate_preview"] += " INTERNAL-IDENTIFIER"
+    row["forbidden_identity_values"] = ["INTERNAL-IDENTIFIER"]
+    row["admitted_evidence_roles"] = ["service_action"]
+
+    result = evaluate_material_gold_csr_row(row)
+
+    assert result["passed"] is False
+    assert "no_identity_leakage" in result["failed_criteria"]
+    assert "admitted_evidence_roles_safe" in result["failed_criteria"]
 
 
 def test_automated_policy_decisions_are_fail_closed_and_do_not_apply_formal_kb():

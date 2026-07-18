@@ -44,15 +44,22 @@ capabilities, and safety constraints. It excludes full traces, full candidate
 stores, historical Answer Memory copy, benchmark answers/rubrics, and private
 reasoning.
 
-The supervisor partial-answer preview remains review-only. It is fixed to
-`can_send=false` and `requires_human_review=true`. It consumes only the
+The supervisor partial-answer preview is review-only by default. With explicit
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED` opt-in, final orchestration may
+promote the same bounded preview to a formal partial answer. That narrow path
+remains fixed to `can_send=false` and `requires_human_review=true`. It consumes only the
 Minimal Decision Context and records a stable claim UID for every supported,
 unresolved, conflicting, or explicitly prohibited claim. A supported clause
 must cite admitted evidence; unresolved and conflicting clauses remain visible
 without being turned into facts. When the strict provider is unqualified, the
 application renders the same admitted claim outcomes deterministically rather
-than fabricating structured or free-text model output. The preview is never
-passed into final orchestration and cannot alter a formal response.
+than fabricating structured or free-text model output. A promoted answer may
+retain a supported clause while keeping unresolved or conflicting clauses
+visible for review; it cannot make the reply sendable or alter evidence
+eligibility. Language or semantic fallback must preserve frozen supported
+clause text and its evidence UID, then rerun final and semantic audit. If that
+preservation fails, the response stays fail-closed rather than replacing the
+fact with a generic handoff.
 
 Claim/evidence selection is attribute-aware: an explicit `attribute_key` can
 only use evidence or conflicts with the same canonical key. A missing evidence
@@ -98,6 +105,18 @@ food-grade, formaldehyde, certification, child suitability, child safety,
 pinch safety, stability, and load claims each require reviewed, direct,
 identity-matched evidence for that same claim. An unresolved high-risk claim
 keeps the formal response in human review with an empty sendable reply.
+
+Cleaning and moisture are product-specific operational claims, not material
+aliases. A composition field, generic service action, Answer Memory,
+unreviewed FAQ, or media reference cannot authorize washing, soaking, alcohol,
+temperature, detergent, mould, or moisture conclusions. Those operations need
+reviewed, direct, identity-matched evidence whose fact type and attribute slot
+match the requested claim.
+
+For accidental bite or ingestion, composition remains only a supporting
+clause. Without dedicated safety evidence, the response says to stop use or
+contact, directs swallowing or symptoms to a doctor, and does not diagnose
+toxicity or assert non-toxicity.
 
 Media remains a delivery reference, not a product fact. For dimensions and
 space fit, an automatically attached image must be approved/usable, share an

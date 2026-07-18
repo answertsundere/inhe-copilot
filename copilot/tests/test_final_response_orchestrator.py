@@ -443,6 +443,41 @@ def test_final_response_orchestrator_reaudits_non_media_semantic_fallback(monkey
     assert result["final_semantic_fit_audit"]["passed"] is True
 
 
+def test_final_response_orchestrator_restores_partial_claims_after_stylistic_fallback(monkeypatch):
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    candidate = "\u4eb2\uff0c\u8fd9\u6b3e\u4e3b\u4f53\u6750\u8d28\u662f PP\u3002\u5b89\u5168\u65b9\u9762\u8fd8\u9700\u8981\u5bf9\u7167\u4e13\u9879\u8bf4\u660e\u786e\u8ba4\u3002"
+
+    def fake_audit(response, **kwargs):
+        response["final_answer_audit"] = {"passed": True, "issues": []}
+        return response
+
+    monkeypatch.setattr(orchestrator, "apply_no_evidence_reply_policy", lambda response, copilot_context=None: response)
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **kwargs: {**response, "suggested_reply": "\u4eb2\uff0c\u6211\u5e2e\u60a8\u6838\u5bf9\u3002"})
+    monkeypatch.setattr(orchestrator, "audit_customer_reply_semantic_fit", lambda *args, **kwargs: {"passed": True, "issues": []})
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "draft",
+            "evidence_debug": {"supervisor_candidate_preview": {
+                "candidate_text": candidate,
+                "confirmed_clauses": [{"customer_facing_clause": "\u8fd9\u6b3e\u4e3b\u4f53\u6750\u8d28\u662f PP\u3002"}],
+                "pending_clauses": [{"customer_facing_clause": "\u5b89\u5168\u65b9\u9762\u8fd8\u9700\u8981\u5bf9\u7167\u4e13\u9879\u8bf4\u660e\u786e\u8ba4\u3002"}],
+                "conflicting_clauses": [],
+                "evidence_uids": ["evidence-material"],
+                "safety_validation": {"passed": True},
+            }},
+        },
+        customer_message="\u6750\u8d28\u5b89\u5168\u5417\uff1f",
+    )
+
+    assert "\u8fd9\u6b3e\u4e3b\u4f53\u6750\u8d28\u662f PP\u3002" in result["suggested_reply"]
+    assert "\u5b89\u5168\u65b9\u9762\u8fd8\u9700\u8981\u5bf9\u7167\u4e13\u9879\u8bf4\u660e\u786e\u8ba4\u3002" in result["suggested_reply"]
+    assert result["can_send"] is False
+    assert result["requires_human_review"] is True
+    assert result["evidence_debug"]["formal_partial_clause_restore"]["evidence_uids"] == ["evidence-material"]
+
+
 def test_final_response_orchestrator_rejects_llm_polish_that_drops_current_product_anchor(monkeypatch):
     from app import config
     from app.llm import client as llm_client

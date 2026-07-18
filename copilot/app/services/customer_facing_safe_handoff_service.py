@@ -30,6 +30,7 @@ CUSTOMER_FACING_INTERNAL_REDLINE_TERMS = (
 
 
 MATERIAL_SAFETY_FACT_TYPES = {"material", "material_safety", "certification_report", "odor"}
+BITE_OR_TOXICITY_FACT_TYPES = {"bite_or_toxicity"}
 CHILD_SAFETY_FACT_TYPES = {"age_range", "child_suitability", "child_safety", "pinch_safety"}
 LOAD_CAPACITY_FACT_TYPES = {"load_capacity", "stability"}
 GROSS_WEIGHT_FACT_TYPES = {"gross_weight", "package_weight"}
@@ -73,6 +74,11 @@ def customer_facing_safe_handoff_reply(
         return (
             f"亲，材质、气味和检测说明我帮您按{product_hint}资料核对一下，避免说错。"
             "您稍等，我确认后给您准确回复；如果方便，也可以把您关注的说明页拍给我，我一起看。"
+        )
+    if fact_type in BITE_OR_TOXICITY_FACT_TYPES:
+        return (
+            "亲，如果已经误入口或出现不适，建议先停止使用并及时咨询医生。"
+            f"这款的具体安全说明还需要按{product_hint}的专项资料核对，确认后给您准确回复。"
         )
     if fact_type in CHILD_SAFETY_FACT_TYPES:
         return (
@@ -158,6 +164,8 @@ def _fact_type(policy: dict[str, Any], inputs: dict[str, Any]) -> str:
 
 
 def _fact_type_from_strategy(reply_strategy: str) -> str:
+    if "bite_or_toxicity" in reply_strategy:
+        return "bite_or_toxicity"
     if "structure_function" in reply_strategy:
         return "structure_function"
     if "accessory_availability" in reply_strategy:
@@ -221,6 +229,8 @@ def _has_order_context(inputs: dict[str, Any]) -> bool:
 def _risk_type(fact_type: str) -> str:
     if fact_type in MATERIAL_SAFETY_FACT_TYPES:
         return "material_safety"
+    if fact_type in BITE_OR_TOXICITY_FACT_TYPES:
+        return "bite_or_toxicity"
     if fact_type in CHILD_SAFETY_FACT_TYPES:
         return "child_safety"
     if fact_type in LOAD_CAPACITY_FACT_TYPES:
@@ -253,4 +263,6 @@ def _customer_action(fact_type: str) -> str:
         return "核对适用年龄/材质/结构资料"
     if fact_type in MATERIAL_SAFETY_FACT_TYPES:
         return "核对商品资料/材质/检测资料"
+    if fact_type in BITE_OR_TOXICITY_FACT_TYPES:
+        return "核对专项安全资料；如有不适及时咨询医生"
     return "核对商品资料"

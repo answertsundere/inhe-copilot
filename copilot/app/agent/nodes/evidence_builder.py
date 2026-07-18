@@ -31,6 +31,7 @@ from app.services.admitted_answer_context_service import (
     build_minimal_decision_context,
     canonical_selected_evidence,
 )
+from app.services.claim_resolution_service import expand_claim_dependencies
 
 # 高风险商品事实字段 — 包含这些字段的知识条目需要 fact review
 HIGH_RISK_FACT_FIELDS = (
@@ -245,6 +246,17 @@ def _profile_fact_text(profile: dict, query_fact_type: str, msg: str, source: st
                 break
         if material and (has_odor_fact or _has_odor_signal(material)):
             parts.append(f"材质: {material}")
+    elif query_fact_type == "cleaning_care":
+        add("清洁保养", "cleaning_care", "cleaning", "maintenance", "清洗", "清洁", "保养")
+    elif query_fact_type == "moisture_resistance":
+        add("防潮/存放", "moisture", "防潮", "是否防潮", "storage", "保养")
+    elif query_fact_type in {
+        "material_safety", "bite_or_toxicity", "certification_report",
+        "food_grade", "non_toxic_claim",
+    }:
+        # High-risk claims need their own direct field. Composition is appended
+        # separately as a declared supporting claim and cannot change this type.
+        missing.append(query_fact_type)
     elif query_fact_type == "load_capacity":
         if source == "product_cards":
             # product card / JST 主数据里的 weight 多数是商品自重，不能冒充承重。
@@ -326,9 +338,13 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
                 "entry_status": kb_product.get("status", "unknown"),
                 "fact_review_status": "published" if kb_product.get("status") == "published" else "draft_unverified",
                 "evidence_fact_type": query_fact_type,
+                "fact_type": query_fact_type,
+                "attribute_key": "material" if query_fact_type == "material" else query_fact_type,
                 "product_profile_source": "kb_product",
                 "material_provenance": structured_field_source_kind(kb_product, "material") if query_fact_type == "material" else "",
                 "evidence_allowed_for_direct_answer": kb_product.get("status") == "published",
+                "direct_answer_allowed": kb_product.get("status") == "published",
+                "i_id": kb_product.get("i_id", ""),
             }
             product_facts.append(fact)
             verified_facts.append(fact)
@@ -369,9 +385,13 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
                 "entry_status": "published",
                 "fact_review_status": "published",
                 "evidence_fact_type": query_fact_type,
+                "fact_type": query_fact_type,
+                "attribute_key": "material" if query_fact_type == "material" else query_fact_type,
                 "product_profile_source": "product_cards",
                 "material_provenance": structured_field_source_kind(card, "material") if query_fact_type == "material" else "",
                 "evidence_allowed_for_direct_answer": True,
+                "direct_answer_allowed": True,
+                "i_id": card.get("i_id", ""),
             }
             product_facts.append(fact)
             verified_facts.append(fact)
@@ -474,7 +494,43 @@ def _formal_understanding(state: dict) -> dict:
             for fact_type in fact_types
             if str(fact_type or "").strip()
         ]
+    result["requested_claims"] = expand_claim_dependencies(
+        result.get("requested_claims") if isinstance(result.get("requested_claims"), list) else []
+    )
     return result
+
+
+def _append_formal_supporting_profile_evidence(
+    state: dict,
+    product_facts: list[dict],
+    verified_facts: list[dict],
+    unknowns: list[dict],
+    sources: list[str],
+) -> None:
+    """Reuse structured-product admission for declared supporting material claims.
+
+    This is enabled only with formal evidence convergence.  It does not derive
+    a high-risk conclusion from material; it makes the already reviewed
+    composition field available as a separately resolved claim.
+    """
+    claims = _formal_understanding(state).get("requested_claims") or []
+    if not any(str(item.get("claim_type") or "") == "material_composition" for item in claims if isinstance(item, dict)):
+        return
+    if str(state.get("query_fact_type") or "") in {"material", "material_composition"}:
+        return
+    supporting_state = dict(state)
+    supporting_state["query_fact_type"] = "material"
+    # The support lookup is for the structured composition field only.  Do not
+    # let wording for the parent safety/care claim select extra profile fields.
+    supporting_state["normalized_message"] = ""
+    supporting_state["customer_message"] = ""
+    _append_product_profile_evidence(
+        supporting_state,
+        product_facts,
+        verified_facts,
+        unknowns,
+        sources,
+    )
 
 
 def _formal_evidence_convergence(
@@ -641,6 +697,14 @@ def evidence_builder(state: dict) -> dict:
         sources.append("product_mapping")
 
     _append_product_profile_evidence(state, product_facts, verified_facts, unknowns, sources)
+    if _formal_evidence_convergence_enabled():
+        _append_formal_supporting_profile_evidence(
+            state,
+            product_facts,
+            verified_facts,
+            unknowns,
+            sources,
+        )
 
     # 5. 物流政策（旧字段兼容）
     policy = state.get("shipping_policy", {})

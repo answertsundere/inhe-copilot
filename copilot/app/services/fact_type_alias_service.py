@@ -35,6 +35,7 @@ HIGH_RISK_FACT_TYPES = frozenset({
     "certification_report",
     "child_safety",
     "child_suitability",
+    "bite_or_toxicity",
     "electrical_safety",
     "food_grade",
     "formaldehyde_claim",
@@ -67,6 +68,7 @@ _HIGH_RISK_CLAIM_ALIASES = {
     "load_capacity": "load_capacity",
     "stability": "stability",
     "safety_claim": "safety_claim",
+    "bite_or_toxicity": "bite_or_toxicity",
 }
 
 DIRECT_SOURCE_TYPES = {

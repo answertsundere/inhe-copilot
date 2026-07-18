@@ -564,6 +564,11 @@ def _query_fact_type(response: dict[str, Any], evidence_pack: dict[str, Any]) ->
 
 
 def _semantic_fit_fallback(response: dict[str, Any]) -> str:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    partial = debug.get("formal_partial_answer") if isinstance(debug.get("formal_partial_answer"), dict) else {}
+    partial_text = str(partial.get("candidate_text") or "").strip()
+    if partial_text and partial.get("supported_clauses"):
+        return partial_text
     display_name = str(response.get("display_product_name") or "").strip()
     evidence_pack = _evidence_pack(response)
     query_fact_type = _query_fact_type(response, evidence_pack)

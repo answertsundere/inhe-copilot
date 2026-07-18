@@ -13,6 +13,7 @@ from typing import Any
 FACT_TYPE_LABELS = {
     "material_composition": "\u6750\u8d28",
     "material_safety": "\u6750\u8d28\u548c\u5b89\u5168\u8bf4\u660e",
+    "bite_or_toxicity": "\u8bef\u5165\u53e3/\u8bef\u54ac\u5b89\u5168\u5904\u7406",
     "moisture_resistance": "\u9632\u6f6e\u60c5\u51b5",
     "child_safety": "\u513f\u7ae5\u4f7f\u7528\u5b89\u5168",
     "child_suitability": "\u513f\u7ae5\u9002\u7528\u60c5\u51b5",
@@ -60,6 +61,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("gift_policy", ("赠品", "礼品", "没送", "少送", "漏发赠品")),
     ("stock_shipping", ("有货", "库存", "今天拍", "今天发", "什么时候发", "能发吗", "上发", "发货")),
     ("cleaning_care", ("清洁", "清理", "脏了", "水洗", "洗吗", "怎么洗", "擦洗", "可以洗", "酒精擦")),
+    ("moisture_resistance", ("防潮", "受潮", "发霉", "霉变")),
     ("odor", ("味道", "异味", "刺鼻", "闻着", "散味")),
     ("age_range", ("适合多大", "适合几岁", "几个月", "多大宝宝", "几岁", "年龄")),
     ("stability", (
@@ -406,10 +408,34 @@ _STRUCTURE_ACTION_TERMS = ("放下来", "放下", "翻下来", "翻起", "打开
 _STRUCTURE_CONFIRM_TERMS = ("不是可以", "可以吗", "能不能", "是不是", "怎么", "有吗", "吗", "呢")
 _STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间")
 _STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
+_MATERIAL_CONTEXT_TERMS = ("材质", "材料", "用料", "什么料", "板材")
+_MATERIAL_SAFETY_TERMS = ("安全", "有害", "有毒", "无毒", "甲醛")
+_BITE_OR_TOXICITY_TERMS = ("误入口", "误食", "吞咽", "吞了", "啃咬", "咬到", "咬了一下")
 
 
 def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
     text = str(msg or "").lower()
+    if any(term in msg for term in _BITE_OR_TOXICITY_TERMS):
+        matched = [term for term in _BITE_OR_TOXICITY_TERMS if term in msg]
+        return {
+            "query_fact_type": "bite_or_toxicity",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("bite_or_toxicity", "bite_or_toxicity"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
+    if (
+        any(term in msg for term in _MATERIAL_CONTEXT_TERMS)
+        and any(term in msg for term in _MATERIAL_SAFETY_TERMS)
+    ):
+        matched = [term for term in (*_MATERIAL_CONTEXT_TERMS, *_MATERIAL_SAFETY_TERMS) if term in msg]
+        return {
+            "query_fact_type": "material_safety",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("material_safety", "material_safety"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
     if (
         any(term.lower() in text for term in _GROSS_WEIGHT_TERMS)
         and not any(term in msg for term in _LOAD_CAPACITY_BLOCKERS_FOR_WEIGHT)
@@ -531,6 +557,7 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
                 "query_fact_type_label": FACT_TYPE_LABELS.get(fact_type, fact_type),
                 "confidence": 0.9 if len(matched) > 1 else 0.78,
                 "matched_terms": matched[:5],
+                "secondary_fact_types": _secondary_fact_types(msg, fact_type),
                 "source": "unicode_rule",
             }
     for fact_type, keywords in _QUERY_RULES:
@@ -541,6 +568,7 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
                 "query_fact_type_label": FACT_TYPE_LABELS.get(fact_type, fact_type),
                 "confidence": 0.9 if len(matched) > 1 else 0.78,
                 "matched_terms": matched[:5],
+                "secondary_fact_types": _secondary_fact_types(msg, fact_type),
                 "source": "rule",
             }
 
@@ -561,6 +589,19 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
         "matched_terms": [],
         "source": "none",
     }
+
+
+def _secondary_fact_types(message: str, primary: str) -> list[str]:
+    """Expose independently requested fact domains without selecting evidence."""
+    found: list[str] = []
+    for fact_type, keywords in [*_UNICODE_QUERY_RULES, *_QUERY_RULES]:
+        if (
+            fact_type != primary
+            and fact_type != "material"
+            and any(keyword in message for keyword in keywords)
+        ):
+            found.append(fact_type)
+    return sorted(set(found))
 
 
 def infer_evidence_fact_type(item: dict | None = None, text: str = "") -> str:
