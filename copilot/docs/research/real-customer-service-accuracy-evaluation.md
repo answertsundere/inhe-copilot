@@ -82,6 +82,108 @@ expected outcomes remain scorer data and never enter the Agent request.
 - **Tier C, Synthetic Safety** runs the versioned benchmark fixture.  It
   validates handoff, media, and delivery contracts only, and is likewise not a
   real-customer accuracy rate.
+- **Tier D, Simulated Multi-turn** starts from a privacy-checked real
+  conversation prefix and target buyer turn, then lets an independently
+  configured buyer model continue against the formal HTTP AnalysisPipeline.
+  It measures execution reliability, deterministic safety contracts, required
+  action coverage, buyer-model outcome acceptance, response repetition, and
+  trial stability. It never scores an unapproved product claim as truth and
+  never contributes to the Tier A customer-accuracy numerator or denominator.
+
+The Tier D shape follows the task/trial/transcript/outcome separation described
+in [Anthropic's agent evaluation guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+and the thread-level outcome and trajectory distinction in
+[LangSmith multi-turn evaluations](https://docs.langchain.com/langsmith/online-evaluations-multi-turn).
+As with [OpenAI HealthBench](https://openai.com/index/healthbench/), detailed
+criteria and multi-turn transcripts are useful, but model grading does not
+replace expert-approved truth labels. Tier D therefore reports an exploratory
+pass rate and keeps real-customer accuracy `null`.
+
+## Tier D Long-Conversation Simulation
+
+`scripts/build_long_conversation_simulation_set.py` joins the privacy-checked
+Gold artifact to the minimum supervisor queue. It selects only conversations
+with resolved roles, a readable buyer target, at least 20 source turns, and a
+bounded pre-target history. Selection round-robins structured business domains
+and does not use product names, raw IDs, or buyer-message keyword rules. A
+media-labelled review item without target media or declared media evidence is
+excluded instead of being presented as a high-quality media scenario.
+
+The artifact stores HMAC case identities and a non-reversible transcript
+fingerprint. `scripts/run_long_conversation_simulation.py` resolves the source
+sidecar in process. If the original Gold HMAC key is unavailable, only a unique
+exact transcript fingerprint may establish the linkage; ambiguous records are
+excluded and reported. Raw source identifiers never enter the dataset or
+report. The generated dataset is scanned again after controlled hashes, HMAC
+identities, and manifest fields are removed from the privacy projection; any
+remaining phone, address, URL, account, credential, or long-identifier finding
+fails the artifact before execution.
+
+The buyer simulator uses separate `COPILOT_CUSTOMER_SIMULATOR_*` configuration.
+It sees the hidden buyer goal and transcript, while the Agent receives only the
+current buyer message, bounded history, and source sidecar. Evaluation labels,
+required actions, and review metadata are rejected from the Agent payload. The
+buyer may not invent product facts or claim to have supplied a new image,
+video, order number, or attachment. The runner validates one exact JSON shape
+and does not repair free text into a decision.
+
+The deterministic thread scorer reports independent metrics:
+
+- formal HTTP and AnalysisPipeline execution;
+- review-only and auto-send safety when handoff is required;
+- attached-media promise consistency;
+- buyer-model outcome acceptance;
+- required-action coverage reported by the simulator;
+- repeated consecutive replies and per-turn latency;
+- all-trials and any-trial scenario stability.
+
+The buyer outcome and action coverage remain model observations, not Gold
+truth. A run using the same provider as the formal Agent records that fact and
+has lower independence than a separate-provider run.
+
+### 2026-07-18 Exploratory Baseline
+
+The first strict calibrated run selected nine long scenarios across six structured
+domains. Seven had a unique source-sidecar linkage; two duplicate transcripts
+with different sidecars were excluded. The seven scenarios ran twice for 14
+trials and 41 formal Agent turns:
+
+- exploratory overall pass: `1/14` (`7.14%`);
+- deterministic contract pass: `5/14` (`35.71%`);
+- buyer outcome acceptance: `2/14` (`14.29%`);
+- mean required-action coverage: `41.67%`;
+- stable scenario pass across both trials: `0/7`;
+- formal selected-evidence turns: `0/41`;
+- consecutive identical reply rate: `17/27` (`62.96%`);
+- Agent latency p50/p95: about `15.3s / 35.5s`.
+
+The strict scorer treats failed final-answer or semantic-fit audits as contract
+failures; the run contained six and eight such failed trials respectively. One
+installation trial became auto-sendable while the review contract required
+handoff. Across the wider set, the dominant failure was non-progression: order,
+logistics, product-size, suitability, news/safety, and aftersales follow-ups
+often repeated a generic verification response while selected evidence stayed
+empty. This baseline is evidence for the next diagnostic priority, not a
+production accuracy claim. The buyer simulator and formal Agent both used the
+same configured provider in this first run, so provider-correlated behaviour is
+an additional limitation.
+
+```powershell
+python scripts\build_long_conversation_simulation_set.py `
+  --gold-set outputs\real_accuracy_gold_set.json `
+  --review-queue outputs\real_accuracy_minimum_supervisor_queue.json `
+  --json-output outputs\long_conversation_simulation_set.json
+
+$env:COPILOT_CUSTOMER_SIMULATOR_API_KEY = "<separate-evaluation-provider-key>"
+$env:COPILOT_CUSTOMER_SIMULATOR_API_BASE = "<openai-compatible-base>"
+$env:COPILOT_CUSTOMER_SIMULATOR_MODEL = "<model>"
+python scripts\run_long_conversation_simulation.py `
+  --dataset outputs\long_conversation_simulation_set.json `
+  --source-db <read-only-runtime-db> `
+  --analyze-url http://127.0.0.1:5011/api/analyze `
+  --trials 2 --max-generated-turns 2 `
+  --json-output outputs\long_conversation_simulation_report.json
+```
 
 `scripts/run_real_derived_business_matrix.py` creates a pseudonymised Tier B
 manifest and result report without exporting product identity, field values, or

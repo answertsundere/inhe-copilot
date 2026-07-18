@@ -106,8 +106,9 @@ results can replace that gate.
 - `docs/research/real-customer-service-accuracy-evaluation.md` - privacy-safe,
   read-only Gold Set with structured de-identified conversation turns,
   independent output scanning, human claim-label audit storage, formal-pipeline
-  baseline, and query-driven evidence coverage diagnostic. It does not establish
-  production accuracy until its manual claim-label gate is met.
+  baseline, query-driven evidence coverage, and the Tier D AI-buyer multi-turn
+  contract. Tier A, Tier B, Tier C, and Tier D remain separate; only Tier A may
+  establish production accuracy after its manual claim-label gate is met.
 
 The durable target is an omnichannel customer-service control plane. QianNiu is the first planned platform adapter, not the system core. Platform payloads must be normalized before they enter the Agent, and Agent decisions must remain independent of any platform's native fields.
 
