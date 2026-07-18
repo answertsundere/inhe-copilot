@@ -28,9 +28,23 @@ def main() -> int:
         return 2
     report = build_material_governance_report(args.source_database, pseudonymization_key=key)
     result = run_material_shadow_qa(report, product_limit=args.product_limit)
-    Path(args.json_output).write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"case_count": result["case_count"], "metrics": result["metrics"], "safety": result["safety"]}, ensure_ascii=False))
-    return 0
+    Path(args.json_output).write_text(
+        json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8-sig",
+    )
+    evaluation = result["gold_csr_evaluation"]
+    print(json.dumps({
+        "case_count": result["case_count"],
+        "metrics": result["metrics"],
+        "safety": result["safety"],
+        "gold_csr_evaluation": {
+            "passed_count": evaluation["passed_count"],
+            "failed_count": evaluation["failed_count"],
+            "pass_rate": evaluation["pass_rate"],
+            "mutation_suite": evaluation["mutation_suite"]["status"],
+        },
+    }, ensure_ascii=False))
+    return 0 if evaluation["failed_count"] == 0 and evaluation["mutation_suite"]["status"] == "passed" else 1
 
 
 if __name__ == "__main__":

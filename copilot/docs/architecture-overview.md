@@ -360,6 +360,15 @@ change formal facts or `can_send`. A real-derived, HMAC-only material Shadow QA
 may preview confirmed composition plus unresolved high-risk subclaims, but it
 does not modify the formal reply or delivery contract.
 
+Material answer quality may be validated without a manual scoring step. The
+gold-customer-service evaluator independently checks supported-fact coverage,
+claim separation, immediate risk handling, natural copy, unsupported promises,
+and delivery safety, then proves the rubric with negative mutations. This
+automated verdict evaluates answer behaviour only: it cannot verify a source,
+approve a product fact, write formal knowledge, or change `can_send`. Formal
+runtime validation must be reported separately from deterministic Shadow copy
+so a template cannot grade itself as production-ready.
+
 ### Phase B: Context-First Supervised Partial Answer
 
 - build the minimal Decision Context;

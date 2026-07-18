@@ -186,6 +186,38 @@ real-derived Shadow QA keeps scoring expectations outside admission payloads
 and evaluates only pseudonymous composition evidence plus unresolved claim
 preservation.
 
+## Automated gold customer-service validation
+
+Material answer review no longer requires a person to score every candidate.
+The deterministic evaluator separates objective gates from future subjective
+model review:
+
+- objective gates verify that admitted composition is actually answered, every
+  unresolved high-risk claim remains unresolved, bite/toxicity wording includes
+  an immediate safety action, media promises match reply blocks, and formal
+  delivery state remains safe;
+- copy checks reject internal jargon, mojibake, generic handoff-only replies,
+  irrelevant topics, and unnecessarily long customer text;
+- a negative mutation suite deletes the known fact, substitutes a wrong
+  material, asserts unsupported safety, promises an unattached report, exposes
+  system jargon, and removes bite-safety handling. Every mutation must fail.
+
+This follows the mature evaluation split between deterministic/custom metrics
+and optional LLM judges. DeepEval documents G-Eval as useful but non-
+deterministic for subjective criteria and recommends deterministic DAG/custom
+metrics when reproducibility is required. OpenAI Evals similarly supports
+model-graded evals, but this project does not use an unqualified provider as an
+authority. A future qualified judge may assess tone as a second opinion; it
+cannot override evidence or safety failures.
+
+The formal `/api/analyze` runner is deliberately separate from the Shadow
+renderer. It uses real identities internally, emits only HMAC identities, and
+does not send scorer expectations to the Agent. A dated 2026-07-18 baseline
+showed that process-only Evidence Convergence made an ordinary composition
+answer traceable, while material-safety, bite/toxicity, odour, cleaning, and
+certification still failed the gold-CSR contract. The remaining defects are
+formal claim composition and delivery policy gaps, not missing manual scores.
+
 ## Promotion gates
 
 Promotion requires real traces with valid strict structured output, stable

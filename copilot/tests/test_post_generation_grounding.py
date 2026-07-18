@@ -313,6 +313,23 @@ class TestGroundingValidationService:
             for c in result["unsupported_claims"]
         )
 
+    def test_stainless_steel_does_not_negate_following_material_label(self):
+        state = {
+            "suggested_reply": "亲，这款商品的材质信息为：PE、PP、不锈钢。\n材质：PE、PP、不锈钢。",
+            "intent": "product_question",
+            "evidence": {
+                "product_facts": [
+                    {"fact": "这款商品的材质为PE、PP、不锈钢。"},
+                ],
+            },
+            "filtered_evidence": [],
+            "knowledge_evidence": [],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert not any(c["fact_type"] == "negation_conflict" for c in result["unsupported_claims"])
+
     def test_blocks_number_conflict_10kg_vs_100kg(self):
         """证据'承重10kg'，回复'承重100kg' → 数值矛盾，必须拦截。"""
         state = {

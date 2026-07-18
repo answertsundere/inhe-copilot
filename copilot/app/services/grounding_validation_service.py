@@ -140,15 +140,21 @@ def _extract_negated_facts(text: str) -> list[dict]:
     return negated
 
 
-_NEGATION_PATTERN = re.compile(r"(不|不是|非|无|未|没|没有)")
+_NEGATION_BEFORE_TERM = re.compile(
+    r"(?:不是|并非|并不|没有|没|未|无|非|不(?:具备|支持|属于|是)?)\s*$"
+)
 
 
 def _has_negation_prefix(text: str, term: str) -> bool:
-    """检查 text 中 term 的前面是否有否定前缀。"""
+    """Check grammatical negation immediately before a fact term.
+
+    A negation character elsewhere in the nearby phrase is insufficient.
+    Material names such as ``不锈钢`` must not negate a later ``材质`` label.
+    """
     for m in re.finditer(re.escape(term), text):
-        start = max(0, m.start() - 5)
+        start = max(0, m.start() - 10)
         prefix = text[start:m.start()]
-        if _NEGATION_PATTERN.search(prefix):
+        if _NEGATION_BEFORE_TERM.search(prefix):
             return True
     return False
 

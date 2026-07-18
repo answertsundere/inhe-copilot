@@ -10,6 +10,11 @@ from collections import Counter
 from typing import Any
 
 from app.services.admitted_answer_context_service import AdmittedAnswerContextService
+from app.services.material_gold_csr_validation_service import (
+    MATERIAL_CUSTOMER_QUESTIONS,
+    build_automated_material_policy_decisions,
+    evaluate_material_gold_csr_dataset,
+)
 
 
 MATERIAL_QUERY_FAMILIES = (
@@ -94,6 +99,7 @@ def run_material_shadow_qa(report: dict[str, Any], *, product_limit: int = 5) ->
                 "source_kind": "real_derived",
                 "product_identity": {"i_id": product_uid},
                 "query_family": family,
+                "customer_question": MATERIAL_CUSTOMER_QUESTIONS[family],
                 "admitted_evidence_uids": cited,
                 "claim_status": status,
                 "candidate_preview": candidate,
@@ -102,6 +108,12 @@ def run_material_shadow_qa(report: dict[str, Any], *, product_limit: int = 5) ->
                 "used_for_final_reply": False,
                 "formal_reply_mutated": False,
                 "reply_blocks": [],
+                # Evaluation-only reference. It is attached after admission and
+                # is never included in the Agent or admission payload above.
+                "evaluation_reference": {
+                    "material_value": material,
+                    "expected_claim_status": "supported" if family == "material_composition" else "unresolved",
+                },
             })
 
     total = len(qa_rows)
@@ -114,7 +126,7 @@ def run_material_shadow_qa(report: dict[str, Any], *, product_limit: int = 5) ->
         "partial_answer_rate": _rate(sum(bool(row["admitted_evidence_uids"]) and row["query_family"] != "material_composition" for row in unresolved), len(unresolved)),
         "generic_handoff_only_rate": _rate(sum(not row["admitted_evidence_uids"] for row in unresolved), len(unresolved)),
     }
-    return {
+    result = {
         "dataset_id": "material-shadow-qa-real-derived-v1",
         "source_kind": "real_derived",
         "case_count": total,
@@ -130,8 +142,11 @@ def run_material_shadow_qa(report: dict[str, Any], *, product_limit: int = 5) ->
         },
         "metrics": metrics,
         "by_query_family": dict(sorted(Counter(row["query_family"] for row in qa_rows).items())),
+        "automated_policy_decisions": build_automated_material_policy_decisions(report),
         "rows": qa_rows,
     }
+    result["gold_csr_evaluation"] = evaluate_material_gold_csr_dataset(result)
+    return result
 
 
 def _rate(numerator: int, denominator: int) -> dict[str, Any]:
