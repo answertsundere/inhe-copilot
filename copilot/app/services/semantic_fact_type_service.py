@@ -219,7 +219,7 @@ def _classify_with_llm(state: dict[str, Any], message: str, intent: str) -> dict
     }
 
     try:
-        response = client.client.chat.completions.create(
+        response = client.create_chat_completion(
             model=client.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},

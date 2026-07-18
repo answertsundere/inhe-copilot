@@ -43,6 +43,9 @@ class _FakeLLMClient:
     def __init__(self, payload):
         self.client = _FakeOpenAIClient(payload)
 
+    def create_chat_completion(self, **kwargs):
+        return self.client.chat.completions.create(**kwargs)
+
 
 def test_llm_first_fact_type_classification(monkeypatch):
     monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)

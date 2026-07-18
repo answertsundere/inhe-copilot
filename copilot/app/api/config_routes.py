@@ -158,7 +158,7 @@ def api_llm_test():
     t0 = time.time()
     try:
         client = LLMClient()
-        response = client.client.chat.completions.create(
+        response = client.create_chat_completion(
             model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},

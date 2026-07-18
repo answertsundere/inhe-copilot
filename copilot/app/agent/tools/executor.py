@@ -594,7 +594,7 @@ def _try_llm_tool_selection(
 - 投诉选 sop_lookup_tool
 """
 
-        response = llm_client.client.chat.completions.create(
+        response = llm_client.create_chat_completion(
             model=llm_client.model,
             messages=[
                 {"role": "system", "content": system_prompt},

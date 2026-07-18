@@ -37,6 +37,9 @@ class _FakeClient:
     def __init__(self, content):
         self.client = type("Client", (), {"chat": _FakeChat(content)})()
 
+    def create_chat_completion(self, **kwargs):
+        return self.client.chat.completions.create(**kwargs)
+
 
 def test_expected_topics_prefer_explicit_accessory_availability_over_stale_installation_intent():
     topics = _expected_topics(

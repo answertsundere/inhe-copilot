@@ -143,6 +143,9 @@ def test_logistics_without_explicit_identifier_keeps_llm_routing(monkeypatch):
         "client": type("OpenAI", (), {
             "chat": type("Chat", (), {"completions": completions})(),
         })(),
+        "create_chat_completion": lambda self, **kwargs: (
+            self.client.chat.completions.create(**kwargs)
+        ),
     })()
     monkeypatch.setattr(module, "get_llm_client", lambda: fake_client)
     state = _tracking_state(

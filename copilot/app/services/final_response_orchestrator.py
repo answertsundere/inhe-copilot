@@ -549,7 +549,7 @@ def _optional_llm_language_polish(
             "reply_blocks": response.get("reply_blocks", []),
             "recommended_assets": response.get("recommended_assets", []),
         }
-        result = client.client.chat.completions.create(
+        result = client.create_chat_completion(
             model=client.model,
             messages=[
                 {

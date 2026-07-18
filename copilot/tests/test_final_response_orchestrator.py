@@ -36,6 +36,9 @@ class _FakeClient:
     def __init__(self, content):
         self.client = type("Client", (), {"chat": _FakeChat(content)})()
 
+    def create_chat_completion(self, **kwargs):
+        return self.client.chat.completions.create(**kwargs)
+
 
 def test_final_response_orchestrator_runs_audit_before_polish(monkeypatch):
     calls = []

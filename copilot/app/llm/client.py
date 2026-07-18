@@ -5,6 +5,7 @@ LLM 客户端 - 封装模型调用逻辑，含安全降级
 import json
 import logging
 from typing import Optional
+from urllib.parse import urlparse
 
 from openai import OpenAI
 
@@ -42,6 +43,83 @@ class LLMClient:
             self._client = OpenAI(api_key=self.api_key, base_url=self.api_base)
         return self._client
 
+    @property
+    def provider_name(self) -> str:
+        """Infer the transport provider without exposing credentials."""
+        hostname = (urlparse(self.api_base).hostname or "").lower()
+        if hostname == "api.minimaxi.com" or hostname.endswith(".minimaxi.com"):
+            return "minimax"
+        if hostname == "api.minimax.io" or hostname.endswith(".minimax.io"):
+            return "minimax"
+        if hostname == "api.deepseek.com" or hostname.endswith(".deepseek.com"):
+            return "deepseek"
+        if hostname:
+            return hostname.split(".")[0]
+        return "unknown"
+
+    def create_chat_completion(self, **kwargs):
+        """Create a completion with provider-specific transport compatibility.
+
+        MiniMax M2 reasoning models need enough output budget to finish their
+        reasoning before emitting the customer-facing content. Separating the
+        reasoning keeps existing JSON and plain-text consumers unchanged.
+        """
+        request = dict(kwargs)
+        if self.provider_name == "minimax":
+            temperature = float(request.get("temperature", 0.3) or 0)
+            request["temperature"] = max(temperature, 0.1)
+            model = str(request.get("model") or self.model or "")
+            is_m3 = model.lower().startswith("minimax-m3")
+            minimum_output_tokens = 800 if is_m3 else 1200
+            request["max_tokens"] = max(
+                int(request.get("max_tokens") or 0),
+                minimum_output_tokens,
+            )
+            extra_body = dict(request.get("extra_body") or {})
+            extra_body.setdefault("reasoning_split", True)
+            if is_m3:
+                extra_body.setdefault("thinking", {"type": "disabled"})
+            request["extra_body"] = extra_body
+
+        response = self.client.chat.completions.create(**request)
+        if self.provider_name == "minimax":
+            choice = response.choices[0] if response.choices else None
+            finish_reason = str(getattr(choice, "finish_reason", "") or "")
+            content = str(getattr(getattr(choice, "message", None), "content", "") or "")
+            if finish_reason == "length":
+                raise RuntimeError("minimax_response_truncated")
+            if not content.strip():
+                raise RuntimeError("minimax_empty_response")
+            response_format = request.get("response_format") or {}
+            if response_format.get("type") == "json_object":
+                normalized = self._complete_json_object(content)
+                if normalized is not None:
+                    choice.message.content = json.dumps(normalized, ensure_ascii=False)
+        return response
+
+    @staticmethod
+    def _complete_json_object(content: str) -> Optional[dict]:
+        """Return a complete JSON object without repairing incomplete output."""
+        text = str(content or "").strip()
+        candidates = [text]
+        if text.startswith("```") and text.endswith("```"):
+            inner = text[3:-3].strip()
+            if inner.lower().startswith("json"):
+                inner = inner[4:].strip()
+            candidates.append(inner)
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            candidates.append(text[start : end + 1])
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        return None
+
     def chat(
         self,
         system_prompt: str,
@@ -75,7 +153,7 @@ class LLMClient:
             # 通义千问支持 json_object 模式
             kwargs["response_format"] = {"type": "json_object"}
 
-            response = self.client.chat.completions.create(**kwargs)
+            response = self.create_chat_completion(**kwargs)
             raw = response.choices[0].message.content.strip()
 
             # 解析 JSON

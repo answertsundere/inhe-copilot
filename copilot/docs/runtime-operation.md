@@ -24,6 +24,16 @@ git -C $runtime rev-parse HEAD
 `run_prod.py` reads `copilot/.env`. Keep that file ignored and local. Do not
 put keys, DSNs, cookies, or database files in Git.
 
+The formal LLM uses the OpenAI-compatible transport in `app/llm/client.py`.
+For a mainland-China MiniMax account, use `https://api.minimaxi.com/v1` with
+`MiniMax-M3`; the international `api.minimax.io` endpoint is a separate
+credential domain. M3 thinking is disabled for the short formal customer-service
+calls, while MiniMax reasoning fields are still separated from response content.
+The transport also enforces a safe output budget and rejects empty or truncated
+responses. For JSON callers it accepts only a complete parseable object and does
+not repair partial JSON. Keep the key only in the ignored runtime `.env`, and
+qualify the exact endpoint and model before switching traffic.
+
 For a first startup or a release smoke test, point `COPILOT_KNOWLEDGE_DB_PATH`
 at a SQLite backup made with the SQLite backup API. Disable resident media
 synchronization and automatic media refresh in that process. Do not point an

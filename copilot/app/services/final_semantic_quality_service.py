@@ -292,7 +292,7 @@ def _llm_semantic_fit_check(
             return None
 
         payload = _semantic_payload(response, customer_message, copilot_context)
-        result = client.client.chat.completions.create(
+        result = client.create_chat_completion(
             model=client.model,
             messages=[
                 {

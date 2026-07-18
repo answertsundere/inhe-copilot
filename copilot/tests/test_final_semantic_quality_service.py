@@ -39,6 +39,9 @@ class _FakeClient:
     def __init__(self, content):
         self.client = type("Client", (), {"chat": _FakeChat(content)})()
 
+    def create_chat_completion(self, **kwargs):
+        return self.client.chat.completions.create(**kwargs)
+
 
 def test_final_semantic_fit_uses_llm_judge_to_block_wrong_answer(monkeypatch):
     from app import config

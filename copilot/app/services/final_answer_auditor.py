@@ -1250,7 +1250,7 @@ def _semantic_llm_audit(
                 "unknowns": (evidence_debug.get("unknowns") or [])[:5],
             },
         }
-        result = client.client.chat.completions.create(
+        result = client.create_chat_completion(
             model=client.model,
             messages=[
                 {
@@ -1331,7 +1331,7 @@ def _optional_llm_audit(
                 "或把夹手安全答成电池/小零件/材质等其他主题，则 passed=false。"
             ),
         }
-        result = client.client.chat.completions.create(
+        result = client.create_chat_completion(
             model=client.model,
             messages=[
                 {

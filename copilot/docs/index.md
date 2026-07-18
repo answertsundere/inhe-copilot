@@ -156,7 +156,7 @@ Evaluation results are valid only when the evaluated entry point, context, media
 ## Operations And Platform Setup
 
 - `docs/sidecar_client_setup.md` - current local sidecar setup notes. Treat QianNiu-specific details as adapter guidance, not Agent-domain contracts.
-- `docs/runtime-operation.md` - canonical clean runtime worktree, local configuration, safe SQLite backup startup, health checks, port switching, and rollback.
+- `docs/runtime-operation.md` - canonical clean runtime worktree, local configuration, formal LLM provider transport, safe SQLite backup startup, health checks, port switching, and rollback.
 - `docs/gray_trial_readiness_report.md` - historical gray-trial readiness snapshot.
 
 ## Historical Status Snapshots
