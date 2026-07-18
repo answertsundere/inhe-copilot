@@ -104,3 +104,20 @@ def test_baseline_reports_each_label_status_and_uses_only_approved_records(monke
     assert summary["claim_accuracy_denominator"] == 1
     assert summary["target_turn_bound_count"] == 1
     assert summary["exploratory_source_quote_count"] == 3
+
+
+def test_approved_only_mode_does_not_call_agent_without_approved_labels(monkeypatch, tmp_path):
+    source = tmp_path / "source.db"; _source_db(source)
+    dataset, _ = build_gold_dataset("test-gold-key", runner.load_reviewed_training_samples(source))
+    gold = tmp_path / "gold.json"; gold.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("COPILOT_GOLD_SET_HMAC_KEY", "test-gold-key")
+    monkeypatch.setattr(runner, "_post", lambda *_: (_ for _ in ()).throw(AssertionError("approved_only_must_not_call_agent")))
+    output = tmp_path / "report.json"
+    assert runner.main([
+        "--gold-set", str(gold), "--source-db", str(source), "--analyze-url", "http://test",
+        "--json-output", str(output), "--approved-only",
+    ]) == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["execution_scope"] == "approved_claims_only"
+    assert report["summary"]["attempted_count"] == 0
+    assert report["summary"]["skipped_unapproved_count"] == 2

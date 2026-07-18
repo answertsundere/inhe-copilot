@@ -95,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--hmac-env", default="COPILOT_GOLD_SET_HMAC_KEY")
     parser.add_argument("--label-db", default="", help="Optional independent human-label SQLite database")
+    parser.add_argument("--approved-only", action="store_true", help="Run only cases with approved claim labels")
     args = parser.parse_args(argv)
     if os.environ.get("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
         print(json.dumps({"error": "formal_evidence_convergence_must_remain_disabled"}, ensure_ascii=False))
@@ -124,7 +125,11 @@ def main(argv: list[str] | None = None) -> int:
         for sample in load_reviewed_training_samples(args.source_db)
     }
     results: list[dict[str, Any]] = []
+    skipped_unapproved_count = 0
     for case in dataset.get("cases") or []:
+        if args.approved_only and case.get("classification") != "claim_accuracy_scorable":
+            skipped_unapproved_count += 1
+            continue
         if case.get("classification") not in {"claim_accuracy_scorable", "claim_label_pending", "safety_scorable"}:
             continue
         source = source_by_case.get(case.get("case_uid"))
@@ -150,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         "dataset_hash": (dataset.get("manifest") or {}).get("content_sha256"),
         "dataset_status": dataset.get("dataset_status"),
         "execution_path": "http_formal_analysis_pipeline",
+        "execution_scope": "approved_claims_only" if args.approved_only else "exploratory_and_approved",
         "formal_evidence_convergence_enabled": False,
         "summary": {
             "executed": len(results),
@@ -162,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             "claim_labeled_count": len(scorable),
             "target_turn_bound_count": sum(1 for item in results if item.get("input_contract") == "target_turn_bound"),
             "exploratory_source_quote_count": sum(1 for item in results if item.get("input_contract") == "source_customer_quote_exploratory"),
+            "skipped_unapproved_count": skipped_unapproved_count,
             "claim_accuracy_numerator": len(passed),
             "claim_accuracy_denominator": len(scorable),
             "claim_accuracy_rate": round(len(passed) / len(scorable), 4) if scorable else None,

@@ -61,6 +61,71 @@ contract, expected handoff, and forbidden-claim constraints. Free-text
 reference answers remain exploratory. This avoids pretending that a keyword
 overlap score is full semantic faithfulness.
 
+## Phase 0.7C.1 Business Accuracy Matrix
+
+The project reports three deliberately non-combinable evaluation tiers. This
+uses the separation of answer faithfulness, answer relevance, and retrieval
+context quality described by [Ragas](https://docs.ragas.io/en/latest/concepts/metrics/available_metrics/),
+and the claim-versus-context distinction in [DeepEval faithfulness](https://deepeval.com/docs/metrics-faithfulness).
+It also follows the [OpenAI Evals dataset/solver separation](https://github.com/openai/evals/blob/main/docs/build-eval.md):
+expected outcomes remain scorer data and never enter the Agent request.
+
+- **Tier A, Real Gold** contains a real buyer turn, its own sidecar context,
+  and supervisor-approved claim labels.  It is the only tier permitted to
+  report a customer-service accuracy rate.  Fewer than 30 approved labelled
+  cases remains `insufficient_gold_labels`; the rate is `null`, never 0% or
+  100%.
+- **Tier B, Real-Derived Capability** reads published, direct, identity-scoped
+  product fields query-only and asks a generic fact-type question through the
+  same API pipeline.  It reports evidence selection, admission, identity, and
+  delivery behaviour, but is not a real-customer accuracy rate.
+- **Tier C, Synthetic Safety** runs the versioned benchmark fixture.  It
+  validates handoff, media, and delivery contracts only, and is likewise not a
+  real-customer accuracy rate.
+
+`scripts/run_real_derived_business_matrix.py` creates a pseudonymised Tier B
+manifest and result report without exporting product identity, field values, or
+reply text.  `scripts/build_business_accuracy_matrix.py` combines summaries
+only: it never copies buyer text, label content, or raw sidecar identifiers
+into the matrix.  It classifies the nine business domains only from structured
+`query_fact_type` or reviewed `question_type`, never from buyer-message
+keywords.
+
+The matrix keeps numerator and denominator for each available metric.  Claim
+precision/recall and free-text relevance remain `null` when no human-approved
+claim label exists.  Tier B instead exposes direct evidence citation/admission
+rates, while Tier C exposes its own safety-contract result.  Empty replies,
+timeouts, media promises without blocks, service-action-as-fact, identity,
+handoff, and partial-answer observations use independent fields rather than a
+single `passed` flag.
+
+### Operating Commands
+
+Run the real-derived portion only against a temporary local API process and a
+read-only runtime database.  The HMAC key is ephemeral and must not be saved.
+
+```powershell
+$env:COPILOT_REAL_DERIVED_MATRIX_HMAC_KEY = [guid]::NewGuid().ToString('N')
+python scripts\run_real_derived_business_matrix.py `
+  --source-db <runtime-db> --api-url http://127.0.0.1:5012/api/analyze `
+  --manifest-output outputs\real_derived_business_manifest.json `
+  --json-output outputs\real_derived_business_report.json
+
+python scripts\run_real_accuracy_baseline.py `
+  --gold-set outputs\real_accuracy_gold_set.json --source-db <runtime-db> `
+  --label-db <ignored-label-db> --approved-only `
+  --analyze-url http://127.0.0.1:5012/api/analyze `
+  --json-output outputs\real_accuracy_approved_baseline.json
+
+python scripts\build_business_accuracy_matrix.py `
+  --gold-set outputs\real_accuracy_gold_set.json `
+  --tier-a-baseline outputs\real_accuracy_approved_baseline.json `
+  --tier-b-report outputs\real_derived_business_report.json `
+  --tier-c-smoke outputs\benchmark_smoke.json `
+  --tier-c-full outputs\benchmark_full.json `
+  --json-output outputs\business_accuracy_matrix.json
+```
+
 `scripts/diagnose_query_driven_fact_coverage.py` groups actual evaluated
 questions by their stored query class and shows the funnel:
 
