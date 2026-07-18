@@ -17,6 +17,22 @@ BLOCKED_DIRECT_FACT_TYPES = {
     "material_safety",
 }
 
+STRONG_MATERIAL_CLAIM_TERMS = (
+    "食品级",
+    "无毒",
+    "环保",
+    "安全",
+    "认证",
+    "检测",
+    "甲醛",
+)
+
+UNTRUSTED_STRUCTURED_FIELD_SOURCES = {
+    "conservative_placeholder",
+    "placeholder",
+    "unverified",
+}
+
 _FIELD_TOKENS = {
     "material": ("material", "\u6750\u8d28", "\u6750\u6599", "\u7528\u6599"),
     "dimensions": (
@@ -86,6 +102,9 @@ def build_product_spec_evidence_candidates(
     if not values:
         return []
 
+    if requested == "material" and material_direct_answer_block_reason(profile, values):
+        return []
+
     value_text = _format_values(values)
     customer_text = _customer_text(requested, value_text)
     product_id = profile.get("product_id")
@@ -118,6 +137,39 @@ def build_product_spec_evidence_candidates(
         "media_url": "",
         "block_reasons": [],
     }]
+
+
+def structured_field_source_kind(profile: dict[str, Any], field_name: str) -> str:
+    """Return explicit field provenance without inventing it from product status."""
+    specs = profile.get("specs") if isinstance(profile.get("specs"), dict) else {}
+    root = specs.get("_auto_backfill")
+    if not isinstance(root, dict):
+        return "structured_product_record"
+    source_kind = ""
+    for batch in root.values():
+        if not isinstance(batch, dict):
+            continue
+        sources = batch.get("sources")
+        if isinstance(sources, dict) and str(sources.get(field_name) or "").strip():
+            source_kind = str(sources[field_name]).strip()
+    return source_kind or "structured_product_record"
+
+
+def material_direct_answer_block_reason(
+    profile: dict[str, Any],
+    values: list[tuple[str, Any]] | None = None,
+) -> str:
+    """Block composition evidence when field provenance or claim scope is unsafe."""
+    picked = values if values is not None else _pick_values(profile, "material")
+    value_text = _format_values(picked)
+    if not value_text:
+        return "material_value_missing"
+    source_kind = structured_field_source_kind(profile, "material").lower()
+    if source_kind in UNTRUSTED_STRUCTURED_FIELD_SOURCES:
+        return "material_source_untrusted"
+    if any(term in value_text for term in STRONG_MATERIAL_CLAIM_TERMS):
+        return "material_strong_claim_requires_review"
+    return ""
 
 
 def _pick_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str, Any]]:

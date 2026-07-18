@@ -405,6 +405,12 @@ composition clause does not imply a material-safety, certification, child, or
 performance conclusion. Any unresolved requested high-risk claim remains
 human-review-only even when another low-risk claim is supported.
 
+Published product status is not sufficient field provenance. A structured
+material value whose field source remains `conservative_placeholder`, or whose
+value mixes composition with a strong claim such as food-grade or environmental
+compliance, is not eligible for direct structured evidence. Governance must
+verify or split that field before it can support a customer-facing claim.
+
 Visual delivery is fact-type scoped. Dimensions and space-fit delivery may use
 only an actual reply block built from an identity-matched dimension reference;
 an appearance or SKU image is not promoted by title text, retrieval score, or
