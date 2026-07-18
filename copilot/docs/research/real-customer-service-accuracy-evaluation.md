@@ -61,6 +61,29 @@ contract, expected handoff, and forbidden-claim constraints. Free-text
 reference answers remain exploratory. This avoids pretending that a keyword
 overlap score is full semantic faithfulness.
 
+## Mandatory Before/After Change Gate
+
+Any implementation that can change customer-visible Agent behaviour must be
+evaluated against a pinned real dataset both before and after the change. The
+comparison must use the same dataset content hash, formal HTTP entry point,
+sidecar mode, feature flags, provider/model, scorer version, and timeout
+contract. A recent parent-commit baseline may be reused only when all of those
+fields match; otherwise the baseline must be rerun.
+
+The report keeps independent numerators and denominators for supported claims,
+required actions, evidence selection, partial-answer progression, handoff,
+unsafe auto-send, unsupported media promises, empty/error responses, timeouts,
+and p50/p95 latency. Excluded, media-only, role-unresolved, and context-gap cases
+remain visible and cannot disappear from the denominator silently.
+
+An implementation may be described as an optimisation only when its declared
+target metric improves or its target defect count decreases, no safety metric
+regresses, and latency/error changes are disclosed. Tier C synthetic results are
+mandatory regression evidence but cannot prove real accuracy. When Tier A has
+insufficient approved labels, real accuracy remains `null`; Tier B and Tier D
+may diagnose evidence capability and conversation progression, but the final
+status is `optimization_unverified`, not “accuracy improved.”
+
 ## Phase 0.7C.1 Business Accuracy Matrix
 
 The project reports three deliberately non-combinable evaluation tiers. This

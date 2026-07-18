@@ -70,6 +70,32 @@ defines the intended behavior.
 
 ## Required Verification
 
+### Real-dataset change gate
+
+Every change that can affect Agent understanding, context, retrieval, evidence,
+reasoning, prompts, model transport, reply composition, safety, media, handoff,
+or delivery must run a comparable real-dataset evaluation before it may be
+reported as an improvement:
+
+- pin the dataset ID, version/content hash, runtime commit, feature flags,
+  provider/model, entry point, and sidecar mode;
+- preserve a before-change baseline from the parent commit, or rerun it when no
+  directly comparable baseline exists;
+- run the after-change evaluation through the same formal user-facing pipeline;
+- report the scorable denominator and every excluded/context-gap case;
+- compare claim/action correctness, evidence selection, handoff, unsafe
+  auto-send, empty/error responses, timeouts, and p50/p95 latency;
+- treat synthetic fixtures as regression and safety evidence only, never as
+  proof that real customer accuracy improved; and
+- when approved real labels are insufficient, report `real_accuracy=null` and
+  `optimization_unverified` rather than claiming success.
+
+A change passes this gate only when its declared target metric improves (or its
+target defect count decreases), no safety contract regresses, and latency/error
+changes are disclosed. Documentation-only and test-infrastructure-only changes
+still run their relevant integrity/governance checks, but they do not create an
+Agent-accuracy claim.
+
 Every implementation report must state:
 
 - which user-facing entry points use the changed path;
@@ -77,5 +103,7 @@ Every implementation report must state:
 - whether `can_send`, evidence eligibility, media delivery, or handoff behavior
   changed;
 - tests and live checks actually run;
+- the real dataset/version, before/after metrics, and whether the real-dataset
+  change gate passed, was not applicable, or was blocked by missing labels;
 - documentation and ADR impact;
 - unverified risks and environment dependencies.

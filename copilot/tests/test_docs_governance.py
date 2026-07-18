@@ -33,6 +33,29 @@ def test_project_agent_instructions_require_governance_reading():
         assert required_reference in content
 
 
+def test_project_agent_instructions_require_real_dataset_change_gate():
+    instructions = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    accuracy_contract = (
+        DOCS_ROOT / "research" / "real-customer-service-accuracy-evaluation.md"
+    ).read_text(encoding="utf-8")
+
+    for required_term in (
+        "Real-dataset change gate",
+        "before-change baseline",
+        "real_accuracy=null",
+        "synthetic fixtures",
+    ):
+        assert required_term in instructions
+
+    for required_term in (
+        "Mandatory Before/After Change Gate",
+        "dataset content hash",
+        "optimization_unverified",
+        "p50/p95 latency",
+    ):
+        assert required_term in accuracy_contract
+
+
 def test_document_index_has_no_missing_or_unindexed_markdown_files():
     index = (DOCS_ROOT / "index.md").read_text(encoding="utf-8")
     referenced_paths = set(re.findall(r"docs/[A-Za-z0-9_./-]+\.md", index))

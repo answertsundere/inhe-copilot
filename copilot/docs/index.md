@@ -153,6 +153,10 @@ Current boundaries:
 
 Evaluation results are valid only when the evaluated entry point, context, media stage, final pipeline, and delivery contract match the real user-facing path.
 
+Every behaviour-affecting change must also satisfy the pinned real-dataset
+before/after gate in `docs/research/real-customer-service-accuracy-evaluation.md`;
+synthetic benchmark success alone cannot establish an optimisation.
+
 ## Operations And Platform Setup
 
 - `docs/sidecar_client_setup.md` - current local sidecar setup notes. Treat QianNiu-specific details as adapter guidance, not Agent-domain contracts.
