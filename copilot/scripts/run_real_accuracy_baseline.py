@@ -56,7 +56,7 @@ def _safe_evidence_count(response: dict[str, Any], key: str) -> int:
 
 
 def _run_case(case: dict[str, Any], source: dict[str, Any], url: str, timeout: int) -> dict[str, Any]:
-    payload = build_agent_payload(source)
+    payload = build_agent_payload(source, case=case)
     assert_label_not_in_agent_input(payload)
     status, response, latency, error = _post(url, payload, timeout)
     score = score_response(case, response)
@@ -65,6 +65,8 @@ def _run_case(case: dict[str, Any], source: dict[str, Any], url: str, timeout: i
     reply = sanitize_gold_text(response.get("sendable_reply") or response.get("suggested_reply") or response.get("draft_reply") or "")
     return sanitize_obj({
         "case_uid": case["case_uid"],
+        "input_contract": "target_turn_bound" if case.get("evaluation_target") else "source_customer_quote_exploratory",
+        "target_turn_uids": list((case.get("evaluation_target") or {}).get("target_turn_uids") or []),
         "classification": case["classification"],
         "query_class": case["query_class"],
         "status_code": status,
@@ -158,6 +160,8 @@ def main(argv: list[str] | None = None) -> int:
             "latency_p50_ms": percentile(0.5),
             "latency_p95_ms": percentile(0.95),
             "claim_labeled_count": len(scorable),
+            "target_turn_bound_count": sum(1 for item in results if item.get("input_contract") == "target_turn_bound"),
+            "exploratory_source_quote_count": sum(1 for item in results if item.get("input_contract") == "source_customer_quote_exploratory"),
             "claim_accuracy_numerator": len(passed),
             "claim_accuracy_denominator": len(scorable),
             "claim_accuracy_rate": round(len(passed) / len(scorable), 4) if scorable else None,

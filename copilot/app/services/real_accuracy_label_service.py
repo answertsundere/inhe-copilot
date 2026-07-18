@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Any
 _CLAIM_KINDS = {"product_fact", "tool_action", "service_action", "handoff", "prohibited"}
 _EXPECTED_STATUSES = {"supported", "unresolved", "conflicting", "prohibited"}
 _REVIEW_STATUSES = {"draft", "reviewed", "approved", "rejected"}
+_TURN_UID_RE = re.compile(r"^turn_[A-Z2-7]{20}$")
 _HIGH_RISK_ATTRIBUTES = {
     "load_capacity", "non_toxic", "food_grade", "certification", "child_safety",
     "age_range", "anti_tip", "wall_mounting", "refund", "replacement", "compensation",
@@ -95,6 +97,21 @@ def validate_claims(claims: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+def validate_target_turn_uids(target_turn_uids: Any, *, required: bool) -> list[str]:
+    if target_turn_uids is None:
+        target_turn_uids = []
+    if not isinstance(target_turn_uids, list):
+        raise LabelValidationError("target_turn_uids_list_required")
+    normalized = [str(item).strip() for item in target_turn_uids if str(item).strip()]
+    if len(normalized) != len(set(normalized)):
+        raise LabelValidationError("target_turn_uid_duplicate")
+    if any(not _TURN_UID_RE.fullmatch(item) for item in normalized):
+        raise LabelValidationError("target_turn_uid_invalid")
+    if required and not normalized:
+        raise LabelValidationError("target_buyer_turn_required")
+    return normalized
+
+
 class RealAccuracyLabelStore:
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path or default_label_db_path())
@@ -155,6 +172,7 @@ class RealAccuracyLabelStore:
         case_uid: str,
         dataset_version: str,
         claims: Any,
+        target_turn_uids: Any = None,
         review_status: str,
         actor_hash: str,
         expected_version: int | None,
@@ -165,11 +183,20 @@ class RealAccuracyLabelStore:
         if review_status == "approved" and not allow_approval:
             raise LabelValidationError("supervisor_approval_required")
         normalized_claims = validate_claims(claims)
+        normalized_target_turn_uids = validate_target_turn_uids(
+            target_turn_uids,
+            required=review_status in {"reviewed", "approved"},
+        )
         if review_status == "approved" and any(item["review_status"] != "approved" for item in normalized_claims):
             raise LabelValidationError("approved_case_requires_approved_claims")
         self.initialize()
         now = _now()
-        payload = json.dumps({"claims": normalized_claims}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        payload = json.dumps(
+            {"claims": normalized_claims, "target_turn_uids": normalized_target_turn_uids},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         with self._connect() as connection:
             existing = connection.execute(
                 "SELECT * FROM real_accuracy_case_label WHERE case_uid=? AND dataset_version=?", (case_uid, dataset_version)

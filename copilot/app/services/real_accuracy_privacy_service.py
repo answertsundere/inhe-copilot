@@ -45,16 +45,29 @@ _DIRECTION_ROLES = {
 _ALLOWED_ROLES = frozenset({"BUYER", "AGENT", "SYSTEM"})
 _MAX_TURNS_PER_CASE = 500
 _CONTROLLED_SCAN_FIELDS = frozenset({
-    "case_uid", "speaker_uid", "pseudonymous_id", "sidecar_identity",
+    "case_uid", "turn_uid", "target_turn_uids", "speaker_uid", "pseudonymous_id", "sidecar_identity",
     "content_sha256", "dataset_hash", "reviewer_actor_hash", "manifest",
 })
 _ACTOR_UID_RE = re.compile(r"^actor_[A-Z2-7]{20}$")
+_TURN_UID_RE = re.compile(r"^turn_[A-Z2-7]{20}$")
 _PSEUDONYM_RE = re.compile(r"^(?:training_sample|product|sku|order)_[A-Z2-7]{20}$")
 
 
 def _actor_uid(secret: str, role: str, source_hint: str) -> str:
     digest = hmac.new(secret.encode("utf-8"), f"actor:{role}:{source_hint}".encode("utf-8"), hashlib.sha256).digest()
     return f"actor_{base64.b32encode(digest).decode('ascii').rstrip('=')[:20]}"
+
+
+def _turn_uid(conversation_uid: str, index: int, turn: dict[str, Any]) -> str:
+    payload = "\x1f".join((
+        conversation_uid,
+        str(index),
+        str(turn.get("speaker_role") or "UNRESOLVED"),
+        str(turn.get("message_type") or "text"),
+        str(turn.get("text") or ""),
+    ))
+    digest = hashlib.sha256(payload.encode("utf-8")).digest()
+    return f"turn_{base64.b32encode(digest).decode('ascii').rstrip('=')[:20]}"
 
 
 def _link_token(raw_url: str) -> str:
@@ -258,7 +271,13 @@ def _conversation_turn(
     }
 
 
-def parse_conversation_context(raw_context: Any, *, hmac_key: str, source_provenance: str = "reviewed_training_sample") -> dict[str, Any]:
+def parse_conversation_context(
+    raw_context: Any,
+    *,
+    hmac_key: str,
+    source_provenance: str = "reviewed_training_sample",
+    conversation_uid: str = "",
+) -> dict[str, Any]:
     """Return only structured, sanitised turns; uncertainty is fail-closed."""
     raw = str(raw_context or "")
     parser = _ConversationHtmlParser()
@@ -284,8 +303,12 @@ def parse_conversation_context(raw_context: Any, *, hmac_key: str, source_proven
     conversation_truncated = len(turns) > _MAX_TURNS_PER_CASE
     if conversation_truncated:
         turns = turns[:_MAX_TURNS_PER_CASE]
+    uid_scope = conversation_uid or hashlib.sha256(
+        f"{source_provenance}\x1f{raw}".encode("utf-8")
+    ).hexdigest()
     for index, turn in enumerate(turns, start=1):
         turn["turn_index"] = index
+        turn["turn_uid"] = _turn_uid(uid_scope, index, turn)
     role_counts = {role: sum(1 for turn in turns if turn.get("speaker_role") == role) for role in sorted(_ALLOWED_ROLES)}
     role_unresolved_count = sum(1 for turn in turns if turn.get("role_resolution") == "role_unresolved")
     result = {
@@ -318,10 +341,11 @@ def _content_scan_projection(value: Any) -> Any:
 def validate_controlled_identifiers(value: Any) -> list[dict[str, Any]]:
     """Validate generated pseudonyms separately from customer-content scanning."""
     invalid_actor_count = 0
+    invalid_turn_count = 0
     invalid_pseudonym_count = 0
 
     def visit(item: Any) -> None:
-        nonlocal invalid_actor_count, invalid_pseudonym_count
+        nonlocal invalid_actor_count, invalid_turn_count, invalid_pseudonym_count
         if isinstance(item, list):
             for child in item:
                 visit(child)
@@ -331,6 +355,18 @@ def validate_controlled_identifiers(value: Any) -> list[dict[str, Any]]:
         speaker_uid = item.get("speaker_uid")
         if speaker_uid is not None and not _ACTOR_UID_RE.fullmatch(str(speaker_uid)):
             invalid_actor_count += 1
+        turn_uid = item.get("turn_uid")
+        if turn_uid is not None and not _TURN_UID_RE.fullmatch(str(turn_uid)):
+            invalid_turn_count += 1
+        target_turn_uids = item.get("target_turn_uids")
+        if target_turn_uids is not None:
+            if not isinstance(target_turn_uids, list):
+                invalid_turn_count += 1
+            else:
+                invalid_turn_count += sum(
+                    1 for identifier in target_turn_uids
+                    if not _TURN_UID_RE.fullmatch(str(identifier))
+                )
         for key in ("case_uid", "pseudonymous_id"):
             identifier = item.get(key)
             if identifier is not None and not _PSEUDONYM_RE.fullmatch(str(identifier)):
@@ -348,6 +384,8 @@ def validate_controlled_identifiers(value: Any) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     if invalid_actor_count:
         findings.append({"reason_code": "controlled_actor_identifier_invalid", "count": invalid_actor_count})
+    if invalid_turn_count:
+        findings.append({"reason_code": "controlled_turn_identifier_invalid", "count": invalid_turn_count})
     if invalid_pseudonym_count:
         findings.append({"reason_code": "controlled_pseudonym_invalid", "count": invalid_pseudonym_count})
     return findings

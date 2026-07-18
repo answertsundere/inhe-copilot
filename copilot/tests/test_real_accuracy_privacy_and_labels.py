@@ -10,10 +10,15 @@ from app.services.real_accuracy_label_service import (
     RealAccuracyLabelStore,
     reviewer_actor_hash,
 )
-from app.services.real_accuracy_privacy_service import parse_conversation_context, scan_privacy_output
+from app.services.real_accuracy_privacy_service import (
+    parse_conversation_context,
+    scan_privacy_output,
+    validate_controlled_identifiers,
+)
 
 
 SECRET = "test-only-privacy-key"
+TARGET_TURN_UID = "turn_ABCDEFGHIJKLMNOPQRST"
 
 
 def test_html_conversation_is_structured_and_removes_identity_urls_and_style():
@@ -53,6 +58,17 @@ def test_parser_prefers_message_direction_merges_body_fragments_and_marks_unknow
     assert parsed["turns"][0]["role_resolution"] == "dom_direction"
     assert parsed["turns"][2]["role_resolution"] == "role_unresolved"
     assert parsed["role_unresolved_count"] == 1
+
+
+def test_turn_uid_is_stable_scoped_and_privacy_safe():
+    raw = '<div class="imui-msg imui-msg-l"><div class="msg-body-text">请问尺寸</div></div>'
+    first = parse_conversation_context(raw, hmac_key=SECRET, conversation_uid="training_sample_AAAAAAAAAAAAAAAAAAAA")
+    repeated = parse_conversation_context(raw, hmac_key=SECRET, conversation_uid="training_sample_AAAAAAAAAAAAAAAAAAAA")
+    other = parse_conversation_context(raw, hmac_key=SECRET, conversation_uid="training_sample_BBBBBBBBBBBBBBBBBBBB")
+    assert first["turns"][0]["turn_uid"] == repeated["turns"][0]["turn_uid"]
+    assert first["turns"][0]["turn_uid"] != other["turns"][0]["turn_uid"]
+    assert not validate_controlled_identifiers(first)
+    assert validate_controlled_identifiers({"target_turn_uids": ["turn-invalid"]})[0]["reason_code"] == "controlled_turn_identifier_invalid"
 
 
 def test_hmac_actor_identifier_is_excluded_from_content_scan_but_uses_stable_format():
@@ -104,13 +120,14 @@ def test_label_store_requires_evidence_and_optimistic_lock(tmp_path):
     actor = reviewer_actor_hash("reviewer", "test-audit-key")
     with pytest.raises(LabelValidationError, match="evidence_required"):
         store.save(case_uid="case-1", dataset_version="v1", claims=[_claim(supporting_evidence_uids=[])],
-                   review_status="approved", actor_hash=actor, expected_version=0, allow_approval=True)
+                   target_turn_uids=[TARGET_TURN_UID], review_status="approved", actor_hash=actor, expected_version=0, allow_approval=True)
     saved = store.save(case_uid="case-1", dataset_version="v1", claims=[_claim()], review_status="approved",
-                       actor_hash=actor, expected_version=0, allow_approval=True)
+                       target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=True)
     assert saved["optimistic_lock_version"] == 1
+    assert saved["label"]["target_turn_uids"] == [TARGET_TURN_UID]
     with pytest.raises(LabelConflictError):
         store.save(case_uid="case-1", dataset_version="v1", claims=[_claim()], review_status="approved",
-                   actor_hash=actor, expected_version=0, allow_approval=True)
+                   target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=True)
 
 
 def test_reviewer_cannot_approve_and_high_risk_without_evidence_is_unresolved(tmp_path):
@@ -118,7 +135,21 @@ def test_reviewer_cannot_approve_and_high_risk_without_evidence_is_unresolved(tm
     actor = reviewer_actor_hash("reviewer", "test-audit-key")
     with pytest.raises(LabelValidationError, match="supervisor_approval_required"):
         store.save(case_uid="case-1", dataset_version="v1", claims=[_claim()], review_status="approved",
-                   actor_hash=actor, expected_version=0, allow_approval=False)
+                   target_turn_uids=[TARGET_TURN_UID], actor_hash=actor, expected_version=0, allow_approval=False)
     with pytest.raises(LabelValidationError, match="unsupported_high_risk"):
         store.save(case_uid="case-1", dataset_version="v1", claims=[_claim(attribute_key="child_safety", supporting_evidence_uids=[], review_status="draft")],
                    review_status="draft", actor_hash=actor, expected_version=0, allow_approval=False)
+
+
+def test_reviewed_and_approved_labels_require_a_target_buyer_turn(tmp_path):
+    store = RealAccuracyLabelStore(tmp_path / "labels.db")
+    actor = reviewer_actor_hash("reviewer", "test-audit-key")
+    store.save(
+        case_uid="case-1", dataset_version="v1", claims=[_claim(review_status="draft")],
+        review_status="draft", actor_hash=actor, expected_version=0, allow_approval=False,
+    )
+    with pytest.raises(LabelValidationError, match="target_buyer_turn_required"):
+        store.save(
+            case_uid="case-2", dataset_version="v1", claims=[_claim(review_status="draft")],
+            review_status="reviewed", actor_hash=actor, expected_version=0, allow_approval=False,
+        )

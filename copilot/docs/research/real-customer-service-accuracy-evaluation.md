@@ -47,9 +47,13 @@ least five fact types and ten products or categories, reports carry
 
 `scripts/run_real_accuracy_baseline.py` rebuilds the request from the same
 read-only source in memory, joins it by HMAC case identity, and calls the
-public `/api/analyze` contract. That route must return an `analysis_pipeline`
-record; a response without it is not counted as a formal-pipeline result.
-Evaluation labels are rejected if they appear in the Agent payload.
+public `/api/analyze` contract. A scorable case must also carry one or more
+human-selected `target_turn_uids`. The Agent message is built only from those
+buyer turns, and conversation history stops at the last selected turn. Later
+buyer or agent messages cannot leak into the evaluated request. That route
+must return an `analysis_pipeline` record; a response without it is not counted
+as a formal-pipeline result. Evaluation labels and reference answers are
+rejected if they appear in the Agent payload.
 
 The deterministic scorer reports its numerator and denominator for each
 metric. It scores only manual `expected_claims`, each with a declared matching
@@ -106,7 +110,9 @@ uses stable message-container metadata from the reviewed chat DOM, including
 speaker prefix only when DOM direction is unavailable. It emits only
 `BUYER`, `AGENT`, or `SYSTEM` roles; an unproven role is represented as a
 `role_unresolved` turn state rather than being disguised as `SYSTEM`.
-Fragments inside one message body are merged before a turn is emitted.
+Fragments inside one message body are merged before a turn is emitted. Every
+turn receives a deterministic, conversation-scoped `turn_uid`; its controlled
+format is validated independently from customer-content privacy scanning.
 The parser caps a source case at 500 merged turns and classifies an over-limit
 case as `conversation_truncated`, excluding it from the manual claim queue
 rather than silently scoring incomplete context.
@@ -124,10 +130,14 @@ workbench and baseline runner.
 
 Human labels live in `COPILOT_REAL_ACCURACY_LABEL_DB`, an ignored evaluation
 SQLite database separate from `knowledge_base.db`. It stores only pseudonymous
-case IDs, structured claim JSON, a pseudonymous reviewer actor, versions, and
-append-only audit events. Reviewers may draft or submit labels; only supervisors
-or administrators may approve them. Product-fact claims need formal evidence
-UIDs before approval. The `/ask/real-accuracy-labels` management view reads the
+case IDs, selected target buyer-turn UIDs, structured claim JSON, a
+pseudonymous reviewer actor, versions, and append-only audit events. A draft may
+omit a target while it is being prepared. Submission for review and approval
+require at least one target that exists in the same case and belongs to the
+buyer; unknown, agent, and system turns are rejected. Reviewers may draft or
+submit labels; only supervisors or administrators may approve them.
+Product-fact claims need formal evidence UIDs before approval. The
+`/ask/real-accuracy-labels` management view reads the
 sanitised Gold artifact and never receives raw source rows. Its list and detail
 API are reviewer-or-higher only; operators and unauthenticated callers cannot
 read reference answers or de-identified conversation turns.

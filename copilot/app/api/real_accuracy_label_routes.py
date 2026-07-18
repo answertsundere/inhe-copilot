@@ -56,6 +56,25 @@ def _public_case(case: dict[str, Any], label: dict[str, Any] | None) -> dict[str
     }
 
 
+def _validate_target_turns(case: dict[str, Any], target_turn_uids: Any, review_status: str) -> list[str]:
+    if target_turn_uids is None:
+        target_turn_uids = []
+    if not isinstance(target_turn_uids, list):
+        raise LabelValidationError("target_turn_uids_list_required")
+    normalized = [str(item).strip() for item in target_turn_uids if str(item).strip()]
+    turns_by_uid = {
+        str(turn.get("turn_uid") or ""): turn
+        for turn in (case.get("conversation") or {}).get("turns") or []
+    }
+    if review_status in {"reviewed", "approved"} and not normalized:
+        raise LabelValidationError("target_buyer_turn_required")
+    if any(uid not in turns_by_uid for uid in normalized):
+        raise LabelValidationError("target_turn_not_in_case")
+    if any(turns_by_uid[uid].get("speaker_role") != "BUYER" for uid in normalized):
+        raise LabelValidationError("target_turn_must_be_buyer")
+    return sorted(normalized, key=lambda uid: int(turns_by_uid[uid].get("turn_index") or 0))
+
+
 @real_accuracy_label_bp.get("/cases")
 @require_reviewer
 def list_cases():
@@ -93,11 +112,13 @@ def save_case_label(case_uid: str):
     payload = request.get_json(silent=True) or {}
     review_status = str(payload.get("review_status") or "draft")
     try:
+        target_turn_uids = _validate_target_turns(case, payload.get("target_turn_uids"), review_status)
         actor_hash = reviewer_actor_hash(current_principal().subject)
         saved = RealAccuracyLabelStore().save(
             case_uid=case_uid,
             dataset_version=str(dataset.get("dataset_version") or ""),
             claims=payload.get("claims"),
+            target_turn_uids=target_turn_uids,
             review_status=review_status,
             actor_hash=actor_hash,
             expected_version=payload.get("optimistic_lock_version"),

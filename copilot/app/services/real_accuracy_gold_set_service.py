@@ -27,7 +27,7 @@ from app.services.real_accuracy_privacy_service import (
 )
 
 
-DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v2"
+DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v3"
 DEFAULT_MINIMUM_GOLD_LABELS = 30
 _REQUIRED_SAMPLE_COLUMNS = {
     "id", "customer_quote", "full_context", "product_title", "sku", "order_no",
@@ -147,7 +147,10 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
     source_uid = hmac_identifier(secret, "training_sample", sample.get("id"))
     reference = canonical_text(sample.get("correct_answer"), limit=1800)
     conversation = parse_conversation_context(
-        sample.get("full_context"), hmac_key=secret, source_provenance="reviewed_training_sample"
+        sample.get("full_context"),
+        hmac_key=secret,
+        source_provenance="reviewed_training_sample",
+        conversation_uid=source_uid,
     )
     if conversation["privacy_review_required"]:
         classification = "privacy_review_required"
@@ -302,7 +305,7 @@ def scan_sensitive_data(value: Any) -> list[str]:
             key: scrub_metadata(child)
             for key, child in item.items()
             if key not in {
-                "manifest", "case_uid", "pseudonymous_id", "speaker_uid", "sidecar_identity",
+                "manifest", "case_uid", "turn_uid", "target_turn_uids", "pseudonymous_id", "speaker_uid", "sidecar_identity",
                 "content_sha256", "dataset_hash", "reviewer_actor_hash",
             }
         }
@@ -330,6 +333,10 @@ def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
             findings.append("reference_label_missing")
         if any(key in case for key in ("order_no", "sku", "product_title", "sample_id")):
             findings.append("raw_identity_field_present")
+        turns = list((case.get("conversation") or {}).get("turns") or [])
+        turn_uids = [str(turn.get("turn_uid") or "") for turn in turns]
+        if any(not uid for uid in turn_uids) or len(turn_uids) != len(set(turn_uids)):
+            findings.append("conversation_turn_uid_missing_or_duplicate")
         for namespace, value in (case.get("sidecar_identity") or {}).items():
             if not re.fullmatch(rf"(?:product|sku|order)_[A-Z2-7]{{20}}", str(value or "")):
                 findings.append(f"identity_not_hmac_pseudonymized:{namespace}")
@@ -364,20 +371,62 @@ def apply_approved_claim_labels(dataset: dict[str, Any], labels: Iterable[dict[s
         if not label:
             continue
         claims = ((label.get("label") or {}).get("claims") or [])
-        if not claims:
+        target_turn_uids = list((label.get("label") or {}).get("target_turn_uids") or [])
+        turns_by_uid = {
+            str(turn.get("turn_uid") or ""): turn
+            for turn in (case.get("conversation") or {}).get("turns") or []
+        }
+        if (
+            not claims
+            or not target_turn_uids
+            or any(
+                uid not in turns_by_uid or turns_by_uid[uid].get("speaker_role") != "BUYER"
+                for uid in target_turn_uids
+            )
+        ):
             continue
         case["reference_label"]["expected_claims"] = claims
+        case["evaluation_target"] = {"target_turn_uids": target_turn_uids}
         case["classification"] = "claim_accuracy_scorable"
     _apply_dataset_label_status(result)
     result["manifest"] = {"content_sha256": _dataset_hash(result.get("cases") or []), "case_count": len(result.get("cases") or [])}
     return result
 
 
-def build_agent_payload(sample: dict[str, Any]) -> dict[str, Any]:
+def _targeted_conversation(case: dict[str, Any]) -> tuple[str, str]:
+    turns = list((case.get("conversation") or {}).get("turns") or [])
+    target_uids = list((case.get("evaluation_target") or {}).get("target_turn_uids") or [])
+    if not target_uids:
+        raise ValueError("evaluation_target_missing")
+    by_uid = {str(turn.get("turn_uid") or ""): turn for turn in turns}
+    selected = [by_uid.get(uid) for uid in target_uids]
+    if any(not turn or turn.get("speaker_role") != "BUYER" for turn in selected):
+        raise ValueError("evaluation_target_invalid")
+    ordered = sorted((turn for turn in selected if turn), key=lambda turn: int(turn.get("turn_index") or 0))
+    last_target_index = max(int(turn.get("turn_index") or 0) for turn in ordered)
+    message = "\n".join(str(turn.get("text") or "") for turn in ordered).strip()
+    history_turns = [
+        turn for turn in turns
+        if int(turn.get("turn_index") or 0) <= last_target_index
+    ][-40:]
+    role_names = {"BUYER": "买家", "AGENT": "客服", "SYSTEM": "系统"}
+    history = "\n".join(
+        f"{role_names.get(str(turn.get('speaker_role') or ''), '未知')}: {turn.get('text') or ''}"
+        for turn in history_turns
+    )
+    return canonical_text(message, limit=1800), canonical_text(history, limit=3000)
+
+
+def build_agent_payload(sample: dict[str, Any], *, case: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build a runtime input from source data without any evaluation label."""
+    if case and case.get("classification") == "claim_accuracy_scorable":
+        message, conversation_history = _targeted_conversation(case)
+    else:
+        message = canonical_text(sample.get("customer_quote"), limit=1800)
+        conversation_history = canonical_text(sample.get("full_context"), limit=3000)
     return {
-        "message": canonical_text(sample.get("customer_quote"), limit=1800),
-        "conversation_history": canonical_text(sample.get("full_context"), limit=3000),
+        "message": message,
+        "conversation_history": conversation_history,
         "order_id": str(sample.get("order_no") or "").strip(),
         "sku_code": str(sample.get("sku") or "").strip(),
         "product_name": str(sample.get("product_title") or "").strip(),

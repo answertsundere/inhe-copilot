@@ -67,10 +67,17 @@ def test_baseline_reports_each_label_status_and_uses_only_approved_records(monke
     dataset, _ = build_gold_dataset("test-gold-key", samples)
     gold = tmp_path / "gold.json"; gold.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
     case_uids = [item["case_uid"] for item in dataset["cases"]]
+    target_turn_uids = [
+        next(turn["turn_uid"] for turn in item["conversation"]["turns"] if turn["speaker_role"] == "BUYER")
+        for item in dataset["cases"]
+    ]
     labels = [
         {"case_uid": case_uids[0], "review_status": "draft", "label": {"claims": []}},
         {"case_uid": case_uids[1], "review_status": "reviewed", "label": {"claims": []}},
-        {"case_uid": case_uids[2], "review_status": "approved", "label": {"claims": [{"claim_uid": "c", "required_terms": ["答复"]}]}},
+        {"case_uid": case_uids[2], "review_status": "approved", "label": {
+            "claims": [{"claim_uid": "c", "required_terms": ["答复"]}],
+            "target_turn_uids": [target_turn_uids[2]],
+        }},
         {"case_uid": case_uids[3], "review_status": "rejected", "label": {"claims": []}},
     ]
 
@@ -95,3 +102,5 @@ def test_baseline_reports_each_label_status_and_uses_only_approved_records(monke
     assert summary["approved_label_record_count"] == 1
     assert summary["rejected_label_record_count"] == 1
     assert summary["claim_accuracy_denominator"] == 1
+    assert summary["target_turn_bound_count"] == 1
+    assert summary["exploratory_source_quote_count"] == 3

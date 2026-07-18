@@ -19,6 +19,11 @@ export type AccuracyClaim = {
   review_status: string
 }
 
+export type AccuracyLabel = {
+  claims: AccuracyClaim[]
+  target_turn_uids: string[]
+}
+
 export function getRealAccuracyCases() {
   return apiClient.get('/real-accuracy/cases')
 }

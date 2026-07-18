@@ -74,6 +74,12 @@ def test_manifest_is_stable_and_tampering_fails_validation():
     assert "manifest_hash_mismatch" in validate_gold_dataset(dataset)
 
 
+def test_gold_validation_requires_unique_stable_turn_uids():
+    dataset, _ = build_gold_dataset(SECRET, [_sample()])
+    dataset["cases"][0]["conversation"]["turns"][0].pop("turn_uid")
+    assert "conversation_turn_uid_missing_or_duplicate" in validate_gold_dataset(dataset)
+
+
 def test_validation_cli_exits_two_for_invalid_gold_set(tmp_path: Path):
     dataset, _ = build_gold_dataset(SECRET, [_sample()])
     dataset["privacy"]["privacy_scan_status"] = "passed"
@@ -89,6 +95,28 @@ def test_agent_payload_excludes_all_evaluation_labels():
     payload["copilot_context"]["reference_label"] = {"expected_claims": []}
     with pytest.raises(ValueError, match="evaluation_label_leaked"):
         assert_label_not_in_agent_input(payload)
+
+
+def test_approved_target_turn_drives_message_and_excludes_future_turns():
+    sample = _sample(full_context=(
+        '<div class="imui-msg imui-msg-l"><div class="msg-body-text">前置问题</div></div>'
+        '<div class="imui-msg imui-msg-r"><div class="msg-body-text">前置答复</div></div>'
+        '<div class="imui-msg imui-msg-l"><div class="msg-body-text">真正评分问题</div></div>'
+        '<div class="imui-msg imui-msg-r"><div class="msg-body-text">未来客服答复</div></div>'
+        '<div class="imui-msg imui-msg-l"><div class="msg-body-text">未来买家问题</div></div>'
+    ))
+    dataset, _ = build_gold_dataset(SECRET, [sample])
+    case = dataset["cases"][0]
+    target = case["conversation"]["turns"][2]["turn_uid"]
+    case["classification"] = "claim_accuracy_scorable"
+    case["evaluation_target"] = {"target_turn_uids": [target]}
+    payload = build_agent_payload(sample, case=case)
+    assert payload["message"] == "真正评分问题"
+    assert "前置问题" in payload["conversation_history"]
+    assert "真正评分问题" in payload["conversation_history"]
+    assert "未来客服答复" not in payload["conversation_history"]
+    assert "未来买家问题" not in payload["conversation_history"]
+    assert_label_not_in_agent_input(payload)
 
 
 def test_score_requires_explicit_claim_contract_and_never_uses_reference_text():
@@ -108,12 +136,20 @@ def test_score_requires_explicit_claim_contract_and_never_uses_reference_text():
 def test_only_approved_human_claim_labels_create_accuracy_denominator():
     dataset, _ = build_gold_dataset(SECRET, [_sample()])
     case = dataset["cases"][0]
+    target_turn_uid = next(
+        turn["turn_uid"] for turn in case["conversation"]["turns"]
+        if turn["speaker_role"] == "BUYER"
+    )
     assert case["classification"] == "claim_label_pending"
     enriched = apply_approved_claim_labels(dataset, [{
         "case_uid": case["case_uid"], "review_status": "approved",
-        "label": {"claims": [{"claim_uid": "claim-1", "required_terms": ["核对订单"]}]},
+        "label": {
+            "claims": [{"claim_uid": "claim-1", "required_terms": ["核对订单"]}],
+            "target_turn_uids": [target_turn_uid],
+        },
     }])
     assert enriched["cases"][0]["classification"] == "claim_accuracy_scorable"
+    assert enriched["cases"][0]["evaluation_target"]["target_turn_uids"] == [target_turn_uid]
     assert dataset["cases"][0]["reference_label"]["expected_claims"] == []
 
 
