@@ -130,6 +130,7 @@ def build_product_spec_evidence_candidates(
         "value": value_text,
         "customer_text": customer_text,
         "verification_status": "verified",
+        "material_provenance": structured_field_source_kind(profile, "material") if requested == "material" else "",
         "source_confidence": 0.85,
         "can_direct_answer": True,
         "needs_human_review": False,
@@ -161,14 +162,50 @@ def material_direct_answer_block_reason(
 ) -> str:
     """Block composition evidence when field provenance or claim scope is unsafe."""
     picked = values if values is not None else _pick_values(profile, "material")
-    value_text = _format_values(picked)
-    if not value_text:
-        return "material_value_missing"
-    source_kind = structured_field_source_kind(profile, "material").lower()
-    if source_kind in UNTRUSTED_STRUCTURED_FIELD_SOURCES:
+    return material_evidence_admission_reason({
+        "fact_type": "material",
+        "value": _format_values(picked),
+        "material_provenance": structured_field_source_kind(profile, "material"),
+    })
+
+
+def material_evidence_admission_reason(candidate: dict[str, Any]) -> str:
+    """Return the reusable direct-answer rejection reason for material evidence.
+
+    This deliberately validates the field itself.  A published product record
+    is not field provenance and cannot turn an imported placeholder into a
+    direct composition fact.
+    """
+    fact_type = str(candidate.get("requested_fact_type") or candidate.get("evidence_fact_type") or candidate.get("fact_type") or "").strip()
+    if fact_type not in {"material", "material_composition"}:
+        return ""
+    metadata = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
+    value = " ".join(str(candidate.get(key) or "") for key in ("value", "fact_value", "content", "chunk_text", "customer_text", "fact"))
+    value = value.strip()
+    if not value:
+        return "material_placeholder"
+    # Import lazily to keep the shared product-field helper independent from
+    # the larger admission service at module import time.
+    from app.services.admitted_answer_context_service import is_placeholder_evidence_text
+
+    if is_placeholder_evidence_text(value):
+        return "material_placeholder"
+    provenance = str(
+        candidate.get("material_provenance")
+        or candidate.get("field_provenance")
+        or candidate.get("provenance_kind")
+        or candidate.get("source_kind")
+        or metadata.get("material_provenance")
+        or metadata.get("field_provenance")
+        or metadata.get("provenance_kind")
+        or ""
+    ).strip().lower()
+    if not provenance:
+        return "material_provenance_missing"
+    if provenance in UNTRUSTED_STRUCTURED_FIELD_SOURCES or any(token in provenance for token in UNTRUSTED_STRUCTURED_FIELD_SOURCES):
         return "material_source_untrusted"
-    if any(term in value_text for term in STRONG_MATERIAL_CLAIM_TERMS):
-        return "material_strong_claim_requires_review"
+    if any(term in value for term in STRONG_MATERIAL_CLAIM_TERMS):
+        return "material_strong_claim_mixed"
     return ""
 
 

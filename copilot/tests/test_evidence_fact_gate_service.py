@@ -59,7 +59,7 @@ def test_gate_requires_review_for_unverified_high_risk_fact():
     assert "unverified_high_risk_fact" in result["gate_reasons"]
 
 
-def test_gate_allows_published_product_fact():
+def test_gate_requires_explicit_material_field_provenance():
     item = {
         "source_type": "product_facts",
         "score": 0.82,
@@ -68,14 +68,34 @@ def test_gate_allows_published_product_fact():
         "evidence_fact_type": "material",
         "entry_status": "published",
         "evidence_allowed_for_exact_answer": True,
+        "chunk_text": "Material: PP.",
+    }
+
+    result = evaluate_evidence_item(item, {})
+
+    assert result["direct_answer_allowed"] is False
+    assert result["evidence_allowed_for_direct_answer"] is False
+    assert result["gate_status"] == "blocked"
+    assert "material_provenance_missing" in result["gate_reasons"]
+
+
+def test_gate_allows_reviewed_material_with_explicit_field_provenance():
+    item = {
+        "source_type": "product_facts",
+        "score": 0.82,
+        "rerank_score": 0.82,
+        "query_fact_type": "material",
+        "evidence_fact_type": "material",
+        "entry_status": "published",
+        "evidence_allowed_for_exact_answer": True,
+        "chunk_text": "Material: PP.",
+        "material_provenance": "structured_product_record",
     }
 
     result = evaluate_evidence_item(item, {})
 
     assert result["direct_answer_allowed"] is True
-    assert result["evidence_allowed_for_direct_answer"] is True
     assert result["gate_status"] == "allowed"
-    assert result["gate_reasons"] == []
 
 
 def test_gate_allows_installation_evidence_with_convenience_warning():

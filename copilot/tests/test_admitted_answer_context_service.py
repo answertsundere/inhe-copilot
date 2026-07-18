@@ -16,6 +16,7 @@ def _fact(**overrides):
         "fact_type": "material",
         "attribute_key": "material",
         "content": "主体材质为PP。",
+        "material_provenance": "structured_product_record",
         "sku_code": "SKU-A",
         "fact_review_status": "verified",
         "gate_status": "allowed",
@@ -150,6 +151,7 @@ def test_conflicting_structured_material_values_are_both_blocked():
     assert {item["evidence_uid"] for item in context["conflicts"]} == {
         "product-material", "faq-material",
     }
+    assert {item["reason"] for item in context["rejected_evidence"]} == {"material_conflicting_evidence"}
 
 
 def test_compound_claims_do_not_promote_material_into_safety_or_moisture():
@@ -297,9 +299,10 @@ def test_reviewed_structured_pack_fact_enters_shadow_context_with_explicit_scope
         "sku_scope": ["SKU-A"],
         "product_scope": ["IID-A"],
         "metadata": {
-            "product_evidence_protocol": True,
-            "verification_status": "verified",
-            "can_direct_answer": True,
+                "product_evidence_protocol": True,
+                "verification_status": "verified",
+                "can_direct_answer": True,
+                "material_provenance": "structured_product_record",
         },
     }
     context = AdmittedAnswerContextService().build_for_response(
@@ -330,9 +333,10 @@ def test_structured_pack_fact_with_nonmatching_explicit_scope_stays_rejected():
         "sku_scope": ["SKU-B"],
         "product_scope": ["IID-B"],
         "metadata": {
-            "product_evidence_protocol": True,
-            "verification_status": "verified",
-            "can_direct_answer": True,
+                "product_evidence_protocol": True,
+                "verification_status": "verified",
+                "can_direct_answer": True,
+                "material_provenance": "structured_product_record",
         },
     }
     context = AdmittedAnswerContextService().build_for_response(

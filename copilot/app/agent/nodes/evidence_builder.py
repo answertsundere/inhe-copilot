@@ -24,6 +24,7 @@ from app.services.evidence_quality_gate import (
     WEAK_SOURCE_TYPES as GATE_WEAK_SOURCES,
 )
 from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
+from app.services.product_structured_evidence_service import material_direct_answer_block_reason, structured_field_source_kind
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
@@ -314,7 +315,8 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
     if kb_product:
         fact_text, missing = _profile_fact_text(kb_product, query_fact_type, msg)
         found_sources.append("kb_product")
-        if fact_text:
+        material_reason = material_direct_answer_block_reason(kb_product) if query_fact_type == "material" else ""
+        if fact_text and not material_reason:
             fact = {
                 "fact": fact_text,
                 "source": kb_product.get("i_id", "") or values["sku"] or values["product_name"],
@@ -325,11 +327,23 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
                 "fact_review_status": "published" if kb_product.get("status") == "published" else "draft_unverified",
                 "evidence_fact_type": query_fact_type,
                 "product_profile_source": "kb_product",
+                "material_provenance": structured_field_source_kind(kb_product, "material") if query_fact_type == "material" else "",
                 "evidence_allowed_for_direct_answer": kb_product.get("status") == "published",
             }
             product_facts.append(fact)
             verified_facts.append(fact)
             sources.append("product_facts")
+        elif material_reason:
+            unknowns.append({
+                "fact": "material field requires verified provenance before direct use",
+                "source": kb_product.get("i_id", "") or values["sku"] or values["product_name"],
+                "source_type": "product_profile_lookup",
+                "confidence": "high",
+                "scope": "product",
+                "product_profile_source": "kb_product",
+                "material_admission_reason": material_reason,
+                "reference_only": True,
+            })
         elif missing:
             unknowns.append({
                 "fact": f"已按当前商品查询商品资料库，但缺少字段: {'、'.join(missing)}",
@@ -344,7 +358,8 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
     if card:
         found_sources.append("product_cards")
         fact_text, missing = _profile_fact_text(card, query_fact_type, msg, source="product_cards")
-        if fact_text and not any(f.get("product_profile_source") == "kb_product" for f in product_facts):
+        material_reason = material_direct_answer_block_reason(card) if query_fact_type == "material" else ""
+        if fact_text and not material_reason and not any(f.get("product_profile_source") == "kb_product" for f in product_facts):
             fact = {
                 "fact": fact_text,
                 "source": card.get("i_id", "") or values["sku"] or values["product_name"],
@@ -355,11 +370,23 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
                 "fact_review_status": "published",
                 "evidence_fact_type": query_fact_type,
                 "product_profile_source": "product_cards",
+                "material_provenance": structured_field_source_kind(card, "material") if query_fact_type == "material" else "",
                 "evidence_allowed_for_direct_answer": True,
             }
             product_facts.append(fact)
             verified_facts.append(fact)
             sources.append("product_facts")
+        elif material_reason and not kb_product:
+            unknowns.append({
+                "fact": "material field requires verified provenance before direct use",
+                "source": card.get("i_id", "") or values["sku"] or values["product_name"],
+                "source_type": "product_profile_lookup",
+                "confidence": "medium",
+                "scope": "product",
+                "product_profile_source": "product_cards",
+                "material_admission_reason": material_reason,
+                "reference_only": True,
+            })
         elif missing and not kb_product:
             unknowns.append({
                 "fact": f"已按当前商品查询商品卡片，但缺少字段: {'、'.join(missing)}",

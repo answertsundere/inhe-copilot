@@ -22,6 +22,7 @@ def _candidate(**overrides):
         "fact_review_status": "verified",
         "gate_status": "allowed",
         "direct_answer_allowed": True,
+        "material_provenance": "structured_product_record",
     }
     item.update(overrides)
     return item
@@ -62,6 +63,7 @@ def test_reviewed_product_context_pack_fact_enters_formal_selection():
                 "product_evidence_protocol": True,
                 "verification_status": "verified",
                 "can_direct_answer": True,
+                "material_provenance": "structured_product_record",
             },
         }]}},
         product_identity={"sku_code": "SKU-A"},
@@ -92,6 +94,7 @@ def test_protocolised_pack_fact_wins_over_same_uid_raw_pack_duplicate():
                     "product_evidence_protocol": True,
                     "verification_status": "verified",
                     "can_direct_answer": True,
+                    "material_provenance": "structured_product_record",
                 },
             }]},
         },

@@ -65,7 +65,8 @@ def test_final_semantic_fit_uses_llm_judge_to_block_wrong_answer(monkeypatch):
                         {
                             "fact_type": "space_fit",
                             "preview": "尺寸图可参考预留宽度、进深和高度。",
-                            "direct_answer_allowed": True,
+                "direct_answer_allowed": True,
+                "material_provenance": "structured_product_record",
                         }
                     ],
                 }
@@ -472,9 +473,10 @@ def test_semantic_payload_contains_only_admitted_direct_facts():
             "content": "主体材质为PP。",
             "sku_code": "SKU-A",
             "fact_review_status": "verified",
-            "gate_status": "allowed",
-            "direct_answer_allowed": True,
-        }],
+                "gate_status": "allowed",
+                "direct_answer_allowed": True,
+                "material_provenance": "structured_product_record",
+            }],
         "context_used": {
             "product_context_pack": {
                 "matched_facts": [{

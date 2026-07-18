@@ -172,9 +172,11 @@ def _entry_scope_present(row: sqlite3.Row) -> bool:
 def _material_entry_summary(
     connection: sqlite3.Connection,
     product_classifications: dict[str, str],
+    *,
+    pseudonymization_key: str,
 ) -> dict[str, Any]:
     rows = connection.execute(
-        "SELECT source_type, status, fact_review_status, auto_reply_allowed, "
+        "SELECT rowid AS entry_rowid, source_type, status, fact_review_status, auto_reply_allowed, "
         "human_review_required, product_id, sku_id, product_scope_json, "
         "sku_scope_json, content FROM knowledge_entries "
         "WHERE lower(coalesce(fact_type,'')) IN ('material','material_composition')"
@@ -185,6 +187,7 @@ def _material_entry_summary(
     direct_count = 0
     direct_revalidation_count = 0
     direct_identity_outside_reviewed_products_count = 0
+    direct_entry_review_candidates: list[dict[str, Any]] = []
     for row in rows:
         key = ":".join((
             str(row["source_type"] or "").strip() or "unknown",
@@ -210,6 +213,17 @@ def _material_entry_summary(
             classification = product_classifications.get(product_id)
             if classification and classification != "composition_ready":
                 direct_revalidation_count += 1
+                direct_entry_review_candidates.append({
+                    "entry_uid": _pseudonym(pseudonymization_key, "material-entry", row["entry_rowid"]),
+                    "classification": classification,
+                    "source_type": sanitize_text(row["source_type"]) or "unknown",
+                    "provenance_kind": "knowledge_entry",
+                    "fact_type": "material_composition",
+                    "review_status": sanitize_text(row["fact_review_status"]) or sanitize_text(row["status"]),
+                    "direct_answer_state": "direct_allowed",
+                    "strong_claim_mixed": classification == "composition_with_strong_claim",
+                    "identity_scope_quality": "scoped",
+                })
             elif not classification:
                 direct_identity_outside_reviewed_products_count += 1
     return {
@@ -220,6 +234,7 @@ def _material_entry_summary(
         "direct_entry_revalidation_count": direct_revalidation_count,
         "direct_entry_identity_outside_reviewed_products_count": direct_identity_outside_reviewed_products_count,
         "status_distribution": dict(sorted(statuses.items())),
+        "direct_entry_review_candidates": direct_entry_review_candidates,
     }
 
 
@@ -308,7 +323,11 @@ def build_material_governance_report(
             })
 
         after = [_table_state(connection, table) for table in tables]
-        entry_summary = _material_entry_summary(connection, product_classifications)
+        entry_summary = _material_entry_summary(
+            connection,
+            product_classifications,
+            pseudonymization_key=pseudonymization_key,
+        )
         with path.open("rb") as handle:
             database_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
         report = {

@@ -8,6 +8,11 @@ from app.services.material_knowledge_governance_service import (
     build_material_governance_report,
     classify_material_value,
 )
+from app.services.material_review_batch_service import (
+    MaterialReviewBatchError,
+    MaterialReviewStagingStore,
+    build_material_review_batches,
+)
 
 
 def _database(path):
@@ -97,3 +102,32 @@ def test_missing_pseudonymization_key_fails_closed(tmp_path):
     _database(database)
     with pytest.raises(MaterialKnowledgeAuditError, match="pseudonymization_key_required"):
         build_material_governance_report(database, pseudonymization_key="")
+
+
+def test_review_batches_are_grouped_and_staging_never_writes_formal_knowledge(tmp_path):
+    database = tmp_path / "knowledge.db"
+    _database(database)
+    report = build_material_governance_report(database, pseudonymization_key="review-secret")
+    batches = build_material_review_batches(report)
+
+    assert batches
+    assert sum(item["impacted_count"] for item in batches) == report["summary"]["direct_entry_revalidation_count"]
+    assert all(item["dry_run"]["formal_kb_writes"] == 0 for item in batches)
+    assert all("ITEM-" not in json.dumps(item) for item in batches)
+
+    store = MaterialReviewStagingStore(tmp_path / "staging.db")
+    store.seed(batches)
+    decided = store.decide(
+        batch_uid=batches[0]["batch_uid"],
+        action="downgrade_to_human_review",
+        reviewer_uid="reviewer-hmac",
+        expected_version=1,
+    )
+    assert decided["formal_kb_writes"] == 0
+    with pytest.raises(MaterialReviewBatchError, match="optimistic_lock_conflict"):
+        store.decide(
+            batch_uid=batches[0]["batch_uid"],
+            action="downgrade_to_human_review",
+            reviewer_uid="reviewer-hmac",
+            expected_version=1,
+        )

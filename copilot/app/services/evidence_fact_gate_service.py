@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from app.services.fact_type_service import fact_type_matches, is_strict_fact_type
+from app.services.product_structured_evidence_service import material_evidence_admission_reason
 
 
 DIRECT_SOURCE_TYPES = {
@@ -142,6 +143,17 @@ def evaluate_evidence_item(item: dict[str, Any], state: dict[str, Any] | None = 
         reasons.append("preblocked_direct_answer")
         exact_allowed = False
 
+    material_reason = material_evidence_admission_reason({
+        **item,
+        "requested_fact_type": query_fact_type or evidence_fact_type,
+        "evidence_fact_type": evidence_fact_type,
+    })
+    if material_reason:
+        reasons.append(material_reason)
+        reference_only = True
+        requires_human_review = True
+        exact_allowed = False
+
     risky_convenience = _contains_risky_convenience_claim(item)
     if risky_convenience:
         # 便利性表述只作为 warning 记录；installation_guide 等结构化证据会被
@@ -173,6 +185,10 @@ def evaluate_evidence_item(item: dict[str, Any], state: dict[str, Any] | None = 
         "low_score",
         "unverified_high_risk_fact",
         "preblocked_direct_answer",
+        "material_source_untrusted",
+        "material_provenance_missing",
+        "material_placeholder",
+        "material_strong_claim_mixed",
     }
     has_blocking_reason = any(reason in blocking_reasons for reason in reasons)
     direct_answer_allowed = exact_allowed and not reference_only and not has_blocking_reason

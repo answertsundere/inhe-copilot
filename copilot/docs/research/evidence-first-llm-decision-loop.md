@@ -171,6 +171,21 @@ for any rejection. This makes a generic handoff diagnosable without treating a
 single product question as a new routing rule. The trace is shadow-only and
 cannot change the formal reply, delivery, review decision, or `can_send`.
 
+## Material provenance and review staging
+
+AWS Ground Truth review batches and Label Studio review workflows both keep a
+review decision separate from the original training or source record. This
+project reuses that narrower principle rather than introducing a second
+knowledge platform: material remediation is grouped in an independent staging
+store, records reviewer decisions with optimistic locking, and has no apply
+operation to formal knowledge in this phase. A `published` product status is
+not field provenance. Direct material composition additionally requires an
+explicit non-placeholder source, matching identity, a reviewed/direct evidence
+contract, and a value that does not mix safety or compliance claims. The
+real-derived Shadow QA keeps scoring expectations outside admission payloads
+and evaluates only pseudonymous composition evidence plus unresolved claim
+preservation.
+
 ## Promotion gates
 
 Promotion requires real traces with valid strict structured output, stable

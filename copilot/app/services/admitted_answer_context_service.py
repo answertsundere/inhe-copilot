@@ -14,6 +14,7 @@ from typing import Any
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.claim_resolution_service import build_claim_resolutions
 from app.services.fact_type_alias_service import normalize_high_risk_claim_type
+from app.services.product_structured_evidence_service import material_evidence_admission_reason
 
 
 DIRECT_PRODUCT_ROLES = {"product_fact_direct", "faq_direct"}
@@ -399,6 +400,9 @@ def _admission_reason(
         compatible = set().union(*(COMPATIBLE_FACT_TYPES.get(claim, {claim}) for claim in requested_claim_types))
         if supported.isdisjoint(compatible):
             return "fact_type_incompatible"
+    material_reason = material_evidence_admission_reason(item)
+    if material_reason:
+        return material_reason
     return ""
 
 
@@ -562,7 +566,11 @@ def collect_admitted_product_facts(
             rejected.extend({**item, "reason": "incomparable_unit_domain", "conflict_status": "blocked"} for item in comparable)
             continue
         if len({sanitize_text(item.get("normalized_value")) for item in comparable}) > 1:
-            rejected.extend({**item, "reason": "conflicting_evidence", "conflict_status": "blocked"} for item in comparable)
+            conflict_reason = "material_conflicting_evidence" if all(
+                sanitize_text(item.get("fact_type")) in {"material", "material_composition"}
+                for item in comparable
+            ) else "conflicting_evidence"
+            rejected.extend({**item, "reason": conflict_reason, "conflict_status": "blocked"} for item in comparable)
             continue
         admitted.append(comparable[0])
         rejected.extend({**item, "reason": "duplicate_evidence"} for item in comparable[1:])
@@ -745,7 +753,9 @@ class AdmittedAnswerContextService:
                     "attached_reply_block": False,
                 })
 
-        conflicts = [item for item in rejected if item.get("reason") in {"conflicting_evidence", "incomparable_unit_domain"}]
+        conflicts = [item for item in rejected if item.get("reason") in {
+            "conflicting_evidence", "material_conflicting_evidence", "incomparable_unit_domain",
+        }]
         claim_resolutions = build_claim_resolutions(
             requested_claims,
             direct_product_facts=direct_product,

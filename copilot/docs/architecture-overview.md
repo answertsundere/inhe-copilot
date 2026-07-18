@@ -342,6 +342,24 @@ formal vertical slice.
 - keep role, identity, review, conflict, and provenance checks fail closed;
 - verify the same result across API, replay, benchmark, trace, and snapshot.
 
+#### Material Field Governance
+
+Material composition has an additional field-level admission rule. A published
+product is not, by itself, evidence that its material field was verified.
+Direct composition evidence must retain explicit field provenance, direct
+permission, reviewed status, a matching product identity, and a composition-
+only value. Placeholder values, untrusted provenance, mixed safety or
+compliance wording, identity failures, and same-slot conflicts are rejected
+before canonical selection. Material names never imply toxicity, food-contact
+status, odour, cleaning, moisture resistance, certification, or child safety.
+
+Material remediation is supervisor staging, not a formal KB batch update. The
+staging plan groups pseudonymous entries by reusable source, review, scope, and
+claim characteristics; decisions are optimistic-lock audit records and cannot
+change formal facts or `can_send`. A real-derived, HMAC-only material Shadow QA
+may preview confirmed composition plus unresolved high-risk subclaims, but it
+does not modify the formal reply or delivery contract.
+
 ### Phase B: Context-First Supervised Partial Answer
 
 - build the minimal Decision Context;

@@ -34,5 +34,5 @@ def test_placeholder_provenance_blocks_even_when_value_looks_concrete():
 
 def test_strong_claim_mixed_into_material_requires_separate_review():
     profile = _profile("食品级HDPE塑料")
-    assert material_direct_answer_block_reason(profile) == "material_strong_claim_requires_review"
+    assert material_direct_answer_block_reason(profile) == "material_strong_claim_mixed"
     assert build_product_spec_evidence_candidates(profile, requested_fact_type="material") == []
