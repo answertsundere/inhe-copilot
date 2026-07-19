@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_analyze_accepts_top_level_conversation_history(monkeypatch):
     from app.api import analyze_routes
@@ -40,6 +42,34 @@ def test_analyze_accepts_top_level_conversation_history(monkeypatch):
     assert response.status_code == 200
     assert captured["copilot_context"]["conversation_history"][0]["role"] == "customer"
     assert captured["customer_message"] == "这个是哪个？还能补吗？"
+
+
+def test_analyze_rejects_malformed_strict_conversation_history_before_graph(monkeypatch):
+    from app.api import analyze_routes
+    from app.main import create_app
+    import app.services.analysis_execution_service as execution_service
+
+    monkeypatch.setattr(analyze_routes, "get_services", lambda: object())
+    monkeypatch.setattr(
+        execution_service,
+        "execute_analysis",
+        lambda **_kwargs: pytest.fail("strict conversation context must stop before graph execution"),
+    )
+
+    app = create_app()
+    app.config["TESTING"] = True
+    response = app.test_client().post(
+        "/api/analyze",
+        json={
+            "message": "帮我看一下",
+            "conversation_history": "buyer: legacy text",
+            "copilot_context": {"evaluation_context_contract": "strict"},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == "invalid_conversation_context"
+    assert response.get_json()["error_reason"] == "conversation_history_expected_list"
 
 
 def test_platform_order_id_fast_path_keeps_platform_type():

@@ -129,8 +129,8 @@ class TestCopilotContextAPI:
         assert resp.status_code == 200
         data = resp.get_json()
         history = data["context_echo"]["conversation_history"]
-        assert len(history) == 3
-        assert data["evidence_debug"]["copilot_context"]["conversation_history"][0]["text"] == "这个感应灯"
+        assert len(history) == 2
+        assert data["evidence_debug"]["copilot_context"]["conversation_history"][0]["content"] == "这个感应灯"
 
 
 class TestCopilotFeedbackAPI:

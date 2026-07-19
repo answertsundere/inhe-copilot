@@ -99,7 +99,8 @@ results can replace that gate.
   and bounded detector-feasibility criteria.
 - `docs/research/evidence-first-llm-decision-loop.md` - official-provider
   structured-output and tool-use principles, evidence role separation,
-  compound-claim handling, and Phase 0.5A promotion gates.
+  compound-claim handling, canonical decision context, and model-led
+  supervisor-candidate promotion gates.
 - `docs/research/strict-decision-provider-qualification.md` - strict provider
   capability classes, isolated configuration, and read-only qualification
   contract for the Evidence-First decision shadow.

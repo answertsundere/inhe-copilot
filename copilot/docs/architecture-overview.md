@@ -400,6 +400,24 @@ the Minimal Decision Context, preserves claim-level evidence references, and
 always remains review-only; it cannot update the formal reply, delivery blocks,
 or `can_send`.
 
+Phase 0.8A adds one canonical role-aware conversation-turn contract at the
+Pipeline boundary. API, copilot, replay, Gold baseline, benchmark, and Tier D
+normalize a bounded list of `{role, content, turn_uid, turn_index}` records
+before understanding. Evaluation callers fail closed on malformed history;
+ordinary legacy callers are explicitly marked `degraded_context` rather than
+silently treating a concatenated transcript as usable conversation state. The
+current customer message is separate from prior turns and is not duplicated in
+the model context. Pipeline revalidation preserves the earliest upstream
+`degraded` or `invalid` reason instead of replacing it with `valid` after an
+empty-list normalization.
+
+A review-only model-led candidate may compose an already resolved set of
+supported and pending clauses from this compact context. It receives neither a
+full trace nor a candidate store, and its text must preserve every precomputed
+clause and pass the existing isolated audit before it is shown to a supervisor.
+It cannot select facts, change delivery, or become a formal reply. Structured
+action selection remains blocked until the strict decision provider qualifies.
+
 Phase B evaluation runs Claim Resolution from raw requested claims and admitted
 facts rather than accepting precomputed resolutions. Attribute-qualified claims
 select only compatible evidence and conflicts. A preview fails closed when its
@@ -492,3 +510,79 @@ does not change the shadow decision layers.
 
 These references support the target direction; project business invariants and
 verified code behavior remain authoritative.
+
+## Phase 0.8A Context Integrity
+
+Canonical turns preserve formal local text for structured identity and
+read-only tools. A separate privacy projection removes inline phone, address,
+and order-reference text before an external-model call, trace, or evaluation
+artifact. Online callers retain input order and record narrow index repairs;
+strict evaluators reject missing, duplicate, or descending turn indexes before
+Graph execution. Sidecar history remains structured and is never concatenated
+into the current customer message.
+
+The external-model projection is field-aware. It handles plain text, embedded
+or fenced JSON, repeated JSON blocks, and labelled identifier lines without
+repairing malformed JSON. It preserves product titles, categories, admitted
+fact values, and ordinary room-use wording while replacing buyer identifiers,
+addresses, order/logistics references, credentials, and structured product
+identifiers with non-reversible references. It is a provider-boundary safeguard,
+not a replacement for structured privacy projection before JSON serialization.
+Runtime version metadata freezes the process boot commit, source-tree hash,
+worktree state, model, and flags, then separately reports current disk hash and
+source drift. Tier D rejects a drifted runtime and is invalid when its independent
+strict-schema grader is unqualified; simulator observations and internal action
+events remain diagnostics and cannot credit customer-visible action coverage.
+The grader distinguishes a `configured_candidate` from one qualified for live
+evaluation: a configured candidate may run the read-only positive/negative
+semantic matrix with explicit unqualified access, but the 9x2 runner requires
+an explicit human-approved qualification flag. A successful probe never writes
+that flag or changes runtime configuration.
+
+Tier D also has a pre-trial provider-independence gate. The formal Agent,
+customer simulator, and transcript grader each expose only a host fingerprint
+and model identity; missing identity or an exact pairwise match fails closed
+before any dataset or Agent call. The same model on different hosts remains a
+recorded independence risk rather than an identity collision. The fingerprint
+uses only a canonical origin (scheme, lower-case host, and effective port), so
+paths, queries, fragments, and userinfo cannot bypass an otherwise identical
+provider identity. Qualification records one safe result per strict call and
+counts timeout, truncation, schema, and free-text failures from those attempts;
+only successful calls contribute latency percentiles.
+
+### Phase 0.8A.6 Tier D evaluation integrity
+
+Tier D projects every formal response once into a minimal
+`tier-d-turn-observation/v1`. Deterministic scoring, transcript grading,
+checkpoint persistence, the final report, and offline recomputation consume
+that same projection. It contains the customer-visible reply, delivery state,
+actual media-block counts, pseudonymous selected-evidence summaries, final
+audits, and Pipeline version; it excludes raw trace, endpoints, credentials,
+orders, and source identities. A report is invalid when offline recomputation
+does not reproduce its stored blocking reasons.
+
+The evaluator has its own source identity, independent of the HTTP runtime
+identity. A dirty evaluator requires an exact expected source hash, records
+boot/end hashes and qualification/dataset hashes, and fails on drift. Known
+SHA-256 fields retain their complete typed value; arbitrary text does not gain
+a privacy exemption merely because it resembles a long identifier. Source
+linkage uses the HMAC case reference plus a complete canonical-conversation
+digest, so shared target-turn fingerprints do not silently select the first
+record. Checkpoints are replaced atomically.
+
+Both the transcript grader and buyer simulator must pass serial and concurrent
+long-context qualification before a trial. The formal Agent provider also
+receives a credential/quota/identity-bound readiness probe through the same
+formal transport adapter used by generation before the dataset is opened. A
+strict simulator response that passes Provider schema validation but violates
+the local state-machine contract may be requested once more; transport,
+timeout, truncation, and schema failures are never retried here.
+
+The isolated MiniMax M3 candidate completed the fixed 9x2 run with all nine
+sources resolved, 18/18 trials persisted, zero simulator errors, no source or
+evaluator drift, and a checkpoint identical to the report after failure
+classification. This is a valid exploratory baseline, not a production model
+cutover or real-customer accuracy result. It exposed zero selected-evidence
+turns, 75 percent mean action coverage, 44 percent consecutive-reply
+repetition, and 0/18 overall exploratory passes while all 68 formal turns
+remained non-sendable and required human review.

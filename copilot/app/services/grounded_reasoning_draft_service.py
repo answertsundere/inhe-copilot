@@ -194,6 +194,20 @@ def _plan_identity_compatible(fact: dict[str, Any], product_identity: dict[str, 
     return any(scopes.get(key) == value for key, value in expected.items())
 
 
+def _shadow_supporting_facts(used_facts: list[dict[str, Any]], fact_type: str) -> list[dict[str, Any]]:
+    """Select direct context facts without resolving a stronger high-risk claim."""
+    if fact_type in CHILD_FACT_TYPES:
+        allowed = {"structure", "structure_function", "material", "material_composition"}
+    elif fact_type in MATERIAL_FACT_TYPES:
+        allowed = {"material", "material_composition", "odor"}
+    else:
+        allowed = _COMPATIBLE_FACT_TYPES.get(fact_type, {fact_type})
+    return [
+        fact for fact in used_facts
+        if sanitize_text(fact.get("fact_type")) in allowed
+    ]
+
+
 def build_fact_coverage_plan(
     used_facts: list[dict[str, Any]],
     *,
@@ -494,9 +508,21 @@ def build_grounded_reasoning_draft(
     else:
         draft, inferred, missing = _build_general_draft(message, answer_memory_guidance, [])
 
+    supporting_candidates = used_facts
+    if fact_type in CHILD_FACT_TYPES or fact_type in MATERIAL_FACT_TYPES:
+        # A direct structure or composition fact can provide context for a
+        # high-risk question without resolving the stronger safety claim.
+        # Keep the formal admission result intact for diagnostics and only use
+        # this second, claim-agnostic pass to build shadow-only context.
+        supporting_candidates, _, _ = collect_admitted_product_facts(
+            admission_response,
+            product_identity=product_identity or {},
+            requested_claim_types=[],
+        )
+    supporting_facts = _shadow_supporting_facts(supporting_candidates, fact_type)
     fact_coverage_plan = build_fact_coverage_plan(
-        used_facts,
-        query_fact_type=fact_type,
+        supporting_facts,
+        query_fact_type="",
         product_identity=product_identity,
         requested_attribute_keys=requested_attribute_keys,
         requested_fact_types=requested_fact_types,
@@ -504,6 +530,7 @@ def build_grounded_reasoning_draft(
         requested_attribute_source=requested_attribute_source,
         request_contract_diagnostics=request_contract_diagnostics,
     )
+    fact_coverage_plan["requested_fact_type"] = fact_type
     draft_segments, fact_coverage_plan = _build_draft_segments(draft, fact_coverage_plan)
     draft = render_draft_segments(draft_segments)
 

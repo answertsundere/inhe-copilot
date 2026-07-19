@@ -7,6 +7,7 @@ from app.services.strict_decision_provider_service import (
     StrictDecisionProviderConfig,
     StrictDecisionProviderError,
     StrictDecisionProviderService,
+    safe_provider_identity,
 )
 
 
@@ -126,3 +127,77 @@ def test_safe_metadata_never_contains_api_base_or_key():
     assert "decision.example.invalid" not in text
     assert "secret-value" not in text
     assert provider.metadata()["host_fingerprint"]
+
+
+def test_safe_provider_identity_uses_host_fingerprint_and_model_without_endpoint_or_key():
+    identity = safe_provider_identity(
+        provider_name="candidate-grader",
+        api_base="https://private.example.invalid/v1",
+        model="strict-model",
+    )
+
+    assert identity["configured"] is True
+    assert identity["identity"] == f"{identity['host_fingerprint']}:strict-model"
+    assert "private.example.invalid" not in str(identity)
+    assert "https://" not in str(identity)
+
+
+def test_safe_provider_identity_canonicalizes_origin_without_exposing_url_parts():
+    baseline = safe_provider_identity(
+        provider_name="candidate-grader",
+        api_base="https://private.example.invalid/v1",
+        model="strict-model",
+    )
+    variants = [
+        "https://private.example.invalid/v1/",
+        "https://private.example.invalid/openai/v1?region=cn#ignored",
+        "https://user:password@private.example.invalid:443/another/path",
+    ]
+
+    assert all(
+        safe_provider_identity(
+            provider_name="candidate-grader", api_base=api_base, model="strict-model"
+        )["host_fingerprint"] == baseline["host_fingerprint"]
+        for api_base in variants
+    )
+    assert "user" not in str(baseline)
+    assert "password" not in str(baseline)
+
+
+@pytest.mark.parametrize(
+    "api_base",
+    ["", "/v1", "https:///v1", "https://private.example.invalid:bad/v1"],
+)
+def test_safe_provider_identity_rejects_invalid_or_relative_api_base(api_base):
+    identity = safe_provider_identity(
+        provider_name="candidate-grader", api_base=api_base, model="strict-model"
+    )
+
+    assert identity["configured"] is False
+    assert identity["identity"] == ""
+
+
+def test_safe_provider_identity_distinguishes_scheme_host_and_non_default_port():
+    baseline = safe_provider_identity(
+        provider_name="candidate-grader",
+        api_base="https://private.example.invalid/v1",
+        model="strict-model",
+    )
+    equivalent_default_port = safe_provider_identity(
+        provider_name="candidate-grader",
+        api_base="https://PRIVATE.EXAMPLE.INVALID:443/openai/v1",
+        model="strict-model",
+    )
+    variants = [
+        "http://private.example.invalid/v1",
+        "https://other.example.invalid/v1",
+        "https://private.example.invalid:8443/v1",
+    ]
+
+    assert equivalent_default_port["host_fingerprint"] == baseline["host_fingerprint"]
+    assert all(
+        safe_provider_identity(
+            provider_name="candidate-grader", api_base=api_base, model="strict-model"
+        )["host_fingerprint"] != baseline["host_fingerprint"]
+        for api_base in variants
+    )

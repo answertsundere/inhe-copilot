@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -87,12 +88,44 @@ def test_minimax_normalizes_only_complete_json_objects():
     assert result.choices[0].message.content == '{"intent": "general"}'
 
 
-def test_minimax_does_not_repair_incomplete_json():
+def test_minimax_retries_incomplete_json_once_without_repairing_it():
     content = '```json\n{"intent":"general"'
-    client, _ = _client(
+    client, completions = _client(
         "https://api.minimaxi.com/v1",
         _response(content=content),
     )
+
+    with pytest.raises(RuntimeError, match="minimax_invalid_json_object"):
+        client.create_chat_completion(
+            model="MiniMax-M3",
+            messages=[{"role": "user", "content": "hello"}],
+            response_format={"type": "json_object"},
+        )
+
+    assert len(completions.calls) == 2
+
+
+def test_minimax_json_retry_accepts_a_later_complete_object():
+    client = LLMClient(
+        api_key="test-key",
+        api_base="https://api.minimaxi.com/v1",
+        model="MiniMax-M3",
+    )
+    responses = iter([
+        _response(content='```json\n{"intent":"general"'),
+        _response(content='{"intent":"general"}'),
+    ])
+
+    class _RetryCompletions:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            return next(responses)
+
+    completions = _RetryCompletions()
+    client._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
 
     result = client.create_chat_completion(
         model="MiniMax-M3",
@@ -100,8 +133,24 @@ def test_minimax_does_not_repair_incomplete_json():
         response_format={"type": "json_object"},
     )
 
-    assert result.choices[0].message.content == content
+    assert result.choices[0].message.content == '{"intent": "general"}'
+    assert len(completions.calls) == 2
 
+
+def test_minimax_does_not_retry_truncated_json():
+    client, completions = _client(
+        "https://api.minimaxi.com/v1",
+        _response(content='{"intent":"general"}', finish_reason="length"),
+    )
+
+    with pytest.raises(RuntimeError, match="minimax_response_truncated"):
+        client.create_chat_completion(
+            model="MiniMax-M3",
+            messages=[{"role": "user", "content": "hello"}],
+            response_format={"type": "json_object"},
+        )
+
+    assert len(completions.calls) == 1
 
 def test_non_minimax_transport_is_not_rewritten():
     client, completions = _client(
@@ -121,6 +170,70 @@ def test_non_minimax_transport_is_not_rewritten():
     assert request["temperature"] == 0
     assert request["max_tokens"] == 300
     assert "extra_body" not in request
+
+
+def test_client_projects_private_customer_text_before_provider_call():
+    client, completions = _client(
+        "https://api.deepseek.com/v1",
+        _response(content='{"suggested_reply":"ok"}'),
+    )
+
+    client.create_chat_completion(
+        model="deepseek-chat",
+        messages=[{"role": "user", "content": "订单号 A-12345，手机号 13812345678，改寄上海市浦东新区测试路88号"}],
+    )
+
+    rendered = str(completions.calls[0]["messages"])
+    assert "A-12345" not in rendered
+    assert "13812345678" not in rendered
+
+
+def test_client_uses_field_aware_projection_for_json_system_and_multimodal_text_parts():
+    client, completions = _client(
+        "https://api.deepseek.com/v1",
+        _response(content='{"suggested_reply":"ok"}'),
+    )
+    evidence = {
+        "product_title": "英禾防夹收纳柜，客厅卧室可用",
+        "material": "PP 材质，适合客厅卧室收纳",
+        "order_id": "2026071900012345",
+    }
+
+    client.create_chat_completion(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "仅使用商品资料回答，不要泄露 api_key=secret-value。"},
+            {"role": "user", "content": json.dumps(evidence, ensure_ascii=False)},
+            {"role": "user", "content": [
+                {"type": "text", "text": json.dumps(evidence, ensure_ascii=False)},
+                {"type": "image_url", "image_url": {"url": "https://example.test/image.png"}},
+            ]},
+        ],
+    )
+
+    rendered = str(completions.calls[0]["messages"])
+    assert "英禾防夹收纳柜，客厅卧室可用" in rendered
+    assert "PP 材质，适合客厅卧室收纳" in rendered
+    assert "secret-value" not in rendered
+    assert "2026071900012345" not in rendered
+
+
+def test_client_projects_fenced_json_and_label_lines_in_text_parts_without_mutating_product_facts():
+    client, completions = _client(
+        "https://api.deepseek.com/v1",
+        _response(content='{"suggested_reply":"ok"}'),
+    )
+    text = '说明 ```json {"order_id":"O-1234","sku_code":"SKU-ABC","product_title":"客厅收纳柜"} ``` 订单号: O-1234'
+
+    client.create_chat_completion(
+        model="deepseek-chat",
+        messages=[{"role": "user", "content": [{"type": "text", "text": text}]}],
+    )
+
+    rendered = str(completions.calls[0]["messages"])
+    assert "O-1234" not in rendered
+    assert "SKU-ABC" not in rendered
+    assert "客厅收纳柜" in rendered
 
 
 @pytest.mark.parametrize(

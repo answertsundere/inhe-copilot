@@ -173,3 +173,37 @@ Supervisor Preview is a review-only projection. It must retain
 `can_send=false`, `requires_human_review=true`, and
 `used_for_final_reply=false`; it cannot replace the formal suggestion or add a
 delivery block.
+
+## Tier D Evaluation Runtime
+
+Tier D uses an isolated 5012 candidate and never changes the long-running 5011
+process. Its runner pins the 5012 boot source hash, its own evaluator source
+hash, exact feature flags, formal model, dataset manifest, and both evaluator
+qualification reports. Formal evidence convergence remains disabled.
+
+Before reading the dataset, the runner verifies pairwise-independent formal,
+buyer-simulator, and transcript-grader identities, then performs a minimal
+non-customer completion against the exact formal provider. Authentication,
+quota, rate-limit, timeout, truncation, or identity failure is an infrastructure
+blocker. Do not accept deterministic Pipeline fallback as proof that the
+configured formal model ran. Grader and simulator must also pass serial and
+two-worker long-context qualification before 9x2 begins.
+
+The fixed run is valid only with nine uniquely resolved sources and eighteen
+completed trials. Checkpoints are atomic but remain evaluation output and are
+not committed. Stop 5012 and any temporary evaluator-only provider process
+after a blocked or completed run; keep 5011 untouched.
+
+For the Phase 0.8A candidate, MiniMax M3 is qualified only for the isolated
+5012 evaluation runtime. Its OpenAI-compatible `json_object` transport permits
+one repeat request only when a complete response cannot be parsed as a JSON
+object; empty, truncated, authentication, quota, timeout, and rate-limit
+failures remain fail-closed. The formal-provider readiness probe must use this
+same transport adapter rather than a raw SDK request with a different token or
+thinking configuration.
+
+The first infrastructure-valid 9x2 baseline completed 18/18 trials with zero
+simulator errors and matching report/checkpoint hashes. Its 0/18 exploratory
+pass result is retained as a diagnostic: it does not authorize changing 5011,
+enabling formal evidence convergence, or loosening Safety/Delivery contracts.
+The candidate process must be stopped after evaluation.

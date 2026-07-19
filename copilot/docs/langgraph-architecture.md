@@ -98,6 +98,13 @@ post-graph Pipeline boundary.
 - Do not feed model-private chain-of-thought back into state. Store structured
   claim decisions, evidence references, tool calls, and concise reason codes.
 - Measure context token/count budgets and prune before adding model calls.
+- Normalize every incoming conversation into role-aware canonical turns before
+  graph understanding. A current buyer message is a separate input, not a
+  duplicate history turn.
+- Evaluation callers reject malformed turn structures before graph execution;
+  ordinary legacy callers retain an explicit degraded-context diagnostic.
+- Model-led supervisor candidates may consume compact admitted context only;
+  they cannot add facts, alter formal delivery, or persist private reasoning.
 
 ## Model And Tool Loop
 
@@ -141,3 +148,32 @@ For node-level discovery, use the current code in `app/agent/graph.py`,
 `app/agent/state.py`, and `app/agent/nodes/`, plus the generated references under
 `docs/agent/`. Those references describe implementation; this document defines
 the durable runtime boundary.
+
+## Canonical Context Integrity
+
+The graph receives current customer text once plus structured prior turns. It
+does not accept a flattened transcript as the current question. Formal turns
+retain local operational text; external-model calls use a separate privacy
+projection. Strict evaluation rejects missing, duplicate, and descending turn
+indexes before Graph execution. Online adapters may repair an index only while
+ recording the original value and reason in the canonical-context diagnostic.
+
+Evaluation-source detection is shared by the Sidecar route and Pipeline. Known
+benchmark, replay, real-accuracy, and Tier D sources are strict even when a
+caller omits a flag; malformed history cannot become a valid empty context.
+For online callers, Pipeline revalidation records its own result but preserves
+the earliest upstream degraded or invalid reason.
+LangGraph receives only the canonical result. It does not own redaction policy,
+runtime build identity, or Tier D scoring.
+The Tier D grader has two separate states. A configured independent candidate
+can be probed through its strict schema with positive and denial/deflection
+examples, while only an explicitly approved grader can score a live Tier D
+run. The qualification harness records provider behavior separately from local
+schema rejection checks; it never promotes a candidate by editing configuration.
+Before a Tier D trial, the runner compares three safe Provider Identities
+(`host_fingerprint + model`): formal Agent, buyer simulator, and transcript
+grader. Any missing identity or pairwise collision stops the run before the
+formal Pipeline is called. The host fingerprint is derived from canonical
+origin only: scheme, lower-case hostname, and effective port. Endpoint paths,
+queries, fragments, and userinfo neither appear in reports nor create a new
+identity. This is evaluation orchestration, not a LangGraph responsibility.

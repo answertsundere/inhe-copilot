@@ -873,10 +873,16 @@ def build_minimal_decision_context(
     *,
     customer_message: str,
     conversation_summary: dict[str, Any] | None = None,
+    conversation_turns: list[dict[str, Any]] | None = None,
     channel_capabilities: dict[str, Any] | None = None,
     allowed_read_only_tools: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build bounded, non-reasoning context for a strict decision provider."""
+    from app.services.canonical_conversation_turn_service import (
+        project_conversation_turns_for_external_model,
+        project_text_for_external_model,
+    )
+
     selected = canonical_selected_evidence(admitted_context)
     trim_reasons: list[str] = []
     if len(selected) > 6:
@@ -903,16 +909,26 @@ def build_minimal_decision_context(
         sources[source] = sources.get(source, 0) + 1
     summary = _as_dict(conversation_summary)
     compact_summary = {
-        key: _clip(value, 180)
+        key: _clip(project_text_for_external_model(value), 180)
         for key, value in summary.items()
         if key in {"summary", "current_turn", "customer_concern", "unresolved_slots"}
         and sanitize_text(value)
     }
+    recent_turns = [
+        {
+            "role": turn.get("role"),
+            "content": _clip(turn.get("content"), 280),
+            "turn_index": turn.get("turn_index"),
+        }
+        for turn in project_conversation_turns_for_external_model(_as_list(conversation_turns), max_turns=8)
+        if turn.get("content")
+    ]
     context = {
         "schema_version": "minimal-decision-context-v1",
-        "customer_goal": _clip(customer_message, 300),
+        "customer_goal": _clip(project_text_for_external_model(customer_message), 300),
         "requested_claims": _as_list(admitted_context.get("requested_claims")),
         "conversation_summary": compact_summary,
+        "recent_conversation_turns": recent_turns,
         "product_identity": _as_dict(admitted_context.get("product_identity")),
         "admitted_evidence": selected,
         "claim_resolutions": _as_list(admitted_context.get("claim_resolutions")),
@@ -931,6 +947,7 @@ def build_minimal_decision_context(
             "admitted_evidence_count": len(selected),
             "admitted_evidence_source_distribution": sources,
             "estimated_token_count": max(1, len(str(selected) + str(actions) + str(media)) // 4),
+            "recent_turn_count": len(recent_turns),
             "trim_reasons": trim_reasons,
             "excluded_context_categories": [
                 "raw_candidate_store",

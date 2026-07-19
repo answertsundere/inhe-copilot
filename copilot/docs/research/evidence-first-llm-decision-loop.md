@@ -252,3 +252,130 @@ database and the real Product Context Pack -> convergence -> admitted context
 after this chain; they are never input to a builder. This validates factual
 provenance and contract parity, not a customer delivery path or a `can_send`
 decision.
+
+## Canonical context and model-led candidate boundary
+
+Effective context is a curated representation of the active task, not a
+concatenated transcript. The formal Pipeline therefore normalizes prior
+conversation into bounded role-aware turns before understanding and keeps the
+current customer message separate. Evaluation inputs reject malformed context
+instead of silently degrading into an empty string history; ordinary legacy
+callers expose a degraded-context diagnostic.
+
+The candidate-composition experiment receives only requested claims, admitted
+evidence, unresolved/conflicting claim state, compact recent turns, non-factual
+service/media options, channel capability, and deterministic safety limits. It
+does not receive full traces, raw candidate stores, Answer Memory text, Gold
+labels, or benchmark rubrics. A model candidate is supervisor-only and must
+preserve precomputed clauses plus pass the existing audit. It cannot establish
+facts, change `can_send`, or replace the formal response. Strict structured
+action selection remains blocked pending provider qualification; no JSON repair
+or free-text parser is used to pretend otherwise.
+
+Canonical formal turns are not evaluation-sanitized in place: local identity
+and read-only tools consume the operational structure they need. Before any
+external-model call, a dedicated privacy projection removes inline phone,
+address, and order-reference text and omits content-derived turn identifiers.
+The same sanitized view is used for traces and evaluation output. Sidecar
+history is not flattened into `customer_message`; only an exact trailing copy
+of the current buyer turn is removed from structured history.
+
+Tier D remains exploratory. Buyer-simulator `observed_action_ids` are
+diagnostic only; a strict-schema transcript grader reads rendered Agent replies
+for action coverage. Reports must include runtime commit/readiness, feature
+flags, source-database fingerprint, formal model, simulator model, and grader
+identity. A matching formal and simulator model is a degraded independence
+condition, not independent AI evaluation.
+
+### External-model privacy and Tier D identity
+
+External-model prompts use a field-aware privacy projection. It projects plain
+text, fenced or embedded JSON, multiple JSON blocks, and labelled identifier
+lines. Valid JSON is projected by field name; malformed JSON is never repaired
+into a trusted structure, but its raw text still has explicit identifiers and
+PII removed. Product titles, categories, admitted evidence, and ordinary room
+descriptions remain readable. Structured customer identifiers are replaced by
+stable anonymous references before serialization; local read-only tools retain
+the original structured identity outside the model prompt. This prevents broad
+address matching from erasing product context.
+
+Tier D action coverage is not a keyword counter. It requires an independently
+qualified strict-schema transcript grader that sees only customer-visible Agent
+replies and action definitions after the response is produced. A missing or
+unqualified grader yields `action_coverage=null` and invalidates the run.
+Internal action events must agree with the visible transcript but cannot grant
+credit by themselves. The transcript-grader qualification records provider,
+model, capability, repeated schema stability, local enum/missing/extra-field
+and truncation rejection, without reporting credentials. A configured candidate
+can run that read-only matrix before human approval, using positive actions and
+negative refusal, denial, noun-only, and vague-future examples; this is not the
+same as `qualified_for_evaluation` and cannot update configuration. Provider
+matrix results and local validator checks have separate metrics. Runtime identity
+freezes boot commit/hash/worktree/model/flags and reports current-disk hash
+separately; any source drift invalidates Tier D. A dirty candidate requires an
+explicit matching boot hash and is never presented as a committed runtime result.
+
+The Tier D runner also treats model independence as an execution precondition,
+not a report annotation. It compares a safe identity made from the provider-host
+fingerprint and model for the formal Agent, buyer simulator, and transcript
+grader. Any unknown identity or pairwise collision exits before a trial. A shared
+model name on different hosts is observable risk information, but is not an
+identity collision. The host fingerprint is computed from canonical origin only:
+scheme, lower-case hostname, and effective port. Paths, query strings, fragments,
+and userinfo cannot create a distinct identity or leak into a report.
+Qualification persists one safe attempt record at a time (case ID, expected
+category, repeat index, result, citation validity, error category, and measured
+latency); neither reply text nor endpoint credentials are written to the report.
+Timeout, truncation, schema, and free-text counts are calculated directly from
+attempt records, while case-level stability keeps separately deduplicated reason
+summaries. The latency percentiles use only successful strict calls.
+
+### Provider capability check
+
+The [MiniMax OpenAI-compatible API documentation](https://platform.minimax.io/docs/api-reference/text-openai)
+documents compatible chat completion and tool-call interfaces, while its
+[text generation reference](https://platform.minimax.io/docs/api-reference/text-post)
+limits documented `json_schema` response formatting to specific model support.
+Consequently, OpenAI compatibility or a model name alone is insufficient proof
+of this project's strict-schema contract. A separately configured candidate must
+pass the repeated live qualification matrix before a human can mark it eligible
+for Tier D; qualification never changes `.env` or formal Agent configuration.
+
+### Tier D observation and long-load qualification
+
+Tier D scoring no longer reads a wider raw response than the persisted report.
+One privacy-projected turn observation is created immediately after the formal
+HTTP response and reused by the deterministic scorer, independent transcript
+grader, atomic checkpoint, report, and offline consistency pass. Media-send
+language without an actual image/video block is therefore reproducibly marked
+`unsupported_media_promise`; selected evidence contains only a pseudonymous UID
+plus role, fact type, source type, gate, and placeholder state.
+
+Short strict-schema probes are insufficient. The grader must pass positive,
+denial, citation, exact-action-schema, serial long-transcript, and runner-
+concurrency cases with zero timeout, truncation, schema, or free-text failures.
+Its p95 must stay below 80 percent of the configured timeout. The buyer
+simulator separately proves long-context state-machine validity and repeat
+stability under serial and concurrent calls. A simulator may naturally continue
+with a relevant buyer question or accept a handoff; it is not forced to produce
+one preferred terminal sentence. `continue` requires a non-empty next message,
+while terminal states require an empty one.
+
+Provider identity and schema qualification do not prove that the formal Agent
+credential can execute. Before dataset access, the runner performs a minimal
+non-customer completion against the exact formal provider identity.
+Authentication, quota, rate-limit, timeout, truncation, or response-contract
+failure stops the run with a safe reason code. Deterministic Pipeline fallback
+after a failed formal-model request cannot be reported as a valid formal-model
+Tier D baseline.
+
+The MiniMax M3 candidate subsequently passed the formal transport probe and
+completed an infrastructure-valid 9x2 run. The independent buyer and grader
+also passed their serial/concurrent qualifications, all nine sources resolved,
+and the final checkpoint matched the classified report. The baseline was 0/18
+overall, with 50 percent contract pass, 11.11 percent buyer-outcome pass, 75
+percent mean action coverage, no selected evidence, and 44 percent consecutive
+reply repetition. All 68 formal turns remained `can_send=false` and
+`requires_human_review=true`. These measurements prioritize evidence use,
+contextual action completion, and reply progression as the next product work;
+they do not measure Tier A accuracy and do not justify provider cutover.

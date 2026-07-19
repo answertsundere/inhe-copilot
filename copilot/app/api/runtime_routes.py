@@ -3,6 +3,7 @@ Runtime Version API — 提供运行版本信息，解决版本冲突。
 """
 
 import os
+import hashlib
 import subprocess
 import sys
 import time as _time
@@ -15,6 +16,8 @@ runtime_bp = Blueprint("runtime", __name__)
 _BOOT_TIME = _time.strftime("%Y-%m-%d %H:%M:%S")
 _PID = os.getpid()
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_RUNTIME_SOURCE_ROOTS = ("app",)
+_RUNTIME_SOURCE_FILES = ("run_prod.py", "requirements.txt")
 
 
 def _with_admin_auth_readiness(readiness: dict) -> dict:
@@ -82,6 +85,44 @@ def _git_metadata(*args: str) -> str:
         return "unavailable"
 
 
+def _runtime_source_files() -> list[Path]:
+    files: list[Path] = []
+    for root_name in _RUNTIME_SOURCE_ROOTS:
+        root = _PROJECT_ROOT / root_name
+        if root.exists():
+            files.extend(path for path in root.rglob("*.py") if "__pycache__" not in path.parts)
+    files.extend(_PROJECT_ROOT / name for name in _RUNTIME_SOURCE_FILES if (_PROJECT_ROOT / name).is_file())
+    return sorted(files, key=lambda path: path.relative_to(_PROJECT_ROOT).as_posix())
+
+
+def _source_tree_sha256() -> str:
+    """Fingerprint executable source only; never include DBs, outputs, or secrets."""
+    digest = hashlib.sha256()
+    try:
+        for path in _runtime_source_files():
+            digest.update(path.relative_to(_PROJECT_ROOT).as_posix().encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+    except OSError:
+        return "unavailable"
+    return digest.hexdigest()
+
+
+def _runtime_worktree_dirty() -> bool | None:
+    """Inspect executable source paths only, excluding generated runtime data."""
+    try:
+        output = subprocess.check_output(
+            ["git", "-C", str(_PROJECT_ROOT), "status", "--porcelain", "--", *_RUNTIME_SOURCE_ROOTS, *_RUNTIME_SOURCE_FILES],
+            text=True,
+            encoding="utf-8",
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return bool(output.strip())
+
+
 def _feature_flags() -> dict[str, bool]:
     from app.config import COPILOT_DECISION_LLM_QUALIFIED, COPILOT_VLM_ENABLED
 
@@ -98,12 +139,61 @@ def _feature_flags() -> dict[str, bool]:
     }
 
 
-def _runtime_identity() -> dict[str, str]:
-    from app.config import APP_VERSION
+def _capture_boot_build_identity() -> dict[str, str | bool | None | dict[str, bool]]:
+    """Freeze the executable identity once when this process imports routes."""
+    from app.config import APP_VERSION, LLM_API_BASE, LLM_MODEL
+    from app.services.strict_decision_provider_service import safe_provider_identity
 
+    dirty = _runtime_worktree_dirty()
+    source_hash = _source_tree_sha256()
+    if dirty is True:
+        identity_status = "dirty_candidate"
+    elif dirty is False and source_hash != "unavailable":
+        identity_status = "clean_commit"
+    else:
+        identity_status = "source_identity_unavailable"
     return {
         "app_version": APP_VERSION,
         "runtime_commit": _git_metadata("rev-parse", "HEAD"),
+        "formal_model": str(LLM_MODEL or ""),
+        "formal_provider_identity": safe_provider_identity(
+            provider_name="formal_agent",
+            api_base=str(LLM_API_BASE or ""),
+            model=str(LLM_MODEL or ""),
+        ),
+        "feature_flags": _feature_flags(),
+        "boot_worktree_dirty": dirty,
+        "boot_source_tree_sha256": source_hash,
+        "build_identity_status": identity_status,
+    }
+
+
+_BOOT_BUILD_IDENTITY = _capture_boot_build_identity()
+
+
+def _runtime_identity() -> dict[str, str | bool | None | dict[str, bool]]:
+    """Report frozen process identity and detect source changes after boot."""
+    boot = dict(_BOOT_BUILD_IDENTITY)
+    boot_hash = str(boot.get("boot_source_tree_sha256") or "")
+    current_hash = _source_tree_sha256()
+    current_dirty = _runtime_worktree_dirty()
+    comparable_hashes = bool(boot_hash and boot_hash != "unavailable" and current_hash != "unavailable")
+    source_drift = (boot_hash != current_hash) if comparable_hashes else None
+    return {
+        "app_version": str(boot.get("app_version") or ""),
+        "runtime_commit": str(boot.get("runtime_commit") or "unavailable"),
+        "formal_model": str(boot.get("formal_model") or ""),
+        "formal_provider_identity": dict(boot.get("formal_provider_identity") or {}),
+        "feature_flags": dict(boot.get("feature_flags") or {}),
+        # Compatibility fields deliberately identify the booted process.
+        "worktree_dirty": boot.get("boot_worktree_dirty"),
+        "source_tree_sha256": boot_hash,
+        "boot_worktree_dirty": boot.get("boot_worktree_dirty"),
+        "boot_source_tree_sha256": boot_hash,
+        "current_source_tree_sha256": current_hash,
+        "current_worktree_dirty": current_dirty,
+        "source_tree_drift": source_drift,
+        "build_identity_status": str(boot.get("build_identity_status") or "source_identity_unavailable"),
     }
 
 
@@ -112,7 +202,10 @@ def runtime_version():
     from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
     readiness = _with_admin_auth_readiness(RuntimeKnowledgeReadinessService().inspect())
-    return jsonify({**_runtime_identity(), "readiness": public_readiness_payload(readiness)})
+    return jsonify({
+        **_runtime_identity(),
+        "readiness": public_readiness_payload(readiness),
+    })
 
 
 @runtime_bp.route("/api/runtime/readiness", methods=["GET"])
@@ -143,7 +236,6 @@ def runtime_diagnostics():
                 "routing": ROUTING_CONFIG_VERSION,
                 "tool_registry": TOOL_REGISTRY_VERSION,
             },
-            "feature_flags": _feature_flags(),
         },
         "readiness": readiness,
     })

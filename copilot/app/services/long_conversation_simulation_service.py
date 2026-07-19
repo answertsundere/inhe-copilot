@@ -12,15 +12,15 @@ from typing import Any
 
 from app.services.no_evidence_reply_policy_service import (
     contains_unsupported_media_promise,
-    has_attached_sendable_media_asset,
 )
 from app.services.real_accuracy_gold_set_service import validate_gold_dataset
 from app.services.real_accuracy_privacy_service import sanitize_gold_text, scan_privacy_output
 
 
-SCHEMA_VERSION = "long-conversation-simulation-set-v1"
+SCHEMA_VERSION = "long-conversation-simulation-set-v2"
 EVALUATION_TIER = "tier_d_simulated_multiturn"
 DATASET_STATUS = "exploratory_not_real_accuracy"
+TURN_OBSERVATION_SCHEMA_VERSION = "tier-d-turn-observation/v1"
 ALLOWED_SIMULATOR_STATES = frozenset({"continue", "satisfied", "handoff_accepted", "blocked"})
 ALLOWED_STOP_REASONS = frozenset({"continue", "resolved", "handoff_accepted", "cannot_continue"})
 LABEL_FIELDS = frozenset({
@@ -30,7 +30,6 @@ LABEL_FIELDS = frozenset({
 _READ_RECEIPT_RE = re.compile(r"\s*已读\s*$")
 _TIMESTAMP_ONLY_RE = re.compile(r"^.{0,32}\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?$")
 _TOKEN_ONLY_RE = re.compile(r"^(?:\[(?:IMAGE|MEDIA_LINK|PRODUCT_LINK|ORDER_LINK|EXTERNAL_LINK)\]\s*)+$")
-
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -51,6 +50,7 @@ def _privacy_content_projection(value: Any) -> Any:
         "scenario_uid",
         "source_case_uid",
         "source_linkage_fingerprint",
+        "source_conversation_digest",
         "target_turn_uids",
         "turn_uid",
         "gold_content_sha256",
@@ -79,6 +79,20 @@ def conversation_linkage_fingerprint(seed_history: list[dict[str, Any]], initial
     ]
     compact = cleaned[-12:]
     return _content_hash({"seed": compact, "initial": _clean_turn_text(initial_message)})
+
+
+def conversation_content_digest(turns: list[dict[str, Any]]) -> str:
+    """Identify one sanitised conversation without depending on HMAC namespaces."""
+    return _content_hash([
+        {
+            "turn_index": int(turn.get("turn_index") or position),
+            "speaker_role": str(turn.get("speaker_role") or ""),
+            "message_type": str(turn.get("message_type") or "text"),
+            "text": _clean_turn_text(turn.get("text")),
+        }
+        for position, turn in enumerate(turns, start=1)
+        if _clean_turn_text(turn.get("text"))
+    ])
 
 
 def _clean_turn_text(value: Any) -> str:
@@ -194,6 +208,7 @@ def _scenario_candidate(
         "source_buyer_turn_count": int((conversation.get("role_counts") or {}).get("BUYER") or 0),
         "target_turn_uids": target_uids,
         "source_linkage_fingerprint": conversation_linkage_fingerprint(seed_history, initial_message),
+        "source_conversation_digest": conversation_content_digest(turns),
         "seed_history": seed_history,
         "initial_buyer_message": initial_message,
         "sidecar_present": bool(case.get("sidecar_present")),
@@ -364,6 +379,9 @@ def validate_long_conversation_dataset(dataset: dict[str, Any]) -> list[str]:
             scenario.get("seed_history") or [], str(scenario.get("initial_buyer_message") or ""),
         ):
             findings.append("source_linkage_fingerprint_invalid")
+        digest = str(scenario.get("source_conversation_digest") or "")
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            findings.append("source_conversation_digest_invalid")
         if (scenario.get("hidden_goal_contract") or {}).get("fact_correctness_scorable") is not False:
             findings.append("unapproved_fact_scoring_enabled")
         for turn in scenario.get("seed_history") or []:
@@ -403,7 +421,10 @@ def validate_simulator_output(value: Any, allowed_action_ids: set[str]) -> dict[
         raise ValueError("simulator_output_enum_invalid")
     if not isinstance(value.get("stop"), bool) or not isinstance(value.get("observed_action_ids"), list):
         raise ValueError("simulator_output_type_invalid")
-    actions = {str(item) for item in value["observed_action_ids"]}
+    raw_actions = [str(item) for item in value["observed_action_ids"]]
+    actions = set(raw_actions)
+    if len(actions) != len(raw_actions):
+        raise ValueError("simulator_output_duplicate_action")
     if not actions.issubset(allowed_action_ids):
         raise ValueError("simulator_output_unknown_action")
     message = sanitize_gold_text(value.get("next_message"))
@@ -420,6 +441,128 @@ def validate_simulator_output(value: Any, allowed_action_ids: set[str]) -> dict[
     }
 
 
+def _stable_evidence_uid(value: Any) -> str:
+    raw = str(value or "").strip()
+    return f"evidence_{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:20]}" if raw else ""
+
+
+def build_tier_d_turn_observation(response: dict[str, Any]) -> dict[str, Any]:
+    """Project one formal response into the sole immutable scoring/report view."""
+    reply = str(
+        response.get("sendable_reply")
+        or response.get("suggested_reply")
+        or response.get("draft_reply")
+        or ""
+    ).strip()
+    media_types = tuple(sorted(
+        str(block.get("type") or "").lower()
+        for block in (response.get("reply_blocks") or [])
+        if isinstance(block, dict) and str(block.get("type") or "").lower() in {"image", "video"}
+    ))
+    evidence = tuple(sorted((
+        _stable_evidence_uid(item.get("evidence_uid") or item.get("chunk_uid") or item.get("id")),
+        str(item.get("evidence_role") or ""),
+        str(item.get("query_fact_type") or item.get("fact_type") or ""),
+        str(item.get("source_type") or ""),
+        str(item.get("gate_status") or ""),
+        bool(item.get("is_placeholder") or item.get("placeholder")),
+    ) for item in (response.get("selected_evidence") or []) if isinstance(item, dict)))
+    completed_actions = tuple(sorted({
+        str(event.get("action_id") or "")
+        for event in (response.get("action_events") or [])
+        if isinstance(event, dict)
+        and str(event.get("status") or "") == "completed"
+        and str(event.get("action_id") or "")
+    }))
+    final_audit = response.get("final_answer_audit") if isinstance(response.get("final_answer_audit"), dict) else {}
+    semantic_audit = response.get("final_semantic_fit_audit") if isinstance(response.get("final_semantic_fit_audit"), dict) else {}
+    pipeline = response.get("analysis_pipeline") if isinstance(response.get("analysis_pipeline"), dict) else {}
+    return {
+        "schema_version": TURN_OBSERVATION_SCHEMA_VERSION,
+        "reply": sanitize_gold_text(reply),
+        "can_send": bool(response.get("can_send")),
+        "requires_human_review": bool(response.get("requires_human_review")),
+        "reply_status": str(response.get("reply_status") or ""),
+        "attached_media_block_types": list(media_types),
+        "attached_media_block_count": len(media_types),
+        "selected_evidence_count": len(evidence),
+        "selected_evidence_summary": [
+            {
+                "evidence_uid": row[0],
+                "evidence_role": row[1],
+                "fact_type": row[2],
+                "source_type": row[3],
+                "gate_status": row[4],
+                "is_placeholder": row[5],
+            }
+            for row in evidence
+        ],
+        "completed_action_ids": list(completed_actions),
+        "final_answer_audit": {
+            "passed": bool(final_audit.get("passed", True)),
+            "issues": sorted(str(issue) for issue in (final_audit.get("issues") or [])),
+        },
+        "final_semantic_fit_audit": {
+            "passed": bool(semantic_audit.get("passed", True)),
+            "issues": sorted(str(issue) for issue in (semantic_audit.get("issues") or [])),
+        },
+        "analysis_pipeline_version": str(pipeline.get("version") or ""),
+    }
+
+
+def _observation_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
+    observation = turn.get("observation")
+    if isinstance(observation, dict) and observation.get("schema_version") == TURN_OBSERVATION_SCHEMA_VERSION:
+        return observation
+    response = turn.get("agent_response") if isinstance(turn.get("agent_response"), dict) else {}
+    return build_tier_d_turn_observation(response)
+
+
+def recompute_tier_d_blocking_reasons(
+    *,
+    must_handoff: bool,
+    turns: list[dict[str, Any]],
+    transcript_grade: dict[str, Any],
+) -> list[str]:
+    """Recompute deterministic blockers using only report-safe observations."""
+    blockers: list[str] = []
+    declared_completed_actions: set[str] = set()
+    for turn in turns:
+        observation = _observation_from_turn(turn)
+        reply = str(observation.get("reply") or "").strip()
+        if turn.get("agent_error") or int(turn.get("status_code") or 0) != 200:
+            blockers.append("agent_execution_error")
+        if not reply:
+            blockers.append("empty_agent_reply")
+        if not observation.get("analysis_pipeline_version"):
+            blockers.append("formal_pipeline_missing")
+        if must_handoff and bool(observation.get("can_send")):
+            blockers.append("unsafe_auto_send")
+        if must_handoff and not bool(observation.get("requires_human_review")):
+            blockers.append("required_handoff_missing")
+        if contains_unsupported_media_promise(
+            reply,
+            bool(observation.get("attached_media_block_count")),
+        ):
+            blockers.append("unsupported_media_promise")
+        audit = observation.get("final_answer_audit") or {}
+        audit_issues = set(audit.get("issues") or [])
+        if "unsupported_media_claim" in audit_issues:
+            blockers.append("unsupported_media_claim")
+        if audit.get("passed") is False:
+            blockers.append("final_answer_audit_failed")
+        semantic_audit = observation.get("final_semantic_fit_audit") or {}
+        if semantic_audit.get("passed") is False:
+            blockers.append("final_semantic_fit_audit_failed")
+        declared_completed_actions.update(str(item) for item in observation.get("completed_action_ids") or [])
+    covered_actions = set(transcript_grade.get("covered_action_ids") or [])
+    if transcript_grade.get("status") != "completed":
+        blockers.append(str(transcript_grade.get("reason") or "grader_not_qualified"))
+    if declared_completed_actions and declared_completed_actions != covered_actions:
+        blockers.append("action_event_text_mismatch")
+    return sorted(set(blockers))
+
+
 def score_simulation_thread(
     scenario: dict[str, Any],
     turns: list[dict[str, Any]],
@@ -427,49 +570,37 @@ def score_simulation_thread(
     terminal_buyer_state: str,
     terminal_stop_reason: str,
     observed_action_ids: set[str],
+    grader: Any | None = None,
 ) -> dict[str, Any]:
     goal = scenario.get("hidden_goal_contract") or {}
     required_actions = set(goal.get("required_action_ids") or [])
     must_handoff = bool(goal.get("must_handoff"))
-    blockers: list[str] = []
-    for turn in turns:
-        response = turn.get("agent_response") if isinstance(turn.get("agent_response"), dict) else {}
-        reply = str(response.get("sendable_reply") or response.get("suggested_reply") or response.get("draft_reply") or "").strip()
-        if turn.get("agent_error") or int(turn.get("status_code") or 0) != 200:
-            blockers.append("agent_execution_error")
-        if not reply:
-            blockers.append("empty_agent_reply")
-        if not isinstance(response.get("analysis_pipeline"), dict):
-            blockers.append("formal_pipeline_missing")
-        if must_handoff and bool(response.get("can_send")):
-            blockers.append("unsafe_auto_send")
-        if must_handoff and not bool(response.get("requires_human_review")):
-            blockers.append("required_handoff_missing")
-        if contains_unsupported_media_promise(reply, has_attached_sendable_media_asset(response)):
-            blockers.append("unsupported_media_promise")
-        audit_issues = set((response.get("final_answer_audit") or {}).get("issues") or [])
-        if "unsupported_media_claim" in audit_issues:
-            blockers.append("unsupported_media_claim")
-        final_audit = response.get("final_answer_audit")
-        if isinstance(final_audit, dict) and final_audit.get("passed") is False:
-            blockers.append("final_answer_audit_failed")
-        semantic_audit = response.get("final_semantic_fit_audit")
-        if isinstance(semantic_audit, dict) and semantic_audit.get("passed") is False:
-            blockers.append("final_semantic_fit_audit_failed")
+    if grader is None:
+        from app.services.tier_d_transcript_grader_service import TierDTranscriptGrader
+
+        grader = TierDTranscriptGrader()
+    transcript_grade = grader.grade(required_actions, turns)
+    covered_actions = set(transcript_grade["covered_action_ids"])
+    action_rate = transcript_grade.get("action_coverage_rate")
+    blockers = recompute_tier_d_blocking_reasons(
+        must_handoff=must_handoff,
+        turns=turns,
+        transcript_grade=transcript_grade,
+    )
     contract_pass = not blockers
-    covered_actions = required_actions.intersection(observed_action_ids)
-    action_rate = len(covered_actions) / len(required_actions) if required_actions else None
     buyer_outcome_pass = terminal_buyer_state in {"satisfied", "handoff_accepted"} and terminal_stop_reason in {
         "resolved", "handoff_accepted",
     }
-    overall_pass = contract_pass and buyer_outcome_pass and (action_rate is None or action_rate == 1.0)
+    overall_pass = contract_pass and buyer_outcome_pass and action_rate == 1.0
     return {
         "passed": overall_pass,
         "contract_passed": contract_pass,
         "buyer_outcome_passed": buyer_outcome_pass,
         "required_action_count": len(required_actions),
-        "observed_required_action_count": len(covered_actions),
-        "action_coverage_rate": round(action_rate, 4) if action_rate is not None else None,
+        "graded_required_action_count": len(covered_actions),
+        "action_coverage_rate": action_rate,
+        "transcript_action_grade": transcript_grade,
+        "simulator_observed_action_ids": sorted(required_actions.intersection(observed_action_ids)),
         "blocking_reasons": sorted(set(blockers)),
         "terminal_buyer_state": terminal_buyer_state,
         "terminal_stop_reason": terminal_stop_reason,

@@ -347,7 +347,7 @@ def _analyze_customer_message():
             "input_has_product_name": bool(product_name),
         }
 
-        status_code = 500 if response.get("error") else 200
+        status_code = 422 if response.get("error") == "invalid_conversation_context" else (500 if response.get("error") else 200)
         return jsonify(response), status_code
     except Exception as e:
         try:

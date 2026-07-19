@@ -135,30 +135,23 @@ def best_candidate_value(candidates: list[dict[str, Any]]) -> str:
     return usable[0][-1]
 
 
-def _normalize_conversation_history(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    history = payload.get("conversation_history") or payload.get("messages") or []
-    if not isinstance(history, list):
-        return []
-    normalized: list[dict[str, Any]] = []
-    for item in history:
-        if not isinstance(item, dict):
-            continue
-        text = (item.get("text") or item.get("message") or "").strip()
-        if not text:
-            continue
-        role = (item.get("role") or "unknown").strip().lower()
-        if role not in ("customer", "agent", "system", "unknown"):
-            role = "unknown"
-        normalized.append({
-            "role": role,
-            "text": text,
-            "time": item.get("time", ""),
-            "confidence": item.get("confidence", 0.0),
-        })
-    return normalized[-8:]
+def _normalize_conversation_history(
+    payload: dict[str, Any],
+    *,
+    strict: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Normalize sidecar turns without hiding malformed evaluation inputs."""
+    from app.services.canonical_conversation_turn_service import normalize_conversation_turns
+
+    return normalize_conversation_turns(
+        payload.get("conversation_history") or payload.get("messages") or [],
+        strict=strict,
+        max_turns=8,
+    )
 
 
-def build_sidecar_context(payload: dict[str, Any]) -> dict[str, Any]:
+
+def build_sidecar_context(payload: dict[str, Any], *, strict_conversation_history: bool = False) -> dict[str, Any]:
     chat_text = payload.get("chat_text", "") or payload.get("raw_text", "")
     customer_message = (payload.get("customer_message") or "").strip()
     if not customer_message:
@@ -173,7 +166,20 @@ def build_sidecar_context(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     candidates = _extract_candidates_from_payload(payload)
-    conversation_history = _normalize_conversation_history(payload)
+    conversation_history, conversation_context_contract = _normalize_conversation_history(
+        payload,
+        strict=strict_conversation_history,
+    )
+    if conversation_history and customer_message:
+        from app.services.canonical_conversation_turn_service import turn_content
+
+        last_turn = conversation_history[-1]
+        if last_turn.get("role") == "customer" and turn_content(last_turn) == customer_message:
+            conversation_history = conversation_history[:-1]
+            conversation_context_contract = {
+                **conversation_context_contract,
+                "deduplicated_trailing_customer_turn": True,
+            }
 
     context = {
         "source": payload.get("source", "qianniu_sidecar"),
@@ -184,6 +190,7 @@ def build_sidecar_context(payload: dict[str, Any]) -> dict[str, Any]:
         "customer_message_source": payload.get("customer_message_source", ""),
         "chat_text": chat_text,
         "conversation_history": conversation_history,
+        "conversation_context_contract": conversation_context_contract,
         "raw_context": payload.get("raw_context", {}),
         **identifiers,
         **candidates,

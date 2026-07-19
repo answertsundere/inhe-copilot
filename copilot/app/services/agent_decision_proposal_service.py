@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from copy import deepcopy
@@ -586,6 +587,116 @@ def build_supervisor_partial_answer_preview(
     return sanitize_obj(preview)
 
 
+def _model_led_action_plan(minimal_context: dict[str, Any], *, actual_reply_blocks: list[dict[str, Any]]) -> list[str]:
+    """Expose model choices from already-resolved claim state, not keywords."""
+    resolutions = [item for item in minimal_context.get("claim_resolutions") or [] if isinstance(item, dict)]
+    supported = any(item.get("status") == "supported" for item in resolutions)
+    unresolved = any(item.get("status") in {"unresolved", "conflicting", "prohibited"} for item in resolutions)
+    actions: list[str] = []
+    if supported:
+        actions.append("answer_from_evidence")
+    if minimal_context.get("allowed_low_risk_inferences"):
+        actions.append("bounded_low_risk_inference")
+    if unresolved and supported:
+        actions.append("partial_answer_then_handoff")
+    elif unresolved:
+        actions.append("handoff_only")
+    if unresolved and not (minimal_context.get("product_identity") or {}):
+        actions.append("ask_clarifying_question")
+    if minimal_context.get("allowed_read_only_tools"):
+        actions.append("request_read_only_tool")
+    if minimal_context.get("service_actions"):
+        actions.append("offer_service_action")
+    if actual_reply_blocks and any(item.get("type") in {"image", "video"} for item in actual_reply_blocks):
+        actions.append("request_specific_media")
+    return sorted(set(actions))
+
+
+def build_model_led_candidate_preview(
+    minimal_context: dict[str, Any],
+    *,
+    actual_reply_blocks: list[dict[str, Any]] | None = None,
+    client: Any | None = None,
+) -> dict[str, Any]:
+    """Ask the formal reply model for a review-only composition.
+
+    The model receives a compact context and must preserve precomputed factual
+    and pending clauses. It is not a decision authority: any change to facts,
+    missing clause, unsafe media claim, or audit failure rejects the candidate.
+    """
+    deterministic = build_supervisor_partial_answer_preview(minimal_context, provider_status="model_candidate_input")
+    required_clauses = [
+        *[item.get("customer_facing_clause", "") for item in deterministic.get("confirmed_clauses") or []],
+        *[item.get("customer_facing_clause", "") for item in deterministic.get("pending_clauses") or []],
+        *[item.get("customer_facing_clause", "") for item in deterministic.get("conflicting_clauses") or []],
+    ]
+    actual_blocks = [dict(item) for item in actual_reply_blocks or [] if isinstance(item, dict)]
+    result = {
+        "preview_version": "model-led-supervisor-candidate-v1",
+        "action_options": _model_led_action_plan(minimal_context, actual_reply_blocks=actual_blocks),
+        "candidate_text": "",
+        "evidence_uids": list(deterministic.get("evidence_uids") or []),
+        "requires_human_review": True,
+        "can_send": False,
+        "used_for_final_reply": False,
+        "can_change_can_send": False,
+        "status": "provider_blocked",
+        "rejection_reason": "",
+    }
+    try:
+        if client is None:
+            from app.llm.client import get_llm_client
+            client = get_llm_client()
+        if not getattr(client, "api_key", ""):
+            result["rejection_reason"] = "formal_llm_not_configured"
+            return sanitize_obj(result)
+        prompt_payload = {
+            "customer_goal": minimal_context.get("customer_goal"),
+            "recent_turns": minimal_context.get("recent_conversation_turns") or [],
+            "factual_clauses": [item.get("customer_facing_clause", "") for item in deterministic.get("confirmed_clauses") or []],
+            "unresolved_clauses": [
+                item.get("customer_facing_clause", "")
+                for item in [*(deterministic.get("pending_clauses") or []), *(deterministic.get("conflicting_clauses") or [])]
+            ],
+            "action_options": result["action_options"],
+            "actual_media_block_types": [item.get("type") for item in actual_blocks],
+        }
+        completion = client.create_chat_completion(
+            model=client.model,
+            messages=[
+                {"role": "system", "content": (
+                    "Write one natural Chinese supervisor-only customer-service candidate. "
+                    "Use every supplied factual and unresolved clause verbatim, with only greetings and connectors added. "
+                    "Do not add product, order, safety, refund, delivery, or media facts. "
+                    "Mention media only when actual_media_block_types contains it. "
+                    "Return only the customer-facing text and never explain reasoning."
+                )},
+                {"role": "user", "content": json.dumps(prompt_payload, ensure_ascii=False)},
+            ],
+            temperature=0.2,
+            max_tokens=420,
+        )
+        text = sanitize_text(completion.choices[0].message.content)
+        if not text:
+            result["rejection_reason"] = "model_candidate_empty"
+            return sanitize_obj(result)
+        missing = [clause for clause in required_clauses if clause and clause not in text]
+        if missing:
+            result["rejection_reason"] = "required_clause_not_preserved"
+            return sanitize_obj(result)
+        candidate_probe = {**result, "candidate_text": text, "reply_blocks": actual_blocks}
+        validation = _preview_safety_validation(candidate_probe, minimal_context=minimal_context)
+        if not validation.get("passed"):
+            result["rejection_reason"] = "candidate_safety_validation_failed"
+            result["safety_validation"] = validation
+            return sanitize_obj(result)
+        result.update({"status": "accepted", "candidate_text": text, "safety_validation": validation})
+        return sanitize_obj(result)
+    except Exception as exc:
+        result["rejection_reason"] = f"formal_llm_error:{type(exc).__name__}"
+        return sanitize_obj(result)
+
+
 class AgentDecisionProposalService:
     """Run strict schema calls and attach a read-only shadow decision."""
 
@@ -689,7 +800,9 @@ class AgentDecisionProposalService:
         product_identity: dict[str, Any] | None = None,
         copilot_context: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        message = sanitize_text(customer_message)
+        from app.services.canonical_conversation_turn_service import project_text_for_external_model, project_value_for_external_model
+
+        message = project_text_for_external_model(customer_message)
         identity = resolved_product_identity_for_response(response, product_identity)
         context = copilot_context if isinstance(copilot_context, dict) else {}
         understanding_payload = {
@@ -699,7 +812,7 @@ class AgentDecisionProposalService:
             "has_order_identifier": bool(
                 context.get("order_id") or context.get("platform_order_id") or context.get("platform_trade_id")
             ),
-            "structured_turn_understanding": sanitize_obj(response.get("turn_understanding") or {}),
+            "structured_turn_understanding": project_value_for_external_model(response.get("turn_understanding") or {}),
         }
         try:
             raw_intake = self._request_json_schema(
@@ -743,6 +856,7 @@ class AgentDecisionProposalService:
             admitted,
             customer_message=message,
             conversation_summary=response.get("conversation_context_summary") if isinstance(response.get("conversation_context_summary"), dict) else {},
+            conversation_turns=context.get("conversation_history") if isinstance(context.get("conversation_history"), list) else [],
             channel_capabilities=context.get("channel_capabilities") if isinstance(context.get("channel_capabilities"), dict) else {},
             allowed_read_only_tools=[
                 sanitize_text(item)
@@ -836,16 +950,31 @@ class AgentDecisionProposalService:
         )
         response.setdefault("evidence_debug", {})["llm_decision_proposal"] = proposal
         response["evidence_debug"]["admitted_answer_context"] = admitted
+        graph_understanding = original.get("turn_understanding")
+        if not isinstance(graph_understanding, dict):
+            graph_understanding = (copilot_context or {}).get("turn_understanding") if isinstance(copilot_context, dict) else {}
+        if not admitted.get("requested_claims") and isinstance(graph_understanding, dict) and graph_understanding:
+            admitted = AdmittedAnswerContextService().build_for_response(
+                original,
+                product_identity=product_identity,
+                understanding=graph_understanding,
+            )
+            response["evidence_debug"]["admitted_answer_context"] = admitted
         minimal_context = build_minimal_decision_context(
             admitted,
             customer_message=customer_message,
             conversation_summary=original.get("conversation_context_summary") if isinstance(original.get("conversation_context_summary"), dict) else {},
+            conversation_turns=(copilot_context or {}).get("conversation_history") if isinstance(copilot_context, dict) else [],
             channel_capabilities=(copilot_context or {}).get("channel_capabilities") if isinstance(copilot_context, dict) else {},
             allowed_read_only_tools=list((admitted.get("shadow_tool_execution") or {}).get("executed_tool_names") or []),
         )
         response["evidence_debug"]["supervisor_candidate_preview"] = build_supervisor_partial_answer_preview(
             minimal_context,
             provider_status=("not_qualified" if proposal.get("shadow_status") != "completed" else "qualified_deterministic_guard"),
+        )
+        response["evidence_debug"]["model_led_supervisor_candidate"] = build_model_led_candidate_preview(
+            minimal_context,
+            actual_reply_blocks=list(original.get("reply_blocks") or []),
         )
         response.setdefault("answer_trace", {})["llm_decision_shadow"] = {
             "schema_version": "agent-decision-proposal-v1",

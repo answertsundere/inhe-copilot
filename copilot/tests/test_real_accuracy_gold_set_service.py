@@ -112,10 +112,11 @@ def test_approved_target_turn_drives_message_and_excludes_future_turns():
     case["evaluation_target"] = {"target_turn_uids": [target]}
     payload = build_agent_payload(sample, case=case)
     assert payload["message"] == "真正评分问题"
-    assert "前置问题" in payload["conversation_history"]
-    assert "真正评分问题" in payload["conversation_history"]
-    assert "未来客服答复" not in payload["conversation_history"]
-    assert "未来买家问题" not in payload["conversation_history"]
+    history_text = "\n".join(turn["content"] for turn in payload["conversation_history"])
+    assert "前置问题" in history_text
+    assert "真正评分问题" not in history_text
+    assert "未来客服答复" not in history_text
+    assert "未来买家问题" not in history_text
     assert_label_not_in_agent_input(payload)
 
 

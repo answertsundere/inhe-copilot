@@ -60,7 +60,7 @@ def test_child_safety_uses_structure_boundary_without_age_or_absolute_safety_cla
     assert "适合两岁" not in draft["grounded_draft"]
     assert "不会夹手" not in draft["grounded_draft"]
     assert has_forbidden_claim_violation(draft) is False
-    assert draft["used_facts"][0]["source"] == "selected_evidence"
+    assert draft["fact_coverage_plan"]["factual_clauses"][0]["source"] == "selected_evidence"
 
 
 def test_material_safety_mentions_material_but_not_non_toxic_or_certificate_claim():
@@ -68,7 +68,7 @@ def test_material_safety_mentions_material_but_not_non_toxic_or_certificate_clai
         customer_message="宝宝咬了一下会不会中毒？",
         query_fact_type="material_safety",
         selected_evidence=[
-                {"evidence_role": "product_fact_direct", "fact_type": "material", "content": "主体材质：PP。", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "sku_code": "SKU-A"}
+                {"evidence_role": "product_fact_direct", "fact_type": "material", "content": "主体材质：PP。", "can_direct_answer": True, "gate_status": "allowed", "review_status": "verified", "material_provenance": "structured_product_record", "sku_code": "SKU-A"}
             ],
         product_identity={"sku_code": "SKU-A"},
         answer_memory_guidance={"action_hints": ["误咬场景先让客户检查破损和误吞。"]},
@@ -534,6 +534,10 @@ def test_analyze_grounded_reasoning_shadow_is_env_gated(client, monkeypatch):
         })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args: {"ready": True, "reasons": [], "knowledge": {}, "database": {}},
+    )
     monkeypatch.delenv("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED", raising=False)
     response = client.post(
         "/api/analyze",

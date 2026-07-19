@@ -128,7 +128,17 @@ def _score_scenario(
     expected = scenario.get("expected") if isinstance(scenario.get("expected"), dict) else {}
     expected_claims = [item for item in expected.get("claims") or [] if isinstance(item, dict)]
     actual = {_claim_key(item): item for item in preview.get("claim_resolutions") or [] if isinstance(item, dict)}
-    expected_by_key = {_claim_key(item): item for item in expected_claims}
+    # Legacy fixtures may omit an attribute slot for a claim that has exactly
+    # one resolved slot. Keep that migration compatibility in the evaluator,
+    # but never collapse an ambiguous multi-attribute expectation.
+    expected_by_key = {}
+    for requirement in expected_claims:
+        key = _claim_key(requirement)
+        if not key[1]:
+            matching = [actual_key for actual_key in actual if actual_key[0] == key[0]]
+            if len(matching) == 1:
+                key = matching[0]
+        expected_by_key[key] = requirement
     resolution_ok = set(actual) == set(expected_by_key) and all(
         sanitize_text(actual[key].get("status")) == sanitize_text(requirement.get("status"))
         for key, requirement in expected_by_key.items()

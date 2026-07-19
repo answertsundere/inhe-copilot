@@ -259,7 +259,8 @@ def _context_product_text(state: dict) -> str:
         parts.append(_candidate_value(cand))
     for item in ctx.get("conversation_history", []) or []:
         if isinstance(item, dict):
-            parts.append(str(item.get("text") or ""))
+            from app.services.canonical_conversation_turn_service import turn_content
+            parts.append(turn_content(item))
     return " ".join(p for p in parts if p)
 
 

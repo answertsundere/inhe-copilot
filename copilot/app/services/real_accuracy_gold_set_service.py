@@ -397,7 +397,7 @@ def apply_approved_claim_labels(dataset: dict[str, Any], labels: Iterable[dict[s
     return result
 
 
-def _targeted_conversation(case: dict[str, Any]) -> tuple[str, str]:
+def _targeted_conversation(case: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     turns = list((case.get("conversation") or {}).get("turns") or [])
     target_uids = list((case.get("evaluation_target") or {}).get("target_turn_uids") or [])
     if not target_uids:
@@ -411,14 +411,22 @@ def _targeted_conversation(case: dict[str, Any]) -> tuple[str, str]:
     message = "\n".join(str(turn.get("text") or "") for turn in ordered).strip()
     history_turns = [
         turn for turn in turns
-        if int(turn.get("turn_index") or 0) <= last_target_index
+        if int(turn.get("turn_index") or 0) < last_target_index
     ][-40:]
-    role_names = {"BUYER": "买家", "AGENT": "客服", "SYSTEM": "系统"}
-    history = "\n".join(
-        f"{role_names.get(str(turn.get('speaker_role') or ''), '未知')}: {turn.get('text') or ''}"
+    from app.services.canonical_conversation_turn_service import normalize_conversation_turns
+
+    canonical_history, _ = normalize_conversation_turns([
+        {
+            "role": turn.get("speaker_role"),
+            "content": canonical_text(turn.get("text"), limit=600),
+            "turn_uid": turn.get("turn_uid"),
+            "turn_index": int(turn.get("turn_index") or 0),
+            "message_type": turn.get("message_type"),
+        }
         for turn in history_turns
-    )
-    return canonical_text(message, limit=1800), canonical_text(history, limit=3000)
+        if canonical_text(turn.get("text"), limit=600)
+    ], strict=True, max_turns=40)
+    return canonical_text(message, limit=1800), canonical_history
 
 
 def build_agent_payload(sample: dict[str, Any], *, case: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -427,7 +435,7 @@ def build_agent_payload(sample: dict[str, Any], *, case: dict[str, Any] | None =
         message, conversation_history = _targeted_conversation(case)
     else:
         message = canonical_text(sample.get("customer_quote"), limit=1800)
-        conversation_history = canonical_text(sample.get("full_context"), limit=3000)
+        conversation_history = []
     return {
         "message": message,
         "conversation_history": conversation_history,
@@ -436,6 +444,8 @@ def build_agent_payload(sample: dict[str, Any], *, case: dict[str, Any] | None =
         "product_name": str(sample.get("product_title") or "").strip(),
         "conversation_id": f"real_accuracy_{sample.get('id')}",
         "copilot_context": {
+            "evaluation_context_contract": "strict",
+            "input_context_status": "valid" if case else "degraded_context",
             "sidecar_context": {
                 "sidecar_product_title": str(sample.get("product_title") or "").strip(),
                 "sidecar_sku_code": str(sample.get("sku") or "").strip(),

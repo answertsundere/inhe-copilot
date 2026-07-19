@@ -34,6 +34,7 @@ HIGH_RISK_FACT_TYPES = {
 }
 
 FACT_TYPE_FORBIDDEN_CLAIMS = {
+    "material_safety": ["无毒", "有证书", "有检测报告"],
     "age_range": ["适合几岁", "绝对安全", "保护宝宝安全"],
     "child_safety": ["绝对安全", "保护宝宝安全", "不会伤到"],
     "certification_report": ["有证书", "有检测报告", "通过认证"],

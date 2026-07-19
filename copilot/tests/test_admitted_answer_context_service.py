@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
+    build_minimal_decision_context,
     is_placeholder_evidence_text,
 )
 
@@ -247,6 +248,51 @@ def test_service_does_not_mutate_input():
         understanding=_understanding("material_composition"),
     )
     assert response == before
+
+
+def test_minimal_decision_context_keeps_recent_canonical_turns_and_excludes_raw_stores():
+    admitted = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+    )
+    context = build_minimal_decision_context(
+        admitted,
+        customer_message="上次说的材质是什么？",
+        conversation_turns=[
+            {"role": "customer", "content": "先问一下材质", "turn_uid": "turn-a", "turn_index": 1},
+            {"role": "agent", "content": "我先核对", "turn_uid": "turn-b", "turn_index": 2},
+        ],
+    )
+
+    assert [turn["content"] for turn in context["recent_conversation_turns"]] == ["先问一下材质", "我先核对"]
+    assert all("turn_uid" not in turn for turn in context["recent_conversation_turns"])
+    assert context["context_stats"]["recent_turn_count"] == 2
+    assert {"full_trace", "raw_candidate_store", "answer_memory_history"}.issubset(
+        context["context_stats"]["excluded_context_categories"]
+    )
+    assert [item["evidence_uid"] for item in context["admitted_evidence"]] == ["fact-material"]
+
+
+def test_minimal_decision_context_projects_private_conversation_text_for_external_model():
+    admitted = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+    )
+    context = build_minimal_decision_context(
+        admitted,
+        customer_message="订单号 A-12345，手机号 13812345678，请改到上海市浦东新区测试路88号",
+        conversation_turns=[{
+            "role": "customer",
+            "content": "订单号 A-12345，手机号 13812345678",
+            "turn_index": 1,
+        }],
+    )
+    rendered = str(context)
+
+    assert "A-12345" not in rendered
+    assert "13812345678" not in rendered
 
 
 def test_read_only_shadow_retrieval_results_still_require_admission():

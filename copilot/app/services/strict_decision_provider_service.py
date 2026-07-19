@@ -7,6 +7,7 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
+from urllib.parse import urlsplit
 
 from openai import OpenAI
 
@@ -20,6 +21,46 @@ _SUPPORTED_CAPABILITIES = {"strict_json_schema", "tool_call_schema"}
 
 class StrictDecisionProviderError(RuntimeError):
     """Safe error categories only; configuration values must not escape."""
+
+
+def _canonical_provider_origin(api_base: str) -> str:
+    """Return a comparison-only origin without retaining path or credentials."""
+    raw = str(api_base or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return ""
+    scheme = parsed.scheme.lower()
+    if not scheme or not parsed.netloc or not hostname or any(char.isspace() for char in hostname):
+        return ""
+    hostname = hostname.lower()
+    default_port = 443 if scheme == "https" else 80 if scheme == "http" else None
+    effective_port = port if port is not None else default_port
+    if effective_port is None:
+        return f"{scheme}://{hostname}"
+    return f"{scheme}://{hostname}:{effective_port}"
+
+
+def safe_provider_identity(*, provider_name: str, api_base: str, model: str) -> dict[str, Any]:
+    """Return a comparable provider identity without exposing endpoint or key."""
+    canonical_origin = _canonical_provider_origin(api_base)
+    normalized_model = sanitize_text(str(model or "")).strip()
+    host_fingerprint = (
+        hashlib.sha256(canonical_origin.encode("utf-8")).hexdigest()[:12]
+        if canonical_origin else ""
+    )
+    configured = bool(host_fingerprint and normalized_model)
+    return {
+        "provider_name": sanitize_text(str(provider_name or "")).strip() or "unconfigured",
+        "host_fingerprint": host_fingerprint,
+        "model_name": normalized_model or "unconfigured",
+        "configured": configured,
+        "identity": f"{host_fingerprint}:{normalized_model}" if configured else "",
+    }
 
 
 @dataclass(frozen=True)
@@ -54,17 +95,17 @@ class StrictDecisionProviderConfig:
         return "configured"
 
     def safe_metadata(self) -> dict[str, Any]:
-        host_fingerprint = ""
-        if self.api_base:
-            host_fingerprint = hashlib.sha256(self.api_base.encode("utf-8")).hexdigest()[:12]
+        identity = safe_provider_identity(
+            provider_name=self.provider_name,
+            api_base=self.api_base,
+            model=self.model,
+        )
         return {
-            "provider_name": self.provider_name or "unconfigured",
-            "model_name": self.model or "unconfigured",
+            **identity,
             "capability": self.capability,
             "configured": self.capability_status() == "configured",
             "qualified": self.qualified,
             "disable_thinking": self.disable_thinking,
-            "host_fingerprint": host_fingerprint,
         }
 
 

@@ -259,6 +259,10 @@ def test_analyze_shadow_guidance_enabled_does_not_change_sendability(client, mon
         })
 
     monkeypatch.setattr(execution_service, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args: {"ready": True, "reasons": [], "knowledge": {}, "database": {}},
+    )
     monkeypatch.setenv("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED", "true")
 
     response = client.post(

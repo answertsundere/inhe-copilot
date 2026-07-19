@@ -4,6 +4,10 @@ import time
 
 from flask import Blueprint, jsonify, request
 
+from app.services.canonical_conversation_turn_service import (
+    ConversationContextContractError,
+    is_strict_evaluation_source,
+)
 from app.services.sidecar_context_service import best_candidate_value, build_sidecar_context
 
 copilot_bp = Blueprint("copilot", __name__)
@@ -202,8 +206,23 @@ def api_copilot_context():
     t0 = time.time()
     payload = request.get_json(silent=True) or {}
 
-    # 1. Parse Sidecar payload
-    context = build_sidecar_context(payload)
+    # 1. Parse Sidecar payload. Evaluation callers fail before Graph execution;
+    # online callers can use the explicitly degraded canonical contract.
+    source = str(payload.get("source") or "manual_simulation")
+    strict_context = dict(payload.get("copilot_context") or {})
+    if payload.get("evaluation_context_contract") == "strict":
+        strict_context["evaluation_context_contract"] = "strict"
+    strict_history = is_strict_evaluation_source(source, strict_context)
+    try:
+        context = build_sidecar_context(payload, strict_conversation_history=strict_history)
+    except ConversationContextContractError as exc:
+        return jsonify({
+            "ok": False,
+            "error": "invalid_conversation_context",
+            "error_reason": exc.reason,
+            "can_send": False,
+            "requires_human_review": True,
+        }), 422
     message = context.get("customer_message", "").strip()
     if not message:
         return jsonify({
@@ -213,21 +232,14 @@ def api_copilot_context():
             "context_echo": context,
         }), 400
 
-    # 2. Build enriched analysis message with conversation history
-    analysis_message = _build_analysis_message(context)
-
-    # 3. Resolve identifiers from candidates
+    # 2. Resolve identity through structured fields. Conversation history stays
+    # structured in copilot_context and is never concatenated into the query.
     order_id, tracking_no, platform_trade_id, product_name = _resolve_identifiers(context)
 
-    # 4. Enrich analysis message with identifiers
-    if platform_trade_id and platform_trade_id not in analysis_message:
-        analysis_message = f"{platform_trade_id} {analysis_message}"
     if not product_name:
         product_name = best_candidate_value(context.get("product_candidates", []))
-    if product_name and product_name not in analysis_message:
-        analysis_message = f"当前千牛侧边栏已识别商品：{product_name}\n{analysis_message}"
 
-    source = context.get("source", "manual_simulation")
+    source = context.get("source", source)
     scenario = payload.get("scenario", "")
     conversation_id = context.get("conversation_id", "qianniu")
 
@@ -238,7 +250,7 @@ def api_copilot_context():
     response = AnalysisPipelineService().run(
         AnalysisPipelineRequest(
             reply_service=reply_service,
-            customer_message=analysis_message,
+            customer_message=message,
             delivery_message=message,
             order_id=order_id,
             tracking_no=tracking_no,
@@ -263,39 +275,12 @@ def api_copilot_context():
         reply_delivery=response.get("reply_delivery") or {},
     )
 
-    return jsonify(response)
+    return jsonify(response), (422 if response.get("error") == "invalid_conversation_context" else 200)
 
 
 def _build_analysis_message(context: dict) -> str:
-    message = context.get("customer_message", "").strip()
-    history = context.get("conversation_history", []) or []
-    if not history:
-        return message
-
-    lines = []
-    role_names = {
-        "customer": "客户",
-        "agent": "客服",
-        "system": "系统",
-        "unknown": "未知",
-    }
-    for item in history[-6:]:
-        if not isinstance(item, dict):
-            continue
-        text = (item.get("text") or "").strip()
-        if not text:
-            continue
-        role = role_names.get((item.get("role") or "unknown").lower(), "未知")
-        lines.append(f"{role}: {text}")
-
-    if not lines:
-        return message
-    return (
-        "以下是千牛当前会话最近消息，请结合上下文理解客户最后一句，"
-        "不要把客服已回复内容当成客户问题。\n"
-        + "\n".join(lines)
-        + f"\n\n当前需要回复的客户最新消息：{message}"
-    )
+    """Compatibility helper: formal query text is only the latest message."""
+    return str(context.get("customer_message") or "").strip()
 
 
 @copilot_bp.route("/api/copilot/feedback", methods=["POST"])

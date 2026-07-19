@@ -176,7 +176,7 @@ def test_forbidden_claims_return_to_upstream_gate(monkeypatch):
 
     hits = AnswerMemoryService().search_answer_memory(
         sku_code="SKU-1",
-        query_fact_type="material",
+        query_fact_type="material_safety",
         scenario_type="product_fact",
         customer_message="这个材质无毒吗",
     )

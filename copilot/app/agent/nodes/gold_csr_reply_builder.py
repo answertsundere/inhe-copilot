@@ -214,7 +214,8 @@ def _combined_customer_text(state: dict) -> str:
     ctx = state.get("copilot_context", {}) or {}
     for item in ctx.get("conversation_history", []) or []:
         if isinstance(item, dict) and item.get("role") == "customer":
-            parts.append(str(item.get("text") or ""))
+            from app.services.canonical_conversation_turn_service import turn_content
+            parts.append(turn_content(item))
     return " ".join(p for p in parts if p)
 
 

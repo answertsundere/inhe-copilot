@@ -76,7 +76,13 @@ class AnalysisPipelineService:
     def run(self, request: AnalysisPipelineRequest) -> dict[str, Any]:
         from app.services.analysis_execution_service import execute_analysis
 
-        prepared = self._prepare_request(request)
+        try:
+            prepared = self._prepare_request(request)
+        except Exception as exc:
+            from app.services.canonical_conversation_turn_service import ConversationContextContractError
+            if isinstance(exc, ConversationContextContractError):
+                return self._invalid_conversation_context_response(request, exc.reason)
+            raise
         readiness = self._knowledge_readiness_for_request(prepared)
         if readiness is not None and not readiness["ready"]:
             return self._runtime_not_ready_response(prepared, readiness)
@@ -181,11 +187,41 @@ class AnalysisPipelineService:
 
     def _prepare_request(self, request: AnalysisPipelineRequest) -> AnalysisPipelineRequest:
         context = dict(request.copilot_context or {})
+        from app.services.canonical_conversation_turn_service import (
+            ConversationContextContractError,
+            is_strict_evaluation_source,
+            normalize_conversation_turns,
+        )
+
+        strict_context = is_strict_evaluation_source(request.source, context)
+        upstream_diagnostics = context.get("conversation_context_contract")
+        upstream_diagnostics = dict(upstream_diagnostics) if isinstance(upstream_diagnostics, dict) else {}
+        upstream_status = str(upstream_diagnostics.get("status") or "").strip().lower()
+        upstream_reason = str(upstream_diagnostics.get("original_reason") or upstream_diagnostics.get("reason") or "").strip()
+        if strict_context and upstream_status in {"degraded", "invalid"}:
+            raise ConversationContextContractError(upstream_reason or "conversation_context_upstream_invalid")
+        turns, turn_diagnostics = normalize_conversation_turns(
+            context.get("conversation_history"), strict=strict_context,
+        )
+        if upstream_status in {"degraded", "invalid"}:
+            turn_diagnostics = {
+                **upstream_diagnostics,
+                "status": upstream_status,
+                "reason": upstream_reason,
+                "original_reason": upstream_reason,
+                "upstream_status": upstream_status,
+                "pipeline_revalidation_status": turn_diagnostics.get("status"),
+                "degraded_context": upstream_status == "degraded",
+            }
+        context["conversation_history"] = turns
+        context["conversation_context_contract"] = turn_diagnostics
         attachments = [dict(item) for item in (request.image_attachments or []) if isinstance(item, dict)]
         stages: list[dict[str, Any]] = [{
             "stage": "canonical_input",
             "status": "completed",
             "source": request.source,
+            "conversation_turn_count": len(turns),
+            "conversation_context_status": turn_diagnostics["status"],
         }]
         if attachments:
             context["has_image_attachment"] = True
@@ -220,6 +256,25 @@ class AnalysisPipelineService:
         return AnalysisPipelineRequest(
             **{**request.__dict__, "copilot_context": context, "image_attachments": attachments}
         )
+
+    @staticmethod
+    def _invalid_conversation_context_response(request: AnalysisPipelineRequest, reason: str) -> dict[str, Any]:
+        pipeline = {
+            "version": PIPELINE_VERSION,
+            "stages": [{"stage": "canonical_input", "status": "blocked", "reason": reason, "source": request.source}],
+            "final_orchestration_completed": False,
+            "capabilities": dict(request.capabilities or {}),
+        }
+        return {
+            "error": "invalid_conversation_context", "error_reason": reason,
+            "suggested_reply": "", "draft_reply": "", "sendable_reply": "",
+            "can_send": False, "requires_human_review": True, "reply_status": "needs_human_review",
+            "block_reasons": ["invalid_conversation_context", reason], "recommended_assets": [], "reply_blocks": [],
+            "reply_delivery": {"mode": "blocked", "auto_send_ready": False, "reason": "invalid_conversation_context"},
+            "analysis_pipeline": pipeline,
+            "evidence_debug": {"conversation_context_contract": {"status": "blocked", "reason": reason}, "analysis_pipeline": pipeline},
+            "trace_steps": [{"node": "analysis_pipeline", "status": "blocked", "summary": "invalid canonical conversation context", "reason": reason}],
+        }
 
     def _complete_response(
         self,

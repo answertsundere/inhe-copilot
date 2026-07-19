@@ -133,7 +133,8 @@ def _text(state: dict) -> str:
     for item in history:
         if not isinstance(item, dict) or item.get("role") != "customer":
             continue
-        t = str(item.get("text") or "")
+        from app.services.canonical_conversation_turn_service import turn_content
+        t = turn_content(item)
         if t and t != msg and t not in parts:
             parts.append(t)
     return " ".join(p for p in parts if p)

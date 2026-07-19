@@ -312,7 +312,8 @@ def _history_text(state: dict) -> str:
     parts = []
     for item in history:
         if isinstance(item, dict):
-            parts.append(str(item.get("text") or item.get("content") or ""))
+            from app.services.canonical_conversation_turn_service import turn_content
+            parts.append(turn_content(item))
         else:
             parts.append(str(item or ""))
     return "\n".join(parts)

@@ -1277,7 +1277,8 @@ def _customer_history_text(state: dict, current_msg: str) -> str:
     parts = [current_msg or ""]
     for item in ctx.get("conversation_history", []) or []:
         if isinstance(item, dict) and item.get("role") == "customer":
-            parts.append(str(item.get("text") or ""))
+            from app.services.canonical_conversation_turn_service import turn_content
+            parts.append(turn_content(item))
     return " ".join(p for p in parts if p)
 
 

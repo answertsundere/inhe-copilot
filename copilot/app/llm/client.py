@@ -65,6 +65,7 @@ class LLMClient:
         reasoning keeps existing JSON and plain-text consumers unchanged.
         """
         request = dict(kwargs)
+        request["messages"] = self._privacy_project_messages(request.get("messages"))
         if self.provider_name == "minimax":
             temperature = float(request.get("temperature", 0.3) or 0)
             request["temperature"] = max(temperature, 0.1)
@@ -81,8 +82,16 @@ class LLMClient:
                 extra_body.setdefault("thinking", {"type": "disabled"})
             request["extra_body"] = extra_body
 
-        response = self.client.chat.completions.create(**request)
-        if self.provider_name == "minimax":
+        response_format = request.get("response_format") or {}
+        max_attempts = 2 if (
+            self.provider_name == "minimax"
+            and response_format.get("type") == "json_object"
+        ) else 1
+        for attempt in range(max_attempts):
+            response = self.client.chat.completions.create(**request)
+            if self.provider_name != "minimax":
+                return response
+
             choice = response.choices[0] if response.choices else None
             finish_reason = str(getattr(choice, "finish_reason", "") or "")
             content = str(getattr(getattr(choice, "message", None), "content", "") or "")
@@ -90,12 +99,68 @@ class LLMClient:
                 raise RuntimeError("minimax_response_truncated")
             if not content.strip():
                 raise RuntimeError("minimax_empty_response")
-            response_format = request.get("response_format") or {}
-            if response_format.get("type") == "json_object":
-                normalized = self._complete_json_object(content)
-                if normalized is not None:
-                    choice.message.content = json.dumps(normalized, ensure_ascii=False)
-        return response
+            if response_format.get("type") != "json_object":
+                return response
+
+            normalized = self._complete_json_object(content)
+            if normalized is not None:
+                choice.message.content = json.dumps(normalized, ensure_ascii=False)
+                return response
+            if attempt + 1 == max_attempts:
+                raise RuntimeError("minimax_invalid_json_object")
+
+        raise RuntimeError("minimax_completion_unavailable")
+
+    @staticmethod
+    def _privacy_project_messages(messages):
+        """Apply the field-aware provider-boundary privacy projection.
+
+        Most structured context arrives as a JSON string inside a user message.
+        Parsing that shape before projection preserves product titles and
+        admitted facts while pseudonymising private and product identifiers.
+        Plain system prompts remain text and use the precise text projection.
+        """
+        from app.services.canonical_conversation_turn_service import (
+            project_provider_message_text,
+            project_value_for_external_model,
+        )
+
+        def project_text(value):
+            text = str(value or "")
+            stripped = text.strip()
+            if stripped.startswith(("{", "[")):
+                try:
+                    parsed = json.loads(stripped)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    return json.dumps(project_value_for_external_model(parsed), ensure_ascii=False)
+            return project_provider_message_text(text)
+
+        if not isinstance(messages, list):
+            return messages
+        projected = []
+        for message in messages:
+            if not isinstance(message, dict):
+                projected.append(message)
+                continue
+            current = dict(message)
+            content = current.get("content")
+            if isinstance(content, str):
+                current["content"] = project_text(content)
+            elif isinstance(content, list):
+                parts = []
+                for part in content:
+                    if not isinstance(part, dict):
+                        parts.append(part)
+                        continue
+                    projected_part = dict(part)
+                    if projected_part.get("type") == "text" and isinstance(projected_part.get("text"), str):
+                        projected_part["text"] = project_text(projected_part["text"])
+                    parts.append(projected_part)
+                current["content"] = parts
+            projected.append(current)
+        return projected
 
     @staticmethod
     def _complete_json_object(content: str) -> Optional[dict]:
