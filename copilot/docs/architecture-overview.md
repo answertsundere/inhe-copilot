@@ -586,3 +586,26 @@ cutover or real-customer accuracy result. It exposed zero selected-evidence
 turns, 75 percent mean action coverage, 44 percent consecutive-reply
 repetition, and 0/18 overall exploratory passes while all 68 formal turns
 remained non-sendable and required human review.
+
+## Phase 0.8B.1 Evidence Funnel And Evaluation Stop-Loss
+
+Phase 0.8B does not add a Graph node, retrieval path, evidence registry, safety
+gate, or formal reply owner. `AdmittedAnswerContextService` projects its
+existing candidate/admission result into a content-free turn evidence funnel
+with one deterministic earliest breakpoint. The fixed nine-scenario capture
+contains 68 turns: 37 stop at `source_coverage_gap`, 31 at
+`evidence_role_ineligible`, and none reach formal selected evidence.
+
+The formal path remains unchanged. Formal Evidence Convergence stays disabled.
+Evidence Action, Dialogue State, and counterfactual preview are
+`paused_not_qualified`; Pipeline does not invoke them, and runtime ignores a
+stale Action enablement flag. The report-safe funnel contains counts, roles,
+fact/attribute types, identity namespaces, and pseudonymous UIDs only.
+
+Tier D is reduced to canonical conversation, the formal Agent, deterministic
+turn checks, and at most one transcript semantic grader call per trial. Without
+a qualified grader, semantic action coverage and overall pass are null. The
+MiniMax M2.7-highspeed buyer candidate failed both strict-schema and tool-call
+short/long qualification with zero successful attempts, so 1x1, 3x1, grader
+qualification, and 9x2 were not started. This is an evaluator-provider blocker,
+not an Agent accuracy result.

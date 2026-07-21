@@ -156,13 +156,17 @@ The deterministic thread scorer reports independent metrics:
 - review-only and auto-send safety when handoff is required;
 - attached-media promise consistency;
 - buyer-model outcome acceptance;
-- required-action coverage reported by the simulator;
+- required-action coverage from at most one qualified transcript-semantic
+  grader call per trial;
 - repeated consecutive replies and per-turn latency;
 - all-trials and any-trial scenario stability.
 
-The buyer outcome and action coverage remain model observations, not Gold
-truth. A run using the same provider as the formal Agent records that fact and
-has lower independence than a separate-provider run.
+The buyer outcome and semantic action coverage remain model observations, not
+Gold truth. Simulator self-reported actions cannot credit coverage. Without a
+qualified grader, action coverage and overall pass are `null`; deterministic
+safety diagnostics remain available. A same-provider-family diagnostic records
+`same_provider_family_risk=true` and cannot be treated as independent-model
+acceptance.
 
 ### 2026-07-18 Exploratory Baseline
 

@@ -177,3 +177,11 @@ formal Pipeline is called. The host fingerprint is derived from canonical
 origin only: scheme, lower-case hostname, and effective port. Endpoint paths,
 queries, fragments, and userinfo neither appear in reports nor create a new
 identity. This is evaluation orchestration, not a LangGraph responsibility.
+
+Phase 0.8B keeps the same boundary. The turn evidence funnel is a read-only
+projection of the existing admitted context for evaluation reports. Dialogue
+State, controlled Action Policy, and counterfactual preview are paused and are
+not attached by `AnalysisPipelineService`. LangGraph gains no node, registry,
+retrieval, action execution, or delivery authority. Any future activation would
+require a qualified provider, a separate decision record, and entry-point parity
+evidence.

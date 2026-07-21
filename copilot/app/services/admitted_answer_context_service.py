@@ -675,6 +675,251 @@ def build_evidence_convergence_trace(
     })
 
 
+_FUNNEL_REASON_ALIASES = {
+    "resolved_product_identity_missing": "product_identity_missing",
+    "product_identity_namespace_missing": "product_identity_missing",
+    "product_identity_mismatch": "product_identity_mismatch",
+    "fact_type_incompatible": "fact_type_mismatch",
+    "review_status_missing": "review_status_missing",
+    "not_direct_answerable": "direct_answer_not_allowed",
+    "reference_only": "reference_only",
+    "placeholder_evidence": "placeholder_fact",
+    "conflicting_evidence": "conflicting_evidence",
+    "material_conflicting_evidence": "conflicting_evidence",
+    "incomparable_unit_domain": "conflicting_evidence",
+}
+
+
+def _funnel_reason(item: dict[str, Any], reason: str) -> str:
+    role = _role(item)
+    source_type = _source_type(item)
+    if reason in {"ineligible_role_or_gate", "evidence_role_not_direct", "reference_only"}:
+        if role in ACTION_ROLES or source_type in ACTION_ROLES:
+            return "service_action_only"
+        if role in MEDIA_ROLES or source_type in MEDIA_ROLES:
+            return "media_reference_only"
+    if reason == "fact_type_incompatible" and not _fact_type(item):
+        return "fact_type_missing"
+    return _FUNNEL_REASON_ALIASES.get(reason, reason or "not_direct_candidate")
+
+
+def _funnel_uid(origin_key: str) -> str:
+    return f"funnel-{sha256(origin_key.encode('utf-8')).hexdigest()[:20]}"
+
+
+def build_turn_evidence_funnel(
+    response: dict[str, Any],
+    *,
+    product_identity: dict[str, Any],
+    admitted_context: dict[str, Any],
+    convergence_enabled: bool,
+) -> dict[str, Any]:
+    """Project the shared admission result into a content-free turn funnel.
+
+    This function performs no retrieval and owns no eligibility rules. It reads
+    the same candidate containers and admission result used by
+    :class:`AdmittedAnswerContextService`, then removes evidence text and
+    identity values before the diagnostic is persisted.
+    """
+    requested_claim_types = [
+        sanitize_text(item.get("claim_type")).lower()
+        for item in _as_list(admitted_context.get("requested_claims"))
+        if isinstance(item, dict) and sanitize_text(item.get("claim_type"))
+    ]
+    admitted_uids = {
+        sanitize_text(item.get("evidence_uid"))
+        for item in [
+            *(_as_list(admitted_context.get("direct_product_facts"))),
+            *(_as_list(admitted_context.get("direct_policy_facts"))),
+        ]
+        if isinstance(item, dict) and sanitize_text(item.get("evidence_uid"))
+    }
+    rejected_by_uid = {
+        sanitize_text(item.get("evidence_uid")): sanitize_text(item.get("reason"))
+        for item in _as_list(admitted_context.get("rejected_evidence"))
+        if isinstance(item, dict) and sanitize_text(item.get("evidence_uid"))
+    }
+
+    rows_by_origin: dict[str, dict[str, Any]] = {}
+    selected_origins: set[str] = set()
+    for source, raw_item in _candidate_containers(response):
+        item = _normalise_product_context_candidate(source, raw_item, product_identity)
+        if source == "response.formal_evidence_candidates":
+            item = _normalise_formal_evidence_candidate(item, product_identity)
+        text = _text(item)
+        provenance = _provenance(source, item, text)
+        origin_key = sanitize_text(provenance.get("origin_evidence_key"))
+        if source.endswith("selected_evidence"):
+            selected_origins.add(origin_key)
+        row = rows_by_origin.setdefault(origin_key, {
+            "evidence_uid": _funnel_uid(origin_key),
+            "source_types": [],
+            "source_containers": [],
+            "evidence_role": _role(item),
+            "fact_type": _fact_type(item),
+            "attribute_key": _attribute_key(item),
+            "identity_namespaces": [],
+            "candidate": True,
+            "direct_reviewed": False,
+            "identity_matched": False,
+            "fact_type_compatible": False,
+            "non_placeholder": False,
+            "non_conflicting": False,
+            "formally_admissible": False,
+            "formal_selected": False,
+            "rejection_reason": "",
+        })
+        for value, key in ((source, "source_containers"), (_source_type(item), "source_types")):
+            if value and value not in row[key]:
+                row[key].append(value)
+        row["identity_namespaces"] = sorted(set(row["identity_namespaces"]) | {
+            sanitize_text(scope.get("namespace"))
+            for scope in _identity_scope(item)
+            if sanitize_text(scope.get("namespace"))
+        })
+
+        role = _role(item)
+        status = sanitize_text(
+            item.get("fact_review_status") or item.get("review_status") or item.get("verification_status")
+        ).lower()
+        gate = sanitize_text(item.get("gate_status")).lower()
+        direct_role = role in DIRECT_PRODUCT_ROLES | DIRECT_POLICY_ROLES
+        row["direct_reviewed"] = row["direct_reviewed"] or bool(
+            direct_role
+            and status in REVIEWED_STATUSES
+            and gate not in {"blocked", "reference_only", "rejected"}
+            and item.get("reference_only") is not True
+        )
+        policy = role in DIRECT_POLICY_ROLES
+        identity_reason = "" if policy else _identity_reason(
+            item,
+            product_identity,
+            allow_global=role == "faq_direct",
+        )
+        row["identity_matched"] = row["identity_matched"] or bool(row["direct_reviewed"] and not identity_reason)
+        supported = set(_claim_types(item))
+        compatible = (
+            set().union(*(COMPATIBLE_FACT_TYPES.get(claim, {claim}) for claim in requested_claim_types))
+            if requested_claim_types else supported
+        )
+        fact_compatible = not requested_claim_types or not supported.isdisjoint(compatible)
+        row["fact_type_compatible"] = row["fact_type_compatible"] or bool(row["identity_matched"] and fact_compatible)
+
+        uid = sanitize_text(provenance.get("evidence_uid"))
+        reason = rejected_by_uid.get(uid) or _admission_reason(
+            item,
+            product_identity=product_identity,
+            requested_claim_types=requested_claim_types,
+            policy=policy,
+        )
+        canonical_reason = _funnel_reason(item, reason)
+        row["non_placeholder"] = row["non_placeholder"] or canonical_reason != "placeholder_fact"
+        row["non_conflicting"] = row["non_conflicting"] or canonical_reason != "conflicting_evidence"
+        if uid in admitted_uids:
+            row["non_placeholder"] = True
+            row["non_conflicting"] = True
+            row["formally_admissible"] = True
+            row["rejection_reason"] = ""
+        elif canonical_reason:
+            row["rejection_reason"] = canonical_reason
+
+    for origin_key, row in rows_by_origin.items():
+        row["formal_selected"] = origin_key in selected_origins
+        row["source_types"].sort()
+        row["source_containers"].sort()
+
+    rows = sorted(rows_by_origin.values(), key=lambda item: item["evidence_uid"])
+    counts = {
+        "product_context_candidate_count": sum(
+            1 for row in rows if any(source.startswith("product_context_pack.") for source in row["source_containers"])
+        ),
+        "candidate_count": len(rows),
+        "direct_fact_candidate_count": sum(
+            1 for row in rows if row.get("evidence_role") in DIRECT_PRODUCT_ROLES | DIRECT_POLICY_ROLES
+        ),
+        "direct_reviewed_count": sum(1 for row in rows if row["direct_reviewed"]),
+        "identity_matched_count": sum(1 for row in rows if row["identity_matched"]),
+        "fact_type_compatible_count": sum(1 for row in rows if row["fact_type_compatible"]),
+        "non_placeholder_count": sum(1 for row in rows if row["non_placeholder"]),
+        "non_conflicting_count": sum(1 for row in rows if row["non_conflicting"]),
+        "formally_admissible_count": sum(1 for row in rows if row["formally_admissible"]),
+        "formal_selected_count": sum(1 for row in rows if row["formal_selected"]),
+    }
+    counts.update({
+        "direct_reviewed_candidate_count": counts["direct_reviewed_count"],
+        "identity_matched_candidate_count": counts["identity_matched_count"],
+        "fact_type_compatible_candidate_count": counts["fact_type_compatible_count"],
+        "non_placeholder_candidate_count": counts["non_placeholder_count"],
+        "non_conflicting_candidate_count": counts["non_conflicting_count"],
+        "formally_admissible_candidate_count": counts["formally_admissible_count"],
+        "selected_evidence_count": counts["formal_selected_count"],
+    })
+    rejected_by_reason: dict[str, int] = {}
+    for row in rows:
+        reason = sanitize_text(row.get("rejection_reason"))
+        if reason:
+            rejected_by_reason[reason] = rejected_by_reason.get(reason, 0) + 1
+
+    identity_present = any(sanitize_text((product_identity or {}).get(key)) for key in _IDENTITY_KEYS)
+    if not requested_claim_types:
+        earliest_breakpoint = "context_missing"
+    elif not identity_present:
+        earliest_breakpoint = "product_identity_missing"
+    elif not rows:
+        earliest_breakpoint = "source_coverage_gap"
+    elif counts["direct_fact_candidate_count"] == 0:
+        earliest_breakpoint = "evidence_role_ineligible"
+    elif counts["direct_reviewed_count"] == 0:
+        earliest_breakpoint = "review_status_ineligible"
+    elif counts["identity_matched_count"] == 0:
+        earliest_breakpoint = "identity_mismatch"
+    elif counts["fact_type_compatible_count"] == 0:
+        earliest_breakpoint = "fact_type_mismatch"
+    elif counts["non_placeholder_count"] == 0:
+        earliest_breakpoint = "placeholder_value"
+    elif counts["non_conflicting_count"] == 0:
+        earliest_breakpoint = "conflicting_evidence"
+    elif counts["formally_admissible_count"] == 0:
+        reason_priority = (
+            "placeholder_value" if rejected_by_reason.get("placeholder_fact")
+            else "conflicting_evidence" if rejected_by_reason.get("conflicting_evidence")
+            else "evidence_role_ineligible"
+        )
+        earliest_breakpoint = reason_priority
+    elif counts["formal_selected_count"] == 0 and not convergence_enabled:
+        earliest_breakpoint = "convergence_disabled"
+    elif counts["formal_selected_count"] == 0:
+        earliest_breakpoint = "graph_selection_gap"
+    else:
+        earliest_breakpoint = "selected_successfully"
+
+    gap_classification = earliest_breakpoint
+
+    rejection_reason_counts = dict(rejected_by_reason)
+    if earliest_breakpoint in {
+        "context_missing", "product_identity_missing", "source_coverage_gap",
+        "evidence_role_ineligible", "convergence_disabled", "graph_selection_gap",
+    }:
+        rejection_reason_counts[earliest_breakpoint] = rejection_reason_counts.get(earliest_breakpoint, 0) + 1
+
+    return sanitize_obj({
+        "schema_version": "turn-evidence-funnel-v1",
+        "counts": counts,
+        "rejected_evidence": [row for row in rows if row.get("rejection_reason")],
+        "rejection_reason_counts": dict(sorted(rejection_reason_counts.items())),
+        "rejected_by_reason": dict(sorted(rejected_by_reason.items())),
+        "earliest_breakpoint": earliest_breakpoint,
+        "gap_classification": gap_classification,
+        "records": rows[:80],
+        "convergence_enabled": bool(convergence_enabled),
+        "read_only": True,
+        "contains_evidence_text": False,
+        "identity_values_redacted": True,
+        "used_for_final_reply": False,
+        "can_change_can_send": False,
+    })
+
+
 def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for item in _as_list(understanding.get("requested_claims")):

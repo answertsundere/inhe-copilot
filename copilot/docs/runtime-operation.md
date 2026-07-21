@@ -181,13 +181,18 @@ process. Its runner pins the 5012 boot source hash, its own evaluator source
 hash, exact feature flags, formal model, dataset manifest, and both evaluator
 qualification reports. Formal evidence convergence remains disabled.
 
-Before reading the dataset, the runner verifies pairwise-independent formal,
+Before reading the dataset, the runner verifies complete formal,
 buyer-simulator, and transcript-grader identities, then performs a minimal
 non-customer completion against the exact formal provider. Authentication,
 quota, rate-limit, timeout, truncation, or identity failure is an infrastructure
 blocker. Do not accept deterministic Pipeline fallback as proof that the
 configured formal model ran. Grader and simulator must also pass serial and
 two-worker long-context qualification before 9x2 begins.
+
+Different models behind one provider host are permitted only as a
+`single_provider_family_diagnostic`. Such a run records
+`same_provider_family_risk=true` and `independent_acceptance_allowed=false`; it
+cannot be described as an independent-model acceptance result.
 
 The fixed run is valid only with nine uniquely resolved sources and eighteen
 completed trials. Checkpoints are atomic but remain evaluation output and are
@@ -206,4 +211,26 @@ The first infrastructure-valid 9x2 baseline completed 18/18 trials with zero
 simulator errors and matching report/checkpoint hashes. Its 0/18 exploratory
 pass result is retained as a diagnostic: it does not authorize changing 5011,
 enabling formal evidence convergence, or loosening Safety/Delivery contracts.
-The candidate process must be stopped after evaluation.
+The candidate process must be stopped after evaluation. That report is now
+historical and marked `superseded_by_provider_change`; it is not the current
+provider baseline.
+
+### Phase 0.8B.1 stop-loss contract
+
+Evidence Action is paused and unqualified. Runtime identity reports
+`evidence_action_shadow=false` and `paused_not_qualified` even when a stale
+environment flag is present. Pipeline does not call Action Policy, does not
+produce a counterfactual preview, and cannot use that experiment to alter any
+formal response field.
+
+Tier D uses the smaller execution shape: canonical conversation, formal Agent,
+deterministic turn checks, and at most one qualified transcript-semantic grade
+per trial. If no grader is qualified, deterministic diagnostics remain usable
+but semantic coverage and overall pass are `null`. No per-turn Action Provider
+or counterfactual grader is part of the run.
+
+Provider gates are layered: qualification, then 1x1, then 3x1, then fixed 9x2.
+The current MiniMax M2.7-highspeed buyer candidate failed both strict-schema and
+tool-call qualification with zero successful attempts, so 1x1, 3x1, grader
+qualification, and 9x2 were not started. The timeout and schema contracts were
+not relaxed.

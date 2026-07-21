@@ -379,3 +379,70 @@ reply repetition. All 68 formal turns remained `can_send=false` and
 `requires_human_review=true`. These measurements prioritize evidence use,
 contextual action completion, and reply progression as the next product work;
 they do not measure Tier A accuracy and do not justify provider cutover.
+After the evaluator provider change, this report was retained with
+`superseded_by_provider_change`; it is historical rather than the current
+provider baseline.
+
+## Phase 0.8B: evidence use and dialogue progression
+
+The 0.8A report recorded zero selected-evidence turns, but its v1 Turn
+Observation did not retain the upstream candidate and admission stages.
+Therefore zero selection alone cannot distinguish missing source coverage from
+identity/type mismatch, formal admission rejection, disabled convergence, or a
+later selection drop. Phase 0.8B adds a read-only turn funnel at the existing
+`AdmittedAnswerContextService` owner. It reads the same candidate containers and
+admission result; it does not retrieve again or define another eligibility
+policy. Persisted records contain pseudonymous UIDs, source roles, fact and
+attribute types, and identity namespaces only. Evidence text and identity
+values are excluded.
+
+The funnel reports candidate, reviewed-direct, identity-matched,
+fact-compatible, non-conflicting, formally-admissible, and formally-selected
+counts. It also identifies the earliest observed breakpoint and classifies the
+turn as source coverage, identity/fact type, formal admission, or
+generation/action usage. When admissible evidence exists but formal convergence
+is disabled, the result is explicitly `convergence_disabled`; it is not
+misreported as a source gap.
+
+Phase 0.8B.1 narrows this work to one report-safe evidence funnel. Dialogue
+State, Action Policy, and counterfactual preview are paused and are not attached
+by the formal Pipeline. Runtime reports the Action experiment as
+`paused_not_qualified`; stale enablement flags cannot reactivate it. This keeps
+the failure analysis at the earliest evidence breakpoint rather than adding a
+second reply planner before source coverage is understood.
+
+This design follows four reusable official patterns:
+
+- Anthropic's [context engineering guidance](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+  recommends the smallest high-signal context and progressive disclosure rather
+  than growing prompts into brittle rule lists.
+- Anthropic's [tool design guidance](https://www.anthropic.com/engineering/writing-tools-for-agents)
+  keeps tools narrow and application-owned, and its [agent eval guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+  evaluates complete multi-turn trajectories rather than one final sentence.
+- [LangGraph](https://langchain-ai.github.io/langgraph/index.html) provides
+  durable state, checkpointing, and human-in-the-loop orchestration; it does not
+  replace this project's admission registry or deterministic delivery gates.
+- Rasa's [dialogue management](https://rasa.com/docs/learn/concepts/dialogue-management/)
+  and [FlowPolicy](https://rasa.com/docs/reference/config/policies/flow-policy/)
+  separate model-proposed commands from deterministic business execution. The
+  project reuses that boundary without adding a second dialogue engine.
+- OpenAI's [Evals API](https://platform.openai.com/docs/api-reference/evals)
+  reinforces typed evaluation data and explicit graders. Phase 0.8B keeps its
+  new diagnostics outside the existing Tier D pass score until a versioned
+  evaluation contract approves them.
+
+The fixed nine-scenario capture contains 68 formal turns and 68 funnel rows.
+No row reached formal selected evidence. Earliest-breakpoint classification is
+`source_coverage_gap=37` and `evidence_role_ineligible=31`; there were no missing
+funnel rows, formal writes, or `can_send` changes. This locates the current loss
+before graph selection and does not by itself measure answer accuracy.
+
+Tier D now uses deterministic per-turn checks and at most one transcript grader
+call per trial. If that grader is unavailable, semantic action coverage and the
+overall result are `null`; deterministic safety diagnostics are still emitted.
+The buyer qualification gate precedes 1x1, 3x1, and 9x2. MiniMax
+M2.7-highspeed produced zero valid attempts in both strict-schema and tool-call
+modes across short and long/concurrent probes, with only structured-output
+parse/truncation failures. The run therefore stopped before grader
+qualification or any live trial. No free-text repair, timeout increase, local
+Qwen fallback, or scenario change was used.
