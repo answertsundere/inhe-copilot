@@ -686,6 +686,7 @@ def create_app():
     @app.route("/qa")
     @app.route("/reviews")
     @app.route("/training-samples")
+    @app.route("/real-accuracy-labels")
     @app.route("/service-rules")
     @app.route("/ai-updates")
     @app.route("/quality-replay")

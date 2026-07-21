@@ -58,7 +58,13 @@ def test_label_routes_require_reviewer_and_keep_labels_out_of_knowledge(monkeypa
     assert client.post(f"/api/kb/real-accuracy/cases/{case_uid}/labels", json={"claims": _claim()}).status_code == 403
 
     monkeypatch.setattr(admin_auth, "_verified_principal", lambda: admin_auth.AdminPrincipal("reviewer", "reviewer", frozenset({"reviewer"}), "test"))
-    assert client.get("/api/kb/real-accuracy/cases").status_code == 200
+    list_response = client.get("/api/kb/real-accuracy/cases")
+    assert list_response.status_code == 200
+    summary = list_response.get_json()["workflow_summary"]
+    assert summary["review_scope"] == "gold_30"
+    assert summary["selected_claim_count"] > 0
+    assert summary["approved_claim_count"] == 0
+    assert summary["pending_claim_count"] == summary["selected_claim_count"]
     forbidden = client.post(f"/api/kb/real-accuracy/cases/{case_uid}/labels", json={
         "claims": _claim(), "target_turn_uids": [buyer_turn_uid], "review_status": "approved", "optimistic_lock_version": 0,
     })
@@ -78,3 +84,11 @@ def test_label_routes_require_reviewer_and_keep_labels_out_of_knowledge(monkeypa
     assert response.get_json()["label"]["review_status"] == "approved"
     assert response.get_json()["label"]["label"]["target_turn_uids"] == [buyer_turn_uid]
     assert not (tmp_path / "knowledge_base.db").exists()
+
+
+def test_full_app_registers_real_accuracy_workbench_spa_route():
+    from app.main import create_app
+
+    app = create_app()
+
+    assert "/real-accuracy-labels" in {rule.rule for rule in app.url_map.iter_rules()}

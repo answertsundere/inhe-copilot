@@ -308,11 +308,21 @@ domains are both zero, so the manifest status is
 `awaiting_supervisor_approval`; Tier A and the five-case real multi-turn subset
 are not run.
 
-The Gold-30 queue is therefore an offline review input, not evidence that the
-live supervisor UI is available. At the Phase 0.8D checkpoint the unchanged
-5011 runtime remains on `17b82bb1` and returns 404 for
-`/ask/real-accuracy-labels`; a separately approved deployment is required before
-supervisors can create the audited denominator.
+The Gold-30 queue is therefore a review input, not evidence of accuracy. Phase
+0.8E restores `/ask/real-accuracy-labels` in the SPA and scopes the API to the
+same deterministic 30 claims rather than all 147 Gold cases. The isolated 5012
+canary is runtime-ready and rejects unauthenticated page/API requests; automated
+RBAC tests prove operator denial, reviewer draft/review access, and
+supervisor/admin approval authority. Those checks do not substitute for a real
+signed Cloudflare Access supervisor session. The unchanged 5011 runtime remains
+on `17b82bb1`, and no production deployment or approval is claimed yet.
+
+The workbench exposes only whether product and order context is present; it does
+not return raw SKU, item, order, URL, or long-identifier values. Its progress
+summary reports the selected, approved, pending, and rejected claim counts plus
+approved-domain coverage. With zero approvals the approved-only runner exits 2
+as `awaiting_supervisor_approval` before source HMAC lookup or any Agent call.
+The HMAC becomes mandatory only after the human approval gate passes.
 
 ### Operating Commands
 

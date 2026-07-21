@@ -100,10 +100,6 @@ def main(argv: list[str] | None = None) -> int:
     if os.environ.get("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
         print(json.dumps({"error": "formal_evidence_convergence_must_remain_disabled"}, ensure_ascii=False))
         return 2
-    secret = os.environ.get(args.hmac_env, "")
-    if not secret:
-        print(json.dumps({"error": "gold_set_hmac_key_missing"}, ensure_ascii=False))
-        return 2
     dataset = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
     validation_findings = validate_gold_dataset(dataset)
     if validation_findings or (dataset.get("privacy") or {}).get("privacy_scan_status") != "passed":
@@ -137,6 +133,10 @@ def main(argv: list[str] | None = None) -> int:
         dataset = apply_approved_claim_labels(dataset, labels)
     else:
         labels = []
+    secret = os.environ.get(args.hmac_env, "")
+    if not secret:
+        print(json.dumps({"error": "gold_set_hmac_key_missing"}, ensure_ascii=False))
+        return 2
     label_status_counts = Counter(str(item.get("review_status") or "unknown") for item in labels)
     source_by_case = {
         hmac_identifier(secret, "training_sample", sample.get("id")): sample

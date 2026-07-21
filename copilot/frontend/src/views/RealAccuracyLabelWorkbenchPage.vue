@@ -16,6 +16,7 @@ const groups = ref<any[]>([])
 const selected = ref<any | null>(null)
 const selectedCaseUids = ref<string[]>([])
 const strategyFilter = ref('')
+const workflowSummary = ref<any>({})
 const error = ref('')
 const form = reactive<{ claims: AccuracyClaim[]; targetTurnUids: string[]; reviewStatus: 'draft' | 'reviewed' | 'approved'; version: number }>({
   claims: [], targetTurnUids: [], reviewStatus: 'draft', version: 0,
@@ -66,6 +67,7 @@ async function load() {
     const { data } = await getRealAccuracyCases(strategyFilter.value ? { strategy_group: strategyFilter.value } : {})
     cases.value = data.items || []
     groups.value = data.strategy_groups || []
+    workflowSummary.value = data.workflow_summary || {}
     selectedCaseUids.value = selectedCaseUids.value.filter((uid) => cases.value.some((item) => item.case_uid === uid))
     if (cases.value.length) select(cases.value[0]); else selected.value = null
   } catch (e: any) {
@@ -120,7 +122,7 @@ onMounted(load)
 <template>
   <main class="page-container accuracy-workbench">
     <header class="page-header">
-      <div><h2>真实准确率人工标注</h2><p>只处理脱敏评测样本。策略建议和草稿不会写入商品知识库，也不会影响客服回复。</p></div>
+      <div><h2>真实准确率人工标注</h2><p>只处理脱敏 Gold-30 评测样本。策略建议和草稿不会写入商品知识库，也不会影响客服回复。</p><div class="progress-line"><el-tag>原子断言 {{ workflowSummary.selected_claim_count || 0 }}</el-tag><el-tag type="success">已批准 {{ workflowSummary.approved_claim_count || 0 }}</el-tag><el-tag type="warning">待处理 {{ workflowSummary.pending_claim_count || 0 }}</el-tag><el-tag type="info">业务域 {{ workflowSummary.approved_domain_count || 0 }}/{{ workflowSummary.selected_domain_count || 0 }}</el-tag></div></div>
       <div class="header-controls">
         <el-select v-model="strategyFilter" placeholder="全部处理策略" clearable @change="load">
           <el-option v-for="group in groups" :key="group.id" :label="group.label" :value="group.id" />
@@ -145,7 +147,7 @@ onMounted(load)
       <section v-if="selected" class="case-detail">
         <el-alert v-if="selected.privacy_review_required" type="error" :closable="false" title="该样本仍需隐私复核，不能批准标签。" />
         <el-alert v-else-if="selected.exclusion_reason" type="warning" :closable="false" :title="`暂不进入批量审核：${selected.exclusion_reason}`" />
-        <div class="metadata-line"><el-tag>{{ selected.strategy?.label }}</el-tag><el-tag type="info">{{ proposalText[selected.proposal_status] }}</el-tag><span>{{ evidenceSummary(selected) }}</span></div>
+        <div class="metadata-line"><el-tag>{{ selected.strategy?.label }}</el-tag><el-tag type="info">{{ proposalText[selected.proposal_status] }}</el-tag><el-tag type="info">商品上下文：{{ selected.sidecar_context_presence?.product ? '已提供' : '缺失' }}</el-tag><el-tag type="info">订单上下文：{{ selected.sidecar_context_presence?.order ? '已提供' : '缺失' }}</el-tag><span>{{ evidenceSummary(selected) }}</span></div>
         <h3>当前买家问题</h3><p>{{ selected.customer_message }}</p>
         <h3>必要上下文窗口</h3>
         <el-alert type="info" :closable="false" :title="selected.target_recommendation?.requires_confirmation ? '系统仅推荐了可能对应的买家消息，请人工确认后勾选。' : '已使用此前人工选择的买家消息。'" />
@@ -175,6 +177,7 @@ onMounted(load)
 <style scoped>
 .accuracy-workbench { max-width: 1440px; margin: 0 auto; padding: 24px; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }.page-header h2 { margin: 0; font-size: 22px; }.page-header p { color: #667085; margin: 8px 0 20px; }.header-controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.progress-line { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .workbench-grid { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; min-height: 600px; margin-top: 16px; }.case-list { border-right: 1px solid #e4e7ed; overflow: auto; }.case-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px; align-items: start; border-bottom: 1px solid #eef0f3; padding: 10px; }.case-row:has(button:hover), .case-row.active { background: #ecf5ff; }.case-row button { display: grid; gap: 5px; border: 0; background: transparent; text-align: left; cursor: pointer; min-width: 0; }.case-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #475467; }.case-row small { color: #667085; }
 .case-detail { min-width: 0; }.case-detail h3 { font-size: 15px; margin: 18px 0 8px; }.metadata-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #667085; }.turns { background: #f8fafc; border: 1px solid #e4e7ed; padding: 8px 14px; max-height: 420px; overflow: auto; }.turn-row { display: grid; grid-template-columns: 28px 48px minmax(0, 1fr); align-items: start; gap: 4px; margin: 4px -6px; padding: 7px 6px; border-radius: 4px; }.turn-row.target { background: #eaf3ff; }.turn-spacer { width: 28px; }.claim-form { border: 1px solid #dcdfe6; padding: 12px; margin-bottom: 10px; }.claim-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }.claim-form :deep(.el-row) { margin-bottom: 10px; }.actions { display: flex; gap: 10px; margin-top: 18px; }
 @media (max-width: 800px) { .accuracy-workbench { padding: 14px; }.page-header { display: grid; }.header-controls { justify-content: flex-start; }.workbench-grid { grid-template-columns: 1fr; }.case-list { border-right: 0; max-height: 260px; }.claim-form :deep(.el-col) { width: 100%; max-width: 100%; flex: 0 0 100%; margin-bottom: 8px; } }

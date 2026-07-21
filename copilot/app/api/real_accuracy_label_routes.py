@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from app.services.real_accuracy_claim_review_service import (
     STRATEGY_GROUPS,
     bounded_conversation_window,
     build_claim_review_plan,
+    build_minimum_supervisor_queue,
 )
 
 
@@ -57,6 +59,7 @@ def _public_case(case: dict[str, Any], plan_item: dict[str, Any]) -> dict[str, A
         "query_class": case.get("query_class"),
         "risk_level": case.get("risk_level"),
         "sidecar_present": case.get("sidecar_present"),
+        "sidecar_context_presence": plan_item.get("sidecar_context_presence"),
         "reference_label": {
             "label_status": (case.get("reference_label") or {}).get("label_status"),
             "reference_text": (case.get("reference_label") or {}).get("reference_text"),
@@ -73,6 +76,31 @@ def _public_case(case: dict[str, Any], plan_item: dict[str, Any]) -> dict[str, A
         "exclusion_reason": plan_item.get("exclusion_reason"),
         "label": plan_item.get("saved_label"),
     }
+
+
+def _gold_30_plan_items(plan: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    queue = build_minimum_supervisor_queue(plan, target_claim_count=30, minimum_domain_count=5)
+    claims_by_case: dict[str, list[dict[str, Any]]] = {}
+    for item in queue.get("items") or []:
+        case_uid = str(item.get("case_uid") or "")
+        claim = item.get("atomic_claim")
+        if case_uid and isinstance(claim, dict):
+            claims_by_case.setdefault(case_uid, []).append(claim)
+    scoped: list[dict[str, Any]] = []
+    for item in plan.get("items") or []:
+        claims = claims_by_case.get(str(item.get("case_uid") or ""))
+        if not claims:
+            continue
+        row = dict(item)
+        row["candidate_claims"] = claims
+        row["required_actions"] = sorted({
+            action for claim in claims for action in claim.get("required_action_points") or []
+        })
+        row["prohibited_claims"] = sorted({
+            phrase for claim in claims for phrase in claim.get("forbidden_claims") or []
+        })
+        scoped.append(row)
+    return scoped, queue
 
 
 def _validate_target_turns(case: dict[str, Any], target_turn_uids: Any, review_status: str) -> list[str]:
@@ -114,10 +142,30 @@ def list_cases():
     status = str(request.args.get("status") or "").strip()
     strategy_group = str(request.args.get("strategy_group") or "").strip()
     plan = build_claim_review_plan(dataset, list(labels.values()))
+    scoped_items, queue = _gold_30_plan_items(plan)
+    queue_claim_uids = {
+        str((item.get("atomic_claim") or {}).get("claim_uid") or "")
+        for item in queue.get("items") or []
+    }
+    claim_status_counts: Counter[str] = Counter()
+    approved_domains: set[str] = set()
+    claim_domain = {
+        str((item.get("atomic_claim") or {}).get("claim_uid") or ""): str(item.get("business_domain") or "")
+        for item in queue.get("items") or []
+    }
+    for label in labels.values():
+        for claim in ((label.get("label") or {}).get("claims") or []):
+            claim_uid = str(claim.get("claim_uid") or "")
+            if claim_uid not in queue_claim_uids:
+                continue
+            status_value = str(claim.get("review_status") or "draft")
+            claim_status_counts[status_value] += 1
+            if status_value == "approved" and claim_domain.get(claim_uid):
+                approved_domains.add(claim_domain[claim_uid])
     cases_by_uid = {str(case.get("case_uid") or ""): case for case in dataset.get("cases") or []}
     rows = [
         _public_case(cases_by_uid[item["case_uid"]], item)
-        for item in plan["items"]
+        for item in scoped_items
         if item["case_uid"] in cases_by_uid
     ]
     if status:
@@ -132,6 +180,21 @@ def list_cases():
             {"id": key, **value} for key, value in STRATEGY_GROUPS.items()
         ],
         "workflow_summary": {
+            "review_scope": "gold_30",
+            "queue_status": queue.get("queue_status"),
+            "selected_claim_count": queue.get("selected_claim_count"),
+            "selected_case_count": len(scoped_items),
+            "selected_domain_count": queue.get("selected_domain_count"),
+            "domain_distribution": queue.get("domain_distribution"),
+            "approved_claim_count": int(claim_status_counts.get("approved", 0)),
+            "approved_domain_count": len(approved_domains),
+            "pending_claim_count": max(
+                0,
+                int(queue.get("selected_claim_count") or 0)
+                - int(claim_status_counts.get("approved", 0))
+                - int(claim_status_counts.get("rejected", 0)),
+            ),
+            "rejected_claim_count": int(claim_status_counts.get("rejected", 0)),
             "strategy_counts": plan.get("strategy_counts"),
             "proposal_status_counts": plan.get("proposal_status_counts"),
             "approved_case_count": plan.get("approved_case_count"),
@@ -208,10 +271,11 @@ def apply_proposals():
     store = RealAccuracyLabelStore()
     labels = {item["case_uid"]: item for item in store.list_for_dataset(str(dataset.get("dataset_version") or ""))}
     plan = build_claim_review_plan(dataset, list(labels.values()))
+    scoped_items, _ = _gold_30_plan_items(plan)
     actor_hash = reviewer_actor_hash(current_principal().subject)
     created = 0
     skipped: dict[str, str] = {}
-    for item in plan["items"]:
+    for item in scoped_items:
         case_uid = str(item.get("case_uid") or "")
         if case_uid not in requested:
             continue
@@ -258,10 +322,11 @@ def submit_batch_for_review():
     store = RealAccuracyLabelStore()
     labels = {item["case_uid"]: item for item in store.list_for_dataset(str(dataset.get("dataset_version") or ""))}
     plan = build_claim_review_plan(dataset, list(labels.values()))
+    scoped_items, _ = _gold_30_plan_items(plan)
     actor_hash = reviewer_actor_hash(current_principal().subject)
     reviewed = 0
     skipped: dict[str, str] = {}
-    for item in plan["items"]:
+    for item in scoped_items:
         case_uid = str(item.get("case_uid") or "")
         if case_uid not in requested:
             continue

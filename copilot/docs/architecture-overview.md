@@ -305,7 +305,7 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.8D Gold-30 Approval Gate
+### Current Phase: 0.8E Gold-30 Review Workbench Canary
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
 but its production flag remains disabled. Phase 0.8C repaired the proven
@@ -316,17 +316,20 @@ closed the isolated 5012 delivery gate. The 1x1 probe set and 5-product by
 evidence and actual media blocks. This is not a new Graph, registry, or reply
 owner, and it is not a real-customer accuracy claim.
 
-Phase 0.8D has produced a privacy-checked, deterministic 30-claim supervisor
+Phase 0.8D produced a privacy-checked, deterministic 30-claim supervisor
 queue across seven structured business domains. The queue satisfies the
 multi-turn, partial-answer, high-risk/handoff, service-action, and per-domain
 caps, but it is not Gold truth: the independent label store currently contains
 zero supervisor-approved claims and zero approval audit events. Tier A therefore
 fails closed before calling the Agent, and real-customer accuracy remains
-`null`. The review route exists in this source tree at
-`/ask/real-accuracy-labels`, but the pinned 5011 runtime still serves the older
-`17b82bb1` build and currently returns 404 for that route. The next action is an
-approved workbench deployment followed by human review, not a reply-policy
-change or an in-place 5011 restart.
+`null`. Phase 0.8E restored the missing SPA route and scoped the workbench API
+to that exact 30-claim queue. An isolated 5012 canary is ready with matching
+boot/end source hashes, Access mode denies unauthenticated requests, and the
+role-policy tests cover operator, reviewer, supervisor, and admin boundaries.
+The pinned 5011 runtime still serves the older `17b82bb1` build. A real signed
+Cloudflare Access supervisor session and manual per-claim approval remain
+required before production deployment or Tier A execution; this is not a
+reply-policy change and does not justify an in-place 5011 restart.
 
 ### What Is Strong
 
@@ -344,8 +347,8 @@ change or an in-place 5011 restart.
    offline and isolated API capability gates pass, but approved Gold/Tier A and
    a separately authorised production canary decision are still required before
    changing the 5011 flag.
-2. The public supervisor workbench is blocked until Cloudflare Tunnel has a
-   healthy connector and the real Access/RBAC path can be exercised.
+2. The isolated workbench canary is healthy, but the real Cloudflare Access
+   reviewer/supervisor browser flow has not yet been exercised end to end.
 3. The Gold-30 review queue is ready, but Tier A has zero approved claims and
    zero approved domains; its accuracy rate must remain `null`, not be inferred
    from benchmark or shadow results.

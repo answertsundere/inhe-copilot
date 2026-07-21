@@ -93,11 +93,22 @@ manifest under ignored `outputs/`. Tier A must not start unless the independent
 label store contains at least 30 approved atomic claims across five domains and
 each claim has a matching supervisor/admin audit event. With fewer approvals,
 `run_real_accuracy_baseline.py --approved-only` exits `2` before any Agent call.
-The current approval count is zero. The current source owns the supervisor view
-at `/ask/real-accuracy-labels`, but the pinned 5011 runtime is still the older
-`17b82bb1` build and returns 404 for that route. Deploy the reviewed source to a
-separate approved runtime before human review; do not restart or mutate 5011,
-and do not enable Formal Evidence Convergence there.
+The current approval count is zero. Phase 0.8E adds the supervisor SPA route and
+limits its API, draft creation, and batch review submission to the deterministic
+Gold-30 queue. The isolated 5012 canary must report `ready`, matching boot/end
+source hashes, and `source_tree_drift=false`; in Cloudflare Access mode both the
+page and API must reject an unauthenticated request with 401. Test-only loopback
+or injected principals may verify rendering and role contracts, but they do not
+replace a real signed Access browser session. The pinned 5011 runtime is still
+the older `17b82bb1` build. Do not restart or mutate 5011, and do not enable
+Formal Evidence Convergence there, until the authenticated workbench acceptance
+and an explicit deployment decision are complete.
+
+The approved-only runner evaluates privacy and the independent approval gate
+before requiring the Gold source-link HMAC. This keeps the current zero-approval
+state explicit as `awaiting_supervisor_approval` with exit code 2 and no Agent
+call. Once the approval gate passes, a trusted ignored runtime must provide the
+original Gold HMAC for source joining; missing it remains fail closed.
 
 ## Management Access
 
