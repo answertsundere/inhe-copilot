@@ -361,6 +361,7 @@ def test_runtime_metadata_preserves_version_when_readiness_returns_503(monkeypat
                 "runtime_commit": "abc",
                 "formal_model": "model-x",
                 "formal_provider_identity": _provider_identity("formal", "runtime"),
+                "action_policy_provider_identity": _provider_identity("action", "runtime"),
                 "feature_flags": {"x": False},
             }
         return 503, {"ready": False, "reasons": ["admin_auth_configuration_missing"]}
@@ -372,6 +373,7 @@ def test_runtime_metadata_preserves_version_when_readiness_returns_503(monkeypat
     assert metadata["status"] == "not_ready"
     assert metadata["runtime_commit"] == "abc"
     assert metadata["formal_provider_identity"] == _provider_identity("formal", "runtime")
+    assert metadata["action_policy_provider_identity"] == _provider_identity("action", "runtime")
     assert "https://" not in str(metadata["formal_provider_identity"])
     assert metadata["version_http_status"] == 200
     assert metadata["readiness_http_status"] == 503
@@ -575,7 +577,11 @@ def test_thread_score_fails_when_formal_final_audit_fails(audit_field, blocking_
         terminal_stop_reason="handoff_accepted",
         observed_action_ids=set(),
     )
-    assert score["passed"] is False
+    assert score["passed"] is None
+    assert score["semantic_pass"] is None
+    assert score["overall_pass"] is None
+    assert score["evaluation_status"] == "semantic_grader_unavailable"
+    assert score["contract_passed"] is False
     assert blocking_reason in score["blocking_reasons"]
 
 
@@ -784,6 +790,9 @@ def test_qualification_loaders_reject_tampered_qualified_status(tmp_path):
     grader_report = {
         "schema_version": "tier-d-transcript-grader-qualification/v4",
         "qualification_status": "qualified",
+        "configured_candidate": True,
+        "local_contract_checks": {"negative_semantics": True},
+        "secret_exposure_count": 0,
         "provider": {"identity": identity},
         "timeout_attempt_count": 0,
         "truncated_attempt_count": 0,
@@ -794,19 +803,47 @@ def test_qualification_loaders_reject_tampered_qualified_status(tmp_path):
         "negative_semantic_block_rate": perfect_rate,
         "citation_valid_rate": perfect_rate,
         "repeat_stability_rate": perfect_rate,
+        "counterfactual_qualification": {
+            "status": "qualified",
+            "timeout_attempt_count": 0,
+            "truncated_attempt_count": 0,
+            "schema_error_attempt_count": 0,
+            "free_text_fallback_attempt_count": 0,
+            "semantic_pass_rate": perfect_rate,
+            "repeat_stability_rate": perfect_rate,
+            "latency_ms": {"p95": 10.0},
+            "p95_limit_ms": 100.0,
+        },
         "long_load_qualification": {"serial": load_phase, "concurrent": load_phase},
     }
     grader_path = tmp_path / "grader.json"
     grader_path.write_text(json.dumps(grader_report), encoding="utf-8")
-    runner._load_grader_qualification(grader_path, {"identity": identity})
+    loaded = runner._load_grader_qualification(
+        grader_path,
+        {"identity": identity},
+        workers=1,
+    )
+    assert loaded["selected_execution_profile"] == "serial"
 
     grader_report["long_load_qualification"]["concurrent"] = {
         **load_phase,
         "schema_error_attempt_count": 1,
     }
     grader_path.write_text(json.dumps(grader_report), encoding="utf-8")
-    with pytest.raises(ValueError, match="grader_long_load_error_present"):
-        runner._load_grader_qualification(grader_path, {"identity": identity})
+    # A concurrent failure does not invalidate a runner pinned to one worker.
+    runner._load_grader_qualification(grader_path, {"identity": identity}, workers=1)
+    with pytest.raises(ValueError, match="grader_long_load_concurrent_error_present"):
+        runner._load_grader_qualification(grader_path, {"identity": identity}, workers=2)
+
+    grader_report["local_contract_checks"]["negative_semantics"] = False
+    grader_path.write_text(json.dumps(grader_report), encoding="utf-8")
+    with pytest.raises(ValueError, match="grader_qualification_local_contract_failed"):
+        runner._load_grader_qualification(grader_path, {"identity": identity}, workers=1)
+
+    grader_report["local_contract_checks"]["negative_semantics"] = True
+    grader_report["counterfactual_qualification"] = {"status": "paused_not_qualified"}
+    grader_path.write_text(json.dumps(grader_report), encoding="utf-8")
+    runner._load_grader_qualification(grader_path, {"identity": identity}, workers=1)
 
     simulator_phase = {
         "status": "qualified",
@@ -820,13 +857,100 @@ def test_qualification_loaders_reject_tampered_qualified_status(tmp_path):
         "schema_version": "tier-d-customer-simulator-qualification/v1",
         "qualification_status": "qualified",
         "provider": {"identity": identity},
+        "short": simulator_phase,
         "serial": simulator_phase,
         "concurrent": {**simulator_phase, "semantic_pass_rate": {**perfect_rate, "rate": 0.5}},
+        "gold_label_leakage_count": 0,
     }
     simulator_path = tmp_path / "simulator.json"
     simulator_path.write_text(json.dumps(simulator_report), encoding="utf-8")
     with pytest.raises(ValueError, match="simulator_long_load_metric_incomplete"):
         runner._load_simulator_qualification(simulator_path, {"identity": identity})
+
+
+def test_runner_identity_does_not_depend_on_paused_action_policy_report(tmp_path):
+    grader = tmp_path / "grader.json"
+    simulator = tmp_path / "simulator.json"
+    grader.write_text("{}", encoding="utf-8")
+    simulator.write_text("{}", encoding="utf-8")
+
+    identity = runner._runner_identity(
+        grader_qualification_report=grader,
+        simulator_qualification_report=simulator,
+        dataset_manifest={"content_sha256": "a" * 64},
+    )
+
+    assert "action_policy_qualification_report_sha256" not in identity
+
+
+def test_customer_simulator_honors_bounded_long_run_timeout():
+    simulator = runner.CustomerSimulator(
+        api_key="local-test",
+        api_base="http://127.0.0.1:11436/v1",
+        model="simulator-test",
+        timeout=300,
+        allow_unqualified=True,
+    )
+
+    assert simulator.provider.config.timeout_seconds == 300
+
+    bounded = runner.CustomerSimulator(
+        api_key="local-test",
+        api_base="http://127.0.0.1:11436/v1",
+        model="simulator-test",
+        timeout=900,
+        allow_unqualified=True,
+    )
+    assert bounded.provider.config.timeout_seconds == 300
+
+
+def test_trial_execution_failure_is_structured_and_fail_closed():
+    scenario = {
+        "scenario_uid": "scenario-safe-id",
+        "hidden_goal_contract": {"required_action_ids": ["verify_live_state"]},
+    }
+
+    result = runner._trial_execution_failure(scenario, 2, RuntimeError("private detail"))
+
+    assert result["trial_execution_error"] == "RuntimeError"
+    assert result["score"]["blocking_reasons"] == ["trial_execution_error"]
+    assert result["score"]["action_coverage_rate"] is None
+    assert "private detail" not in json.dumps(result)
+
+
+def test_resume_checkpoint_is_identity_bound_and_rejects_duplicate_results(tmp_path):
+    identity = {"boot_source_tree_sha256": "a" * 64}
+    result = {"scenario_uid": "scenario-safe-id", "trial": 1}
+    checkpoint = tmp_path / "checkpoint.json"
+    checkpoint.write_text(json.dumps({
+        "schema_version": "tier-d-checkpoint-v2",
+        "checkpoint_identity": identity,
+        "completed_trial_count": 1,
+        "results": [result],
+    }), encoding="utf-8")
+
+    assert runner._load_resume_results(
+        checkpoint,
+        checkpoint_identity=identity,
+        allowed_keys={("scenario-safe-id", 1)},
+    ) == [result]
+
+    with pytest.raises(ValueError, match="checkpoint_identity_mismatch"):
+        runner._load_resume_results(
+            checkpoint,
+            checkpoint_identity={"boot_source_tree_sha256": "b" * 64},
+            allowed_keys={("scenario-safe-id", 1)},
+        )
+
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    payload["results"].append(result)
+    checkpoint.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="checkpoint_results_invalid"):
+        runner._load_resume_results(
+            checkpoint,
+            checkpoint_identity=identity,
+            allowed_keys={("scenario-safe-id", 1)},
+        )
 
 
 def test_formal_provider_probe_is_identity_bound_and_fail_closed(monkeypatch):
@@ -913,8 +1037,10 @@ def test_formal_provider_probe_reuses_minimax_formal_transport(monkeypatch):
 
 def test_atomic_json_write_never_leaves_a_partial_target(tmp_path):
     target = tmp_path / "checkpoint.json"
-    runner._write_json_atomic(target, {"completed_trial_count": 1})
-    assert json.loads(target.read_text(encoding="utf-8")) == {"completed_trial_count": 1}
+    runner._write_json_atomic(target, {"completed_trial_count": 1, "label": "中文"})
+    raw = target.read_text(encoding="utf-8")
+    assert json.loads(raw) == {"completed_trial_count": 1, "label": "中文"}
+    assert "\\u4e2d\\u6587" in raw
     assert not (tmp_path / ".checkpoint.json.tmp").exists()
 
 

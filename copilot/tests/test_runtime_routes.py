@@ -16,6 +16,14 @@ def test_runtime_version_exposes_only_public_deployment_metadata(monkeypatch):
             "configured": True,
             "identity": "host-fingerprint:test-model",
         },
+        "action_policy_provider_identity": {
+            "provider_name": "action_policy",
+            "host_fingerprint": "action-host",
+            "model_name": "action-model",
+            "configured": True,
+            "identity": "action-host:action-model",
+        },
+        "evidence_action_shadow_status": "paused_not_qualified",
         "feature_flags": {"answer_memory_shadow": False},
         "boot_worktree_dirty": False,
         "boot_source_tree_sha256": "boot-hash",
@@ -45,7 +53,8 @@ def test_runtime_version_exposes_only_public_deployment_metadata(monkeypatch):
     assert payload["runtime_commit"] == "test-value"
     assert payload["readiness"]["ready"] is True
     assert set(payload) == {
-        "app_version", "runtime_commit", "formal_model", "formal_provider_identity", "readiness", "feature_flags",
+        "app_version", "runtime_commit", "formal_model", "formal_provider_identity",
+        "action_policy_provider_identity", "evidence_action_shadow_status", "readiness", "feature_flags",
         "worktree_dirty", "source_tree_sha256", "boot_worktree_dirty", "boot_source_tree_sha256",
         "current_source_tree_sha256", "current_worktree_dirty", "source_tree_drift", "build_identity_status",
     }
@@ -71,6 +80,8 @@ def test_runtime_identity_keeps_boot_hash_and_reports_disk_drift(monkeypatch):
         "runtime_commit": "boot-commit",
         "formal_model": "model-a",
         "formal_provider_identity": {},
+        "action_policy_provider_identity": {},
+        "evidence_action_shadow_status": "paused_not_qualified",
         "feature_flags": {},
         "boot_worktree_dirty": True,
         "boot_source_tree_sha256": "hash-a",

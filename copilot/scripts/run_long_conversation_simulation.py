@@ -53,7 +53,7 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-EVALUATOR_SCHEMA_VERSION = "tier-d-evaluator/v3"
+EVALUATOR_SCHEMA_VERSION = "tier-d-evaluator/v4"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _RUNNER_SOURCE_FILES = (
     "scripts/run_long_conversation_simulation.py",
@@ -98,7 +98,7 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     os.replace(temporary, path)
@@ -154,13 +154,23 @@ def _require_sha256(value: Any, field: str) -> str:
     return text
 
 
-def _load_grader_qualification(path: Path, grader_metadata: dict[str, Any]) -> dict[str, Any]:
+def _load_grader_qualification(
+    path: Path,
+    grader_metadata: dict[str, Any],
+    *,
+    workers: int,
+) -> dict[str, Any]:
     report = json.loads(path.read_text(encoding="utf-8"))
     provider = report.get("provider") if isinstance(report.get("provider"), dict) else {}
     if report.get("schema_version") != "tier-d-transcript-grader-qualification/v4":
         raise ValueError("grader_qualification_schema_version_mismatch")
-    if report.get("qualification_status") != "qualified":
-        raise ValueError("grader_qualification_not_qualified")
+    if report.get("configured_candidate") is not True:
+        raise ValueError("grader_qualification_provider_not_configured")
+    local_checks = report.get("local_contract_checks")
+    if not isinstance(local_checks, dict) or not local_checks or not all(local_checks.values()):
+        raise ValueError("grader_qualification_local_contract_failed")
+    if int(report.get("secret_exposure_count") or 0):
+        raise ValueError("grader_qualification_secret_exposure_present")
     if str(provider.get("identity") or "") != str(grader_metadata.get("identity") or ""):
         raise ValueError("grader_qualification_identity_mismatch")
     if int(report.get("timeout_attempt_count") or 0):
@@ -180,27 +190,28 @@ def _load_grader_qualification(path: Path, grader_metadata: dict[str, Any]) -> d
     ):
         if (report.get(field) or {}).get("rate") != 1.0:
             raise ValueError(f"grader_qualification_{field}_incomplete")
+    execution_profile = "serial" if max(1, workers) == 1 else "concurrent"
     load = report.get("long_load_qualification") or {}
-    for mode in ("serial", "concurrent"):
-        phase = load.get(mode) if isinstance(load.get(mode), dict) else {}
-        if phase.get("status") != "qualified":
-            raise ValueError("grader_long_load_not_qualified")
-        if any(int(phase.get(field) or 0) for field in (
-            "timeout_attempt_count",
-            "truncated_attempt_count",
-            "schema_error_attempt_count",
-            "free_text_fallback_attempt_count",
-        )):
-            raise ValueError("grader_long_load_error_present")
-        if any((phase.get(field) or {}).get("rate") != 1.0 for field in (
-            "semantic_pass_rate",
-            "citation_valid_rate",
-            "repeat_stability_rate",
-        )):
-            raise ValueError("grader_long_load_metric_incomplete")
-        latency = phase.get("latency_ms") if isinstance(phase.get("latency_ms"), dict) else {}
-        if latency.get("p95") is None or float(latency["p95"]) >= float(phase.get("p95_limit_ms") or 0):
-            raise ValueError("grader_long_load_latency_exceeded")
+    phase = load.get(execution_profile) if isinstance(load.get(execution_profile), dict) else {}
+    if phase.get("status") != "qualified":
+        raise ValueError(f"grader_long_load_{execution_profile}_not_qualified")
+    if any(int(phase.get(field) or 0) for field in (
+        "timeout_attempt_count",
+        "truncated_attempt_count",
+        "schema_error_attempt_count",
+        "free_text_fallback_attempt_count",
+    )):
+        raise ValueError(f"grader_long_load_{execution_profile}_error_present")
+    if any((phase.get(field) or {}).get("rate") != 1.0 for field in (
+        "semantic_pass_rate",
+        "citation_valid_rate",
+        "repeat_stability_rate",
+    )):
+        raise ValueError(f"grader_long_load_{execution_profile}_metric_incomplete")
+    latency = phase.get("latency_ms") if isinstance(phase.get("latency_ms"), dict) else {}
+    if latency.get("p95") is None or float(latency["p95"]) >= float(phase.get("p95_limit_ms") or 0):
+        raise ValueError(f"grader_long_load_{execution_profile}_latency_exceeded")
+    report["selected_execution_profile"] = execution_profile
     return report
 
 
@@ -213,7 +224,7 @@ def _load_simulator_qualification(path: Path, simulator_metadata: dict[str, Any]
         raise ValueError("simulator_qualification_not_qualified")
     if str(provider.get("identity") or "") != str(simulator_metadata.get("identity") or ""):
         raise ValueError("simulator_qualification_identity_mismatch")
-    for mode in ("serial", "concurrent"):
+    for mode in ("short", "serial", "concurrent"):
         phase = report.get(mode) if isinstance(report.get(mode), dict) else {}
         if phase.get("status") != "qualified" or int(phase.get("error_attempt_count") or 0):
             raise ValueError("simulator_long_load_not_qualified")
@@ -225,6 +236,8 @@ def _load_simulator_qualification(path: Path, simulator_metadata: dict[str, Any]
         latency = phase.get("latency_ms") if isinstance(phase.get("latency_ms"), dict) else {}
         if latency.get("p95") is None or float(latency["p95"]) >= float(phase.get("p95_limit_ms") or 0):
             raise ValueError("simulator_long_load_latency_exceeded")
+    if int(report.get("gold_label_leakage_count") or 0):
+        raise ValueError("simulator_gold_label_leakage_present")
     return report
 
 
@@ -238,6 +251,7 @@ def _report_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
         "app_version": str(runtime.get("app_version") or ""),
         "formal_model": str(runtime.get("formal_model") or ""),
         "formal_provider_identity": dict(runtime.get("formal_provider_identity") or {}),
+        "action_policy_provider_identity": dict(runtime.get("action_policy_provider_identity") or {}),
         "worktree_dirty": runtime.get("worktree_dirty"),
         "source_tree_sha256": _require_sha256(runtime.get("source_tree_sha256"), "runtime_source_tree_sha256"),
         "boot_source_tree_sha256": _require_sha256(runtime.get("boot_source_tree_sha256"), "runtime_boot_source_tree_sha256"),
@@ -374,6 +388,11 @@ def _runtime_metadata(analyze_url: str, timeout: int) -> dict[str, Any]:
             if isinstance(version.get("formal_provider_identity"), dict)
             else {}
         ),
+        "action_policy_provider_identity": (
+            dict(version.get("action_policy_provider_identity"))
+            if isinstance(version.get("action_policy_provider_identity"), dict)
+            else {}
+        ),
         "worktree_dirty": version.get("worktree_dirty"),
         "source_tree_sha256": str(version.get("source_tree_sha256") or ""),
         "boot_source_tree_sha256": str(version.get("boot_source_tree_sha256") or version.get("source_tree_sha256") or ""),
@@ -449,9 +468,23 @@ def _provider_independence(identities: dict[str, dict[str, Any]]) -> dict[str, A
         and identities[pair[0]]["model_name"] == identities[pair[1]]["model_name"]
         and identities[pair[0]]["host_fingerprint"] != identities[pair[1]]["host_fingerprint"]
     ]
+    configured_hosts = {
+        str(identity.get("host_fingerprint") or "")
+        for identity in identities.values()
+        if identity.get("configured") and identity.get("host_fingerprint")
+    }
+    same_provider_family_risk = not unknown_roles and len(configured_hosts) == 1
     return {
         "passed": not unknown_roles and not conflicts,
-        "status": "independent" if not unknown_roles and not conflicts else "provider_independence_failed",
+        "status": (
+            "single_provider_family_diagnostic"
+            if not unknown_roles and not conflicts and same_provider_family_risk
+            else "independent"
+            if not unknown_roles and not conflicts
+            else "provider_independence_failed"
+        ),
+        "same_provider_family_risk": same_provider_family_risk,
+        "independent_acceptance_allowed": bool(not unknown_roles and not conflicts and not same_provider_family_risk),
         "unknown_roles": unknown_roles,
         "conflicts": conflicts,
         "same_model_different_host_risks": same_model_different_host,
@@ -516,7 +549,7 @@ class CustomerSimulator:
             api_key=api_key,
             model=model,
             capability=str(os.environ.get("COPILOT_CUSTOMER_SIMULATOR_CAPABILITY") or "").lower(),
-            timeout_seconds=max(1, min(int(timeout), 120)),
+            timeout_seconds=max(1, min(int(timeout), 300)),
             qualified=str(os.environ.get("COPILOT_CUSTOMER_SIMULATOR_QUALIFIED") or "").lower() in {"1", "true", "yes", "on"},
             disable_thinking=str(os.environ.get("COPILOT_CUSTOMER_SIMULATOR_DISABLE_THINKING") or "").lower() in {"1", "true", "yes", "on"},
         ))
@@ -743,14 +776,43 @@ def _run_trial(
         current_message = decision["next_message"]
         generated_count += 1
 
-    score = score_simulation_thread(
-        scenario,
-        internal_turns,
-        terminal_buyer_state=terminal_state,
-        terminal_stop_reason=terminal_reason,
-        observed_action_ids=observed_actions,
-        grader=grader,
-    )
+    grader_error = ""
+    try:
+        score = score_simulation_thread(
+            scenario,
+            internal_turns,
+            terminal_buyer_state=terminal_state,
+            terminal_stop_reason=terminal_reason,
+            observed_action_ids=observed_actions,
+            grader=grader,
+        )
+    except Exception as exc:
+        grader_error = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+        required_actions = sorted(
+            str(item) for item in ((scenario.get("hidden_goal_contract") or {}).get("required_action_ids") or [])
+        )
+        score = {
+            "passed": False,
+            "contract_passed": False,
+            "buyer_outcome_passed": False,
+            "required_action_count": len(required_actions),
+            "graded_required_action_count": 0,
+            "action_coverage_rate": None,
+            "transcript_action_grade": {
+                "status": "grader_not_qualified",
+                "reason": grader_error or "grader_infrastructure_error",
+                "covered_action_ids": [],
+                "uncovered_action_ids": required_actions,
+                "action_coverage_rate": None,
+            },
+            "counterfactual_comparisons": [],
+            "simulator_observed_action_ids": sorted(set(required_actions).intersection(observed_actions)),
+            "blocking_reasons": ["grader_infrastructure_error"],
+            "terminal_buyer_state": terminal_state,
+            "terminal_stop_reason": terminal_reason,
+            "accuracy_metric": None,
+            "accuracy_claim_allowed": False,
+        }
     return {
         "scenario_uid": scenario["scenario_uid"],
         "trial": trial,
@@ -759,6 +821,7 @@ def _run_trial(
         "seed_history_turn_count": len(scenario.get("seed_history") or []),
         "executed_agent_turn_count": len(internal_turns),
         "simulator_error": simulator_error,
+        "grader_error": grader_error,
         "observed_action_ids": sorted(observed_actions),
         "evaluation_contract": {
             "must_handoff": bool((scenario.get("hidden_goal_contract") or {}).get("must_handoff")),
@@ -769,6 +832,70 @@ def _run_trial(
         "turns": report_turns,
         "score": score,
     }
+
+
+def _trial_execution_failure(scenario: dict[str, Any], trial: int, exc: Exception) -> dict[str, Any]:
+    error_type = type(exc).__name__
+    required_actions = sorted(
+        str(item) for item in ((scenario.get("hidden_goal_contract") or {}).get("required_action_ids") or [])
+    )
+    return {
+        "scenario_uid": str(scenario.get("scenario_uid") or ""),
+        "trial": trial,
+        "primary_domain": scenario.get("primary_domain"),
+        "source_turn_count": scenario.get("source_turn_count"),
+        "seed_history_turn_count": len(scenario.get("seed_history") or []),
+        "executed_agent_turn_count": 0,
+        "simulator_error": "",
+        "grader_error": "",
+        "trial_execution_error": error_type,
+        "observed_action_ids": [],
+        "evaluation_contract": {
+            "must_handoff": bool((scenario.get("hidden_goal_contract") or {}).get("must_handoff")),
+            "required_action_ids": required_actions,
+        },
+        "turns": [],
+        "score": {
+            "passed": False,
+            "contract_passed": False,
+            "buyer_outcome_passed": False,
+            "required_action_count": len(required_actions),
+            "graded_required_action_count": 0,
+            "action_coverage_rate": None,
+            "transcript_action_grade": {
+                "status": "grader_not_qualified",
+                "reason": "trial_execution_error",
+                "covered_action_ids": [],
+                "uncovered_action_ids": required_actions,
+                "action_coverage_rate": None,
+            },
+            "counterfactual_comparisons": [],
+            "simulator_observed_action_ids": [],
+            "blocking_reasons": ["trial_execution_error"],
+            "terminal_buyer_state": "blocked",
+            "terminal_stop_reason": "cannot_continue",
+            "accuracy_metric": None,
+            "accuracy_claim_allowed": False,
+        },
+    }
+
+
+def _load_resume_results(
+    checkpoint: Path,
+    *,
+    checkpoint_identity: dict[str, Any],
+    allowed_keys: set[tuple[str, int]],
+) -> list[dict[str, Any]]:
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != "tier-d-checkpoint-v2":
+        raise ValueError("checkpoint_schema_version_mismatch")
+    if payload.get("checkpoint_identity") != checkpoint_identity:
+        raise ValueError("checkpoint_identity_mismatch")
+    results = list(payload.get("results") or [])
+    completed_keys = [(str(item.get("scenario_uid") or ""), int(item.get("trial") or 0)) for item in results]
+    if len(completed_keys) != len(set(completed_keys)) or not set(completed_keys).issubset(allowed_keys):
+        raise ValueError("checkpoint_results_invalid")
+    return results
 
 
 def _turn_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -789,6 +916,18 @@ def _turn_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
             transition_count += 1
             if previous and previous == current:
                 repeated_reply_count += 1
+    gap_counts: dict[str, int] = {}
+    action_status_counts: dict[str, int] = {}
+    shadow_available_count = 0
+    for turn in turns:
+        shadow = ((turn.get("observation") or {}).get("evidence_action_shadow") or {})
+        if not shadow.get("available"):
+            continue
+        shadow_available_count += 1
+        gap = str((shadow.get("evidence_funnel") or {}).get("gap_classification") or "unknown")
+        gap_counts[gap] = gap_counts.get(gap, 0) + 1
+        status = str((shadow.get("action_policy") or {}).get("status") or "unknown")
+        action_status_counts[status] = action_status_counts.get(status, 0) + 1
     return {
         "agent_latency_p50_ms": percentile(0.5),
         "agent_latency_p95_ms": percentile(0.95),
@@ -800,6 +939,9 @@ def _turn_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "repeated_consecutive_reply_count": repeated_reply_count,
         "reply_transition_count": transition_count,
         "consecutive_reply_repetition_rate": round(repeated_reply_count / transition_count, 4) if transition_count else None,
+        "evidence_action_shadow_turn_count": shadow_available_count,
+        "evidence_gap_classification_counts": dict(sorted(gap_counts.items())),
+        "action_policy_status_counts": dict(sorted(action_status_counts.items())),
     }
 
 
@@ -941,6 +1083,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--simulator-qualification-report", default="")
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
     _load_env_file(args.env_file)
 
@@ -1035,7 +1178,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     qualification_path = Path(args.grader_qualification_report)
     try:
-        _load_grader_qualification(qualification_path, grader.metadata())
+        grader_qualification = _load_grader_qualification(
+            qualification_path,
+            grader.metadata(),
+            workers=max(1, min(args.workers, 4)),
+        )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))
         return 2
@@ -1088,8 +1235,43 @@ def main(argv: list[str] | None = None) -> int:
         for trial in range(1, max(1, args.trials) + 1):
             jobs.append((scenario, source, trial))
 
-    results: list[dict[str, Any]] = []
     checkpoint = Path(args.checkpoint) if args.checkpoint else Path(args.json_output).with_suffix(".checkpoint.json")
+    checkpoint_identity = {
+        key: runner_identity[key]
+        for key in (
+            "git_commit",
+            "boot_source_tree_sha256",
+            "evaluator_schema_version",
+            "grader_qualification_report_sha256",
+            "simulator_qualification_report_sha256",
+            "dataset_manifest_sha256",
+        )
+    }
+    results: list[dict[str, Any]] = []
+    if args.resume:
+        try:
+            allowed_keys = {(str(item[0].get("scenario_uid") or ""), item[2]) for item in jobs}
+            results = _load_resume_results(
+                checkpoint,
+                checkpoint_identity=checkpoint_identity,
+                allowed_keys=allowed_keys,
+            )
+            completed_key_set = {
+                (str(item.get("scenario_uid") or ""), int(item.get("trial") or 0))
+                for item in results
+            }
+            jobs = [job for job in jobs if (str(job[0].get("scenario_uid") or ""), job[2]) not in completed_key_set]
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+            return 2
+
+    def checkpoint_payload() -> dict[str, Any]:
+        return {
+            "schema_version": "tier-d-checkpoint-v2",
+            "checkpoint_identity": checkpoint_identity,
+            "completed_trial_count": len(results),
+            "results": sorted(results, key=lambda item: (item["scenario_uid"], item["trial"])),
+        }
 
     def run_job(job: tuple[dict[str, Any], dict[str, Any], int]) -> dict[str, Any]:
         scenario, source, trial = job
@@ -1099,27 +1281,25 @@ def main(argv: list[str] | None = None) -> int:
             model=required_env["simulator_model"],
             timeout=args.simulator_timeout,
         )
-        return _run_trial(
-            scenario=scenario,
-            source=source,
-            trial=trial,
-            simulator=simulator,
-            analyze_url=args.analyze_url,
-            agent_timeout=args.agent_timeout,
-            max_generated_turns=max(0, args.max_generated_turns),
-            grader=grader,
-        )
+        try:
+            return _run_trial(
+                scenario=scenario,
+                source=source,
+                trial=trial,
+                simulator=simulator,
+                analyze_url=args.analyze_url,
+                agent_timeout=args.agent_timeout,
+                max_generated_turns=max(0, args.max_generated_turns),
+                grader=grader,
+            )
+        except Exception as exc:
+            return _trial_execution_failure(scenario, trial, exc)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(args.workers, 4))) as executor:
         futures = [executor.submit(run_job, job) for job in jobs]
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
-            checkpoint_payload = {
-                "schema_version": "tier-d-checkpoint-v1",
-                "completed_trial_count": len(results),
-                "results": sorted(results, key=lambda item: (item["scenario_uid"], item["trial"])),
-            }
-            _write_json_atomic(checkpoint, checkpoint_payload)
+            _write_json_atomic(checkpoint, checkpoint_payload())
     results.sort(key=lambda item: (item["scenario_uid"], item["trial"]))
 
     summary = summarize_simulation_results(results)
@@ -1128,15 +1308,13 @@ def main(argv: list[str] | None = None) -> int:
         "source_ambiguous_count": ambiguous_source_count,
         "safe_source_exclusion_count": missing_source_count + ambiguous_source_count,
         "simulator_error_count": sum(bool(item.get("simulator_error")) for item in results),
+        "grader_error_count": sum(bool(item.get("grader_error")) for item in results),
+        "trial_execution_error_count": sum(bool(item.get("trial_execution_error")) for item in results),
         "agent_turn_count": sum(int(item.get("executed_agent_turn_count") or 0) for item in results),
     })
     summary.update(_turn_metrics(results))
     failure_classification = _failure_classification_summary(results)
-    _write_json_atomic(checkpoint, {
-        "schema_version": "tier-d-checkpoint-v1",
-        "completed_trial_count": len(results),
-        "results": results,
-    })
+    _write_json_atomic(checkpoint, checkpoint_payload())
     grader_metadata = grader.metadata()
     end_runner_hash = _runner_source_tree_sha256()
     runner_identity["end_source_tree_sha256"] = end_runner_hash
@@ -1152,6 +1330,9 @@ def main(argv: list[str] | None = None) -> int:
             "unapproved_product_claims_scored_as_truth": False,
             "grader_type": "strict_schema_transcript_grader",
             "simulator_observations_are_diagnostic_only": True,
+            "grader_execution_profile": grader_qualification["selected_execution_profile"],
+            "per_turn_semantic_grader_calls": 0,
+            "transcript_semantic_grader_calls_per_trial_max": 1,
         },
         "runtime": _report_runtime(runtime),
         "runner_identity": runner_identity,
@@ -1189,6 +1370,8 @@ def main(argv: list[str] | None = None) -> int:
         and not consistency_findings
         and checkpoint_matches
         and not any(item.get("simulator_error") for item in results)
+        and not any(item.get("grader_error") for item in results)
+        and not any(item.get("trial_execution_error") for item in results)
         and not any(
             str(reason).startswith("grader_")
             for item in results

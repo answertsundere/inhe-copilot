@@ -32,7 +32,7 @@ class _Simulator:
         }
 
 
-def test_customer_simulator_qualification_requires_serial_and_concurrent_long_load(monkeypatch):
+def test_customer_simulator_qualification_requires_short_and_long_load(monkeypatch):
     monkeypatch.setattr(
         qualification,
         "_simulator_from_environment",
@@ -42,10 +42,13 @@ def test_customer_simulator_qualification_requires_serial_and_concurrent_long_lo
     report = qualification.qualify(repeats=2, workers=2)
 
     assert report["qualification_status"] == "qualified"
+    assert report["short"]["status"] == "qualified"
     assert report["serial"]["status"] == "qualified"
     assert report["concurrent"]["status"] == "qualified"
     assert report["serial"]["total_attempt_count"] == 6
+    assert report["short"]["total_attempt_count"] == 6
     assert report["concurrent"]["semantic_pass_rate"]["rate"] == 1.0
+    assert report["gold_label_leakage_count"] == 0
 
 
 def test_customer_simulator_qualification_fails_on_semantic_instability(monkeypatch):

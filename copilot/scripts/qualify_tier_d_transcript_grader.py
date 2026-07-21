@@ -66,7 +66,6 @@ _LONG_LOAD_CASES = (
     },
 )
 
-
 def _rate(numerator: int, denominator: int) -> dict[str, float | int | None]:
     return {"numerator": numerator, "denominator": denominator, "rate": numerator / denominator if denominator else None}
 
@@ -320,6 +319,11 @@ def qualify(
         "matrix": matrix,
         "qualification_status": "not_qualified",
     }
+    report["counterfactual_qualification"] = {
+        "status": "paused_not_qualified",
+        "reason": "tier_d_lightweight_contract_uses_one_transcript_grade_per_trial",
+        "provider_call_count": 0,
+    }
     if include_load and grader.configured_candidate():
         report["long_load_qualification"] = {
             "serial": _long_load_phase(grader, repeats=repeats, workers=1),
@@ -366,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     output = Path(args.json_output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output.write_text(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "qualification_status": report["qualification_status"],
         "configured_candidate": report["configured_candidate"],

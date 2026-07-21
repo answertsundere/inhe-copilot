@@ -496,6 +496,14 @@ class AnalysisPipelineService:
                 "can_change_can_send": False,
             }
             stages.append({"stage": "llm_decision_shadow", "status": "disabled", "reason": reason})
+
+        stages.append({
+            "stage": "evidence_action_shadow",
+            "status": "disabled",
+            "reason": "paused_not_qualified",
+            "used_for_final_reply": False,
+            "can_change_can_send": False,
+        })
         return response, stages
 
     @staticmethod

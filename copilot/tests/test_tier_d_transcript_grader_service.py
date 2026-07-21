@@ -20,6 +20,10 @@ class _FakeStrictProvider:
 
     def request(self, **kwargs):
         self.calls.append(kwargs)
+        if callable(self.result):
+            return self.result(kwargs)
+        if isinstance(self.result, list):
+            return self.result[len(self.calls) - 1]
         return self.result
 
 
@@ -63,6 +67,31 @@ def test_grader_accepts_a_cited_semantic_completion_without_passing_labels_to_ag
     assert grade_schema["items"]["properties"]["action_id"]["enum"] == ["verify_order_and_issue"]
 
 
+def test_thread_score_calls_transcript_grader_once_and_never_runs_counterfactual_grading():
+    provider = _FakeStrictProvider({
+        "grades": [{
+            "action_id": "verify_order_and_issue",
+            "status": "completed",
+            "reply_turn_numbers": [1],
+        }],
+    })
+    score = score_simulation_thread(
+        _scenario(),
+        [_turn("我先核对当前订单和您反馈的问题。")],
+        terminal_buyer_state="handoff_accepted",
+        terminal_stop_reason="handoff_accepted",
+        observed_action_ids=set(),
+        grader=TierDTranscriptGrader(provider=provider),
+    )
+
+    assert len(provider.calls) == 1
+    assert "customer_visible_agent_replies" in provider.calls[0]["payload"]
+    assert "customer_visible_conversation" not in provider.calls[0]["payload"]
+    assert score["semantic_pass"] is True
+    assert score["overall_pass"] is True
+    assert score["counterfactual_comparisons"] == []
+
+
 @pytest.mark.parametrize("reply", [
     "无需核对，我不会查询订单。",
     "这款商品信息我这里完全没有。",
@@ -96,10 +125,13 @@ def test_unqualified_grader_fail_closes_action_coverage():
         grader=TierDTranscriptGrader(provider=_FakeStrictProvider({}, ready=False)),
     )
 
-    assert score["passed"] is False
-    assert score["contract_passed"] is False
+    assert score["passed"] is None
+    assert score["overall_pass"] is None
+    assert score["semantic_pass"] is None
+    assert score["evaluation_status"] == "semantic_grader_unavailable"
+    assert score["contract_passed"] is True
     assert score["action_coverage_rate"] is None
-    assert "grader_not_qualified" in score["blocking_reasons"]
+    assert score["blocking_reasons"] == []
 
 
 def test_internal_action_event_cannot_override_customer_visible_transcript_grade():

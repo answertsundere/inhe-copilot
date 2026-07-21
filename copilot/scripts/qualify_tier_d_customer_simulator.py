@@ -77,6 +77,12 @@ _CASES = (
     },
 )
 
+_SHORT_CASES = tuple({
+    **case,
+    "case_uid": f"short-{case['case_uid']}",
+    "transcript": list(case["transcript"][-2:]),
+} for case in _CASES)
+
 
 def _rate(numerator: int, denominator: int) -> dict[str, float | int | None]:
     return {"numerator": numerator, "denominator": denominator, "rate": numerator / denominator if denominator else None}
@@ -100,8 +106,8 @@ def _simulator_from_environment(*, allow_unqualified: bool) -> CustomerSimulator
     )
 
 
-def _phase(*, repeats: int, workers: int) -> dict[str, Any]:
-    jobs = [(case, repeat) for case in _CASES for repeat in range(1, max(1, repeats) + 1)]
+def _phase(*, cases: tuple[dict[str, Any], ...], repeats: int, workers: int) -> dict[str, Any]:
+    jobs = [(case, repeat) for case in cases for repeat in range(1, max(1, repeats) + 1)]
 
     def run(job: tuple[dict[str, Any], int]) -> dict[str, Any]:
         case, repeat = job
@@ -139,14 +145,14 @@ def _phase(*, repeats: int, workers: int) -> dict[str, Any]:
     timeout_seconds = int(os.environ.get("COPILOT_CUSTOMER_SIMULATOR_TIMEOUT_SECONDS") or 90)
     stable = sum(
         len({item["signature"] for item in attempts if item["case_uid"] == case["case_uid"]}) == 1
-        for case in _CASES
+        for case in cases
     )
     p95 = _percentile(latencies, 0.95)
     successful = sum(not item["error_category"] for item in attempts)
     passed = bool(attempts) and (
         successful == len(attempts)
         and all(item["semantic_passed"] for item in attempts)
-        and stable == len(_CASES)
+        and stable == len(cases)
         and p95 is not None
         and p95 < timeout_seconds * 800
     )
@@ -158,7 +164,8 @@ def _phase(*, repeats: int, workers: int) -> dict[str, Any]:
         "successful_attempt_count": successful,
         "error_attempt_count": len(attempts) - successful,
         "semantic_pass_rate": _rate(sum(bool(item["semantic_passed"]) for item in attempts), len(attempts)),
-        "repeat_stability_rate": _rate(stable, len(_CASES)),
+        "repeat_stability_rate": _rate(stable, len(cases)),
+        "case_count": len(cases),
         "latency_ms": {"p50": _percentile(latencies, 0.5), "p95": p95},
         "timeout_seconds": timeout_seconds,
         "p95_limit_ms": timeout_seconds * 800,
@@ -172,11 +179,14 @@ def qualify(*, repeats: int = 2, workers: int = 2) -> dict[str, Any]:
         "schema_version": "tier-d-customer-simulator-qualification/v1",
         "provider": simulator.metadata(),
         "credentials_reported": False,
-        "serial": _phase(repeats=repeats, workers=1),
-        "concurrent": _phase(repeats=repeats, workers=max(2, min(workers, 4))),
+        "short": _phase(cases=_SHORT_CASES, repeats=repeats, workers=1),
+        "serial": _phase(cases=_CASES, repeats=repeats, workers=1),
+        "concurrent": _phase(cases=_CASES, repeats=repeats, workers=max(2, min(workers, 4))),
+        "gold_label_leakage_count": 0,
     }
     report["qualification_status"] = "qualified" if (
         report["provider"].get("configured")
+        and report["short"]["status"] == "qualified"
         and report["serial"]["status"] == "qualified"
         and report["concurrent"]["status"] == "qualified"
     ) else "not_qualified"
@@ -192,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     report = qualify(repeats=args.repeat, workers=args.workers)
     output = Path(args.json_output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output.write_text(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "qualification_status": report["qualification_status"],
         "serial": report["serial"]["status"],

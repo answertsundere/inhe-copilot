@@ -20,7 +20,7 @@ from app.services.real_accuracy_privacy_service import sanitize_gold_text, scan_
 SCHEMA_VERSION = "long-conversation-simulation-set-v2"
 EVALUATION_TIER = "tier_d_simulated_multiturn"
 DATASET_STATUS = "exploratory_not_real_accuracy"
-TURN_OBSERVATION_SCHEMA_VERSION = "tier-d-turn-observation/v1"
+TURN_OBSERVATION_SCHEMA_VERSION = "tier-d-turn-observation/v2"
 ALLOWED_SIMULATOR_STATES = frozenset({"continue", "satisfied", "handoff_accepted", "blocked"})
 ALLOWED_STOP_REASONS = frozenset({"continue", "resolved", "handoff_accepted", "cannot_continue"})
 LABEL_FIELDS = frozenset({
@@ -477,6 +477,9 @@ def build_tier_d_turn_observation(response: dict[str, Any]) -> dict[str, Any]:
     final_audit = response.get("final_answer_audit") if isinstance(response.get("final_answer_audit"), dict) else {}
     semantic_audit = response.get("final_semantic_fit_audit") if isinstance(response.get("final_semantic_fit_audit"), dict) else {}
     pipeline = response.get("analysis_pipeline") if isinstance(response.get("analysis_pipeline"), dict) else {}
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    shadow = debug.get("evidence_action_shadow") if isinstance(debug.get("evidence_action_shadow"), dict) else {}
+    funnel = shadow.get("evidence_funnel") if isinstance(shadow.get("evidence_funnel"), dict) else {}
     return {
         "schema_version": TURN_OBSERVATION_SCHEMA_VERSION,
         "reply": sanitize_gold_text(reply),
@@ -507,12 +510,18 @@ def build_tier_d_turn_observation(response: dict[str, Any]) -> dict[str, Any]:
             "issues": sorted(str(issue) for issue in (semantic_audit.get("issues") or [])),
         },
         "analysis_pipeline_version": str(pipeline.get("version") or ""),
+        "evidence_action_shadow": {
+            "available": bool(shadow),
+            "evidence_funnel": funnel,
+        },
     }
 
 
 def _observation_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
     observation = turn.get("observation")
-    if isinstance(observation, dict) and observation.get("schema_version") == TURN_OBSERVATION_SCHEMA_VERSION:
+    if isinstance(observation, dict) and observation.get("schema_version") in {
+        "tier-d-turn-observation/v1", TURN_OBSERVATION_SCHEMA_VERSION,
+    }:
         return observation
     response = turn.get("agent_response") if isinstance(turn.get("agent_response"), dict) else {}
     return build_tier_d_turn_observation(response)
@@ -556,9 +565,11 @@ def recompute_tier_d_blocking_reasons(
             blockers.append("final_semantic_fit_audit_failed")
         declared_completed_actions.update(str(item) for item in observation.get("completed_action_ids") or [])
     covered_actions = set(transcript_grade.get("covered_action_ids") or [])
-    if transcript_grade.get("status") != "completed":
-        blockers.append(str(transcript_grade.get("reason") or "grader_not_qualified"))
-    if declared_completed_actions and declared_completed_actions != covered_actions:
+    if (
+        transcript_grade.get("status") == "completed"
+        and declared_completed_actions
+        and declared_completed_actions != covered_actions
+    ):
         blockers.append("action_event_text_mismatch")
     return sorted(set(blockers))
 
@@ -576,10 +587,18 @@ def score_simulation_thread(
     required_actions = set(goal.get("required_action_ids") or [])
     must_handoff = bool(goal.get("must_handoff"))
     if grader is None:
-        from app.services.tier_d_transcript_grader_service import TierDTranscriptGrader
-
-        grader = TierDTranscriptGrader()
-    transcript_grade = grader.grade(required_actions, turns)
+        transcript_grade = {
+            "status": "grader_not_qualified",
+            "reason": "semantic_grader_unavailable",
+            "required_action_ids": sorted(required_actions),
+            "covered_action_ids": [],
+            "uncovered_action_ids": sorted(required_actions),
+            "unknown_action_ids": [],
+            "action_coverage_rate": None,
+            "grader": {},
+        }
+    else:
+        transcript_grade = grader.grade(required_actions, turns)
     covered_actions = set(transcript_grade["covered_action_ids"])
     action_rate = transcript_grade.get("action_coverage_rate")
     blockers = recompute_tier_d_blocking_reasons(
@@ -591,15 +610,25 @@ def score_simulation_thread(
     buyer_outcome_pass = terminal_buyer_state in {"satisfied", "handoff_accepted"} and terminal_stop_reason in {
         "resolved", "handoff_accepted",
     }
-    overall_pass = contract_pass and buyer_outcome_pass and action_rate == 1.0
+    semantic_pass = action_rate == 1.0 if transcript_grade.get("status") == "completed" else None
+    overall_pass = (
+        contract_pass and buyer_outcome_pass and semantic_pass
+        if semantic_pass is not None
+        else None
+    )
+    evaluation_status = "completed" if semantic_pass is not None else "semantic_grader_unavailable"
     return {
         "passed": overall_pass,
+        "overall_pass": overall_pass,
+        "semantic_pass": semantic_pass,
+        "evaluation_status": evaluation_status,
         "contract_passed": contract_pass,
         "buyer_outcome_passed": buyer_outcome_pass,
         "required_action_count": len(required_actions),
         "graded_required_action_count": len(covered_actions),
         "action_coverage_rate": action_rate,
         "transcript_action_grade": transcript_grade,
+        "counterfactual_comparisons": [],
         "simulator_observed_action_ids": sorted(required_actions.intersection(observed_action_ids)),
         "blocking_reasons": sorted(set(blockers)),
         "terminal_buyer_state": terminal_buyer_state,
@@ -614,13 +643,25 @@ def summarize_simulation_results(results: list[dict[str, Any]]) -> dict[str, Any
     total = len(scores)
     action_rows = [score for score in scores if score.get("action_coverage_rate") is not None]
     scenario_trials: dict[str, list[bool]] = defaultdict(list)
+    semantic_scores = [
+        score for score in scores
+        if score.get("overall_pass", score.get("passed")) is not None
+    ]
     for item, score in zip(results, scores):
-        scenario_trials[str(item.get("scenario_uid") or "")].append(bool(score.get("passed")))
+        overall = score.get("overall_pass", score.get("passed"))
+        if overall is not None:
+            scenario_trials[str(item.get("scenario_uid") or "")].append(bool(overall))
     return {
         "trial_count": total,
         "scenario_count": len(scenario_trials),
-        "overall_exploratory_pass_count": sum(bool(score.get("passed")) for score in scores),
-        "overall_exploratory_pass_rate": round(sum(bool(score.get("passed")) for score in scores) / total, 4) if total else None,
+        "overall_exploratory_pass_count": sum(
+            bool(score.get("overall_pass", score.get("passed"))) for score in semantic_scores
+        ),
+        "overall_exploratory_pass_denominator": len(semantic_scores),
+        "overall_exploratory_pass_rate": round(
+            sum(bool(score.get("overall_pass", score.get("passed"))) for score in semantic_scores)
+            / len(semantic_scores), 4,
+        ) if semantic_scores else None,
         "contract_pass_rate": round(sum(bool(score.get("contract_passed")) for score in scores) / total, 4) if total else None,
         "buyer_outcome_pass_rate": round(sum(bool(score.get("buyer_outcome_passed")) for score in scores) / total, 4) if total else None,
         "mean_action_coverage_rate": round(
@@ -635,6 +676,12 @@ def summarize_simulation_results(results: list[dict[str, Any]]) -> dict[str, Any
         "blocking_reason_counts": dict(sorted(Counter(
             reason for score in scores for reason in (score.get("blocking_reasons") or [])
         ).items())),
+        "semantic_grader_unavailable_count": sum(
+            score.get("evaluation_status") == "semantic_grader_unavailable" for score in scores
+        ),
+        "counterfactual_comparison_count": 0,
+        "counterfactual_preference_counts": {},
+        "counterfactual_grader_error_count": 0,
         "real_customer_accuracy_rate": None,
         "real_customer_accuracy_status": "not_measured_by_tier_d",
     }

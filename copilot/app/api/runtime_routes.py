@@ -134,6 +134,7 @@ def _feature_flags() -> dict[str, bool]:
         "answer_memory_shadow": enabled("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED"),
         "grounded_reasoning_shadow": enabled("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED"),
         "llm_decision_shadow": enabled("COPILOT_LLM_DECISION_SHADOW_ENABLED"),
+        "evidence_action_shadow": False,
         "strict_decision_provider_qualified": bool(COPILOT_DECISION_LLM_QUALIFIED),
         "vlm": bool(COPILOT_VLM_ENABLED),
     }
@@ -141,7 +142,14 @@ def _feature_flags() -> dict[str, bool]:
 
 def _capture_boot_build_identity() -> dict[str, str | bool | None | dict[str, bool]]:
     """Freeze the executable identity once when this process imports routes."""
-    from app.config import APP_VERSION, LLM_API_BASE, LLM_MODEL
+    from app.config import (
+        APP_VERSION,
+        COPILOT_DECISION_LLM_API_BASE,
+        COPILOT_DECISION_LLM_MODEL,
+        COPILOT_DECISION_LLM_PROVIDER,
+        LLM_API_BASE,
+        LLM_MODEL,
+    )
     from app.services.strict_decision_provider_service import safe_provider_identity
 
     dirty = _runtime_worktree_dirty()
@@ -161,6 +169,12 @@ def _capture_boot_build_identity() -> dict[str, str | bool | None | dict[str, bo
             api_base=str(LLM_API_BASE or ""),
             model=str(LLM_MODEL or ""),
         ),
+        "action_policy_provider_identity": safe_provider_identity(
+            provider_name=str(COPILOT_DECISION_LLM_PROVIDER or ""),
+            api_base=str(COPILOT_DECISION_LLM_API_BASE or ""),
+            model=str(COPILOT_DECISION_LLM_MODEL or ""),
+        ),
+        "evidence_action_shadow_status": "paused_not_qualified",
         "feature_flags": _feature_flags(),
         "boot_worktree_dirty": dirty,
         "boot_source_tree_sha256": source_hash,
@@ -184,6 +198,10 @@ def _runtime_identity() -> dict[str, str | bool | None | dict[str, bool]]:
         "runtime_commit": str(boot.get("runtime_commit") or "unavailable"),
         "formal_model": str(boot.get("formal_model") or ""),
         "formal_provider_identity": dict(boot.get("formal_provider_identity") or {}),
+        "action_policy_provider_identity": dict(boot.get("action_policy_provider_identity") or {}),
+        "evidence_action_shadow_status": str(
+            boot.get("evidence_action_shadow_status") or "paused_not_qualified"
+        ),
         "feature_flags": dict(boot.get("feature_flags") or {}),
         # Compatibility fields deliberately identify the booted process.
         "worktree_dirty": boot.get("boot_worktree_dirty"),

@@ -31,6 +31,21 @@ class _Provider:
         self.calls.append(kwargs)
         if self._latencies:
             self.last_latency_ms = self._latencies[(len(self.calls) - 1) % len(self._latencies)]
+        if "customer_visible_conversation" in kwargs["payload"]:
+            candidate = kwargs["payload"]["candidate_reply"]
+            candidate_is_unsafe = "绝对无毒" in candidate
+            progressive = any(marker in candidate for marker in ("已有", "继续", "请把"))
+            return {
+                "progresses_current_question": progressive and not candidate_is_unsafe,
+                "repeats_previous_agent_reply": False,
+                "uses_supplied_context": "已有" in candidate,
+                "requests_minimum_missing_information": "请把" in candidate,
+                "preserves_supported_facts": True,
+                "handles_unresolved_or_conflicting_claims": True,
+                "contains_unsupported_claim": candidate_is_unsafe,
+                "appropriately_stops_followup": False,
+                "visible_turn_numbers": [1],
+            }
         reply = kwargs["payload"]["customer_visible_agent_replies"][0]["reply"]
         action_id = kwargs["payload"]["action_contracts"][0]["action_id"]
         completed = reply in {
@@ -61,8 +76,24 @@ def test_transcript_grader_qualification_uses_unqualified_configured_candidate_f
     assert report["provider_schema_success_rate"]["rate"] == 1.0
     assert report["positive_semantic_pass_rate"]["rate"] == 1.0
     assert report["negative_semantic_block_rate"]["rate"] == 1.0
+    assert report["counterfactual_qualification"] == {
+        "status": "paused_not_qualified",
+        "reason": "tier_d_lightweight_contract_uses_one_transcript_grade_per_trial",
+        "provider_call_count": 0,
+    }
     assert provider.calls
     assert all(call["allow_unqualified"] is True for call in provider.calls)
+    assert all("customer_visible_conversation" not in call["payload"] for call in provider.calls)
+
+
+def test_counterfactual_qualification_is_not_executed():
+    provider = _Provider(ready=False)
+    provider.config = type("Config", (), {"timeout_seconds": 1})()
+
+    report = qualify(repeats=1, grader=TierDTranscriptGrader(provider=provider))
+
+    assert report["counterfactual_qualification"]["provider_call_count"] == 0
+    assert all("customer_visible_conversation" not in call["payload"] for call in provider.calls)
 
 
 def test_unconfigured_transcript_grader_reports_not_qualified_without_network_call():
@@ -135,6 +166,8 @@ class _InvalidSchemaProvider(_Provider):
     def request(self, **kwargs):
         self.calls.append(kwargs)
         self.last_latency_ms = 25
+        if "customer_visible_conversation" in kwargs["payload"]:
+            return {"preferred_reply": "invalid"}
         action_id = kwargs["payload"]["action_contracts"][0]["action_id"]
         return {"grades": [{"action_id": action_id, "status": "invalid", "reply_turn_numbers": []}]}
 
