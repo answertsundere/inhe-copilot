@@ -357,7 +357,13 @@ class AnalysisPipelineService:
                 sku_code=identity["sku_code"] or None,
                 product_id=identity["product_id"],
             )
-            fact_type = str((response.get("evidence_debug") or {}).get("query_fact_type") or "")
+            fact_type = str(
+                response.get("query_fact_type")
+                or (response.get("evidence_debug") or {}).get("query_fact_type")
+                or ""
+            )
+            if not fact_type and str(response.get("intent") or "") in {"image_attachment", "product_question"}:
+                fact_type = "appearance"
             assets = self._pack_media_assets(response, message, identity)
             if assets:
                 recommendation = {
@@ -367,6 +373,7 @@ class AnalysisPipelineService:
                     "source": "product_context_pack",
                 }
             allow_delivery = delivery_enabled and self._is_visual_media_question(message, response)
+            candidate_source = str(recommendation.get("source") or "media_asset_service")
             response["recommended_assets"] = (
                 select_delivery_assets(
                     recommendation.get("recommended_assets") or [],
@@ -376,6 +383,8 @@ class AnalysisPipelineService:
                 )
                 if allow_delivery else []
             )
+            for asset in response["recommended_assets"]:
+                asset["delivery_candidate_source"] = candidate_source
             response["suggested_reply"] = self._sanitize_media_promise(
                 str(response.get("suggested_reply") or ""), response["recommended_assets"]
             )
@@ -394,7 +403,31 @@ class AnalysisPipelineService:
                 query_fact_type=fact_type,
                 product_identity=identity,
             ))
-            return response, {"stage": "media_delivery", "status": "completed", "attached_media_count": sum(1 for block in response.get("reply_blocks") or [] if block.get("type") in {"image", "video"})}
+            attached = [
+                block for block in response.get("reply_blocks") or []
+                if isinstance(block, dict) and block.get("type") in {"image", "video"}
+            ]
+            response.setdefault("evidence_debug", {})["media_delivery_contract"] = {
+                "candidate_source": candidate_source,
+                "candidate_count": len(recommendation.get("recommended_assets") or []),
+                "eligible_asset_count": len(response["recommended_assets"]),
+                "actual_attached_media_count": len(attached),
+                "attached_media": [
+                    {
+                        "type": block.get("type"),
+                        "asset_type": block.get("asset_type"),
+                        "delivery_candidate_source": block.get("delivery_candidate_source"),
+                        "review_status": block.get("status"),
+                        "review_approved": str(block.get("status") or "").lower() == "approved",
+                        "usable_for_agent": block.get("usable_for_agent") in {True, 1},
+                        "identity_present": bool(block.get("product_id") or block.get("i_id") or block.get("sku_code")),
+                        "identity_matched": True,
+                        "role_matched": True,
+                    }
+                    for block in attached
+                ],
+            }
+            return response, {"stage": "media_delivery", "status": "completed", "attached_media_count": len(attached)}
         except Exception as exc:
             response["recommended_assets"] = []
             response["recommended_assets_meta"] = {"priority_types": [], "has_unapproved": False}

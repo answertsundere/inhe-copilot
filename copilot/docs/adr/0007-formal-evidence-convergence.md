@@ -194,3 +194,42 @@ with all four required reviewed low-risk facts. The real-derived promotion gate
 is blocked by product data. A synthetic 5-by-4 fixture may prove the convergence
 and preview code path only; it must never be reported as real-derived success
 or used to enable the formal production flag.
+
+## Phase 0.8C Contract Clarification
+
+Product Context Pack compaction must preserve an already explicit structured
+field protocol: field review/verification, direct-answer permission, product or
+SKU scope, fact and attribute identity, and provenance. Compaction may not infer
+that protocol from `source_type`, a table name, product publication status, or
+text. `AdmittedAnswerContextService` still performs the authoritative role,
+review, identity, claim, placeholder, and conflict checks.
+
+A query-only runtime snapshot contained 393 products with at least one eligible
+fact and 428 eligible facts. The Phase 0.8C fixture applies a minimum contract of
+five products, one fact per product, 15 facts total, and three fact types. Its
+deterministic coverage selection produced 12 products and 15 facts across
+material, dimensions, and gross weight. It records the reduced coverage
+honestly: `detachable` is absent and dimension attribute-slot coverage remains
+incomplete. The isolated vertical slice passed 15/15 and all seven
+invalid-evidence controls without mutating formal knowledge or changing a formal
+reply.
+
+The API closure keeps non-factual roles outside canonical selected evidence.
+`service_action` remains action guidance and `media_reference` remains a media
+candidate; neither can support a product claim or create an actual image/video
+reply block. An actual media block additionally requires an approved, usable,
+fact-type-compatible asset with an exact shared identity namespace. Recommended
+assets alone never prove delivery. Blocked, unresolved high-risk, audit-failed,
+or non-fact-only responses are normalised to `can_send=false`,
+`requires_human_review=true`, and an empty sendable reply.
+
+The isolated 5012 gate then passed all three 1x1 probes and the 5-product by
+3-question slice passed 15/15. Direct low-risk facts were selected and admitted;
+mixed questions retained supported clauses plus unresolved high-risk claims;
+media/service-only questions selected no factual evidence and attached no media.
+All 18 probes remained review-only, protected database counts were unchanged,
+and the versioned benchmark remained 5/5 and 22/22 with zero auto-send cases.
+This is a capability and delivery-contract result, not real-customer accuracy.
+The rollback boundary remains
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false`; 5011 keeps that value, and
+Evidence Action remains paused and unqualified.

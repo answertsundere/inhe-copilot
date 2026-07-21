@@ -69,6 +69,7 @@ def orchestrate_final_response(
     """
     pipeline: list[dict[str, Any]] = []
 
+    _apply_formal_delivery_boundary(response)
     response = apply_no_evidence_reply_policy(response, copilot_context)
     response = _apply_formal_partial_answer(response)
 
@@ -282,6 +283,77 @@ def _formal_evidence_convergence_enabled() -> bool:
     }
 
 
+def _formal_admitted_context(response: dict[str, Any]) -> dict[str, Any]:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    admitted = debug.get("admitted_answer_context")
+    return admitted if isinstance(admitted, dict) else {}
+
+
+def _formal_non_fact_only(response: dict[str, Any]) -> bool:
+    if not _formal_evidence_convergence_enabled():
+        return False
+    admitted = _formal_admitted_context(response)
+    if not admitted:
+        return False
+    direct = [
+        item
+        for item in [
+            *(admitted.get("direct_product_facts") or []),
+            *(admitted.get("direct_policy_facts") or []),
+        ]
+        if isinstance(item, dict)
+    ]
+    non_fact = [
+        item
+        for item in [
+            *(admitted.get("handoff_action_guidance") or []),
+            *(admitted.get("media_candidates") or []),
+        ]
+        if isinstance(item, dict)
+    ]
+    return not direct and bool(non_fact)
+
+
+def _selected_non_fact_roles(response: dict[str, Any]) -> set[str]:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    selected = response.get("selected_evidence") or debug.get("selected_evidence") or []
+    return {
+        str(item.get("evidence_role") or item.get("role") or "").strip().lower()
+        for item in selected
+        if isinstance(item, dict)
+        and str(item.get("evidence_role") or item.get("role") or "").strip().lower()
+        in {"service_action", "fallback_only", "media_reference"}
+    }
+
+
+def _apply_formal_delivery_boundary(response: dict[str, Any]) -> None:
+    """Prevent non-factual guidance from becoming a delivery decision."""
+    if not _formal_non_fact_only(response):
+        return
+    blocks = [item for item in (response.get("reply_blocks") or []) if isinstance(item, dict)]
+    removed = [item for item in blocks if item.get("type") in {"image", "video"}]
+    response["reply_blocks"] = [item for item in blocks if item.get("type") not in {"image", "video"}]
+    response["can_send"] = False
+    response["requires_human_review"] = True
+    response["sendable_reply"] = ""
+    response["reply_status"] = "needs_human_review"
+    delivery = response.get("reply_delivery")
+    if isinstance(delivery, dict):
+        delivery["auto_send_ready"] = False
+        delivery["reason"] = "formal_non_fact_evidence_only"
+    debug = response.setdefault("evidence_debug", {})
+    selected_non_fact_roles = _selected_non_fact_roles(response)
+    debug["formal_delivery_contract"] = {
+        "non_fact_only": True,
+        "service_action_used_for_fact": bool(selected_non_fact_roles & {"service_action", "fallback_only"}),
+        "media_reference_used_for_fact": "media_reference" in selected_non_fact_roles,
+        "removed_media_block_count": len(removed),
+        "actual_attached_media_count": 0,
+        "can_send_source": "formal_non_fact_evidence_only",
+        "requires_human_review_source": "formal_non_fact_evidence_only",
+    }
+
+
 def _apply_formal_partial_answer(response: dict[str, Any]) -> dict[str, Any]:
     """Promote only a bounded, already-admitted partial preview.
 
@@ -351,6 +423,11 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
     final_answer = response.get("final_answer_audit") or {}
     semantic_fit = response.get("final_semantic_fit_audit") or {}
     block_reasons: list[str] = []
+    upstream_status = str(response.get("reply_status") or "").strip().lower()
+    if upstream_status in {"blocked", "needs_human_review"}:
+        block_reasons.append(
+            "upstream_reply_blocked" if upstream_status == "blocked" else "upstream_human_review_required"
+        )
     if not bool(final_answer.get("passed", True)):
         block_reasons.extend(str(item) for item in (final_answer.get("issues") or []))
         if final_answer.get("reason"):
@@ -360,15 +437,25 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
         if semantic_fit.get("reason"):
             block_reasons.append(str(semantic_fit.get("reason")))
     block_reasons.extend(str(item) for item in (post_issues or []))
+    formal_review_reasons = _formal_review_reasons(response)
+    block_reasons.extend(formal_review_reasons)
     if response.get("requires_human_review"):
         block_reasons.append(str(response.get("reason_for_review") or response.get("review_reason") or "requires_human_review"))
     block_reasons = [item for item in dict.fromkeys(block_reasons) if item]
-    can_send = bool(draft_reply) and not block_reasons
+    if not draft_reply:
+        block_reasons.append("empty_reply")
+    requires_human_review = bool(response.get("requires_human_review")) or bool(block_reasons)
+    can_send = bool(draft_reply) and not block_reasons and not requires_human_review
     response["draft_reply"] = draft_reply
     response["can_send"] = can_send
-    response["reply_status"] = "sendable" if can_send else ("needs_human_review" if response.get("requires_human_review") else "blocked")
+    response["requires_human_review"] = requires_human_review
+    response["reply_status"] = "sendable" if can_send else "needs_human_review"
     response["sendable_reply"] = draft_reply if can_send else ""
     response["block_reasons"] = block_reasons
+    if not can_send:
+        for block in response.get("reply_blocks") or []:
+            if isinstance(block, dict) and block.get("type") in {"image", "video"}:
+                block["send_mode"] = "manual"
     delivery = response.get("reply_delivery")
     if isinstance(delivery, dict):
         delivery["auto_send_ready"] = _media_delivery_ready(response) and can_send
@@ -377,11 +464,53 @@ def _apply_sendable_reply_contract(response: dict[str, Any], *, post_issues: lis
         elif delivery["auto_send_ready"]:
             delivery["reason"] = ""
         response["reply_delivery"] = delivery
-    response.setdefault("evidence_debug", {})["sendable_reply_contract"] = {
+    debug = response.setdefault("evidence_debug", {})
+    debug["sendable_reply_contract"] = {
         "can_send": can_send,
         "reply_status": response["reply_status"],
         "block_reasons": block_reasons,
+        "can_send_source": "final_sendable_contract",
+        "requires_human_review_source": (
+            "final_sendable_contract" if requires_human_review else "none"
+        ),
     }
+    formal_delivery = debug.setdefault("formal_delivery_contract", {})
+    selected_non_fact_roles = _selected_non_fact_roles(response)
+    formal_delivery["service_action_used_for_fact"] = bool(
+        selected_non_fact_roles & {"service_action", "fallback_only"}
+    )
+    formal_delivery["media_reference_used_for_fact"] = "media_reference" in selected_non_fact_roles
+    formal_delivery["actual_attached_media_count"] = sum(
+        1
+        for block in response.get("reply_blocks") or []
+        if isinstance(block, dict) and block.get("type") in {"image", "video"}
+    )
+    formal_delivery["final_can_send"] = can_send
+    formal_delivery["final_requires_human_review"] = requires_human_review
+
+
+def _formal_review_reasons(response: dict[str, Any]) -> list[str]:
+    if not _formal_evidence_convergence_enabled():
+        return []
+    admitted = _formal_admitted_context(response)
+    reasons: list[str] = []
+    if _formal_non_fact_only(response):
+        reasons.append("formal_non_fact_evidence_only")
+    if _selected_non_fact_roles(response):
+        reasons.append("formal_non_fact_selected_as_fact")
+    unresolved = [
+        item
+        for item in (admitted.get("unresolved_claims") or [])
+        if isinstance(item, dict)
+    ]
+    if any(
+        str(item.get("risk_level") or "").strip().lower() in {"high", "critical"}
+        or item.get("direct_handling_prohibited") is True
+        or str(item.get("status") or "").strip().lower() == "prohibited"
+        for item in unresolved
+    ):
+        reasons.append("formal_high_risk_claim_unresolved")
+    return reasons
 
 
 def _is_no_evidence_controlled_response(response: dict[str, Any]) -> bool:

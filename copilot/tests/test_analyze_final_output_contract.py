@@ -77,6 +77,10 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
                         "asset_type": "install_video",
                         "asset_title": "安装视频",
                         "asset_url": "https://example.com/install.mp4",
+                        "i_id": "IID-INSTALL",
+                        "status": "approved",
+                        "usable_for_agent": True,
+                        "auto_send_level": "auto",
                         "product_name": "一号喂养柜",
                         "send_mode": "auto_when_platform_connected",
                     }]
@@ -93,6 +97,7 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
     response = client.post("/api/analyze", json={
         "message": "这个怎么安装？有视频吗？",
         "product_name": "一号喂养柜",
+        "copilot_context": {"i_id": "IID-INSTALL"},
         "conversation_id": "pytest_pack_media_blocks",
     })
 
@@ -100,8 +105,8 @@ def test_analyze_uses_product_pack_media_as_send_blocks(client, monkeypatch):
     data = response.get_json()
     assert data["recommended_assets"][0]["asset_type"] == "install_video"
     assert [block["type"] for block in data["reply_blocks"]] == ["text", "video"]
-    assert data["reply_delivery"]["auto_send_ready"] is False
-    assert data["reply_delivery"]["reason"] == "final_sendable_contract_blocked"
+    assert data["reply_delivery"]["auto_send_ready"] is True
+    assert data["reply_delivery"]["reason"] == ""
     assert data["reply_blocks"][1]["send_mode"] == "auto_when_platform_connected"
 
 

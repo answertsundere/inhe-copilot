@@ -171,6 +171,43 @@ for any rejection. This makes a generic handoff diagnosable without treating a
 single product question as a new routing rule. The trace is shadow-only and
 cannot change the formal reply, delivery, review decision, or `can_send`.
 
+### Phase 0.8C evidence-role findings
+
+The fixed 68-turn funnel supports a narrower root-cause statement than “RAG did
+not retrieve.” The 31 role-ineligible turns split into 23 structured-field
+protocol metadata losses, seven unsafe high-risk promotion candidates, and one
+correctly rejected non-fact. The 37 source gaps split into 13 missing sidecar
+contexts and 24 order/live-state requirements. These categories are mutually
+exclusive, report pseudonymous diagnostic UIDs, and assign an owner without
+using customer text, product names, or identities as routing rules.
+
+Preserving explicit protocol metadata during Pack compaction allowed a
+query-only real-derived slice to select and admit 15/15 reviewed facts from 12
+products across material, dimensions, and gross weight. The underlying inventory
+contained 393 products with at least one eligible fact and 428 eligible facts;
+the fixture selected the smallest deterministic coverage set that met the
+five-product, 15-fact, three-type minimum. Seven negative controls remained
+rejected. Only two selected dimension facts were available and canonical
+dimension attributes remain absent. This proves evidence plumbing, not answer
+accuracy: the questions are labelled capability probes, the production flag is
+still off, and the real-accuracy numerator and denominator remain unchanged.
+
+The API closure confirms why evidence and delivery must be assessed separately.
+Product media records are emitted as `media_reference`, never as direct product
+facts. A candidate or recommended asset is not an attached asset. Delivery also
+requires approval, usability, fact-type compatibility, and an exact shared
+identity namespace. The final state normaliser makes blocked, unresolved
+high-risk, audit-failed, and non-fact-only results non-sendable and review-only.
+
+After this correction, the isolated 5012 1x1 gate passed 3/3 and the 5-product
+by 3-question slice passed 15/15. Direct facts were admitted, mixed questions
+kept supported and unresolved claims separate, and non-fact-only requests had
+zero selected facts and zero media blocks. Protected table counts did not
+change. The versioned safety benchmark remained 5/5 and 22/22 with zero
+auto-send cases. These results validate evidence plumbing and fail-closed
+delivery only; they do not create a real-customer accuracy denominator or
+authorise the production feature flag.
+
 ## Material provenance and review staging
 
 AWS Ground Truth review batches and Label Studio review workflows both keep a

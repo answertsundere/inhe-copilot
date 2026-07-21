@@ -930,6 +930,11 @@ def test_product_context_pack_uses_tagged_media_for_detachable(product_context_d
     assert any(item["entry_id"].startswith("kbmedia:") for item in pack["facts"])
     media_fact = next(item for item in pack["facts"] if item["entry_id"].startswith("kbmedia:"))
     assert media_fact["fact_type"] == "detachable"
+    assert media_fact["source_type"] == "media_reference"
+    assert media_fact["evidence_role"] == "media_reference"
+    assert media_fact["reference_only"] is True
+    assert media_fact["can_direct_answer"] is False
+    assert media_fact["evidence_allowed_for_direct_answer"] is False
     assert "\u62c6\u88c5" in media_fact["chunk_text"]
     assert "\u7ed3\u6784" in media_fact["chunk_text"]
     assert "\u5df2\u5339\u914d" not in media_fact["chunk_text"]

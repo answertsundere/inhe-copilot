@@ -44,6 +44,7 @@ def test_placeholder_semantics_reject_verification_copy_without_rejecting_real_v
         "\u9700\u8981\u4eba\u5de5\u6838\u5b9e",
         "\u4ee5\u8be6\u60c5\u9875\u4e3a\u51c6",
         "\u4ee5\u5b9e\u7269\u4e3a\u51c6",
+        "\u5df2\u6536\u5f55\u5c3a\u5bf8\u56fe\uff0c\u5177\u4f53\u5c3a\u5bf8\u4ee5\u5c3a\u5bf8\u56fe\u6216\u5546\u54c1\u8be6\u60c5\u9875\u6807\u6ce8\u4e3a\u51c6",
         "\u5f85\u786e\u8ba4",
         "\u6682\u65e0\u660e\u786e\u6570\u636e",
     )
@@ -64,6 +65,35 @@ def test_admits_reviewed_scoped_direct_product_fact():
     assert context["unresolved_claims"] == []
     assert context["read_only"] is True
     assert context["can_change_can_send"] is False
+
+
+def test_same_origin_transport_copies_do_not_make_dimension_claim_ambiguous():
+    first = _fact(
+        evidence_uid="pack-dimensions",
+        origin_evidence_key="kb_product:2:dimensions:size",
+        fact_type="dimensions",
+        attribute_key="",
+        content="高度约63cm。",
+        value="63cm",
+    )
+    duplicate = _fact(
+        evidence_uid="profile-dimensions",
+        origin_evidence_key="kb_product:2:dimensions:size",
+        fact_type="dimensions",
+        attribute_key="dimensions",
+        content="尺寸：高度约63cm。",
+        value="63cm",
+    )
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"formal_evidence_candidates": [duplicate, first]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("dimensions"),
+    )
+
+    assert len(context["direct_product_facts"]) == 1
+    assert context["claim_resolutions"][0]["status"] == "supported"
+    assert any(item["reason"] == "duplicate_evidence" for item in context["rejected_evidence"])
 
 
 def test_rejects_reference_placeholder_identity_mismatch_and_unreviewed_faq():

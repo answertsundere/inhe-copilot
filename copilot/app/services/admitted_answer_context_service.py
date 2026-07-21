@@ -44,6 +44,8 @@ PLACEHOLDER_TERMS = (
     "暂未明确",
     "以详情页为准",
     "以实物为准",
+    "已收录尺寸图",
+    "以尺寸图或商品详情页标注为准",
 )
 # Variants where characters may intervene between the negation and the claim
 # (e.g. "未在现有结构资料中明确尺寸").
@@ -580,6 +582,27 @@ def collect_admitted_product_facts(
     return admitted[:12], rejected, warnings
 
 
+def _deduplicate_admitted_origins(
+    facts: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Collapse multiple transport copies of one admitted source fact."""
+    selected: dict[str, dict[str, Any]] = {}
+    duplicates: list[dict[str, Any]] = []
+    for fact in sorted(
+        facts,
+        key=lambda item: (
+            sanitize_text(item.get("origin_evidence_key")) or sanitize_text(item.get("evidence_uid")),
+            sanitize_text(item.get("evidence_uid")),
+        ),
+    ):
+        key = sanitize_text(fact.get("origin_evidence_key")) or sanitize_text(fact.get("evidence_uid"))
+        if key in selected:
+            duplicates.append({**fact, "reason": "duplicate_evidence"})
+            continue
+        selected[key] = fact
+    return list(selected.values()), duplicates
+
+
 def build_evidence_convergence_trace(
     response: dict[str, Any],
     *,
@@ -964,6 +987,8 @@ class AdmittedAnswerContextService:
             product_identity=identity,
             requested_claim_types=requested_claim_types,
         )
+        direct_product, duplicate_origins = _deduplicate_admitted_origins(direct_product)
+        rejected.extend(duplicate_origins)
 
         direct_policy: list[dict[str, Any]] = []
         actions: list[dict[str, Any]] = []

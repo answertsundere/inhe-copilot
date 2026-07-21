@@ -49,3 +49,44 @@ def test_cli_writes_parseable_json(tmp_path):
     assert main(["--input", str(source), "--json-output", str(output)]) == 0
     parsed = json.loads(output.read_text(encoding="utf-8"))
     assert len(parsed["source_report_sha256"]) == 64
+
+
+def test_detailed_gap_classification_is_exclusive_and_redacted():
+    report = {
+        "schema_version": "long-conversation-simulation-report-v3",
+        "results": [
+            {
+                "scenario_uid": "private-scenario-a",
+                "trial": 1,
+                "primary_domain": "product_fact_direct",
+                "turns": [{"turn_number": 1, "observation": {"evidence_action_shadow": {"evidence_funnel": {
+                    "earliest_breakpoint": "no_product_context",
+                    "counts": {"candidate_count": 1},
+                    "records": [{
+                        "source_types": ["product_facts"],
+                        "source_containers": ["product_context_pack.evidence_pack.product_structured_facts"],
+                        "rejection_reason": "evidence_role_not_direct",
+                    }],
+                }}}}],
+            },
+            {
+                "scenario_uid": "private-scenario-b",
+                "trial": 1,
+                "primary_domain": "aftersales_verification",
+                "turns": [{"turn_number": 1, "observation": {"evidence_action_shadow": {"evidence_funnel": {
+                    "earliest_breakpoint": "no_product_context",
+                    "counts": {"candidate_count": 0},
+                    "records": [],
+                }}}}],
+            },
+        ],
+    }
+
+    result = analyze_report(report)
+
+    assert result["detailed_gap_classification_counts"] == {
+        "metadata_contract_missing": 1,
+        "order_or_live_tool_required": 1,
+    }
+    assert all("scenario_uid" not in row for row in result["turn_diagnostics"])
+    assert all(row["diagnostic_uid"].startswith("gap-") for row in result["turn_diagnostics"])

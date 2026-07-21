@@ -615,3 +615,96 @@ def test_final_response_orchestrator_exposes_blocked_sendable_contract(monkeypat
     assert result["reply_status"] == "needs_human_review"
     assert result["block_reasons"] == ["最终回复语义一致性未通过"]
     assert result["reply_delivery"]["auto_send_ready"] is False
+
+
+def test_blocked_status_is_normalized_to_human_review(monkeypatch):
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_final_answer",
+        lambda response, **_kwargs: {
+            **response,
+            "final_answer_audit": {"passed": True, "issues": []},
+        },
+    )
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **_kwargs: response)
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "The supported fact is available, but the safety claim still needs review.",
+            "reply_status": "blocked",
+            "can_send": False,
+            "requires_human_review": False,
+        },
+        customer_message="Can you confirm both the specification and safety claim?",
+    )
+
+    assert result["can_send"] is False
+    assert result["requires_human_review"] is True
+    assert result["reply_status"] == "needs_human_review"
+    assert result["sendable_reply"] == ""
+    assert "upstream_reply_blocked" in result["block_reasons"]
+
+
+def test_formal_non_fact_only_context_cannot_create_sendable_media(monkeypatch):
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_final_answer",
+        lambda response, **_kwargs: {
+            **response,
+            "final_answer_audit": {"passed": True, "issues": []},
+        },
+    )
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", lambda response, **_kwargs: response)
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "\u4eb2\uff0c\u4e0b\u9762\u56fe\u7247\u53ef\u4ee5\u53c2\u8003\u3002",
+            "can_send": True,
+            "requires_human_review": False,
+            "reply_status": "sendable",
+            "recommended_assets": [{
+                "asset_type": "install_image",
+                "asset_url": "https://asset.example/guide.png",
+                "status": "approved",
+                "usable_for_agent": True,
+                "i_id": "IID-A",
+                "auto_send_level": "auto",
+            }],
+            "reply_blocks": [
+                {"type": "text", "content": "old"},
+                {
+                    "type": "image",
+                    "url": "https://asset.example/guide.png",
+                    "asset_type": "install_image",
+                    "status": "approved",
+                    "usable_for_agent": True,
+                    "i_id": "IID-A",
+                    "send_mode": "auto_when_platform_connected",
+                },
+            ],
+            "evidence_debug": {
+                "query_fact_type": "installation",
+                "admitted_answer_context": {
+                    "direct_product_facts": [],
+                    "direct_policy_facts": [],
+                    "handoff_action_guidance": [{"evidence_uid": "action-1"}],
+                    "media_candidates": [{"evidence_uid": "media-1"}],
+                    "unresolved_claims": [{"claim_type": "installation", "status": "unresolved"}],
+                },
+            },
+            "i_id": "IID-A",
+        },
+        customer_message="How should this be installed?",
+    )
+
+    assert result["can_send"] is False
+    assert result["requires_human_review"] is True
+    assert result["reply_status"] == "needs_human_review"
+    assert [block["type"] for block in result["reply_blocks"]] == ["text"]
+    assert "\u4e0b\u9762\u56fe\u7247" not in result["suggested_reply"]
+    assert "formal_non_fact_evidence_only" in result["block_reasons"]
+    diagnostics = result["evidence_debug"]["formal_delivery_contract"]
+    assert diagnostics["service_action_used_for_fact"] is False
+    assert diagnostics["media_reference_used_for_fact"] is False
+    assert diagnostics["removed_media_block_count"] == 1

@@ -24,7 +24,11 @@ from app.services.evidence_quality_gate import (
     WEAK_SOURCE_TYPES as GATE_WEAK_SOURCES,
 )
 from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
-from app.services.product_structured_evidence_service import material_direct_answer_block_reason, structured_field_source_kind
+from app.services.product_structured_evidence_service import (
+    build_product_spec_evidence_candidates,
+    material_direct_answer_block_reason,
+    structured_field_source_kind,
+)
 from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
@@ -326,6 +330,13 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
     kb_product = _find_kb_product(state)
     if kb_product:
         fact_text, missing = _profile_fact_text(kb_product, query_fact_type, msg)
+        protocol_profile = dict(kb_product)
+        protocol_profile.setdefault("product_id", kb_product.get("id"))
+        protocols = build_product_spec_evidence_candidates(
+            protocol_profile,
+            requested_fact_type=query_fact_type,
+        )
+        protocol = protocols[0] if protocols else {}
         found_sources.append("kb_product")
         material_reason = material_direct_answer_block_reason(kb_product) if query_fact_type == "material" else ""
         if fact_text and not material_reason:
@@ -339,12 +350,19 @@ def _append_product_profile_evidence(state: dict, product_facts: list, verified_
                 "fact_review_status": "published" if kb_product.get("status") == "published" else "draft_unverified",
                 "evidence_fact_type": query_fact_type,
                 "fact_type": query_fact_type,
-                "attribute_key": "material" if query_fact_type == "material" else query_fact_type,
+                # A broad fact type is not an attribute slot. Composite size
+                # fields remain unslotted until a structured width/height/etc.
+                # key is available.
+                "attribute_key": "material" if query_fact_type == "material" else "",
                 "product_profile_source": "kb_product",
                 "material_provenance": structured_field_source_kind(kb_product, "material") if query_fact_type == "material" else "",
                 "evidence_allowed_for_direct_answer": kb_product.get("status") == "published",
                 "direct_answer_allowed": kb_product.get("status") == "published",
                 "i_id": kb_product.get("i_id", ""),
+                "evidence_id": protocol.get("evidence_id", ""),
+                "source_table": protocol.get("source_table", "kb_product"),
+                "source_id": protocol.get("source_id", str(kb_product.get("id") or kb_product.get("product_id") or "")),
+                "source_field_keys": protocol.get("source_field_keys", []),
             }
             product_facts.append(fact)
             verified_facts.append(fact)

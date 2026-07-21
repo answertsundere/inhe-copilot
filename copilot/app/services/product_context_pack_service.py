@@ -744,12 +744,31 @@ def _fact_matches_query_type(query_fact_type: str, item: dict[str, Any]) -> bool
 def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
     text = _clean_qa_answer_text(str(item.get("chunk_text") or ""))
     alignment = item.get("semantic_alignment") if isinstance(item.get("semantic_alignment"), dict) else {}
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    protocol_metadata = {
+        key: metadata[key]
+        for key in (
+            "product_evidence_protocol",
+            "structured_profile_fact",
+            "verification_status",
+            "can_direct_answer",
+            "material_provenance",
+            "source_table",
+            "source_id",
+            "source_field_keys",
+            "evidence_role",
+            "reference_only",
+        )
+        if key in metadata
+    }
     return {
         "evidence_id": item.get("evidence_id") or item.get("chunk_id") or item.get("entry_id"),
         "entry_id": item.get("entry_id"),
         "chunk_id": item.get("chunk_id"),
         "title": item.get("title", ""),
         "source_type": item.get("source_type", ""),
+        "evidence_role": item.get("evidence_role") or metadata.get("evidence_role", ""),
+        "reference_only": bool(item.get("reference_only") or metadata.get("reference_only")),
         "protocol_source_type": item.get("protocol_source_type", ""),
         "source_table": item.get("source_table", ""),
         "source_id": item.get("source_id", ""),
@@ -762,8 +781,15 @@ def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
         "needs_human_review": bool(item.get("needs_human_review")),
         "block_reasons": item.get("block_reasons", []),
         "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
+        "attribute_key": item.get("attribute_key") or item.get("field_name") or item.get("fact_key") or "",
         "score": item.get("rerank_score", item.get("score", 0)),
         "direct_answer_allowed": item.get("evidence_allowed_for_direct_answer") is not False,
+        "customer_text": item.get("customer_text") or text,
+        "chunk_text": text,
+        "sku_scope": list(item.get("sku_scope") or []),
+        "product_scope": list(item.get("product_scope") or []),
+        "material_provenance": item.get("material_provenance") or metadata.get("material_provenance", ""),
+        "metadata": protocol_metadata,
         "semantic_alignment": {
             "alignment": alignment.get("alignment", ""),
             "reason": alignment.get("reason", ""),
@@ -1460,7 +1486,9 @@ def _media_facts_for_query(
         "title": f"{profile.get('product_name') or asset.get('product_name') or '当前商品'}{label}",
         "chunk_text": body,
         "chunk_index": 0,
-        "source_type": "product_facts",
+        "source_type": "media_reference",
+        "evidence_role": "media_reference",
+        "reference_only": True,
         "intent": "product_question",
         "category": "structured_profile_media",
         "category_l3": query_fact_type,
@@ -1469,11 +1497,13 @@ def _media_facts_for_query(
         "metadata": {
             "source": "kb_media_asset",
             "product_evidence_protocol": True,
+            "evidence_role": "media_reference",
+            "reference_only": True,
             "source_table": "kb_media_asset",
             "source_id": str(asset_id),
             "verification_status": "verified",
-            "can_direct_answer": True,
-            "needs_human_review": False,
+            "can_direct_answer": False,
+            "needs_human_review": True,
             "media_asset_id": asset_id,
             "asset_type": asset_type,
             "media_purpose": asset.get("media_purpose"),
@@ -1492,19 +1522,19 @@ def _media_facts_for_query(
         "product_scope": [asset.get("i_id", ""), asset.get("product_name", "")],
         "product_context_pack": True,
         "evidence_id": chunk_id,
-        "protocol_source_type": "media_asset",
+        "protocol_source_type": "media_reference",
         "source_table": "kb_media_asset",
         "source_id": str(asset_id),
         "requested_fact_type": query_fact_type,
         "verification_status": "verified",
-        "can_direct_answer": True,
-        "needs_human_review": False,
+        "can_direct_answer": False,
+        "needs_human_review": True,
         "media_asset_id": asset_id,
         "media_url": asset.get("asset_url", ""),
         "block_reasons": [],
         "customer_text": body,
-        "evidence_allowed_for_direct_answer": True,
-        "evidence_allowed_for_exact_answer": True,
+        "evidence_allowed_for_direct_answer": False,
+        "evidence_allowed_for_exact_answer": False,
     }]
 
 

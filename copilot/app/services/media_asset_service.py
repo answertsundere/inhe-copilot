@@ -98,6 +98,28 @@ _DIMENSION_MEDIA_PURPOSES = {
     "dimension_reference",
     "space_fit_image",
 }
+_FACT_TYPE_MEDIA_ROLES = {
+    "appearance": {
+        "asset_types": {"sku_image"},
+        "purposes": {"appearance_image"},
+    },
+    "installation": {
+        "asset_types": {"install_video", "install_image", "pack_guide_image"},
+        "purposes": {"install_video", "install_image", "installation_guide", "packing_list_image"},
+    },
+    "detachable": {
+        "asset_types": {"size_image", "install_image", "pack_guide_image"},
+        "purposes": {"size_image", "install_image", "installation_guide", "packing_list_image"},
+    },
+    "accessories": {
+        "asset_types": {"accessory_image", "pack_guide_image", "install_image"},
+        "purposes": {"accessory_image", "packing_list_image", "install_image"},
+    },
+    "packaging": {
+        "asset_types": {"pack_guide_image"},
+        "purposes": {"packing_list_image"},
+    },
+}
 _IDENTITY_KEYS = ("product_id", "i_id", "sku_code")
 
 # 旧 scene_tags → 新 answer_scenarios 兼容映射
@@ -390,7 +412,10 @@ def media_asset_matches_fact_type(asset: dict, query_fact_type: str) -> bool:
         if asset_type in {"sku_image", "product_photo", "appearance_image", "packaging_image", "component_image"}:
             return False
         return asset_type in _DIMENSION_MEDIA_TYPES or purpose in _DIMENSION_MEDIA_PURPOSES
-    return True
+    roles = _FACT_TYPE_MEDIA_ROLES.get(fact_type)
+    if not roles:
+        return False
+    return asset_type in roles["asset_types"] or purpose in roles["purposes"]
 
 
 def is_delivery_media_asset_eligible(
@@ -401,7 +426,11 @@ def is_delivery_media_asset_eligible(
 ) -> bool:
     """Validate the narrow fact-specific delivery contract before attachment."""
     fact_type = str(query_fact_type or "").strip().lower()
-    if fact_type not in {"dimensions", "space_fit"}:
+    identity = product_identity or {}
+    strict_contract = bool(fact_type or any(str(identity.get(key) or "").strip() for key in _IDENTITY_KEYS))
+    if not strict_contract:
+        # Compatibility for callers that only render a local preview. Formal
+        # Pipeline delivery always supplies the query type and product scope.
         return True
     status = str(asset.get("status") or asset.get("review_status") or "").strip().lower()
     usable = asset.get("usable_for_agent")
@@ -816,6 +845,7 @@ def build_reply_blocks(
             "status": asset.get("status") or asset.get("review_status") or "",
             "usable_for_agent": asset.get("usable_for_agent"),
             "auto_send_level": asset.get("auto_send_level") or "",
+            "delivery_candidate_source": asset.get("delivery_candidate_source") or "",
             "send_mode": "auto_when_platform_connected",
         })
         added += 1

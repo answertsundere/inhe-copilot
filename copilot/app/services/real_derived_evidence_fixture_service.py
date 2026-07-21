@@ -23,10 +23,27 @@ from app.services.product_structured_evidence_service import (
 )
 
 
-FIXTURE_SCHEMA_VERSION = "real-derived-evidence-fixture-v1"
+FIXTURE_SCHEMA_VERSION = "real-derived-evidence-fixture-v2"
 REAL_DERIVED_SOURCE_KIND = "real_derived"
 REAL_DERIVED_DATASET_ID = "real-derived-product-evidence-v1"
 LOW_RISK_FACT_TYPES = ("material", "dimensions", "gross_weight", "detachable")
+INVENTORY_FIELDS = {
+    "material_composition": "material",
+    "dimensions": "dimensions",
+    "gross_weight": "gross_weight",
+    "detachable": "detachable",
+    "included_components": "accessories",
+}
+UNSUPPORTED_INVENTORY_FIELD_KEYS = {
+    "layer_count": ("layer_count", "layers", "tier_count"),
+    "compartment_count": ("compartment_count", "compartments"),
+    "color": ("color", "colour"),
+}
+MINIMUM_PRODUCT_COUNT = 5
+MINIMUM_FACTS_PER_PRODUCT = 1
+MINIMUM_TOTAL_FACTS = 15
+MINIMUM_FACT_TYPE_COUNT = 3
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _SENSITIVE_PATTERNS = (
     re.compile(r"\b1[3-9]\d{9}\b"),
     re.compile(r"\b\d{15,18}[0-9Xx]\b"),
@@ -55,7 +72,7 @@ def validate_real_derived_fixture(fixture: dict[str, Any], manifest: dict[str, A
         raise RealDerivedFixtureError("fixture_schema_version_invalid")
     if fixture.get("source_type") != "published_kb_product_structured_fields":
         raise RealDerivedFixtureError("real_derived_source_type_invalid")
-    if not sanitize_text(fixture.get("source_snapshot_hash")):
+    if not _is_sha256(fixture.get("source_snapshot_hash")):
         raise RealDerivedFixtureError("source_snapshot_hash_required")
     if not sanitize_text(fixture.get("sanitization_version")):
         raise RealDerivedFixtureError("sanitization_version_required")
@@ -74,12 +91,21 @@ def validate_real_derived_fixture(fixture: dict[str, Any], manifest: dict[str, A
     ):
         if manifest.get(field) != fixture.get(field):
             raise RealDerivedFixtureError(f"manifest_{field}_mismatch")
+    if manifest.get("qualification") != fixture.get("qualification"):
+        raise RealDerivedFixtureError("manifest_qualification_mismatch")
+    qualification = fixture.get("qualification")
+    if not isinstance(qualification, dict) or qualification.get("passed") is not True:
+        raise RealDerivedFixtureError("fixture_qualification_failed")
     if manifest.get("fixture_sha256") != expected_hash:
         raise RealDerivedFixtureError("fixture_hash_mismatch")
+    for product in fixture.get("products") or []:
+        for fact in product.get("facts") or []:
+            if not _is_sha256(fact.get("provenance_hash")):
+                raise RealDerivedFixtureError("fact_provenance_hash_invalid")
     manifest_privacy = manifest.get("privacy_scan") if isinstance(manifest.get("privacy_scan"), dict) else {}
     if manifest_privacy.get("passed") is not True:
         raise RealDerivedFixtureError("manifest_privacy_scan_failed")
-    return sanitize_obj(fixture)
+    return fixture
 
 
 def _read_only_connection(path: Path) -> sqlite3.Connection:
@@ -97,6 +123,10 @@ def _read_only_connection(path: Path) -> sqlite3.Connection:
 def _database_hash(path: Path) -> str:
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def _is_sha256(value: Any) -> bool:
+    return bool(_SHA256_RE.fullmatch(str(value or "").strip().lower()))
 
 
 def _table_fingerprint(connection: sqlite3.Connection, table: str) -> dict[str, Any]:
@@ -124,23 +154,64 @@ def source_inventory(source_database: str | Path) -> dict[str, Any]:
         if not next((row for row in before if row["table"] == "kb_product" and row["exists"]), None):
             raise RealDerivedFixtureError("kb_product_table_missing")
         rows = connection.execute(
-            "SELECT i_id, sku_list_json, specs_json, logistics_json, warranty_json "
+            "SELECT id, i_id, sku_list_json, specs_json, logistics_json, warranty_json "
             "FROM kb_product WHERE lower(status) IN ('published', 'approved', 'reviewed', 'verified') "
             "ORDER BY i_id"
         ).fetchall()
         counts: Counter[str] = Counter()
         product_count_by_type: Counter[str] = Counter()
         dimension_attributes: set[str] = set()
+        products_with_facts = 0
+        products_with_three_fact_types = 0
+        identity_and_provenance_count = 0
+        rejection_reasons: Counter[str] = Counter()
+        field_inventory = {
+            field: {"candidate_count": 0, "eligible_direct_fact_count": 0}
+            for field in (*INVENTORY_FIELDS, *UNSUPPORTED_INVENTORY_FIELD_KEYS, "installation_asset_availability")
+        }
         for row in rows:
             profile = _profile_from_row(row)
-            for fact in _exportable_facts(profile):
+            facts = _exportable_facts(profile)
+            if facts:
+                products_with_facts += 1
+            if len({fact["fact_type"] for fact in facts}) >= MINIMUM_FACT_TYPE_COUNT:
+                products_with_three_fact_types += 1
+            for fact in facts:
                 fact_type = fact["fact_type"]
                 counts[fact_type] += 1
-                product_count_by_type[fact_type] += 1
+                field = "material_composition" if fact_type == "material" else fact_type
+                if field in field_inventory:
+                    field_inventory[field]["eligible_direct_fact_count"] += 1
+                if fact.get("provenance_hash") and (sanitize_text(profile.get("i_id")) or any(
+                    sanitize_text(item.get("sku_code")) for item in profile.get("sku_list") or [] if isinstance(item, dict)
+                )):
+                    identity_and_provenance_count += 1
                 if fact_type == "dimensions":
                     attribute = sanitize_text(fact.get("attribute_key"))
                     if attribute:
                         dimension_attributes.add(attribute)
+            exported_types = {fact["fact_type"] for fact in facts}
+            for fact_type in exported_types:
+                product_count_by_type[fact_type] += 1
+            for field, fact_type in INVENTORY_FIELDS.items():
+                candidates = build_product_spec_evidence_candidates(profile, requested_fact_type=fact_type)
+                if candidates:
+                    field_inventory[field]["candidate_count"] += 1
+                if fact_type not in exported_types and candidates:
+                    rejection_reasons["placeholder_conflict_or_field_contract"] += 1
+            mappings = [profile.get("specs") or {}, profile.get("logistics") or {}, profile.get("warranty") or {}]
+            available_keys = {
+                str(key).lower()
+                for mapping in mappings if isinstance(mapping, dict)
+                for key, value in mapping.items() if value not in (None, "", [], {}, "-")
+            }
+            for field, aliases in UNSUPPORTED_INVENTORY_FIELD_KEYS.items():
+                if any(alias in available_keys for alias in aliases):
+                    field_inventory[field]["candidate_count"] += 1
+                    rejection_reasons["formal_protocol_not_supported"] += 1
+            if "install_videos" in available_keys:
+                field_inventory["installation_asset_availability"]["candidate_count"] += 1
+                rejection_reasons["media_availability_is_not_product_fact"] += 1
         after = [_table_fingerprint(connection, table) for table in ("kb_product", "kb_qa", "knowledge_entries", "knowledge_chunks")]
         return sanitize_obj({
             "source_database": {"path_form": "explicit_source_database", "sha256": _database_hash(path), "bytes": path.stat().st_size},
@@ -150,6 +221,12 @@ def source_inventory(source_database: str | Path) -> dict[str, Any]:
             "published_product_count": len(rows),
             "eligible_fact_count_by_type": dict(sorted(counts.items())),
             "eligible_product_count_by_type": dict(sorted(product_count_by_type.items())),
+            "eligible_product_count": products_with_facts,
+            "eligible_fact_count": sum(counts.values()),
+            "products_with_at_least_three_fact_types": products_with_three_fact_types,
+            "identity_and_provenance_eligible_fact_count": identity_and_provenance_count,
+            "requested_field_inventory": field_inventory,
+            "rejection_reason_distribution": dict(sorted(rejection_reasons.items())),
             "dimension_attribute_keys": sorted(dimension_attributes),
             "dimension_attribute_coverage_complete": len(dimension_attributes) >= 2,
             "source_database_mutated": before != after,
@@ -162,7 +239,7 @@ def build_real_derived_fixture(
     source_database: str | Path,
     *,
     pseudonymization_key: str,
-    limit_products: int = 5,
+    limit_products: int = 20,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build a deterministic, privacy-checked fixture from published structured facts."""
     if not sanitize_text(pseudonymization_key):
@@ -176,17 +253,65 @@ def build_real_derived_fixture(
             "FROM kb_product WHERE lower(status) IN ('published', 'approved', 'reviewed', 'verified') "
             "ORDER BY i_id"
         ).fetchall()
-        products: list[dict[str, Any]] = []
-        for row in rows:
+        eligible_products: list[tuple[int, sqlite3.Row, list[dict[str, Any]]]] = []
+        for index, row in enumerate(rows):
             facts = _exportable_facts(_profile_from_row(row))
-            if len(facts) != len(LOW_RISK_FACT_TYPES):
+            if len(facts) < MINIMUM_FACTS_PER_PRODUCT:
                 continue
+            eligible_products.append((index, row, facts))
+
+        selected: list[tuple[int, sqlite3.Row, list[dict[str, Any]]]] = []
+        selected_indexes: set[int] = set()
+        covered_fact_types: set[str] = set()
+        for fact_type in LOW_RISK_FACT_TYPES:
+            if fact_type in covered_fact_types or len(selected) >= limit_products:
+                continue
+            candidate = next((
+                item for item in eligible_products
+                if item[0] not in selected_indexes
+                and fact_type in {fact["fact_type"] for fact in item[2]}
+            ), None)
+            if candidate is None:
+                continue
+            selected.append(candidate)
+            selected_indexes.add(candidate[0])
+            covered_fact_types.update(fact["fact_type"] for fact in candidate[2])
+
+        for candidate in eligible_products:
+            if candidate[0] in selected_indexes or len(selected) >= limit_products:
+                continue
+            selected.append(candidate)
+            selected_indexes.add(candidate[0])
+            covered_fact_types.update(fact["fact_type"] for fact in candidate[2])
+            if (
+                len(selected) >= MINIMUM_PRODUCT_COUNT
+                and sum(len(item[2]) for item in selected) >= MINIMUM_TOTAL_FACTS
+                and len(covered_fact_types) >= MINIMUM_FACT_TYPE_COUNT
+            ):
+                break
+
+        products: list[dict[str, Any]] = []
+        for _index, row, facts in sorted(selected, key=lambda item: item[0]):
             identity = _pseudonymous_identity(row, pseudonymization_key)
             products.append({"identity": identity, "facts": facts})
-            if len(products) >= limit_products:
-                break
         if not products:
             raise RealDerivedFixtureError("no_eligible_real_derived_products")
+        fact_types = Counter(fact["fact_type"] for product in products for fact in product["facts"])
+        qualification = {
+            "minimum_product_count": MINIMUM_PRODUCT_COUNT,
+            "minimum_facts_per_product": MINIMUM_FACTS_PER_PRODUCT,
+            "minimum_total_fact_count": MINIMUM_TOTAL_FACTS,
+            "minimum_fact_type_count": MINIMUM_FACT_TYPE_COUNT,
+            "product_count": len(products),
+            "fact_count": sum(fact_types.values()),
+            "fact_type_count": len(fact_types),
+        }
+        qualification["passed"] = bool(
+            qualification["product_count"] >= MINIMUM_PRODUCT_COUNT
+            and qualification["fact_count"] >= MINIMUM_TOTAL_FACTS
+            and qualification["fact_type_count"] >= MINIMUM_FACT_TYPE_COUNT
+            and all(len(product["facts"]) >= MINIMUM_FACTS_PER_PRODUCT for product in products)
+        )
         fixture = {
             "dataset_id": REAL_DERIVED_DATASET_ID,
             "dataset_version": "1.0.0",
@@ -198,13 +323,15 @@ def build_real_derived_fixture(
             "source_type": "published_kb_product_structured_fields",
             "query_only": True,
             "source_database_mutated": False,
+            "qualification": qualification,
             "products": products,
             "negative_controls": [
                 {"kind": "identity_mismatch", "expected_rejection_reason": "product_identity_mismatch"},
-                {"kind": "review_state_insufficient", "expected_rejection_reason": "review_status_not_allowed"},
+                {"kind": "review_state_insufficient", "expected_rejection_reason": "review_status_missing"},
                 {"kind": "reference_only", "expected_rejection_reason": "reference_only"},
                 {"kind": "service_action", "expected_rejection_reason": "non_factual_role"},
                 {"kind": "media_reference", "expected_rejection_reason": "non_factual_role"},
+                {"kind": "blocked_high_risk", "expected_rejection_reason": "gate_not_allowed"},
                 {"kind": "conflicting_value", "expected_rejection_reason": "conflicting_evidence"},
             ],
         }
@@ -214,7 +341,6 @@ def build_real_derived_fixture(
         after = [_table_fingerprint(connection, table) for table in ("kb_product", "kb_qa", "knowledge_entries", "knowledge_chunks")]
         if before != after:
             raise RealDerivedFixtureError("source_database_mutation_detected")
-        fact_types = Counter(fact["fact_type"] for product in products for fact in product["facts"])
         dimension_attributes = sorted({
             fact["attribute_key"] for product in products for fact in product["facts"]
             if fact["fact_type"] == "dimensions" and fact["attribute_key"]
@@ -234,11 +360,12 @@ def build_real_derived_fixture(
             "fact_type_counts": dict(sorted(fact_types.items())),
             "dimension_attribute_keys": dimension_attributes,
             "dimension_attribute_coverage_complete": len(dimension_attributes) >= 2,
+            "qualification": qualification,
             "fixture_sha256": _canonical_hash(fixture),
             "privacy_scan": privacy,
             "source_database_mutated": False,
         }
-        return sanitize_obj(fixture), sanitize_obj(manifest)
+        return fixture, manifest
     finally:
         connection.close()
 

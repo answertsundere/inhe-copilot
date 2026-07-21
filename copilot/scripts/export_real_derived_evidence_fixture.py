@@ -24,7 +24,7 @@ def main() -> int:
     parser.add_argument("--source-db", required=True)
     parser.add_argument("--fixture-output")
     parser.add_argument("--manifest-output")
-    parser.add_argument("--limit-products", type=int, default=5)
+    parser.add_argument("--limit-products", type=int, default=20)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     try:

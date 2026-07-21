@@ -4,6 +4,7 @@ from app.agent.nodes.evidence_builder import _formal_evidence_convergence
 from app.agent.nodes.generate_reply import _real_product_facts
 from app.agent.nodes.build_response import build_response
 from app.models.reply import ReplySuggestion
+from app.services.product_context_pack_service import _compact_fact_for_evidence
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
     build_minimal_decision_context,
@@ -71,6 +72,62 @@ def test_reviewed_product_context_pack_fact_enters_formal_selection():
     )
 
     assert [item["evidence_uid"] for item in canonical_selected_evidence(context)] == ["pack-material"]
+
+
+def test_compacted_protocol_fact_preserves_formal_admission_contract():
+    compact = _compact_fact_for_evidence({
+        "evidence_id": "kbproduct:1:material",
+        "chunk_text": "Material is PP.",
+        "customer_text": "Material is PP.",
+        "source_type": "product_facts",
+        "source_table": "kb_product",
+        "source_id": "1",
+        "evidence_fact_type": "material",
+        "sku_scope": ["SKU-A"],
+        "product_scope": ["IID-A"],
+        "evidence_allowed_for_direct_answer": True,
+        "metadata": {
+            "product_evidence_protocol": True,
+            "structured_profile_fact": True,
+            "verification_status": "verified",
+            "can_direct_answer": True,
+            "material_provenance": "structured_product_record",
+            "source_field_keys": ["material"],
+        },
+    })
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"evidence_pack": {"product_structured_facts": [compact]}}},
+        product_identity={"sku_code": "SKU-A", "i_id": "IID-A"},
+        understanding=_understanding("material_composition"),
+    )
+
+    selected = canonical_selected_evidence(context)
+    assert len(selected) == 1
+    assert selected[0]["evidence_role"] == "product_fact_direct"
+    assert selected[0]["content"] == "Material is PP."
+    assert selected[0]["product_identity_scope"]
+
+
+def test_compaction_does_not_promote_unprotocolled_product_rows():
+    compact = _compact_fact_for_evidence({
+        "evidence_id": "kbproduct:1:material",
+        "chunk_text": "Material is PP.",
+        "source_type": "product_facts",
+        "source_table": "kb_product",
+        "evidence_fact_type": "material",
+        "sku_scope": ["SKU-A"],
+        "evidence_allowed_for_direct_answer": True,
+        "metadata": {"verification_status": "verified", "can_direct_answer": True},
+    })
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"evidence_pack": {"product_structured_facts": [compact]}}},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+    )
+
+    assert canonical_selected_evidence(context) == []
 
 
 def test_protocolised_pack_fact_wins_over_same_uid_raw_pack_duplicate():

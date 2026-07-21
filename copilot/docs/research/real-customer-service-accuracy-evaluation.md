@@ -12,6 +12,14 @@ labels?
 The layer is read-only. It does not publish knowledge, alter retrieval,
 activate Formal Evidence Convergence, or modify `can_send`.
 
+Phase 0.8C real-derived evidence probes remain outside the customer-accuracy
+denominator. They reuse real reviewed product fields with pseudonymous identity,
+but their customer questions are synthetic capability probes. The 15/15 offline
+result demonstrates Pack-to-selected-to-admitted plumbing only. The isolated API
+1x1 delivery gate did not pass and the 5-product tier was not run; Tier A and
+real-customer accuracy therefore remain `null` until independently approved Gold
+claims satisfy the published denominator.
+
 ## Dataset Boundary
 
 `scripts/build_real_accuracy_gold_set.py` reads a caller-supplied SQLite source

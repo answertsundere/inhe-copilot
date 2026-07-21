@@ -949,6 +949,35 @@ def test_reply_blocks_preview_media_when_human_review_required_but_do_not_auto_s
     assert [b["type"] for b in result["reply_blocks"]] == ["text", "image"]
 
 
+def test_strict_delivery_media_requires_review_identity_and_matching_role():
+    from app.services.media_asset_service import build_reply_blocks
+
+    base = {
+        "asset_type": "install_image",
+        "asset_title": "Installation guide",
+        "asset_url": "https://asset.example/install.png",
+        "auto_send_level": "auto",
+        "status": "approved",
+        "usable_for_agent": True,
+        "i_id": "IID-A",
+    }
+    kwargs = {"query_fact_type": "installation", "product_identity": {"i_id": "IID-A"}}
+
+    accepted = build_reply_blocks("See the attached installation guide.", [base], **kwargs)
+    missing_review = build_reply_blocks("See the guide.", [{**base, "status": "pending_review"}], **kwargs)
+    wrong_identity = build_reply_blocks("See the guide.", [{**base, "i_id": "IID-B"}], **kwargs)
+    wrong_role = build_reply_blocks(
+        "See the guide.",
+        [{**base, "asset_type": "sku_image"}],
+        **kwargs,
+    )
+
+    assert [block["type"] for block in accepted["reply_blocks"]] == ["text", "image"]
+    assert [block["type"] for block in missing_review["reply_blocks"]] == ["text"]
+    assert [block["type"] for block in wrong_identity["reply_blocks"]] == ["text"]
+    assert [block["type"] for block in wrong_role["reply_blocks"]] == ["text"]
+
+
 def test_api_analyze_recommended_assets_gating(client):
     """/api/analyze 只返回 approved+usable+ok 的素材；pending/rejected/needs_refresh/material_safety 不返回。
 

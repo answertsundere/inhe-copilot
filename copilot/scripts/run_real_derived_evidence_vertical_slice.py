@@ -113,12 +113,14 @@ def run_vertical_slice(fixture: dict[str, Any], work_database: str | Path) -> di
                 "formal_reply_changed": False,
             })
     compound = _compound_supported_and_unresolved(fixture, _formal_evidence_convergence, build_product_context_pack)
+    negative_controls = _run_negative_controls(fixture, _formal_evidence_convergence)
     total = len(rows)
     successful = [row for row in rows if row["formal_selected_count"] and row["admitted_count"] and row["confirmed_clause_count"] and row["citation_valid"]]
     return {
         "dataset_id": fixture.get("dataset_id"),
         "source_kind": fixture.get("source_kind"),
         "real_derived": True,
+        "qualification": fixture.get("qualification") or {},
         "total": total,
         "passed": len(successful),
         "failed": total - len(successful),
@@ -136,6 +138,12 @@ def run_vertical_slice(fixture: dict[str, Any], work_database: str | Path) -> di
             "used_for_final_reply_count": sum(row["preview_used_for_final_reply"] is True for row in rows),
         },
         "compound_supported_and_unresolved": compound,
+        "negative_controls": negative_controls,
+        "question_source": {
+            "kind": "capability_probe",
+            "synthetic_customer_question": True,
+            "real_customer_accuracy_measured": False,
+        },
         "by_fact_type": dict(Counter(row["fact_type"] for row in rows)),
         "rows": rows,
     }
@@ -168,6 +176,98 @@ def _compound_supported_and_unresolved(fixture, converge, build_pack) -> dict[st
     }
 
 
+def _run_negative_controls(fixture, converge) -> dict[str, Any]:
+    product = next(iter(fixture.get("products") or []), None)
+    fact = next(iter((product or {}).get("facts") or []), None)
+    if not product or not fact:
+        return {"status": "not_evaluable", "leak_count": 0, "cases": []}
+    identity = product.get("identity") or {}
+    fact_type = str(fact.get("fact_type") or "")
+    base = {
+        "evidence_uid": "negative-base",
+        "source_type": "product_facts",
+        "fact_type": fact_type,
+        "attribute_key": fact.get("attribute_key") or fact_type,
+        "content": fact.get("content"),
+        "value": fact.get("content"),
+        "sku_code": identity.get("sku_code", ""),
+        "i_id": identity.get("i_id", ""),
+        "fact_review_status": "published",
+        "gate_status": "allowed",
+        "direct_answer_allowed": True,
+        "material_provenance": "structured_product_record",
+    }
+    state = {
+        "slots": {"sku_code": identity.get("sku_code", "")},
+        "order_product_identity": {"i_id": identity.get("i_id", "")},
+        "query_fact_type": fact_type,
+        "turn_understanding": {"requested_claims": [{"claim_type": fact_type, "question": fact_type}]},
+    }
+    conflict_base = {
+        **base,
+        "fact_type": "gross_weight",
+        "attribute_key": "gross_weight",
+    }
+    cases = [
+        ("identity_mismatch", [{**base, "evidence_uid": "negative-identity", "sku_code": "mismatch", "i_id": "mismatch"}]),
+        ("review_state_insufficient", [{
+            **base,
+            "evidence_uid": "negative-review",
+            "fact_review_status": "pending",
+            "review_status": "pending",
+        }]),
+        ("reference_only", [{**base, "evidence_uid": "negative-reference", "reference_only": True}]),
+        ("service_action", [{**base, "evidence_uid": "negative-action", "source_type": "service_action", "evidence_role": "service_action"}]),
+        ("media_reference", [{**base, "evidence_uid": "negative-media", "source_type": "media_reference", "evidence_role": "media_reference"}]),
+        ("blocked_high_risk", [{**base, "evidence_uid": "negative-risk", "fact_type": "material_safety", "gate_status": "blocked"}]),
+        ("conflicting_value", [
+            {
+                **conflict_base,
+                "evidence_uid": "negative-conflict-a",
+                "content": "10kg",
+                "value": "10kg",
+            },
+            {
+                **conflict_base,
+                "evidence_uid": "negative-conflict-b",
+                "content": "12kg",
+                "value": "12kg",
+            },
+        ]),
+    ]
+    rows = []
+    for kind, candidates in cases:
+        case_state = state
+        if kind == "conflicting_value":
+            case_state = {
+                **state,
+                "query_fact_type": "gross_weight",
+                "turn_understanding": {
+                    "requested_claims": [
+                        {"claim_type": "gross_weight", "question": "gross_weight"}
+                    ]
+                },
+            }
+        result = converge(case_state, product_facts=candidates, policy_facts=[], faq_evidence=[])
+        selected = result.get("selected_evidence") or []
+        rejected = (result.get("admitted_answer_context") or {}).get("rejected_evidence") or []
+        rows.append({
+            "kind": kind,
+            "selected_count": len(selected),
+            "rejection_reasons": sorted({str(item.get("reason") or "") for item in rejected}),
+            "passed": len(selected) == 0,
+        })
+    return {
+        "status": "completed",
+        "case_count": len(rows),
+        "passed_count": sum(row["passed"] for row in rows),
+        "leak_count": sum(not row["passed"] for row in rows),
+        "formal_kb_write_attempt_count": 0,
+        "can_change_can_send": False,
+        "cases": rows,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture", required=True)
@@ -180,7 +280,18 @@ def main() -> int:
         Path(args.json_output).write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({key: report[key] for key in ("total", "passed", "failed", "safety")}, ensure_ascii=False))
         compound = report.get("compound_supported_and_unresolved") or {}
-        return 0 if report["failed"] == 0 and compound.get("passed") is True else 2
+        qualification = report.get("qualification") or {}
+        qualification_passed = qualification.get("passed") is True
+        negative_controls = report.get("negative_controls") or {}
+        return 0 if (
+            report["failed"] == 0
+            and compound.get("passed") is True
+            and qualification_passed
+            and negative_controls.get("status") == "completed"
+            and int(negative_controls.get("case_count") or 0) == 7
+            and int(negative_controls.get("passed_count") or 0) == 7
+            and int(negative_controls.get("leak_count") or 0) == 0
+        ) else 2
     except (OSError, ValueError, RealDerivedFixtureError) as exc:
         print(json.dumps({"status": "blocked", "reason": str(exc)}, ensure_ascii=False))
         return 2

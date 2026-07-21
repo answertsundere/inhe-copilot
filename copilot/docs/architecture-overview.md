@@ -305,14 +305,16 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.7C.3A Operational Gate
+### Current Phase: 0.8C Evidence Governance Gate
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
-but its production flag remains disabled. The next gate is operational rather
-than another reasoning feature: restore the protected public supervisor
-workbench, collect independently approved Gold claims, and measure Tier A
-against that approved denominator. Until then, neither the convergence path nor
-any Shadow capability is a production-quality claim.
+but its production flag remains disabled. Phase 0.8C repaired the proven
+metadata-loss boundary between Product Context Pack and formal admission,
+validated 15/15 query-only real-derived facts plus seven negative controls, and
+closed the isolated 5012 delivery gate. The 1x1 probe set and 5-product by
+3-question slice now keep non-factual media/action candidates out of selected
+evidence and actual media blocks. This is not a new Graph, registry, or reply
+owner, and it is not a real-customer accuracy claim.
 
 ### What Is Strong
 
@@ -326,8 +328,10 @@ any Shadow capability is a production-quality claim.
 
 ### What Is Blocking Business Value
 
-1. Formal Evidence Convergence is available but intentionally disabled until
-   real Gold evidence validates the bounded, non-sendable partial-answer path.
+1. Formal Evidence Convergence is available but intentionally disabled. Its
+   offline and isolated API capability gates pass, but approved Gold/Tier A and
+   a separately authorised production canary decision are still required before
+   changing the 5011 flag.
 2. The public supervisor workbench is blocked until Cloudflare Tunnel has a
    healthy connector and the real Access/RBAC path can be exercised.
 3. Tier A has no approved-claim denominator yet; its accuracy rate must remain
@@ -601,6 +605,40 @@ Evidence Action, Dialogue State, and counterfactual preview are
 `paused_not_qualified`; Pipeline does not invoke them, and runtime ignores a
 stale Action enablement flag. The report-safe funnel contains counts, roles,
 fact/attribute types, identity namespaces, and pseudonymous UIDs only.
+
+## Phase 0.8C Real Evidence Vertical Slice
+
+The 68-turn funnel is now classified without reading buyer wording into business
+rules. Of 31 role-ineligible turns, 23 lost an explicit structured-field protocol
+during Product Context Pack compaction, seven are unsafe high-risk promotion
+candidates, and one is a correctly rejected non-fact. Of 37 source gaps, 13 lack
+sidecar context and 24 require order or other live-state verification.
+
+The earliest production fix preserves explicit field review, direct-answer,
+identity, attribute, and provenance metadata while compacting a Pack fact. It
+does not grant a role from a table name, source type, product publication state,
+or text keyword. `AdmittedAnswerContextService` remains the sole admission
+owner. A query-only inventory found 393 products with at least one eligible fact
+and 428 eligible facts. The deterministic fixture selected 12 products and 15
+facts across three fact types, then passed all seven negative controls without
+formal knowledge writes. Only two selected dimension facts were available and
+their canonical attribute slots remain missing, so this is not broad dimension
+coverage.
+
+The isolated API comparison confirmed that enabling the flag moves eligible
+facts into canonical selected and admitted evidence. Duplicate Product Context
+Pack and profile-builder copies now share structured provenance and converge to
+one formal fact. A broad `dimensions` fact type is not treated as an attribute
+slot when the structured source exposes no width/height/etc. slot.
+
+The non-sendable 1x1 gate passed all three probes. The subsequent 5x3 slice
+passed 15/15: low-risk facts were supported, mixed low/high-risk questions kept
+supported facts plus unresolved claims, and media/service-only questions had
+zero selected facts and zero image/video blocks. Every result remained
+review-only, protected database counts were unchanged, and the synthetic safety
+benchmark remained 5/5 and 22/22. Formal Evidence Convergence therefore remains
+disabled on 5011 pending an explicit canary decision, Evidence Action remains
+paused, and real customer accuracy remains `null`.
 
 Tier D is reduced to canonical conversation, the formal Agent, deterministic
 turn checks, and at most one transcript semantic grader call per trial. Without

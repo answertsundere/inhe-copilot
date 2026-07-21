@@ -69,16 +69,23 @@ The default formal production boundary remains:
 
 The ignored runtime `.env` must keep
 `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false` until the real-derived
-5-product by 4-fact validation gate passes. A synthetic 20-fact vertical slice
-is a code-contract check only; it cannot justify enabling the formal flag on
-5011. Process-only 5012 experiments may enable the flag after 5011 is healthy,
-but must stop after verification.
+offline and API validation gates pass. A query-only Phase 0.8C inventory found
+393 products with at least one eligible fact and 428 eligible facts. The
+deterministic qualification fixture selected 12 products and 15 facts across
+three reviewed low-risk types (`material`, `dimensions`, and `gross_weight`) and
+validated 15/15 facts through Pack, canonical selection, admission, claim
+resolution, and a review-only preview. Dimension attribute-slot coverage remains
+incomplete. This is a Tier B capability probe, not customer accuracy and not
+permission to enable the flag on 5011.
 
-As of 2026-07-16, the query-only inventory found zero products with all four
-required reviewed low-risk facts (`material`, `dimensions`, `gross_weight`, and
-`detachable`). Real-derived promotion is therefore
-`blocked_by_product_data`. Placeholder, packaging-only, or visually inferred
-values must not be repaired automatically or treated as product facts.
+The same Phase 0.8C candidate stopped at the 5012 API 1x1 gate. All three probes
+returned HTTP 200 and non-empty replies, but the media/service-action negative
+control produced an actual media block and one run became sendable. A diagnostic
+repeat was review-only, demonstrating delivery-state instability rather than a
+qualified gate. The required 5-product API gate was therefore not run. Keep the
+formal flag disabled, keep Evidence Action paused, and do not repair missing
+`detachable` or dimension attribute scope with placeholders, visual inference,
+or broad role promotion.
 
 ## Management Access
 

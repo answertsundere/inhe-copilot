@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 
 import pytest
@@ -45,6 +46,13 @@ def test_inventory_and_export_are_read_only_and_pseudonymous(tmp_path):
     assert inventory["query_only"] is True
     assert manifest["product_count"] == 5
     assert manifest["fact_count"] == 20
+    assert manifest["qualification"]["passed"] is True
+    assert re.fullmatch(r"[0-9a-f]{64}", manifest["fixture_sha256"])
+    assert all(
+        re.fullmatch(r"[0-9a-f]{64}", fact["provenance_hash"])
+        for product in fixture["products"]
+        for fact in product["facts"]
+    )
     assert manifest["source_database_mutated"] is False
     assert source.read_bytes() == before
     assert all(item["identity"]["i_id"].startswith("fixture-iid-") for item in fixture["products"])
@@ -61,6 +69,7 @@ def test_inventory_and_export_are_read_only_and_pseudonymous(tmp_path):
         ({"source_kind": "synthetic", "real_derived": False, "dataset_id": "synthetic-product-evidence-v1"}, {}, "real_derived_source_kind_required"),
         ({"source_kind": "synthetic"}, {"source_kind": "synthetic"}, "real_derived_source_kind_required"),
         ({"source_snapshot_hash": ""}, {"source_snapshot_hash": ""}, "source_snapshot_hash_required"),
+        ({"qualification": {"passed": False}}, {"qualification": {"passed": False}}, "fixture_qualification_failed"),
         ({}, {"fixture_sha256": "0" * 64}, "fixture_hash_mismatch"),
         ({}, {"privacy_scan": {"passed": False}}, "manifest_privacy_scan_failed"),
         ({"source_database_mutated": True}, {"source_database_mutated": True}, "source_database_mutation_detected"),
@@ -112,8 +121,15 @@ def test_mixed_packaging_dimension_candidate_is_not_exported(tmp_path):
     connection.commit()
     connection.close()
 
-    with pytest.raises(RealDerivedFixtureError, match="no_eligible_real_derived_products"):
-        build_real_derived_fixture(source, pseudonymization_key="test-key")
+    fixture, manifest = build_real_derived_fixture(source, pseudonymization_key="test-key")
+
+    assert manifest["qualification"]["passed"] is False
+    assert "dimensions" not in manifest["fact_type_counts"]
+    assert all(
+        fact["fact_type"] != "dimensions"
+        for product in fixture["products"]
+        for fact in product["facts"]
+    )
 
 
 def test_placeholder_values_are_not_exported_as_positive_evidence(tmp_path):
@@ -128,9 +144,43 @@ def test_placeholder_values_are_not_exported_as_positive_evidence(tmp_path):
     connection.close()
 
     fixture, manifest = build_real_derived_fixture(source, pseudonymization_key="test-key")
-    assert manifest["product_count"] == 4, manifest
-    assert manifest["fact_count"] == 16, manifest
+    assert manifest["product_count"] == 5, manifest
+    assert manifest["fact_count"] == 19, manifest
     for product in fixture["products"]:
         for fact in product["facts"]:
             assert "未在现有结构资料" not in fact["content"]
             assert "以详情页为准" not in fact["content"]
+
+
+def test_sparse_real_fact_distribution_can_meet_dataset_minimum_without_placeholder_promotion(tmp_path):
+    source = _source_db(tmp_path)
+    connection = sqlite3.connect(source)
+    placeholder = "已收录尺寸图，具体尺寸以尺寸图或商品详情页标注为准"
+    connection.execute("UPDATE kb_product SET warranty_json=?", (json.dumps({}),))
+    for index in range(2, 6):
+        connection.execute(
+            "UPDATE kb_product SET specs_json=? WHERE id=?",
+            (json.dumps({"material": "PP", "size": placeholder}), index),
+        )
+    for index in range(6, 9):
+        connection.execute(
+            "INSERT INTO kb_product VALUES (?, ?, ?, ?, ?, ?, 'published')",
+            (
+                index,
+                f"internal-{index}",
+                json.dumps([{"sku_code": f"sku-{index}"}]),
+                json.dumps({"material": "PP", "size": placeholder}),
+                json.dumps({"gross_weight_kg": "1.2"}),
+                json.dumps({}),
+            ),
+        )
+    connection.commit()
+    connection.close()
+
+    fixture, manifest = build_real_derived_fixture(source, pseudonymization_key="test-key")
+
+    assert manifest["qualification"]["passed"] is True
+    assert manifest["product_count"] == 7
+    assert manifest["fact_count"] == 15
+    assert manifest["fact_type_counts"] == {"dimensions": 1, "gross_weight": 7, "material": 7}
+    assert all(placeholder not in fact["content"] for product in fixture["products"] for fact in product["facts"])
