@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 
@@ -116,8 +117,45 @@ def test_approved_only_mode_does_not_call_agent_without_approved_labels(monkeypa
     assert runner.main([
         "--gold-set", str(gold), "--source-db", str(source), "--analyze-url", "http://test",
         "--json-output", str(output), "--approved-only",
+    ]) == 2
+    assert not output.exists()
+
+
+def test_baseline_claim_accuracy_uses_claim_not_case_denominator(monkeypatch, tmp_path):
+    source = tmp_path / "source.db"; _source_db(source)
+    dataset, _ = build_gold_dataset("test-gold-key", runner.load_reviewed_training_samples(source))
+    case = dataset["cases"][0]
+    case["classification"] = "claim_accuracy_scorable"
+    case["evaluation_target"] = {"target_turn_uids": [case["conversation"]["turns"][0]["turn_uid"]]}
+    case["reference_label"]["expected_claims"] = [
+        {"claim_uid": "c1", "required_terms": ["甲"]},
+        {"claim_uid": "c2", "required_terms": ["乙"]},
+    ]
+    dataset["manifest"]["content_sha256"] = hashlib.sha256(
+        json.dumps(
+            dataset["cases"],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    gold = tmp_path / "gold.json"; gold.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("COPILOT_GOLD_SET_HMAC_KEY", "test-gold-key")
+    monkeypatch.setattr(runner, "_post", lambda *_: (
+        200,
+        {"analysis_pipeline": {"version": "v1"}, "suggested_reply": "甲", "requires_human_review": True},
+        1.0,
+        "",
+    ))
+    output = tmp_path / "report.json"
+
+    assert runner.main([
+        "--gold-set", str(gold), "--source-db", str(source), "--analyze-url", "http://test",
+        "--json-output", str(output),
     ]) == 0
-    report = json.loads(output.read_text(encoding="utf-8"))
-    assert report["execution_scope"] == "approved_claims_only"
-    assert report["summary"]["attempted_count"] == 0
-    assert report["summary"]["skipped_unapproved_count"] == 2
+    summary = json.loads(output.read_text(encoding="utf-8"))["summary"]
+    assert summary["claim_accuracy_numerator"] == 1
+    assert summary["claim_accuracy_denominator"] == 2
+    assert summary["claim_accuracy_rate"] == 0.5
+    assert summary["case_pass_count"] == 0
+    assert summary["case_scorable_count"] == 1

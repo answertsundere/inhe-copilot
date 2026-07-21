@@ -30,7 +30,7 @@ from app.services.real_accuracy_gold_set_service import (  # noqa: E402
     score_response,
     validate_gold_dataset,
 )
-from app.services.real_accuracy_label_service import RealAccuracyLabelStore  # noqa: E402
+from app.services.real_accuracy_label_service import RealAccuracyLabelStore, approved_claim_gate_summary  # noqa: E402
 from app.services.real_accuracy_privacy_service import sanitize_gold_text  # noqa: E402
 
 
@@ -109,13 +109,31 @@ def main(argv: list[str] | None = None) -> int:
     if validation_findings or (dataset.get("privacy") or {}).get("privacy_scan_status") != "passed":
         print(json.dumps({"error": "gold_set_privacy_validation_failed", "reason_codes": validation_findings}, ensure_ascii=False))
         return 2
+    if args.approved_only and not args.label_db:
+        print(json.dumps({"error": "approved_only_requires_label_store"}, ensure_ascii=False))
+        return 2
     if args.label_db:
         known_case_uids = {str(item.get("case_uid") or "") for item in dataset.get("cases") or []}
+        store = RealAccuracyLabelStore(args.label_db)
         labels = [
             item
-            for item in RealAccuracyLabelStore(args.label_db).list_for_dataset(str(dataset.get("dataset_version") or ""))
+            for item in store.list_for_dataset(str(dataset.get("dataset_version") or ""))
             if str(item.get("case_uid") or "") in known_case_uids
         ]
+        if args.approved_only:
+            gate = approved_claim_gate_summary(
+                labels,
+                store.list_events_for_dataset(str(dataset.get("dataset_version") or "")),
+            )
+            if gate["publish_status"] != "ready_for_accuracy_baseline":
+                print(json.dumps({
+                    "error": "awaiting_supervisor_approval",
+                    "approved_claim_count": gate["approved_claim_count"],
+                    "approved_domain_count": gate["approved_domain_count"],
+                    "missing_approved_claim_count": gate["missing_approved_claim_count"],
+                    "missing_approved_domain_count": gate["missing_approved_domain_count"],
+                }, ensure_ascii=False))
+                return 2
         dataset = apply_approved_claim_labels(dataset, labels)
     else:
         labels = []
@@ -141,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
             break
     scorable = [item for item in results if (item.get("score") or {}).get("claim_score_available")]
     passed = [item for item in scorable if (item.get("score") or {}).get("passed")]
+    covered_claim_count = sum(len((item.get("score") or {}).get("covered_claim_uids") or []) for item in scorable)
+    expected_claim_count = sum(int((item.get("score") or {}).get("expected_claim_count") or 0) for item in scorable)
     successful = [item for item in results if not item.get("error") and 200 <= int(item.get("status_code") or 0) < 300]
     latencies = sorted(float(item.get("latency_ms") or 0) for item in results)
 
@@ -169,9 +189,11 @@ def main(argv: list[str] | None = None) -> int:
             "target_turn_bound_count": sum(1 for item in results if item.get("input_contract") == "target_turn_bound"),
             "exploratory_source_quote_count": sum(1 for item in results if item.get("input_contract") == "source_customer_quote_exploratory"),
             "skipped_unapproved_count": skipped_unapproved_count,
-            "claim_accuracy_numerator": len(passed),
-            "claim_accuracy_denominator": len(scorable),
-            "claim_accuracy_rate": round(len(passed) / len(scorable), 4) if scorable else None,
+            "claim_accuracy_numerator": covered_claim_count,
+            "claim_accuracy_denominator": expected_claim_count,
+            "claim_accuracy_rate": round(covered_claim_count / expected_claim_count, 4) if expected_claim_count else None,
+            "case_pass_count": len(passed),
+            "case_scorable_count": len(scorable),
             "exploratory_only": dataset.get("dataset_status") != "ready_for_accuracy_baseline",
             "formal_pipeline_verified_count": sum(1 for item in results if item.get("formal_pipeline_verified")),
             "can_send_count": sum(1 for item in results if item.get("can_send")),

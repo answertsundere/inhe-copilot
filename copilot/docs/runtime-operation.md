@@ -78,14 +78,26 @@ resolution, and a review-only preview. Dimension attribute-slot coverage remains
 incomplete. This is a Tier B capability probe, not customer accuracy and not
 permission to enable the flag on 5011.
 
-The same Phase 0.8C candidate stopped at the 5012 API 1x1 gate. All three probes
-returned HTTP 200 and non-empty replies, but the media/service-action negative
-control produced an actual media block and one run became sendable. A diagnostic
-repeat was review-only, demonstrating delivery-state instability rather than a
-qualified gate. The required 5-product API gate was therefore not run. Keep the
-formal flag disabled, keep Evidence Action paused, and do not repair missing
-`detachable` or dimension attribute scope with placeholders, visual inference,
-or broad role promotion.
+After the delivery-boundary correction, the isolated Phase 0.8C candidate
+passed the three 1x1 API probes and the five-product by three-question slice
+passed 15/15. All cases stayed review-only, no media block was created from a
+candidate reference, and protected database counts remained unchanged. The
+synthetic benchmark also remained 5/5 and 22/22 with zero auto-send cases.
+These are capability and safety results, not customer accuracy. Keep the formal
+flag disabled on 5011 until the independent Gold/Tier A gate is complete; do
+not repair missing `detachable` or dimension attribute scope with placeholders,
+visual inference, or broad role promotion.
+
+Phase 0.8D owns an explicit Gold-30 supervisor queue and authoritative report
+manifest under ignored `outputs/`. Tier A must not start unless the independent
+label store contains at least 30 approved atomic claims across five domains and
+each claim has a matching supervisor/admin audit event. With fewer approvals,
+`run_real_accuracy_baseline.py --approved-only` exits `2` before any Agent call.
+The current approval count is zero. The current source owns the supervisor view
+at `/ask/real-accuracy-labels`, but the pinned 5011 runtime is still the older
+`17b82bb1` build and returns 404 for that route. Deploy the reviewed source to a
+separate approved runtime before human review; do not restart or mutate 5011,
+and do not enable Formal Evidence Convergence there.
 
 ## Management Access
 

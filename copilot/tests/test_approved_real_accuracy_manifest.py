@@ -79,6 +79,11 @@ def test_manifest_requires_independent_supervisor_claim_audit(tmp_path):
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert manifest["approved_claim_count"] == 1
     assert manifest["approval_event_count"] == 1
+    assert manifest["approved_domain_count"] == 1
+    assert manifest["approved_domain_distribution"] == {"product_fact_direct": 1}
+    assert manifest["publish_status"] == "awaiting_supervisor_approval"
+    assert manifest["missing_approved_claim_count"] == 29
+    assert manifest["missing_approved_domain_count"] == 4
 
     with sqlite3.connect(label_path) as connection:
         connection.execute("DELETE FROM real_accuracy_label_event WHERE event_type='claim_approved'")

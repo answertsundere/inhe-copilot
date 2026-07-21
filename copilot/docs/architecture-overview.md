@@ -305,7 +305,7 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.8C Evidence Governance Gate
+### Current Phase: 0.8D Gold-30 Approval Gate
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
 but its production flag remains disabled. Phase 0.8C repaired the proven
@@ -315,6 +315,18 @@ closed the isolated 5012 delivery gate. The 1x1 probe set and 5-product by
 3-question slice now keep non-factual media/action candidates out of selected
 evidence and actual media blocks. This is not a new Graph, registry, or reply
 owner, and it is not a real-customer accuracy claim.
+
+Phase 0.8D has produced a privacy-checked, deterministic 30-claim supervisor
+queue across seven structured business domains. The queue satisfies the
+multi-turn, partial-answer, high-risk/handoff, service-action, and per-domain
+caps, but it is not Gold truth: the independent label store currently contains
+zero supervisor-approved claims and zero approval audit events. Tier A therefore
+fails closed before calling the Agent, and real-customer accuracy remains
+`null`. The review route exists in this source tree at
+`/ask/real-accuracy-labels`, but the pinned 5011 runtime still serves the older
+`17b82bb1` build and currently returns 404 for that route. The next action is an
+approved workbench deployment followed by human review, not a reply-policy
+change or an in-place 5011 restart.
 
 ### What Is Strong
 
@@ -334,8 +346,9 @@ owner, and it is not a real-customer accuracy claim.
    changing the 5011 flag.
 2. The public supervisor workbench is blocked until Cloudflare Tunnel has a
    healthy connector and the real Access/RBAC path can be exercised.
-3. Tier A has no approved-claim denominator yet; its accuracy rate must remain
-   `null`, not be inferred from benchmark or shadow results.
+3. The Gold-30 review queue is ready, but Tier A has zero approved claims and
+   zero approved domains; its accuracy rate must remain `null`, not be inferred
+   from benchmark or shadow results.
 4. Context construction is fragmented across graph state, packs, policies, and
    shadow payloads.
 5. Multiple guard, fallback, semantic, and polishing services can rewrite the

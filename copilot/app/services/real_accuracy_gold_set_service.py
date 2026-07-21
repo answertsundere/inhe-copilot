@@ -29,6 +29,7 @@ from app.services.real_accuracy_privacy_service import (
 
 DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v3"
 DEFAULT_MINIMUM_GOLD_LABELS = 30
+DEFAULT_MINIMUM_GOLD_DOMAINS = 5
 _REQUIRED_SAMPLE_COLUMNS = {
     "id", "customer_quote", "full_context", "product_title", "sku", "order_no",
     "question_type", "correct_answer", "review_status", "risk_level", "need_media",
@@ -212,11 +213,24 @@ def _percentile(values: list[int], quantile: float) -> int | None:
 def _apply_dataset_label_status(dataset: dict[str, Any]) -> None:
     cases = dataset.get("cases") or []
     classifications = Counter(str(item.get("classification") or "unknown") for item in cases)
-    approved_claim_cases = sum(
-        1
-        for item in cases
+    approved_cases = [
+        item for item in cases
         if item.get("classification") == "claim_accuracy_scorable"
         and ((item.get("reference_label") or {}).get("expected_claims") or [])
+    ]
+    approved_claim_count = sum(
+        len((item.get("reference_label") or {}).get("expected_claims") or [])
+        for item in approved_cases
+    )
+    approved_domains = {
+        str(claim.get("strategy_group") or "").strip()
+        for item in approved_cases
+        for claim in ((item.get("reference_label") or {}).get("expected_claims") or [])
+        if str(claim.get("strategy_group") or "").strip()
+    }
+    publishable = (
+        approved_claim_count >= DEFAULT_MINIMUM_GOLD_LABELS
+        and len(approved_domains) >= DEFAULT_MINIMUM_GOLD_DOMAINS
     )
     privacy_violation_count = sum(len(scan_privacy_output(case)) for case in cases)
     turn_counts = [len((item.get("conversation") or {}).get("turns") or []) for item in cases]
@@ -225,7 +239,7 @@ def _apply_dataset_label_status(dataset: dict[str, Any]) -> None:
         roles.update((item.get("conversation") or {}).get("role_counts") or {})
     dataset["dataset_status"] = (
         "privacy_validation_failed" if privacy_violation_count
-        else "ready_for_accuracy_baseline" if approved_claim_cases >= DEFAULT_MINIMUM_GOLD_LABELS
+        else "ready_for_accuracy_baseline" if publishable
         else "insufficient_gold_labels"
     )
     dataset["summary"] = {
@@ -234,8 +248,10 @@ def _apply_dataset_label_status(dataset: dict[str, Any]) -> None:
         "classification_counts": dict(sorted(classifications.items())),
         "reference_available_count": classifications["reference_available"],
         "claim_label_pending_count": classifications["claim_label_pending"],
-        "claim_labeled_accuracy_count": approved_claim_cases,
-        "project_accuracy_publishable": approved_claim_cases >= DEFAULT_MINIMUM_GOLD_LABELS,
+        "claim_labeled_accuracy_case_count": len(approved_cases),
+        "claim_labeled_accuracy_count": approved_claim_count,
+        "claim_labeled_business_domain_count": len(approved_domains),
+        "project_accuracy_publishable": publishable,
         "privacy_scan_violation_count": privacy_violation_count,
         "role_counts": {role: int(roles.get(role, 0)) for role in ("BUYER", "AGENT", "SYSTEM")},
         "role_unresolved_case_count": sum(1 for item in cases if (item.get("conversation") or {}).get("role_unresolved_count")),

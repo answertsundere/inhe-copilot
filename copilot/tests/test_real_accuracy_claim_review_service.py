@@ -236,13 +236,23 @@ def test_minimum_supervisor_queue_balances_atomic_claims_without_approval():
     queue = build_minimum_supervisor_queue({"dataset_id": "d", "dataset_version": "v", "items": items})
     reversed_queue = build_minimum_supervisor_queue({"dataset_id": "d", "dataset_version": "v", "items": list(reversed(items))})
 
-    assert queue["queue_status"] == "ready_for_supervisor_review"
+    assert queue["queue_status"] == "insufficient_reviewable_claims"
     assert queue["selected_claim_count"] == 30
     assert queue["selected_domain_count"] >= 5
     assert max(queue["domain_distribution"].values()) <= 9
     assert queue["supervisor_approved_claim_count"] == 0
     assert queue["formal_knowledge_writes"] == 0
     assert queue["can_change_can_send"] is False
+    assert queue["schema_version"] == "real-accuracy-minimum-supervisor-queue-v2"
+    assert queue["coverage_metrics"]["multi_turn_claim_count"] == 30
+    assert queue["coverage_metrics"]["partial_answer_claim_count"] == 0
+    first = queue["items"][0]
+    assert first["deidentified_case_uid"] == first["case_uid"]
+    assert first["target_turn_uid"] == first["target_turn_uids"][0]
+    assert first["business_domain"] == first["scenario_domain"]
+    assert first["expected_claim_status"] == first["atomic_claim"].get("expected_status", "")
+    assert first["approval_state"] == "draft"
+    assert first["privacy_scan_status"] == "passed"
     assert [item["atomic_claim"]["claim_uid"] for item in queue["items"]] == [
         item["atomic_claim"]["claim_uid"] for item in reversed_queue["items"]
     ]
@@ -258,3 +268,52 @@ def test_minimum_supervisor_queue_excludes_token_only_question_and_incomplete_wi
     assert queue["selected_claim_count"] == 0
     assert queue["queue_status"] == "insufficient_reviewable_claims"
     assert queue["excluded_candidate_reasons"]["buyer_question_not_readable"] == 1
+
+
+def test_minimum_supervisor_queue_requires_declared_gold_30_coverage():
+    domains = [
+        "product_fact_direct", "known_fact_high_risk_remainder", "order_logistics_service_action",
+        "aftersales_verification", "installation_accessory", "media_evidence",
+    ]
+    items = []
+    for number in range(36):
+        domain = domains[number % len(domains)]
+        high_risk = domain == "known_fact_high_risk_remainder"
+        service = domain in {"order_logistics_service_action", "aftersales_verification"}
+        items.append({
+            "case_uid": f"case-{number}",
+            "scenario_domain": domain,
+            "label_eligibility": "ready_for_reviewer",
+            "buyer_question": "可审核问题",
+            "target_recommendation": {"turn_uids": ["turn_ABCDEFGHIJKLMNOPQRST"]},
+            "conversation_window": {"turns": [
+                {"speaker_role": "BUYER"}, {"speaker_role": "AGENT"},
+            ], "total_turn_count": 3, "truncated": False},
+            "sidecar_quality": "identity_present",
+            "risk_level": "high" if high_risk else "medium",
+            "candidate_claims": [{
+                "claim_uid": f"claim-{number}",
+                "claim_kind": "service_action" if service else "factual_claim",
+                "query_fact_type": domain,
+                "expected_status": "unresolved" if high_risk else "supported",
+                "partial_answer_allowed": True,
+                "must_handoff": high_risk,
+                "required_action_points": ["verify"] if service else [],
+                "forbidden_claims": [],
+                "evidence_provenance": [],
+                "supporting_evidence_uids": [],
+                "risk_level": "high" if high_risk else "medium",
+                "source_reference": "source_reviewed_candidate",
+            }],
+        })
+
+    queue = build_minimum_supervisor_queue({"dataset_id": "d", "dataset_version": "v", "items": items})
+
+    assert queue["queue_status"] == "ready_for_supervisor_review"
+    assert queue["coverage_metrics"]["selected_claim_count"] == 30
+    assert queue["coverage_metrics"]["selected_domain_count"] >= 5
+    assert queue["coverage_metrics"]["multi_turn_claim_count"] >= 8
+    assert queue["coverage_metrics"]["partial_answer_claim_count"] >= 5
+    assert queue["coverage_metrics"]["high_risk_or_handoff_claim_count"] >= 5
+    assert queue["coverage_metrics"]["service_action_claim_count"] >= 5
+    assert queue["coverage_requirements_met"] is True

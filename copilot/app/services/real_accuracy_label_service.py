@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sqlite3
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,8 @@ _HIGH_RISK_ATTRIBUTES = {
     "load_capacity", "non_toxic", "food_grade", "certification", "child_safety",
     "age_range", "anti_tip", "wall_mounting", "refund", "replacement", "compensation",
 }
+DEFAULT_MINIMUM_APPROVED_CLAIMS = 30
+DEFAULT_MINIMUM_APPROVED_DOMAINS = 5
 
 
 class LabelValidationError(ValueError):
@@ -42,6 +45,89 @@ class LabelValidationError(ValueError):
 
 class LabelConflictError(ValueError):
     pass
+
+
+def approved_claim_gate_summary(
+    labels: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    *,
+    minimum_claims: int = DEFAULT_MINIMUM_APPROVED_CLAIMS,
+    minimum_domains: int = DEFAULT_MINIMUM_APPROVED_DOMAINS,
+) -> dict[str, Any]:
+    """Validate per-claim approval audit and compute the Tier A publish gate."""
+    findings: list[str] = []
+    status_counts = Counter(str(item.get("review_status") or "unknown") for item in labels)
+    events_by_case: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        events_by_case.setdefault(str(event.get("case_uid") or ""), []).append(event)
+
+    approved_claim_uids: set[str] = set()
+    approved_domain_counts: Counter[str] = Counter()
+    approval_event_count = 0
+    for label in labels:
+        if label.get("review_status") != "approved":
+            continue
+        case_uid = str(label.get("case_uid") or "")
+        version = int(label.get("optimistic_lock_version") or 0)
+        case_events = events_by_case.get(case_uid, [])
+        state_versions = sorted({
+            int(event.get("version") or 0)
+            for event in case_events
+            if event.get("event_type") in {"label_created", "label_updated"}
+        })
+        if state_versions != list(range(1, version + 1)):
+            findings.append(f"optimistic_lock_history_invalid:{case_uid}")
+        for claim in ((label.get("label") or {}).get("claims") or []):
+            if (claim or {}).get("review_status") != "approved":
+                findings.append(f"approved_case_contains_unapproved_claim:{case_uid}")
+                continue
+            claim_uid = str((claim or {}).get("claim_uid") or "")
+            if not claim_uid:
+                findings.append(f"approved_claim_uid_missing:{case_uid}")
+                continue
+            if claim_uid in approved_claim_uids:
+                findings.append(f"approved_claim_uid_duplicate:{claim_uid}")
+                continue
+            approved_claim_uids.add(claim_uid)
+            domain = str((claim or {}).get("strategy_group") or "").strip()
+            if domain:
+                approved_domain_counts[domain] += 1
+            matches = [
+                event for event in case_events
+                if event.get("event_type") == "claim_approved"
+                and event.get("claim_uid") == claim_uid
+                and int(event.get("version") or 0) == version
+                and str(event.get("actor_role") or "") in _APPROVAL_ACTOR_ROLES
+            ]
+            if len(matches) != 1:
+                findings.append(f"approved_claim_audit_invalid:{case_uid}:{claim_uid}")
+            else:
+                approval_event_count += 1
+
+    approved_claim_count = len(approved_claim_uids)
+    approved_domain_count = len(approved_domain_counts)
+    ready = (
+        not findings
+        and approved_claim_count >= minimum_claims
+        and approved_domain_count >= minimum_domains
+    )
+    return {
+        "label_record_counts": {
+            status: int(status_counts.get(status, 0))
+            for status in ("draft", "reviewed", "approved", "rejected")
+        },
+        "approved_claim_count": approved_claim_count,
+        "approved_domain_count": approved_domain_count,
+        "approved_domains": sorted(approved_domain_counts),
+        "approved_domain_distribution": dict(sorted(approved_domain_counts.items())),
+        "approval_event_count": approval_event_count,
+        "minimum_approved_claim_count": minimum_claims,
+        "minimum_approved_domain_count": minimum_domains,
+        "missing_approved_claim_count": max(0, minimum_claims - approved_claim_count),
+        "missing_approved_domain_count": max(0, minimum_domains - approved_domain_count),
+        "audit_findings": sorted(set(findings)),
+        "publish_status": "ready_for_accuracy_baseline" if ready else "awaiting_supervisor_approval",
+    }
 
 
 def default_label_db_path() -> Path:

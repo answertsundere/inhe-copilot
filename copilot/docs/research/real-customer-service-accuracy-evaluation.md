@@ -15,10 +15,10 @@ activate Formal Evidence Convergence, or modify `can_send`.
 Phase 0.8C real-derived evidence probes remain outside the customer-accuracy
 denominator. They reuse real reviewed product fields with pseudonymous identity,
 but their customer questions are synthetic capability probes. The 15/15 offline
-result demonstrates Pack-to-selected-to-admitted plumbing only. The isolated API
-1x1 delivery gate did not pass and the 5-product tier was not run; Tier A and
-real-customer accuracy therefore remain `null` until independently approved Gold
-claims satisfy the published denominator.
+result, three passing 1x1 API probes, and passing 5-product by 3-question slice
+demonstrate Pack-to-selected-to-admitted and delivery plumbing only. Tier A and
+real-customer accuracy remain `null` until independently approved Gold claims
+satisfy the published denominator.
 
 ## Dataset Boundary
 
@@ -47,8 +47,8 @@ The data classifier separates:
 Only explicit, human-approved claim-level labels may create a published claim-accuracy
 denominator. A historical reviewed free-text answer may support exploratory
 action-coverage analysis, but it is not injected into the Agent and is not a
-substitute for claim labels. Until the denominator reaches 30 cases across at
-least five fact types and ten products or categories, reports carry
+substitute for claim labels. Until the denominator reaches 30 approved atomic
+claims across at least five structured business domains, reports carry
 `insufficient_gold_labels` and must not state a project accuracy rate.
 
 ## Execution And Scoring
@@ -102,10 +102,10 @@ It also follows the [OpenAI Evals dataset/solver separation](https://github.com/
 expected outcomes remain scorer data and never enter the Agent request.
 
 - **Tier A, Real Gold** contains a real buyer turn, its own sidecar context,
-  and supervisor-approved claim labels.  It is the only tier permitted to
-  report a customer-service accuracy rate.  Fewer than 30 approved labelled
-  cases remains `insufficient_gold_labels`; the rate is `null`, never 0% or
-  100%.
+  and supervisor-approved atomic claim labels. It is the only tier permitted to
+  report a customer-service accuracy rate. Fewer than 30 approved claims across
+  five business domains remains `insufficient_gold_labels`; the rate is `null`,
+  never 0% or 100%.
 - **Tier B, Real-Derived Capability** reads published, direct, identity-scoped
   product fields query-only and asks a generic fact-type question through the
   same API pipeline.  It reports evidence selection, admission, identity, and
@@ -281,6 +281,14 @@ An explicit missing-context claim may be included only as a
 `context_follow_up_only` review item; it is not product evidence.  The script
 does not save drafts, approve claims, call the Agent, or write knowledge.
 
+The Phase 0.8D queue schema also records the pseudonymous case and target turn,
+business domain, expected claim boundary, required action/evidence classes,
+bounded-context summary, sidecar presence, provenance, privacy status, handoff
+requirement, and still-pending audit state. Queue readiness requires 30 claims,
+five domains, eight multi-turn claims, five partial-answer claims, five
+high-risk-or-handoff claims, and five service/order/logistics/aftersales claims.
+No domain may exceed the deterministic queue cap.
+
 Approval remains a per-case supervisor/admin action.  The label store records
 one `claim_approved` audit event for every approved atomic claim, including the
 pseudonymous actor role and optimistic-lock version.  The approval manifest
@@ -288,6 +296,23 @@ rejects missing claim events, non-supervisor roles, and broken state-version
 history.  Tier A remains `null` until at least 30 independently approved claims
 cover at least five business domains; that first result is a limited baseline,
 not a project-wide accuracy rate.
+
+`scripts/build_authoritative_output_manifest.py` assigns every acceptance file
+an explicit role: authoritative, attempt, or superseded. It hashes the exact
+bytes, requires authoritative reports to be UTF-8 JSON, preserves invalid legacy
+attempts only with an explicit supersession reason, and records the runtime
+commit, executable-source hash, dataset identity/hash, public feature flags,
+provider/model state, and acceptance status. It never treats the newest filename
+as authoritative. In the current Gold-30 state, approved claims and approved
+domains are both zero, so the manifest status is
+`awaiting_supervisor_approval`; Tier A and the five-case real multi-turn subset
+are not run.
+
+The Gold-30 queue is therefore an offline review input, not evidence that the
+live supervisor UI is available. At the Phase 0.8D checkpoint the unchanged
+5011 runtime remains on `17b82bb1` and returns 404 for
+`/ask/real-accuracy-labels`; a separately approved deployment is required before
+supervisors can create the audited denominator.
 
 ### Operating Commands
 

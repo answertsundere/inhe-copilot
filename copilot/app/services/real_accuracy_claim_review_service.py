@@ -349,6 +349,11 @@ def build_claim_review_plan(dataset: dict[str, Any], labels: list[dict[str, Any]
             "scenario_domain": group,
             "buyer_question": _clean(case.get("customer_message")),
             "sidecar_quality": "identity_present" if case.get("sidecar_present") else "identity_missing",
+            "sidecar_context_presence": {
+                "product": bool((case.get("sidecar_identity") or {}).get("product") or (case.get("sidecar_identity") or {}).get("sku")),
+                "order": bool((case.get("sidecar_identity") or {}).get("order")),
+                "identity_values_included": False,
+            },
             "strategy": {"id": group, **STRATEGY_GROUPS[group]},
             "proposal_status": proposal_status,
             "source_reference": "reviewed_answer" if _clean((case.get("reference_label") or {}).get("reference_text")) else "no_reviewed_answer",
@@ -382,6 +387,25 @@ def build_claim_review_plan(dataset: dict[str, Any], labels: list[dict[str, Any]
 def _has_reviewable_question(value: Any) -> bool:
     """Require visible buyer text without assigning policy from its wording."""
     return bool(_CONTROLLED_TOKEN_RE.sub("", _clean(value)).strip())
+
+
+def _required_evidence_types(claim: dict[str, Any]) -> list[str]:
+    roles = sorted({
+        _clean(item.get("evidence_role"))
+        for item in claim.get("evidence_provenance") or []
+        if isinstance(item, dict) and _clean(item.get("evidence_role"))
+    })
+    if roles:
+        return roles
+    if claim.get("required_tool"):
+        return ["verified_live_tool_result"]
+    if claim.get("claim_kind") in {"service_action", "unresolved_claim", "context_requirement"}:
+        return ["reviewed_service_policy_or_case_context"]
+    if claim.get("claim_kind") == "delivery_constraint":
+        return ["approved_matching_delivery_block"]
+    if claim.get("expected_status") == "prohibited":
+        return ["explicit_reviewed_authorization_required"]
+    return ["reviewed_identity_scoped_direct_evidence"]
 
 
 def build_minimum_supervisor_queue(
@@ -432,16 +456,40 @@ def build_minimum_supervisor_queue(
                 continue
             candidate = {
                 "case_uid": _identifier(item.get("case_uid")),
+                "deidentified_case_uid": _identifier(item.get("case_uid")),
                 "scenario_domain": domain,
+                "business_domain": domain,
                 "conversation_window": item.get("conversation_window"),
                 "target_turn_uids": list(target.get("turn_uids") or []),
+                "target_turn_uid": str((target.get("turn_uids") or [""])[0]),
                 "query_fact_type": _clean(claim.get("query_fact_type")),
                 "atomic_claim": claim,
+                "expected_claim_status": _clean(claim.get("expected_status")),
                 "required_actions": list(claim.get("required_action_points") or []),
-                "prohibited_claims": list(claim.get("forbidden_claims") or []),
+                "expected_action": list(claim.get("required_action_points") or []),
+                "required_evidence_types": _required_evidence_types(claim),
+                "forbidden_claims": list(claim.get("forbidden_claims") or []),
                 "evidence_provenance": list(claim.get("evidence_provenance") or []),
+                "source_provenance": {
+                    "source_reference": _clean(claim.get("source_reference")),
+                    "evidence": list(claim.get("evidence_provenance") or []),
+                },
                 "sidecar_quality": _clean(item.get("sidecar_quality")),
+                "product_or_order_context_presence": dict(item.get("sidecar_context_presence") or {}),
+                "required_context_summary": (
+                    f"有界上下文包含 {len(window.get('turns') or [])} 个回合；"
+                    f"身份上下文状态为 {_clean(item.get('sidecar_quality')) or 'unknown'}。"
+                ),
                 "risk_level": _clean(claim.get("risk_level") or item.get("risk_level")),
+                "required_handoff": bool(claim.get("must_handoff")),
+                "privacy_scan_status": "passed",
+                "approval_state": _clean((item.get("saved_label") or {}).get("review_status") or claim.get("review_status")) or "draft",
+                "review_audit": {
+                    "reviewer_reviewed": _clean((item.get("saved_label") or {}).get("review_status")) in {"reviewed", "approved"},
+                    "supervisor_approved": _clean((item.get("saved_label") or {}).get("review_status")) == "approved",
+                    "approval_event_present": None,
+                    "approval_event_validation_owner": "approved_gold_manifest",
+                },
                 "review_recommendation": "supervisor_decision_required",
                 "review_focus": "verify_provenance_and_expected_boundary",
                 "exception_flags": [
@@ -475,9 +523,48 @@ def build_minimum_supervisor_queue(
         selected_per_domain[domain] += 1
 
     domain_counts = dict(sorted(selected_per_domain.items()))
-    ready = len(selected) >= target_claim_count and len(domain_counts) >= minimum_domain_count
+    multi_turn_count = sum(
+        len((item.get("conversation_window") or {}).get("turns") or []) > 1
+        for item in selected
+    )
+    partial_answer_count = sum(bool((item.get("atomic_claim") or {}).get("partial_answer_allowed")) for item in selected)
+    high_risk_or_handoff_count = sum(
+        item.get("risk_level") == "high" or item.get("required_handoff") is True
+        for item in selected
+    )
+    service_action_count = sum(
+        item.get("scenario_domain") in {
+            "order_logistics_service_action", "aftersales_verification", "promotion_gift_invoice",
+        }
+        or (item.get("atomic_claim") or {}).get("claim_kind") in {"service_action", "tool_action"}
+        for item in selected
+    )
+    coverage_metrics = {
+        "selected_claim_count": len(selected),
+        "selected_domain_count": len(domain_counts),
+        "multi_turn_claim_count": multi_turn_count,
+        "partial_answer_claim_count": partial_answer_count,
+        "high_risk_or_handoff_claim_count": high_risk_or_handoff_count,
+        "service_action_claim_count": service_action_count,
+    }
+    coverage_requirements = {
+        "minimum_claim_count": target_claim_count,
+        "minimum_domain_count": minimum_domain_count,
+        "minimum_multi_turn_claim_count": 8,
+        "minimum_partial_answer_claim_count": 5,
+        "minimum_high_risk_or_handoff_claim_count": 5,
+        "minimum_service_action_claim_count": 5,
+    }
+    coverage_requirements_met = (
+        len(selected) >= target_claim_count
+        and len(domain_counts) >= minimum_domain_count
+        and multi_turn_count >= coverage_requirements["minimum_multi_turn_claim_count"]
+        and partial_answer_count >= coverage_requirements["minimum_partial_answer_claim_count"]
+        and high_risk_or_handoff_count >= coverage_requirements["minimum_high_risk_or_handoff_claim_count"]
+        and service_action_count >= coverage_requirements["minimum_service_action_claim_count"]
+    )
     return {
-        "schema_version": "real-accuracy-minimum-supervisor-queue-v1",
+        "schema_version": "real-accuracy-minimum-supervisor-queue-v2",
         "dataset_id": _clean(plan.get("dataset_id")),
         "dataset_version": _clean(plan.get("dataset_version")),
         "target_claim_count": target_claim_count,
@@ -486,7 +573,10 @@ def build_minimum_supervisor_queue(
         "selected_domain_count": len(domain_counts),
         "max_claims_per_domain": max_per_domain,
         "domain_distribution": domain_counts,
-        "queue_status": "ready_for_supervisor_review" if ready else "insufficient_reviewable_claims",
+        "coverage_requirements": coverage_requirements,
+        "coverage_metrics": coverage_metrics,
+        "coverage_requirements_met": coverage_requirements_met,
+        "queue_status": "ready_for_supervisor_review" if coverage_requirements_met else "insufficient_reviewable_claims",
         "items": selected,
         "excluded_candidate_reasons": dict(sorted(excluded.items())),
         "supervisor_approved_claim_count": 0,
