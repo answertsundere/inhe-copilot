@@ -317,3 +317,62 @@ def test_minimum_supervisor_queue_requires_declared_gold_30_coverage():
     assert queue["coverage_metrics"]["high_risk_or_handoff_claim_count"] >= 5
     assert queue["coverage_metrics"]["service_action_claim_count"] >= 5
     assert queue["coverage_requirements_met"] is True
+
+
+def test_minimum_supervisor_queue_replaces_rejected_claims_and_pins_approved_claims():
+    def item(number, review_status="draft"):
+        claim_uid = f"claim-{number:02d}"
+        saved_claim = {
+            "claim_uid": claim_uid,
+            "claim_kind": "service_action",
+            "query_fact_type": "aftersales",
+            "expected_status": "unresolved",
+            "required_action_points": ["verify"],
+            "forbidden_claims": [],
+            "evidence_provenance": [],
+            "supporting_evidence_uids": [],
+            "partial_answer_allowed": True,
+            "must_handoff": number % 6 == 0,
+            "risk_level": "high" if number % 6 == 0 else "medium",
+            "review_status": review_status,
+            "strategy_group": f"domain-{number % 6}",
+        }
+        return {
+            "case_uid": f"case-{number:02d}",
+            "scenario_domain": f"domain-{number % 6}",
+            "label_eligibility": "ready_for_reviewer",
+            "buyer_question": "可审核问题",
+            "target_recommendation": {"turn_uids": ["turn_ABCDEFGHIJKLMNOPQRST"]},
+            "conversation_window": {
+                "turns": [{"speaker_role": "BUYER"}, {"speaker_role": "AGENT"}],
+            },
+            "sidecar_quality": "identity_present",
+            "risk_level": saved_claim["risk_level"],
+            "candidate_claims": [{**saved_claim, "review_status": "draft"}],
+            "saved_label": None if review_status == "draft" else {
+                "review_status": review_status,
+                "label": {"claims": [saved_claim]},
+            },
+        }
+
+    statuses = {0: "approved", 1: "approved", 2: "rejected", 3: "rejected"}
+    items = [item(number, statuses.get(number, "draft")) for number in range(36)]
+    items[0]["candidate_claims"].append({
+        **items[0]["candidate_claims"][0],
+        "claim_uid": "claim-not-in-approved-decision",
+    })
+    plan = {"dataset_id": "d", "dataset_version": "v", "items": items}
+
+    queue = build_minimum_supervisor_queue(plan)
+    reversed_queue = build_minimum_supervisor_queue({**plan, "items": list(reversed(items))})
+    selected_uids = [entry["atomic_claim"]["claim_uid"] for entry in queue["items"]]
+
+    assert queue["selected_claim_count"] == 30
+    assert queue["supervisor_approved_claim_count"] == 2
+    assert {"claim-00", "claim-01"}.issubset(selected_uids)
+    assert {"claim-02", "claim-03"}.isdisjoint(selected_uids)
+    assert "claim-not-in-approved-decision" not in selected_uids
+    assert queue["excluded_candidate_reasons"]["supervisor_rejected"] == 2
+    assert queue["excluded_candidate_reasons"]["claim_missing_from_terminal_decision"] == 1
+    assert all(entry["approval_state"] != "rejected" for entry in queue["items"])
+    assert selected_uids == [entry["atomic_claim"]["claim_uid"] for entry in reversed_queue["items"]]

@@ -297,6 +297,14 @@ history.  Tier A remains `null` until at least 30 independently approved claims
 cover at least five business domains; that first result is a limited baseline,
 not a project-wide accuracy rate.
 
+The active queue treats a supervisor rejection as an audited terminal decision,
+not as a permanently occupied review slot. Approved claims remain pinned,
+rejected claims are excluded from the active queue, and the same privacy-passed
+candidate pool deterministically supplies replacements under the existing domain
+balance cap. Historical rejection counts remain visible separately from active
+pending claims. Replacement selection never changes a saved decision and never
+approves a claim.
+
 `scripts/build_authoritative_output_manifest.py` assigns every acceptance file
 an explicit role: authoritative, attempt, or superseded. It hashes the exact
 bytes, requires authoritative reports to be UTF-8 JSON, preserves invalid legacy

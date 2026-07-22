@@ -92,3 +92,36 @@ def test_full_app_registers_real_accuracy_workbench_spa_route():
     app = create_app()
 
     assert "/real-accuracy-labels" in {rule.rule for rule in app.url_map.iter_rules()}
+
+
+def test_rejected_claim_is_reported_as_history_but_does_not_occupy_active_queue(monkeypatch, tmp_path):
+    dataset = _dataset()
+    gold_path = tmp_path / "gold.json"
+    gold_path.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_GOLD_SET_PATH", str(gold_path))
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_LABEL_DB", str(tmp_path / "labels.db"))
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_LABEL_AUDIT_HMAC_KEY", "audit-test-key")
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: admin_auth.AdminPrincipal("supervisor", "supervisor", frozenset({"supervisor"}), "test"),
+    )
+    app = Flask(__name__)
+    app.register_blueprint(real_accuracy_label_bp)
+    client = app.test_client()
+    case_uid = dataset["cases"][0]["case_uid"]
+    rejected_claims = [{**claim, "review_status": "rejected"} for claim in _claim()]
+
+    response = client.post(f"/api/kb/real-accuracy/cases/{case_uid}/labels", json={
+        "claims": rejected_claims,
+        "target_turn_uids": [],
+        "review_status": "rejected",
+        "optimistic_lock_version": 0,
+    })
+    assert response.status_code == 201
+
+    summary = client.get("/api/kb/real-accuracy/cases").get_json()["workflow_summary"]
+    assert summary["selected_claim_count"] == 0
+    assert summary["pending_claim_count"] == 0
+    assert summary["rejected_claim_count"] == 1
+    assert summary["active_queue_rejected_claim_count"] == 0

@@ -148,6 +148,7 @@ def list_cases():
         for item in queue.get("items") or []
     }
     claim_status_counts: Counter[str] = Counter()
+    historical_claim_status_counts: Counter[str] = Counter()
     approved_domains: set[str] = set()
     claim_domain = {
         str((item.get("atomic_claim") or {}).get("claim_uid") or ""): str(item.get("business_domain") or "")
@@ -155,10 +156,11 @@ def list_cases():
     }
     for label in labels.values():
         for claim in ((label.get("label") or {}).get("claims") or []):
+            status_value = str(claim.get("review_status") or "draft")
+            historical_claim_status_counts[status_value] += 1
             claim_uid = str(claim.get("claim_uid") or "")
             if claim_uid not in queue_claim_uids:
                 continue
-            status_value = str(claim.get("review_status") or "draft")
             claim_status_counts[status_value] += 1
             if status_value == "approved" and claim_domain.get(claim_uid):
                 approved_domains.add(claim_domain[claim_uid])
@@ -191,10 +193,10 @@ def list_cases():
             "pending_claim_count": max(
                 0,
                 int(queue.get("selected_claim_count") or 0)
-                - int(claim_status_counts.get("approved", 0))
-                - int(claim_status_counts.get("rejected", 0)),
+                - int(claim_status_counts.get("approved", 0)),
             ),
-            "rejected_claim_count": int(claim_status_counts.get("rejected", 0)),
+            "rejected_claim_count": int(historical_claim_status_counts.get("rejected", 0)),
+            "active_queue_rejected_claim_count": int(claim_status_counts.get("rejected", 0)),
             "strategy_counts": plan.get("strategy_counts"),
             "proposal_status_counts": plan.get("proposal_status_counts"),
             "approved_case_count": plan.get("approved_case_count"),

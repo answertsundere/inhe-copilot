@@ -450,10 +450,27 @@ def build_minimum_supervisor_queue(
         if not target.get("turn_uids") or not {"BUYER", "AGENT"}.issubset(roles):
             excluded["conversation_context_incomplete"] += 1
             continue
+        saved_label = item.get("saved_label") or {}
+        saved_case_status = _clean(saved_label.get("review_status"))
+        saved_claims = {
+            _identifier(claim.get("claim_uid")): claim
+            for claim in ((saved_label.get("label") or {}).get("claims") or [])
+            if isinstance(claim, dict) and _identifier(claim.get("claim_uid"))
+        }
         for claim in item.get("candidate_claims") or []:
             if not isinstance(claim, dict) or not _identifier(claim.get("claim_uid")):
                 excluded["claim_invalid"] += 1
                 continue
+            claim_uid = _identifier(claim.get("claim_uid"))
+            saved_claim = saved_claims.get(claim_uid)
+            if saved_case_status in {"approved", "rejected"} and not saved_claim:
+                excluded["claim_missing_from_terminal_decision"] += 1
+                continue
+            approval_state = _clean((saved_claim or {}).get("review_status")) or saved_case_status or "draft"
+            if approval_state == "rejected":
+                excluded["supervisor_rejected"] += 1
+                continue
+            effective_claim = dict(saved_claim or claim)
             candidate = {
                 "case_uid": _identifier(item.get("case_uid")),
                 "deidentified_case_uid": _identifier(item.get("case_uid")),
@@ -462,17 +479,17 @@ def build_minimum_supervisor_queue(
                 "conversation_window": item.get("conversation_window"),
                 "target_turn_uids": list(target.get("turn_uids") or []),
                 "target_turn_uid": str((target.get("turn_uids") or [""])[0]),
-                "query_fact_type": _clean(claim.get("query_fact_type")),
-                "atomic_claim": claim,
-                "expected_claim_status": _clean(claim.get("expected_status")),
-                "required_actions": list(claim.get("required_action_points") or []),
-                "expected_action": list(claim.get("required_action_points") or []),
-                "required_evidence_types": _required_evidence_types(claim),
-                "forbidden_claims": list(claim.get("forbidden_claims") or []),
-                "evidence_provenance": list(claim.get("evidence_provenance") or []),
+                "query_fact_type": _clean(effective_claim.get("query_fact_type")),
+                "atomic_claim": effective_claim,
+                "expected_claim_status": _clean(effective_claim.get("expected_status")),
+                "required_actions": list(effective_claim.get("required_action_points") or []),
+                "expected_action": list(effective_claim.get("required_action_points") or []),
+                "required_evidence_types": _required_evidence_types(effective_claim),
+                "forbidden_claims": list(effective_claim.get("forbidden_claims") or []),
+                "evidence_provenance": list(effective_claim.get("evidence_provenance") or []),
                 "source_provenance": {
-                    "source_reference": _clean(claim.get("source_reference")),
-                    "evidence": list(claim.get("evidence_provenance") or []),
+                    "source_reference": _clean(effective_claim.get("source_reference")),
+                    "evidence": list(effective_claim.get("evidence_provenance") or []),
                 },
                 "sidecar_quality": _clean(item.get("sidecar_quality")),
                 "product_or_order_context_presence": dict(item.get("sidecar_context_presence") or {}),
@@ -480,10 +497,10 @@ def build_minimum_supervisor_queue(
                     f"有界上下文包含 {len(window.get('turns') or [])} 个回合；"
                     f"身份上下文状态为 {_clean(item.get('sidecar_quality')) or 'unknown'}。"
                 ),
-                "risk_level": _clean(claim.get("risk_level") or item.get("risk_level")),
-                "required_handoff": bool(claim.get("must_handoff")),
+                "risk_level": _clean(effective_claim.get("risk_level") or item.get("risk_level")),
+                "required_handoff": bool(effective_claim.get("must_handoff")),
                 "privacy_scan_status": "passed",
-                "approval_state": _clean((item.get("saved_label") or {}).get("review_status") or claim.get("review_status")) or "draft",
+                "approval_state": approval_state,
                 "review_audit": {
                     "reviewer_reviewed": _clean((item.get("saved_label") or {}).get("review_status")) in {"reviewed", "approved"},
                     "supervisor_approved": _clean((item.get("saved_label") or {}).get("review_status")) == "approved",
@@ -494,7 +511,7 @@ def build_minimum_supervisor_queue(
                 "review_focus": "verify_provenance_and_expected_boundary",
                 "exception_flags": [
                     "formal_evidence_missing"
-                    if not claim.get("supporting_evidence_uids") else ""
+                    if not effective_claim.get("supporting_evidence_uids") else ""
                 ],
             }
             if context_follow_up:
@@ -507,8 +524,31 @@ def build_minimum_supervisor_queue(
             _identifier((item.get("atomic_claim") or {}).get("claim_uid")),
             _identifier(item.get("case_uid")),
         ))
-    selected: list[dict[str, Any]] = []
+    selected: list[dict[str, Any]] = sorted(
+        (
+            candidate
+            for candidates in candidates_by_domain.values()
+            for candidate in candidates
+            if candidate.get("approval_state") == "approved"
+        ),
+        key=lambda item: (
+            _clean(item.get("business_domain")),
+            _identifier((item.get("atomic_claim") or {}).get("claim_uid")),
+            _identifier(item.get("case_uid")),
+        ),
+    )[:target_claim_count]
     selected_per_domain = Counter()
+    selected_uids = {
+        _identifier((item.get("atomic_claim") or {}).get("claim_uid"))
+        for item in selected
+    }
+    selected_per_domain.update(_clean(item.get("business_domain")) for item in selected)
+    for domain, candidates in candidates_by_domain.items():
+        candidates_by_domain[domain] = [
+            item
+            for item in candidates
+            if _identifier((item.get("atomic_claim") or {}).get("claim_uid")) not in selected_uids
+        ]
     positions = Counter()
     while len(selected) < target_claim_count:
         available = [
@@ -579,7 +619,7 @@ def build_minimum_supervisor_queue(
         "queue_status": "ready_for_supervisor_review" if coverage_requirements_met else "insufficient_reviewable_claims",
         "items": selected,
         "excluded_candidate_reasons": dict(sorted(excluded.items())),
-        "supervisor_approved_claim_count": 0,
+        "supervisor_approved_claim_count": sum(item.get("approval_state") == "approved" for item in selected),
         "auto_approved_count": 0,
         "formal_knowledge_writes": 0,
         "can_change_can_send": False,
