@@ -271,6 +271,13 @@ conversation.  `scripts/build_approved_real_accuracy_gold_manifest.py`
 creates a privacy-checked, content-free approval manifest; it reports
 `awaiting_supervisor_approval` until an actual approved denominator exists.
 
+For an unsaved candidate, the recommended target must be a buyer turn whose
+normalised text exactly matches the case's current customer message.  If that
+turn is absent from the structured conversation, the candidate is marked
+`customer_message_turn_missing` and receives no target or conversation window.
+The service never substitutes the latest historical buyer turn, because that
+would bind claims to a different question and corrupt the Gold denominator.
+
 ## Minimum Supervisor Queue And Tier A Gate
 
 `scripts/build_minimum_supervisor_review_queue.py` selects atomic claims from

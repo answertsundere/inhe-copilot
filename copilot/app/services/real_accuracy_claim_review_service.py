@@ -280,7 +280,7 @@ def _target_recommendation(case: dict[str, Any], label: dict[str, Any] | None) -
     if exact:
         return {"turn_uids": [str(exact[-1].get("turn_uid"))], "reason": "customer_message_exact_match", "requires_confirmation": True}
     if buyer_turns:
-        return {"turn_uids": [str(buyer_turns[-1].get("turn_uid"))], "reason": "latest_buyer_turn_fallback", "requires_confirmation": True}
+        return {"turn_uids": [], "reason": "customer_message_turn_missing", "requires_confirmation": True}
     return {"turn_uids": [], "reason": "buyer_turn_missing", "requires_confirmation": True}
 
 

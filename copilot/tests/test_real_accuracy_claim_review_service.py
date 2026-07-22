@@ -7,6 +7,7 @@ from flask import Flask
 from app.api import admin_auth
 from app.api.real_accuracy_label_routes import real_accuracy_label_bp
 from app.services.real_accuracy_claim_review_service import (
+    _target_recommendation,
     bounded_conversation_window,
     build_claim_review_plan,
     build_minimum_supervisor_queue,
@@ -93,6 +94,27 @@ def test_plan_preserves_hmac_case_uid_and_limits_conversation_window():
     window = bounded_conversation_window(case, [case["conversation"]["turns"][2]["turn_uid"]], before=1, after=1)
     assert len(window["turns"]) == 3
     assert "sidecar_identity" not in item
+
+
+def test_target_recommendation_does_not_fall_back_to_unrelated_latest_buyer_turn():
+    case = {
+        "customer_message": "current question",
+        "conversation": {
+            "turns": [
+                {"turn_uid": "turn_history_buyer", "speaker_role": "BUYER", "text": "historical question"},
+                {"turn_uid": "turn_history_agent", "speaker_role": "AGENT", "text": "historical answer"},
+            ],
+        },
+    }
+
+    recommendation = _target_recommendation(case, None)
+
+    assert recommendation == {
+        "turn_uids": [],
+        "reason": "customer_message_turn_missing",
+        "requires_confirmation": True,
+    }
+    assert bounded_conversation_window(case, recommendation["turn_uids"])["turns"] == []
 
 
 def test_plan_window_excludes_invisible_control_characters():
