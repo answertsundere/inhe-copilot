@@ -305,7 +305,7 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.8G.1 Formal Knowledge Read Boundary Closure
+### Current Phase: 0.8H Gold v0.2 Target And Runtime Isolation Closure
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
 but its production flag remains disabled. Phase 0.8C repaired the proven
@@ -326,12 +326,22 @@ fails closed before calling the Agent, and real-customer accuracy remains
 to that exact 30-claim queue. An isolated 5012 canary is ready with matching
 boot/end source hashes, Access mode denies unauthenticated requests, and the
 role-policy tests cover operator, reviewer, supervisor, and admin boundaries.
-Before the Phase 0.8G.1 release migration, the pinned 5011 runtime served the
-older `17b82bb1` build. Release replacement must come from a clean committed
-worktree, keep Formal Evidence Convergence disabled, and pass local plus public
-health/version/readiness checks. A real signed Cloudflare Access supervisor
-session and manual per-claim approval remain required before Tier A execution;
-the operations release is not a reply-policy promotion.
+Gold v0.1 is retained as immutable historical review provenance. Gold v0.2 is
+derived from that frozen, privacy-validated artifact and gives each reviewable
+case one explicit current BUYER target with bounded-history and digest
+provenance. Its independent label store starts with zero approvals; historical
+approvals are migration candidates only. Tier A accepts only fresh Cloudflare
+Access human supervisor/admin approval events tied to the v0.2 dataset hash,
+so real-customer accuracy remains `null`.
+
+Production 5011 now runs from a dedicated clean release worktree pinned to
+`97ebb637`, with MiniMax-M3, readiness true, source drift false, and Formal
+Evidence Convergence disabled. The active public `inhe.cc.cd` health/version/
+readiness endpoints pass; the historical `inhe.ccwu.cc` hostname remains a
+Cloudflare 530 external-route issue. The 5012 review canary rejects missing or
+forged Access identity. A real signed Cloudflare supervisor session and manual
+per-claim approval remain required before Tier A execution; this release and
+Gold migration do not promote reply behavior.
 
 The fixed-turn Phase 0.8G comparison exposed a separate operations defect: an
 evaluation runtime that shared the formal database also started the resident

@@ -53,6 +53,8 @@ def approved_claim_gate_summary(
     *,
     minimum_claims: int = DEFAULT_MINIMUM_APPROVED_CLAIMS,
     minimum_domains: int = DEFAULT_MINIMUM_APPROVED_DOMAINS,
+    required_auth_type: str = "",
+    expected_dataset_hash: str = "",
 ) -> dict[str, Any]:
     """Validate per-claim approval audit and compute the Tier A publish gate."""
     findings: list[str] = []
@@ -98,6 +100,8 @@ def approved_claim_gate_summary(
                 and event.get("claim_uid") == claim_uid
                 and int(event.get("version") or 0) == version
                 and str(event.get("actor_role") or "") in _APPROVAL_ACTOR_ROLES
+                and (not required_auth_type or str(event.get("auth_type") or "") == required_auth_type)
+                and (not expected_dataset_hash or str(event.get("dataset_hash") or "") == expected_dataset_hash)
             ]
             if len(matches) != 1:
                 findings.append(f"approved_claim_audit_invalid:{case_uid}:{claim_uid}")
@@ -121,6 +125,9 @@ def approved_claim_gate_summary(
         "approved_domains": sorted(approved_domain_counts),
         "approved_domain_distribution": dict(sorted(approved_domain_counts.items())),
         "approval_event_count": approval_event_count,
+        "required_auth_type": required_auth_type or None,
+        "expected_dataset_hash": expected_dataset_hash or None,
+        "authoritative_approval_required": bool(required_auth_type or expected_dataset_hash),
         "minimum_approved_claim_count": minimum_claims,
         "minimum_approved_domain_count": minimum_domains,
         "missing_approved_claim_count": max(0, minimum_claims - approved_claim_count),
@@ -277,6 +284,10 @@ class RealAccuracyLabelStore:
                     dataset_version TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     actor_hash TEXT NOT NULL,
+                    actor_role TEXT NOT NULL DEFAULT '',
+                    auth_type TEXT NOT NULL DEFAULT '',
+                    dataset_hash TEXT NOT NULL DEFAULT '',
+                    claim_uid TEXT,
                     version INTEGER NOT NULL,
                     created_at TEXT NOT NULL
                 )
@@ -292,6 +303,14 @@ class RealAccuracyLabelStore:
             if "claim_uid" not in columns:
                 connection.execute(
                     "ALTER TABLE real_accuracy_label_event ADD COLUMN claim_uid TEXT"
+                )
+            if "auth_type" not in columns:
+                connection.execute(
+                    "ALTER TABLE real_accuracy_label_event ADD COLUMN auth_type TEXT NOT NULL DEFAULT ''"
+                )
+            if "dataset_hash" not in columns:
+                connection.execute(
+                    "ALTER TABLE real_accuracy_label_event ADD COLUMN dataset_hash TEXT NOT NULL DEFAULT ''"
                 )
 
     def get(self, case_uid: str, dataset_version: str) -> dict[str, Any] | None:
@@ -315,7 +334,7 @@ class RealAccuracyLabelStore:
         self.initialize()
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT event_id,case_uid,dataset_version,event_type,actor_hash,actor_role,claim_uid,version,created_at "
+                "SELECT event_id,case_uid,dataset_version,event_type,actor_hash,actor_role,auth_type,dataset_hash,claim_uid,version,created_at "
                 "FROM real_accuracy_label_event WHERE dataset_version=? ORDER BY event_id",
                 (dataset_version,),
             ).fetchall()
@@ -333,6 +352,8 @@ class RealAccuracyLabelStore:
         expected_version: int | None,
         allow_approval: bool,
         actor_role: str = "",
+        auth_type: str = "",
+        dataset_hash: str = "",
     ) -> dict[str, Any]:
         if review_status not in _REVIEW_STATUSES:
             raise LabelValidationError("label_review_status_invalid")
@@ -340,6 +361,8 @@ class RealAccuracyLabelStore:
             raise LabelValidationError("supervisor_approval_required")
         normalized_claims = validate_claims(claims)
         actor_role = str(actor_role or "").strip().lower()
+        auth_type = str(auth_type or "").strip().lower()
+        dataset_hash = str(dataset_hash or "").strip().lower()
         if review_status == "approved" and actor_role not in _APPROVAL_ACTOR_ROLES:
             raise LabelValidationError("supervisor_approval_role_required")
         normalized_target_turn_uids = validate_target_turn_uids(
@@ -385,22 +408,24 @@ class RealAccuracyLabelStore:
                 event_type = "label_created"
             connection.execute(
                 "INSERT INTO real_accuracy_label_event "
-                "(case_uid,dataset_version,event_type,actor_hash,actor_role,claim_uid,version,created_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (case_uid, dataset_version, event_type, actor_hash, actor_role, None, version, now),
+                "(case_uid,dataset_version,event_type,actor_hash,actor_role,auth_type,dataset_hash,claim_uid,version,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (case_uid, dataset_version, event_type, actor_hash, actor_role, auth_type, dataset_hash, None, version, now),
             )
             if review_status == "approved":
                 for claim in normalized_claims:
                     connection.execute(
                         "INSERT INTO real_accuracy_label_event "
-                        "(case_uid,dataset_version,event_type,actor_hash,actor_role,claim_uid,version,created_at) "
-                        "VALUES (?,?,?,?,?,?,?,?)",
+                        "(case_uid,dataset_version,event_type,actor_hash,actor_role,auth_type,dataset_hash,claim_uid,version,created_at) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?)",
                         (
                             case_uid,
                             dataset_version,
                             "claim_approved",
                             actor_hash,
                             actor_role,
+                            auth_type,
+                            dataset_hash,
                             claim["claim_uid"],
                             version,
                             now,

@@ -6,7 +6,8 @@ from flask import Flask
 
 from app.api import admin_auth
 from app.api.real_accuracy_label_routes import real_accuracy_label_bp
-from app.services.real_accuracy_gold_set_service import build_gold_dataset
+from app.services.real_accuracy_gold_set_service import build_gold_dataset, build_gold_dataset_v2
+from app.services.real_accuracy_label_service import RealAccuracyLabelStore
 
 
 def _dataset():
@@ -65,6 +66,9 @@ def test_label_routes_require_reviewer_and_keep_labels_out_of_knowledge(monkeypa
     assert summary["selected_claim_count"] > 0
     assert summary["approved_claim_count"] == 0
     assert summary["pending_claim_count"] == summary["selected_claim_count"]
+    assert summary["auth_mode"] == "test"
+    assert summary["cloudflare_access_verified"] is False
+    assert summary["authoritative_approval_allowed"] is False
     forbidden = client.post(f"/api/kb/real-accuracy/cases/{case_uid}/labels", json={
         "claims": _claim(), "target_turn_uids": [buyer_turn_uid], "review_status": "approved", "optimistic_lock_version": 0,
     })
@@ -83,6 +87,9 @@ def test_label_routes_require_reviewer_and_keep_labels_out_of_knowledge(monkeypa
     assert response.status_code == 201
     assert response.get_json()["label"]["review_status"] == "approved"
     assert response.get_json()["label"]["label"]["target_turn_uids"] == [buyer_turn_uid]
+    events = RealAccuracyLabelStore(tmp_path / "labels.db").list_events_for_dataset(dataset["dataset_version"])
+    assert {event["auth_type"] for event in events} == {"test"}
+    assert {event["dataset_hash"] for event in events} == {dataset["manifest"]["content_sha256"]}
     assert not (tmp_path / "knowledge_base.db").exists()
 
 
@@ -92,6 +99,51 @@ def test_full_app_registers_real_accuracy_workbench_spa_route():
     app = create_app()
 
     assert "/real-accuracy-labels" in {rule.rule for rule in app.url_map.iter_rules()}
+
+
+def test_v2_api_exposes_explicit_target_and_rejects_historical_buyer_rebinding(monkeypatch, tmp_path):
+    sample = {
+        "id": 2, "customer_quote": "宽度是多少？", "full_context": (
+            '<div class="imui-msg imui-msg-l"><div class="msg-body-text">之前的问题</div></div>'
+            '<div class="imui-msg imui-msg-r"><div class="msg-body-text">之前的回复</div></div>'
+        ),
+        "product_title": "测试商品", "sku": "TEST-SKU", "order_no": "TEST-ORDER",
+        "question_type": "尺寸", "correct_answer": "宽度请看商品资料。", "review_status": "已确认",
+        "risk_level": "low", "need_media": False, "auto_reply_type": "需人工确认", "notes": "",
+    }
+    dataset = build_gold_dataset_v2("test-hmac", [sample])[0]
+    gold_path = tmp_path / "gold-v2.json"
+    gold_path.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_GOLD_SET_PATH", str(gold_path))
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_LABEL_DB", str(tmp_path / "labels-v2.db"))
+    monkeypatch.setenv("COPILOT_REAL_ACCURACY_LABEL_AUDIT_HMAC_KEY", "audit-test-key")
+    monkeypatch.setattr(
+        admin_auth,
+        "_verified_principal",
+        lambda: admin_auth.AdminPrincipal("supervisor", "supervisor", frozenset({"supervisor"}), "test"),
+    )
+    app = Flask(__name__)
+    app.register_blueprint(real_accuracy_label_bp)
+    client = app.test_client()
+    case = dataset["cases"][0]
+    explicit_uid = case["explicit_target"]["target_turn_uid"]
+    historical_uid = next(
+        turn["turn_uid"] for turn in case["conversation"]["turns"]
+        if turn["speaker_role"] == "BUYER" and turn["turn_uid"] != explicit_uid
+    )
+
+    listed = client.get("/api/kb/real-accuracy/cases")
+    assert listed.status_code == 200
+    row = next(item for item in listed.get_json()["items"] if item["case_uid"] == case["case_uid"])
+    assert row["explicit_target"]["target_turn_uid"] == explicit_uid
+    rejected = client.post(f"/api/kb/real-accuracy/cases/{case['case_uid']}/labels", json={
+        "claims": _claim(),
+        "target_turn_uids": [historical_uid],
+        "review_status": "approved",
+        "optimistic_lock_version": 0,
+    })
+    assert rejected.status_code == 422
+    assert rejected.get_json()["error"] == "target_turn_must_match_explicit_target"
 
 
 def test_rejected_claim_is_reported_as_history_but_does_not_occupy_active_queue(monkeypatch, tmp_path):

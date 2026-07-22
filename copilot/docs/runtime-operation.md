@@ -93,16 +93,32 @@ manifest under ignored `outputs/`. Tier A must not start unless the independent
 label store contains at least 30 approved atomic claims across five domains and
 each claim has a matching supervisor/admin audit event. With fewer approvals,
 `run_real_accuracy_baseline.py --approved-only` exits `2` before any Agent call.
-The current approval count is zero. Phase 0.8E adds the supervisor SPA route and
+The current Gold v0.2 approval count is zero. Phase 0.8E adds the supervisor SPA route and
 limits its API, draft creation, and batch review submission to the deterministic
 Gold-30 queue. The isolated 5012 canary must report `ready`, matching boot/end
 source hashes, and `source_tree_drift=false`; in Cloudflare Access mode both the
 page and API must reject an unauthenticated request with 401. Test-only loopback
 or injected principals may verify rendering and role contracts, but they do not
-replace a real signed Access browser session. The pinned 5011 runtime is still
-the older `17b82bb1` build. Do not restart or mutate 5011, and do not enable
-Formal Evidence Convergence there, until the authenticated workbench acceptance
-and an explicit deployment decision are complete.
+replace a real signed Access browser session. Gold v0.1 remains a read-only
+historical dataset and label store; Gold v0.2 uses its own ignored database and
+does not import v0.1 approval state. Runtime configuration must define the Gold
+artifact and label database exactly once. The safe configuration diagnostic
+reports only file names, hashes, counts, and duplicate-definition status.
+
+Production 5011 now runs from the dedicated clean `copilot-release-5011`
+worktree pinned to `97ebb637`. It reports `clean_commit`, `ready=true`,
+`source_tree_drift=false`, `MiniMax-M3`, and Formal Evidence Convergence off.
+The release was first verified on a temporary port and then observed for 60
+seconds after replacement. Development-tree Git activity must not change its
+source hash. Public `inhe.cc.cd` health/version/readiness are the active checks;
+the historical `inhe.ccwu.cc` hostname currently returns Cloudflare 530 and is
+not an application-health authority. Do not mutate the release worktree or
+enable Formal Evidence Convergence until a separate promotion decision.
+
+The 5012 review canary uses Cloudflare Access mode. Missing assertions and
+forged role/name headers return 401. Without a real signed supervisor session,
+the workflow stops at `awaiting_real_supervisor_approval`; development
+principal tests are not authoritative approvals.
 
 The approved-only runner evaluates privacy and the independent approval gate
 before requiring the Gold source-link HMAC. This keeps the current zero-approval

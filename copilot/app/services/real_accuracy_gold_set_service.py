@@ -28,6 +28,7 @@ from app.services.real_accuracy_privacy_service import (
 
 
 DATASET_SCHEMA_VERSION = "real-accuracy-gold-set-v3"
+DATASET_V2_SCHEMA_VERSION = "real-accuracy-gold-set-v4"
 DEFAULT_MINIMUM_GOLD_LABELS = 30
 DEFAULT_MINIMUM_GOLD_DOMAINS = 5
 _REQUIRED_SAMPLE_COLUMNS = {
@@ -112,6 +113,11 @@ def _has_text_question(sample: dict[str, Any]) -> bool:
 def _is_media_only(sample: dict[str, Any]) -> bool:
     text = canonical_text(sample.get("customer_quote"), limit=300)
     return bool(text) and not _has_text_question(sample) and bool(_IMAGE_OR_LINK_RE.search(text))
+
+
+def _has_reviewable_question_text(value: Any) -> bool:
+    text = canonical_text(value, limit=1800)
+    return len(_IMAGE_OR_LINK_RE.sub("", text).strip()) >= 2
 
 
 def _has_sidecar(sample: dict[str, Any]) -> bool:
@@ -200,6 +206,109 @@ def build_gold_case(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
     canonical = json.dumps(cases, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _conversation_digest(turns: list[dict[str, Any]]) -> str:
+    projection = [
+        {
+            "turn_uid": str(turn.get("turn_uid") or ""),
+            "turn_index": int(turn.get("turn_index") or 0),
+            "speaker_role": str(turn.get("speaker_role") or ""),
+            "message_type": str(turn.get("message_type") or ""),
+            "text_digest": _sha256_text(str(turn.get("text") or "")),
+        }
+        for turn in turns
+    ]
+    canonical = json.dumps(projection, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def build_gold_case_v2(secret: str, sample: dict[str, Any]) -> dict[str, Any]:
+    """Build a v0.2 case with one explicit current buyer target.
+
+    ``customer_quote`` is an authoritative reviewed-sample field independent
+    from the historical HTML transcript.  It is represented as a new final
+    turn with explicit provenance instead of being guessed from history.
+    """
+    return _with_explicit_target_v2(
+        secret,
+        build_gold_case(secret, sample),
+        source_kind="reviewed_training_sample",
+        source_field="customer_quote",
+    )
+
+
+def _with_explicit_target_v2(
+    secret: str,
+    source_case: dict[str, Any],
+    *,
+    source_kind: str,
+    source_field: str,
+) -> dict[str, Any]:
+    """Attach one independently stored current buyer question as the v0.2 target."""
+    case = copy.deepcopy(source_case)
+    case_uid = str(case.get("case_uid") or "")
+    turns = list((case.get("conversation") or {}).get("turns") or [])
+    question = canonical_text(case.get("customer_message"), limit=1800)
+    if not _has_reviewable_question_text(question):
+        case["explicit_target"] = None
+        case["target_status"] = "target_missing"
+        case["conversation_digest"] = _conversation_digest(turns)
+        return case
+
+    history_end_turn_index = max(
+        (int(turn.get("turn_index") or 0) for turn in turns),
+        default=-1,
+    )
+    target_text_digest = _sha256_text(question)
+    target_turn_index = history_end_turn_index + 1
+    target_turn_uid = hmac_identifier(
+        secret,
+        "turn",
+        f"{case_uid}:reviewed_sample_customer_question:{target_text_digest}",
+    )
+    target_turn = {
+        "turn_index": target_turn_index,
+        "turn_uid": target_turn_uid,
+        "speaker_role": "BUYER",
+        "speaker_uid": hmac_identifier(secret, "actor", f"{case_uid}:current_buyer"),
+        "message_type": "text",
+        "text": question,
+        "role_resolution": "reviewed_sample_customer_question",
+        "source_provenance": "reviewed_sample_customer_question",
+    }
+    turns.append(target_turn)
+    conversation = case["conversation"]
+    conversation["turns"] = turns
+    conversation["role_counts"] = dict(conversation.get("role_counts") or {})
+    conversation["role_counts"]["BUYER"] = int(conversation["role_counts"].get("BUYER") or 0) + 1
+    conversation["turn_count"] = len(turns)
+    conversation_digest = _conversation_digest(turns)
+    case["explicit_target"] = {
+        "target_turn_uid": target_turn_uid,
+        "target_turn_index": target_turn_index,
+        "target_speaker_role": "BUYER",
+        "target_text_digest": target_text_digest,
+        "target_source_type": "reviewed_sample_customer_question",
+        "target_source_reference": case_uid,
+        "target_provenance": {
+            "source_kind": source_kind,
+            "source_field": source_field,
+            "source_case_uid": case_uid,
+            "content_digest": target_text_digest,
+        },
+        "history_end_turn_index": history_end_turn_index,
+        "dataset_version": "0.2",
+        "case_uid": case_uid,
+        "conversation_digest": conversation_digest,
+    }
+    case["target_status"] = "explicit_target"
+    case["conversation_digest"] = conversation_digest
+    return case
 
 
 def _percentile(values: list[int], quantile: float) -> int | None:
@@ -315,6 +424,177 @@ def build_gold_dataset(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[
     return dataset, manual_queue
 
 
+def build_gold_dataset_v2(secret: str, samples: Iterable[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Build the immutable v0.2 candidate set without importing v0.1 labels."""
+    cases = [build_gold_case_v2(secret, sample) for sample in samples]
+    cases.sort(key=lambda item: item["case_uid"])
+    privacy_findings_by_case = {
+        case["case_uid"]: scan_privacy_output(case)
+        for case in cases
+    }
+    for case in cases:
+        findings = privacy_findings_by_case[case["case_uid"]]
+        if findings:
+            case["classification"] = "privacy_review_required"
+            case["notes"]["source_text_sanitized"] = False
+            case["notes"]["privacy_review_required"] = True
+            case["notes"]["privacy_reason_codes"] = [item["reason_code"] for item in findings]
+        else:
+            case["notes"]["source_text_sanitized"] = True
+    privacy_violation_count = sum(len(items) for items in privacy_findings_by_case.values())
+    explicit_target_count = sum(bool(case.get("explicit_target")) for case in cases)
+    missing_target_count = len(cases) - explicit_target_count
+    dataset = {
+        "dataset_id": "real_customer_service_gold_v0_2",
+        "dataset_version": "0.2",
+        "schema_version": DATASET_V2_SCHEMA_VERSION,
+        "source_provenance": "reviewed_training_samples_read_only",
+        "privacy": {
+            "identity_mode": "hmac_pseudonymized",
+            "source_text_sanitized": privacy_violation_count == 0,
+            "privacy_scan_status": "passed" if privacy_violation_count == 0 else "failed",
+            "raw_source_identifiers_included": False if privacy_violation_count == 0 else None,
+            "agent_input_contains_labels": False,
+        },
+        "dataset_status": "insufficient_gold_labels",
+        "minimum_project_accuracy_denominator": DEFAULT_MINIMUM_GOLD_LABELS,
+        "summary": {
+            "total_cases": len(cases),
+            "explicit_target_count": explicit_target_count,
+            "missing_target_count": missing_target_count,
+            "ambiguous_target_count": 0,
+            "automatically_approved_count": 0,
+        },
+        "cases": cases,
+    }
+    _apply_dataset_label_status(dataset)
+    dataset["summary"].update({
+        "explicit_target_count": explicit_target_count,
+        "missing_target_count": missing_target_count,
+        "ambiguous_target_count": 0,
+        "automatically_approved_count": 0,
+    })
+    dataset["manifest"] = {
+        "content_sha256": _dataset_hash(cases),
+        "case_count": len(cases),
+        "schema_version": DATASET_V2_SCHEMA_VERSION,
+    }
+    manual_queue = [
+        {
+            "case_uid": case["case_uid"],
+            "query_class": case["query_class"],
+            "risk_level": case["risk_level"],
+            "customer_message": case["customer_message"],
+            "sidecar_present": case["sidecar_present"],
+            "target_turn_uid": (case.get("explicit_target") or {}).get("target_turn_uid"),
+            "target_provenance": (case.get("explicit_target") or {}).get("target_provenance"),
+            "labeling_required": ["expected_claims", "forbidden_claims", "must_handoff"],
+        }
+        for case in cases
+        if case.get("explicit_target")
+        and case["classification"] in {"claim_label_pending", "reference_available", "label_gap", "safety_scorable"}
+        and not (case.get("conversation") or {}).get("role_unresolved_count")
+    ]
+    return dataset, manual_queue
+
+
+def upgrade_gold_dataset_v2(
+    secret: str,
+    source_dataset: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Derive v0.2 from the authoritative v0.1 artifact without rereading its DB."""
+    if source_dataset.get("dataset_version") != "0.1":
+        raise ValueError("source_gold_dataset_version_invalid")
+    findings = validate_gold_dataset(source_dataset)
+    if findings:
+        raise ValueError("source_gold_dataset_validation_failed:" + ",".join(findings))
+    source_hash = str((source_dataset.get("manifest") or {}).get("content_sha256") or "")
+    cases = [
+        _with_explicit_target_v2(
+            secret,
+            case,
+            source_kind="reviewed_gold_v0_1",
+            source_field="customer_message",
+        )
+        for case in (source_dataset.get("cases") or [])
+    ]
+    cases.sort(key=lambda item: item["case_uid"])
+    privacy_findings_by_case = {
+        case["case_uid"]: scan_privacy_output(case)
+        for case in cases
+    }
+    for case in cases:
+        findings = privacy_findings_by_case[case["case_uid"]]
+        notes = case.setdefault("notes", {})
+        if findings:
+            case["classification"] = "privacy_review_required"
+            notes["source_text_sanitized"] = False
+            notes["privacy_review_required"] = True
+            notes["privacy_reason_codes"] = [item["reason_code"] for item in findings]
+        else:
+            notes["source_text_sanitized"] = True
+    privacy_violation_count = sum(len(items) for items in privacy_findings_by_case.values())
+    explicit_target_count = sum(bool(case.get("explicit_target")) for case in cases)
+    dataset = {
+        "dataset_id": "real_customer_service_gold_v0_2",
+        "dataset_version": "0.2",
+        "schema_version": DATASET_V2_SCHEMA_VERSION,
+        "source_provenance": "authoritative_gold_v0_1_derived",
+        "source_dataset": {
+            "dataset_id": source_dataset.get("dataset_id"),
+            "dataset_version": source_dataset.get("dataset_version"),
+            "content_sha256": source_hash,
+        },
+        "privacy": {
+            "identity_mode": "hmac_pseudonymized",
+            "source_text_sanitized": privacy_violation_count == 0,
+            "privacy_scan_status": "passed" if privacy_violation_count == 0 else "failed",
+            "raw_source_identifiers_included": False if privacy_violation_count == 0 else None,
+            "agent_input_contains_labels": False,
+        },
+        "dataset_status": "insufficient_gold_labels",
+        "minimum_project_accuracy_denominator": DEFAULT_MINIMUM_GOLD_LABELS,
+        "summary": {
+            "total_cases": len(cases),
+            "explicit_target_count": explicit_target_count,
+            "missing_target_count": len(cases) - explicit_target_count,
+            "ambiguous_target_count": 0,
+            "automatically_approved_count": 0,
+        },
+        "cases": cases,
+    }
+    _apply_dataset_label_status(dataset)
+    dataset["summary"].update({
+        "explicit_target_count": explicit_target_count,
+        "missing_target_count": len(cases) - explicit_target_count,
+        "ambiguous_target_count": 0,
+        "automatically_approved_count": 0,
+    })
+    dataset["manifest"] = {
+        "content_sha256": _dataset_hash(cases),
+        "case_count": len(cases),
+        "schema_version": DATASET_V2_SCHEMA_VERSION,
+        "source_dataset_sha256": source_hash,
+    }
+    manual_queue = [
+        {
+            "case_uid": case["case_uid"],
+            "query_class": case["query_class"],
+            "risk_level": case["risk_level"],
+            "customer_message": case["customer_message"],
+            "sidecar_present": case["sidecar_present"],
+            "target_turn_uid": (case.get("explicit_target") or {}).get("target_turn_uid"),
+            "target_provenance": (case.get("explicit_target") or {}).get("target_provenance"),
+            "labeling_required": ["expected_claims", "forbidden_claims", "must_handoff"],
+        }
+        for case in cases
+        if case.get("explicit_target")
+        and case["classification"] in {"claim_label_pending", "reference_available", "label_gap", "safety_scorable"}
+        and not (case.get("conversation") or {}).get("role_unresolved_count")
+    ]
+    return dataset, manual_queue
+
+
 def scan_sensitive_data(value: Any) -> list[str]:
     def scrub_metadata(item: Any) -> Any:
         if isinstance(item, list):
@@ -327,6 +607,10 @@ def scan_sensitive_data(value: Any) -> list[str]:
             if key not in {
                 "manifest", "case_uid", "turn_uid", "target_turn_uids", "pseudonymous_id", "speaker_uid", "sidecar_identity",
                 "content_sha256", "dataset_hash", "source_snapshot_hash", "reviewer_actor_hash",
+                "target_text_digest", "conversation_digest", "content_digest",
+                "label_db_sha256", "historical_label_db_sha256", "migration_manifest_sha256", "old_audit_event_hash",
+                "v1_approval_event_hash", "source_identity_digest",
+                "v2_target_text_digest",
             }
         }
 
@@ -337,7 +621,8 @@ def scan_sensitive_data(value: Any) -> list[str]:
 
 def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
     findings: list[str] = []
-    if dataset.get("schema_version") != DATASET_SCHEMA_VERSION:
+    schema_version = dataset.get("schema_version")
+    if schema_version not in {DATASET_SCHEMA_VERSION, DATASET_V2_SCHEMA_VERSION}:
         findings.append("schema_version_invalid")
     cases = dataset.get("cases")
     if not isinstance(cases, list) or not cases:
@@ -360,6 +645,55 @@ def validate_gold_dataset(dataset: dict[str, Any]) -> list[str]:
         for namespace, value in (case.get("sidecar_identity") or {}).items():
             if not re.fullmatch(rf"(?:product|sku|order)_[A-Z2-7]{{20}}", str(value or "")):
                 findings.append(f"identity_not_hmac_pseudonymized:{namespace}")
+        if schema_version == DATASET_V2_SCHEMA_VERSION:
+            target = case.get("explicit_target")
+            if target is None:
+                if case.get("target_status") != "target_missing":
+                    findings.append("explicit_target_status_invalid")
+                continue
+            required = {
+                "target_turn_uid", "target_turn_index", "target_speaker_role", "target_text_digest",
+                "target_source_type", "target_source_reference", "target_provenance",
+                "history_end_turn_index", "dataset_version", "case_uid", "conversation_digest",
+            }
+            if not required.issubset(target):
+                findings.append("explicit_target_fields_missing")
+                continue
+            target_uid = str(target.get("target_turn_uid") or "")
+            target_turn = next((turn for turn in turns if str(turn.get("turn_uid") or "") == target_uid), None)
+            if not target_turn:
+                findings.append("explicit_target_turn_missing")
+                continue
+            if target.get("target_speaker_role") != "BUYER" or target_turn.get("speaker_role") != "BUYER":
+                findings.append("explicit_target_role_invalid")
+            if target.get("dataset_version") != "0.2" or target.get("case_uid") != case_uid:
+                findings.append("explicit_target_scope_invalid")
+            if target.get("target_source_type") != "reviewed_sample_customer_question":
+                findings.append("explicit_target_source_invalid")
+            if target.get("target_source_reference") != case_uid:
+                findings.append("explicit_target_source_reference_invalid")
+            text_digest = _sha256_text(str(target_turn.get("text") or ""))
+            if target.get("target_text_digest") != text_digest:
+                findings.append("explicit_target_text_digest_invalid")
+            try:
+                target_index = int(target.get("target_turn_index"))
+                history_end_index = int(target.get("history_end_turn_index"))
+                target_turn_index = int(target_turn.get("turn_index"))
+            except (TypeError, ValueError):
+                findings.append("explicit_target_index_invalid")
+                continue
+            if target_index != target_turn_index:
+                findings.append("explicit_target_index_invalid")
+            if history_end_index >= target_index:
+                findings.append("explicit_target_history_boundary_invalid")
+            if any(
+                int(turn.get("turn_index") or 0) > target_index
+                for turn in turns
+            ):
+                findings.append("future_turn_after_explicit_target")
+            digest = _conversation_digest(turns)
+            if target.get("conversation_digest") != digest or case.get("conversation_digest") != digest:
+                findings.append("conversation_digest_invalid")
     expected_hash = ((dataset.get("manifest") or {}).get("content_sha256") or "")
     if expected_hash != _dataset_hash(cases):
         findings.append("manifest_hash_mismatch")
@@ -392,6 +726,7 @@ def apply_approved_claim_labels(dataset: dict[str, Any], labels: Iterable[dict[s
             continue
         claims = ((label.get("label") or {}).get("claims") or [])
         target_turn_uids = list((label.get("label") or {}).get("target_turn_uids") or [])
+        explicit_uid = str(((case.get("explicit_target") or {}).get("target_turn_uid") or ""))
         turns_by_uid = {
             str(turn.get("turn_uid") or ""): turn
             for turn in (case.get("conversation") or {}).get("turns") or []
@@ -399,6 +734,7 @@ def apply_approved_claim_labels(dataset: dict[str, Any], labels: Iterable[dict[s
         if (
             not claims
             or not target_turn_uids
+            or (explicit_uid and target_turn_uids != [explicit_uid])
             or any(
                 uid not in turns_by_uid or turns_by_uid[uid].get("speaker_role") != "BUYER"
                 for uid in target_turn_uids

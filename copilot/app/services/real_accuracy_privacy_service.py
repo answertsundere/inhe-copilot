@@ -47,6 +47,9 @@ _MAX_TURNS_PER_CASE = 500
 _CONTROLLED_SCAN_FIELDS = frozenset({
     "case_uid", "turn_uid", "target_turn_uids", "speaker_uid", "pseudonymous_id", "sidecar_identity",
     "content_sha256", "dataset_hash", "source_snapshot_hash", "reviewer_actor_hash", "manifest",
+    "target_text_digest", "conversation_digest", "content_digest",
+    "label_db_sha256", "historical_label_db_sha256", "migration_manifest_sha256", "old_audit_event_hash",
+    "v1_approval_event_hash", "source_identity_digest",
 })
 _ACTOR_UID_RE = re.compile(r"^actor_[A-Z2-7]{20}$")
 _TURN_UID_RE = re.compile(r"^turn_[A-Z2-7]{20}$")

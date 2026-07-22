@@ -269,16 +269,41 @@ def candidate_claims(case: dict[str, Any], strategy_group: str) -> list[dict[str
     return []
 
 
-def _target_recommendation(case: dict[str, Any], label: dict[str, Any] | None) -> dict[str, Any]:
+def _target_recommendation(
+    case: dict[str, Any],
+    label: dict[str, Any] | None,
+    *,
+    dataset_version: str = "",
+) -> dict[str, Any]:
     turns = [item for item in ((case.get("conversation") or {}).get("turns") or []) if isinstance(item, dict)]
+    turns_by_uid = {str(item.get("turn_uid") or ""): item for item in turns}
     saved = ((label or {}).get("label") or {}).get("target_turn_uids") or []
     if saved:
+        if dataset_version and _clean((label or {}).get("dataset_version")) != _clean(dataset_version):
+            return {"turn_uids": [], "reason": "reviewer_selected_dataset_mismatch", "requires_confirmation": True}
+        normalized = [str(item) for item in saved]
+        if any(uid not in turns_by_uid for uid in normalized):
+            return {"turn_uids": [], "reason": "reviewer_selected_target_missing", "requires_confirmation": True}
+        if any(turns_by_uid[uid].get("speaker_role") != "BUYER" for uid in normalized):
+            return {"turn_uids": [], "reason": "reviewer_selected_target_not_buyer", "requires_confirmation": True}
+        explicit_uid = str(((case.get("explicit_target") or {}).get("target_turn_uid") or ""))
+        if explicit_uid and normalized != [explicit_uid]:
+            return {"turn_uids": [], "reason": "reviewer_selected_target_mismatch", "requires_confirmation": True}
         return {"turn_uids": [str(item) for item in saved], "reason": "reviewer_selected", "requires_confirmation": False}
+    explicit = case.get("explicit_target") or {}
+    explicit_uid = str(explicit.get("target_turn_uid") or "")
+    if explicit_uid:
+        explicit_turn = turns_by_uid.get(explicit_uid)
+        if not explicit_turn or explicit_turn.get("speaker_role") != "BUYER":
+            return {"turn_uids": [], "reason": "explicit_target_invalid", "requires_confirmation": True}
+        return {"turn_uids": [explicit_uid], "reason": "explicit_target", "requires_confirmation": False}
     question = _clean(case.get("customer_message"))
     buyer_turns = [item for item in turns if item.get("speaker_role") == "BUYER"]
     exact = [item for item in buyer_turns if _clean(item.get("text")) == question]
-    if exact:
-        return {"turn_uids": [str(exact[-1].get("turn_uid"))], "reason": "customer_message_exact_match", "requires_confirmation": True}
+    if len(exact) == 1:
+        return {"turn_uids": [str(exact[0].get("turn_uid"))], "reason": "customer_message_exact_match", "requires_confirmation": True}
+    if len(exact) > 1:
+        return {"turn_uids": [], "reason": "customer_message_turn_ambiguous", "requires_confirmation": True}
     if buyer_turns:
         return {"turn_uids": [], "reason": "customer_message_turn_missing", "requires_confirmation": True}
     return {"turn_uids": [], "reason": "buyer_turn_missing", "requires_confirmation": True}
@@ -325,7 +350,11 @@ def build_claim_review_plan(dataset: dict[str, Any], labels: list[dict[str, Any]
         case_uid = _identifier(case.get("case_uid"))
         label = label_by_case.get(case_uid)
         group = strategy_group_for_case(case)
-        recommendation = _target_recommendation(case, label)
+        recommendation = _target_recommendation(
+            case,
+            label,
+            dataset_version=_clean(dataset.get("dataset_version")),
+        )
         claims = candidate_claims(case, group)
         saved_status = _clean((label or {}).get("review_status"))
         if saved_status == "approved":

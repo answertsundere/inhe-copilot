@@ -56,6 +56,7 @@ def _public_case(case: dict[str, Any], plan_item: dict[str, Any]) -> dict[str, A
         "customer_message": case.get("customer_message"),
         "conversation_window": plan_item.get("conversation_window"),
         "target_recommendation": plan_item.get("target_recommendation"),
+        "explicit_target": case.get("explicit_target"),
         "query_class": case.get("query_class"),
         "risk_level": case.get("risk_level"),
         "sidecar_present": case.get("sidecar_present"),
@@ -119,6 +120,9 @@ def _validate_target_turns(case: dict[str, Any], target_turn_uids: Any, review_s
         raise LabelValidationError("target_turn_not_in_case")
     if any(turns_by_uid[uid].get("speaker_role") != "BUYER" for uid in normalized):
         raise LabelValidationError("target_turn_must_be_buyer")
+    explicit_uid = str(((case.get("explicit_target") or {}).get("target_turn_uid") or ""))
+    if explicit_uid and normalized and normalized != [explicit_uid]:
+        raise LabelValidationError("target_turn_must_match_explicit_target")
     return sorted(normalized, key=lambda uid: int(turns_by_uid[uid].get("turn_index") or 0))
 
 
@@ -128,6 +132,18 @@ def _current_actor_role() -> str:
     if has_any_role("supervisor"):
         return "supervisor"
     return "reviewer"
+
+
+def _approval_auth_summary() -> dict[str, Any]:
+    principal = current_principal()
+    cloudflare_verified = principal.auth_type == "cloudflare_access"
+    return {
+        "auth_mode": principal.auth_type,
+        "cloudflare_access_verified": cloudflare_verified,
+        "authoritative_approval_allowed": bool(
+            cloudflare_verified and principal.roles.intersection({"supervisor", "admin"})
+        ),
+    }
 
 
 @real_accuracy_label_bp.get("/cases")
@@ -182,6 +198,7 @@ def list_cases():
             {"id": key, **value} for key, value in STRATEGY_GROUPS.items()
         ],
         "workflow_summary": {
+            **_approval_auth_summary(),
             "review_scope": "gold_30",
             "queue_status": queue.get("queue_status"),
             "selected_claim_count": queue.get("selected_claim_count"),
@@ -240,6 +257,7 @@ def save_case_label(case_uid: str):
     try:
         target_turn_uids = _validate_target_turns(case, payload.get("target_turn_uids"), review_status)
         actor_hash = reviewer_actor_hash(current_principal().subject)
+        principal = current_principal()
         saved = RealAccuracyLabelStore().save(
             case_uid=case_uid,
             dataset_version=str(dataset.get("dataset_version") or ""),
@@ -248,6 +266,8 @@ def save_case_label(case_uid: str):
             review_status=review_status,
             actor_hash=actor_hash,
             actor_role=_current_actor_role(),
+            auth_type=principal.auth_type,
+            dataset_hash=str((dataset.get("manifest") or {}).get("content_sha256") or ""),
             expected_version=payload.get("optimistic_lock_version"),
             allow_approval=has_any_role("supervisor", "admin"),
         )
@@ -275,6 +295,7 @@ def apply_proposals():
     plan = build_claim_review_plan(dataset, list(labels.values()))
     scoped_items, _ = _gold_30_plan_items(plan)
     actor_hash = reviewer_actor_hash(current_principal().subject)
+    principal = current_principal()
     created = 0
     skipped: dict[str, str] = {}
     for item in scoped_items:
@@ -296,6 +317,8 @@ def apply_proposals():
                 review_status="draft",
                 actor_hash=actor_hash,
                 actor_role=_current_actor_role(),
+                auth_type=principal.auth_type,
+                dataset_hash=str((dataset.get("manifest") or {}).get("content_sha256") or ""),
                 expected_version=0,
                 allow_approval=False,
             )
@@ -326,6 +349,7 @@ def submit_batch_for_review():
     plan = build_claim_review_plan(dataset, list(labels.values()))
     scoped_items, _ = _gold_30_plan_items(plan)
     actor_hash = reviewer_actor_hash(current_principal().subject)
+    principal = current_principal()
     reviewed = 0
     skipped: dict[str, str] = {}
     for item in scoped_items:
@@ -355,6 +379,8 @@ def submit_batch_for_review():
             review_status="reviewed",
             actor_hash=actor_hash,
             actor_role=_current_actor_role(),
+            auth_type=principal.auth_type,
+            dataset_hash=str((dataset.get("manifest") or {}).get("content_sha256") or ""),
             expected_version=int(label.get("optimistic_lock_version") or 0),
             allow_approval=False,
         )

@@ -117,6 +117,67 @@ def test_target_recommendation_does_not_fall_back_to_unrelated_latest_buyer_turn
     assert bounded_conversation_window(case, recommendation["turn_uids"])["turns"] == []
 
 
+def test_target_recommendation_fails_closed_for_ambiguity_and_invalid_saved_targets():
+    case = {
+        "customer_message": "same question",
+        "conversation": {"turns": [
+            {"turn_uid": "turn_AAAAAAAAAAAAAAAAAAAA", "speaker_role": "BUYER", "text": "same question"},
+            {"turn_uid": "turn_BBBBBBBBBBBBBBBBBBBB", "speaker_role": "AGENT", "text": "answer"},
+            {"turn_uid": "turn_CCCCCCCCCCCCCCCCCCCC", "speaker_role": "BUYER", "text": "same question"},
+        ]},
+    }
+    assert _target_recommendation(case, None)["reason"] == "customer_message_turn_ambiguous"
+    assert _target_recommendation(case, None)["turn_uids"] == []
+
+    missing = {"dataset_version": "0.1", "label": {"target_turn_uids": ["turn_DDDDDDDDDDDDDDDDDDDD"]}}
+    assert _target_recommendation(case, missing, dataset_version="0.1")["reason"] == "reviewer_selected_target_missing"
+
+    agent = {"dataset_version": "0.1", "label": {"target_turn_uids": ["turn_BBBBBBBBBBBBBBBBBBBB"]}}
+    assert _target_recommendation(case, agent, dataset_version="0.1")["reason"] == "reviewer_selected_target_not_buyer"
+
+    other_dataset = {"dataset_version": "0.2", "label": {"target_turn_uids": ["turn_AAAAAAAAAAAAAAAAAAAA"]}}
+    assert _target_recommendation(case, other_dataset, dataset_version="0.1")["reason"] == "reviewer_selected_dataset_mismatch"
+
+    valid = {"dataset_version": "0.1", "label": {"target_turn_uids": ["turn_AAAAAAAAAAAAAAAAAAAA"]}}
+    assert _target_recommendation(case, valid, dataset_version="0.1") == {
+        "turn_uids": ["turn_AAAAAAAAAAAAAAAAAAAA"],
+        "reason": "reviewer_selected",
+        "requires_confirmation": False,
+    }
+
+
+def test_explicit_v2_target_flows_through_plan_and_queue_without_guessing():
+    dataset = _dataset()
+    dataset["dataset_version"] = "0.2"
+    case = dataset["cases"][0]
+    buyer = next(turn for turn in case["conversation"]["turns"] if turn["speaker_role"] == "BUYER")
+    case["explicit_target"] = {"target_turn_uid": buyer["turn_uid"]}
+
+    plan = build_claim_review_plan(dataset)
+    assert plan["items"][0]["target_recommendation"] == {
+        "turn_uids": [buyer["turn_uid"]],
+        "reason": "explicit_target",
+        "requires_confirmation": False,
+    }
+    queue = build_minimum_supervisor_queue(plan, target_claim_count=1, minimum_domain_count=1)
+    assert queue["selected_claim_count"] == 1
+    assert {item["target_turn_uid"] for item in queue["items"]} == {buyer["turn_uid"]}
+
+    other_buyer = next(
+        turn for turn in case["conversation"]["turns"]
+        if turn["speaker_role"] == "BUYER" and turn["turn_uid"] != buyer["turn_uid"]
+    )
+    mismatched = {
+        "dataset_version": "0.2",
+        "label": {"target_turn_uids": [other_buyer["turn_uid"]]},
+    }
+    assert _target_recommendation(case, mismatched, dataset_version="0.2") == {
+        "turn_uids": [],
+        "reason": "reviewer_selected_target_mismatch",
+        "requires_confirmation": True,
+    }
+
+
 def test_plan_window_excludes_invisible_control_characters():
     dataset = _dataset(customer_quote="请核对\x03当前问题")
     plan = build_claim_review_plan(dataset)

@@ -454,6 +454,38 @@ records. Only an approved case with approved claims enters the accuracy
 denominator. With no approved claims, the denominator and rate are `0` and
 `null`; that is an intentionally incomplete baseline, not a score.
 
+## Gold v0.2 Explicit Target And Approval Boundary
+
+Gold v0.1 is an immutable historical review artifact. Its authoritative
+content hash and separate ignored label database remain the provenance for 25
+approved and 9 rejected historical claims; neither database migration nor a
+new runtime may rewrite those records. The empty historical canary database is
+also retained independently and is not merged into the authoritative store.
+
+Gold v0.2 is derived from the frozen, privacy-validated v0.1 artifact rather
+than reconstructed from whichever source database happens to be mounted. Each
+reviewable case adds exactly one current `BUYER` target from the independently
+stored reviewed customer question. The target carries a stable UID, text and
+conversation digests, source provenance, history boundary, case UID, and
+dataset version. Agent input is the bounded history before that target plus the
+target once. Media/link-only questions without reliable text remain excluded.
+Multiple exact historical matches are ambiguous and never resolve by choosing
+the last turn. A saved v0.2 label must point to the explicit target in the same
+case and dataset.
+
+Historical decisions produce a content-free migration manifest only. An old
+approval may become `exact_target_reusable` or require manual remapping, but its
+v0.2 status is at most `migration_pending` until a human approves it again. No
+optimistic-lock version or approval event is copied. The new v0.2 label store is
+independent and starts with zero approvals.
+
+Approval provenance is part of the Tier A gate. Development, public-open, and
+service identities may exercise non-authoritative workflow tests but cannot
+create authoritative Gold. A v0.2 approval manifest accepts only one matching
+approval event from a Cloudflare Access human supervisor/admin at the current
+dataset hash and optimistic-lock version. Until 30 such claims span at least
+five domains, Tier A remains `null` and the runner must not call the Agent.
+
 ## Phase 0.8G Fixed Real-Turn Replay
 
 Phase 0.8G adds a separate fixed-real-turn replay mode. It deterministically
