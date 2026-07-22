@@ -483,3 +483,34 @@ modes across short and long/concurrent probes, with only structured-output
 parse/truncation failures. The run therefore stopped before grader
 qualification or any live trial. No free-text repair, timeout increase, local
 Qwen fallback, or scenario change was used.
+
+### Phase 0.8G fixed real-turn replay
+
+Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely
+resolved, privacy-checked conversations provide four fixed real buyer text
+turns each. Every turn sees only the bounded real history available before it;
+future historical agent replies, Gold labels, reference answers, and rubrics
+are excluded. This is an exploratory long-conversation capability replay, not
+Tier A accuracy.
+
+`scripts/build_fixed_long_conversation_replay_set.py` owns the versioned replay
+manifest. `scripts/run_fixed_long_conversation_replay.py` pins dataset, source
+database, formal knowledge database, runtime commit/source hash, MiniMax M3,
+timeout, runner hash, and Pipeline entry point. OFF and ON differ only in
+`COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED`. One report-safe Turn Observation
+is shared by deterministic scoring, evidence funnel, checkpoint, final report,
+and offline recomputation. A missing independent qualified grader leaves action
+completion, semantic pass, overall pass, and customer accuracy `null`.
+
+An initial diagnostic completed 1-scenario and 3-scenario OFF/ON pairs. At
+three scenarios, OFF selected no evidence while ON selected ten evidence items
+across twelve turns. Offline recomputation found one ON
+`unsupported_media_claim`, classified as `media_role_mismatch`. The evaluator
+was then corrected to rebuild OFF admission through the shared admission owner
+and to fingerprint formal knowledge tables rather than the entire mixed-use
+SQLite file. The validated rerun stopped at the first OFF tier because
+`kb_product` content changed during four Agent turns; row count and schema were
+stable, and the other formal tables were unchanged. Nine scenarios were not
+started. The earlier three-scenario pair remains a superseded diagnostic, not
+an authoritative acceptance result. Neither result proves answer accuracy or
+canary readiness.

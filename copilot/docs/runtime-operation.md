@@ -264,3 +264,26 @@ The current MiniMax M2.7-highspeed buyer candidate failed both strict-schema and
 tool-call qualification with zero successful attempts, so 1x1, 3x1, grader
 qualification, and 9x2 were not started. The timeout and schema contracts were
 not relaxed.
+
+### Fixed real-turn OFF/ON replay
+
+The Phase 0.8G replay does not use a buyer simulator. It runs a versioned set of
+fixed, privacy-checked real buyer turns through isolated port 5012. Restart 5012
+after every OFF/ON switch and verify `/api/runtime/version`; do not infer the
+active flag from the launch command. The runner pins commit, boot/current source
+hash, model, feature flags, formal knowledge DB fingerprint, dataset hash, and
+its own source hash. Checkpoints and reports are ignored evaluation artifacts.
+
+Run the 1-, 3-, then 9-scenario tiers only when the prior OFF/ON pair has no
+execution error, empty reply, drift, label leak, knowledge write, unsupported
+media promise, media-role mismatch, or unsafe automatic send. Audit issues
+`unsupported_media_claim` and `media_role_mismatch` are both media-role
+failures, even when the deterministic text scanner does not find an explicit
+send promise. Knowledge-write detection hashes the rows of `kb_product`,
+`kb_qa`, `knowledge_entries`, and `knowledge_chunks` through a query-only
+connection; whole-file SQLite hashes are not used because evaluation and trace
+tables share the file. The initial diagnostic found a media-role failure at
+three scenarios. After evaluator correction, the validated rerun stopped at
+the first OFF tier because `kb_product` content changed. Nine scenarios were
+not started. After the run, stop 5012 and leave the original 5011 process and
+production convergence flag unchanged.

@@ -438,3 +438,24 @@ handoff. It separately reports draft, reviewed, approved, and rejected label
 records. Only an approved case with approved claims enters the accuracy
 denominator. With no approved claims, the denominator and rate are `0` and
 `null`; that is an intentionally incomplete baseline, not a score.
+
+## Phase 0.8G Fixed Real-Turn Replay
+
+Phase 0.8G adds a separate fixed-real-turn replay mode. It deterministically
+selects four real buyer text turns from each of nine privacy-checked source
+conversations and never invokes a buyer simulator. OFF/ON runs use the same
+turns, bounded history, sidecar, knowledge database, runtime/model, timeout, and
+dataset hash; only Formal Evidence Convergence changes. This mode can compare
+execution, evidence funnel, response progression, audits, media safety, and
+delivery safety. It still has no supervisor-approved truth denominator, so
+action/semantic/overall scores are null without an independent qualified
+transcript grader and real-customer accuracy remains null in all cases.
+
+The first diagnostic reached the three-scenario tier: ON selected ten evidence
+items where OFF selected none, but one ON turn carried an
+`unsupported_media_claim`. After correcting OFF admission reconstruction and
+formal-table write detection, the validated rerun stopped at its first OFF
+tier because `kb_product` content changed during execution. The earlier pair is
+therefore superseded diagnostic evidence. Nine scenarios were not started.
+This is a valid fail-closed outcome, not an accuracy result or approval to
+enable the feature in production.

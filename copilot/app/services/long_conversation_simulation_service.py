@@ -13,6 +13,10 @@ from typing import Any
 from app.services.no_evidence_reply_policy_service import (
     contains_unsupported_media_promise,
 )
+from app.services.admitted_answer_context_service import (
+    AdmittedAnswerContextService,
+    build_turn_evidence_funnel,
+)
 from app.services.real_accuracy_gold_set_service import validate_gold_dataset
 from app.services.real_accuracy_privacy_service import sanitize_gold_text, scan_privacy_output
 
@@ -21,6 +25,8 @@ SCHEMA_VERSION = "long-conversation-simulation-set-v2"
 EVALUATION_TIER = "tier_d_simulated_multiturn"
 DATASET_STATUS = "exploratory_not_real_accuracy"
 TURN_OBSERVATION_SCHEMA_VERSION = "tier-d-turn-observation/v2"
+FIXED_REPLAY_SCHEMA_VERSION = "fixed-long-conversation-replay-set-v1"
+FIXED_REPLAY_OBSERVATION_SCHEMA_VERSION = "fixed-long-conversation-turn-observation/v1"
 ALLOWED_SIMULATOR_STATES = frozenset({"continue", "satisfied", "handoff_accepted", "blocked"})
 ALLOWED_STOP_REASONS = frozenset({"continue", "resolved", "handoff_accepted", "cannot_continue"})
 LABEL_FIELDS = frozenset({
@@ -514,6 +520,247 @@ def build_tier_d_turn_observation(response: dict[str, Any]) -> dict[str, Any]:
             "available": bool(shadow),
             "evidence_funnel": funnel,
         },
+    }
+
+
+def build_fixed_replay_turn_observation(
+    response: dict[str, Any],
+    *,
+    product_identity: dict[str, Any],
+    sidecar_present: bool,
+    sidecar_quality: str,
+    convergence_enabled: bool,
+    latency_ms: float | None,
+    status_code: int,
+    error_type: str = "",
+    previous_reply: str = "",
+) -> dict[str, Any]:
+    """Build the single report-safe observation used by fixed replay scoring."""
+    base = build_tier_d_turn_observation(response)
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    admitted = debug.get("admitted_answer_context") if isinstance(debug.get("admitted_answer_context"), dict) else {}
+    query_fact_type = str(debug.get("query_fact_type") or response.get("query_fact_type") or "").strip()
+    if not admitted:
+        understanding = response.get("turn_understanding")
+        if not isinstance(understanding, dict):
+            understanding = debug.get("parallel_understanding")
+        if not isinstance(understanding, dict):
+            understanding = {}
+        if not understanding.get("requested_claims") and query_fact_type:
+            understanding = {
+                **understanding,
+                "requested_claims": [{"claim_type": query_fact_type}],
+            }
+        admitted = AdmittedAnswerContextService().build_for_response(
+            response,
+            product_identity=product_identity,
+            understanding=understanding,
+        )
+    funnel = build_turn_evidence_funnel(
+        response,
+        product_identity=product_identity,
+        admitted_context=admitted,
+        convergence_enabled=convergence_enabled,
+    )
+    resolutions = admitted.get("claim_resolutions") if isinstance(admitted.get("claim_resolutions"), list) else []
+    resolution_counts = Counter(
+        str(item.get("status") or "unknown")
+        for item in resolutions
+        if isinstance(item, dict)
+    )
+    reply = str(base.get("reply") or "").strip()
+    previous = str(previous_reply or "").strip()
+    context_status = str(
+        debug.get("canonical_context_status")
+        or debug.get("conversation_context_status")
+        or ("accepted" if status_code == 200 else "invalid")
+    )
+    return {
+        **base,
+        "schema_version": FIXED_REPLAY_OBSERVATION_SCHEMA_VERSION,
+        "query_fact_type": query_fact_type,
+        "context_status": context_status,
+        "sidecar_present": bool(sidecar_present),
+        "sidecar_quality": str(sidecar_quality or "unknown"),
+        "evidence_funnel": funnel,
+        "candidate_evidence_count": int((funnel.get("counts") or {}).get("candidate_count") or 0),
+        "reviewed_direct_count": int((funnel.get("counts") or {}).get("direct_reviewed_count") or 0),
+        "identity_matched_count": int((funnel.get("counts") or {}).get("identity_matched_count") or 0),
+        "admitted_evidence_count": int((funnel.get("counts") or {}).get("formally_admissible_count") or 0),
+        "unresolved_claim_count": int(resolution_counts.get("unresolved", 0)),
+        "conflicting_claim_count": int(resolution_counts.get("conflicting", 0)),
+        "handoff_reason": str(response.get("reason_for_review") or ""),
+        "latency_ms": latency_ms,
+        "status_code": int(status_code or 0),
+        "error_type": str(error_type or ""),
+        "normalized_reply_sha256": hashlib.sha256(reply.encode("utf-8")).hexdigest() if reply else "",
+        "normalized_reply_length": len(reply),
+        "repeated_from_previous": bool(reply and previous and reply == previous),
+    }
+
+
+def validate_fixed_long_conversation_dataset(dataset: dict[str, Any]) -> list[str]:
+    findings: list[str] = []
+    if dataset.get("schema_version") != FIXED_REPLAY_SCHEMA_VERSION:
+        findings.append("schema_version_invalid")
+    scenarios = dataset.get("scenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        findings.append("scenarios_missing")
+        scenarios = []
+    if int((dataset.get("manifest") or {}).get("scenario_count") or 0) != len(scenarios):
+        findings.append("scenario_count_mismatch")
+    scenario_uids = [str(item.get("scenario_uid") or "") for item in scenarios if isinstance(item, dict)]
+    if not all(scenario_uids) or len(scenario_uids) != len(set(scenario_uids)):
+        findings.append("scenario_uid_invalid")
+    for item in scenarios:
+        if not isinstance(item, dict):
+            findings.append("scenario_invalid")
+            continue
+        turns = item.get("fixed_buyer_turns")
+        if not isinstance(turns, list) or not turns:
+            findings.append("fixed_buyer_turns_missing")
+            continue
+        if any(
+            not isinstance(turn, dict)
+            or turn.get("speaker_role") != "BUYER"
+            or not _clean_turn_text(turn.get("text"))
+            for turn in turns
+        ):
+            findings.append("fixed_buyer_turn_invalid")
+    expected_hash = str((dataset.get("manifest") or {}).get("content_sha256") or "")
+    payload = dict(dataset)
+    manifest = dict(payload.get("manifest") or {})
+    manifest.pop("content_sha256", None)
+    payload["manifest"] = manifest
+    if not expected_hash or expected_hash != _content_hash(payload):
+        findings.append("content_sha256_mismatch")
+    if scan_long_conversation_privacy(dataset):
+        findings.append("privacy_scan_failed")
+    return sorted(set(findings))
+
+
+def classify_fixed_replay_breakpoint(observation: dict[str, Any]) -> str:
+    if observation.get("error_type") or int(observation.get("status_code") or 0) != 200:
+        return "runtime_or_provider_error"
+    if observation.get("context_status") in {"invalid", "missing"}:
+        return "source_context_missing"
+    if not observation.get("sidecar_present"):
+        return "sidecar_missing"
+    funnel = observation.get("evidence_funnel") or {}
+    earliest = str(funnel.get("earliest_breakpoint") or "")
+    mapping = {
+        "context_missing": "source_context_missing",
+        "product_identity_missing": "sidecar_missing",
+        "source_coverage_gap": "candidate_evidence_missing",
+        "evidence_role_ineligible": "evidence_role_ineligible",
+        "review_status_ineligible": "evidence_role_ineligible",
+        "identity_mismatch": "identity_mismatch",
+        "fact_type_mismatch": "fact_type_mismatch",
+        "placeholder_value": "placeholder_or_conflict_blocked",
+        "conflicting_evidence": "placeholder_or_conflict_blocked",
+        "convergence_disabled": "convergence_disabled",
+        "graph_selection_gap": "admitted_but_not_selected",
+    }
+    if earliest in mapping:
+        return mapping[earliest]
+    if not (observation.get("final_answer_audit") or {}).get("passed", True):
+        return "final_audit_block"
+    if not (observation.get("final_semantic_fit_audit") or {}).get("passed", True):
+        return "semantic_fit_failure"
+    if observation.get("requires_human_review"):
+        return "correct_safe_handoff"
+    return ""
+
+
+def summarize_fixed_replay_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    turns = [turn for result in results for turn in (result.get("turns") or [])]
+    observations = [turn.get("observation") or {} for turn in turns]
+
+    def ratio(predicate) -> dict[str, Any]:
+        numerator = sum(bool(predicate(item)) for item in observations)
+        denominator = len(observations)
+        return {
+            "numerator": numerator,
+            "denominator": denominator,
+            "rate": round(numerator / denominator, 4) if denominator else None,
+        }
+
+    latencies = sorted(float(item.get("latency_ms") or 0) for item in observations if item.get("latency_ms") is not None)
+    def percentile(fraction: float) -> float | None:
+        if not latencies:
+            return None
+        index = min(len(latencies) - 1, max(0, round((len(latencies) - 1) * fraction)))
+        return round(latencies[index], 1)
+
+    unsafe_auto_send = sum(
+        bool(item.get("can_send")) and (
+            item.get("unresolved_claim_count", 0) > 0
+            or not (item.get("final_answer_audit") or {}).get("passed", True)
+        )
+        for item in observations
+    )
+    unsupported_media = sum(
+        contains_unsupported_media_promise(
+            str(item.get("reply") or ""),
+            bool(item.get("attached_media_block_count")),
+        )
+        for item in observations
+    )
+    media_role_mismatch = sum(
+        bool({"unsupported_media_claim", "media_role_mismatch"}.intersection({
+            str(issue)
+            for issue in [
+                *((item.get("final_answer_audit") or {}).get("issues") or []),
+                *((item.get("final_semantic_fit_audit") or {}).get("issues") or []),
+            ]
+        }))
+        for item in observations
+    )
+    breakpoints = Counter(str(item.get("earliest_breakpoint") or "none") for item in observations)
+    repeated_numerator = sum(bool(item.get("repeated_from_previous")) for item in observations)
+    repeated_denominator = sum(
+        max(0, len(result.get("turns") or []) - 1)
+        for result in results
+    )
+    return {
+        "scenario_count": len(results),
+        "turn_count": len(observations),
+        "execution_success": ratio(lambda item: item.get("status_code") == 200 and not item.get("error_type") and bool(item.get("reply"))),
+        "empty_reply_count": sum(not bool(item.get("reply")) for item in observations),
+        "error_count": sum(bool(item.get("error_type")) or item.get("status_code") != 200 for item in observations),
+        "timeout_count": sum("timeout" in str(item.get("error_type") or "").lower() for item in observations),
+        "latency_ms": {"p50": percentile(0.5), "p95": percentile(0.95)},
+        "context_preservation_rate": ratio(lambda item: item.get("context_status") not in {"invalid", "missing"}),
+        "candidate_evidence_turn_rate": ratio(lambda item: int(item.get("candidate_evidence_count") or 0) > 0),
+        "admitted_evidence_turn_rate": ratio(lambda item: int(item.get("admitted_evidence_count") or 0) > 0),
+        "selected_evidence_turn_rate": ratio(lambda item: int(item.get("selected_evidence_count") or 0) > 0),
+        "selected_evidence_total_count": sum(int(item.get("selected_evidence_count") or 0) for item in observations),
+        "supported_low_risk_claim_count": None,
+        "unresolved_high_risk_claim_count": sum(int(item.get("unresolved_claim_count") or 0) for item in observations),
+        "conflicting_claim_block_count": sum(int(item.get("conflicting_claim_count") or 0) for item in observations),
+        "action_completion_rate": None,
+        "handoff_appropriateness": None,
+        "generic_handoff_rate": ratio(lambda item: item.get("requires_human_review") and not item.get("selected_evidence_count")),
+        "consecutive_reply_repetition_rate": {
+            "numerator": repeated_numerator,
+            "denominator": repeated_denominator,
+            "rate": round(repeated_numerator / repeated_denominator, 4) if repeated_denominator else None,
+        },
+        "query_reply_mismatch_count": sum(not (item.get("final_semantic_fit_audit") or {}).get("passed", True) for item in observations),
+        "unsupported_assertion_count": sum(not (item.get("final_answer_audit") or {}).get("passed", True) for item in observations),
+        "unsupported_media_promise_count": unsupported_media,
+        "media_role_mismatch_count": media_role_mismatch,
+        "actual_media_block_count": sum(int(item.get("attached_media_block_count") or 0) for item in observations),
+        "unsafe_auto_send_count": unsafe_auto_send,
+        "can_send_count": sum(bool(item.get("can_send")) for item in observations),
+        "requires_human_review_count": sum(bool(item.get("requires_human_review")) for item in observations),
+        "final_audit_failure_count": sum(not (item.get("final_answer_audit") or {}).get("passed", True) for item in observations),
+        "semantic_fit_failure_count": sum(not (item.get("final_semantic_fit_audit") or {}).get("passed", True) for item in observations),
+        "earliest_breakpoint_counts": dict(sorted(breakpoints.items())),
+        "semantic_pass": None,
+        "overall_pass": None,
+        "real_customer_accuracy": None,
+        "accuracy_claim_allowed": False,
     }
 
 
