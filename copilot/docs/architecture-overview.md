@@ -305,7 +305,7 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.8E Gold-30 Review Workbench Canary
+### Current Phase: 0.8G.1 Formal Knowledge Read Boundary Closure
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
 but its production flag remains disabled. Phase 0.8C repaired the proven
@@ -326,10 +326,24 @@ fails closed before calling the Agent, and real-customer accuracy remains
 to that exact 30-claim queue. An isolated 5012 canary is ready with matching
 boot/end source hashes, Access mode denies unauthenticated requests, and the
 role-policy tests cover operator, reviewer, supervisor, and admin boundaries.
-The pinned 5011 runtime still serves the older `17b82bb1` build. A real signed
-Cloudflare Access supervisor session and manual per-claim approval remain
-required before production deployment or Tier A execution; this is not a
-reply-policy change and does not justify an in-place 5011 restart.
+Before the Phase 0.8G.1 release migration, the pinned 5011 runtime served the
+older `17b82bb1` build. Release replacement must come from a clean committed
+worktree, keep Formal Evidence Convergence disabled, and pass local plus public
+health/version/readiness checks. A real signed Cloudflare Access supervisor
+session and manual per-claim approval remain required before Tier A execution;
+the operations release is not a reply-policy promotion.
+
+The fixed-turn Phase 0.8G comparison exposed a separate operations defect: an
+evaluation runtime that shared the formal database also started the resident
+DingTalk media refresh, whose explicit sync path commits `kb_product` updates.
+Phase 0.8G.1 assigns that mutation to the application background-write owner,
+not to `/api/analyze`. Evaluation and canary runtimes now enforce SQLite
+query-only mode on every pooled formal-knowledge connection and suppress that
+resident sync. Agent, Pipeline, readiness, and replay remain read owners;
+governance and explicit sync remain writable owners. Stable row-level
+fingerprints and sanitized DML diagnostics replace whole-file SQLite hashes for
+knowledge-mutation evidence. This operations correction does not enable Formal
+Evidence Convergence or change reply behavior.
 
 ### What Is Strong
 
@@ -655,6 +669,12 @@ review-only, protected database counts were unchanged, and the synthetic safety
 benchmark remained 5/5 and 22/22. Formal Evidence Convergence therefore remains
 disabled on 5011 pending an explicit canary decision, Evidence Action remains
 paused, and real customer accuracy remains `null`.
+
+The later fixed-turn replay uses isolated SQLite backup snapshots and a
+query-only knowledge connection. Idle, health/readiness/version, single-analyze,
+and OFF/ON controls must all show zero formal-table row changes and zero DML
+attempts before a multi-scenario result is accepted. A blocked DML statement is
+still an evaluation failure; unchanged final content is insufficient by itself.
 
 Tier D is reduced to canonical conversation, the formal Agent, deterministic
 turn checks, and at most one transcript semantic grader call per trial. Without

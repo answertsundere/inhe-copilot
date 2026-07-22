@@ -28,6 +28,7 @@ def test_runtime_version_exposes_only_public_deployment_metadata(monkeypatch):
         "boot_worktree_dirty": False,
         "boot_source_tree_sha256": "boot-hash",
         "build_identity_status": "clean_commit",
+        "formal_knowledge_query_only": True,
     })
     monkeypatch.setattr(runtime_routes, "_source_tree_sha256", lambda: "boot-hash")
     monkeypatch.setattr(runtime_routes, "_runtime_worktree_dirty", lambda: False)
@@ -57,6 +58,7 @@ def test_runtime_version_exposes_only_public_deployment_metadata(monkeypatch):
         "action_policy_provider_identity", "evidence_action_shadow_status", "readiness", "feature_flags",
         "worktree_dirty", "source_tree_sha256", "boot_worktree_dirty", "boot_source_tree_sha256",
         "current_source_tree_sha256", "current_worktree_dirty", "source_tree_drift", "build_identity_status",
+        "formal_knowledge_query_only",
     }
     assert isinstance(payload["feature_flags"], dict)
     assert payload["formal_provider_identity"] == {
@@ -68,6 +70,7 @@ def test_runtime_version_exposes_only_public_deployment_metadata(monkeypatch):
     }
     assert isinstance(payload["source_tree_sha256"], str)
     assert payload["build_identity_status"] in {"clean_commit", "dirty_candidate", "source_identity_unavailable"}
+    assert payload["formal_knowledge_query_only"] is True
     assert "database" not in payload["readiness"]
     assert "knowledge" not in payload["readiness"]
 
@@ -86,6 +89,7 @@ def test_runtime_identity_keeps_boot_hash_and_reports_disk_drift(monkeypatch):
         "boot_worktree_dirty": True,
         "boot_source_tree_sha256": "hash-a",
         "build_identity_status": "dirty_candidate",
+        "formal_knowledge_query_only": False,
     })
     monkeypatch.setattr(runtime_routes, "_source_tree_sha256", lambda: "hash-b")
     monkeypatch.setattr(runtime_routes, "_runtime_worktree_dirty", lambda: True)

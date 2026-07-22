@@ -188,6 +188,23 @@ def test_media_role_mismatch_in_either_audit_fails_layer_gate():
     }
 
 
+def test_query_only_dml_attempt_fails_layer_gate_without_content_change():
+    summary = {
+        "error_count": 0,
+        "empty_reply_count": 0,
+        "timeout_count": 0,
+        "unsupported_media_promise_count": 0,
+        "media_role_mismatch_count": 0,
+        "unsafe_auto_send_count": 0,
+        "formal_knowledge_write_attempt_count": 1,
+    }
+
+    assert _layer_gate(summary, knowledge_db_changed=False) == {
+        "passed": False,
+        "blockers": ["formal_knowledge_write_attempted"],
+    }
+
+
 def test_runtime_contract_requires_exact_mode_and_pinned_identity():
     runtime = {
         "status": "available",
@@ -195,6 +212,7 @@ def test_runtime_contract_requires_exact_mode_and_pinned_identity():
         "source_tree_sha256": "hash-a",
         "source_tree_drift": False,
         "formal_model": "Model-A",
+        "formal_knowledge_query_only": True,
         "feature_flags": {"formal_evidence_convergence": False},
         "readiness": {"ready": True},
     }
@@ -212,6 +230,13 @@ def test_runtime_contract_requires_exact_mode_and_pinned_identity():
         expected_source_hash="hash-a",
         expected_model="Model-A",
     )
+    assert "formal_knowledge_query_only_required" in _runtime_contract(
+        {**runtime, "formal_knowledge_query_only": False},
+        run_mode="OFF",
+        expected_commit="commit-a",
+        expected_source_hash="hash-a",
+        expected_model="Model-A",
+    )
 
 
 def test_formal_knowledge_fingerprint_ignores_runtime_tables_but_detects_fact_changes(tmp_path):
@@ -222,14 +247,14 @@ def test_formal_knowledge_fingerprint_ignores_runtime_tables_but_detects_fact_ch
         connection.execute(f'INSERT INTO "{table}" (content) VALUES (?)', (f"{table}-fact",))
     connection.execute("CREATE TABLE eval_traces (id INTEGER PRIMARY KEY, payload TEXT)")
     connection.commit()
-    before = _formal_knowledge_fingerprint(database)
+    before = _formal_knowledge_fingerprint(database, hmac_key="test-key")
     connection.execute("INSERT INTO eval_traces (payload) VALUES ('runtime-only')")
     connection.commit()
-    assert _formal_knowledge_fingerprint(database) == before
+    assert _formal_knowledge_fingerprint(database, hmac_key="test-key") == before
     connection.execute("UPDATE kb_product SET content='changed-fact' WHERE id=1")
     connection.commit()
     connection.close()
-    assert _formal_knowledge_fingerprint(database) != before
+    assert _formal_knowledge_fingerprint(database, hmac_key="test-key") != before
 
 
 def test_paired_comparison_fails_on_unsafe_on_regression():

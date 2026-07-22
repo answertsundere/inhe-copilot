@@ -2,14 +2,32 @@
 客服知识库数据库配置 - SQLite + SQLAlchemy
 """
 
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import KNOWLEDGE_DB_PATH
+from app.services.formal_knowledge_database_guard_service import (
+    configure_knowledge_engine_guards,
+    formal_kb_audit_hmac_key,
+)
+
+
+KNOWLEDGE_DB_QUERY_ONLY = os.environ.get(
+    "COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
 
 engine = create_engine(
     f"sqlite:///{KNOWLEDGE_DB_PATH}",
     echo=False,
+    hide_parameters=True,
     connect_args={"check_same_thread": False},
+)
+configure_knowledge_engine_guards(
+    engine,
+    query_only=KNOWLEDGE_DB_QUERY_ONLY,
+    dml_diagnostic_path=os.environ.get("COPILOT_FORMAL_KB_DML_DIAGNOSTIC_PATH", "").strip(),
+    hmac_key=formal_kb_audit_hmac_key(),
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
@@ -279,5 +297,10 @@ def _migrate_add_columns():
 
 def init_db():
     """创建所有表（如果不存在）并执行迁移"""
+    if KNOWLEDGE_DB_QUERY_ONLY:
+        with engine.connect() as connection:
+            if int(connection.exec_driver_sql("PRAGMA query_only").scalar() or 0) != 1:
+                raise RuntimeError("formal_knowledge_query_only_not_enforced")
+        return
     Base.metadata.create_all(bind=engine)
     _migrate_add_columns()

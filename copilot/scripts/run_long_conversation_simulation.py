@@ -258,6 +258,7 @@ def _report_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
         "current_source_tree_sha256": _require_sha256(runtime.get("current_source_tree_sha256"), "runtime_current_source_tree_sha256"),
         "source_tree_drift": runtime.get("source_tree_drift"),
         "build_identity_status": str(runtime.get("build_identity_status") or ""),
+        "formal_knowledge_query_only": runtime.get("formal_knowledge_query_only") is True,
         "feature_flags": dict(runtime.get("feature_flags") or {}),
         "readiness": {
             "ready": bool((runtime.get("readiness") or {}).get("ready")),
@@ -399,6 +400,7 @@ def _runtime_metadata(analyze_url: str, timeout: int) -> dict[str, Any]:
         "current_source_tree_sha256": str(version.get("current_source_tree_sha256") or ""),
         "source_tree_drift": version.get("source_tree_drift"),
         "build_identity_status": str(version.get("build_identity_status") or ""),
+        "formal_knowledge_query_only": version.get("formal_knowledge_query_only") is True,
         "feature_flags": version.get("feature_flags") if isinstance(version.get("feature_flags"), dict) else {},
         "readiness": readiness,
     }

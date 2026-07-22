@@ -160,6 +160,8 @@ def _capture_boot_build_identity() -> dict[str, str | bool | None | dict[str, bo
         identity_status = "clean_commit"
     else:
         identity_status = "source_identity_unavailable"
+    from app.db import KNOWLEDGE_DB_QUERY_ONLY
+
     return {
         "app_version": APP_VERSION,
         "runtime_commit": _git_metadata("rev-parse", "HEAD"),
@@ -179,6 +181,7 @@ def _capture_boot_build_identity() -> dict[str, str | bool | None | dict[str, bo
         "boot_worktree_dirty": dirty,
         "boot_source_tree_sha256": source_hash,
         "build_identity_status": identity_status,
+        "formal_knowledge_query_only": bool(KNOWLEDGE_DB_QUERY_ONLY),
     }
 
 
@@ -212,6 +215,7 @@ def _runtime_identity() -> dict[str, str | bool | None | dict[str, bool]]:
         "current_worktree_dirty": current_dirty,
         "source_tree_drift": source_drift,
         "build_identity_status": str(boot.get("build_identity_status") or "source_identity_unavailable"),
+        "formal_knowledge_query_only": bool(boot.get("formal_knowledge_query_only")),
     }
 
 

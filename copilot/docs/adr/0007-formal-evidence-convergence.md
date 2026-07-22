@@ -233,3 +233,30 @@ This is a capability and delivery-contract result, not real-customer accuracy.
 The rollback boundary remains
 `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false`; 5011 keeps that value, and
 Evidence Action remains paused and unqualified.
+
+## Formal Knowledge Read Boundary
+
+Formal Evidence Convergence consumes published knowledge but does not own any
+knowledge mutation. Agent API, Analysis Pipeline, Product Context Pack,
+admission, final audit, readiness, and evaluation replay are read owners.
+Explicit governance and synchronization workflows are the writable owners.
+
+Phase 0.8G.1 found that an evaluation application boot also launched the
+resident DingTalk media refresh. That background path explicitly invokes the
+database-updating media synchronization script and commits `kb_product` rows.
+The earliest owner classification is therefore `application_background_write`,
+not `analyze_request_write` and not a fingerprint false positive.
+
+Isolated evaluation runtimes enforce `PRAGMA query_only=ON` on every pooled
+formal-knowledge connection and do not launch resident media refresh/sync.
+Optional DML observation is diagnostic-only and excludes SQL text, parameters,
+and business values. Any DML attempt is a failed evaluation contract even when
+SQLite blocks the statement.
+
+Formal-table mutation checks use SQLite backup snapshots and canonical
+row-level keyed fingerprints. They include schema and row counts and report only
+pseudonymous row identities, changed column names, and before/after hashes.
+Whole-file SQLite hashes are not accepted as evidence of a knowledge-content
+change because storage pages, WAL state, statistics, and unrelated tables can
+change independently. This read boundary does not alter evidence admission,
+reply generation, safety gates, or the production feature flag.

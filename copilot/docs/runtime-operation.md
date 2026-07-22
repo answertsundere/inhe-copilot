@@ -283,7 +283,29 @@ send promise. Knowledge-write detection hashes the rows of `kb_product`,
 `kb_qa`, `knowledge_entries`, and `knowledge_chunks` through a query-only
 connection; whole-file SQLite hashes are not used because evaluation and trace
 tables share the file. The initial diagnostic found a media-role failure at
-three scenarios. After evaluator correction, the validated rerun stopped at
-the first OFF tier because `kb_product` content changed. Nine scenarios were
-not started. After the run, stop 5012 and leave the original 5011 process and
-production convergence flag unchanged.
+three scenarios. After evaluator correction, an earlier run observed
+`kb_product` changes during the request window. Phase 0.8G.1 traced the earliest
+write owner to the resident DingTalk media refresh started by application boot:
+the refresh invokes the explicit media sync path and commits `kb_product` rows.
+The analysis request itself issued no formal-knowledge DML in isolated controls.
+
+Evaluation runtimes must set `COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY=true` for
+every pooled knowledge-database connection. Query-only mode skips resident
+media refresh/sync startup, verifies `PRAGMA query_only=1`, and lets SQLite
+reject any remaining DML. Optional diagnostics record only operation class,
+logical table, HMAC correlation, thread/task kind, and a sanitized application
+stack. SQL text, parameters, and field values are prohibited. A DML attempt
+fails replay even when SQLite blocks it and final row hashes are unchanged.
+
+Knowledge comparison uses an SQLite backup snapshot plus deterministic
+row-level fingerprints for the four formal knowledge tables. Rows are
+primary-key ordered; JSON, numbers, nulls, text, and timestamps are canonicalized
+before keyed hashing. Reports expose only HMAC row identities, changed column
+names, and before/after hashes. Whole-file SQLite hashes are not evidence of a
+knowledge change because WAL, page layout, statistics, and non-knowledge tables
+may change independently.
+
+The writable owner remains the explicit governance/sync workflow. Agent API,
+Pipeline, replay, readiness, and evidence admission are formal-knowledge
+readers. After each evaluation run, stop 5012 and keep production convergence
+disabled unless a separate promotion decision is approved.

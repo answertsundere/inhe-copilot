@@ -1051,12 +1051,14 @@ def test_report_runtime_preserves_only_typed_sha256_fields():
         "source_tree_sha256": digest,
         "boot_source_tree_sha256": digest,
         "current_source_tree_sha256": digest,
+        "formal_knowledge_query_only": True,
         "readiness": {"ready": True, "status": "ready", "reasons": []},
     }
     projected = runner._report_runtime(runtime)
     assert projected["source_tree_sha256"] == digest
     assert projected["boot_source_tree_sha256"] == digest
     assert projected["current_source_tree_sha256"] == digest
+    assert projected["formal_knowledge_query_only"] is True
 
     with pytest.raises(ValueError, match="runtime_source_tree_sha256_invalid"):
         runner._report_runtime({**runtime, "source_tree_sha256": "12345678901234567890"})

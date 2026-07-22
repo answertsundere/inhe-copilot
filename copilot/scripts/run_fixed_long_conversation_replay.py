@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
-import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +20,11 @@ from app.services.long_conversation_simulation_service import (  # noqa: E402
     conversation_content_digest,
     summarize_fixed_replay_results,
     validate_fixed_long_conversation_dataset,
+)
+from app.services.formal_knowledge_database_guard_service import (  # noqa: E402
+    compare_formal_knowledge_fingerprints,
+    fingerprint_formal_knowledge_tables,
+    formal_kb_audit_hmac_key,
 )
 from app.services.real_accuracy_gold_set_service import (  # noqa: E402
     build_gold_dataset,
@@ -41,10 +46,12 @@ REPORT_SCHEMA_VERSION = "fixed-long-conversation-replay-report/v1"
 CHECKPOINT_SCHEMA_VERSION = "fixed-long-conversation-replay-checkpoint/v1"
 _RUNNER_SOURCE_FILES = (
     "scripts/run_fixed_long_conversation_replay.py",
+    "scripts/run_long_conversation_simulation.py",
     "app/services/long_conversation_simulation_service.py",
     "app/services/canonical_conversation_turn_service.py",
     "app/services/real_accuracy_privacy_service.py",
     "app/services/admitted_answer_context_service.py",
+    "app/services/formal_knowledge_database_guard_service.py",
 )
 _FORMAL_KNOWLEDGE_TABLES = (
     "kb_product",
@@ -59,56 +66,33 @@ def _canonical_hash(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _formal_knowledge_fingerprint(path: Path) -> dict[str, Any]:
-    """Hash formal knowledge rows without treating runtime-table writes as KB writes."""
-    connection = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    connection.execute("PRAGMA query_only=ON")
-    table_fingerprints: list[dict[str, Any]] = []
-    composite = hashlib.sha256()
-    try:
-        for table in _FORMAL_KNOWLEDGE_TABLES:
-            exists = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                (table,),
-            ).fetchone()
-            if not exists:
-                table_fingerprints.append({"table": table, "exists": False, "row_count": 0, "content_sha256": ""})
-                composite.update(f"{table}:missing\n".encode("utf-8"))
-                continue
-            columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info("{table}")')]
-            table_hash = hashlib.sha256()
-            row_count = 0
-            for row in connection.execute(f'SELECT * FROM "{table}" ORDER BY rowid'):
-                row_count += 1
-                for value in row:
-                    if value is None:
-                        payload = b"N"
-                    elif isinstance(value, bytes):
-                        payload = b"B" + value
-                    else:
-                        payload = f"{type(value).__name__}:{value}".encode("utf-8")
-                    table_hash.update(str(len(payload)).encode("ascii"))
-                    table_hash.update(b":")
-                    table_hash.update(payload)
-                    table_hash.update(b"\0")
-                table_hash.update(b"\n")
-            content_sha256 = table_hash.hexdigest()
-            schema_sha256 = hashlib.sha256("|".join(columns).encode("utf-8")).hexdigest()
-            table_fingerprints.append({
-                "table": table,
-                "exists": True,
-                "row_count": row_count,
-                "schema_sha256": schema_sha256,
-                "content_sha256": content_sha256,
-            })
-            composite.update(f"{table}:{row_count}:{schema_sha256}:{content_sha256}\n".encode("utf-8"))
-    finally:
-        connection.close()
+def _formal_knowledge_fingerprint(path: Path, *, hmac_key: str = "") -> dict[str, Any]:
+    return fingerprint_formal_knowledge_tables(
+        path,
+        hmac_key=hmac_key or formal_kb_audit_hmac_key(),
+        tables=_FORMAL_KNOWLEDGE_TABLES,
+    )
+
+
+def _report_fingerprint(fingerprint: dict[str, Any]) -> dict[str, Any]:
     return {
-        "basename": path.name,
-        "formal_tables": table_fingerprints,
-        "formal_content_sha256": composite.hexdigest(),
+        **{key: value for key, value in fingerprint.items() if key != "formal_tables"},
+        "formal_tables": [
+            {key: value for key, value in table.items() if key != "rows"}
+            for table in fingerprint.get("formal_tables") or []
+        ],
     }
+
+
+def _dml_diagnostic_events(path_text: str, start_offset: int) -> list[dict[str, Any]]:
+    if not path_text:
+        return []
+    path = Path(path_text)
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8") as handle:
+        handle.seek(start_offset)
+        return [json.loads(line) for line in handle if line.strip()]
 
 
 def _runner_source_hash() -> str:
@@ -184,6 +168,8 @@ def _runtime_contract(
         findings.append("formal_model_mismatch")
     if runtime.get("source_tree_drift") is not False:
         findings.append("runtime_source_tree_drift")
+    if runtime.get("formal_knowledge_query_only") is not True:
+        findings.append("formal_knowledge_query_only_required")
     if bool(flags.get("formal_evidence_convergence")) is not expected_enabled:
         findings.append("formal_evidence_convergence_mode_mismatch")
     return findings
@@ -205,6 +191,8 @@ def _layer_gate(summary: dict[str, Any], *, knowledge_db_changed: bool) -> dict[
         blockers.append("unsafe_auto_send")
     if knowledge_db_changed:
         blockers.append("knowledge_database_changed")
+    if int(summary.get("formal_knowledge_write_attempt_count") or 0) > 0:
+        blockers.append("formal_knowledge_write_attempted")
     return {"passed": not blockers, "blockers": sorted(set(blockers))}
 
 
@@ -242,6 +230,8 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     knowledge_before = _formal_knowledge_fingerprint(knowledge_db_path)
     results: list[dict[str, Any]] = []
     checkpoint_path = Path(args.checkpoint)
+    dml_path = str(getattr(args, "dml_diagnostics", "") or "")
+    dml_offset = Path(dml_path).stat().st_size if dml_path and Path(dml_path).exists() else 0
 
     for scenario in scenarios:
         scenario_uid = str(scenario["scenario_uid"])
@@ -315,8 +305,11 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     knowledge_after = _formal_knowledge_fingerprint(knowledge_db_path)
     summary = summarize_fixed_replay_results(results)
-    knowledge_changed = knowledge_before != knowledge_after
-    summary["formal_knowledge_write_attempt_count"] = int(knowledge_changed)
+    knowledge_diff = compare_formal_knowledge_fingerprints(knowledge_before, knowledge_after)
+    knowledge_changed = bool(knowledge_diff["changed"])
+    dml_events = _dml_diagnostic_events(dml_path, dml_offset)
+    summary["formal_knowledge_write_attempt_count"] = len(dml_events)
+    summary["formal_knowledge_write_count"] = int(knowledge_diff["changed_row_count"])
     summary["grader_status"] = "not_configured"
     summary["action_completion_rate"] = None
     summary["semantic_pass"] = None
@@ -341,8 +334,16 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "fixed_buyer_turn_count": (dataset.get("manifest") or {}).get("fixed_buyer_turn_count"),
         },
         "source_database": _source_db_fingerprint(str(source_db_path)),
-        "formal_knowledge_database_before": knowledge_before,
-        "formal_knowledge_database_after": knowledge_after,
+        "formal_knowledge_database_before": _report_fingerprint(knowledge_before),
+        "formal_knowledge_database_after": _report_fingerprint(knowledge_after),
+        "formal_knowledge_database_diff": knowledge_diff,
+        "formal_knowledge_dml_diagnostics": {
+            "configured": bool(dml_path),
+            "attempt_count": len(dml_events),
+            "operation_counts": dict(sorted(Counter(item.get("operation") for item in dml_events).items())),
+            "table_counts": dict(sorted(Counter(item.get("table") for item in dml_events).items())),
+            "events": dml_events,
+        },
         "runtime": runtime,
         "runner_identity": {
             "git_commit": _git_text("rev-parse", "HEAD"),
@@ -383,6 +384,7 @@ def main() -> int:
     parser.add_argument("--expected-source-tree-sha256", default="")
     parser.add_argument("--expected-formal-model", default="")
     parser.add_argument("--expected-runner-source-sha256", default="")
+    parser.add_argument("--dml-diagnostics", default="")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--json-output", required=True)
     args = parser.parse_args()

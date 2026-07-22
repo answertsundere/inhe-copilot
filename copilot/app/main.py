@@ -814,7 +814,11 @@ def create_app():
         return resp
 
     # 启动后台每日同步线程（daemon=True 不会阻塞服务退出）
-    _start_daily_sync_thread()
-    _start_media_auto_refresh_thread()
+    from app.db import KNOWLEDGE_DB_QUERY_ONLY
+    if KNOWLEDGE_DB_QUERY_ONLY:
+        logger.info("Formal knowledge query-only mode: writable background workers disabled")
+    else:
+        _start_daily_sync_thread()
+        _start_media_auto_refresh_thread()
 
     return app
