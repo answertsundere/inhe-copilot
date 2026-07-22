@@ -37,6 +37,37 @@ const claimKindText: Record<string, string> = {
   unresolved_claim: '待确认结论', prohibited: '禁止断言', delivery_constraint: '发送条件',
   context_requirement: '上下文要求', handoff: '人工跟进',
 }
+const attributeText: Record<string, string> = {
+  requested_product_fact: '买家询问的商品事实',
+  formal_evidence: '正式商品证据',
+  low_risk_supported_part: '可核实的低风险事实',
+  high_risk_conclusion: '高风险结论',
+  order_or_logistics_state: '订单或物流状态',
+  live_state: '实时业务状态',
+  aftersales_evidence: '售后证据核对',
+  refund_replacement_compensation: '退款、换货、补发或赔付结论',
+  current_rule: '当前活动或开票规则',
+  controlled_benefit: '需授权的优惠、赠品或开票结果',
+  installation_or_accessory_context: '安装步骤、部位或配件信息',
+  high_risk_installation: '高风险安装或结构结论',
+  matching_media_role: '匹配的图片或视频素材',
+  media_delivery: '素材实际发送状态',
+  missing_context: '待补充的必要上下文',
+}
+const actionText: Record<string, string> = {
+  use_identity_scoped_evidence: '使用当前商品的已审核证据',
+  use_sidecar_first: '优先使用已有订单与商品信息',
+  verify_live_state: '查询并核对实时状态',
+  review_existing_evidence: '查看现有凭证',
+  verify_order_and_issue: '核对订单与具体问题',
+  verify_current_rule: '核对当前活动或开票规则',
+  locate_step_or_component: '确认安装步骤、卡住位置或配件',
+  review_matching_material: '查看同款安装资料',
+  verify_media_role_and_delivery_block: '核对素材用途与实际发送状态',
+  request_minimum_missing_context: '请买家补充最少必要信息',
+}
+const attributeOptions = Object.entries(attributeText).map(([value, label]) => ({ value, label }))
+const actionOptions = Object.entries(actionText).map(([value, label]) => ({ value, label }))
 const canApprove = computed(() => form.claims.length > 0 && form.targetTurnUids.length > 0)
 const activeGroup = computed(() => groups.value.find((item) => item.id === strategyFilter.value))
 const batchReadyIds = computed(() => selectedCaseUids.value.filter((uid) => {
@@ -46,6 +77,21 @@ const batchReadyIds = computed(() => selectedCaseUids.value.filter((uid) => {
 
 function split(value: string) { return value.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean) }
 function join(value: string[] | undefined) { return (value || []).join('，') }
+function actionSummary(values: string[] | undefined) {
+  return (values || []).map((value) => actionText[value] || '其他客服动作').join('、')
+}
+function attributeOptionsFor(value: string) {
+  return !value || attributeText[value]
+    ? attributeOptions
+    : [...attributeOptions, { value, label: '其他审核项（已保留原值）' }]
+}
+function actionOptionsFor(values: string[] | undefined) {
+  const unknown = (values || []).filter((value) => !actionText[value])
+  return [
+    ...actionOptions,
+    ...unknown.map((value, index) => ({ value, label: `其他客服动作 ${index + 1}（已保留原值）` })),
+  ]
+}
 function evidenceSummary(item: any) {
   const count = item?.formal_evidence_summary?.length || 0
   return count ? `已关联 ${count} 条正式证据` : '未发现可直接支持的正式商品事实'
@@ -164,8 +210,20 @@ onMounted(load)
         <h3>待审核原子断言</h3>
         <article v-for="(claim, index) in form.claims" :key="claim.claim_uid" class="claim-form">
           <div class="claim-heading"><strong>{{ claimKindText[claim.claim_kind] || '其他断言' }}</strong><el-tag size="small">{{ claim.expected_status === 'supported' ? '有证据支持' : claim.expected_status === 'unresolved' ? '无法确认' : claim.expected_status === 'conflicting' ? '证据冲突' : '禁止断言' }}</el-tag></div>
-          <el-row :gutter="12"><el-col :span="12"><el-input v-model="claim.attribute_key" placeholder="审核属性" /></el-col><el-col :span="12"><el-input :model-value="join(claim.required_action_points)" @update:model-value="claim.required_action_points = split($event)" placeholder="需要完成的客服动作，用逗号分隔" /></el-col></el-row>
-          <el-row :gutter="12"><el-col :span="12"><el-input :model-value="join(claim.forbidden_claims)" @update:model-value="claim.forbidden_claims = split($event)" placeholder="不能承诺的内容，用逗号分隔" /></el-col><el-col :span="12"><el-input :model-value="join(claim.supporting_evidence_uids)" @update:model-value="claim.supporting_evidence_uids = split($event)" placeholder="正式证据 UID（支持型商品事实必填）" /></el-col></el-row>
+          <el-row :gutter="12">
+            <el-col :span="12">
+              <el-select v-model="claim.attribute_key" placeholder="选择审核内容" style="width: 100%">
+                <el-option v-for="option in attributeOptionsFor(claim.attribute_key)" :key="option.value" :label="option.label" :value="option.value" />
+              </el-select>
+            </el-col>
+            <el-col :span="12">
+              <el-select v-model="claim.required_action_points" multiple collapse-tags collapse-tags-tooltip placeholder="选择客服需完成的动作" style="width: 100%">
+                <el-option v-for="option in actionOptionsFor(claim.required_action_points)" :key="option.value" :label="option.label" :value="option.value" />
+              </el-select>
+              <small v-if="claim.required_action_points.length" class="selection-summary">需完成：{{ actionSummary(claim.required_action_points) }}</small>
+            </el-col>
+          </el-row>
+          <el-row :gutter="12"><el-col :span="12"><el-input :model-value="join(claim.forbidden_claims)" @update:model-value="claim.forbidden_claims = split($event)" placeholder="不能承诺的内容，用逗号分隔" /></el-col><el-col :span="12"><el-input :model-value="join(claim.supporting_evidence_uids)" @update:model-value="claim.supporting_evidence_uids = split($event)" placeholder="支持依据编号（商品事实类必填）" /></el-col></el-row>
           <el-checkbox v-model="claim.must_handoff">必须人工复核</el-checkbox><el-checkbox v-model="claim.partial_answer_allowed">允许保留已支持部分</el-checkbox><el-button link type="danger" @click="form.claims.splice(index, 1)">删除</el-button>
         </article>
         <div class="actions"><el-button :loading="saving" @click="save('draft')">保存草稿</el-button><el-button :disabled="!canApprove" :loading="saving" @click="save('reviewed')">提交复核</el-button><el-button type="primary" :disabled="!canApprove || selected.privacy_review_required" :loading="saving" @click="save('approved')">主管逐条批准</el-button></div>
@@ -180,5 +238,6 @@ onMounted(load)
 .progress-line { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .workbench-grid { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; min-height: 600px; margin-top: 16px; }.case-list { border-right: 1px solid #e4e7ed; overflow: auto; }.case-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px; align-items: start; border-bottom: 1px solid #eef0f3; padding: 10px; }.case-row:has(button:hover), .case-row.active { background: #ecf5ff; }.case-row button { display: grid; gap: 5px; border: 0; background: transparent; text-align: left; cursor: pointer; min-width: 0; }.case-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #475467; }.case-row small { color: #667085; }
 .case-detail { min-width: 0; }.case-detail h3 { font-size: 15px; margin: 18px 0 8px; }.metadata-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #667085; }.turns { background: #f8fafc; border: 1px solid #e4e7ed; padding: 8px 14px; max-height: 420px; overflow: auto; }.turn-row { display: grid; grid-template-columns: 28px 48px minmax(0, 1fr); align-items: start; gap: 4px; margin: 4px -6px; padding: 7px 6px; border-radius: 4px; }.turn-row.target { background: #eaf3ff; }.turn-spacer { width: 28px; }.claim-form { border: 1px solid #dcdfe6; padding: 12px; margin-bottom: 10px; }.claim-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }.claim-form :deep(.el-row) { margin-bottom: 10px; }.actions { display: flex; gap: 10px; margin-top: 18px; }
+.selection-summary { display: block; color: #667085; line-height: 1.5; margin-top: 5px; }
 @media (max-width: 800px) { .accuracy-workbench { padding: 14px; }.page-header { display: grid; }.header-controls { justify-content: flex-start; }.workbench-grid { grid-template-columns: 1fr; }.case-list { border-right: 0; max-height: 260px; }.claim-form :deep(.el-col) { width: 100%; max-width: 100%; flex: 0 0 100%; margin-bottom: 8px; } }
 </style>
