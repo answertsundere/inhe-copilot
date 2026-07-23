@@ -1,82 +1,80 @@
 # Module Index
 
-Use this index to find the owner of a behavior before changing code. A behavior
-should have one authoritative owner even when several modules consume it.
+Use this index to find the owner of a behavior before changing code. Dynamic
+experiment results belong in evaluation reports, not in this ownership map.
 
-| Area | Current owner or entry point | Status | Boundary |
+## Active Agent Core
+
+| Capability | Authoritative owner | Status | Boundary |
 |---|---|---|---|
-| Web application and dependency setup | `app/main.py` | legacy/converging | Must not remain the worker scheduler or domain service locator |
-| Management access control | `app/api/admin_auth.py`, app-level endpoint/method registry | formal / external deployment gate | Cloudflare Access JWT verification, explicit allowlist RBAC, decorator metadata, fail-closed `default_protected`, browser-write source checks, route inventory provenance, and HMAC-pseudonymised audit events; role/name request headers are not trusted. Detailed runtime diagnostics are `admin_only`. A public workbench additionally requires a healthy Cloudflare Tunnel connector; a local listener alone is not deployment evidence. |
-| Public analyze API | `app/api/analyze_routes.py` | formal | Parses HTTP input and presents the canonical Pipeline decision |
-| Sidecar/copilot API | `app/api/copilot_routes.py` | formal | Normalizes sidecar context, calls Pipeline, then adapts panel presentation |
-| Analysis pipeline | `app/services/analysis_pipeline_service.py` | formal | Owns canonical input, graph-to-delivery stage order, the opt-in model-first candidate stage, shadow isolation, and safe final-stage degradation for API, copilot, replay, and benchmark. Candidate composition remains disabled by default and review-only when enabled. |
-| Canonical conversation turns | `app/services/canonical_conversation_turn_service.py` | formal utility | Normalizes bounded role-aware `{role, content, turn_uid, turn_index}` context before Pipeline understanding; known evaluation sources fail closed on malformed history and legacy callers are explicitly degraded. It owns field-aware provider projection for prose, fenced/embedded JSON, repeated JSON blocks, and labelled identifiers; malformed JSON is not repaired. |
-| Formal LLM transport | `app/llm/client.py` | formal | Owns OpenAI-compatible provider transport and applies the canonical field-aware provider-boundary projection to plain, mixed JSON, and multimodal text content. MiniMax endpoints use model-aware thinking controls, separated reasoning, complete-JSON normalization, a bounded minimum output budget, and fail-closed empty/truncated response checks; credentials remain runtime-only. Consumers must not call the raw SDK transport directly. |
-| Shared execution | `app/services/analysis_execution_service.py` | formal, Phase 0.1 contract complete | Owns graph execution, trace lifecycle, one pre-persistence post-processor call, and final response persistence |
-| Agent graph | `app/agent/graph.py`, `app/agent/nodes/` | formal but overweight | Stateful orchestration, identity/tool routing, bounded retries, and domain-flow transitions only; context, evidence, safety, delivery, and platform contracts require one authoritative owner outside routing functions |
-| Product identity | product identity services and resolver nodes | formal | External title -> JST/internal identity -> scoped evidence |
-| Fact classification and high-risk claims | `app/services/fact_type_service.py`, `app/services/fact_type_alias_service.py`, and turn understanding | formal but fragmented | `fact_type_alias_service` owns canonical high-risk claim normalization for admission, final audit, and formal QA; broader FactType ownership remains converging |
-| Retrieval interface | `app/retrieval/` | formal SQLite | Backend selection must be explicit and fail closed |
-| pgvector retrieval | pgvector services and scripts | shadow | Diagnostic only until formal retriever acceptance |
-| Product evidence pack | `app/services/product_context_pack_service.py` | formal | Preserve fact, service action, and media role separation. Compact facts retain only explicit structured-field review/direct/identity/attribute/provenance protocol metadata; compaction never infers a direct role from source, table, publication state, or text. |
-| No-evidence behavior | `app/services/no_evidence_reply_policy_service.py` | formal but oversized | Select safe strategy; do not become a second fact engine |
-| Customer-facing handoff copy | `app/services/customer_facing_safe_handoff_service.py` | formal | Translate a decision into natural wording without changing risk |
-| Claim polarity | `app/services/claim_polarity_service.py` | formal utility | Distinguish affirmative claims from safe negation/uncertainty; consumers still own their claim lists and decisions |
-| Final answer audit | `app/services/final_answer_auditor.py` | formal | Check claim-level high-risk evidence, exact attached-media wording, and direct evidence for high-risk installation prescriptions; avoid duplicating routing |
-| Semantic fit | `app/services/final_semantic_quality_service.py` | formal | Verify answer-question fit after facts and policy are settled |
-| Final response orchestration | `app/services/final_response_orchestrator.py` | formal | One authoritative final stage shared by every entry point; with explicit Evidence Convergence opt-in it may render a bounded, non-sendable claim-level partial answer, preserve supported clauses across stylistic/semantic fallback, and re-audit the result. Blocked, unresolved high-risk, audit-failed, and non-fact-only outcomes are normalised to non-sendable human review. |
-| Model-first answer composer | `app/services/model_first_answer_composer_service.py`, `scripts/diagnose_reply_ownership.py`, `scripts/compare_model_first_answer_composer.py` | opt-in candidate / production disabled | Organizes one natural reply from the existing Minimal Decision Context after evidence admission. It must cite every supported evidence UID, declare every unresolved claim type, avoid unsupported media/process language, and remain `can_send=false`/human-review-only. It owns neither evidence, safety, tools, media, nor delivery. The v4.2 comparison is development diagnostic only. |
-| Answer Memory | Answer Memory model/services | shadow/reference | Handling and style only, never product truth or send permission |
-| Grounded Reasoning Draft | `app/services/grounded_reasoning_draft_service.py`, `scripts/*grounded_reasoning_positive_eval*` | shadow/blocked from promotion | Owns admitted-fact planning from structured requested attributes and deterministic segmented-draft evaluation; every factual clause retains evidence UID provenance and cannot affect formal decisions |
-| Admitted answer context | `app/services/admitted_answer_context_service.py`, `scripts/trace_evidence_convergence.py`, `scripts/export_real_derived_evidence_fixture.py`, `scripts/run_real_derived_evidence_vertical_slice.py` | formal utility / opt-in convergence (runtime disabled) | Owns identity-, review-, role-, claim-, placeholder-, conflict-, and origin-dedup-aware evidence admission; emits deterministic canonical selected evidence only from admitted direct facts when `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED` is enabled, while actions and media remain non-factual context roles. The Phase 0.8C query-only slice selected 12 products/15 facts/3 fact types and passed 15/15 offline plus seven negative controls; isolated API gates passed 3/3 and 15/15 with zero auto-send, media blocks, or knowledge writes. Dimension attribute coverage remains incomplete and the production flag remains false. Real-derived validation is HMAC-pseudonymised and is not real-customer accuracy. |
-| LLM decision proposal | `app/services/agent_decision_proposal_service.py`, `app/services/claim_resolution_service.py`, `app/services/strict_decision_provider_service.py`, `scripts/qualify_strict_decision_provider.py`, `scripts/run_supervisor_partial_answer_preview_eval.py` | shadow-only / qualification-gated | Claim Resolution assigns stable identities and keeps supported, unresolved, conflicting, and explicitly prohibited claims independent at the canonical attribute level. The provider-independent preview deterministically renders only admitted supported clauses plus pending/conflict review wording. Its evaluator rebuilds resolutions from raw fixture inputs and fails closed on safety diagnostics; strict-provider polish remains blocked until qualification. Neither path changes formal decisions. |
-| Media governance | media asset services and product context pack | formal | Media roles remain non-factual candidates. Actual delivery requires an approved, usable, fact-type-compatible asset with an exact shared identity namespace and an actual reply block; recommended assets, service actions, and media references do not prove delivery. |
-| Product media observations | `app/services/product_media_observation_service.py`, `app/services/product_media_panel_proposal_service.py`, `app/services/product_media_observation_v3_service.py`, `app/services/composable_vision_grounding_service.py`, `app/services/composable_vision_ocr_provider_service.py`, `app/services/composable_vision_object_provider_service.py`, `app/services/semantic_object_grounding_provider_service.py`, `app/services/product_media_annotation_schema_service.py`, `scripts/diagnose_semantic_object_runtime.py`, `scripts/probe_semantic_object_runtime.py`, `scripts/export_product_media_annotation_tasks.py`, `scripts/validate_product_media_annotations.py`, `scripts/diagnose_product_media_annotation_feasibility.py`, `app/services/product_media_observation_review_service.py`, `app/services/vision_grounding_provider_qualification_service.py` | shadow-only / external annotation pilot / v2 legacy staging / v3 planned review | V3 resolves original media bytes before validated cache/URL fallback, records observed SHA-256 provenance, and uses deterministic panel proposals plus verified panel, object, label, and object-label binding for a product, packaging, component, accessory, included item, or display prop. The composable PoC separates OCR, object proposals, same-panel geometry binding, and verification without treating panels as objects. Its Windows OCR adapter produces normalized text-box label candidates only. Its OpenCV object adapter proposes only primary visual geometry: explicit packaging text may scope a carton, but all other regions remain unknown and cannot enter geometry binding. The semantic adapter can use a configured local Transformers Grounding DINO or Florence-2 runtime, generic class queries, and contract-checked boxes; unavailable runtime or conflicting scope remains fail-closed. The readiness and one-image probe scripts must succeed before semantic ten-image qualification can begin, and every failed qualification stops before Geometry Binding. Neither current local semantic candidate is eligible for the next stage. New annotation tasks use packaging-dimension, mode-dimension, product-specification, or compliance-document palettes selected only from durable task/media metadata; the broad visual-layout palette is historical-only. Completed regions and controlled fields compile into a SHA-256/bbox-provenanced visual-description report. Neither annotations, predictions, nor compiled descriptions create observations, formal evidence, Product Evidence Pack or Grounded input, delivery changes, or `can_send` changes. |
-| Decision Context and claim composition | `app/services/admitted_answer_context_service.py`, `app/services/claim_resolution_service.py`, `app/services/agent_decision_proposal_service.py`, `app/services/model_first_answer_composer_service.py`, `app/services/final_response_orchestrator.py` | formal utility / opt-in candidate / funnel diagnostic | Build compact requested-claim context from admitted facts and recent canonical turns only. Claim dependencies may expose a supporting material composition clause but never resolve a target safety/care/certification claim. The model-first candidate consumes this existing context without creating a second registry and projects private identities to evidence references. Dialogue State, Action Policy, and counterfactual preview remain paused/unqualified. Private chain-of-thought is not persisted. |
-| Real replay | real-conversation replay services and scripts | evaluation | Must use per-sample canonical context and the production pipeline |
-| Agent benchmark | benchmark dataset/runner services, `app/services/agent_benchmark_fixture_service.py`, `tests/fixtures/agent_benchmark/` | evaluation | Measures reviewed scenarios; the versioned synthetic fixture and manifest own clean-worktree/CI data, initialize an isolated SQLite benchmark database, and fail closed on zero scenarios. It is not production readiness by itself. |
-| Formal-answer QA | `scripts/run_full_answer_validation.py` | evaluation / read-only | Runs only versioned scorer metadata against the public analysis contract, fails closed on invalid inputs or runtime mismatch, and records independent runner/runtime provenance without changing Agent decisions. |
-| Real accuracy Gold Set | `app/services/real_accuracy_gold_set_service.py`, `app/services/real_accuracy_privacy_service.py`, `app/services/real_accuracy_label_service.py`, `app/services/real_accuracy_claim_review_service.py`, `app/services/business_accuracy_matrix_service.py`, `app/api/real_accuracy_label_routes.py`, `scripts/diagnose_real_accuracy_data_sources.py`, `scripts/diagnose_real_accuracy_conversation_structure.py`, `scripts/diagnose_real_accuracy_label_store.py`, `scripts/build_real_accuracy_gold_set.py`, `scripts/build_real_accuracy_gold_v2_migration_manifest.py`, `scripts/build_real_accuracy_claim_review_plan.py`, `scripts/build_minimum_supervisor_review_queue.py`, `scripts/build_approved_real_accuracy_gold_manifest.py`, `scripts/build_authoritative_output_manifest.py`, `scripts/run_real_accuracy_baseline.py`, `scripts/run_real_derived_business_matrix.py`, `scripts/build_business_accuracy_matrix.py`, `scripts/diagnose_query_driven_fact_coverage.py` | evaluation / read-only / manual approval gate | Gold v0.1 is immutable historical review provenance. Gold v0.2 derives from its frozen privacy-passed artifact, assigns one explicit current BUYER target with bounded-history and digest provenance, and uses a separate ignored label store. Missing or multiple exact targets fail closed; saved v0.2 labels must match the explicit target. Migration manifests are content-free candidates and never copy approval state or optimistic-lock versions. The deterministic 30-claim queue spans at least five domains with a 30% cap and zero automatic approvals. Development, service, and public-open identities are non-authoritative; Tier A accepts only Cloudflare Access human supervisor/admin approval events matching the v0.2 dataset hash. Labels remain outside the knowledge base and Agent payload, and Tier A remains `null` while the gate is unmet. |
-| Simulated multi-turn evaluation | `app/services/long_conversation_simulation_service.py`, `app/services/tier_d_transcript_grader_service.py`, `app/services/high_quality_long_conversation_review_service.py`, `app/services/formal_knowledge_database_guard_service.py`, `app/api/high_quality_long_conversation_review_routes.py`, `frontend/src/views/HighQualityConversationReviewPage.vue`, `scripts/qualify_tier_d_transcript_grader.py`, `scripts/qualify_tier_d_customer_simulator.py`, `scripts/build_long_conversation_simulation_set.py`, `scripts/run_long_conversation_simulation.py`, `scripts/build_fixed_long_conversation_replay_set.py`, `scripts/run_fixed_long_conversation_replay.py`, `scripts/compare_fixed_long_conversation_replay.py`, `scripts/validate_high_quality_long_conversation_review_set.py`, `scripts/inventory_high_quality_long_conversation_review_set.py`, `scripts/build_approved_high_quality_long_conversation_manifest.py`, `scripts/diagnose_formal_knowledge_write_owner.py`, `scripts/analyze_tier_d_evidence_action_shadow.py` | evaluation / read-only / manual approval gate | Builds balanced episodes from privacy-checked real conversation prefixes, then either runs a qualified buyer or replays fixed real buyer turns against the formal HTTP Pipeline. One privacy-projected Turn Observation owns reply/media/evidence/audit input for deterministic checks, evidence funnel, atomic checkpoint, report, and offline recomputation. Fixed replay pins runtime, model, knowledge DB, dataset, timeout, and runner, and changes only Formal Evidence Convergence between OFF/ON. Evaluation runtimes enforce query-only on every formal-knowledge connection, suppress resident media sync, compare SQLite snapshots with row-level HMAC fingerprints, and fail on changed rows or sanitized DML attempts. The immutable v4.2 source is overlaid by an independent ignored SQLite review store; embedded source review fields have no approval authority. The Chinese workbench uses existing management RBAC, optimistic locking, per-decision audit, revision history, and dataset-hash invalidation. Only the independent manifest may authorize evaluation, after a real Cloudflare Access supervisor/admin approval with all four human checks for every current scenario. Fewer than 26 approvals keeps Agent execution blocked and real accuracy `null`. These labels never enter formal knowledge, Agent input, replies, evidence admission, or `can_send`. |
-| Runtime knowledge readiness | `app/services/runtime_knowledge_readiness_service.py`, `app/services/formal_knowledge_database_guard_service.py`, health/runtime routes | formal operations guard | Uses read-only SQLite inspection plus non-sensitive management-auth readiness. Public health/version/readiness are minimal; authenticated admin diagnostics owns detailed fingerprints and component state. Evaluation/canary query-only mode is connection-pool-wide and exposed only as a public boolean runtime contract. |
-| Knowledge governance | knowledge gap, review, publish services, explicit media sync jobs | formal operations / writable owner | Candidate/review/publish states must remain explicit. Governance and explicit sync own writes; Agent, Pipeline, evidence admission, replay, health, and readiness are readers. |
-| Material knowledge governance | `app/services/product_structured_evidence_service.py`, `app/services/evidence_fact_gate_service.py`, `app/services/admitted_answer_context_service.py`, `app/services/material_knowledge_governance_service.py`, `app/services/material_review_batch_service.py`, `app/services/material_shadow_qa_service.py`, `app/services/material_gold_csr_validation_service.py`, `scripts/diagnose_material_knowledge_governance.py`, `scripts/run_real_derived_material_shadow_qa.py`, `scripts/run_material_gold_csr_formal_validation.py` | formal field guard / supervisor staging / automated evaluation | Composition, safety, toxicity, odor, cleaning, moisture, and certification are separate claims. Every direct material path requires explicit field provenance as well as the shared role, review, identity, placeholder, and conflict contract. Cleaning/moisture instructions need their own product-specific direct evidence; composition and generic service guidance cannot authorize them. Pseudonymous batches are staging/audit-only with optimistic locking; they cannot write formal KB. The HMAC-only real-derived QA and formal-runtime runner use an independent deterministic gold-CSR rubric plus 14 negative mutations; the verdict validates answer behaviour without approving product facts, modifying replies, or changing `can_send`. |
-| Platform adapters | not implemented | planned | QianNiu/Pinduoduo/JD implement canonical ports only |
-| Handoff tasks and supervisor queue | not implemented | planned/P1 | Durable task is source of truth; notification is a projection |
+| HTTP analyze entry | `app/api/analyze_routes.py` | formal | Normalize HTTP input and present the canonical Pipeline result |
+| Sidecar/copilot entry | `app/api/copilot_routes.py` | formal | Normalize sidecar context, call the same Pipeline, adapt panel presentation |
+| Application stage order | `app/services/analysis_pipeline_service.py` | formal | The only graph-to-delivery execution path for API, copilot, replay, and benchmark |
+| Graph execution and persistence | `app/services/analysis_execution_service.py` | formal | Graph lifecycle, trace, one post-processor, final snapshot/persistence |
+| Conversation turns | `app/services/canonical_conversation_turn_service.py` | formal utility | Bounded role-aware history and provider privacy projection |
+| Agent orchestration | `app/agent/graph.py`, `app/agent/nodes/` | formal but overweight | Stateful routing, tools, retries, and flow transitions; not final reply ownership |
+| Formal LLM transport | `app/llm/client.py` | formal | Provider transport, privacy projection, timeout/truncation handling |
+| Product/order identity | identity services and resolver nodes | formal | External references to JST/internal scoped identity |
+| Retrieval | `app/retrieval/` | formal SQLite | Explicit backend and observable fail-closed retrieval |
+| Product context candidates | `app/services/product_context_pack_service.py` | formal | Preserve role, review, identity, attribute, and provenance metadata |
+| Evidence admission | `app/services/admitted_answer_context_service.py` | formal utility; convergence opt-in | Single reusable review/identity/role/claim/conflict admission contract |
+| Claim resolution | `app/services/claim_resolution_service.py` | formal utility | Supported, unresolved, conflicting, and prohibited state from admitted context |
+| Candidate reply | `app/services/model_first_answer_composer_service.py` | opt-in, review-only, disabled | One natural reply from compact admitted context; no tools, fact creation, delivery, or send permission |
+| No-evidence strategy | `app/services/no_evidence_reply_policy_service.py` | formal but oversized | Safe strategy only; must not become another fact or reply engine |
+| Handoff wording | `app/services/customer_facing_safe_handoff_service.py` | formal | Customer-facing wording without changing risk or task state |
+| Final factual/safety audit | `app/services/final_answer_auditor.py` | formal | Claim support, high-risk boundaries, and actual media wording |
+| Semantic fit | `app/services/final_semantic_quality_service.py` | formal | Question-answer fit after facts and actions are settled |
+| Final orchestration | `app/services/final_response_orchestrator.py` | formal | Final audited response and delivery contract shared by all entry points |
+| Media delivery | media services plus final reply blocks | formal | A candidate asset is not delivered media; role, identity, usability, approval, and block required |
+| Runtime readiness | runtime readiness services and health routes | formal | Read-only deployment and knowledge readiness |
+| Knowledge governance | knowledge review/publish and explicit sync services | formal writable owner | Agent and evaluation paths are readers |
 
-## Phase 0.8A Contract Notes
+## Operations And Future Channels
 
-- `canonical_conversation_turn_service` owns formal turn normalization and the
-  separate external-model privacy projection. It never uses evaluation
-  sanitization to replace local operational turns.
-- `sidecar_context_service` and both API entry points expose valid, degraded,
-  or invalid context diagnostics. Strict evaluation rejects malformed history
-  before the Graph; online degradation is observable and Pipeline preserves the
-  earliest upstream reason during revalidation.
-- Tier D action coverage is owned by an independently qualified strict-schema
-  transcript grader; simulator self-reported actions and internal action events
-  remain diagnostic only. The runner records commit, executable source hash,
-  worktree status, model, and feature flags before executing trials.
-- Tier D is not a fallback-model benchmark. A formal-provider readiness failure
-  stops before dataset access, and an interrupted or partial checkpoint cannot
-  be reported as a fixed 9x2 result.
-- A simulator state-machine validation failure may trigger one fresh strict
-  request, while Provider/schema/timeout/truncation failures do not. Final
-  failure classification is persisted before checkpoint/report equivalence is
-  checked.
+| Capability | Owner | Status | Boundary |
+|---|---|---|---|
+| Management authentication | `app/api/admin_auth.py`, route policy registry | formal | Cloudflare Access JWT, explicit RBAC, default deny |
+| QianNiu/PDD/JD adapters | canonical adapter ports | planned | Native fields stop at the adapter boundary |
+| Durable HandoffTask | not implemented | planned/P1 | Assignment, SLA, status, acknowledgement, audit |
+| Supervisor queue | not implemented | planned | Projection of durable handoff and Agent outcomes |
+
+## Evaluation Owners
+
+| Capability | Owner | Boundary |
+|---|---|---|
+| Real conversation replay | replay services and scripts | Same canonical context and formal Pipeline as the user path |
+| Synthetic safety benchmark | benchmark runner and versioned fixture | Regression only; not real accuracy |
+| Real accuracy Gold Set | Gold/privacy/label services | Labels never enter Agent input; insufficient approval means `real_accuracy=null` |
+| Formal answer QA | `scripts/run_full_answer_validation.py` | Read-only safety and response-contract validation |
+| Real-derived capability slice | existing real-derived export and vertical-slice scripts | Proves evidence plumbing/capability, not customer accuracy |
+
+## Frozen Shadow And Experimental Modules
+
+These modules may keep producing diagnostics. ADR 0009 freezes feature expansion
+until the active Agent Core slice identifies them as the earliest blocker.
+
+| Module | Status | Production authority |
+|---|---|---|
+| Answer Memory | shadow/reference | Style and handling only |
+| Grounded Reasoning Draft | shadow | None |
+| Product Media Observation and annotation | shadow/pilot | None |
+| pgvector retriever | shadow | None |
+| Evidence-First Decision Proposal | shadow/qualification-gated | None |
+| Buyer simulator and transcript grader | evaluation | None |
+| Model-first composer | active candidate | Review-only; no `can_send` |
 
 ## Cross-Cutting Change Checklist
 
-When changing a module above, verify whether the same contract is consumed by:
+Before changing Agent behavior, verify:
 
-- `/api/analyze`;
-- `/api/copilot/context`;
-- real replay;
-- active benchmark;
-- trace and snapshots;
-- media reply blocks and delivery status;
-- handoff and supervisor reporting;
-- relevant durable documentation.
-
-Do not duplicate a contract in a second module merely to make one entry point or
-one test pass.
+1. Which formal entry points use the changed path?
+2. Is there already an authoritative owner?
+3. Does the change alter context, evidence, tools, reply, media, safety, handoff,
+   or delivery?
+4. Does replay use the same canonical Pipeline?
+5. Is the before/after real dataset comparable?
+6. Are expected answers and labels excluded from Agent input?
+7. Did formal knowledge remain read-only?
+8. Did unsupported high-risk, media, or service actions remain blocked?
+9. Did unnecessary handoff, completion, naturalness, and latency improve?
+10. Were only the required durable documents updated?

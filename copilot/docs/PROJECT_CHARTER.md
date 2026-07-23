@@ -74,7 +74,29 @@ A strong answer must satisfy all of the following:
 
 ## Current Phase
 
-The project is in architecture convergence, not broad feature expansion.
-Priority is to unify the execution pipeline, final-response trace contract,
-evidence-role registry, platform-neutral contracts, and durable handoff model
-before production channel APIs are connected.
+The project is in **Agent Core capability convergence**, not broad feature
+expansion and not production automation.
+
+The current priority is one real-conversation vertical slice through the
+existing formal Pipeline:
+
+```text
+context
+-> goals
+-> identity and tools
+-> admitted evidence
+-> one model-first reply
+-> final safety/delivery gate
+-> supervisor assist or handoff
+```
+
+Near-term success is measured by supported-claim correctness, action completion,
+unnecessary handoff, naturalness, latency, and safety on comparable real
+conversations. Additional review pages, shadow subsystems, provider
+qualification frameworks, and platform-specific behavior are frozen unless
+that slice proves they are the earliest blocker.
+
+Synthetic benchmark success remains regression evidence only. When approved
+real labels are insufficient, the project reports `real_accuracy=null`.
+
+ADR 0009 defines this mainline and its rollback boundary.

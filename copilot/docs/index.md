@@ -60,6 +60,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/adr/0008-cloudflare-access-rbac-management-boundary.md` - defines the
   Cloudflare Access JWT, application RBAC, CSRF, service-identity, route-policy,
   and readiness boundary for public management routes.
+- `docs/adr/0009-agent-core-capability-mainline.md` - freezes evaluator and
+  shadow expansion, restores one real-conversation Agent Core vertical slice as
+  the active mainline, and defines outcome-based promotion metrics.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - LangGraph runtime responsibility, target
@@ -80,10 +83,11 @@ platform-neutral adapters
 
 Do not optimize for graph-node count, add parallel shadow subsystems without a
 promotion path, or pass complete traces and candidate stores to the model.
-Formal Evidence Convergence is implemented but disabled in the runtime. The
-current priority is a protected supervisor workbench, an independently approved
-Gold denominator, and a Tier A baseline; neither benchmark success nor Shadow
-results can replace that gate.
+Formal Evidence Convergence and the model-first composer are implemented but
+disabled in production. The current priority is the ADR 0009 Agent Core slice:
+real context, admitted evidence and tools, one reply owner, final safety, and
+outcome-based evaluation. Gold review remains an accuracy prerequisite, but
+building more review infrastructure is not the active development mainline.
 
 ## Architecture Decisions And Research
 

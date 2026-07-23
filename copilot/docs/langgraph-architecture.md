@@ -1,5 +1,17 @@
 # LangGraph Runtime Boundary
 
+## Active Mainline
+
+ADR 0009 makes one real-conversation Agent Core vertical slice the active
+development path. LangGraph remains the state and control-flow runtime; it is
+not being replaced and it does not receive new nodes for evaluation,
+composition, memory, or evidence policy.
+
+Until that slice proves otherwise, development must improve existing context,
+identity/tool use, evidence admission, one model-first reply, and the final
+delivery decision. New graph nodes, phrase-specific routing, parallel planners,
+and shadow subsystems are frozen.
+
 ## Document Role
 
 This document is an implementation companion to
