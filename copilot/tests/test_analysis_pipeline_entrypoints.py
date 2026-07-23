@@ -123,6 +123,74 @@ def test_final_orchestration_runs_once_for_one_pipeline_request(pipeline_harness
     assert pipeline_harness["final"] == 1
 
 
+def test_model_first_composer_is_disabled_by_default(pipeline_harness, monkeypatch):
+    monkeypatch.delenv("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED", raising=False)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    stage = next(
+        item
+        for item in response["analysis_pipeline"]["stages"]
+        if item["stage"] == "model_first_answer_composer"
+    )
+    assert stage["status"] == "disabled"
+    assert "model_first_answer_composer" not in response
+
+
+def test_model_first_composer_fails_review_only_without_formal_convergence(
+    pipeline_harness,
+    monkeypatch,
+):
+    monkeypatch.setenv("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED", "true")
+    monkeypatch.delenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", raising=False)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    diagnostics = response["model_first_answer_composer"]
+    assert diagnostics["rejection_reason"] == "formal_evidence_convergence_disabled"
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+
+
+def test_model_first_composer_applies_once_and_cannot_enable_send(
+    pipeline_harness,
+    monkeypatch,
+):
+    monkeypatch.setenv("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+
+    calls = {"composer": 0}
+
+    def fake_compose(self, response, **_kwargs):
+        calls["composer"] += 1
+        updated = deepcopy(response)
+        updated["suggested_reply"] = "模型一次性候选回复"
+        updated["can_send"] = True
+        updated["requires_human_review"] = False
+        diagnostics = {
+            "version": "model-first-answer-composer-v1",
+            "status": "accepted",
+            "rejection_reason": "",
+            "used_for_final_reply": True,
+            "can_change_can_send": False,
+        }
+        return updated, diagnostics
+
+    monkeypatch.setattr(
+        "app.services.model_first_answer_composer_service.ModelFirstAnswerComposerService.compose",
+        fake_compose,
+    )
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert calls["composer"] == 1
+    assert response["suggested_reply"] == "模型一次性候选回复"
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+
+
 def test_disabled_decision_shadow_reports_provider_block_without_a_candidate_reply(pipeline_harness, monkeypatch):
     monkeypatch.delenv("COPILOT_LLM_DECISION_SHADOW_ENABLED", raising=False)
 

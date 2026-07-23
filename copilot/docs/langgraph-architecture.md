@@ -185,3 +185,18 @@ not attached by `AnalysisPipelineService`. LangGraph gains no node, registry,
 retrieval, action execution, or delivery authority. Any future activation would
 require a qualified provider, a separate decision record, and entry-point parity
 evidence.
+
+## Phase 0.9A Model-First Composition Boundary
+
+Phase 0.9A does not add a graph node. `AnalysisPipelineService` invokes the
+opt-in answer composer after the existing formal evidence-convergence stage and
+before final orchestration. The composer reads the existing Minimal Decision
+Context and returns one candidate plus evidence references and unresolved claim
+types. It cannot admit evidence, invoke side-effecting tools, attach media, or
+change `can_send`.
+
+Final audit, semantic fit, media validation, and the review-only delivery
+boundary remain deterministic application services outside LangGraph. The
+candidate path skips later semantic rewriting so a supported clause cannot be
+silently replaced by a generic handoff. Production flags remain off; the
+candidate result is development evidence only.

@@ -302,6 +302,11 @@ def _llm_semantic_fit_check(
                         "Judge only whether final_reply can be sent as a coherent answer to customer_message. "
                         "Use semantic_query and admitted_direct_facts as the only factual ground truth. "
                         "Treat unresolved_claims as facts the reply must not assert. "
+                        "When model_first_candidate_contract.enabled is true, review_only is a delivery boundary, "
+                        "not a requirement to add handoff wording. A resolved product identity lets phrases such as "
+                        "'this product' anchor the answer; do not require the full product title to be repeated. "
+                        "The listed allowed_low_risk_reasoning may be used only as a qualified explanation and must "
+                        "not become a durability, safety, load, certification, suitability, order, refund, or media promise. "
                         "Do not require exact wording. Do not judge style unless it affects answerability. "
                         "Fail if the reply answers a different fact type, asks for information already provided, "
                         "turns to human review while direct evidence is available, or claims facts not supported by evidence. "
@@ -374,6 +379,15 @@ def _semantic_payload(
         ][:8]
         if isinstance(item, dict)
     ]
+    minimal_context = response.get("minimal_decision_context")
+    if not isinstance(minimal_context, dict):
+        minimal_context = debug.get("minimal_decision_context")
+    if not isinstance(minimal_context, dict):
+        minimal_context = {}
+    composer = response.get("model_first_answer_composer")
+    if not isinstance(composer, dict):
+        composer = {}
+    model_first_enabled = composer.get("status") == "accepted"
     return {
         "customer_message": customer_message,
         "final_reply": response.get("suggested_reply", ""),
@@ -389,6 +403,17 @@ def _semantic_payload(
         },
         "admitted_direct_facts": admitted_facts,
         "unresolved_claims": admitted.get("unresolved_claims") or [],
+        "model_first_candidate_contract": {
+            "enabled": model_first_enabled,
+            "review_only": model_first_enabled,
+            "product_identity_resolved": bool(minimal_context.get("product_identity")),
+            "full_product_title_required": False,
+            "allowed_low_risk_reasoning": (
+                list(composer.get("allowed_low_risk_reasoning") or [])
+                if model_first_enabled
+                else []
+            ),
+        },
         "recommended_assets": [
             {
                 "asset_type": item.get("asset_type", ""),

@@ -512,3 +512,46 @@ def test_semantic_payload_contains_only_admitted_direct_facts():
     assert "generic" not in serialized
     assert "历史客服说安全" not in serialized
     assert "shadow" not in serialized
+
+
+def test_semantic_payload_preserves_model_first_review_and_reasoning_contract():
+    from app.services.final_semantic_quality_service import _semantic_payload
+
+    response = {
+        "suggested_reply": "这款是ABS材质，普通轻微磕碰通常不像玻璃那样碎裂，但不能保证耐摔。",
+        "requires_human_review": True,
+        "minimal_decision_context": {
+            "product_identity": {"resolved": True},
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "allowed_low_risk_reasoning": [
+                "对普通塑料说明轻微磕碰通常不像玻璃一样碎裂，但不得保证耐摔",
+            ],
+        },
+        "selected_evidence": [{
+            "evidence_uid": "material-direct",
+            "source_type": "product_facts",
+            "evidence_role": "product_fact_direct",
+            "fact_type": "material",
+            "content": "这款是ABS材质",
+            "sku_code": "SKU-A",
+            "fact_review_status": "verified",
+            "gate_status": "allowed",
+            "direct_answer_allowed": True,
+        }],
+        "evidence_debug": {"query_fact_type": "material"},
+    }
+
+    payload = _semantic_payload(
+        response,
+        "这款是什么材质，耐摔吗？",
+        {"sku_code": "SKU-A"},
+    )
+
+    contract = payload["model_first_candidate_contract"]
+    assert contract["enabled"] is True
+    assert contract["review_only"] is True
+    assert contract["product_identity_resolved"] is True
+    assert contract["full_product_title_required"] is False
+    assert contract["allowed_low_risk_reasoning"]

@@ -41,6 +41,16 @@ class _FakeClient:
         return self.client.chat.completions.create(**kwargs)
 
 
+class _CapturingFakeClient(_FakeClient):
+    def __init__(self, content):
+        super().__init__(content)
+        self.kwargs = None
+
+    def create_chat_completion(self, **kwargs):
+        self.kwargs = kwargs
+        return super().create_chat_completion(**kwargs)
+
+
 def test_expected_topics_prefer_explicit_accessory_availability_over_stale_installation_intent():
     topics = _expected_topics(
         "\u8fd9\u4e2a\u914d\u4ef6\u6709\u5356\u5417",
@@ -396,6 +406,64 @@ def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
     assert audited["final_answer_audit"]["mode"] == "llm_semantic_consistency_with_hard_safety"
     assert "llm:semantic_mismatch" in audited["final_answer_audit"]["issues"]
     assert audited["requires_human_review"] is True
+
+
+def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkeypatch):
+    import json
+
+    from app import config
+    from app.llm import client as llm_client
+
+    client = _CapturingFakeClient(
+        '{"passed": true, "issues": [], "reason": "supported fact answered and unresolved claim bounded"}'
+    )
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+    monkeypatch.setattr(llm_client, "get_llm_client", lambda: client)
+    response = {
+        "intent": "product_question",
+        "suggested_reply": "\u8fd9\u6b3e\u662fABS\u6750\u8d28\uff1b\u6297\u6454\u6027\u76ee\u524d\u6ca1\u6709\u53ef\u76f4\u63a5\u786e\u8ba4\u7684\u4f9d\u636e\u3002",
+        "requires_human_review": True,
+        "model_first_answer_composer": {"status": "accepted"},
+        "evidence_used": "\u5df2\u62d2\u7edd\u7684reference_only\u6750\u8d28\uff1a\u91d1\u5c5e",
+        "selected_evidence": [{
+            "evidence_uid": "selected-material",
+            "evidence_role": "product_fact_direct",
+            "fact_type": "material",
+            "content": "\u8fd9\u6b3e\u662fABS\u6750\u8d28",
+        }],
+        "evidence_debug": {
+            "query_fact_type": "material",
+            "product_facts": [{"content": "\u5df2\u62d2\u7edd\u7684reference_only\u6750\u8d28\uff1a\u91d1\u5c5e"}],
+            "admitted_answer_context": {
+                "claim_resolutions": [
+                    {
+                        "claim_type": "material",
+                        "status": "supported",
+                        "evidence_uids": ["selected-material"],
+                    },
+                    {
+                        "claim_type": "stability",
+                        "status": "unresolved",
+                        "evidence_uids": [],
+                    },
+                ],
+            },
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="\u8fd9\u6b3e\u662f\u4ec0\u4e48\u6750\u8d28\uff0c\u8010\u6454\u5417\uff1f",
+    )
+
+    payload = json.loads(client.kwargs["messages"][1]["content"])
+    summary = payload["evidence_summary"]
+    assert payload["model_first_candidate"] is True
+    assert summary["selected_evidence"][0]["evidence_uid"] == "selected-material"
+    assert summary["claim_resolutions"][1]["status"] == "unresolved"
+    assert "evidence_used" not in summary
+    assert "\u91d1\u5c5e" not in client.kwargs["messages"][1]["content"]
+    assert audited["final_answer_audit"]["passed"] is True
 
 
 def test_final_answer_auditor_llm_blocks_space_question_answered_as_load(monkeypatch):

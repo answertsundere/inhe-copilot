@@ -292,6 +292,12 @@ class AnalysisPipelineService:
         response, media_stage = self._apply_media_delivery(response, request, identity)
         stages.append(media_stage)
 
+        response, composer_stage = self._apply_model_first_answer_composer(
+            response,
+            request,
+        )
+        stages.append(composer_stage)
+
         final_completed = False
         try:
             from app.services.final_response_orchestrator import orchestrate_final_response
@@ -301,6 +307,8 @@ class AnalysisPipelineService:
                 customer_message=request.delivery_message or request.customer_message,
                 copilot_context=request.copilot_context,
             )
+            if self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
+                response = self._force_model_first_review_boundary(response)
             final_completed = True
             stages.append({"stage": "final_response_orchestration", "status": "completed"})
         except Exception as exc:
@@ -333,6 +341,87 @@ class AnalysisPipelineService:
             "stages": stages,
         })
         return response
+
+    def _apply_model_first_answer_composer(
+        self,
+        response: dict[str, Any],
+        request: AnalysisPipelineRequest,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if not self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
+            return response, {
+                "stage": "model_first_answer_composer",
+                "status": "disabled",
+            }
+
+        response = dict(response or {})
+        response["can_send"] = False
+        response["sendable_reply"] = ""
+        response["requires_human_review"] = True
+        response["reply_status"] = "needs_human_review"
+        response["reason_for_review"] = self._append_reason(
+            str(response.get("reason_for_review") or ""),
+            "model_first_candidate_review_only",
+        )
+        if not self._env_enabled("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED"):
+            diagnostics = {
+                "version": "model-first-answer-composer-v1",
+                "status": "provider_blocked",
+                "rejection_reason": "formal_evidence_convergence_disabled",
+                "used_for_final_reply": False,
+                "can_change_can_send": False,
+                "requires_human_review": True,
+                "can_send": False,
+            }
+            response["model_first_answer_composer"] = diagnostics
+            response.setdefault("evidence_debug", {})[
+                "model_first_answer_composer"
+            ] = diagnostics
+            return response, {
+                "stage": "model_first_answer_composer",
+                "status": "blocked",
+                "reason": "formal_evidence_convergence_disabled",
+            }
+
+        try:
+            from app.services.model_first_answer_composer_service import (
+                ModelFirstAnswerComposerService,
+            )
+
+            response, diagnostics = ModelFirstAnswerComposerService().compose(
+                response,
+                customer_message=request.delivery_message or request.customer_message,
+                copilot_context=request.copilot_context,
+            )
+            response["can_send"] = False
+            response["sendable_reply"] = ""
+            response["requires_human_review"] = True
+            response["reply_status"] = "needs_human_review"
+            response["reason_for_review"] = self._append_reason(
+                str(response.get("reason_for_review") or ""),
+                "model_first_candidate_review_only",
+            )
+            response["model_first_answer_composer"] = diagnostics
+            response.setdefault("evidence_debug", {})[
+                "model_first_answer_composer"
+            ] = diagnostics
+            accepted = diagnostics.get("status") == "accepted"
+            return response, {
+                "stage": "model_first_answer_composer",
+                "status": "completed" if accepted else "blocked",
+                "reason": diagnostics.get("rejection_reason") or "",
+                "used_for_final_reply": bool(
+                    diagnostics.get("used_for_final_reply")
+                ),
+            }
+        except Exception as exc:
+            response.setdefault("evidence_debug", {})[
+                "model_first_answer_composer_error"
+            ] = {"type": type(exc).__name__}
+            return response, {
+                "stage": "model_first_answer_composer",
+                "status": "degraded",
+                "reason": type(exc).__name__,
+            }
 
     def _apply_media_delivery(
         self,
@@ -574,6 +663,43 @@ class AnalysisPipelineService:
     @staticmethod
     def _env_enabled(name: str) -> bool:
         return str(os.getenv(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _append_reason(existing: str, reason: str) -> str:
+        values = [item for item in (existing.strip(), reason.strip()) if item]
+        return "; ".join(dict.fromkeys(values))
+
+    @staticmethod
+    def _force_model_first_review_boundary(
+        response: dict[str, Any],
+    ) -> dict[str, Any]:
+        response["can_send"] = False
+        response["sendable_reply"] = ""
+        response["requires_human_review"] = True
+        response["reply_status"] = "needs_human_review"
+        reasons = [
+            str(item)
+            for item in response.get("block_reasons") or []
+            if str(item)
+        ]
+        if "model_first_candidate_review_only" not in reasons:
+            reasons.append("model_first_candidate_review_only")
+        response["block_reasons"] = reasons
+        for block in response.get("reply_blocks") or []:
+            if isinstance(block, dict) and block.get("type") in {"image", "video"}:
+                block["send_mode"] = "manual"
+        delivery = response.get("reply_delivery")
+        if isinstance(delivery, dict):
+            delivery["auto_send_ready"] = False
+            delivery["reason"] = "model_first_candidate_review_only"
+        response.setdefault("evidence_debug", {})[
+            "model_first_candidate_delivery_boundary"
+        ] = {
+            "can_send": False,
+            "requires_human_review": True,
+            "reason": "model_first_candidate_review_only",
+        }
+        return response
 
     @staticmethod
     def _identity(request: AnalysisPipelineRequest) -> dict[str, Any]:

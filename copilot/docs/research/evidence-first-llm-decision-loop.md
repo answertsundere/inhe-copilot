@@ -484,6 +484,43 @@ parse/truncation failures. The run therefore stopped before grader
 qualification or any live trial. No free-text repair, timeout increase, local
 Qwen fallback, or scenario change was used.
 
+### Phase 0.9A model-first answer organization
+
+The reply-ownership trace showed that graph generation, style, response
+building, polishing, no-evidence policy, and final orchestration could all
+rewrite the same customer-facing text. In the ten-scenario diagnostic,
+canonical selected evidence was still empty with convergence disabled, making
+the earliest useful correction evidence convergence rather than another reply
+template or graph branch.
+
+The Phase 0.9A candidate reuses the existing Minimal Decision Context. One
+MiniMax-M3 call receives the current goal, bounded recent turns, projected
+admitted evidence, claim resolutions, non-factual service/media candidates,
+and deterministic safety constraints. It returns only the reply, used evidence
+references, and unresolved claim types. All supported evidence references and
+unresolved claim types are required; unknown references, process language, or
+unsupported media promises reject the candidate. Product identity and
+evidence UIDs are not exposed as raw operational identifiers.
+
+Low-risk reasoning is bounded to spatial explanation from confirmed
+dimensions, comparison of confirmed variants, use explanation from confirmed
+structure/layers, and non-promissory comparison of ordinary plastic with glass.
+It cannot infer load, toxicity, food grade, certification, child safety,
+anti-tip behavior, installation prescriptions, or order/refund/logistics
+state. Final audit, semantic fit, tools, media delivery, and `can_send` remain
+application-owned.
+
+The fixed 26-scenario OFF/ON development diagnostic completed without
+execution errors, formal-knowledge writes, unsafe high-risk claims, unsupported
+media promises, unsupported service actions, or `can_send=true`. ON selected
+23 evidence items across 18 scenarios, removed the measured system-tone hits,
+and reduced duplicate replies from nine to seven. It also exposed incomplete
+answer quality: only 14/23 runtime supported claims survived evidence
+attribution plus final audit, four candidates were rejected for process
+language, partial-answer success remained 0/8 under the conservative
+post-response matcher, and semantic-audit passes fell from 15 to 9. The
+candidate is therefore not ready for production promotion.
+
 ### Phase 0.8G fixed real-turn replay
 
 Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely

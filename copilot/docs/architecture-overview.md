@@ -3,7 +3,7 @@
 ## Status And Authority
 
 This document is the authoritative system-architecture overview as of
-2026-07-15. It describes the current production path, the intended target, and
+2026-07-23. It describes the current production path, the intended target, and
 the order in which the system may converge. Historical delivery reports and
 node inventories are implementation evidence, not architecture authority.
 
@@ -305,7 +305,38 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.8I.2 Long-Conversation Approval Authority Closure
+### Current Phase: 0.9A Agent Core Vertical Slice
+
+Phase 0.9A moves development focus back to the answer core without weakening
+the established review boundary. An opt-in `ModelFirstAnswerComposerService`
+runs after formal evidence convergence and before the existing final
+orchestrator. It consumes the existing Minimal Decision Context, references
+admitted facts only by projected evidence IDs, and produces one review-only
+candidate reply. It does not own retrieval, admission, tools, media delivery,
+final safety, or send permission. Both its flag and Formal Evidence
+Convergence remain disabled in production.
+
+The candidate final path is intentionally short:
+
+```text
+admitted evidence and claim resolutions
+-> one model-first candidate
+-> deterministic final audit
+-> non-semantic cleanup
+-> semantic-fit audit
+-> review-only delivery boundary
+```
+
+No LangGraph node, Context Builder, Evidence Registry, safety gate, or shadow
+subsystem was added. The 26-scenario v4.2 OFF/ON run is a
+`development_diagnostic`, not real-customer accuracy: ON selected 23 evidence
+items across 18 scenarios and reduced deterministic system-tone hits, but
+runtime supported-claim attribution was 14/23, partial-answer success remained
+0/8 under the conservative dataset matcher, and semantic-audit passes fell
+from 15 to 9. Safety gates remained clean and formal knowledge did not change,
+but the quality result does not justify production promotion.
+
+### Prior Phase: 0.8I.2 Long-Conversation Approval Authority Closure
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
 but its production flag remains disabled. Phase 0.8C repaired the proven

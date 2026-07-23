@@ -1233,6 +1233,46 @@ def _semantic_llm_audit(
             return None
 
         evidence_debug = response.get("evidence_debug") or {}
+        model_first_candidate = (
+            (response.get("model_first_answer_composer") or {}).get("status")
+            == "accepted"
+        )
+        if model_first_candidate:
+            selected_evidence = response.get("selected_evidence") or evidence_debug.get(
+                "selected_evidence"
+            ) or []
+            admitted_context = evidence_debug.get("admitted_answer_context") or {}
+            evidence_summary = {
+                "selected_evidence": [
+                    {
+                        "evidence_uid": item.get("evidence_uid", ""),
+                        "evidence_role": item.get("evidence_role", ""),
+                        "fact_type": item.get("fact_type", ""),
+                        "attribute_key": item.get("attribute_key", ""),
+                        "content": item.get("content") or item.get("value") or "",
+                    }
+                    for item in selected_evidence
+                    if isinstance(item, dict)
+                ][:12],
+                "claim_resolutions": [
+                    {
+                        "claim_type": item.get("claim_type", ""),
+                        "status": item.get("status", ""),
+                        "evidence_uids": list(item.get("evidence_uids") or []),
+                    }
+                    for item in admitted_context.get("claim_resolutions") or []
+                    if isinstance(item, dict)
+                ][:12],
+            }
+        else:
+            evidence_summary = {
+                "evidence_used": response.get("evidence_used", ""),
+                "evidence_sufficient": evidence_debug.get("evidence_sufficient"),
+                "direct_answer_supported": evidence_debug.get("direct_answer_supported"),
+                "faq_evidence": (evidence_debug.get("faq_evidence") or [])[:5],
+                "product_facts": (evidence_debug.get("product_facts") or [])[:5],
+                "unknowns": (evidence_debug.get("unknowns") or [])[:5],
+            }
         payload = {
             "customer_message": customer_message,
             "suggested_reply": reply,
@@ -1241,14 +1281,8 @@ def _semantic_llm_audit(
             "query_fact_type_hint": evidence_debug.get("query_fact_type", ""),
             "expected_topics_hint": expected_topics,
             "reply_topics_hint": reply_topics,
-            "evidence_summary": {
-                "evidence_used": response.get("evidence_used", ""),
-                "evidence_sufficient": evidence_debug.get("evidence_sufficient"),
-                "direct_answer_supported": evidence_debug.get("direct_answer_supported"),
-                "faq_evidence": (evidence_debug.get("faq_evidence") or [])[:5],
-                "product_facts": (evidence_debug.get("product_facts") or [])[:5],
-                "unknowns": (evidence_debug.get("unknowns") or [])[:5],
-            },
+            "model_first_candidate": model_first_candidate,
+            "evidence_summary": evidence_summary,
         }
         result = client.create_chat_completion(
             model=client.model,
@@ -1260,6 +1294,9 @@ def _semantic_llm_audit(
                         "\u4f60\u7684\u5ba1\u6838\u6807\u51c6\u53ea\u6709\u4e00\u4e2a\u6838\u5fc3\uff1a\u8fd9\u6bb5\u6700\u7ec8\u8981\u53d1\u7ed9\u5ba2\u6237\u7684\u8bdd\uff0c"
                         "\u4f5c\u4e3a\u4e00\u4f4d\u91d1\u724c\u5ba2\u670d\uff0c\u662f\u5426\u80fd\u6b63\u9762\u3001\u51c6\u786e\u3001\u81ea\u7136\u5730\u56de\u7b54\u5ba2\u6237\u5f53\u524d\u95ee\u9898\u3002"
                         "\u4e0d\u8981\u673a\u68b0\u6309 fact_type\u3001expected_topics \u6216\u5173\u952e\u8bcd\u5224\u65ad\uff1b\u8fd9\u4e9b\u53ea\u80fd\u5f53\u4f5c\u53c2\u8003\u7ebf\u7d22\u3002"
+                        "\u5982\u679c model_first_candidate=true\uff0c\u5546\u54c1\u4e8b\u5b9e\u53ea\u80fd\u4ee5 selected_evidence \u4e3a\u51c6\uff1b"
+                        "claim_resolutions \u4e2d\u7684 unresolved/conflicting \u8868\u793a\u5f53\u524d\u6ca1\u6709\u53ef\u76f4\u63a5\u56de\u7b54\u7684\u4f9d\u636e\uff0c"
+                        "\u56de\u590d\u5982\u5b9e\u8bf4\u660e\u65e0\u6cd5\u786e\u8ba4\u4e0d\u7b97\u9057\u6f0f\uff0c\u4e0d\u5f97\u8981\u6c42\u56de\u590d\u7f16\u9020\u7f3a\u5931\u7684\u4e8b\u5b9e\u3002"
                         "\u4f60\u8981\u5148\u7528\u81ea\u5df1\u7684\u8bed\u4e49\u7406\u89e3\u5224\u65ad\u5ba2\u6237\u771f\u6b63\u5728\u95ee\u4ec0\u4e48\uff0c\u518d\u770b suggested_reply \u662f\u5426\u771f\u7684\u56de\u7b54\u4e86\u8fd9\u4e2a\u95ee\u9898\u3002"
                         "\u4f8b\u5982\uff1a\u5ba2\u6237\u95ee\u201c\u5367\u5ba4\u53ef\u4ee5\u7528\u5417\u201d\uff0c\u56de\u590d\u53ea\u8bb2\u6750\u8d28/\u9632\u6f6e\u662f\u8dd1\u9898\uff1b"
                         "\u5ba2\u6237\u95ee\u201c\u7a7a\u95f4\u591f\u4e0d\u591f\u653e\u4e0b\u201d\uff0c\u56de\u590d\u627f\u91cd\u591a\u5c11\u662f\u8dd1\u9898\u3002"

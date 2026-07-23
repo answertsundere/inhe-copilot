@@ -67,6 +67,16 @@ def orchestrate_final_response(
     Do not call final_answer_auditor and customer_reply_polisher separately from
     API handlers; doing so makes the final node order ambiguous.
     """
+    if (
+        (response.get("model_first_answer_composer") or {}).get("status")
+        == "accepted"
+    ):
+        return _orchestrate_model_first_response(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
+
     pipeline: list[dict[str, Any]] = []
 
     _apply_formal_delivery_boundary(response)
@@ -275,6 +285,142 @@ def orchestrate_final_response(
     })
     _apply_sendable_reply_contract(response, post_issues=post_issues)
     return response
+
+
+def _orchestrate_model_first_response(
+    response: dict[str, Any],
+    *,
+    customer_message: str,
+    copilot_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Audit a composed candidate without handing reply ownership to polishers."""
+    pipeline: list[dict[str, Any]] = []
+    _apply_formal_delivery_boundary(response)
+
+    response = audit_final_answer(
+        response,
+        customer_message=customer_message,
+        copilot_context=copilot_context,
+    )
+    first_audit = response.get("final_answer_audit") or {}
+    pipeline.append({
+        "stage": "model_first_final_audit",
+        "passed": bool(first_audit.get("passed", True)),
+        "issues": list(first_audit.get("issues") or []),
+        "fallback_used": bool(first_audit.get("fallback_used")),
+    })
+
+    before_cleanup = str(response.get("suggested_reply") or "")
+    cleaned = _non_semantic_reply_cleanup(before_cleanup)
+    response["suggested_reply"] = cleaned
+    response["customer_reply_polish"] = {
+        "checked": True,
+        "applied": cleaned != before_cleanup,
+        "mode": "non_semantic_cleanup_only",
+    }
+    pipeline.append({
+        "stage": "non_semantic_cleanup",
+        "changed": cleaned != before_cleanup,
+    })
+    if cleaned != before_cleanup:
+        response = audit_final_answer(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
+
+    semantic_fit = audit_customer_reply_semantic_fit(
+        response,
+        customer_message=customer_message,
+        copilot_context=copilot_context,
+    )
+    # Candidate mode records semantic fitness but never lets a semantic fallback
+    # replace already-supported clauses. Delivery remains review-only.
+    response["final_semantic_fit_audit"] = semantic_fit
+    response.setdefault("evidence_debug", {})[
+        "final_semantic_fit_audit"
+    ] = semantic_fit
+    pipeline.append({
+        "stage": "model_first_semantic_fit_audit",
+        "passed": bool(semantic_fit.get("passed", True)),
+        "issues": list(semantic_fit.get("issues") or []),
+        "fallback_applied": False,
+    })
+
+    post_issues = _post_polish_redline_issues(
+        str(response.get("suggested_reply") or "")
+    )
+    if post_issues:
+        response["suggested_reply"] = _safe_post_polish_fallback(response)
+        response["requires_human_review"] = True
+        response["generation_mode"] = "model_first_redline_fallback"
+        response = audit_final_answer(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
+        semantic_fit = audit_customer_reply_semantic_fit(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
+        response["final_semantic_fit_audit"] = semantic_fit
+        response.setdefault("evidence_debug", {})[
+            "final_semantic_fit_audit"
+        ] = semantic_fit
+    response.setdefault("evidence_debug", {})["post_polish_redline"] = {
+        "passed": not post_issues,
+        "issues": post_issues,
+    }
+    pipeline.append({
+        "stage": "post_polish_redline",
+        "passed": not post_issues,
+        "issues": post_issues,
+    })
+
+    response["requires_human_review"] = True
+    response["can_send"] = False
+    response["sendable_reply"] = ""
+    response["reply_status"] = "needs_human_review"
+    _sync_text_reply_block(response)
+    response["final_response_pipeline"] = {
+        "version": FINAL_RESPONSE_PIPELINE_VERSION,
+        "mode": "model_first_candidate",
+        "order": [
+            "model_first_final_audit",
+            "non_semantic_cleanup",
+            "model_first_semantic_fit_audit",
+            "post_polish_redline",
+            "reply_block_sync",
+        ],
+        "stages": pipeline,
+    }
+    response.setdefault("evidence_debug", {})[
+        "final_response_pipeline"
+    ] = response["final_response_pipeline"]
+    response.setdefault("trace_steps", []).append({
+        "node": "final_response_orchestrator",
+        "status": "completed",
+        "summary": "model-first candidate audited without semantic rewriting",
+        "stages": pipeline,
+    })
+    _apply_sendable_reply_contract(response, post_issues=post_issues)
+    return response
+
+
+def _non_semantic_reply_cleanup(reply: str) -> str:
+    lines = [
+        " ".join(str(line).strip().split())
+        for line in str(reply or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    ]
+    compact: list[str] = []
+    for line in lines:
+        if not line:
+            if compact and compact[-1]:
+                compact.append("")
+            continue
+        compact.append(line)
+    return "\n".join(compact).strip()
 
 
 def _formal_evidence_convergence_enabled() -> bool:

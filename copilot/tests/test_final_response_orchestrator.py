@@ -708,3 +708,59 @@ def test_formal_non_fact_only_context_cannot_create_sendable_media(monkeypatch):
     assert diagnostics["service_action_used_for_fact"] is False
     assert diagnostics["media_reference_used_for_fact"] is False
     assert diagnostics["removed_media_block_count"] == 1
+
+
+def test_model_first_candidate_skips_semantic_polish_and_stays_review_only(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_final_answer",
+        lambda response, **_kwargs: {
+            **response,
+            "final_answer_audit": {"passed": True, "issues": []},
+        },
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_customer_reply_semantic_fit",
+        lambda *_args, **_kwargs: {"passed": True, "issues": [], "mode": "test"},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "polish_customer_reply",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("semantic polisher must not run")
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "_optional_llm_language_polish",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("LLM polisher must not run")
+        ),
+    )
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "宽度是80厘米。\n\n儿童安全方面目前没有直接依据。",
+            "can_send": True,
+            "requires_human_review": False,
+            "reply_status": "sendable",
+            "reply_blocks": [{"type": "text", "content": "old"}],
+            "model_first_answer_composer": {
+                "status": "accepted",
+                "used_for_final_reply": True,
+                "can_change_can_send": False,
+            },
+        },
+        customer_message="尺寸和安全怎么样",
+    )
+
+    assert result["suggested_reply"] == "宽度是80厘米。\n\n儿童安全方面目前没有直接依据。"
+    assert result["final_response_pipeline"]["mode"] == "model_first_candidate"
+    assert result["customer_reply_polish"]["mode"] == "non_semantic_cleanup_only"
+    assert result["can_send"] is False
+    assert result["requires_human_review"] is True
+    assert result["sendable_reply"] == ""
+    assert result["reply_blocks"][0]["content"] == result["suggested_reply"]

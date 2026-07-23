@@ -540,3 +540,27 @@ tier because `kb_product` content changed during execution. The earlier pair is
 therefore superseded diagnostic evidence. Nine scenarios were not started.
 This is a valid fail-closed outcome, not an accuracy result or approval to
 enable the feature in production.
+
+## Phase 0.9A Development Diagnostic Boundary
+
+The model-first OFF/ON comparison uses the immutable v4.2 draft scenarios only
+after the Agent response is complete. `api_request_template` is the sole Agent
+payload source; expected claims, forbidden claims, required actions, Gold
+replies, and rubrics are rejected if they appear in that payload. Because the
+26 scenarios are not authoritatively approved, the report is labelled
+`development_diagnostic` and `accuracy_claim_allowed=false`.
+
+The evaluator separates three concepts:
+
+- canonical selected-evidence counts;
+- runtime evidence attribution from claim resolutions, composer evidence UIDs,
+  and final-audit success;
+- conservative dataset required-point coverage, which is a deterministic
+  lexical diagnostic and not a semantic accuracy score.
+
+Safe negation and uncertainty use the shared claim-polarity contract, so
+phrases such as “不能保证” or “是否无毒……目前无法确认” are not counted as
+affirmative forbidden claims. The full 26-scenario run passed deterministic
+safety and knowledge-write gates but did not meet the answer-quality promotion
+bar. It cannot replace Tier A or approved long-conversation evaluation, and it
+does not authorize enabling either candidate flag in production.
