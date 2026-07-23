@@ -142,6 +142,13 @@ returns `agent_call_allowed=false`, `accuracy_claim_allowed=false`, and exit cod
 `2` for a structurally valid draft. Synthetic v2 cannot be used as a replacement
 denominator.
 
+The privacy scan evaluates address patterns within each text field rather than
+across serialized JSON field boundaries. It keeps concrete delivery-address
+markers, administrative chains, and numbered street/building forms fail-closed,
+without treating ordinary room or space-saving language as an address. Manifest
+notes and provenance text are scanned; only explicitly typed hashes and scoped
+pseudonymous identifiers use the controlled-field exemption.
+
 The source artifact remains immutable during review. A separate ignored SQLite
 store keys every label by scenario UID and the current dataset SHA-256, preserves
 the original and revised Gold reply, records the four independent human checks,

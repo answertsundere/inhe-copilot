@@ -137,6 +137,10 @@ quality, and conversation/claim structure only. Source `review` fields never
 authorize evaluation; embedded approved/rejected decisions, approval audits,
 supervisor/admin identity, Cloudflare authentication claims, or optimistic-lock
 approval versions fail validation as `embedded_authoritative_review_forbidden`.
+Address scanning is field-bounded and requires a concrete address marker,
+administrative chain, or street/building number; room and space wording such as
+`卧室` or `省空间` is not itself an address. Manifest text remains in the privacy
+scan while only explicitly typed hashes and pseudonymous identifiers are exempt.
 Only `build_approved_high_quality_long_conversation_manifest.py`, backed by the
 independent label database and its append-only audit history, may return
 `agent_call_allowed=true` or `accuracy_claim_allowed=true`. Until 26/26 pass,

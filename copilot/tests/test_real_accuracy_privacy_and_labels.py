@@ -102,6 +102,38 @@ def test_scanner_reports_reason_without_echoing_source(value, reason):
     assert all(value not in json.dumps(item, ensure_ascii=False) for item in findings)
 
 
+@pytest.mark.parametrize("value", [
+    "这个放卧室会不会太挤？",
+    "卧室里用省空间，安装也比较省力。",
+    "收货地址填错了，现在能改吗？",
+])
+def test_scanner_does_not_treat_room_or_saving_language_as_an_address(value):
+    assert "address_detected" not in {
+        item["reason_code"] for item in scan_privacy_output({"field": value})
+    }
+
+
+def test_scanner_does_not_join_separate_fields_into_an_address():
+    payload = {
+        "customer_message": "收货地址填错了，现在能改吗？",
+        "product_description": "卧室使用比较省空间。",
+    }
+    assert "address_detected" not in {
+        item["reason_code"] for item in scan_privacy_output(payload)
+    }
+
+
+@pytest.mark.parametrize("value", [
+    "收货地址：北京市朝阳区幸福路12号",
+    "浙江省杭州市西湖区文三路99号",
+    "请送到幸福路12号。",
+])
+def test_scanner_still_detects_concrete_delivery_addresses(value):
+    assert "address_detected" in {
+        item["reason_code"] for item in scan_privacy_output({"field": value})
+    }
+
+
 def _claim(**overrides):
     result = {
         "claim_uid": "claim-1", "claim_kind": "product_fact", "query_fact_type": "dimensions",

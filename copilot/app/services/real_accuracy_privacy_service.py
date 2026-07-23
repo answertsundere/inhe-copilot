@@ -29,7 +29,19 @@ _SECRET_RE = re.compile(r"(?i)\b(?:token|secret|api[_-]?key|authorization|cookie
 _HTML_RE = re.compile(r"<[^>]+>|&(?:#\d+|#x[\da-f]+|[a-z]+);", re.I)
 _DATA_URL_RE = re.compile(r"data:[^\s]+", re.I)
 _ACCOUNT_RE = re.compile(r"(?i)(?:微信|vx|wx|旺旺|钉钉|dingtalk|账号|昵称)\s*[:：]\s*[^\s，。；;]{2,}")
-_ADDRESS_RE = re.compile(r"[\u4e00-\u9fff]{2,}(?:省|市|区|县|镇|乡|街道|路|巷|小区|村|号楼|单元|室)[\u4e00-\u9fff0-9A-Za-z#\-]{2,}")
+_ADDRESS_RE = re.compile(
+    r"(?:"
+    r"(?:收货地址|地址|寄往|送到|收件人住址)\s*[:：]?\s*"
+    r"(?=[^，。；;\n]{0,64}(?:省|市|区|县|镇|乡|街道|路|街|巷|小区|村|号楼|单元|室|\d))"
+    r"[^，。；;\n]{4,80}"
+    r"|(?:[\u4e00-\u9fff]{2,}(?:省|自治区))?"
+    r"[\u4e00-\u9fff]{2,}(?:市|自治州)"
+    r"[\u4e00-\u9fff]{2,}(?:区|县|市)"
+    r"[\u4e00-\u9fff0-9A-Za-z#\-]{2,}"
+    r"|[\u4e00-\u9fff]{2,}(?:路|街|巷|道|小区|村)\s*"
+    r"\d+(?:号|弄|栋|幢|号楼|单元|室)?"
+    r")"
+)
 _SPEAKER_PREFIX_RE = re.compile(r"^\s*(买家|客户|顾客|用户|客服|商家|系统|订单系统|机器人)\s*[:：]\s*", re.I)
 _UNCONTROLLED_SPEAKER_HEADER_RE = re.compile(r"^\s*[^\s:：]{2,32}\s*[:：]\s*")
 _BLOCK_TAGS = {"p", "div", "li", "tr", "section", "article", "blockquote"}
@@ -46,7 +58,7 @@ _ALLOWED_ROLES = frozenset({"BUYER", "AGENT", "SYSTEM"})
 _MAX_TURNS_PER_CASE = 500
 _CONTROLLED_SCAN_FIELDS = frozenset({
     "case_uid", "turn_uid", "target_turn_uids", "speaker_uid", "pseudonymous_id", "sidecar_identity",
-    "content_sha256", "dataset_hash", "source_snapshot_hash", "reviewer_actor_hash", "manifest",
+    "content_sha256", "dataset_hash", "source_snapshot_hash", "reviewer_actor_hash",
     "target_text_digest", "conversation_digest", "content_digest",
     "label_db_sha256", "historical_label_db_sha256", "migration_manifest_sha256", "old_audit_event_hash",
     "v1_approval_event_hash", "source_identity_digest",
@@ -402,7 +414,6 @@ def scan_privacy_output(value: Any) -> list[dict[str, Any]]:
         "phone_number_detected": _PHONE_RE,
         "landline_detected": _LANDLINE_RE,
         "email_detected": _EMAIL_RE,
-        "address_detected": _ADDRESS_RE,
         "long_identifier_detected": _LONG_ID_RE,
         "url_detected": _URL_RE,
         "credential_marker_detected": _SECRET_RE,
@@ -415,9 +426,22 @@ def scan_privacy_output(value: Any) -> list[dict[str, Any]]:
         for reason, pattern in checks.items()
         if pattern.search(serialized)
     ]
+    address_count = _count_text_matches(projected, _ADDRESS_RE)
+    if address_count:
+        findings.append({"reason_code": "address_detected", "count": address_count})
     if re.search(r"(?:买家|客户|顾客|用户|客服|商家)\s*(?:→|->)", serialized, re.I):
         findings.append({"reason_code": "speaker_identity_header_detected", "count": 1})
     return findings
+
+
+def _count_text_matches(value: Any, pattern: re.Pattern[str]) -> int:
+    if isinstance(value, str):
+        return len(pattern.findall(value))
+    if isinstance(value, list):
+        return sum(_count_text_matches(item, pattern) for item in value)
+    if isinstance(value, dict):
+        return sum(_count_text_matches(item, pattern) for item in value.values())
+    return 0
 
 
 def _stable_json(value: Any) -> str:
