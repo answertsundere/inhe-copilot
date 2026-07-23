@@ -105,6 +105,12 @@ const router = createRouter({
           component: () => import('../views/RealAccuracyLabelWorkbenchPage.vue'),
           meta: { title: '准确率人工标注', hidden: true },
         },
+        {
+          path: 'high-quality-conversation-review',
+          name: 'high-quality-conversation-review',
+          component: () => import('../views/HighQualityConversationReviewPage.vue'),
+          meta: { title: '高质量长对话审核', hidden: true },
+        },
       ],
     },
     {

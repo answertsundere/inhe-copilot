@@ -305,7 +305,7 @@ fields and pass an explicit promotion gate before joining production decisions.
 
 ## Current Architecture Assessment
 
-### Current Phase: 0.8H Gold v0.2 Target And Runtime Isolation Closure
+### Current Phase: 0.8I.2 Long-Conversation Approval Authority Closure
 
 Formal Evidence Convergence is implemented as an opt-in, fail-closed contract,
 but its production flag remains disabled. Phase 0.8C repaired the proven
@@ -342,6 +342,29 @@ Cloudflare 530 external-route issue. The 5012 review canary rejects missing or
 forged Access identity. A real signed Cloudflare supervisor session and manual
 per-claim approval remain required before Tier A execution; this release and
 Gold migration do not promote reply behavior.
+
+Phase 0.8I.1 adds the missing human-review boundary for the immutable v4.2
+source. The 26 scenarios are overlaid with labels in a separate ignored SQLite
+database; the source JSON is never rewritten. Reviewer draft/submission and
+Cloudflare Access supervisor/admin approval use the existing management RBAC,
+one optimistic-lock version and one append-only audit event per decision. An
+approved reply revision automatically returns to `reviewed`, and labels tied to
+an older dataset hash do not enter the current manifest. The Chinese workbench
+shows bounded conversation, a redacted product-context summary, the Gold draft,
+four independent human checks, and revision history. No review field is an
+Agent, RAG, formal-evidence, knowledge, or delivery input. Until all 26 current
+scenarios have authoritative approval events, `accuracy_claim_allowed=false`
+and real accuracy remains `null`.
+
+Phase 0.8I.2 removes the source artifact as an approval authority. Embedded
+`review`, role, authentication, audit, or optimistic-lock fields are diagnostic
+input at most; an embedded approved/rejected decision makes the source invalid
+and can never authorize Agent execution. The only authority is the independent
+review database plus a current-hash, contiguous-version approved manifest. Only
+that manifest may set `agent_call_allowed=true` or
+`accuracy_claim_allowed=true`, and only after 26/26 current scenarios have one
+matching Cloudflare Access supervisor/admin approval event and all four human
+checks.
 
 The fixed-turn Phase 0.8G comparison exposed a separate operations defect: an
 evaluation runtime that shared the formal database also started the resident

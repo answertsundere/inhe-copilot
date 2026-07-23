@@ -130,6 +130,33 @@ criteria and multi-turn transcripts are useful, but model grading does not
 replace expert-approved truth labels. Tier D therefore reports an exploratory
 pass rate and keeps real-customer accuracy `null`.
 
+### Reviewed Long-Conversation Gate
+
+The 26-scenario v4.2 long-conversation review set is a draft evaluation source,
+not approved Gold truth. Schema, content hashes, controlled identifiers, and
+privacy can be validated before review, but the source JSON is never an approval
+authority. Embedded approved/rejected decisions, approval audits, supervisor
+identity, Cloudflare authentication claims, or optimistic-lock approval versions
+fail closed instead of granting execution. The source validator therefore always
+returns `agent_call_allowed=false`, `accuracy_claim_allowed=false`, and exit code
+`2` for a structurally valid draft. Synthetic v2 cannot be used as a replacement
+denominator.
+
+The source artifact remains immutable during review. A separate ignored SQLite
+store keys every label by scenario UID and the current dataset SHA-256, preserves
+the original and revised Gold reply, records the four independent human checks,
+and appends every state transition with its previous/new optimistic-lock
+version. Old approvals are invisible after a dataset-hash change. Editing an
+approved reply creates a new version and returns it to `reviewed`. A scenario
+enters the approved manifest only when all four checks are true and exactly one
+current-version `scenario_approved` event comes from a signed Cloudflare Access
+supervisor/admin identity. There is no batch-approval API. Until 26/26 satisfy
+this contract, the manifest remains `awaiting_supervisor_approval`, Agent calls
+remain disallowed, and no accuracy percentage may be published.
+`build_approved_review_manifest()` is the sole authority that may set Agent-call
+and accuracy-claim permission; validation and approval are intentionally separate
+contracts.
+
 ## Tier D Long-Conversation Simulation
 
 `scripts/build_long_conversation_simulation_set.py` joins the privacy-checked

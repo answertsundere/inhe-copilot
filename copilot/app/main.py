@@ -606,6 +606,7 @@ def create_app():
     from app.api.product_media_observation_routes import product_media_observation_bp
     from app.api.training_sample_routes import training_sample_bp
     from app.api.real_accuracy_label_routes import real_accuracy_label_bp
+    from app.api.high_quality_long_conversation_review_routes import high_quality_review_bp
     from app.api.eval_routes import eval_bp
     from app.api.material_review_routes import material_review_bp
 
@@ -630,6 +631,7 @@ def create_app():
     app.register_blueprint(product_media_observation_bp)
     app.register_blueprint(training_sample_bp)
     app.register_blueprint(real_accuracy_label_bp)
+    app.register_blueprint(high_quality_review_bp)
     app.register_blueprint(eval_bp)
     app.register_blueprint(material_review_bp)
 
@@ -687,6 +689,7 @@ def create_app():
     @app.route("/reviews")
     @app.route("/training-samples")
     @app.route("/real-accuracy-labels")
+    @app.route("/high-quality-conversation-review")
     @app.route("/service-rules")
     @app.route("/ai-updates")
     @app.route("/quality-replay")

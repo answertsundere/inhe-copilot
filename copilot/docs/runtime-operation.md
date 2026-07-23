@@ -120,6 +120,28 @@ forged role/name headers return 401. Without a real signed supervisor session,
 the workflow stops at `awaiting_real_supervisor_approval`; development
 principal tests are not authoritative approvals.
 
+The v4.2 long-conversation review workbench is served at
+`/ask/high-quality-conversation-review` and reads the immutable source from
+`COPILOT_HQ_LONG_CONVERSATION_REVIEW_SET_PATH`. Human decisions are stored only
+in the ignored SQLite path configured by
+`COPILOT_HQ_LONG_CONVERSATION_LABEL_DB`; that path must differ from
+`COPILOT_KNOWLEDGE_DB_PATH`. `COPILOT_REAL_ACCURACY_LABEL_AUDIT_HMAC_KEY`
+pseudonymises the human actor in the append-only audit trail. Reviewer sessions
+may save and submit; approval and rejection require a signed Cloudflare Access
+supervisor/admin session and a valid browser origin. There is no bulk-approval
+route. The source JSON, formal knowledge database, Agent, and 5011 are not
+modified by this workflow.
+
+The immutable source validator owns schema, hashes, identifiers, privacy, text
+quality, and conversation/claim structure only. Source `review` fields never
+authorize evaluation; embedded approved/rejected decisions, approval audits,
+supervisor/admin identity, Cloudflare authentication claims, or optimistic-lock
+approval versions fail validation as `embedded_authoritative_review_forbidden`.
+Only `build_approved_high_quality_long_conversation_manifest.py`, backed by the
+independent label database and its append-only audit history, may return
+`agent_call_allowed=true` or `accuracy_claim_allowed=true`. Until 26/26 pass,
+the command exits `2` and real accuracy remains `null`.
+
 The approved-only runner evaluates privacy and the independent approval gate
 before requiring the Gold source-link HMAC. This keeps the current zero-approval
 state explicit as `awaiting_supervisor_approval` with exit code 2 and no Agent
