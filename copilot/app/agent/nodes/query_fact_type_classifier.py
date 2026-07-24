@@ -8,6 +8,65 @@ from app.services.logistics_fast_path import get_explicit_logistics_identifier
 from app.services.semantic_fact_type_service import classify_query_fact_type_llm_first
 
 
+def _requested_claims_from_customer_goals(
+    goals: list[dict],
+    *,
+    question: str,
+    risk_hint: str,
+) -> list[dict]:
+    claims: list[dict] = []
+    seen: set[str] = set()
+    for goal in goals:
+        if not isinstance(goal, dict) or goal.get("goal_kind") != "customer_goal":
+            continue
+        goal_ref = str(goal.get("goal_ref") or "").strip()
+        if not goal_ref or goal_ref in seen:
+            continue
+        seen.add(goal_ref)
+        claims.append({
+            "goal_ref": goal_ref,
+            "goal_kind": "customer_goal",
+            "claim_type": str(goal.get("claim_type") or "").strip(),
+            "attribute_key": str(goal.get("attribute_key") or "").strip(),
+            "semantic_key": str(goal.get("semantic_key") or "").strip(),
+            "goal_summary": str(goal.get("goal_summary") or "").strip(),
+            "source_span_start": goal.get("source_span_start"),
+            "source_span_end": goal.get("source_span_end"),
+            "source_span_sha256": str(goal.get("source_span_sha256") or "").strip(),
+            "question": question,
+            "risk_level": risk_hint,
+        })
+    return sorted(claims, key=lambda item: item["goal_ref"])
+
+
+def _turn_understanding_from_result(state: dict, result: dict) -> dict:
+    understanding = (
+        dict(state.get("turn_understanding"))
+        if isinstance(state.get("turn_understanding"), dict)
+        else {}
+    )
+    goals = [
+        dict(item)
+        for item in result.get("customer_goals") or []
+        if isinstance(item, dict)
+    ]
+    requested_claims = _requested_claims_from_customer_goals(
+        goals,
+        question=str(state.get("normalized_message") or state.get("customer_message") or ""),
+        risk_hint=str(result.get("risk_hint") or ""),
+    )
+    understanding.update({
+        "query_fact_type": result.get("query_fact_type", ""),
+        "secondary_fact_types": result.get("secondary_fact_types", []),
+        "customer_goals": goals,
+        "goal_understanding_status": result.get("goal_understanding_status", "degraded"),
+        "goal_understanding_diagnostics": result.get("goal_understanding_diagnostics", []),
+    })
+    if requested_claims:
+        understanding["requested_claims"] = requested_claims
+    return understanding
+
+
 def query_fact_type_classifier(state: dict) -> dict:
     t0 = time.time()
     if get_explicit_logistics_identifier(state):
@@ -45,6 +104,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         }
 
     duration_ms = int((time.time() - t0) * 1000)
+    turn_understanding = _turn_understanding_from_result(state, result)
     trace = {
         "node": "query_fact_type_classifier",
         "status": "success",
@@ -56,6 +116,8 @@ def query_fact_type_classifier(state: dict) -> dict:
         "reason": result.get("reason", ""),
         "secondary_fact_types": result.get("secondary_fact_types", []),
         "semantic_query": result.get("semantic_query", {}),
+        "goal_count": len(turn_understanding.get("customer_goals") or []),
+        "goal_understanding_status": turn_understanding.get("goal_understanding_status", ""),
         "summary": (
             f"query_fact_type={result.get('query_fact_type', '') or 'unknown'} "
             f"source={result.get('source', '')}"
@@ -72,5 +134,6 @@ def query_fact_type_classifier(state: dict) -> dict:
         "query_fact_type_risk_hint": result.get("risk_hint", ""),
         "semantic_query": result.get("semantic_query", {}),
         "needs_visual_asset": bool((result.get("semantic_query") or {}).get("needs_visual_asset")),
+        "turn_understanding": turn_understanding,
         "trace_steps": state.get("trace_steps", []) + [trace],
     }

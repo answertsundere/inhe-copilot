@@ -13,6 +13,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "material_composition",
           "expected_attribute_key": "",
+          "expected_source_span_sha256": "23f25fb2090c1d7ec3f57b1555a83d0cea5829be206a355bbb4b366292cb9e0f",
+          "expected_source_span_start": 0,
+          "expected_source_span_end": 9,
           "diagnostic_label_uncertain": false
         },
         {
@@ -20,6 +23,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "",
           "expected_attribute_key": "durability",
+          "expected_source_span_sha256": "11d15c4cd242da81b9b1c1aca48fbc237026fe313d8eb57c9ec142fa24069e0e",
+          "expected_source_span_start": 10,
+          "expected_source_span_end": 18,
           "diagnostic_label_uncertain": false
         }
       ]
@@ -34,6 +40,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "bite_or_toxicity",
           "expected_attribute_key": "",
+          "expected_source_span_sha256": "130592bcba057c92e55061d11b022c169a45b355160454f1f94e9550e0dc2922",
+          "expected_source_span_start": 0,
+          "expected_source_span_end": 10,
           "diagnostic_label_uncertain": true
         },
         {
@@ -55,6 +64,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "material_composition",
           "expected_attribute_key": "",
+          "expected_source_span_sha256": "dc9f309018368364d395ccef7588ca9d1c20236c4e5f7b70b8802fc9e9caf02d",
+          "expected_source_span_start": 0,
+          "expected_source_span_end": 5,
           "diagnostic_label_uncertain": false
         },
         {
@@ -62,6 +74,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "odor",
           "expected_attribute_key": "",
+          "expected_source_span_sha256": "47fab1704ea7587415ea13ac98199b6f29ffe0694628724eb814fbeeda0e1870",
+          "expected_source_span_start": 6,
+          "expected_source_span_end": 12,
           "diagnostic_label_uncertain": false
         },
         {
@@ -69,6 +84,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "cleaning_care",
           "expected_attribute_key": "heat_sterilization",
+          "expected_source_span_sha256": "5c6bc8f1ed13930c3e5ced3951ec6a57b0497dc0b7242041ebf5f7101f5442f3",
+          "expected_source_span_start": 13,
+          "expected_source_span_end": 22,
           "diagnostic_label_uncertain": false
         }
       ]
@@ -83,6 +101,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "material_composition",
           "expected_attribute_key": "",
+          "expected_source_span_sha256": "528466dbd088082dcf61c007e649fbc0b1b13f5d54228ce251a7b8cccba8e5cc",
+          "expected_source_span_start": 0,
+          "expected_source_span_end": 7,
           "diagnostic_label_uncertain": false
         },
         {
@@ -90,6 +111,9 @@
           "expected_goal_kind": "customer_goal",
           "expected_claim_type": "moisture_resistance",
           "expected_attribute_key": "",
+          "expected_source_span_sha256": "1c0a8e54ec0c29a8e9b70f5e770d1a92bbfa55e61e72d175d09cdff881ea6b10",
+          "expected_source_span_start": 15,
+          "expected_source_span_end": 18,
           "diagnostic_label_uncertain": false
         }
       ]

@@ -232,6 +232,60 @@ def test_goal_truth_is_diagnostic_only_and_separates_dependency():
     ]
     assert safety[0]["expected_claim_type"] == "bite_or_toxicity"
     assert safety[1]["expected_claim_type"] == "material_composition"
+    assert len(safety[0]["expected_source_span_sha256"]) == 64
+
+
+def test_goal_match_uses_verified_source_span_before_model_semantic_wording():
+    source_hash = "a" * 64
+    truth = {
+        "diagnostic_goal_ref": "diagnostic-only-ref",
+        "expected_claim_type": "",
+        "expected_attribute_key": "durability",
+        "expected_source_span_sha256": source_hash,
+        "expected_source_span_start": 10,
+        "expected_source_span_end": 18,
+    }
+
+    assert comparison._goal_matches({
+        "goal_ref": "runtime-ref",
+        "claim_type": "",
+        "attribute_key": "",
+        "semantic_key": "model-selected-wording-can-vary",
+        "source_span_sha256": source_hash,
+        "source_span_start": 10,
+        "source_span_end": 18,
+    }, truth) is True
+    assert comparison._goal_matches({
+        "goal_ref": "runtime-ref",
+        "claim_type": "",
+        "attribute_key": "durability",
+        "semantic_key": "durability",
+        "source_span_sha256": "b" * 64,
+        "source_span_start": 0,
+        "source_span_end": 5,
+    }, truth) is False
+
+
+def test_goal_match_accepts_verified_source_span_granularity_but_not_other_clause():
+    truth = {
+        "diagnostic_goal_ref": "diagnostic-only-ref",
+        "expected_claim_type": "moisture_resistance",
+        "expected_attribute_key": "",
+        "expected_source_span_sha256": "a" * 64,
+        "expected_source_span_start": 15,
+        "expected_source_span_end": 18,
+    }
+
+    assert comparison._goal_matches({
+        "source_span_sha256": "b" * 64,
+        "source_span_start": 8,
+        "source_span_end": 18,
+    }, truth) is True
+    assert comparison._goal_matches({
+        "source_span_sha256": "c" * 64,
+        "source_span_start": 8,
+        "source_span_end": 11,
+    }, truth) is False
 
 
 def test_goal_funnel_finds_earliest_understanding_and_requested_claim_breakpoints():

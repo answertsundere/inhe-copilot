@@ -1,4 +1,8 @@
 from app.main import create_app
+from app.agent.nodes.query_fact_type_classifier import (
+    _requested_claims_from_customer_goals,
+    _turn_understanding_from_result,
+)
 from app.services import semantic_fact_type_service
 from app.services.fact_type_service import classify_query_fact_type
 
@@ -154,6 +158,99 @@ def test_api_exposes_query_fact_type_debug():
     assert debug["query_fact_type"] == "certification_report"
     assert debug["query_fact_type_label"]
     assert result["requires_human_review"] is True
+
+
+def test_turn_understanding_requests_only_customer_goals():
+    result = {
+        "query_fact_type": "material",
+        "secondary_fact_types": ["moisture_resistance"],
+        "risk_hint": "medium",
+        "goal_understanding_status": "valid",
+        "goal_understanding_diagnostics": [],
+        "customer_goals": [
+            {
+                "goal_ref": "goal-material",
+                "goal_kind": "customer_goal",
+                "claim_type": "material_composition",
+                "attribute_key": "material",
+                "semantic_key": "",
+                "goal_summary": "confirm material",
+                "source_span_start": 0,
+                "source_span_end": 10,
+                "source_span_sha256": "a" * 64,
+            },
+            {
+                "goal_ref": "goal-moisture",
+                "goal_kind": "customer_goal",
+                "claim_type": "moisture_resistance",
+                "attribute_key": "",
+                "semantic_key": "",
+                "goal_summary": "confirm moisture boundary",
+                "source_span_start": 11,
+                "source_span_end": 20,
+                "source_span_sha256": "b" * 64,
+            },
+            {
+                "goal_ref": "goal-support",
+                "goal_kind": "evidence_dependency",
+                "claim_type": "material_composition",
+                "attribute_key": "material",
+                "semantic_key": "",
+                "goal_summary": "supporting material",
+            },
+            {
+                "goal_ref": "goal-action",
+                "goal_kind": "service_action",
+                "claim_type": "aftersales_policy",
+                "attribute_key": "",
+                "semantic_key": "",
+                "goal_summary": "service action",
+            },
+        ],
+    }
+
+    understanding = _turn_understanding_from_result(
+        {"customer_message": "multi-goal customer turn"},
+        result,
+    )
+
+    assert [item["goal_ref"] for item in understanding["requested_claims"]] == [
+        "goal-material",
+        "goal-moisture",
+    ]
+    assert understanding["customer_goals"] == result["customer_goals"]
+
+
+def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
+    claims = _requested_claims_from_customer_goals(
+        [{
+            "goal_ref": "goal-durability",
+            "goal_kind": "customer_goal",
+            "claim_type": "",
+            "attribute_key": "durability",
+            "semantic_key": "durability",
+            "goal_summary": "confirm durability boundary",
+            "source_span_start": 0,
+            "source_span_end": 11,
+            "source_span_sha256": "c" * 64,
+        }],
+        question="multi-goal customer turn",
+        risk_hint="medium",
+    )
+
+    assert claims == [{
+        "goal_ref": "goal-durability",
+        "goal_kind": "customer_goal",
+        "claim_type": "",
+        "attribute_key": "durability",
+        "semantic_key": "durability",
+        "goal_summary": "confirm durability boundary",
+        "source_span_start": 0,
+        "source_span_end": 11,
+        "source_span_sha256": "c" * 64,
+        "question": "multi-goal customer turn",
+        "risk_level": "medium",
+    }]
 
 
 def test_api_final_audit_blocks_pinch_as_battery_topic():

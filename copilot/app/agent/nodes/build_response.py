@@ -198,6 +198,7 @@ def build_response(state: dict) -> dict:
     evidence_debug["query_fact_type_source"] = state.get("query_fact_type_source", state.get("source", ""))
     evidence_debug["query_fact_type_reason"] = state.get("query_fact_type_reason", "")
     evidence_debug["secondary_fact_types"] = state.get("secondary_fact_types", [])
+    evidence_debug["turn_understanding"] = state.get("turn_understanding", {})
     evidence_debug["query_fact_type_risk_hint"] = state.get("query_fact_type_risk_hint", "")
     evidence_debug["semantic_query"] = state.get("semantic_query", {})
     evidence_debug["needs_visual_asset"] = state.get("needs_visual_asset", False)

@@ -59,6 +59,16 @@ allowed unless durable state, retry, branching, pause/resume, or recovery
 requires it. Reasoning, context construction, evidence admission, reply
 composition, safety, and delivery retain their existing application owners.
 
+Turn understanding uses the existing single semantic-classification call to
+produce atomic, typed goals. Explicit customer needs become `customer_goal`
+items and feed canonical `requested_claims`; supporting facts remain
+`evidence_dependency`, while actions and contextual constraints retain their
+own kinds. The deterministic boundary validates, deduplicates, and orders these
+items without inventing a new FactType. Each customer goal is anchored to a
+verified span of the current customer turn; downstream diagnostics retain only
+the span position and hash, not another copy of customer text. Missing or
+invalid goal structure is observable and fails closed for that goal.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

@@ -146,6 +146,11 @@ def _load_goal_truth(path: Path) -> dict[str, list[dict[str, Any]]]:
                 "expected_goal_kind": str(goal.get("expected_goal_kind") or "").strip(),
                 "expected_claim_type": str(goal.get("expected_claim_type") or "").strip(),
                 "expected_attribute_key": str(goal.get("expected_attribute_key") or "").strip(),
+                "expected_source_span_sha256": str(
+                    goal.get("expected_source_span_sha256") or ""
+                ).strip(),
+                "expected_source_span_start": goal.get("expected_source_span_start"),
+                "expected_source_span_end": goal.get("expected_source_span_end"),
                 "diagnostic_label_uncertain": goal.get("diagnostic_label_uncertain") is True,
             }
             if not item["diagnostic_goal_ref"] or item["expected_goal_kind"] not in {
@@ -155,6 +160,24 @@ def _load_goal_truth(path: Path) -> dict[str, list[dict[str, Any]]]:
                 "contextual_constraint",
             }:
                 raise ValueError("goal_truth_goal_contract_invalid")
+            source_hash = item["expected_source_span_sha256"]
+            if source_hash and (
+                len(source_hash) != 64
+                or source_hash.lower() != source_hash
+                or any(char not in "0123456789abcdef" for char in source_hash)
+            ):
+                raise ValueError("goal_truth_source_span_hash_invalid")
+            source_start = item["expected_source_span_start"]
+            source_end = item["expected_source_span_end"]
+            if source_hash and (
+                not isinstance(source_start, int)
+                or isinstance(source_start, bool)
+                or not isinstance(source_end, int)
+                or isinstance(source_end, bool)
+                or source_start < 0
+                or source_end <= source_start
+            ):
+                raise ValueError("goal_truth_source_span_range_invalid")
             prepared.append(item)
         refs = [item["diagnostic_goal_ref"] for item in prepared]
         if len(refs) != len(set(refs)):
@@ -190,6 +213,26 @@ def _claim_type(value: Any) -> str:
 
 
 def _goal_matches(item: dict[str, Any], truth: dict[str, Any]) -> bool:
+    expected_source_hash = str(
+        truth.get("expected_source_span_sha256") or ""
+    ).strip()
+    observed_source_hash = str(item.get("source_span_sha256") or "").strip()
+    if expected_source_hash and observed_source_hash:
+        if expected_source_hash == observed_source_hash:
+            return True
+        expected_start = truth.get("expected_source_span_start")
+        expected_end = truth.get("expected_source_span_end")
+        observed_start = item.get("source_span_start")
+        observed_end = item.get("source_span_end")
+        if all(
+            isinstance(value, int) and not isinstance(value, bool)
+            for value in (expected_start, expected_end, observed_start, observed_end)
+        ):
+            return (
+                observed_start <= expected_start < expected_end <= observed_end
+                or expected_start <= observed_start < observed_end <= expected_end
+            )
+        return False
     expected_ref = truth["diagnostic_goal_ref"]
     observed_ref = str(item.get("goal_ref") or item.get("diagnostic_goal_ref") or "").strip()
     if observed_ref and observed_ref == expected_ref:

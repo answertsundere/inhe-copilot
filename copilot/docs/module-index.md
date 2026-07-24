@@ -12,6 +12,7 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Application stage order | `app/services/analysis_pipeline_service.py` | formal | The only graph-to-delivery execution path for API, copilot, replay, and benchmark |
 | Graph execution and persistence | `app/services/analysis_execution_service.py` | formal | Graph lifecycle, trace, one post-processor, final snapshot/persistence |
 | Conversation turns | `app/services/canonical_conversation_turn_service.py` | formal utility | Bounded role-aware history and provider privacy projection |
+| Turn understanding | `app/services/semantic_fact_type_service.py`, `app/agent/nodes/query_fact_type_classifier.py` | formal | One semantic call returns typed atomic goals; only verified `customer_goal` items become requested claims, while evidence dependencies, service actions, and contextual constraints stay distinct |
 | Agent orchestration | `app/agent/graph.py`, `app/agent/nodes/` | formal but overweight | Stateful routing, tools, retries, and flow transitions; not final reply ownership |
 | Formal LLM transport | `app/llm/client.py` | formal | Provider transport, privacy projection, timeout/truncation handling |
 | Product/order identity | identity services and resolver nodes | formal | External references to JST/internal scoped identity |
