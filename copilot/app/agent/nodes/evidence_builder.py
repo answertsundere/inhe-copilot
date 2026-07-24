@@ -36,6 +36,11 @@ from app.services.admitted_answer_context_service import (
     canonical_selected_evidence,
 )
 from app.services.claim_resolution_service import expand_claim_dependencies
+from app.agent.tools.registry import build_tool_requirement_status
+from app.repositories.file_policy_repository import FilePolicyRepository
+from app.services.canonical_conversation_turn_service import (
+    canonical_conversation_reference_status,
+)
 
 # 高风险商品事实字段 — 包含这些字段的知识条目需要 fact review
 HIGH_RISK_FACT_FIELDS = (
@@ -574,17 +579,34 @@ def _formal_evidence_convergence(
         "formal_evidence_candidates": candidates,
     }
     identity = _formal_product_identity(state)
+    copilot_context = (
+        state.get("copilot_context")
+        if isinstance(state.get("copilot_context"), dict)
+        else {}
+    )
     admitted = AdmittedAnswerContextService().build_for_response(
         response,
         product_identity=identity,
         understanding=_formal_understanding(state),
+        answer_eligibility_inputs={
+            "domain_policy_pack": FilePolicyRepository().resolve_domain_policy_pack(
+                copilot_context
+            ),
+            "conversation_reference_status": canonical_conversation_reference_status(
+                copilot_context
+            ),
+            "tool_requirement_status": build_tool_requirement_status(
+                state.get("required_tools"),
+                state.get("tool_results"),
+            ),
+        },
     )
     selected = canonical_selected_evidence(admitted)
     minimal_context = build_minimal_decision_context(
         admitted,
         customer_message=str(state.get("normalized_message", state.get("customer_message", "")) or ""),
         conversation_summary=state.get("conversation_context_summary") if isinstance(state.get("conversation_context_summary"), dict) else {},
-        channel_capabilities=(state.get("copilot_context") or {}).get("channel_capabilities", {}) if isinstance(state.get("copilot_context"), dict) else {},
+        channel_capabilities=copilot_context.get("channel_capabilities", {}),
         allowed_read_only_tools=[
             str(item.get("tool_name") or "")
             for item in state.get("tool_plan", [])

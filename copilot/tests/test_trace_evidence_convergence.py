@@ -17,6 +17,7 @@ def test_trace_reports_context_pack_evidence_absent_from_formal_selection():
                     "product_evidence_protocol": True,
                     "verification_status": "verified",
                     "can_direct_answer": True,
+                    "material_provenance": "structured_product_record",
                 },
             }],
         },
@@ -54,6 +55,7 @@ def test_trace_marks_rebuilt_context_separately_from_compact_snapshot(monkeypatc
                 "product_evidence_protocol": True,
                 "verification_status": "verified",
                 "can_direct_answer": True,
+                "material_provenance": "structured_product_record",
             },
         }],
     }

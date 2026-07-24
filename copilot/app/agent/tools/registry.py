@@ -70,6 +70,109 @@ class ToolRegistry:
 
 
 # 全局单例
+def build_tool_requirement_status(
+    required_tools: list[str] | None,
+    tool_results: dict | None,
+    *,
+    registry: ToolRegistry | None = None,
+) -> dict:
+    """Project router requirements and executor completion without name heuristics."""
+    registry = registry or get_tool_registry()
+    required = sorted({
+        str(name).strip()
+        for name in required_tools or []
+        if str(name or "").strip()
+    })
+    results = tool_results if isinstance(tool_results, dict) else {}
+    completed = [
+        name
+        for name in required
+        if name in results and not _tool_result_failed(results.get(name))
+    ]
+    base = {
+        "required_tool_refs": required,
+        "completed_tool_refs": completed,
+        "source_stage": "tool_router_and_executor",
+        "reason_codes": [],
+    }
+    if not required:
+        return {**base, "status": "not_required"}
+
+    specs = {name: registry.get(name) for name in required}
+    if any(spec is None for spec in specs.values()):
+        return {
+            **base,
+            "status": "unknown",
+            "reason_codes": ["required_tool_not_registered"],
+        }
+    freshness = {
+        name: str(spec.freshness_class or "unknown").strip().lower()
+        for name, spec in specs.items()
+        if spec is not None
+    }
+    if any(value not in {"static", "live", "action"} for value in freshness.values()):
+        return {
+            **base,
+            "status": "unknown",
+            "reason_codes": ["tool_freshness_unknown"],
+        }
+    if "action" in freshness.values():
+        return {
+            **base,
+            "status": "action_tool_required",
+            "reason_codes": ["side_effect_authorization_required"],
+        }
+
+    failed = [
+        name
+        for name in required
+        if name in results and _tool_result_failed(results.get(name))
+    ]
+    missing = [name for name in required if name not in results]
+    live = [name for name in required if freshness[name] == "live"]
+    if live:
+        if failed:
+            return {
+                **base,
+                "status": "live_tool_failed",
+                "reason_codes": ["required_live_tool_failed"],
+            }
+        if missing:
+            return {
+                **base,
+                "status": "live_tool_required",
+                "reason_codes": ["required_live_tool_pending"],
+            }
+        return {**base, "status": "live_tool_completed"}
+
+    if failed or missing:
+        return {
+            **base,
+            "status": "unknown",
+            "reason_codes": ["required_static_tool_incomplete"],
+        }
+    return {**base, "status": "static_knowledge_completed"}
+
+
+def _tool_result_failed(value: object) -> bool:
+    if not isinstance(value, dict):
+        return True
+    if value.get("timed_out") is True:
+        return True
+    if str(value.get("status") or "").strip().lower() in {
+        "failed",
+        "error",
+        "timeout",
+        "not_found",
+    }:
+        return True
+    return bool(
+        value.get("error")
+        or value.get("error_code")
+        or value.get("safe_fallback_reason")
+    )
+
+
 _registry: Optional[ToolRegistry] = None
 
 
@@ -103,6 +206,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 1. jst_lookup_order_tool ----
     registry.register(ToolSpec(
         name="jst_lookup_order_tool",
+        freshness_class="live",
         description="按聚水潭内部订单号(o_id)或平台订单号(so_id)查询订单状态、物流信息",
         input_schema=JST_ORDER_INPUT,
         output_schema=JST_ORDER_OUTPUT,
@@ -116,6 +220,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 2. jst_lookup_outbound_tool ----
     registry.register(ToolSpec(
         name="jst_lookup_outbound_tool",
+        freshness_class="live",
         description="按外部交易单号/平台交易号(outer_so_id)查询销售出库记录，获取发货状态、快递公司、快递单号",
         input_schema=JST_OUTBOUND_INPUT,
         output_schema=JST_OUTBOUND_OUTPUT,
@@ -129,6 +234,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 3. jst_lookup_tracking_tool ----
     registry.register(ToolSpec(
         name="jst_lookup_tracking_tool",
+        freshness_class="live",
         description="按快递单号查询物流轨迹和关联订单（扫描最近7天物流记录）",
         input_schema=JST_TRACKING_INPUT,
         output_schema=JST_TRACKING_OUTPUT,
@@ -142,6 +248,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 4. rag_search_tool ----
     registry.register(ToolSpec(
         name="rag_search_tool",
+        freshness_class="static",
         description="从知识库检索相关知识分片（FAQ、产品信息、物流政策、售后政策等）",
         input_schema=RAG_SEARCH_INPUT,
         output_schema=RAG_SEARCH_OUTPUT,
@@ -155,6 +262,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 5. product_resolver_tool ----
     registry.register(ToolSpec(
         name="product_resolver_tool",
+        freshness_class="static",
         description="从客户消息中识别商品名称，返回匹配的商品候选",
         input_schema=PRODUCT_RESOLVER_INPUT,
         output_schema=PRODUCT_RESOLVER_OUTPUT,
@@ -168,6 +276,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 6. sop_lookup_tool ----
     registry.register(ToolSpec(
         name="sop_lookup_tool",
+        freshness_class="static",
         description="检索高风险SOP和禁止承诺规则，用于投诉、赔偿等高风险场景",
         input_schema=SOP_LOOKUP_INPUT,
         output_schema=SOP_LOOKUP_OUTPUT,
@@ -182,6 +291,7 @@ def _register_default_tools(registry: ToolRegistry):
     # ---- 7. template_select_tool ----
     registry.register(ToolSpec(
         name="template_select_tool",
+        freshness_class="static",
         description="根据意图和场景选择合适的话术模板",
         input_schema=TEMPLATE_SELECT_INPUT,
         output_schema=TEMPLATE_SELECT_OUTPUT,

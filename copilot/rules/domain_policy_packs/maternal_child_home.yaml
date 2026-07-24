@@ -1,0 +1,139 @@
+schema_version: domain-policy-pack/v1
+domain_id: maternal_child_home
+version: 1.0.0
+claim_policies:
+  material:
+    risk_level: low
+    direct_fact_fast_path_allowed: true
+    bounded_inference_policy: none
+    freshness_requirement: static
+  material_composition:
+    risk_level: low
+    direct_fact_fast_path_allowed: true
+    bounded_inference_policy: none
+    freshness_requirement: static
+  gross_weight:
+    risk_level: low
+    direct_fact_fast_path_allowed: true
+    bounded_inference_policy: none
+    freshness_requirement: static
+  dimensions:
+    risk_level: low
+    direct_fact_fast_path_allowed: true
+    bounded_inference_policy: none
+    freshness_requirement: static
+  detachable:
+    risk_level: low
+    direct_fact_fast_path_allowed: true
+    bounded_inference_policy: none
+    freshness_requirement: static
+  variant_compare:
+    risk_level: low
+    direct_fact_fast_path_allowed: true
+    bounded_inference_policy: none
+    freshness_requirement: static
+  placement_scene:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: review_required
+    freshness_requirement: static
+  space_fit:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: review_required
+    freshness_requirement: static
+  moisture_resistance:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: review_required
+    freshness_requirement: static
+  cleaning_care:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: review_required
+    freshness_requirement: static
+  odor:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: review_required
+    freshness_requirement: static
+  installation:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: review_required
+    freshness_requirement: static
+  accessory_availability:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: none
+    freshness_requirement: static
+  stock_shipping:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: none
+    freshness_requirement: live
+  promotion_policy:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: none
+    freshness_requirement: live
+  gift_policy:
+    risk_level: medium
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: none
+    freshness_requirement: live
+  material_safety:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  bite_or_toxicity:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  certification_report:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  load_capacity:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  stability:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  age_range:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  pinch_safety:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  safety_small_parts:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: static
+  invoice_policy:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: live
+  price_protection:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: live
+  aftersales_policy:
+    risk_level: high
+    direct_fact_fast_path_allowed: false
+    bounded_inference_policy: prohibited
+    freshness_requirement: action

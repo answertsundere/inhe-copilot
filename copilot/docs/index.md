@@ -68,6 +68,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/langgraph-architecture.md` - LangGraph runtime responsibility, target
   macro stages, state/context rules, and incremental migration constraints. It
   is an implementation companion, not the overall architecture authority.
+- `rules/domain_policy_packs/` - strict, versioned claim-policy data selected
+  only by explicit metadata. Packs are not product knowledge, reply templates,
+  Agent plugins, routers, or safety verdict owners.
 
 The durable operating model is:
 
@@ -88,6 +91,8 @@ disabled in production. The current priority is the ADR 0009 Agent Core slice:
 real context, admitted evidence and tools, one reply owner, final safety, and
 outcome-based evaluation. Gold review remains an accuracy prerequisite, but
 building more review infrastructure is not the active development mainline.
+The canonical answer-eligibility projection is diagnostic only, and Fast Path
+remains disabled.
 
 ## Architecture Decisions And Research
 

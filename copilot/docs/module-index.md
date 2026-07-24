@@ -20,6 +20,8 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Product context candidates | `app/services/product_context_pack_service.py` | formal | Preserve role, review, identity, attribute, and provenance metadata |
 | Evidence admission | `app/services/admitted_answer_context_service.py` | formal utility; convergence opt-in | Single reusable review/identity/role/claim/conflict admission contract |
 | Claim resolution | `app/services/claim_resolution_service.py` | formal utility | Supported, unresolved, conflicting, and prohibited state from admitted context |
+| Domain policy data | `app/repositories/file_policy_repository.py`, `rules/domain_policy_packs/` | formal data utility; no routing authority | Strict versioned claim policy selected only by explicit metadata; no product facts, customer text, identities, or reply templates |
+| Answer eligibility projection | `app/services/admitted_answer_context_service.py` | diagnostic within opt-in convergence context | Projects owner verdicts into Minimal Decision Context; unknown stays unknown; cannot route, reply, audit, or grant send permission |
 | Candidate reply | `app/services/model_first_answer_composer_service.py` | opt-in, review-only, disabled | One validated clause per customer goal from compact admitted context; supported clauses cite admitted evidence, unresolved clauses cite none, supporting-only dependencies are excluded; no tools, fact creation, delivery, or send permission |
 | No-evidence strategy | `app/services/no_evidence_reply_policy_service.py` | formal but oversized | Safe strategy only; must not become another fact or reply engine |
 | Handoff wording | `app/services/customer_facing_safe_handoff_service.py` | formal | Customer-facing wording without changing risk or task state |
@@ -29,6 +31,17 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Media delivery | media services plus final reply blocks | formal | A candidate asset is not delivered media; role, identity, usability, approval, and block required |
 | Runtime readiness | runtime readiness services and health routes | formal | Read-only deployment and knowledge readiness |
 | Knowledge governance | knowledge review/publish and explicit sync services | formal writable owner | Agent and evaluation paths are readers |
+
+## Answer Eligibility Owner Matrix
+
+| Field | Authoritative owner | Allowed outcome boundary |
+|---|---|---|
+| `goal_understanding_status` | Turn Understanding | `valid`, `degraded`, `invalid`, or explicit `unknown`; admission cannot recalculate it |
+| `conversation_reference_status` | Canonical conversation/context resolution | `not_required`, `resolved`, `ambiguous`, `missing`, or `unknown`; no pronoun or text heuristic |
+| `tool_requirement_status` | Tool Router plus Tool Executor | Distinguishes not required, static completion, live pending/completed/failed, action required, and unknown |
+| `inference_requirement_status` | Claim Resolution | Direct evidence, bounded inference required/completed, prohibited, not applicable, or unknown; no inference is executed by the projection |
+| `risk_policy_status` | Domain Pack policy plus deterministic Claim/Safety runtime verdict | Low verified, medium/review, high, prohibited, or unknown; model hints cannot lower deterministic risk |
+| Minimal Decision Context | Existing context builder | Projection only; cannot replace owner output, change formal reply fields, or change `can_send` |
 
 ## Operations And Future Channels
 

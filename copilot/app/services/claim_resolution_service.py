@@ -148,12 +148,25 @@ def _claim_is_prohibited(requested: dict[str, Any]) -> bool:
     return requested.get("direct_handling_prohibited") is True or requested.get("prohibited") is True
 
 
+def _claim_policy(
+    claim_type: str,
+    claim_policies: dict[str, Any] | None,
+) -> dict[str, Any]:
+    policies = claim_policies if isinstance(claim_policies, dict) else {}
+    value = policies.get(claim_type)
+    if not isinstance(value, dict):
+        value = policies.get(_canonical_claim_type(claim_type))
+    return value if isinstance(value, dict) else {}
+
+
 def build_claim_resolutions(
     requested_claims: list[dict[str, Any]],
     *,
     direct_product_facts: list[dict[str, Any]],
     direct_policy_facts: list[dict[str, Any]],
     conflicts: list[dict[str, Any]],
+    claim_policies: dict[str, Any] | None = None,
+    policy_ref_prefix: str = "",
 ) -> list[dict[str, Any]]:
     """Return one deterministic claim decision per declared claim.
 
@@ -170,6 +183,12 @@ def build_claim_resolutions(
         claim_type = sanitize_text(requested.get("claim_type")).lower()
         if not claim_type:
             continue
+        policy = _claim_policy(claim_type, claim_policies)
+        policy_refs = (
+            [f"{policy_ref_prefix}:{_canonical_claim_type(claim_type)}"]
+            if policy and policy_ref_prefix
+            else []
+        )
         requested_attribute = _attribute_key(requested)
         matching_facts, fact_selection_reason = _select_for_attribute(
             requested_attribute,
@@ -218,7 +237,77 @@ def build_claim_resolutions(
                 sanitize_text(fact.get("text")) for fact in facts if sanitize_text(fact.get("text"))
             ],
             "conflicting_evidence_uids": conflict_uids if status == "conflicting" else [],
+            "support_basis": (
+                "direct_evidence"
+                if status == "supported"
+                else "prohibited"
+                if status == "prohibited"
+                else "none"
+            ),
+            "inference_policy_refs": policy_refs,
+            "bounded_inference_policy": sanitize_text(
+                policy.get("bounded_inference_policy")
+            ),
             "requires_human_review": status != "supported" or sanitize_text(requested.get("risk_level")).lower() in {"high", "critical"},
             "reason": reason,
         })
     return sanitize_obj(results)
+
+
+def build_inference_requirement_status(
+    claim_resolutions: list[dict[str, Any]],
+    *,
+    domain_policy_status: str,
+) -> dict[str, Any]:
+    """Summarize Claim Resolution support without executing inference."""
+    resolutions = [
+        item
+        for item in claim_resolutions
+        if isinstance(item, dict)
+    ]
+    refs = sorted({
+        sanitize_text(ref)
+        for item in resolutions
+        for ref in item.get("inference_policy_refs") or []
+        if sanitize_text(ref)
+    })
+    base = {
+        "policy_refs": refs,
+        "source_stage": "claim_resolution",
+        "reason_codes": [],
+    }
+    if not resolutions:
+        return {**base, "status": "not_applicable"}
+    if any(
+        item.get("support_basis") == "prohibited"
+        or item.get("bounded_inference_policy") == "prohibited"
+        for item in resolutions
+    ):
+        return {
+            **base,
+            "status": "inference_prohibited",
+            "reason_codes": ["claim_or_policy_prohibits_inference"],
+        }
+    if all(item.get("support_basis") == "direct_evidence" for item in resolutions):
+        return {**base, "status": "direct_evidence_only"}
+    if any(
+        item.get("status") in {"unresolved", "conflicting"}
+        and item.get("bounded_inference_policy") in {"allowed", "review_required"}
+        for item in resolutions
+    ):
+        return {
+            **base,
+            "status": "bounded_inference_required",
+            "reason_codes": ["direct_evidence_incomplete"],
+        }
+    if domain_policy_status != "loaded" or any(
+        not item.get("bounded_inference_policy")
+        for item in resolutions
+        if item.get("support_basis") == "none"
+    ):
+        return {
+            **base,
+            "status": "unknown",
+            "reason_codes": ["inference_policy_unknown"],
+        }
+    return {**base, "status": "not_applicable"}

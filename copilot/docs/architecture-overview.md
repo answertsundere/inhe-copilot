@@ -130,6 +130,13 @@ Complete traces, unfiltered retrieval stores, all historical answers, private
 reasoning, benchmark labels, and entire product catalogs stay outside the
 prompt.
 
+`answer_eligibility_context/v1` is a diagnostic projection inside the existing
+Minimal Decision Context. It preserves, without recomputing, the current
+understanding, conversation-reference, tool-requirement, inference-requirement,
+and risk-policy verdicts. Missing owner output remains `unknown`. The projection
+is not a router, planner, safety gate, or reply owner, and its
+`fast_path_preconditions_complete` field does not change execution.
+
 ### Identity, Knowledge, And Tools
 
 External product references resolve to JST/internal identity before scoped facts
@@ -141,6 +148,11 @@ is delivered.
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.
 
+Tool availability and per-turn tool requirement are also distinct. `ToolSpec`
+declares whether a registered tool is static knowledge, a live read, or a
+side-effect action. The Tool Router and Executor own whether a turn requires
+that tool and whether execution completed.
+
 ### Evidence Admission
 
 `AdmittedAnswerContextService` is the reusable fact-admission boundary. It owns
@@ -150,6 +162,14 @@ deduplication.
 
 Formal Evidence Convergence is implemented but disabled in production. Enabling
 it in an isolated slice does not change the evidence contract.
+
+Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
+from explicit tenant, store, or catalog metadata. They contain
+claim-level risk, inference, direct-fact, and freshness policy, never product
+facts, customer text, identities, or reply templates. Deterministic Claim and
+Safety owners remain authoritative at runtime. The first
+`maternal_child_home` pack is a production candidate only; loading it does not
+enable a fast path or alter a formal reply.
 
 ### Model-Led Understanding And Reply
 
@@ -279,6 +299,8 @@ may still be reported, but must not be renamed accuracy.
 - The formal Pipeline, trace/persistence contract, identity boundaries, evidence
   roles, and deterministic safety controls are strong foundations.
 - Formal Evidence Convergence and the model-first composer are disabled.
+- The canonical answer-eligibility contract is diagnostic only; Fast Path
+  remains disabled.
 - Real-customer accuracy is not established.
 - Existing synthetic benchmark success primarily proves safe fallback.
 - Product evidence coverage and provenance remain uneven.

@@ -118,6 +118,27 @@ post-graph Pipeline boundary.
 - Model-led supervisor candidates may consume compact admitted context only;
   they cannot add facts, alter formal delivery, or persist private reasoning.
 
+## Canonical Answer Eligibility Projection
+
+The existing evidence-building path may attach
+`answer-eligibility-context/v1` to the Minimal Decision Context. LangGraph does
+not derive its fields and gains no node:
+
+- Turn Understanding owns `goal_understanding_status`.
+- Canonical context resolution owns `conversation_reference_status`; until a
+  reliable resolution result exists, the status is `unknown`.
+- Tool Router and Executor own `tool_requirement_status`, using explicit
+  `ToolSpec.freshness_class` metadata.
+- Claim Resolution owns `inference_requirement_status` and each claim's
+  `support_basis`.
+- a versioned Domain Policy Pack supplies policy data, while deterministic
+  Claim/Safety code owns `risk_policy_status`.
+
+Minimal Decision Context only projects these results. It may not infer a
+missing status from customer text, an available-tool list, or model risk hints.
+The fast-path completeness field is observability only; all requests continue
+through the existing graph and final Pipeline.
+
 ## Model And Tool Loop
 
 The model may decide which allowed read-only tool to call when the correct tool

@@ -70,6 +70,48 @@ def is_strict_evaluation_source(source: Any, context: dict[str, Any] | None = No
     return bool(isinstance(context, dict) and context.get("evaluation_context_contract") == "strict")
 
 
+def canonical_conversation_reference_status(
+    context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Project an existing context-resolution verdict, or remain unknown."""
+    context = context if isinstance(context, dict) else {}
+    raw = context.get("conversation_reference_resolution")
+    if not isinstance(raw, dict):
+        return {
+            "status": "unknown",
+            "source_stage": "canonical_context_resolution",
+            "reason_codes": ["conversation_reference_owner_missing"],
+        }
+    allowed = {
+        "not_required",
+        "resolved",
+        "ambiguous",
+        "missing",
+        "unknown",
+    }
+    status = str(raw.get("status") or "").strip().lower()
+    if status not in allowed:
+        return {
+            "status": "unknown",
+            "source_stage": "canonical_context_resolution",
+            "reason_codes": ["conversation_reference_status_invalid"],
+        }
+    reasons = raw.get("reason_codes")
+    if not isinstance(reasons, list):
+        reasons = []
+    return {
+        "status": status,
+        "source_stage": str(
+            raw.get("source_stage") or "canonical_context_resolution"
+        ).strip(),
+        "reason_codes": sorted({
+            str(reason).strip()
+            for reason in reasons
+            if str(reason or "").strip()
+        }),
+    }
+
+
 def _formal_text(value: Any) -> str:
     """Normalize presentation noise without redacting operational content."""
     text = str(value or "")

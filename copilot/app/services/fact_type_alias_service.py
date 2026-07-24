@@ -144,6 +144,88 @@ def risk_level_for_fact_type(fact_type: str) -> str:
     return "medium"
 
 
+def build_risk_policy_status(
+    requested_claims: list[dict[str, Any]],
+    *,
+    domain_policy_pack: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Combine data policy with deterministic safety overrides."""
+    pack = domain_policy_pack if isinstance(domain_policy_pack, dict) else {}
+    domain_id = _clean(pack.get("domain_id"))
+    version = _clean(pack.get("version"))
+    policies = pack.get("claim_policies")
+    base = {
+        "policy_refs": [],
+        "source_stage": "deterministic_claim_safety_policy",
+        "reason_codes": [],
+    }
+    if pack.get("status") != "loaded" or not isinstance(policies, dict):
+        return {
+            **base,
+            "status": "unknown",
+            "reason_codes": ["domain_policy_not_loaded"],
+        }
+
+    levels: list[str] = []
+    refs: list[str] = []
+    for requested in requested_claims:
+        if not isinstance(requested, dict):
+            continue
+        if requested.get("supporting_only") is True:
+            continue
+        claim_type = _clean(requested.get("claim_type")).lower()
+        if not claim_type:
+            return {
+                **base,
+                "status": "unknown",
+                "reason_codes": ["requested_claim_type_missing"],
+            }
+        policy = policies.get(claim_type)
+        if not isinstance(policy, dict):
+            return {
+                **base,
+                "status": "unknown",
+                "reason_codes": ["claim_policy_missing"],
+            }
+        refs.append(f"domain-policy:{domain_id}@{version}:{claim_type}")
+        if (
+            requested.get("direct_handling_prohibited") is True
+            or requested.get("prohibited") is True
+            or policy.get("risk_level") == "prohibited"
+        ):
+            levels.append("prohibited")
+            continue
+        declared_risk = _clean(requested.get("risk_level")).lower()
+        if is_high_risk_fact_type(claim_type) or declared_risk in {
+            "high",
+            "critical",
+        }:
+            levels.append("high")
+        else:
+            levels.append(_clean(policy.get("risk_level")).lower())
+
+    base["policy_refs"] = sorted(set(refs))
+    if not levels:
+        return {
+            **base,
+            "status": "unknown",
+            "reason_codes": ["requested_claims_missing"],
+        }
+    if "prohibited" in levels:
+        return {**base, "status": "prohibited"}
+    if "high" in levels:
+        return {**base, "status": "high_risk"}
+    if "medium" in levels:
+        return {**base, "status": "medium_or_review_required"}
+    if all(level == "low" for level in levels):
+        return {**base, "status": "low_risk_verified"}
+    return {
+        **base,
+        "status": "unknown",
+        "reason_codes": ["domain_policy_risk_invalid"],
+    }
+
+
 def expand_fact_type_aliases(fact_type: str, context: str = "retrieval") -> list[str]:
     """Return safe candidate fact types for shadow retrieval expansion.
 

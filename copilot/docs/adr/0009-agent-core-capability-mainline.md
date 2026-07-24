@@ -97,6 +97,23 @@ This boundary does not promote the composer or change delivery permission.
 Composer acceptance and Final Auditor acceptance are necessary but not
 sufficient for final orchestration or production enablement.
 
+Phase 1.9 adds a canonical answer-eligibility projection without adding a
+router, graph node, model call, or safety gate. Owner boundaries are fixed:
+Turn Understanding owns goal status; canonical context resolution owns
+reference status; Tool Router and Executor own tool requirement/completion;
+Claim Resolution owns support and inference requirement; and deterministic
+Claim/Safety code combines a versioned Domain Policy Pack with canonical risk
+rules. Minimal Decision Context only projects those verdicts. Missing output is
+`unknown`, never implicitly safe.
+
+Domain Policy Packs are strict data files selected only by explicit structured
+metadata. They may contain claim-level risk, inference, direct-fact, and
+freshness policy. They may not contain product facts, identities, customer
+text, scenario identifiers, or reply templates. Product truth continues to
+come from admitted evidence. The diagnostic
+`fast_path_preconditions_complete` field does not enable Fast Path; every
+request still follows the existing Pipeline and final gate.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

@@ -20,6 +20,7 @@ class ToolSpec:
     # Schema（纯 dict，不做运行时校验）
     input_schema: dict = field(default_factory=dict)
     output_schema: dict = field(default_factory=dict)
+    freshness_class: str = "unknown"
 
     # 安全边界
     allowed_intents: list = field(default_factory=list)        # 允许使用此工具的意图，空=不限
@@ -49,4 +50,5 @@ class ToolSpec:
             "name": self.name,
             "description": self.description,
             "input_schema": self.input_schema,
+            "freshness_class": self.freshness_class,
         }

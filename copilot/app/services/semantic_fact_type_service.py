@@ -441,6 +441,33 @@ def _sanitize_customer_goals(
     )
 
 
+def goal_understanding_eligibility_status(
+    understanding: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Project the Turn Understanding owner verdict without recomputing it."""
+    understanding = understanding if isinstance(understanding, dict) else {}
+    status = str(
+        understanding.get("goal_understanding_status") or ""
+    ).strip().lower()
+    if status not in {"valid", "degraded", "invalid"}:
+        status = "unknown"
+    diagnostics = understanding.get("goal_understanding_diagnostics")
+    if not isinstance(diagnostics, list):
+        diagnostics = []
+    reasons = sorted({
+        str(reason).strip()
+        for reason in diagnostics
+        if str(reason or "").strip()
+    })
+    if status == "unknown" and not reasons:
+        reasons = ["goal_understanding_status_missing"]
+    return {
+        "status": status,
+        "source_stage": "turn_understanding",
+        "reason_codes": reasons,
+    }
+
+
 def _semantic_query_from_result(result: dict[str, Any], message: str) -> dict[str, Any]:
     fact_type = str(result.get("query_fact_type") or "")
     return {

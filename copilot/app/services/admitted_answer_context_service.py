@@ -12,9 +12,19 @@ from hashlib import sha256
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
-from app.services.claim_resolution_service import build_claim_resolutions, expand_claim_dependencies
-from app.services.fact_type_alias_service import normalize_high_risk_claim_type
+from app.services.claim_resolution_service import (
+    build_claim_resolutions,
+    build_inference_requirement_status,
+    expand_claim_dependencies,
+)
+from app.services.fact_type_alias_service import (
+    build_risk_policy_status,
+    normalize_high_risk_claim_type,
+)
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
+from app.services.semantic_fact_type_service import (
+    goal_understanding_eligibility_status,
+)
 
 
 DIRECT_PRODUCT_ROLES = {"product_fact_direct", "faq_direct"}
@@ -969,6 +979,189 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     return expand_claim_dependencies(result)
 
 
+def _normalised_owner_status(
+    value: Any,
+    *,
+    allowed: set[str],
+    default_source_stage: str,
+    missing_reason: str,
+    include_tool_refs: bool = False,
+) -> dict[str, Any]:
+    raw = value if isinstance(value, dict) else {}
+    status = sanitize_text(raw.get("status")).lower()
+    if status not in allowed:
+        status = "unknown"
+    reasons = sorted({
+        sanitize_text(reason)
+        for reason in _as_list(raw.get("reason_codes"))
+        if sanitize_text(reason)
+    })
+    if status == "unknown" and not reasons:
+        reasons = [missing_reason]
+    result = {
+        "status": status,
+        "source_stage": sanitize_text(raw.get("source_stage"))
+        or default_source_stage,
+        "reason_codes": reasons,
+    }
+    if include_tool_refs:
+        result["required_tool_refs"] = sorted(_unique(
+            sanitize_text(item)
+            for item in _as_list(raw.get("required_tool_refs"))
+            if sanitize_text(item)
+        ))
+        result["completed_tool_refs"] = sorted(_unique(
+            sanitize_text(item)
+            for item in _as_list(raw.get("completed_tool_refs"))
+            if sanitize_text(item)
+        ))
+    return result
+
+
+def _domain_policy_projection(pack: dict[str, Any]) -> dict[str, Any]:
+    status = sanitize_text(pack.get("status")).lower()
+    if status not in {"loaded", "missing", "invalid"}:
+        status = "unknown"
+    return {
+        "domain_id": sanitize_text(pack.get("domain_id")),
+        "version": sanitize_text(pack.get("version")),
+        "status": status,
+    }
+
+
+def _fast_path_block_reasons(
+    *,
+    domain_policy_pack: dict[str, Any],
+    requested_claims: list[dict[str, Any]],
+    claim_resolutions: list[dict[str, Any]],
+    goal_status: dict[str, Any],
+    reference_status: dict[str, Any],
+    tool_status: dict[str, Any],
+    inference_status: dict[str, Any],
+    risk_status: dict[str, Any],
+    has_actions: bool,
+    has_media: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if domain_policy_pack.get("status") != "loaded":
+        reasons.append("domain_policy_not_loaded")
+    if goal_status["status"] != "valid":
+        reasons.append("goal_understanding_not_valid")
+    if len([
+        item
+        for item in requested_claims
+        if isinstance(item, dict) and item.get("supporting_only") is not True
+    ]) != 1:
+        reasons.append("customer_goal_count_not_one")
+    if reference_status["status"] not in {"not_required", "resolved"}:
+        reasons.append("conversation_reference_not_resolved")
+    if tool_status["status"] not in {
+        "not_required",
+        "static_knowledge_completed",
+    }:
+        reasons.append("tool_requirement_not_fast_path_eligible")
+    if inference_status["status"] != "direct_evidence_only":
+        reasons.append("direct_evidence_only_not_verified")
+    if risk_status["status"] != "low_risk_verified":
+        reasons.append("low_risk_not_verified")
+    if any(
+        item.get("support_basis") != "direct_evidence"
+        for item in claim_resolutions
+        if isinstance(item, dict) and item.get("status")
+    ):
+        reasons.append("claim_support_not_direct")
+
+    policies = domain_policy_pack.get("claim_policies")
+    policies = policies if isinstance(policies, dict) else {}
+    for claim in requested_claims:
+        if not isinstance(claim, dict) or claim.get("supporting_only") is True:
+            continue
+        policy = policies.get(sanitize_text(claim.get("claim_type")).lower())
+        if not isinstance(policy, dict):
+            reasons.append("claim_policy_missing")
+            continue
+        if policy.get("direct_fact_fast_path_allowed") is not True:
+            reasons.append("domain_policy_fast_path_not_allowed")
+        if policy.get("freshness_requirement") != "static":
+            reasons.append("domain_policy_requires_nonstatic_state")
+    if has_actions:
+        reasons.append("service_action_present")
+    if has_media:
+        reasons.append("media_candidate_present")
+    return sorted(set(reasons))
+
+
+def build_answer_eligibility_context(
+    *,
+    understanding: dict[str, Any],
+    requested_claims: list[dict[str, Any]],
+    claim_resolutions: list[dict[str, Any]],
+    domain_policy_pack: dict[str, Any],
+    conversation_reference_status: dict[str, Any] | None,
+    tool_requirement_status: dict[str, Any] | None,
+    has_actions: bool,
+    has_media: bool,
+) -> dict[str, Any]:
+    """Assemble owner verdicts without routing or changing formal behavior."""
+    goal_status = goal_understanding_eligibility_status(understanding)
+    reference_status = _normalised_owner_status(
+        conversation_reference_status,
+        allowed={"not_required", "resolved", "ambiguous", "missing", "unknown"},
+        default_source_stage="canonical_context_resolution",
+        missing_reason="conversation_reference_owner_missing",
+    )
+    tool_status = _normalised_owner_status(
+        tool_requirement_status,
+        allowed={
+            "not_required",
+            "static_knowledge_completed",
+            "live_tool_required",
+            "live_tool_completed",
+            "live_tool_failed",
+            "action_tool_required",
+            "unknown",
+        },
+        default_source_stage="tool_router_and_executor",
+        missing_reason="tool_requirement_status_missing",
+        include_tool_refs=True,
+    )
+    inference_status = build_inference_requirement_status(
+        claim_resolutions,
+        domain_policy_status=sanitize_text(
+            domain_policy_pack.get("status")
+        ).lower(),
+    )
+    risk_status = build_risk_policy_status(
+        requested_claims,
+        domain_policy_pack=domain_policy_pack,
+    )
+    block_reasons = _fast_path_block_reasons(
+        domain_policy_pack=domain_policy_pack,
+        requested_claims=requested_claims,
+        claim_resolutions=claim_resolutions,
+        goal_status=goal_status,
+        reference_status=reference_status,
+        tool_status=tool_status,
+        inference_status=inference_status,
+        risk_status=risk_status,
+        has_actions=has_actions,
+        has_media=has_media,
+    )
+    return sanitize_obj({
+        "schema_version": "answer-eligibility-context/v1",
+        "domain_policy": _domain_policy_projection(domain_policy_pack),
+        "goal_understanding_status": goal_status,
+        "conversation_reference_status": reference_status,
+        "tool_requirement_status": tool_status,
+        "inference_requirement_status": inference_status,
+        "risk_policy_status": risk_status,
+        "fast_path_preconditions_complete": not block_reasons,
+        "fast_path_block_reasons": block_reasons,
+        "used_for_final_reply": False,
+        "can_change_can_send": False,
+    })
+
+
 class AdmittedAnswerContextService:
     """Compile candidate evidence into auditable answer-context roles."""
 
@@ -978,9 +1171,24 @@ class AdmittedAnswerContextService:
         *,
         product_identity: dict[str, Any] | None = None,
         understanding: dict[str, Any] | None = None,
+        answer_eligibility_inputs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         identity = resolved_product_identity_for_response(response, product_identity)
-        requested_claims = _requested_claims(_as_dict(understanding))
+        understanding = _as_dict(understanding)
+        eligibility_inputs = _as_dict(answer_eligibility_inputs)
+        domain_policy_pack = _as_dict(
+            eligibility_inputs.get("domain_policy_pack")
+        )
+        if not domain_policy_pack:
+            domain_policy_pack = {
+                "schema_version": "domain-policy-pack/v1",
+                "domain_id": "",
+                "version": "",
+                "status": "missing",
+                "reason_codes": ["domain_policy_pack_not_provided"],
+                "claim_policies": {},
+            }
+        requested_claims = _requested_claims(understanding)
         requested_claim_types = [item["claim_type"] for item in requested_claims]
         direct_product, rejected, warnings = collect_admitted_product_facts(
             response,
@@ -1034,6 +1242,27 @@ class AdmittedAnswerContextService:
             direct_product_facts=direct_product,
             direct_policy_facts=direct_policy,
             conflicts=conflicts,
+            claim_policies=_as_dict(domain_policy_pack.get("claim_policies")),
+            policy_ref_prefix=(
+                f"domain-policy:{sanitize_text(domain_policy_pack.get('domain_id'))}"
+                f"@{sanitize_text(domain_policy_pack.get('version'))}"
+                if domain_policy_pack.get("status") == "loaded"
+                else ""
+            ),
+        )
+        answer_eligibility_context = build_answer_eligibility_context(
+            understanding=understanding,
+            requested_claims=requested_claims,
+            claim_resolutions=claim_resolutions,
+            domain_policy_pack=domain_policy_pack,
+            conversation_reference_status=_as_dict(
+                eligibility_inputs.get("conversation_reference_status")
+            ),
+            tool_requirement_status=_as_dict(
+                eligibility_inputs.get("tool_requirement_status")
+            ),
+            has_actions=bool(actions),
+            has_media=bool(media),
         )
         requested_by_claim = {
             sanitize_text(item.get("claim_type")): item
@@ -1067,6 +1296,7 @@ class AdmittedAnswerContextService:
             "conflicts": conflicts,
             "requested_claims": requested_claims,
             "product_identity": identity,
+            "answer_eligibility_context": answer_eligibility_context,
             "read_only": True,
             "used_for_final_reply": False,
             "can_change_can_send": False,
@@ -1195,6 +1425,9 @@ def build_minimal_decision_context(
     ]
     context = {
         "schema_version": "minimal-decision-context-v1",
+        "answer_eligibility_context": _as_dict(
+            admitted_context.get("answer_eligibility_context")
+        ),
         "customer_goal": _clip(project_text_for_external_model(customer_message), 300),
         "requested_claims": _as_list(admitted_context.get("requested_claims")),
         "conversation_summary": compact_summary,
