@@ -1,0 +1,98 @@
+{
+  "schema_version": "model-first-goal-truth/v1",
+  "diagnostic_only": true,
+  "agent_payload_allowed": false,
+  "scenarios": [
+    {
+      "scenario_uid": "hq-6301b6164599ffcda858",
+      "source_turn_uid": "turn-8b25801a89591f261418",
+      "source_provenance": "dataset.current_buyer_message",
+      "goals": [
+        {
+          "diagnostic_goal_ref": "goal-5124e326d2b095c4",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "material_composition",
+          "expected_attribute_key": "",
+          "diagnostic_label_uncertain": false
+        },
+        {
+          "diagnostic_goal_ref": "goal-16f1e6f853df058c",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "",
+          "expected_attribute_key": "durability",
+          "diagnostic_label_uncertain": false
+        }
+      ]
+    },
+    {
+      "scenario_uid": "hq-7c578c7f63c4829a2b70",
+      "source_turn_uid": "turn-0303c31fd3c2501a2a00",
+      "source_provenance": "dataset.current_buyer_message",
+      "goals": [
+        {
+          "diagnostic_goal_ref": "goal-9f6bd95d9b8fdfd9",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "bite_or_toxicity",
+          "expected_attribute_key": "",
+          "diagnostic_label_uncertain": true
+        },
+        {
+          "diagnostic_goal_ref": "goal-32361da6336f595f",
+          "expected_goal_kind": "evidence_dependency",
+          "expected_claim_type": "material_composition",
+          "expected_attribute_key": "material",
+          "diagnostic_label_uncertain": false
+        }
+      ]
+    },
+    {
+      "scenario_uid": "hq-994f9085e6ade39bf5af",
+      "source_turn_uid": "turn-91b284bc395d2d0064a9",
+      "source_provenance": "dataset.current_buyer_message",
+      "goals": [
+        {
+          "diagnostic_goal_ref": "goal-9a9986a3edc9e234",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "material_composition",
+          "expected_attribute_key": "",
+          "diagnostic_label_uncertain": false
+        },
+        {
+          "diagnostic_goal_ref": "goal-cd1ec22e6c7e28c4",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "odor",
+          "expected_attribute_key": "",
+          "diagnostic_label_uncertain": false
+        },
+        {
+          "diagnostic_goal_ref": "goal-8ebb89295155459d",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "cleaning_care",
+          "expected_attribute_key": "heat_sterilization",
+          "diagnostic_label_uncertain": false
+        }
+      ]
+    },
+    {
+      "scenario_uid": "hq-c640f047ae72b05aad94",
+      "source_turn_uid": "turn-57e51863f039742fdf2e",
+      "source_provenance": "dataset.current_buyer_message",
+      "goals": [
+        {
+          "diagnostic_goal_ref": "goal-3ed7744b48854672",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "material_composition",
+          "expected_attribute_key": "",
+          "diagnostic_label_uncertain": false
+        },
+        {
+          "diagnostic_goal_ref": "goal-94f6ae7a4d74089c",
+          "expected_goal_kind": "customer_goal",
+          "expected_claim_type": "moisture_resistance",
+          "expected_attribute_key": "",
+          "diagnostic_label_uncertain": false
+        }
+      ]
+    }
+  ]
+}

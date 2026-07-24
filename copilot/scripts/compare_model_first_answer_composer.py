@@ -38,6 +38,21 @@ from app.services.no_evidence_reply_policy_service import (  # noqa: E402
 
 
 REPORT_SCHEMA_VERSION = "model-first-answer-comparison/v1"
+GOAL_TRUTH_SCHEMA_VERSION = "model-first-goal-truth/v1"
+GOAL_FUNNEL_BREAKPOINTS = {
+    "canonical_context_missing",
+    "turn_understanding_goal_missing",
+    "requested_claim_missing",
+    "evidence_coverage_gap",
+    "evidence_selection_gap",
+    "admission_gap",
+    "claim_resolution_gap",
+    "answer_plan_gap",
+    "render_gap",
+    "final_audit_rejection",
+    "semantic_audit_rejection",
+    "dataset_runtime_semantic_mismatch",
+}
 _PROHIBITED_AGENT_FIELDS = {
     "accuracy_claim_allowed",
     "correct_answer",
@@ -99,6 +114,280 @@ def _agent_payload(scenario: dict[str, Any]) -> dict[str, Any]:
         if f'"{field}"' in serialized:
             raise ValueError(f"evaluation_field_leakage:{field}")
     return payload
+
+
+def _load_goal_truth(path: Path) -> dict[str, list[dict[str, Any]]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != GOAL_TRUTH_SCHEMA_VERSION:
+        raise ValueError("goal_truth_schema_mismatch")
+    if payload.get("diagnostic_only") is not True or payload.get("agent_payload_allowed") is not False:
+        raise ValueError("goal_truth_boundary_invalid")
+    scenarios = payload.get("scenarios")
+    if not isinstance(scenarios, list):
+        raise ValueError("goal_truth_scenarios_invalid")
+    by_scenario: dict[str, list[dict[str, Any]]] = {}
+    for scenario in scenarios:
+        if not isinstance(scenario, dict):
+            raise ValueError("goal_truth_scenario_invalid")
+        scenario_uid = str(scenario.get("scenario_uid") or "").strip()
+        source_turn_uid = str(scenario.get("source_turn_uid") or "").strip()
+        goals = scenario.get("goals")
+        if not scenario_uid or not source_turn_uid or not isinstance(goals, list):
+            raise ValueError("goal_truth_scenario_contract_invalid")
+        prepared: list[dict[str, Any]] = []
+        for goal in goals:
+            if not isinstance(goal, dict):
+                raise ValueError("goal_truth_goal_invalid")
+            item = {
+                "scenario_uid": scenario_uid,
+                "source_turn_uid": source_turn_uid,
+                "source_provenance": str(scenario.get("source_provenance") or ""),
+                "diagnostic_goal_ref": str(goal.get("diagnostic_goal_ref") or "").strip(),
+                "expected_goal_kind": str(goal.get("expected_goal_kind") or "").strip(),
+                "expected_claim_type": str(goal.get("expected_claim_type") or "").strip(),
+                "expected_attribute_key": str(goal.get("expected_attribute_key") or "").strip(),
+                "diagnostic_label_uncertain": goal.get("diagnostic_label_uncertain") is True,
+            }
+            if not item["diagnostic_goal_ref"] or item["expected_goal_kind"] not in {
+                "customer_goal",
+                "evidence_dependency",
+                "service_action",
+                "contextual_constraint",
+            }:
+                raise ValueError("goal_truth_goal_contract_invalid")
+            prepared.append(item)
+        refs = [item["diagnostic_goal_ref"] for item in prepared]
+        if len(refs) != len(set(refs)):
+            raise ValueError("goal_truth_duplicate_goal_ref")
+        by_scenario[scenario_uid] = prepared
+    return by_scenario
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_dict_list(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value or [] if isinstance(item, dict)]
+
+
+def _turn_understanding(response: dict[str, Any]) -> dict[str, Any]:
+    for container in (
+        response,
+        _as_dict(response.get("evidence_debug")),
+        _as_dict(response.get("answer_trace")),
+        _as_dict(response.get("context_used")),
+    ):
+        understanding = container.get("turn_understanding")
+        if isinstance(understanding, dict):
+            return understanding
+    return {}
+
+
+def _claim_type(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return "material_composition" if text in {"material", "material_composition"} else text
+
+
+def _goal_matches(item: dict[str, Any], truth: dict[str, Any]) -> bool:
+    expected_ref = truth["diagnostic_goal_ref"]
+    observed_ref = str(item.get("goal_ref") or item.get("diagnostic_goal_ref") or "").strip()
+    if observed_ref and observed_ref == expected_ref:
+        return True
+    expected_claim = _claim_type(truth["expected_claim_type"])
+    observed_claim = _claim_type(item.get("claim_type") or item.get("query_fact_type"))
+    expected_attribute = str(truth["expected_attribute_key"] or "").strip().lower()
+    observed_attribute = str(
+        item.get("attribute_key")
+        or item.get("semantic_key")
+        or ""
+    ).strip().lower()
+    if not expected_claim:
+        return bool(expected_attribute and expected_attribute == observed_attribute)
+    if observed_claim != expected_claim:
+        return False
+    return not expected_attribute or not observed_attribute or expected_attribute == observed_attribute
+
+
+def _runtime_customer_goals(response: dict[str, Any]) -> list[dict[str, Any]]:
+    understanding = _turn_understanding(response)
+    declared = [
+        item
+        for item in _as_dict_list(understanding.get("customer_goals"))
+        if str(item.get("goal_kind") or "customer_goal") == "customer_goal"
+    ]
+    if declared:
+        return declared
+    debug = _as_dict(response.get("evidence_debug"))
+    primary = (
+        understanding.get("query_fact_type")
+        or response.get("query_fact_type")
+        or debug.get("query_fact_type")
+    )
+    secondary = (
+        understanding.get("secondary_fact_types")
+        or debug.get("secondary_fact_types")
+        or []
+    )
+    return [
+        {"claim_type": item}
+        for item in [primary, *secondary]
+        if str(item or "").strip()
+    ]
+
+
+def _goal_funnel(
+    scenario: dict[str, Any],
+    response: dict[str, Any],
+    truth_goals: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    understanding = _turn_understanding(response)
+    understanding_goals = _as_dict_list(understanding.get("customer_goals"))
+    requested_claims = _as_dict_list(understanding.get("requested_claims"))
+    if not requested_claims:
+        requested_claims = _as_dict_list(
+            _as_dict(response.get("minimal_decision_context")).get("requested_claims")
+        )
+    runtime_customer_goals = _runtime_customer_goals(response)
+    selected = _as_dict_list(response.get("selected_evidence"))
+    minimal = _as_dict(response.get("minimal_decision_context"))
+    admitted = _as_dict_list(minimal.get("admitted_evidence") or minimal.get("admitted_direct_facts"))
+    resolutions = _as_dict_list(minimal.get("claim_resolutions"))
+    composer = _as_dict(response.get("model_first_answer_composer"))
+    answer_plan = _as_dict(composer.get("answer_plan"))
+    plan_segments = _as_dict_list(answer_plan.get("segments") or composer.get("factual_clauses"))
+    reply = str(response.get("suggested_reply") or "")
+    canonical_present = bool(
+        str((scenario.get("api_request_template") or {}).get("message") or "").strip()
+        or str(scenario.get("current_buyer_message") or "").strip()
+    )
+    rows: list[dict[str, Any]] = []
+    for truth in truth_goals:
+        observed_understanding = any(
+            _goal_matches(item, truth)
+            for item in [*understanding_goals, *runtime_customer_goals]
+        )
+        observed_requested = any(_goal_matches(item, truth) for item in requested_claims)
+        observed_resolution = any(_goal_matches(item, truth) for item in resolutions)
+        candidate_count = sum(_goal_matches(item, truth) for item in _as_dict_list(
+            _as_dict(response.get("evidence_debug")).get("candidate_evidence")
+            or _as_dict(response.get("evidence_debug")).get("product_facts")
+        ))
+        selected_count = sum(_goal_matches(item, truth) for item in selected)
+        admitted_count = sum(_goal_matches(item, truth) for item in admitted)
+        plan_count = sum(_goal_matches(item, truth) for item in plan_segments)
+        rendered_count = sum(
+            1
+            for item in resolutions
+            if _goal_matches(item, truth)
+            and (
+                str(item.get("claim_type") or "") in set(composer.get("unresolved_claim_types") or [])
+                or bool(set(item.get("evidence_uids") or []) & set(composer.get("used_evidence_uids") or []))
+            )
+        )
+        breakpoint: str | None = None
+        if not canonical_present:
+            breakpoint = "canonical_context_missing"
+        elif truth["expected_goal_kind"] == "customer_goal" and not observed_understanding:
+            breakpoint = (
+                "dataset_runtime_semantic_mismatch"
+                if truth["diagnostic_label_uncertain"]
+                else "turn_understanding_goal_missing"
+            )
+        elif not observed_requested:
+            breakpoint = "requested_claim_missing"
+        elif truth["expected_goal_kind"] == "customer_goal" and not observed_resolution:
+            breakpoint = "claim_resolution_gap"
+        elif selected_count and not admitted_count:
+            breakpoint = "admission_gap"
+        elif admitted_count and not plan_count and composer.get("status") == "accepted":
+            breakpoint = "answer_plan_gap"
+        elif plan_count and not rendered_count:
+            breakpoint = "render_gap"
+        elif (response.get("final_answer_audit") or {}).get("passed") is False:
+            breakpoint = "final_audit_rejection"
+        elif (response.get("final_semantic_fit_audit") or {}).get("passed") is False:
+            breakpoint = "semantic_audit_rejection"
+        if breakpoint is not None and breakpoint not in GOAL_FUNNEL_BREAKPOINTS:
+            raise ValueError("goal_funnel_breakpoint_invalid")
+        rows.append({
+            **truth,
+            "observed_in_canonical_turn": canonical_present,
+            "observed_in_turn_understanding": observed_understanding,
+            "observed_in_requested_claims": observed_requested,
+            "observed_in_claim_resolution": observed_resolution,
+            "candidate_evidence_count": candidate_count,
+            "selected_evidence_count": selected_count,
+            "admitted_evidence_count": admitted_count,
+            "answer_plan_segment_count": plan_count,
+            "rendered_clause_count": rendered_count,
+            "final_audit_status": (response.get("final_answer_audit") or {}).get("passed"),
+            "semantic_audit_status": (response.get("final_semantic_fit_audit") or {}).get("passed"),
+            "reply_nonempty": bool(reply),
+            "earliest_breakpoint": breakpoint,
+        })
+    return rows
+
+
+def _goal_recall_summary(
+    rows: list[dict[str, Any]],
+    runtime_observations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scored = [
+        row for row in rows
+        if row["expected_goal_kind"] == "customer_goal"
+        and not row["diagnostic_label_uncertain"]
+    ]
+    observed = [row for row in scored if row["observed_in_turn_understanding"]]
+    truth_by_scenario: dict[str, list[dict[str, Any]]] = {}
+    for row in scored:
+        truth_by_scenario.setdefault(row["scenario_uid"], []).append(row)
+    runtime_goal_count = 0
+    matched_runtime_goal_count = 0
+    unexpected_runtime_goals: list[dict[str, str]] = []
+    for observation in runtime_observations:
+        scenario_uid = str(observation.get("scenario_uid") or "")
+        truth = truth_by_scenario.get(scenario_uid, [])
+        for item in observation.get("customer_goals") or []:
+            if not isinstance(item, dict):
+                continue
+            runtime_goal_count += 1
+            if any(_goal_matches(item, expected) for expected in truth):
+                matched_runtime_goal_count += 1
+            else:
+                unexpected_runtime_goals.append({
+                    "scenario_uid": scenario_uid,
+                    "claim_type": _claim_type(item.get("claim_type") or item.get("query_fact_type")),
+                    "attribute_key": str(item.get("attribute_key") or item.get("semantic_key") or ""),
+                })
+    target = [
+        row for row in scored
+        if row["earliest_breakpoint"] in {
+            "turn_understanding_goal_missing",
+            "requested_claim_missing",
+        }
+    ]
+    return {
+        "customer_goal_recall": {
+            "numerator": len(observed),
+            "denominator": len(scored),
+            "rate": len(observed) / len(scored) if scored else None,
+        },
+        "customer_goal_precision": {
+            "numerator": matched_runtime_goal_count,
+            "denominator": runtime_goal_count,
+            "rate": (
+                matched_runtime_goal_count / runtime_goal_count
+                if runtime_goal_count else None
+            ),
+        },
+        "unexpected_runtime_goals": unexpected_runtime_goals,
+        "target_denominator": len(target),
+        "target_goal_refs": sorted(row["diagnostic_goal_ref"] for row in target),
+        "diagnostic_uncertain_count": sum(
+            row["diagnostic_label_uncertain"] for row in rows
+        ),
+    }
 
 
 def _runtime_contract(
@@ -400,6 +689,34 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _correctness_gate_blockers(
+    off_summary: dict[str, Any],
+    on_summary: dict[str, Any],
+    *,
+    scenario_count: int,
+) -> list[str]:
+    blockers: list[str] = []
+    partial = on_summary.get("partial_answer_success") or {}
+    if int(partial.get("denominator") or 0) and int(partial.get("numerator") or 0) != int(partial["denominator"]):
+        blockers.append("partial_answer_incomplete")
+    for field, blocker in (
+        ("runtime_supported_claim_attribution", "supported_claim_attribution_incomplete"),
+        ("runtime_unresolved_claim_declaration", "unresolved_claim_declaration_incomplete"),
+    ):
+        metric = on_summary.get(field) or {}
+        if int(metric.get("denominator") or 0) and int(metric.get("numerator") or 0) != int(metric["denominator"]):
+            blockers.append(blocker)
+    if int(on_summary.get("final_audit_pass_count") or 0) != scenario_count:
+        blockers.append("final_audit_incomplete")
+    if int(on_summary.get("semantic_audit_pass_count") or 0) != scenario_count:
+        blockers.append("semantic_audit_incomplete")
+    if int(on_summary.get("requires_human_review_count") or 0) < int(off_summary.get("requires_human_review_count") or 0):
+        blockers.append("requires_human_review_decreased")
+    if int((on_summary.get("latency_ms") or {}).get("p95") or 0) > 35_000:
+        blockers.append("latency_p95_exceeded")
+    return blockers
+
+
 def _fingerprint(path: Path) -> dict[str, Any]:
     return fingerprint_formal_knowledge_tables(
         path,
@@ -427,6 +744,11 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if not scenarios:
         raise ValueError("no_scenarios")
     scenarios = scenarios[: min(len(scenarios), max(1, int(args.limit)))]
+    goal_truth = (
+        _load_goal_truth(Path(args.goal_truth))
+        if getattr(args, "goal_truth", "")
+        else {}
+    )
 
     off_runtime = _get_json(args.off_version_url, args.timeout)
     on_runtime = _get_json(args.on_version_url, args.timeout)
@@ -490,6 +812,13 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 error_type=error,
                 latency_ms=latency,
             )
+            if paired["scenario_uid"] in goal_truth:
+                paired[mode.lower()]["goal_funnel"] = _goal_funnel(
+                    scenario,
+                    response,
+                    goal_truth[paired["scenario_uid"]],
+                )
+                paired[mode.lower()]["runtime_customer_goals"] = _runtime_customer_goals(response)
         results.append(paired)
 
     knowledge_after = _fingerprint(knowledge_path)
@@ -498,6 +827,39 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     on_rows = [row["on"] for row in results]
     off_summary = _summarize(off_rows)
     on_summary = _summarize(on_rows)
+    off_goal_rows = [
+        item
+        for row in off_rows
+        for item in row.get("goal_funnel") or []
+    ]
+    on_goal_rows = [
+        item
+        for row in on_rows
+        for item in row.get("goal_funnel") or []
+    ]
+    if goal_truth:
+        off_summary["goal_recall"] = _goal_recall_summary(
+            off_goal_rows,
+            [
+                {
+                    "scenario_uid": row["scenario_uid"],
+                    "customer_goals": row["off"].get("runtime_customer_goals") or [],
+                }
+                for row in results
+                if row["scenario_uid"] in goal_truth
+            ],
+        )
+        on_summary["goal_recall"] = _goal_recall_summary(
+            on_goal_rows,
+            [
+                {
+                    "scenario_uid": row["scenario_uid"],
+                    "customer_goals": row["on"].get("runtime_customer_goals") or [],
+                }
+                for row in results
+                if row["scenario_uid"] in goal_truth
+            ],
+        )
     blockers: list[str] = []
     if on_summary.get("execution_success_count") != len(results):
         blockers.append("on_execution_error")
@@ -517,6 +879,11 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         blockers.append("formal_knowledge_changed")
     if off_dml_count or on_dml_count:
         blockers.append("formal_knowledge_dml_attempted")
+    blockers.extend(_correctness_gate_blockers(
+        off_summary,
+        on_summary,
+        scenario_count=len(results),
+    ))
 
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
@@ -540,6 +907,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "request_contract": {
             "payload_source": "scenario.api_request_template",
             "evaluation_fields_excluded": sorted(_PROHIBITED_AGENT_FIELDS),
+            "goal_truth_source": "diagnostic_only_not_in_agent_payload" if goal_truth else "",
         },
         "results": results,
         "off_summary": off_summary,
@@ -593,6 +961,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--pair-workers", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--goal-truth", default="")
     parser.add_argument("--json-output", required=True)
     args = parser.parse_args()
     try:
