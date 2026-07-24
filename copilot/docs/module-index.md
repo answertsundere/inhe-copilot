@@ -20,7 +20,7 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Product context candidates | `app/services/product_context_pack_service.py` | formal | Preserve role, review, identity, attribute, and provenance metadata |
 | Evidence admission | `app/services/admitted_answer_context_service.py` | formal utility; convergence opt-in | Single reusable review/identity/role/claim/conflict admission contract |
 | Claim resolution | `app/services/claim_resolution_service.py` | formal utility | Supported, unresolved, conflicting, and prohibited state from admitted context |
-| Candidate reply | `app/services/model_first_answer_composer_service.py` | opt-in, review-only, disabled | One natural reply from compact admitted context; no tools, fact creation, delivery, or send permission |
+| Candidate reply | `app/services/model_first_answer_composer_service.py` | opt-in, review-only, disabled | One validated clause per customer goal from compact admitted context; supported clauses cite admitted evidence, unresolved clauses cite none, supporting-only dependencies are excluded; no tools, fact creation, delivery, or send permission |
 | No-evidence strategy | `app/services/no_evidence_reply_policy_service.py` | formal but oversized | Safe strategy only; must not become another fact or reply engine |
 | Handoff wording | `app/services/customer_facing_safe_handoff_service.py` | formal | Customer-facing wording without changing risk or task state |
 | Final factual/safety audit | `app/services/final_answer_auditor.py` | formal | Claim support, high-risk boundaries, and actual media wording |

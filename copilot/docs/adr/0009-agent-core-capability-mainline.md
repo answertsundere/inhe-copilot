@@ -69,6 +69,16 @@ verified span of the current customer turn; downstream diagnostics retain only
 the span position and hash, not another copy of customer text. Missing or
 invalid goal structure is observable and fails closed for that goal.
 
+The model-first composer projects customer goals and admitted evidence to
+anonymous stable references. Its strict output is one clause per customer goal:
+`goal_ref`, `clause_kind`, `text`, and `evidence_refs`. Supported clauses must
+cite exactly their admitted evidence; unresolved, conflicting, or prohibited
+goals must return an unresolved clause without evidence. Supporting-only
+evidence dependencies are not customer goals. The application validates the
+complete goal set and renders the verified clauses in stable order without
+adding fallback wording. This remains one model call and review-only; it cannot
+change `can_send`, delivery, evidence admission, or final safety ownership.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

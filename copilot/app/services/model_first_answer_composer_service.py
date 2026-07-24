@@ -16,7 +16,7 @@ from app.services.no_evidence_reply_policy_service import (
 )
 
 
-COMPOSER_VERSION = "model-first-answer-composer-v1"
+COMPOSER_VERSION = "model-first-answer-composer-v2"
 ALLOWED_LOW_RISK_REASONING = (
     "用已确认尺寸做直观占地解释",
     "并列比较同商品已确认的规格差异",
@@ -24,10 +24,21 @@ ALLOWED_LOW_RISK_REASONING = (
     "对普通塑料说明轻微磕碰通常不像玻璃一样碎裂，但不得保证耐摔",
 )
 _ALLOWED_OUTPUT_FIELDS = {
-    "reply",
-    "used_evidence_refs",
-    "unresolved_claim_types",
+    "clauses",
 }
+_ALLOWED_CLAUSE_FIELDS = {
+    "goal_ref",
+    "clause_kind",
+    "text",
+    "evidence_refs",
+}
+_ALLOWED_CLAUSE_KINDS = {
+    "supported_fact",
+    "unresolved",
+    "service_action",
+    "empathy_or_transition",
+}
+_UNRESOLVED_STATUSES = {"unresolved", "conflicting", "prohibited"}
 _PROCESS_LANGUAGE_TERMS = (
     "帮您核对",
     "我先核对",
@@ -62,14 +73,18 @@ class ModelFirstAnswerComposerService:
 
         evidence, uid_by_ref = self._project_evidence(minimal_context)
         known_refs = set(uid_by_ref)
-        required_refs = self._required_supported_refs(minimal_context, uid_by_ref)
-        unresolved_types = self._unresolved_claim_types(minimal_context)
+        customer_goals, goal_uid_by_ref, goal_error = self._project_customer_goals(
+            minimal_context,
+            uid_by_ref,
+        )
+        if goal_error:
+            result["rejection_reason"] = goal_error
+            return original, result
         payload = self._prompt_payload(
             minimal_context,
             customer_message=customer_message,
             evidence=evidence,
-            required_refs=required_refs,
-            unresolved_types=unresolved_types,
+            customer_goals=customer_goals,
             actual_media_types=self._actual_media_types(original),
         )
 
@@ -88,7 +103,7 @@ class ModelFirstAnswerComposerService:
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
                 temperature=0,
-                max_tokens=900,
+                max_tokens=500,
                 response_format={"type": "json_object"},
             )
             parsed = json.loads(str(completion.choices[0].message.content or ""))
@@ -99,24 +114,51 @@ class ModelFirstAnswerComposerService:
         validation_error = self._validate_output(
             parsed,
             known_refs=known_refs,
-            required_refs=required_refs,
-            unresolved_types=unresolved_types,
+            customer_goals=customer_goals,
             response=original,
         )
         if validation_error:
             result["rejection_reason"] = validation_error
             return original, result
 
-        reply = str(parsed["reply"]).strip()
-        used_refs = sorted(set(str(item) for item in parsed["used_evidence_refs"]))
+        clauses_by_goal = {
+            str(item["goal_ref"]): item for item in parsed["clauses"]
+        }
+        ordered_clauses = [
+            clauses_by_goal[str(goal["goal_ref"])] for goal in customer_goals
+        ]
+        reply = "\n".join(str(item["text"]).strip() for item in ordered_clauses)
+        used_refs = sorted({
+            str(ref)
+            for item in ordered_clauses
+            for ref in item["evidence_refs"]
+        })
+        unresolved_types = {
+            str(goal["claim_type"])
+            for goal in customer_goals
+            if goal["resolution_status"] in _UNRESOLVED_STATUSES
+        }
         result.update({
             "status": "accepted",
             "rejection_reason": "",
             "candidate_reply": reply,
             "used_evidence_uids": [uid_by_ref[ref] for ref in used_refs],
-            "unresolved_claim_types": sorted(
-                set(str(item) for item in parsed["unresolved_claim_types"])
-            ),
+            "unresolved_claim_types": sorted(unresolved_types),
+            "covered_goal_refs": [
+                goal_uid_by_ref[str(goal["goal_ref"])] for goal in customer_goals
+            ],
+            "clauses": [
+                {
+                    "clause_ref": f"C{index}",
+                    "goal_ref": goal_uid_by_ref[str(clause["goal_ref"])],
+                    "clause_kind": str(clause["clause_kind"]),
+                    "text": str(clause["text"]).strip(),
+                    "evidence_uids": [
+                        uid_by_ref[str(ref)] for ref in clause["evidence_refs"]
+                    ],
+                }
+                for index, clause in enumerate(ordered_clauses, start=1)
+            ],
             "used_for_final_reply": True,
             "allowed_low_risk_reasoning": list(ALLOWED_LOW_RISK_REASONING),
         })
@@ -157,6 +199,8 @@ class ModelFirstAnswerComposerService:
             "candidate_reply": "",
             "used_evidence_uids": [],
             "unresolved_claim_types": [],
+            "covered_goal_refs": [],
+            "clauses": [],
             "context_metrics": dict(stats or {}),
             "used_for_final_reply": False,
             "can_change_can_send": False,
@@ -188,33 +232,69 @@ class ModelFirstAnswerComposerService:
         return projected, uid_by_ref
 
     @staticmethod
-    def _required_supported_refs(
+    def _project_customer_goals(
         minimal_context: dict[str, Any],
         uid_by_ref: dict[str, str],
-    ) -> set[str]:
+    ) -> tuple[list[dict[str, Any]], dict[str, str], str]:
+        dependency_keys = {
+            (
+                str(item.get("claim_type") or "").strip(),
+                str(item.get("attribute_key") or "").strip(),
+            )
+            for item in minimal_context.get("requested_claims") or []
+            if isinstance(item, dict) and item.get("supporting_only") is True
+        }
         ref_by_uid = {uid: ref for ref, uid in uid_by_ref.items()}
-        required: set[str] = set()
-        for claim in minimal_context.get("claim_resolutions") or []:
-            if not isinstance(claim, dict) or claim.get("status") != "supported":
-                continue
-            for uid in claim.get("evidence_uids") or []:
-                ref = ref_by_uid.get(str(uid))
-                if ref:
-                    required.add(ref)
-        return required
+        resolutions = sorted(
+            (
+                item
+                for item in minimal_context.get("claim_resolutions") or []
+                if isinstance(item, dict)
+                and (
+                    str(item.get("claim_type") or "").strip(),
+                    str(item.get("attribute_key") or "").strip(),
+                )
+                not in dependency_keys
+            ),
+            key=lambda item: str(item.get("claim_uid") or ""),
+        )
+        if not resolutions:
+            return [], {}, "composer_customer_goals_missing"
 
-    @staticmethod
-    def _unresolved_claim_types(minimal_context: dict[str, Any]) -> set[str]:
-        unresolved: set[str] = set()
-        for claim in minimal_context.get("claim_resolutions") or []:
-            if not isinstance(claim, dict):
-                continue
-            if claim.get("status") not in {"unresolved", "conflicting", "prohibited"}:
-                continue
-            claim_type = str(claim.get("claim_type") or "").strip()
-            if claim_type:
-                unresolved.add(claim_type)
-        return unresolved
+        goals: list[dict[str, Any]] = []
+        goal_uid_by_ref: dict[str, str] = {}
+        seen_uids: set[str] = set()
+        for index, resolution in enumerate(resolutions, start=1):
+            claim_uid = str(resolution.get("claim_uid") or "").strip()
+            claim_type = str(resolution.get("claim_type") or "").strip()
+            status = str(resolution.get("status") or "").strip()
+            if (
+                not claim_uid
+                or claim_uid in seen_uids
+                or not claim_type
+                or status not in {"supported", *_UNRESOLVED_STATUSES}
+            ):
+                return [], {}, "composer_customer_goal_contract_invalid"
+            seen_uids.add(claim_uid)
+            goal_ref = f"goal_{index:02d}"
+            goal_uid_by_ref[goal_ref] = claim_uid
+            evidence_refs = sorted({
+                ref_by_uid[str(uid)]
+                for uid in resolution.get("evidence_uids") or []
+                if str(uid) in ref_by_uid
+            })
+            if status == "supported" and not evidence_refs:
+                return [], {}, "composer_supported_goal_evidence_missing"
+            goals.append({
+                "goal_ref": goal_ref,
+                "claim_type": claim_type,
+                "attribute_key": str(
+                    resolution.get("attribute_key") or ""
+                ).strip(),
+                "resolution_status": status,
+                "required_evidence_refs": evidence_refs,
+            })
+        return goals, goal_uid_by_ref, ""
 
     @staticmethod
     def _actual_media_types(response: dict[str, Any]) -> list[str]:
@@ -230,8 +310,7 @@ class ModelFirstAnswerComposerService:
         *,
         customer_message: str,
         evidence: list[dict[str, Any]],
-        required_refs: set[str],
-        unresolved_types: set[str],
+        customer_goals: list[dict[str, Any]],
         actual_media_types: list[str],
     ) -> dict[str, Any]:
         return {
@@ -248,8 +327,7 @@ class ModelFirstAnswerComposerService:
                 ),
             },
             "admitted_evidence": evidence,
-            "required_supported_evidence_refs": sorted(required_refs),
-            "unresolved_claim_types": sorted(unresolved_types),
+            "customer_goals": customer_goals,
             "conflicting_claims": list(minimal_context.get("conflicting_claims") or []),
             "service_actions": list(minimal_context.get("service_actions") or []),
             "available_media_candidates": list(
@@ -272,8 +350,17 @@ class ModelFirstAnswerComposerService:
             "低风险解释不得升级为承重、无毒、食品级、认证、儿童安全、防倾倒、安装处方、"
             "订单状态、退款、补发或物流结论。只有 actual_media_types 中存在的媒体才可说已附上。"
             "available_media_candidates 表示系统已拥有但尚未发送的资料，不要再让客户重复上传同类资料。"
-            "输出严格 JSON 对象，且只能包含 reply、used_evidence_refs、unresolved_claim_types。"
-            "used_evidence_refs 必须列出回复实际使用的证据引用；不要输出推理过程。"
+            "输出严格 JSON 对象，且只能包含 clauses。clauses 必须为数组。"
+            "customer_goals 中每个 goal_ref 必须恰好返回一个 clause，不得遗漏、重复或新增 goal_ref。"
+            "goal_ref 必须逐字复制 customer_goals 中的完整值，不能缩写、去前缀或改写。"
+            "每个 clause 只能包含 goal_ref、clause_kind、text、evidence_refs。"
+            "每个 text 只写一句不超过30个汉字的直接客服表达，不重复其他 goal 的内容。"
+            "resolution_status=supported 时 clause_kind 必须为 supported_fact，"
+            "并准确引用 required_evidence_refs，直接陈述事实，不复述资料来源、审核状态或核对过程；"
+            "未确认、冲突或禁止直接回答时 clause_kind 必须为 unresolved，"
+            "evidence_refs 必须为空，并在 text 中自然说明当前无法确认或不能保证。"
+            "不要把 service action、媒体候选、过渡语或同情语句伪装成 customer goal 的事实。"
+            "不要输出推理过程。"
         )
 
     @staticmethod
@@ -281,27 +368,67 @@ class ModelFirstAnswerComposerService:
         parsed: Any,
         *,
         known_refs: set[str],
-        required_refs: set[str],
-        unresolved_types: set[str],
+        customer_goals: list[dict[str, Any]],
         response: dict[str, Any],
     ) -> str:
         if not isinstance(parsed, dict) or set(parsed) != _ALLOWED_OUTPUT_FIELDS:
             return "composer_schema_invalid"
-        if not isinstance(parsed.get("reply"), str) or not parsed["reply"].strip():
-            return "composer_reply_empty"
-        if not isinstance(parsed.get("used_evidence_refs"), list):
-            return "composer_evidence_refs_invalid"
-        if not isinstance(parsed.get("unresolved_claim_types"), list):
-            return "composer_unresolved_claims_invalid"
-        used_refs = {str(item) for item in parsed["used_evidence_refs"]}
-        if not used_refs.issubset(known_refs):
-            return "composer_unknown_evidence_reference"
-        if not required_refs.issubset(used_refs):
-            return "composer_supported_claim_omitted"
-        reported_unresolved = {str(item) for item in parsed["unresolved_claim_types"]}
-        if not unresolved_types.issubset(reported_unresolved):
-            return "composer_unresolved_claim_omitted"
-        reply = parsed["reply"].strip()
+        clauses = parsed.get("clauses")
+        if not isinstance(clauses, list):
+            return "composer_clauses_invalid"
+        goals_by_ref = {
+            str(goal["goal_ref"]): goal for goal in customer_goals
+        }
+        clauses_by_ref: dict[str, dict[str, Any]] = {}
+        for clause in clauses:
+            if not isinstance(clause, dict) or set(clause) != _ALLOWED_CLAUSE_FIELDS:
+                return "composer_clause_schema_invalid"
+            goal_ref = str(clause.get("goal_ref") or "").strip()
+            clause_kind = str(clause.get("clause_kind") or "").strip()
+            text = str(clause.get("text") or "").strip()
+            evidence_refs = clause.get("evidence_refs")
+            if goal_ref not in goals_by_ref:
+                return "composer_unknown_goal_reference"
+            if goal_ref in clauses_by_ref:
+                return "composer_duplicate_goal_clause"
+            if clause_kind not in _ALLOWED_CLAUSE_KINDS:
+                return "composer_clause_kind_invalid"
+            if not text:
+                return "composer_goal_clause_text_missing"
+            if not isinstance(evidence_refs, list) or any(
+                not isinstance(item, str) or not item.strip()
+                for item in evidence_refs
+            ):
+                return "composer_evidence_refs_invalid"
+            refs = [str(item).strip() for item in evidence_refs]
+            if len(refs) != len(set(refs)):
+                return "composer_duplicate_evidence_reference"
+            if not set(refs).issubset(known_refs):
+                return "composer_unknown_evidence_reference"
+            goal = goals_by_ref[goal_ref]
+            if goal["resolution_status"] == "supported":
+                if clause_kind != "supported_fact":
+                    return "composer_supported_goal_clause_invalid"
+                if set(refs) != set(goal["required_evidence_refs"]):
+                    return "composer_supported_claim_omitted"
+            else:
+                if clause_kind != "unresolved":
+                    return "composer_unresolved_goal_asserted"
+                if refs:
+                    return "composer_unresolved_goal_evidence_invalid"
+            clauses_by_ref[goal_ref] = {
+                **clause,
+                "goal_ref": goal_ref,
+                "clause_kind": clause_kind,
+                "text": text,
+                "evidence_refs": refs,
+            }
+        if set(clauses_by_ref) != set(goals_by_ref):
+            return "composer_goal_clause_omitted"
+        reply = "\n".join(
+            clauses_by_ref[str(goal["goal_ref"])]["text"]
+            for goal in customer_goals
+        )
         if any(term.lower() in reply.lower() for term in CUSTOMER_FACING_INTERNAL_REDLINE_TERMS):
             return "composer_internal_language"
         if any(term in reply for term in _PROCESS_LANGUAGE_TERMS):
