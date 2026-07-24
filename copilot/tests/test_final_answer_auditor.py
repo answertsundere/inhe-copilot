@@ -415,7 +415,9 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
     from app.llm import client as llm_client
 
     client = _CapturingFakeClient(
-        '{"passed": true, "issues": [], "reason": "supported fact answered and unresolved claim bounded"}'
+        '{"passed":true,"issues":[],"reason_code":"canonical_reply_valid",'
+        '"canonical_truth_respected":true,"unresolved_declaration_recognized":true,'
+        '"conversation_continuity_checked":true,"historical_agent_fact_used":false}'
     )
     monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
     monkeypatch.setattr(llm_client, "get_llm_client", lambda: client)
@@ -423,7 +425,23 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
         "intent": "product_question",
         "suggested_reply": "\u8fd9\u6b3e\u662fABS\u6750\u8d28\uff1b\u6297\u6454\u6027\u76ee\u524d\u6ca1\u6709\u53ef\u76f4\u63a5\u786e\u8ba4\u7684\u4f9d\u636e\u3002",
         "requires_human_review": True,
-        "model_first_answer_composer": {"status": "accepted"},
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "clauses": [
+                {
+                    "goal_ref": "claim-material",
+                    "clause_kind": "supported_fact",
+                    "text": "这款是ABS材质",
+                    "evidence_uids": ["selected-material"],
+                },
+                {
+                    "goal_ref": "claim-stability",
+                    "clause_kind": "unresolved",
+                    "text": "抗摔性目前无法确认",
+                    "evidence_uids": [],
+                },
+            ],
+        },
         "evidence_used": "\u5df2\u62d2\u7edd\u7684reference_only\u6750\u8d28\uff1a\u91d1\u5c5e",
         "selected_evidence": [{
             "evidence_uid": "selected-material",
@@ -436,15 +454,17 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
             "product_facts": [{"content": "\u5df2\u62d2\u7edd\u7684reference_only\u6750\u8d28\uff1a\u91d1\u5c5e"}],
             "admitted_answer_context": {
                 "claim_resolutions": [
-                    {
-                        "claim_type": "material",
-                        "status": "supported",
-                        "evidence_uids": ["selected-material"],
-                    },
-                    {
-                        "claim_type": "stability",
-                        "status": "unresolved",
-                        "evidence_uids": [],
+                        {
+                            "claim_uid": "claim-material",
+                            "claim_type": "material",
+                            "status": "supported",
+                            "evidence_uids": ["selected-material"],
+                        },
+                        {
+                            "claim_uid": "claim-stability",
+                            "claim_type": "stability",
+                            "status": "unresolved",
+                            "evidence_uids": [],
                     },
                 ],
             },
@@ -457,11 +477,12 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
     )
 
     payload = json.loads(client.kwargs["messages"][1]["content"])
-    summary = payload["evidence_summary"]
     assert payload["model_first_candidate"] is True
-    assert summary["selected_evidence"][0]["evidence_uid"] == "selected-material"
-    assert summary["claim_resolutions"][1]["status"] == "unresolved"
-    assert "evidence_used" not in summary
+    truth = payload["canonical_truth"]
+    assert truth["evidence"][0]["evidence_ref"] == "E1"
+    assert truth["claim_resolutions"][1]["status"] == "unresolved"
+    assert "evidence_summary" not in payload
+    assert "conversation_context" not in payload
     assert "\u91d1\u5c5e" not in client.kwargs["messages"][1]["content"]
     assert audited["final_answer_audit"]["passed"] is True
 

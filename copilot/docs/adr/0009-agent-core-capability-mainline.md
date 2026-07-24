@@ -79,6 +79,24 @@ complete goal set and renders the verified clauses in stable order without
 adding fallback wording. This remains one model call and review-only; it cannot
 change `can_send`, delivery, evidence admission, or final safety ownership.
 
+The Final Auditor evaluates accepted model-first candidates against two
+separate inputs. `canonical_truth` contains only admitted evidence and claim
+resolution state, with anonymous evidence and provenance references.
+`conversation_continuity` retains bounded customer and historical agent turns
+for referent, prior-question, already-provided-information, and service
+commitment continuity. Historical agent turns are explicitly non-authoritative
+for product, policy, order, and action-completion facts. A historical factual
+conflict therefore cannot override canonical truth or reject a candidate that
+uses canonical truth, while a candidate that actually relies on an unsupported
+historical fact must still fail closed. The strict audit remains one model call;
+provider or schema failure blocks the candidate. Style and harmless repetition
+remain the Semantic Quality owner's concern rather than a second Final Auditor
+policy.
+
+This boundary does not promote the composer or change delivery permission.
+Composer acceptance and Final Auditor acceptance are necessary but not
+sufficient for final orchestration or production enablement.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

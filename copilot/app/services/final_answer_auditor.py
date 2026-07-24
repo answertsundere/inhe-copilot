@@ -8,6 +8,7 @@ language. When it blocks, it rewrites to a conservative human-handoff message.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import json
 import logging
@@ -20,6 +21,30 @@ from app.services.generic_service_rule_service import unsafe_promise_terms
 from app.services.media_asset_service import is_delivery_media_asset_eligible
 
 logger = logging.getLogger(__name__)
+
+_MODEL_FIRST_AUDIT_SCHEMA_VERSION = "model-first-final-audit-v2"
+_MODEL_FIRST_AUDIT_OUTPUT_FIELDS = {
+    "passed",
+    "issues",
+    "reason_code",
+    "canonical_truth_respected",
+    "unresolved_declaration_recognized",
+    "conversation_continuity_checked",
+    "historical_agent_fact_used",
+}
+_REDACTION_MARKERS = (
+    "[PHONE_REDACTED]",
+    "[EMAIL_REDACTED]",
+    "[ADDRESS_REDACTED]",
+    "[ORDER_REFERENCE_REDACTED]",
+    "[TRACKING_REFERENCE_REDACTED]",
+    "[URL_REDACTED]",
+    "[SECRET_REDACTED]",
+    "[REFERENCE_REDACTED:",
+    "[PRODUCT_ID_REDACTED:",
+    "[STRUCTURED_PRIVATE_ID_REDACTED:",
+    "[LONG_ID_REDACTED:",
+)
 
 _FACT_TOPIC = {
     "pinch_safety": "pinch_safety",
@@ -261,8 +286,10 @@ def audit_final_answer(
         if not llm_audit.get("passed", True):
             issues.extend(f"llm:{issue}" for issue in llm_audit.get("issues", []) or ["semantic_mismatch"])
         issues.extend(_hard_safety_issues(reply, response, copilot_context or {}))
+        issues.extend(_model_first_candidate_contract_issues(response))
     else:
         issues = _audit_issues(customer_message, reply, expected, actual, response, copilot_context or {})
+        issues.extend(_model_first_candidate_contract_issues(response))
     passed = not issues
 
     audit = {
@@ -337,7 +364,12 @@ def audit_final_answer(
         response["risk_level"] = response.get("risk_level") or "medium"
     response["generation_mode"] = "final_answer_audit_fallback"
     response["final_answer_audit"]["fallback_used"] = True
-    response["final_answer_audit"]["original_reply"] = original_reply
+    if "customer_reply_identity_leakage" in issues:
+        response["final_answer_audit"]["original_reply_sha256"] = hashlib.sha256(
+            original_reply.encode("utf-8")
+        ).hexdigest()
+    else:
+        response["final_answer_audit"]["original_reply"] = original_reply
     # If the fallback/correction reply itself answers a visual question with an
     # attached image/video, accept it even though the original draft failed.
     if (
@@ -576,6 +608,8 @@ def _hard_safety_issues(
         issues.append("unsafe_customer_promise:" + ",".join(unsafe_terms))
     if _asks_for_order_when_already_given(reply, response, copilot_context):
         issues.append("asks_for_existing_order_id")
+    if _customer_reply_contains_private_value(reply):
+        issues.append("customer_reply_identity_leakage")
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
     if _unsupported_installation_structure_claim(reply, response, copilot_context=copilot_context):
@@ -588,6 +622,305 @@ def _hard_safety_issues(
             issues.append("unsupported_media_claim")
     except Exception:
         pass
+    return _dedupe(issues)
+
+
+def _customer_reply_contains_private_value(reply: str) -> bool:
+    from app.services.canonical_conversation_turn_service import (
+        project_text_for_external_model,
+    )
+
+    projected = project_text_for_external_model(reply)
+    return any(marker in projected for marker in _REDACTION_MARKERS)
+
+
+def _model_first_minimal_context(response: dict[str, Any]) -> dict[str, Any]:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    for candidate in (
+        response.get("minimal_decision_context"),
+        debug.get("minimal_decision_context"),
+    ):
+        if isinstance(candidate, dict):
+            return candidate
+    return {}
+
+
+def _model_first_admitted_context(response: dict[str, Any]) -> dict[str, Any]:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    admitted = debug.get("admitted_answer_context")
+    return admitted if isinstance(admitted, dict) else {}
+
+
+def _model_first_selected_evidence(response: dict[str, Any]) -> list[dict[str, Any]]:
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    admitted = _model_first_admitted_context(response)
+    minimal = _model_first_minimal_context(response)
+    rows: list[dict[str, Any]] = []
+    for container in (
+        response.get("selected_evidence"),
+        debug.get("selected_evidence"),
+        admitted.get("direct_product_facts"),
+        admitted.get("direct_policy_facts"),
+        minimal.get("admitted_evidence"),
+    ):
+        if not isinstance(container, list):
+            continue
+        rows.extend(item for item in container if isinstance(item, dict))
+    deduplicated: dict[str, dict[str, Any]] = {}
+    for item in sorted(
+        rows,
+        key=lambda row: (
+            str(row.get("evidence_uid") or ""),
+            str(row.get("fact_type") or ""),
+            str(row.get("attribute_key") or ""),
+        ),
+    ):
+        uid = str(item.get("evidence_uid") or "").strip()
+        if uid:
+            deduplicated.setdefault(uid, item)
+    return list(deduplicated.values())
+
+
+def _model_first_claim_resolutions(response: dict[str, Any]) -> list[dict[str, Any]]:
+    admitted = _model_first_admitted_context(response)
+    minimal = _model_first_minimal_context(response)
+    rows = admitted.get("claim_resolutions")
+    if not isinstance(rows, list):
+        rows = minimal.get("claim_resolutions")
+    return sorted(
+        (item for item in (rows or []) if isinstance(item, dict)),
+        key=lambda item: (
+            str(item.get("claim_uid") or ""),
+            str(item.get("claim_type") or ""),
+            str(item.get("attribute_key") or ""),
+        ),
+    )
+
+
+def _anonymous_ref(prefix: str, value: Any) -> str:
+    digest = hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:12]
+    return f"{prefix}_{digest}"
+
+
+def _model_first_audit_context(
+    response: dict[str, Any],
+    copilot_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Project authoritative truth separately from non-factual turn continuity."""
+    from app.services.canonical_conversation_turn_service import (
+        normalize_conversation_turns,
+        project_text_for_external_model,
+    )
+
+    context = copilot_context if isinstance(copilot_context, dict) else {}
+    minimal = _model_first_minimal_context(response)
+    evidence_rows = _model_first_selected_evidence(response)
+    evidence_ref_by_uid = {
+        str(item.get("evidence_uid")): f"E{index}"
+        for index, item in enumerate(evidence_rows, start=1)
+    }
+    canonical_evidence = []
+    for item in evidence_rows:
+        provenance = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+        provenance_seed = json.dumps(
+            {
+                "source": item.get("source") or item.get("source_type") or "",
+                "origin": provenance.get("origin_evidence_key") or "",
+                "container": provenance.get("source_container") or "",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        canonical_evidence.append({
+            "evidence_ref": evidence_ref_by_uid[str(item.get("evidence_uid"))],
+            "evidence_role": str(item.get("evidence_role") or ""),
+            "fact_type": str(item.get("fact_type") or ""),
+            "attribute_key": str(item.get("attribute_key") or ""),
+            "content": project_text_for_external_model(
+                item.get("content") or item.get("value") or item.get("text") or ""
+            ),
+            "provenance_ref": _anonymous_ref("provenance", provenance_seed),
+        })
+
+    claim_rows = _model_first_claim_resolutions(response)
+    canonical_claims = []
+    for index, item in enumerate(claim_rows, start=1):
+        canonical_claims.append({
+            "claim_ref": f"goal_{index:02d}",
+            "claim_type": str(item.get("claim_type") or ""),
+            "attribute_key": str(item.get("attribute_key") or ""),
+            "status": str(item.get("status") or ""),
+            "evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in item.get("evidence_uids") or []
+                if str(uid) in evidence_ref_by_uid
+            }),
+            "conflicting_evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in item.get("conflicting_evidence_uids") or []
+                if str(uid) in evidence_ref_by_uid
+            }),
+        })
+
+    history = context.get("conversation_history")
+    if not isinstance(history, list):
+        history = minimal.get("recent_conversation_turns")
+    turns, _diagnostics = normalize_conversation_turns(
+        history if isinstance(history, list) else [],
+        strict=False,
+        max_turns=8,
+    )
+    customer_turns = []
+    historical_agent_turns = []
+    for item in turns:
+        role = str(item.get("role") or "")
+        if role not in {"customer", "agent"}:
+            continue
+        projected_turn = {
+            "turn_ref": _anonymous_ref("turn", item.get("turn_uid")),
+            "turn_index": item.get("turn_index"),
+            "role": role,
+            "content": project_text_for_external_model(item.get("content")),
+            "authoritative_for_product_facts": False,
+            "authoritative_for_policy_facts": False,
+            "authoritative_for_order_status": False,
+            "usable_for_conversation_continuity": True,
+        }
+        if role == "agent":
+            historical_agent_turns.append(projected_turn)
+        else:
+            customer_turns.append(projected_turn)
+
+    debug = response.get("evidence_debug") if isinstance(response.get("evidence_debug"), dict) else {}
+    product_context_present = bool(
+        evidence_rows
+        or any(context.get(key) for key in ("product_name", "product_title", "sku_code", "i_id", "product_id"))
+        or context.get("product_candidates")
+    )
+    order_context_present = bool(
+        any(context.get(key) for key in ("order_id", "platform_order_id", "platform_trade_id"))
+        or context.get("order_candidates")
+    )
+    media_context_present = bool(
+        minimal.get("media_candidates")
+        or context.get("image_attachments")
+        or context.get("media_candidates")
+        or any(
+            isinstance(block, dict) and block.get("type") in {"image", "video"}
+            for block in response.get("reply_blocks") or []
+        )
+    )
+    live_tool_result_present = bool(
+        response.get("tool_results_summary")
+        or debug.get("tool_results_summary")
+        or debug.get("used_fact_tool")
+        or debug.get("used_fact_tools")
+    )
+    unresolved = [
+        item for item in canonical_claims
+        if item["status"] in {"unresolved", "conflicting", "prohibited"}
+    ]
+    return {
+        "schema_version": _MODEL_FIRST_AUDIT_SCHEMA_VERSION,
+        "canonical_truth": {
+            "evidence": canonical_evidence,
+            "claim_resolutions": canonical_claims,
+            "unresolved_or_prohibited_claims": unresolved,
+        },
+        "conversation_continuity": {
+            "authority_contract": {
+                "historical_agent_turns_are_factual_authority": False,
+                "historical_fact_conflict_requires_candidate_reconciliation": False,
+                "service_action_continuity_must_be_checked": True,
+            },
+            "allowed_uses": [
+                "current_referent_resolution",
+                "information_already_provided",
+                "prior_question_continuity",
+                "service_commitment_continuity",
+            ],
+            "prohibited_uses": [
+                "product_fact_support",
+                "policy_fact_support",
+                "order_status_support",
+                "service_action_completion_proof",
+                "canonical_truth_override",
+            ],
+            "customer_turns": customer_turns,
+            "historical_agent_turns_non_authoritative": historical_agent_turns,
+            "turn_count": len(customer_turns) + len(historical_agent_turns),
+        },
+        "context_presence": {
+            "product_context_present": product_context_present,
+            "order_context_present": order_context_present,
+            "media_context_present": media_context_present,
+            "live_tool_result_present": live_tool_result_present,
+        },
+    }
+
+
+def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str]:
+    composer = response.get("model_first_answer_composer")
+    if not isinstance(composer, dict) or composer.get("status") != "accepted":
+        return []
+    evidence_uids = {
+        str(item.get("evidence_uid") or "")
+        for item in _model_first_selected_evidence(response)
+        if str(item.get("evidence_uid") or "")
+    }
+    minimal = _model_first_minimal_context(response)
+    dependency_keys = {
+        (
+            str(item.get("claim_type") or ""),
+            str(item.get("attribute_key") or ""),
+        )
+        for item in minimal.get("requested_claims") or []
+        if isinstance(item, dict) and item.get("supporting_only") is True
+    }
+    claims = {
+        str(item.get("claim_uid") or ""): item
+        for item in _model_first_claim_resolutions(response)
+        if str(item.get("claim_uid") or "")
+        and (
+            str(item.get("claim_type") or ""),
+            str(item.get("attribute_key") or ""),
+        ) not in dependency_keys
+    }
+    clauses = composer.get("clauses")
+    if not isinstance(clauses, list):
+        return ["model_first_candidate_clauses_invalid"]
+    clauses_by_goal: dict[str, dict[str, Any]] = {}
+    issues: list[str] = []
+    for clause in clauses:
+        if not isinstance(clause, dict):
+            issues.append("model_first_candidate_clause_invalid")
+            continue
+        goal_ref = str(clause.get("goal_ref") or "")
+        if not goal_ref or goal_ref in clauses_by_goal:
+            issues.append("model_first_candidate_goal_duplicate_or_missing")
+            continue
+        clauses_by_goal[goal_ref] = clause
+        unknown = {
+            str(uid) for uid in clause.get("evidence_uids") or []
+            if str(uid) not in evidence_uids
+        }
+        if unknown:
+            issues.append("model_first_candidate_unknown_evidence")
+    if set(clauses_by_goal) != set(claims):
+        issues.append("model_first_candidate_goal_set_mismatch")
+    for goal_ref in sorted(set(clauses_by_goal) & set(claims)):
+        clause = clauses_by_goal[goal_ref]
+        claim = claims[goal_ref]
+        status = str(claim.get("status") or "")
+        actual_evidence = {str(uid) for uid in clause.get("evidence_uids") or []}
+        expected_evidence = {str(uid) for uid in claim.get("evidence_uids") or []}
+        if status == "supported":
+            if clause.get("clause_kind") != "supported_fact" or actual_evidence != expected_evidence:
+                issues.append("model_first_candidate_supported_clause_invalid")
+        elif status in {"unresolved", "conflicting", "prohibited"}:
+            if clause.get("clause_kind") != "unresolved" or actual_evidence:
+                issues.append("model_first_candidate_unresolved_clause_invalid")
     return _dedupe(issues)
 
 
@@ -1216,6 +1549,113 @@ def _dedupe(items: list[str]) -> list[str]:
     return result
 
 
+def _model_first_audit_system_prompt() -> str:
+    return (
+        "你是智能客服 Model-first 候选的最终语义审核员，只判断，不改写。"
+        "输入中的 canonical_truth 是商品、政策和订单事实的唯一权威来源。"
+        "conversation_continuity 仅用于判断上下文承接、重复索取、此前询问和服务承诺；"
+        "historical_agent_turns_non_authoritative 中所有历史客服回合都明确不是"
+        "商品事实、政策事实、订单状态或服务动作已完成的证明，"
+        "不得与 canonical_truth 竞争、覆盖或否定 canonical_truth。"
+        "当候选回复采用 canonical_truth 时，即使历史客服曾说过不同事实，也必须按事实一致性通过；"
+        "不得仅因历史客服事实与 canonical_truth 不同而拒绝，也不得要求候选解释或调和该事实冲突。"
+        "historical_agent_fact_used 只有在候选事实缺少 canonical_truth 支持、"
+        "却由历史客服话术提供时才为 true；仅仅看到历史冲突不算使用。"
+        "按顺序先审核候选是否符合 canonical_truth，再审核 unresolved 状态，"
+        "最后只按 conversation_continuity.allowed_uses 检查会话承接；"
+        "不得使用 prohibited_uses 中的用途。"
+        "本审核不负责风格润色、简洁度、礼貌程度或不改变事实含义的文字重复；"
+        "这些问题不得单独导致 passed=false。只有重复导致客户目标遗漏、事实冲突或连续性失败时才阻断。"
+        "context_presence 只能证明某类上下文存在，不能证明具体状态或处理结果。"
+        "supported claim 必须采用 canonical_truth 中对应 evidence；"
+        "unresolved/conflicting/prohibited claim 必须保留为无法确认或不能保证，不能写成确定事实。"
+        "回复不得遗漏客户目标、引用未知 evidence、重复索取已提供的信息、"
+        "无依据声称退款补发物流已完成、违背此前服务承诺、承诺未附带媒体、"
+        "暴露内部系统语言或客户及商品身份。"
+        "只输出 JSON 对象，字段必须且只能是："
+        "passed、issues、reason_code、canonical_truth_respected、"
+        "unresolved_declaration_recognized、conversation_continuity_checked、"
+        "historical_agent_fact_used。"
+        "passed 和四个诊断字段必须是 boolean；issues 必须是简短 reason code 数组；"
+        "reason_code 必须是小写英文、数字、下划线或冒号组成的单个 reason code。"
+        "不得输出原始身份、凭证、推理过程或额外字段。"
+    )
+
+
+def _model_first_semantic_audit_failure(reason: str) -> dict[str, Any]:
+    return {
+        "passed": False,
+        "issues": [reason],
+        "reason_code": reason,
+        "canonical_truth_respected": False,
+        "unresolved_declaration_recognized": False,
+        "conversation_continuity_checked": False,
+        "historical_agent_fact_used": False,
+        "schema_version": _MODEL_FIRST_AUDIT_SCHEMA_VERSION,
+    }
+
+
+def _parse_model_first_semantic_audit(
+    parsed: Any,
+    *,
+    input_metrics: dict[str, int],
+) -> dict[str, Any]:
+    if not isinstance(parsed, dict) or set(parsed) != _MODEL_FIRST_AUDIT_OUTPUT_FIELDS:
+        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
+    boolean_fields = (
+        "passed",
+        "canonical_truth_respected",
+        "unresolved_declaration_recognized",
+        "conversation_continuity_checked",
+        "historical_agent_fact_used",
+    )
+    if any(not isinstance(parsed.get(field), bool) for field in boolean_fields):
+        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
+    issues = parsed.get("issues")
+    reason_code = parsed.get("reason_code")
+    if (
+        not isinstance(issues, list)
+        or any(not isinstance(item, str) for item in issues)
+        or not isinstance(reason_code, str)
+        or not re.fullmatch(r"[a-z0-9_:]{1,80}", reason_code)
+    ):
+        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
+    normalized_issues = [
+        item for item in issues
+        if re.fullmatch(r"[a-z0-9_:]{1,80}", item)
+    ]
+    if len(normalized_issues) != len(issues):
+        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
+    passed = parsed["passed"]
+    if not parsed["canonical_truth_respected"]:
+        normalized_issues.append("canonical_truth_not_respected")
+        passed = False
+    if not parsed["unresolved_declaration_recognized"]:
+        normalized_issues.append("unresolved_declaration_not_recognized")
+        passed = False
+    if not parsed["conversation_continuity_checked"]:
+        normalized_issues.append("conversation_continuity_not_checked")
+        passed = False
+    if parsed["historical_agent_fact_used"]:
+        normalized_issues.append("historical_agent_fact_used")
+        passed = False
+    return {
+        "passed": passed and not normalized_issues,
+        "issues": _dedupe(normalized_issues)[:8],
+        "reason_code": reason_code,
+        "canonical_truth_respected": parsed["canonical_truth_respected"],
+        "unresolved_declaration_recognized": parsed[
+            "unresolved_declaration_recognized"
+        ],
+        "conversation_continuity_checked": parsed[
+            "conversation_continuity_checked"
+        ],
+        "historical_agent_fact_used": parsed["historical_agent_fact_used"],
+        "schema_version": _MODEL_FIRST_AUDIT_SCHEMA_VERSION,
+        "input_metrics": input_metrics,
+    }
+
+
 def _semantic_llm_audit(
     customer_message: str,
     reply: str,
@@ -1225,44 +1665,43 @@ def _semantic_llm_audit(
     copilot_context: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Ask the model to judge whether the final reply logically answers the user."""
+    evidence_debug = response.get("evidence_debug") or {}
+    model_first_candidate = (
+        (response.get("model_first_answer_composer") or {}).get("status")
+        == "accepted"
+    )
     try:
         from app.llm.client import get_llm_client
 
         client = get_llm_client()
         if not client.api_key:
-            return None
+            return (
+                _model_first_semantic_audit_failure("model_first_audit_provider_unconfigured")
+                if model_first_candidate
+                else None
+            )
 
-        evidence_debug = response.get("evidence_debug") or {}
-        model_first_candidate = (
-            (response.get("model_first_answer_composer") or {}).get("status")
-            == "accepted"
-        )
         if model_first_candidate:
-            selected_evidence = response.get("selected_evidence") or evidence_debug.get(
-                "selected_evidence"
-            ) or []
-            admitted_context = evidence_debug.get("admitted_answer_context") or {}
-            evidence_summary = {
-                "selected_evidence": [
-                    {
-                        "evidence_uid": item.get("evidence_uid", ""),
-                        "evidence_role": item.get("evidence_role", ""),
-                        "fact_type": item.get("fact_type", ""),
-                        "attribute_key": item.get("attribute_key", ""),
-                        "content": item.get("content") or item.get("value") or "",
-                    }
-                    for item in selected_evidence
-                    if isinstance(item, dict)
-                ][:12],
-                "claim_resolutions": [
-                    {
-                        "claim_type": item.get("claim_type", ""),
-                        "status": item.get("status", ""),
-                        "evidence_uids": list(item.get("evidence_uids") or []),
-                    }
-                    for item in admitted_context.get("claim_resolutions") or []
-                    if isinstance(item, dict)
-                ][:12],
+            audit_context = _model_first_audit_context(response, copilot_context)
+            canonical_truth = audit_context["canonical_truth"]
+            continuity = audit_context["conversation_continuity"]
+            payload = {
+                "customer_message": customer_message,
+                "suggested_reply": reply,
+                "model_first_candidate": True,
+                **audit_context,
+            }
+            input_metrics = {
+                "canonical_evidence_count": len(canonical_truth["evidence"]),
+                "claim_resolution_count": len(canonical_truth["claim_resolutions"]),
+                "unresolved_claim_count": len(
+                    canonical_truth["unresolved_or_prohibited_claims"]
+                ),
+                "conversation_turn_count": int(continuity["turn_count"]),
+                "prompt_token_estimate": max(
+                    1,
+                    len(json.dumps(payload, ensure_ascii=False)) // 4,
+                ),
             }
         else:
             evidence_summary = {
@@ -1273,23 +1712,24 @@ def _semantic_llm_audit(
                 "product_facts": (evidence_debug.get("product_facts") or [])[:5],
                 "unknowns": (evidence_debug.get("unknowns") or [])[:5],
             }
-        payload = {
-            "customer_message": customer_message,
-            "suggested_reply": reply,
-            "conversation_context": copilot_context or {},
-            "intent": response.get("intent", ""),
-            "query_fact_type_hint": evidence_debug.get("query_fact_type", ""),
-            "expected_topics_hint": expected_topics,
-            "reply_topics_hint": reply_topics,
-            "model_first_candidate": model_first_candidate,
-            "evidence_summary": evidence_summary,
-        }
+            payload = {
+                "customer_message": customer_message,
+                "suggested_reply": reply,
+                "conversation_context": copilot_context or {},
+                "intent": response.get("intent", ""),
+                "query_fact_type_hint": evidence_debug.get("query_fact_type", ""),
+                "expected_topics_hint": expected_topics,
+                "reply_topics_hint": reply_topics,
+                "model_first_candidate": False,
+                "evidence_summary": evidence_summary,
+            }
+            input_metrics = {}
         result = client.create_chat_completion(
             model=client.model,
             messages=[
                 {
                     "role": "system",
-                    "content": (
+                    "content": _model_first_audit_system_prompt() if model_first_candidate else (
                         "\u4f60\u662f\u667a\u80fd\u5ba2\u670d\u6700\u7ec8\u56de\u590d\u7684\u8bed\u4e49\u4e00\u81f4\u6027\u5ba1\u6838\u5458\uff0c\u53ea\u8d1f\u8d23\u5224\u65ad\uff0c\u4e0d\u8d1f\u8d23\u6539\u5199\u3002"
                         "\u4f60\u7684\u5ba1\u6838\u6807\u51c6\u53ea\u6709\u4e00\u4e2a\u6838\u5fc3\uff1a\u8fd9\u6bb5\u6700\u7ec8\u8981\u53d1\u7ed9\u5ba2\u6237\u7684\u8bdd\uff0c"
                         "\u4f5c\u4e3a\u4e00\u4f4d\u91d1\u724c\u5ba2\u670d\uff0c\u662f\u5426\u80fd\u6b63\u9762\u3001\u51c6\u786e\u3001\u81ea\u7136\u5730\u56de\u7b54\u5ba2\u6237\u5f53\u524d\u95ee\u9898\u3002"
@@ -1323,6 +1763,11 @@ def _semantic_llm_audit(
         )
         raw = result.choices[0].message.content.strip()
         parsed = json.loads(raw)
+        if model_first_candidate:
+            return _parse_model_first_semantic_audit(
+                parsed,
+                input_metrics=input_metrics,
+            )
         issues = parsed.get("issues") or []
         if not isinstance(issues, list):
             issues = [str(issues)]
@@ -1333,7 +1778,13 @@ def _semantic_llm_audit(
         }
     except Exception as exc:
         logger.warning("semantic final answer llm audit failed: %s", exc)
-        return None
+        return (
+            _model_first_semantic_audit_failure(
+                f"model_first_audit_provider_error:{type(exc).__name__.lower()}"
+            )
+            if model_first_candidate
+            else None
+        )
 
 
 def _optional_llm_audit(
