@@ -43,7 +43,12 @@ experiment results belong in evaluation reports, not in this ownership map.
 | `tool_requirement_status` | Tool Router plus Tool Executor | Distinguishes not required, static completion, live pending/completed/failed, action required, and unknown |
 | `inference_requirement_status` | Claim Resolution | Direct evidence, bounded inference required/completed, prohibited, not applicable, or unknown; no inference is executed by the projection |
 | `risk_policy_status` | Domain Pack policy plus deterministic Claim/Safety runtime verdict | Low verified, medium/review, high, prohibited, or unknown; model hints cannot lower deterministic risk |
+| Direct-evidence cardinality | Existing Admission/Dedup plus Claim Resolution, projected by `AdmittedAnswerContextService` | Exactly one goal/claim/attribute/identity-aligned admitted direct fact; zero and multiple facts fail closed, and any evidence dependency blocks |
 | Minimal Decision Context | Existing context builder | Projection only; cannot replace owner output, change formal reply fields, or change `can_send` |
+
+Phase 1.10.1 qualifies this projection with the frozen 30-positive/40-negative
+dataset in three deterministic orderings. The qualification script is an
+evaluation owner only; no Fast Path or Composer module has been added.
 
 ## Operations And Future Channels
 

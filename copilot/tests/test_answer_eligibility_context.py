@@ -542,7 +542,9 @@ def test_nonvalid_understanding_blocks_even_with_canonical_customer_goal(
     assert "goal_understanding_not_valid" in eligibility["fast_path_block_reasons"]
 
 
-def test_supporting_dependency_does_not_increase_customer_goal_count(tmp_path):
+def test_supporting_dependency_does_not_increase_goal_count_but_blocks_fast_path(
+    tmp_path,
+):
     _write_pack(
         tmp_path,
         domain_id="test",
@@ -562,7 +564,13 @@ def test_supporting_dependency_does_not_increase_customer_goal_count(tmp_path):
 
     eligibility = _eligibility(pack, understanding)
 
-    assert eligibility["fast_path_preconditions_complete"] is True
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert "canonical_customer_goal_count_not_one" not in eligibility[
+        "fast_path_block_reasons"
+    ]
+    assert "evidence_dependency_present" in eligibility[
+        "fast_path_block_reasons"
+    ]
 
 
 def test_two_canonical_customer_goals_block_fast_path(tmp_path):

@@ -78,6 +78,7 @@ COMPATIBLE_FACT_TYPES = {
 }
 
 _IDENTITY_KEYS = ("sku_code", "i_id", "product_id")
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -138,6 +139,14 @@ def _unique(values: list[Any]) -> list[str]:
             seen.add(text)
             result.append(text)
     return result
+
+
+def _structured_sha256(value: Any) -> str:
+    """Parse a provenance digest without applying free-text PII sanitization."""
+    if not isinstance(value, str):
+        return ""
+    candidate = value.strip().lower()
+    return candidate if _SHA256_PATTERN.fullmatch(candidate) else ""
 
 
 def _fact_type(item: dict[str, Any]) -> str:
@@ -979,9 +988,9 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                     "source": sanitize_text(item.get("source")).lower(),
                     "source_span_start": item.get("source_span_start"),
                     "source_span_end": item.get("source_span_end"),
-                    "source_span_sha256": sanitize_text(
+                    "source_span_sha256": _structured_sha256(
                         item.get("source_span_sha256")
-                    ).lower(),
+                    ),
                     "owner": sanitize_text(item.get("owner")).lower(),
                     "source_stage": sanitize_text(item.get("source_stage")).lower(),
                     "unexpected_fields": sorted(set(item) - allowed_fields),
@@ -1041,7 +1050,7 @@ def _canonical_customer_goals_for_eligibility(
             continue
         start = item.get("source_span_start")
         end = item.get("source_span_end")
-        digest = sanitize_text(item.get("source_span_sha256")).lower()
+        digest = _structured_sha256(item.get("source_span_sha256"))
         if (
             not isinstance(start, int)
             or isinstance(start, bool)
@@ -1127,6 +1136,66 @@ def _domain_policy_projection(pack: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resolution_matches_goal(
+    resolution: dict[str, Any],
+    goal: dict[str, Any],
+) -> bool:
+    goal_claim_type = sanitize_text(goal.get("claim_type")).lower()
+    resolution_claim_type = sanitize_text(resolution.get("claim_type")).lower()
+    compatible_claim_types = COMPATIBLE_FACT_TYPES.get(
+        goal_claim_type,
+        {goal_claim_type},
+    )
+    if resolution_claim_type not in compatible_claim_types:
+        return False
+    goal_attribute = sanitize_text(goal.get("attribute_key")).lower()
+    if goal_attribute and (
+        sanitize_text(resolution.get("attribute_key")).lower()
+        != goal_attribute
+    ):
+        return False
+    return True
+
+
+def _admitted_fact_matches_goal(
+    fact: dict[str, Any],
+    goal: dict[str, Any],
+    product_identity: dict[str, Any],
+) -> bool:
+    goal_claim_type = sanitize_text(goal.get("claim_type")).lower()
+    compatible_claim_types = COMPATIBLE_FACT_TYPES.get(
+        goal_claim_type,
+        {goal_claim_type},
+    )
+    if set(_claim_types(fact)).isdisjoint(compatible_claim_types):
+        return False
+
+    goal_attribute = sanitize_text(goal.get("attribute_key")).lower()
+    if goal_attribute and _attribute_key(fact) != goal_attribute:
+        return False
+
+    expected = {
+        key: sanitize_text(product_identity.get(key))
+        for key in _IDENTITY_KEYS
+        if sanitize_text(product_identity.get(key))
+    }
+    actual: dict[str, set[str]] = {}
+    for scope in _as_list(
+        fact.get("product_identity_scope") or fact.get("identity_scopes")
+    ):
+        if not isinstance(scope, dict):
+            continue
+        namespace = sanitize_text(scope.get("namespace"))
+        value = sanitize_text(scope.get("value"))
+        if namespace in _IDENTITY_KEYS and value:
+            actual.setdefault(namespace, set()).add(value)
+    common = set(expected).intersection(actual)
+    return bool(common) and all(
+        actual[namespace] == {expected[namespace]}
+        for namespace in common
+    )
+
+
 def _fast_path_block_reasons(
     *,
     domain_policy_pack: dict[str, Any],
@@ -1138,6 +1207,8 @@ def _fast_path_block_reasons(
     tool_status: dict[str, Any],
     inference_status: dict[str, Any],
     risk_status: dict[str, Any],
+    admitted_direct_facts: list[dict[str, Any]],
+    product_identity: dict[str, Any],
     has_actions: bool,
     has_media: bool,
 ) -> list[str]:
@@ -1153,6 +1224,19 @@ def _fast_path_block_reasons(
         )
     )
     reasons.extend(canonical_goal_reasons)
+    if any(
+        isinstance(item, dict)
+        and (
+            sanitize_text(item.get("goal_kind")).lower()
+            == "evidence_dependency"
+            or item.get("supporting_only") is True
+        )
+        for item in requested_claims
+    ) or any(
+        isinstance(item, dict) and item.get("supporting_only") is True
+        for item in claim_resolutions
+    ):
+        reasons.append("evidence_dependency_present")
     if reference_status["status"] not in {"not_required", "resolved"}:
         reasons.append("conversation_reference_not_resolved")
     if tool_status["status"] not in {
@@ -1186,6 +1270,44 @@ def _fast_path_block_reasons(
         elif status == "prohibited":
             reasons.append("prohibited_claim_present")
 
+    if len(canonical_goals) == 1:
+        goal = canonical_goals[0]
+        goal_ref = sanitize_text(goal.get("goal_ref"))
+        goal_resolutions = [
+            item
+            for item in claim_resolutions
+            if isinstance(item, dict)
+            and item.get("supporting_only") is not True
+            and sanitize_text(item.get("goal_ref")) == goal_ref
+            and _resolution_matches_goal(item, goal)
+        ]
+        evidence_uids = sorted({
+            sanitize_text(uid)
+            for resolution in goal_resolutions
+            if sanitize_text(resolution.get("status")).lower() == "supported"
+            for uid in _as_list(resolution.get("evidence_uids"))
+            if sanitize_text(uid)
+        })
+        admitted_by_uid = {
+            sanitize_text(item.get("evidence_uid")): item
+            for item in admitted_direct_facts
+            if isinstance(item, dict) and sanitize_text(item.get("evidence_uid"))
+        }
+        aligned_evidence = [
+            admitted_by_uid[uid]
+            for uid in evidence_uids
+            if uid in admitted_by_uid
+            and _admitted_fact_matches_goal(
+                admitted_by_uid[uid],
+                goal,
+                product_identity,
+            )
+        ]
+        if not evidence_uids or len(aligned_evidence) != len(evidence_uids):
+            reasons.append("single_direct_evidence_not_verified")
+        elif len(aligned_evidence) > 1:
+            reasons.append("multiple_direct_evidence_present")
+
     policies = domain_policy_pack.get("claim_policies")
     policies = policies if isinstance(policies, dict) else {}
     for claim in canonical_goals:
@@ -1213,6 +1335,8 @@ def build_answer_eligibility_context(
     domain_policy_pack: dict[str, Any],
     conversation_reference_status: dict[str, Any] | None,
     tool_requirement_status: dict[str, Any] | None,
+    admitted_direct_facts: list[dict[str, Any]],
+    product_identity: dict[str, Any],
     has_actions: bool,
     has_media: bool,
 ) -> dict[str, Any]:
@@ -1259,6 +1383,8 @@ def build_answer_eligibility_context(
         tool_status=tool_status,
         inference_status=inference_status,
         risk_status=risk_status,
+        admitted_direct_facts=admitted_direct_facts,
+        product_identity=product_identity,
         has_actions=has_actions,
         has_media=has_media,
     )
@@ -1378,6 +1504,8 @@ class AdmittedAnswerContextService:
             tool_requirement_status=_as_dict(
                 eligibility_inputs.get("tool_requirement_status")
             ),
+            admitted_direct_facts=[*direct_product, *direct_policy],
+            product_identity=identity,
             has_actions=bool(actions),
             has_media=bool(media),
         )

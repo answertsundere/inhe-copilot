@@ -144,6 +144,14 @@ from `query_fact_type` remain available to legacy retrieval, but are explicitly
 degraded and cannot qualify a fast path. Supporting evidence dependencies,
 service actions, and contextual constraints are not customer goals.
 
+Phase 1.10.1 qualifies the first conservative eligibility boundary against the
+frozen 30-positive/40-negative matrix. SHA-256 provenance uses an exact
+field-specific parser; any evidence dependency blocks eligibility; and the
+single goal must resolve to exactly one deterministically deduplicated,
+goal/attribute/identity-aligned admitted direct fact. These checks remain a
+read-only projection. They do not implement Fast Path, invoke a Composer, skip
+the graph or final gate, or change the formal reply and `can_send`.
+
 Public `copilot_context` is request data, not owner authority. Conversation
 reference and Domain Pack selection enter eligibility only through the
 Pipeline's separate, schema-checked internal owner context with explicit source

@@ -1,0 +1,23 @@
+{
+  "anonymous_product_count": 12,
+  "baseline_commit": "2ceac9c204a5a878e3d2bac1db0b7091ca7256da",
+  "dataset_id": "risk-tier-fast-path-qualification",
+  "dataset_sha256": "977489193e0a1041389a4cc923910cfb7af86d69e3bf259b909390f8fa0cb152",
+  "dataset_version": "1.0.0",
+  "evaluator_source_sha256": "65cc18e7dfe9f5efdd1e3a303f269d79ef522c10d3986a4f80f7b0a84aca5f0b",
+  "fact_type_counts": {
+    "dimensions": 4,
+    "gross_weight": 24,
+    "material": 2
+  },
+  "negative_count": 40,
+  "positive_count": 30,
+  "privacy_scan": {
+    "finding_count": 0,
+    "findings": [],
+    "passed": true
+  },
+  "schema_version": "risk-tier-fast-path-qualification/v1",
+  "source_fixture_sha256": "744be830319d21e9e856fddbd51907ed8baf4aac141707d68d6e60a76f6e4cd3",
+  "source_snapshot_sha256": "b965a9102c5bb903dbb54be5c41b1ebbf48f9a022b277d7baf6ac577724c50ee"
+}

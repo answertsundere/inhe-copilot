@@ -161,6 +161,14 @@ selection therefore cannot be asserted by an API caller. Tool freshness stays
 inside the deterministic registry and eligibility projection; planner metadata
 keeps its prior `name`, `description`, and `input_schema` contract.
 
+The Phase 1.10.1 qualification closure remains outside LangGraph routing.
+Eligibility validates source-span SHA-256 as a typed provenance field, blocks
+every supporting evidence dependency, and requires one and only one admitted
+direct fact aligned to the current goal reference, claim type, attribute, and
+product identity. The frozen matrix is evaluated in original, reverse, and
+fixed-seed order. Passing it adds no graph node, model call, Composer call, or
+execution shortcut.
+
 ## Model And Tool Loop
 
 The model may decide which allowed read-only tool to call when the correct tool

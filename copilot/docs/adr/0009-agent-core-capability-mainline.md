@@ -141,6 +141,23 @@ eligibility. It is excluded from LLM Tool Planner metadata, preserving the
 pre-Phase-1.9 planner prompt and tool-selection behavior. No graph node, model
 call, router, safety gate, or delivery permission is added by this closure.
 
+Phase 1.10.1 qualifies the conservative eligibility contract without promoting
+Fast Path. `source_span_sha256` is parsed only as an exact 64-character
+hexadecimal field and is recomputed from the canonical current-message span;
+the free-text privacy sanitizer is unchanged. Any requested or resolved
+supporting evidence dependency blocks eligibility. A single canonical customer
+goal must bind through its supported resolution to exactly one admitted direct
+fact after the existing origin deduplication, with claim type, attribute, and
+identity scope aligned. Zero facts fail with
+`single_direct_evidence_not_verified`; multiple independent facts fail with
+`multiple_direct_evidence_present`.
+
+The frozen qualification dataset remains version `1.0.0` with 30 positive and
+40 negative cases and a fixed dataset hash. It must pass original, reverse, and
+fixed-seed ordering with no formal knowledge DML. This is an eligibility
+precondition only: it adds no Composer, graph branch, model call, final-gate
+bypass, formal reply mutation, or `can_send` authority.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 
