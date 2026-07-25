@@ -68,6 +68,9 @@ class AnalysisPipelineRequest:
     scenario: str = ""
     delivery_message: str = ""
     capabilities: dict[str, Any] = field(default_factory=dict)
+    trusted_answer_eligibility_context: dict[str, Any] = field(
+        default_factory=dict
+    )
 
 
 class AnalysisPipelineService:
@@ -190,9 +193,20 @@ class AnalysisPipelineService:
         from app.services.canonical_conversation_turn_service import (
             ConversationContextContractError,
             is_strict_evaluation_source,
+            normalize_trusted_answer_eligibility_owner_context,
             normalize_conversation_turns,
         )
 
+        context.pop("_answer_eligibility_owner_context", None)
+        trusted_eligibility_context = (
+            normalize_trusted_answer_eligibility_owner_context(
+                request.trusted_answer_eligibility_context
+            )
+        )
+        if trusted_eligibility_context:
+            context["_answer_eligibility_owner_context"] = (
+                trusted_eligibility_context
+            )
         strict_context = is_strict_evaluation_source(request.source, context)
         upstream_diagnostics = context.get("conversation_context_contract")
         upstream_diagnostics = dict(upstream_diagnostics) if isinstance(upstream_diagnostics, dict) else {}

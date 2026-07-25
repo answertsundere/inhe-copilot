@@ -227,6 +227,9 @@ def build_claim_resolutions(
             facts = []
         results.append({
             "claim_uid": _claim_uid(requested),
+            "goal_ref": sanitize_text(requested.get("goal_ref")),
+            "goal_kind": sanitize_text(requested.get("goal_kind")).lower(),
+            "supporting_only": requested.get("supporting_only") is True,
             "claim_type": claim_type,
             "attribute_key": requested_attribute,
             "status": status,

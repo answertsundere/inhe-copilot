@@ -137,6 +137,19 @@ and risk-policy verdicts. Missing owner output remains `unknown`. The projection
 is not a router, planner, safety gate, or reply owner, and its
 `fast_path_preconditions_complete` field does not change execution.
 
+Eligibility counts only canonical `customer_goal` records with a stable
+`goal_ref`, canonical claim type, valid understanding status, and source-span
+provenance from the current customer message. Compatibility claims synthesized
+from `query_fact_type` remain available to legacy retrieval, but are explicitly
+degraded and cannot qualify a fast path. Supporting evidence dependencies,
+service actions, and contextual constraints are not customer goals.
+
+Public `copilot_context` is request data, not owner authority. Conversation
+reference and Domain Pack selection enter eligibility only through the
+Pipeline's separate, schema-checked internal owner context with explicit source
+and provenance. Missing internal owner output stays unknown or missing; client
+claims cannot promote it.
+
 ### Identity, Knowledge, And Tools
 
 External product references resolve to JST/internal identity before scoped facts
@@ -151,7 +164,9 @@ Presence in a context pack does not authorize a claim.
 Tool availability and per-turn tool requirement are also distinct. `ToolSpec`
 declares whether a registered tool is static knowledge, a live read, or a
 side-effect action. The Tool Router and Executor own whether a turn requires
-that tool and whether execution completed.
+that tool and whether execution completed. Freshness is deterministic registry
+metadata for eligibility; it is not included in LLM Tool Planner metadata or
+used to change planner behavior.
 
 ### Evidence Admission
 
@@ -164,7 +179,8 @@ Formal Evidence Convergence is implemented but disabled in production. Enabling
 it in an isolated slice does not change the evidence contract.
 
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
-from explicit tenant, store, or catalog metadata. They contain
+from explicit tenant, store, or catalog metadata supplied by trusted deployment
+configuration or an explicit internal evaluation fixture. They contain
 claim-level risk, inference, direct-fact, and freshness policy, never product
 facts, customer text, identities, or reply templates. Deterministic Claim and
 Safety owners remain authoritative at runtime. The first

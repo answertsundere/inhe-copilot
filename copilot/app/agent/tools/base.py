@@ -50,5 +50,4 @@ class ToolSpec:
             "name": self.name,
             "description": self.description,
             "input_schema": self.input_schema,
-            "freshness_class": self.freshness_class,
         }

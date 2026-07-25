@@ -114,6 +114,21 @@ come from admitted evidence. The diagnostic
 `fast_path_preconditions_complete` field does not enable Fast Path; every
 request still follows the existing Pipeline and final gate.
 
+Phase 1.9.1 closes the eligibility trust boundary without changing that
+decision. A qualifying customer goal must retain canonical goal identity,
+claim type, valid Turn Understanding status, and current-message source-span
+provenance. `query_fact_type` compatibility fallbacks are degraded retrieval
+inputs, not customer goals. Public `copilot_context` cannot assert canonical
+conversation resolution or select a Domain Pack: the Pipeline strips its
+reserved owner key and accepts only a separate versioned internal contract with
+an allowed source and fixed provenance boundary. Domain Packs remain trusted
+deployment/evaluation data plugins rather than Agent routing rules.
+
+`ToolSpec.freshness_class` remains deterministic registry metadata consumed by
+eligibility. It is excluded from LLM Tool Planner metadata, preserving the
+pre-Phase-1.9 planner prompt and tool-selection behavior. No graph node, model
+call, router, safety gate, or delivery permission is added by this closure.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

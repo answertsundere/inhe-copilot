@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 import unittest.mock as mock
+from types import SimpleNamespace
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +70,51 @@ class TestToolRegistry:
         metas = registry.get_tool_metas(["jst_lookup_order_tool"])
         assert len(metas) == 1
         assert metas[0]["name"] == "jst_lookup_order_tool"
-        assert "description" in metas[0]
+        assert set(metas[0]) == {"name", "description", "input_schema"}
+        assert "freshness_class" not in metas[0]
+
+    def test_llm_tool_planner_payload_excludes_internal_freshness(
+        self,
+        monkeypatch,
+    ):
+        from app.agent.tools.executor import _try_llm_tool_selection
+        from app.agent.tools.registry import get_tool_registry
+
+        captured = {}
+
+        class FakeClient:
+            api_key = "configured-for-test"
+            model = "test-model"
+
+            def create_chat_completion(self, **kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content='{"tool_calls": []}'
+                            )
+                        )
+                    ]
+                )
+
+        monkeypatch.setattr(
+            "app.llm.client.get_llm_client",
+            lambda: FakeClient(),
+        )
+
+        _try_llm_tool_selection(
+            {
+                "customer_message": "generic request",
+                "intent": "product_question",
+                "slots": {},
+            },
+            ["rag_search_tool"],
+            [],
+            get_tool_registry(),
+        )
+
+        assert "freshness_class" not in captured["messages"][0]["content"]
 
 
 # ---------------------------------------------------------------------------

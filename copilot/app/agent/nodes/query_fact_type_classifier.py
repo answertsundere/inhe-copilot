@@ -30,6 +30,7 @@ def _requested_claims_from_customer_goals(
             "attribute_key": str(goal.get("attribute_key") or "").strip(),
             "semantic_key": str(goal.get("semantic_key") or "").strip(),
             "goal_summary": str(goal.get("goal_summary") or "").strip(),
+            "source": str(goal.get("source") or "").strip(),
             "source_span_start": goal.get("source_span_start"),
             "source_span_end": goal.get("source_span_end"),
             "source_span_sha256": str(goal.get("source_span_sha256") or "").strip(),

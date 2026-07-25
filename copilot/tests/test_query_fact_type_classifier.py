@@ -175,6 +175,7 @@ def test_turn_understanding_requests_only_customer_goals():
                 "attribute_key": "material",
                 "semantic_key": "",
                 "goal_summary": "confirm material",
+                "source": "current_customer_message",
                 "source_span_start": 0,
                 "source_span_end": 10,
                 "source_span_sha256": "a" * 64,
@@ -186,6 +187,7 @@ def test_turn_understanding_requests_only_customer_goals():
                 "attribute_key": "",
                 "semantic_key": "",
                 "goal_summary": "confirm moisture boundary",
+                "source": "current_customer_message",
                 "source_span_start": 11,
                 "source_span_end": 20,
                 "source_span_sha256": "b" * 64,
@@ -218,6 +220,9 @@ def test_turn_understanding_requests_only_customer_goals():
         "goal-material",
         "goal-moisture",
     ]
+    assert {
+        item["source"] for item in understanding["requested_claims"]
+    } == {"current_customer_message"}
     assert understanding["customer_goals"] == result["customer_goals"]
 
 
@@ -230,6 +235,7 @@ def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
             "attribute_key": "durability",
             "semantic_key": "durability",
             "goal_summary": "confirm durability boundary",
+            "source": "current_customer_message",
             "source_span_start": 0,
             "source_span_end": 11,
             "source_span_sha256": "c" * 64,
@@ -245,6 +251,7 @@ def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
         "attribute_key": "durability",
         "semantic_key": "durability",
         "goal_summary": "confirm durability boundary",
+        "source": "current_customer_message",
         "source_span_start": 0,
         "source_span_end": 11,
         "source_span_sha256": "c" * 64,

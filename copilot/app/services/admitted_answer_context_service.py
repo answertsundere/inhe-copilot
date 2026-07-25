@@ -961,10 +961,25 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
             claim_type = normalize_high_risk_claim_type(raw_claim_type) or raw_claim_type
             if claim_type:
                 result.append({
+                    "goal_ref": sanitize_text(item.get("goal_ref")),
+                    "goal_kind": sanitize_text(item.get("goal_kind")).lower(),
                     "claim_type": claim_type,
                     "attribute_key": sanitize_text(item.get("attribute_key")).lower(),
                     "question": _clip(item.get("question"), 160),
                     "risk_level": sanitize_text(item.get("risk_level")).lower() or "medium",
+                    "source": sanitize_text(item.get("source")).lower(),
+                    "source_span_start": item.get("source_span_start"),
+                    "source_span_end": item.get("source_span_end"),
+                    "source_span_sha256": sanitize_text(
+                        item.get("source_span_sha256")
+                    ).lower(),
+                    "supporting_only": item.get("supporting_only") is True,
+                    "eligibility_source": sanitize_text(
+                        item.get("eligibility_source")
+                    ).lower(),
+                    "customer_goal_eligible": (
+                        item.get("customer_goal_eligible") is not False
+                    ),
                     "direct_handling_prohibited": item.get("direct_handling_prohibited") is True,
                     "prohibited": item.get("prohibited") is True,
                     "prohibition_reason": sanitize_text(item.get("prohibition_reason")),
@@ -977,6 +992,52 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                 "risk_level": "medium",
             })
     return expand_claim_dependencies(result)
+
+
+def _canonical_customer_goals_for_eligibility(
+    requested_claims: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    goals: list[dict[str, Any]] = []
+    reasons: list[str] = []
+    for item in requested_claims:
+        if (
+            not isinstance(item, dict)
+            or item.get("supporting_only") is True
+            or sanitize_text(item.get("goal_kind")).lower() != "customer_goal"
+        ):
+            continue
+        if not sanitize_text(item.get("goal_ref")):
+            reasons.append("canonical_customer_goal_goal_ref_missing")
+            continue
+        if not sanitize_text(item.get("claim_type")).lower():
+            reasons.append("canonical_customer_goal_claim_type_missing")
+            continue
+        if sanitize_text(item.get("source")).lower() != "current_customer_message":
+            reasons.append("canonical_customer_goal_source_invalid")
+            continue
+        start = item.get("source_span_start")
+        end = item.get("source_span_end")
+        digest = sanitize_text(item.get("source_span_sha256")).lower()
+        if (
+            not isinstance(start, int)
+            or isinstance(start, bool)
+            or not isinstance(end, int)
+            or isinstance(end, bool)
+            or start < 0
+            or end <= start
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        ):
+            reasons.append("canonical_customer_goal_source_span_missing")
+            continue
+        if item.get("customer_goal_eligible") is False:
+            reasons.append("canonical_customer_goal_ineligible")
+            continue
+        goals.append(item)
+    if not goals:
+        reasons.append("canonical_customer_goal_missing")
+    elif len(goals) != 1:
+        reasons.append("canonical_customer_goal_count_not_one")
+    return goals, sorted(set(reasons))
 
 
 def _normalised_owner_status(
@@ -1047,12 +1108,10 @@ def _fast_path_block_reasons(
         reasons.append("domain_policy_not_loaded")
     if goal_status["status"] != "valid":
         reasons.append("goal_understanding_not_valid")
-    if len([
-        item
-        for item in requested_claims
-        if isinstance(item, dict) and item.get("supporting_only") is not True
-    ]) != 1:
-        reasons.append("customer_goal_count_not_one")
+    canonical_goals, canonical_goal_reasons = (
+        _canonical_customer_goals_for_eligibility(requested_claims)
+    )
+    reasons.extend(canonical_goal_reasons)
     if reference_status["status"] not in {"not_required", "resolved"}:
         reasons.append("conversation_reference_not_resolved")
     if tool_status["status"] not in {
@@ -1070,12 +1129,25 @@ def _fast_path_block_reasons(
         if isinstance(item, dict) and item.get("status")
     ):
         reasons.append("claim_support_not_direct")
+    for resolution in claim_resolutions:
+        if not isinstance(resolution, dict):
+            continue
+        if resolution.get("supporting_only") is True and (
+            resolution.get("status") != "supported"
+            or resolution.get("support_basis") != "direct_evidence"
+        ):
+            reasons.append("supporting_dependency_unsatisfied")
+        status = sanitize_text(resolution.get("status")).lower()
+        if status == "unresolved":
+            reasons.append("unresolved_claim_present")
+        elif status == "conflicting":
+            reasons.append("conflicting_claim_present")
+        elif status == "prohibited":
+            reasons.append("prohibited_claim_present")
 
     policies = domain_policy_pack.get("claim_policies")
     policies = policies if isinstance(policies, dict) else {}
-    for claim in requested_claims:
-        if not isinstance(claim, dict) or claim.get("supporting_only") is True:
-            continue
+    for claim in canonical_goals:
         policy = policies.get(sanitize_text(claim.get("claim_type")).lower())
         if not isinstance(policy, dict):
             reasons.append("claim_policy_missing")

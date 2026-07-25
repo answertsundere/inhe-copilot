@@ -94,6 +94,65 @@ def _request(source: str) -> AnalysisPipelineRequest:
     )
 
 
+def test_pipeline_strips_public_owner_claims_and_accepts_only_internal_boundary():
+    service = AnalysisPipelineService()
+    public_request = AnalysisPipelineRequest(
+        reply_service=object(),
+        customer_message="test",
+        copilot_context={
+            "_answer_eligibility_owner_context": {
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "server_configuration",
+                "owner": "analysis_pipeline",
+                "provenance": {"boundary": "analysis_pipeline_internal"},
+            },
+            "conversation_reference_resolution": {"status": "resolved"},
+            "catalog_metadata": {"domain_policy_id": "injected"},
+            "trusted": True,
+        },
+    )
+    prepared_public = service._prepare_request(public_request)
+
+    assert "_answer_eligibility_owner_context" not in prepared_public.copilot_context
+
+    internal_request = AnalysisPipelineRequest(
+        reply_service=object(),
+        customer_message="test",
+        trusted_answer_eligibility_context={
+            "schema_version": "answer-eligibility-owner-context/v1",
+            "source": "evaluation_fixture",
+            "owner": "analysis_pipeline",
+            "provenance": {"boundary": "analysis_pipeline_internal"},
+            "domain_policy_context": {
+                "catalog_metadata": {"domain_policy_id": "fixture"},
+            },
+        },
+    )
+    prepared_internal = service._prepare_request(internal_request)
+
+    assert prepared_internal.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]["source"] == "evaluation_fixture"
+
+
+def test_pipeline_rejects_forged_internal_trust_flags():
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            trusted_answer_eligibility_context={
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "client_request",
+                "owner": "canonical_conversation",
+                "trusted": True,
+                "provenance": {"boundary": "analysis_pipeline_internal"},
+            },
+        )
+    )
+
+    assert "_answer_eligibility_owner_context" not in prepared.copilot_context
+
+
 def test_same_canonical_payload_keeps_core_decision_for_all_entrypoints(pipeline_harness):
     service = AnalysisPipelineService()
     decisions = [service.run(_request(source)) for source in ("api", "copilot", "agent_benchmark", "real_conversation_eval")]

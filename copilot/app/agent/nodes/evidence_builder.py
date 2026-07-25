@@ -40,6 +40,7 @@ from app.agent.tools.registry import build_tool_requirement_status
 from app.repositories.file_policy_repository import FilePolicyRepository
 from app.services.canonical_conversation_turn_service import (
     canonical_conversation_reference_status,
+    normalize_trusted_answer_eligibility_owner_context,
 )
 
 # 高风险商品事实字段 — 包含这些字段的知识条目需要 fact review
@@ -513,10 +514,29 @@ def _formal_understanding(state: dict) -> dict:
     if not claims:
         fact_types = [state.get("query_fact_type"), *(state.get("secondary_fact_types") or [])]
         result["requested_claims"] = [
-            {"claim_type": str(fact_type).strip(), "question": state.get("normalized_message", state.get("customer_message", ""))}
+            {
+                "goal_kind": "compatibility_claim",
+                "claim_type": str(fact_type).strip(),
+                "question": state.get(
+                    "normalized_message",
+                    state.get("customer_message", ""),
+                ),
+                "eligibility_source": "query_fact_type_fallback",
+                "customer_goal_eligible": False,
+            }
             for fact_type in fact_types
             if str(fact_type or "").strip()
         ]
+        if result["requested_claims"]:
+            current_status = str(
+                result.get("goal_understanding_status") or ""
+            ).strip().lower()
+            if current_status not in {"invalid", "degraded"}:
+                result["goal_understanding_status"] = "degraded"
+            diagnostics = result.get("goal_understanding_diagnostics")
+            diagnostics = list(diagnostics) if isinstance(diagnostics, list) else []
+            diagnostics.append("query_fact_type_compatibility_fallback")
+            result["goal_understanding_diagnostics"] = sorted(set(diagnostics))
     result["requested_claims"] = expand_claim_dependencies(
         result.get("requested_claims") if isinstance(result.get("requested_claims"), list) else []
     )
@@ -584,16 +604,19 @@ def _formal_evidence_convergence(
         if isinstance(state.get("copilot_context"), dict)
         else {}
     )
+    owner_context = normalize_trusted_answer_eligibility_owner_context(
+        copilot_context.get("_answer_eligibility_owner_context")
+    )
     admitted = AdmittedAnswerContextService().build_for_response(
         response,
         product_identity=identity,
         understanding=_formal_understanding(state),
         answer_eligibility_inputs={
             "domain_policy_pack": FilePolicyRepository().resolve_domain_policy_pack(
-                copilot_context
+                owner_context.get("domain_policy_context")
             ),
             "conversation_reference_status": canonical_conversation_reference_status(
-                copilot_context
+                owner_context
             ),
             "tool_requirement_status": build_tool_requirement_status(
                 state.get("required_tools"),

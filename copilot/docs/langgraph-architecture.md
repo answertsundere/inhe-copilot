@@ -139,6 +139,19 @@ missing status from customer text, an available-tool list, or model risk hints.
 The fast-path completeness field is observability only; all requests continue
 through the existing graph and final Pipeline.
 
+A fast-path-eligible goal must be a canonical `customer_goal` with a stable
+goal reference, claim type, valid current-message source span, and a valid Turn
+Understanding verdict. A `query_fact_type` compatibility fallback is marked
+degraded and may support legacy retrieval only. Dependencies, service actions,
+and contextual constraints do not increase the customer-goal count.
+
+The Pipeline removes the reserved eligibility owner key from public
+`copilot_context` and may restore it only from its separate schema-checked
+internal request field. Canonical conversation reference and Domain Pack
+selection therefore cannot be asserted by an API caller. Tool freshness stays
+inside the deterministic registry and eligibility projection; planner metadata
+keeps its prior `name`, `description`, and `input_schema` contract.
+
 ## Model And Tool Loop
 
 The model may decide which allowed read-only tool to call when the correct tool

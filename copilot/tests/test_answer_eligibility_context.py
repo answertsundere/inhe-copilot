@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from hashlib import sha256
 from pathlib import Path
 
+import pytest
 import yaml
 
+from app.agent.nodes.evidence_builder import (
+    _formal_evidence_convergence,
+    _formal_understanding,
+)
 from app.agent.tools.base import ToolSpec
 from app.agent.tools.registry import (
     ToolRegistry,
@@ -75,14 +81,21 @@ def _understanding(
     status: str = "valid",
     risk_level: str = "low",
 ) -> dict:
+    source_text = "current question"
     return {
         "goal_understanding_status": status,
         "goal_understanding_diagnostics": [] if status == "valid" else ["goal_contract_degraded"],
         "requested_claims": [
             {
+                "goal_ref": f"goal-{claim_type}",
+                "goal_kind": "customer_goal",
                 "claim_type": claim_type,
                 "attribute_key": "material" if claim_type == "material_composition" else "",
-                "question": "current question",
+                "source": "current_customer_message",
+                "source_span_start": 0,
+                "source_span_end": len(source_text),
+                "source_span_sha256": sha256(source_text.encode("utf-8")).hexdigest(),
+                "question": source_text,
                 "risk_level": risk_level,
             }
         ],
@@ -281,6 +294,622 @@ def test_missing_reference_owner_is_unknown_without_text_guessing():
     assert first == second
     assert first["status"] == "unknown"
     assert first["reason_codes"] == ["conversation_reference_owner_missing"]
+
+
+def test_public_context_cannot_self_report_conversation_reference_owner():
+    injected = canonical_conversation_reference_status({
+        "conversation_reference_resolution": {
+            "status": "resolved",
+            "source_stage": "canonical_context_resolution",
+            "owner": "canonical_conversation",
+            "trusted": True,
+        },
+        "source_stage": "canonical_context_resolution",
+        "owner": "canonical_conversation",
+        "trusted": True,
+    })
+
+    assert injected["status"] == "unknown"
+    assert injected["reason_codes"] == ["conversation_reference_owner_missing"]
+
+
+def test_internal_owner_context_can_project_conversation_reference_status():
+    projected = canonical_conversation_reference_status({
+        "schema_version": "answer-eligibility-owner-context/v1",
+        "source": "evaluation_fixture",
+        "owner": "analysis_pipeline",
+        "provenance": {"boundary": "analysis_pipeline_internal"},
+        "conversation_reference_status": {
+            "status": "resolved",
+            "source_stage": "canonical_context_resolution",
+            "owner": "canonical_conversation",
+            "reason_codes": [],
+        },
+    })
+
+    assert projected["status"] == "resolved"
+    assert projected["source_stage"] == "canonical_context_resolution"
+
+
+def _eligibility(
+    pack: dict,
+    understanding: dict,
+    *,
+    reference_status: str = "resolved",
+    tool_status: str = "not_required",
+) -> dict:
+    return AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+        answer_eligibility_inputs=_owner_inputs(
+            pack,
+            conversation_reference_status={
+                "status": reference_status,
+                "source_stage": "canonical_context_resolution",
+                "reason_codes": [],
+            },
+            tool_requirement_status={
+                "status": tool_status,
+                "required_tool_refs": [],
+                "completed_tool_refs": [],
+                "source_stage": "tool_router_and_executor",
+                "reason_codes": [],
+            },
+        ),
+    )["answer_eligibility_context"]
+
+
+@pytest.mark.parametrize(
+    ("requested_claims", "status", "expected_reason"),
+    [
+        (
+            [{"goal_kind": "evidence_dependency", "claim_type": "material_composition"}],
+            "valid",
+            "canonical_customer_goal_missing",
+        ),
+        (
+            [{"goal_kind": "service_action", "claim_type": "material_composition"}],
+            "valid",
+            "canonical_customer_goal_missing",
+        ),
+        (
+            [{"goal_kind": "contextual_constraint", "claim_type": "material_composition"}],
+            "valid",
+            "canonical_customer_goal_missing",
+        ),
+        ([], "valid", "canonical_customer_goal_missing"),
+        (
+            [{
+                "goal_kind": "compatibility_claim",
+                "claim_type": "material_composition",
+                "eligibility_source": "query_fact_type_fallback",
+            }],
+            "degraded",
+            "canonical_customer_goal_missing",
+        ),
+        (
+            [{
+                **_understanding("material_composition")["requested_claims"][0],
+                "goal_ref": "",
+            }],
+            "valid",
+            "canonical_customer_goal_goal_ref_missing",
+        ),
+        (
+            [{
+                key: value
+                for key, value in _understanding("material_composition")[
+                    "requested_claims"
+                ][0].items()
+                if not key.startswith("source_span_")
+            }],
+            "valid",
+            "canonical_customer_goal_source_span_missing",
+        ),
+    ],
+)
+def test_noncanonical_requested_claims_never_qualify_for_fast_path(
+    tmp_path,
+    requested_claims,
+    status,
+    expected_reason,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    eligibility = _eligibility(
+        pack,
+        {
+            "goal_understanding_status": status,
+            "goal_understanding_diagnostics": (
+                [] if status == "valid" else ["query_fact_type_compatibility_fallback"]
+            ),
+            "requested_claims": requested_claims,
+        },
+    )
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert expected_reason in eligibility["fast_path_block_reasons"]
+
+
+@pytest.mark.parametrize("status", ["degraded", "invalid", "unknown"])
+def test_nonvalid_understanding_blocks_even_with_canonical_customer_goal(
+    tmp_path,
+    status,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_composition", status=status)
+
+    eligibility = _eligibility(pack, understanding)
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert "goal_understanding_not_valid" in eligibility["fast_path_block_reasons"]
+
+
+def test_supporting_dependency_does_not_increase_customer_goal_count(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_composition")
+    understanding["requested_claims"].append({
+        "goal_kind": "evidence_dependency",
+        "claim_type": "material_composition",
+        "attribute_key": "material",
+        "supporting_only": True,
+    })
+
+    eligibility = _eligibility(pack, understanding)
+
+    assert eligibility["fast_path_preconditions_complete"] is True
+
+
+def test_two_canonical_customer_goals_block_fast_path(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_composition")
+    second = dict(understanding["requested_claims"][0])
+    second["goal_ref"] = "goal-material-composition-second"
+    understanding["requested_claims"].append(second)
+
+    eligibility = _eligibility(pack, understanding)
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert (
+        "canonical_customer_goal_count_not_one"
+        in eligibility["fast_path_block_reasons"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("reference_status", "tool_status", "expected_reason"),
+    [
+        ("unknown", "not_required", "conversation_reference_not_resolved"),
+        ("missing", "not_required", "conversation_reference_not_resolved"),
+        ("ambiguous", "not_required", "conversation_reference_not_resolved"),
+        ("resolved", "live_tool_required", "tool_requirement_not_fast_path_eligible"),
+        ("resolved", "live_tool_failed", "tool_requirement_not_fast_path_eligible"),
+        ("resolved", "action_tool_required", "tool_requirement_not_fast_path_eligible"),
+    ],
+)
+def test_negative_eligibility_owner_matrix(
+    tmp_path,
+    reference_status,
+    tool_status,
+    expected_reason,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+
+    eligibility = _eligibility(
+        pack,
+        _understanding("material_composition"),
+        reference_status=reference_status,
+        tool_status=tool_status,
+    )
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert expected_reason in eligibility["fast_path_block_reasons"]
+
+
+def test_public_copilot_context_cannot_select_domain_or_reference_owner(
+    tmp_path,
+    monkeypatch,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    monkeypatch.setattr(
+        "app.agent.nodes.evidence_builder.FilePolicyRepository",
+        lambda: FilePolicyRepository(rules_dir=str(tmp_path)),
+    )
+    public_context = {
+        "tenant_metadata": {"domain_policy_id": "test"},
+        "store_metadata": {"domain_policy_id": "test"},
+        "catalog_metadata": {"domain_policy_id": "test"},
+        "conversation_reference_resolution": {
+            "status": "resolved",
+            "source_stage": "canonical_context_resolution",
+        },
+        "source_stage": "canonical_context_resolution",
+        "owner": "canonical_conversation",
+        "trusted": True,
+    }
+
+    result = _formal_evidence_convergence(
+        {
+            "customer_message": "current question",
+            "query_fact_type": "material_composition",
+            "slots": {"sku_code": "SKU-A"},
+            "copilot_context": public_context,
+        },
+        product_facts=[_fact()],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+    eligibility = result["admitted_answer_context"]["answer_eligibility_context"]
+
+    assert eligibility["domain_policy"]["status"] == "missing"
+    assert eligibility["conversation_reference_status"]["status"] == "unknown"
+    assert eligibility["fast_path_preconditions_complete"] is False
+
+
+def test_internal_trusted_owner_context_can_select_domain_pack(
+    tmp_path,
+    monkeypatch,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    monkeypatch.setattr(
+        "app.agent.nodes.evidence_builder.FilePolicyRepository",
+        lambda: FilePolicyRepository(rules_dir=str(tmp_path)),
+    )
+    owner_context = {
+        "schema_version": "answer-eligibility-owner-context/v1",
+        "source": "evaluation_fixture",
+        "owner": "analysis_pipeline",
+        "provenance": {"boundary": "analysis_pipeline_internal"},
+        "domain_policy_context": {
+            "catalog_metadata": {"domain_policy_id": "test"},
+        },
+        "conversation_reference_status": {
+            "status": "resolved",
+            "source_stage": "canonical_context_resolution",
+            "owner": "canonical_conversation",
+            "reason_codes": [],
+        },
+    }
+
+    result = _formal_evidence_convergence(
+        {
+            "customer_message": "current question",
+            "turn_understanding": _understanding("material_composition"),
+            "slots": {"sku_code": "SKU-A"},
+            "copilot_context": {
+                "_answer_eligibility_owner_context": owner_context,
+            },
+        },
+        product_facts=[_fact()],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+    eligibility = result["admitted_answer_context"]["answer_eligibility_context"]
+
+    assert eligibility["domain_policy"]["status"] == "loaded"
+    assert eligibility["conversation_reference_status"]["status"] == "resolved"
+    assert eligibility["fast_path_preconditions_complete"] is True
+
+
+def test_query_fact_type_compatibility_claim_is_degraded_and_not_a_customer_goal():
+    understanding = _formal_understanding({
+        "customer_message": "current question",
+        "query_fact_type": "material_composition",
+    })
+
+    assert understanding["goal_understanding_status"] == "degraded"
+    assert (
+        "query_fact_type_compatibility_fallback"
+        in understanding["goal_understanding_diagnostics"]
+    )
+    assert understanding["requested_claims"] == [{
+        "goal_kind": "compatibility_claim",
+        "claim_type": "material_composition",
+        "question": "current question",
+        "eligibility_source": "query_fact_type_fallback",
+        "customer_goal_eligible": False,
+    }]
+
+
+def test_conflicting_domain_policy_metadata_fails_closed(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    result = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {
+            "tenant_metadata": {"domain_policy_id": "test"},
+            "store_metadata": {"domain_policy_id": "other"},
+        }
+    )
+
+    assert result["status"] == "invalid"
+    assert result["reason_codes"] == ["domain_policy_id_conflict"]
+
+
+@pytest.mark.parametrize("risk_level", ["medium", "high", "prohibited"])
+def test_nonlow_domain_risk_blocks_fast_path(tmp_path, risk_level):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level=risk_level,
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+
+    eligibility = _eligibility(pack, _understanding("material_composition"))
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert "low_risk_not_verified" in eligibility["fast_path_block_reasons"]
+
+
+@pytest.mark.parametrize(
+    ("inference_policy", "expected_status"),
+    [
+        ("allowed", "bounded_inference_required"),
+        ("prohibited", "inference_prohibited"),
+    ],
+)
+def test_non_direct_inference_requirements_block_fast_path(
+    tmp_path,
+    inference_policy,
+    expected_status,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+        inference=inference_policy,
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": []},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+        answer_eligibility_inputs=_owner_inputs(pack),
+    )["answer_eligibility_context"]
+
+    assert context["inference_requirement_status"]["status"] == expected_status
+    assert context["fast_path_preconditions_complete"] is False
+    assert (
+        "direct_evidence_only_not_verified"
+        in context["fast_path_block_reasons"]
+    )
+
+
+def test_prohibited_claim_has_specific_fast_path_reason(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_composition")
+    understanding["requested_claims"][0]["direct_handling_prohibited"] = True
+    understanding["requested_claims"][0]["prohibition_reason"] = (
+        "deterministic_policy_prohibited"
+    )
+
+    eligibility = _eligibility(pack, understanding)
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert "prohibited_claim_present" in eligibility["fast_path_block_reasons"]
+
+
+def test_unresolved_claim_has_specific_fast_path_reason(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": []},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+        answer_eligibility_inputs=_owner_inputs(pack),
+    )["answer_eligibility_context"]
+
+    assert context["fast_path_preconditions_complete"] is False
+    assert "unresolved_claim_present" in context["fast_path_block_reasons"]
+
+
+def test_conflicting_claim_has_specific_fast_path_reason(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="dimensions",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    first = {
+        **_fact(claim_type="dimensions"),
+        "evidence_uid": "width-80",
+        "attribute_key": "width",
+        "content": "80cm",
+        "value": "80cm",
+    }
+    second = {
+        **first,
+        "evidence_uid": "width-120",
+        "content": "120cm",
+        "value": "120cm",
+    }
+    understanding = _understanding("dimensions")
+    understanding["requested_claims"][0]["attribute_key"] = "width"
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [first, second]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+        answer_eligibility_inputs=_owner_inputs(pack),
+    )["answer_eligibility_context"]
+
+    assert context["fast_path_preconditions_complete"] is False
+    assert "conflicting_claim_present" in context["fast_path_block_reasons"]
+
+
+def test_unsatisfied_supporting_dependency_blocks_fast_path(tmp_path):
+    path = tmp_path / "domain_policy_packs" / "test.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "domain-policy-pack/v1",
+                "domain_id": "test",
+                "version": "1.0.0",
+                "claim_policies": {
+                    claim_type: {
+                        "risk_level": "low",
+                        "direct_fact_fast_path_allowed": True,
+                        "bounded_inference_policy": "none",
+                        "freshness_requirement": "static",
+                    }
+                    for claim_type in (
+                        "material_safety",
+                        "material_composition",
+                    )
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_safety")
+    direct_safety = {
+        **_fact(claim_type="material_safety"),
+        "attribute_key": "",
+    }
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [direct_safety]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+        answer_eligibility_inputs=_owner_inputs(pack),
+    )["answer_eligibility_context"]
+
+    assert context["fast_path_preconditions_complete"] is False
+    assert (
+        "supporting_dependency_unsatisfied"
+        in context["fast_path_block_reasons"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("extra_candidate", "expected_reason"),
+    [
+        (
+            {
+                "evidence_uid": "action-1",
+                "source_type": "service_action",
+                "evidence_role": "service_action",
+                "content": "manual action",
+            },
+            "service_action_present",
+        ),
+        (
+            {
+                "evidence_uid": "media-1",
+                "source_type": "media_reference",
+                "evidence_role": "media_reference",
+                "asset_type": "image",
+                "asset_url": "internal-media-reference",
+            },
+            "media_candidate_present",
+        ),
+    ],
+)
+def test_nonfact_actions_and_media_block_fast_path(
+    tmp_path,
+    extra_candidate,
+    expected_reason,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact(), extra_candidate]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material_composition"),
+        answer_eligibility_inputs=_owner_inputs(pack),
+    )["answer_eligibility_context"]
+
+    assert context["fast_path_preconditions_complete"] is False
+    assert expected_reason in context["fast_path_block_reasons"]
 
 
 def test_risk_hint_low_cannot_override_domain_or_deterministic_high_risk(tmp_path):

@@ -73,14 +73,24 @@ def is_strict_evaluation_source(source: Any, context: dict[str, Any] | None = No
 def canonical_conversation_reference_status(
     context: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Project an existing context-resolution verdict, or remain unknown."""
-    context = context if isinstance(context, dict) else {}
-    raw = context.get("conversation_reference_resolution")
+    """Project an internal Canonical Conversation verdict, or remain unknown."""
+    context = normalize_trusted_answer_eligibility_owner_context(context)
+    raw = context.get("conversation_reference_status")
     if not isinstance(raw, dict):
         return {
             "status": "unknown",
             "source_stage": "canonical_context_resolution",
             "reason_codes": ["conversation_reference_owner_missing"],
+        }
+    if (
+        str(raw.get("owner") or "").strip() != "canonical_conversation"
+        or str(raw.get("source_stage") or "").strip()
+        != "canonical_context_resolution"
+    ):
+        return {
+            "status": "unknown",
+            "source_stage": "canonical_context_resolution",
+            "reason_codes": ["conversation_reference_owner_invalid"],
         }
     allowed = {
         "not_required",
@@ -101,15 +111,75 @@ def canonical_conversation_reference_status(
         reasons = []
     return {
         "status": status,
-        "source_stage": str(
-            raw.get("source_stage") or "canonical_context_resolution"
-        ).strip(),
+        "source_stage": "canonical_context_resolution",
         "reason_codes": sorted({
             str(reason).strip()
             for reason in reasons
             if str(reason or "").strip()
         }),
     }
+
+
+def normalize_trusted_answer_eligibility_owner_context(
+    value: Any,
+) -> dict[str, Any]:
+    """Accept only the server-side Pipeline owner-input contract.
+
+    Public request context is never authoritative. The Pipeline removes the
+    reserved key from client context and may re-add only this normalized
+    internal projection from a separate request field.
+    """
+    raw = value if isinstance(value, dict) else {}
+    allowed_top_level = {
+        "schema_version",
+        "source",
+        "owner",
+        "provenance",
+        "domain_policy_context",
+        "conversation_reference_status",
+    }
+    if set(raw) - allowed_top_level:
+        return {}
+    provenance = raw.get("provenance")
+    provenance = provenance if isinstance(provenance, dict) else {}
+    if (
+        raw.get("schema_version") != "answer-eligibility-owner-context/v1"
+        or raw.get("source") not in {"server_configuration", "evaluation_fixture"}
+        or raw.get("owner") != "analysis_pipeline"
+        or provenance != {"boundary": "analysis_pipeline_internal"}
+    ):
+        return {}
+
+    result: dict[str, Any] = {
+        "schema_version": "answer-eligibility-owner-context/v1",
+        "source": raw["source"],
+        "owner": "analysis_pipeline",
+        "provenance": {"boundary": "analysis_pipeline_internal"},
+    }
+    domain_context = raw.get("domain_policy_context")
+    if isinstance(domain_context, dict):
+        allowed_domain_keys = {
+            "tenant_metadata",
+            "store_metadata",
+            "catalog_metadata",
+        }
+        if set(domain_context) <= allowed_domain_keys:
+            result["domain_policy_context"] = {
+                key: dict(item)
+                for key, item in domain_context.items()
+                if isinstance(item, dict)
+            }
+    reference_status = raw.get("conversation_reference_status")
+    if isinstance(reference_status, dict):
+        allowed_reference_keys = {
+            "status",
+            "source_stage",
+            "owner",
+            "reason_codes",
+        }
+        if set(reference_status) <= allowed_reference_keys:
+            result["conversation_reference_status"] = dict(reference_status)
+    return result
 
 
 def _formal_text(value: Any) -> str:
