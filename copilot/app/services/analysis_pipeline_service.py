@@ -198,6 +198,15 @@ class AnalysisPipelineService:
         )
 
         context.pop("_answer_eligibility_owner_context", None)
+        public_understanding = context.pop("turn_understanding", None)
+        if isinstance(public_understanding, dict):
+            removed = sorted(str(key) for key in public_understanding)
+            if removed:
+                context.setdefault("pipeline_diagnostics", []).append({
+                    "stage": "canonical_input",
+                    "type": "public_turn_understanding_removed",
+                    "fields": removed,
+                })
         trusted_eligibility_context = (
             normalize_trusted_answer_eligibility_owner_context(
                 request.trusted_answer_eligibility_context

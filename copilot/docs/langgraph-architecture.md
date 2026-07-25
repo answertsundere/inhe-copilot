@@ -145,6 +145,15 @@ Understanding verdict. A `query_fact_type` compatibility fallback is marked
 degraded and may support legacy retrieval only. Dependencies, service actions,
 and contextual constraints do not increase the customer-goal count.
 
+The Pipeline removes public `turn_understanding` in full before graph
+execution, so non-authoritative diagnostics cannot influence eligibility,
+evidence, or reply control. The existing classifier then
+creates a fresh owner result and always replaces `requested_claims`,
+`customer_goals`, status, and diagnostics; an owner result without a customer
+goal writes an empty claim list. Eligibility accepts only owner-stamped claims
+whose exact span is in the current normalized buyer message and whose SHA-256
+matches a deterministic recomputation of that slice.
+
 The Pipeline removes the reserved eligibility owner key from public
 `copilot_context` and may restore it only from its separate schema-checked
 internal request field. Canonical conversation reference and Domain Pack

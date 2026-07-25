@@ -336,6 +336,11 @@ def _bounded_text(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
+def canonical_source_span_text(value: Any) -> str:
+    """Canonicalize a source slice exactly as the current owner contract does."""
+    return " ".join(str(value or "").split()).strip("\ufffd,.!?;: ")
+
+
 def _source_span_provenance(source_text: Any, message: str) -> dict[str, Any] | None:
     raw_source = str(source_text or "").strip()[:240]
     if not raw_source or raw_source not in message:
@@ -347,7 +352,9 @@ def _source_span_provenance(source_text: Any, message: str) -> dict[str, Any] | 
     return {
         "source_span_start": start,
         "source_span_end": start + len(raw_source),
-        "source_span_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "source_span_sha256": hashlib.sha256(
+            canonical_source_span_text(raw_source).encode("utf-8")
+        ).hexdigest(),
     }
 
 

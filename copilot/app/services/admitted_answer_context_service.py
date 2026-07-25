@@ -23,6 +23,7 @@ from app.services.fact_type_alias_service import (
 )
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
 from app.services.semantic_fact_type_service import (
+    canonical_source_span_text,
     goal_understanding_eligibility_status,
 )
 
@@ -957,6 +958,14 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for item in _as_list(understanding.get("requested_claims")):
         if isinstance(item, dict):
+            allowed_fields = {
+                "goal_ref", "goal_kind", "claim_type", "attribute_key",
+                "semantic_key", "goal_summary", "source", "source_span_start",
+                "source_span_end", "source_span_sha256", "question", "risk_level",
+                "owner", "source_stage", "supporting_only", "eligibility_source",
+                "customer_goal_eligible", "direct_handling_prohibited",
+                "prohibited", "prohibition_reason",
+            }
             raw_claim_type = sanitize_text(item.get("claim_type")).lower()
             claim_type = normalize_high_risk_claim_type(raw_claim_type) or raw_claim_type
             if claim_type:
@@ -973,6 +982,9 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                     "source_span_sha256": sanitize_text(
                         item.get("source_span_sha256")
                     ).lower(),
+                    "owner": sanitize_text(item.get("owner")).lower(),
+                    "source_stage": sanitize_text(item.get("source_stage")).lower(),
+                    "unexpected_fields": sorted(set(item) - allowed_fields),
                     "supporting_only": item.get("supporting_only") is True,
                     "eligibility_source": sanitize_text(
                         item.get("eligibility_source")
@@ -996,6 +1008,8 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _canonical_customer_goals_for_eligibility(
     requested_claims: list[dict[str, Any]],
+    *,
+    current_customer_message: str,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     goals: list[dict[str, Any]] = []
     reasons: list[str] = []
@@ -1011,6 +1025,16 @@ def _canonical_customer_goals_for_eligibility(
             continue
         if not sanitize_text(item.get("claim_type")).lower():
             reasons.append("canonical_customer_goal_claim_type_missing")
+            continue
+        if (
+            sanitize_text(item.get("owner")).lower() != "turn_understanding_owner"
+            or sanitize_text(item.get("source_stage")).lower()
+            != "query_fact_type_classifier"
+        ):
+            reasons.append("canonical_customer_goal_provenance_invalid")
+            continue
+        if item.get("unexpected_fields"):
+            reasons.append("canonical_customer_goal_schema_invalid")
             continue
         if sanitize_text(item.get("source")).lower() != "current_customer_message":
             reasons.append("canonical_customer_goal_source_invalid")
@@ -1028,6 +1052,19 @@ def _canonical_customer_goals_for_eligibility(
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
         ):
             reasons.append("canonical_customer_goal_source_span_missing")
+            continue
+        if end > len(current_customer_message):
+            reasons.append("canonical_customer_goal_source_span_out_of_range")
+            continue
+        canonical_slice = canonical_source_span_text(
+            current_customer_message[start:end]
+        )
+        if not canonical_slice:
+            reasons.append("canonical_customer_goal_source_span_empty")
+            continue
+        expected_digest = sha256(canonical_slice.encode("utf-8")).hexdigest()
+        if digest != expected_digest:
+            reasons.append("canonical_customer_goal_source_span_digest_mismatch")
             continue
         if item.get("customer_goal_eligible") is False:
             reasons.append("canonical_customer_goal_ineligible")
@@ -1094,6 +1131,7 @@ def _fast_path_block_reasons(
     *,
     domain_policy_pack: dict[str, Any],
     requested_claims: list[dict[str, Any]],
+    current_customer_message: str,
     claim_resolutions: list[dict[str, Any]],
     goal_status: dict[str, Any],
     reference_status: dict[str, Any],
@@ -1109,7 +1147,10 @@ def _fast_path_block_reasons(
     if goal_status["status"] != "valid":
         reasons.append("goal_understanding_not_valid")
     canonical_goals, canonical_goal_reasons = (
-        _canonical_customer_goals_for_eligibility(requested_claims)
+        _canonical_customer_goals_for_eligibility(
+            requested_claims,
+            current_customer_message=current_customer_message,
+        )
     )
     reasons.extend(canonical_goal_reasons)
     if reference_status["status"] not in {"not_required", "resolved"}:
@@ -1167,6 +1208,7 @@ def build_answer_eligibility_context(
     *,
     understanding: dict[str, Any],
     requested_claims: list[dict[str, Any]],
+    current_customer_message: str,
     claim_resolutions: list[dict[str, Any]],
     domain_policy_pack: dict[str, Any],
     conversation_reference_status: dict[str, Any] | None,
@@ -1210,6 +1252,7 @@ def build_answer_eligibility_context(
     block_reasons = _fast_path_block_reasons(
         domain_policy_pack=domain_policy_pack,
         requested_claims=requested_claims,
+        current_customer_message=current_customer_message,
         claim_resolutions=claim_resolutions,
         goal_status=goal_status,
         reference_status=reference_status,
@@ -1243,6 +1286,7 @@ class AdmittedAnswerContextService:
         *,
         product_identity: dict[str, Any] | None = None,
         understanding: dict[str, Any] | None = None,
+        current_customer_message: str = "",
         answer_eligibility_inputs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         identity = resolved_product_identity_for_response(response, product_identity)
@@ -1325,6 +1369,7 @@ class AdmittedAnswerContextService:
         answer_eligibility_context = build_answer_eligibility_context(
             understanding=understanding,
             requested_claims=requested_claims,
+            current_customer_message=str(current_customer_message or ""),
             claim_resolutions=claim_resolutions,
             domain_policy_pack=domain_policy_pack,
             conversation_reference_status=_as_dict(

@@ -1,3 +1,5 @@
+import pytest
+
 from app.main import create_app
 from app.agent.nodes.query_fact_type_classifier import (
     _requested_claims_from_customer_goals,
@@ -255,9 +257,48 @@ def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
         "source_span_start": 0,
         "source_span_end": 11,
         "source_span_sha256": "c" * 64,
+        "owner": "turn_understanding_owner",
+        "source_stage": "query_fact_type_classifier",
         "question": "multi-goal customer turn",
         "risk_level": "medium",
     }]
+
+
+@pytest.mark.parametrize("goal_kind", ["evidence_dependency", "service_action"])
+def test_server_understanding_clears_injected_requested_claims_without_customer_goal(
+    goal_kind,
+):
+    understanding = _turn_understanding_from_result(
+        {
+            "customer_message": "请核对一下",
+            "turn_understanding": {
+                "requested_claims": [{
+                    "goal_ref": "goal-injected",
+                    "goal_kind": "customer_goal",
+                    "claim_type": "material_composition",
+                    "source": "current_customer_message",
+                    "source_span_start": 0,
+                    "source_span_end": 4,
+                    "source_span_sha256": "a" * 64,
+                }],
+                "customer_goals": [{"goal_kind": "customer_goal"}],
+                "goal_understanding_status": "valid",
+            },
+        },
+        {
+            "query_fact_type": "",
+            "customer_goals": [{
+                "goal_ref": "goal-evidence",
+                "goal_kind": goal_kind,
+                "claim_type": "material_composition",
+            }],
+            "goal_understanding_status": "valid",
+            "goal_understanding_diagnostics": [],
+        },
+    )
+
+    assert understanding["requested_claims"] == []
+    assert understanding["customer_goals"][0]["goal_kind"] == goal_kind
 
 
 def test_api_final_audit_blocks_pinch_as_battery_topic():

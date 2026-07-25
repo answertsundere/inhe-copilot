@@ -317,6 +317,14 @@ may still be reported, but must not be renamed accuracy.
 - Formal Evidence Convergence and the model-first composer are disabled.
 - The canonical answer-eligibility contract is diagnostic only; Fast Path
   remains disabled.
+- Public `copilot_context.turn_understanding` is removed before graph
+  execution and cannot supply customer goals, reply controls, goal status, or
+  fact-type authority. The current server Turn Understanding run replaces
+  those fields on every turn, including an explicit empty `requested_claims`
+  result.
+- Eligibility verifies each customer-goal span against the current normalized
+  buyer message and recomputes its digest; shape-valid hashes from another
+  message are rejected.
 - Real-customer accuracy is not established.
 - Existing synthetic benchmark success primarily proves safe fallback.
 - Product evidence coverage and provenance remain uneven.

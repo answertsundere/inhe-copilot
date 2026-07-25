@@ -611,6 +611,10 @@ def _formal_evidence_convergence(
         response,
         product_identity=identity,
         understanding=_formal_understanding(state),
+        current_customer_message=str(
+            state.get("normalized_message", state.get("customer_message", ""))
+            or ""
+        ),
         answer_eligibility_inputs={
             "domain_policy_pack": FilePolicyRepository().resolve_domain_policy_pack(
                 owner_context.get("domain_policy_context")

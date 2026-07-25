@@ -124,6 +124,18 @@ reserved owner key and accepts only a separate versioned internal contract with
 an allowed source and fixed provenance boundary. Domain Packs remain trusted
 deployment/evaluation data plugins rather than Agent routing rules.
 
+Phase 1.9.2 closes the remaining customer-goal injection path. Public
+`copilot_context.turn_understanding` is removed in full and cannot assert
+requested claims, customer goals, reply controls, goal status, query fact type,
+or required fact types. The current server
+classifier creates a fresh owner result and deterministically writes an empty
+`requested_claims` list when it finds no customer goal, so old public state
+cannot survive. Eligibility also requires the owner provenance and recomputes
+the source-span SHA-256 from the exact slice of the current normalized buyer
+message. A well-formed digest from another message, an out-of-range span, or an
+extra claim field fails closed. This is provenance validation only; it adds no
+semantic inference or model call.
+
 `ToolSpec.freshness_class` remains deterministic registry metadata consumed by
 eligibility. It is excluded from LLM Tool Planner metadata, preserving the
 pre-Phase-1.9 planner prompt and tool-selection behavior. No graph node, model

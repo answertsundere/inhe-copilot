@@ -83,6 +83,9 @@ def _understanding(
 ) -> dict:
     source_text = "current question"
     return {
+        "schema_version": "turn-understanding/v2",
+        "owner": "turn_understanding_owner",
+        "source_stage": "query_fact_type_classifier",
         "goal_understanding_status": status,
         "goal_understanding_diagnostics": [] if status == "valid" else ["goal_contract_degraded"],
         "requested_claims": [
@@ -95,6 +98,8 @@ def _understanding(
                 "source_span_start": 0,
                 "source_span_end": len(source_text),
                 "source_span_sha256": sha256(source_text.encode("utf-8")).hexdigest(),
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
                 "question": source_text,
                 "risk_level": risk_level,
             }
@@ -342,6 +347,10 @@ def _eligibility(
         {"selected_evidence": [_fact()]},
         product_identity={"sku_code": "SKU-A"},
         understanding=understanding,
+        current_customer_message=str(
+            (understanding.get("requested_claims") or [{}])[0].get("question")
+            or ""
+        ),
         answer_eligibility_inputs=_owner_inputs(
             pack,
             conversation_reference_status={
@@ -358,6 +367,78 @@ def _eligibility(
             },
         ),
     )["answer_eligibility_context"]
+
+
+def test_customer_goal_digest_must_match_current_customer_message(tmp_path):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_composition")
+    understanding["requested_claims"][0]["source_span_sha256"] = sha256(
+        "another question".encode("utf-8")
+    ).hexdigest()
+
+    eligibility = _eligibility(pack, understanding)
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert (
+        "canonical_customer_goal_source_span_digest_mismatch"
+        in eligibility["fast_path_block_reasons"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [
+        (
+            {"source_span_end": 999},
+            "canonical_customer_goal_source_span_out_of_range",
+        ),
+        (
+            {"owner": "client_request"},
+            "canonical_customer_goal_provenance_invalid",
+        ),
+        (
+            {"owner": ""},
+            "canonical_customer_goal_provenance_invalid",
+        ),
+        (
+            {"source_stage": "public_copilot_context"},
+            "canonical_customer_goal_provenance_invalid",
+        ),
+        (
+            {"unexpected_authority": True},
+            "canonical_customer_goal_schema_invalid",
+        ),
+    ],
+)
+def test_customer_goal_authenticity_rejects_forged_contract(
+    tmp_path,
+    mutation,
+    expected_reason,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    pack = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "test"}}
+    )
+    understanding = _understanding("material_composition")
+    understanding["requested_claims"][0].update(mutation)
+
+    eligibility = _eligibility(pack, understanding)
+
+    assert eligibility["fast_path_preconditions_complete"] is False
+    assert expected_reason in eligibility["fast_path_block_reasons"]
 
 
 @pytest.mark.parametrize(
@@ -978,6 +1059,7 @@ def test_direct_evidence_projects_complete_diagnostic_eligibility(tmp_path):
         {"selected_evidence": [_fact()]},
         product_identity={"sku_code": "SKU-A"},
         understanding=_understanding("material_composition"),
+        current_customer_message="current question",
         answer_eligibility_inputs=_owner_inputs(pack),
     )
     minimal = build_minimal_decision_context(

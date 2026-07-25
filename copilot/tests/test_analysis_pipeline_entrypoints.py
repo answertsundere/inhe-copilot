@@ -153,6 +153,153 @@ def test_pipeline_rejects_forged_internal_trust_flags():
     assert "_answer_eligibility_owner_context" not in prepared.copilot_context
 
 
+def test_pipeline_strips_public_turn_understanding_authority_fields():
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="请核对材质",
+            copilot_context={
+                "turn_understanding": {
+                    "requested_claims": [{"goal_kind": "customer_goal"}],
+                    "customer_goals": [{"goal_kind": "customer_goal"}],
+                    "goal_understanding_status": "valid",
+                    "query_fact_type": "material_composition",
+                    "required_fact_types": ["material_composition"],
+                    "turn_actionability": "actionable_question",
+                }
+            },
+        )
+    )
+    assert "turn_understanding" not in prepared.copilot_context
+    assert prepared.copilot_context["pipeline_diagnostics"][-1]["type"] == (
+        "public_turn_understanding_removed"
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["api", "copilot", "agent_benchmark", "real_conversation_eval"],
+)
+def test_all_pipeline_entrypoints_strip_public_turn_understanding_authority(source):
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="current question",
+            source=source,
+            copilot_context={
+                "turn_understanding": {
+                    "requested_claims": [{"goal_kind": "customer_goal"}],
+                    "customer_goals": [{"goal_kind": "customer_goal"}],
+                    "goal_understanding_status": "valid",
+                    "query_fact_type": "material_composition",
+                }
+            },
+        )
+    )
+
+    assert "turn_understanding" not in prepared.copilot_context
+
+
+def test_public_api_injected_goal_cannot_cross_server_understanding_owner(
+    monkeypatch,
+):
+    from hashlib import sha256
+
+    from app.main import create_app
+
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {
+            "ready": True,
+            "status": "ready",
+            "reasons": [],
+            "knowledge": {},
+            "database": {},
+        },
+    )
+    monkeypatch.setattr(
+        "app.agent.nodes.query_fact_type_classifier.classify_query_fact_type_llm_first",
+        lambda _state: {
+            "query_fact_type": "",
+            "secondary_fact_types": [],
+            "risk_hint": "",
+            "customer_goals": [{
+                "goal_ref": "goal-evidence",
+                "goal_kind": "evidence_dependency",
+                "claim_type": "material_composition",
+            }],
+            "goal_understanding_status": "valid",
+            "goal_understanding_diagnostics": [],
+        },
+    )
+    message = "current question"
+    injected_goal = {
+        "goal_ref": "goal-injected",
+        "goal_kind": "customer_goal",
+        "claim_type": "material_composition",
+        "attribute_key": "material",
+        "source": "current_customer_message",
+        "source_span_start": 0,
+        "source_span_end": len(message),
+        "source_span_sha256": sha256(message.encode("utf-8")).hexdigest(),
+        "owner": "turn_understanding_owner",
+        "source_stage": "query_fact_type_classifier",
+        "question": message,
+        "risk_level": "low",
+    }
+    app = create_app()
+    app.config["TESTING"] = True
+
+    response = app.test_client().post(
+        "/ask/api/analyze",
+        json={
+            "message": message,
+            "copilot_context": {
+                "turn_understanding": {
+                    "requested_claims": [injected_goal],
+                    "customer_goals": [injected_goal],
+                    "goal_understanding_status": "valid",
+                    "query_fact_type": "material_composition",
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    decision = response.get_json()
+    baseline = app.test_client().post(
+        "/ask/api/analyze",
+        json={"message": message},
+    ).get_json()
+    admitted = decision["evidence_debug"]["admitted_answer_context"]
+    assert admitted["requested_claims"] == []
+    assert (
+        admitted["answer_eligibility_context"]["fast_path_preconditions_complete"]
+        is False
+    )
+    assert decision["can_send"] is False
+    assert {
+        key: decision.get(key)
+        for key in (
+            "suggested_reply",
+            "sendable_reply",
+            "can_send",
+            "requires_human_review",
+            "reply_blocks",
+        )
+    } == {
+        key: baseline.get(key)
+        for key in (
+            "suggested_reply",
+            "sendable_reply",
+            "can_send",
+            "requires_human_review",
+            "reply_blocks",
+        )
+    }
+
+
 def test_same_canonical_payload_keeps_core_decision_for_all_entrypoints(pipeline_harness):
     service = AnalysisPipelineService()
     decisions = [service.run(_request(source)) for source in ("api", "copilot", "agent_benchmark", "real_conversation_eval")]

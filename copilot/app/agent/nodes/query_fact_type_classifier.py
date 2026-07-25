@@ -34,6 +34,8 @@ def _requested_claims_from_customer_goals(
             "source_span_start": goal.get("source_span_start"),
             "source_span_end": goal.get("source_span_end"),
             "source_span_sha256": str(goal.get("source_span_sha256") or "").strip(),
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
             "question": question,
             "risk_level": risk_hint,
         })
@@ -41,11 +43,6 @@ def _requested_claims_from_customer_goals(
 
 
 def _turn_understanding_from_result(state: dict, result: dict) -> dict:
-    understanding = (
-        dict(state.get("turn_understanding"))
-        if isinstance(state.get("turn_understanding"), dict)
-        else {}
-    )
     goals = [
         dict(item)
         for item in result.get("customer_goals") or []
@@ -56,16 +53,17 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
         question=str(state.get("normalized_message") or state.get("customer_message") or ""),
         risk_hint=str(result.get("risk_hint") or ""),
     )
-    understanding.update({
+    return {
+        "schema_version": "turn-understanding/v2",
+        "owner": "turn_understanding_owner",
+        "source_stage": "query_fact_type_classifier",
         "query_fact_type": result.get("query_fact_type", ""),
         "secondary_fact_types": result.get("secondary_fact_types", []),
         "customer_goals": goals,
         "goal_understanding_status": result.get("goal_understanding_status", "degraded"),
         "goal_understanding_diagnostics": result.get("goal_understanding_diagnostics", []),
-    })
-    if requested_claims:
-        understanding["requested_claims"] = requested_claims
-    return understanding
+        "requested_claims": requested_claims,
+    }
 
 
 def query_fact_type_classifier(state: dict) -> dict:
