@@ -12,6 +12,7 @@ def test_required_governance_documents_exist():
         DOCS_ROOT / "index.md",
         DOCS_ROOT / "PROJECT_CHARTER.md",
         DOCS_ROOT / "architecture-overview.md",
+        DOCS_ROOT / "agent-core-priority-plan.md",
         DOCS_ROOT / "module-index.md",
         DOCS_ROOT / "adr" / "README.md",
     )
@@ -28,9 +29,29 @@ def test_project_agent_instructions_require_governance_reading():
         "docs/index.md",
         "docs/PROJECT_CHARTER.md",
         "docs/architecture-overview.md",
+        "docs/agent-core-priority-plan.md",
         "docs/module-index.md",
     ):
         assert required_reference in content
+
+
+def test_agent_core_priority_plan_is_mandatory_and_actionable():
+    instructions = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    index = (DOCS_ROOT / "index.md").read_text(encoding="utf-8")
+    plan = (DOCS_ROOT / "agent-core-priority-plan.md").read_text(encoding="utf-8")
+
+    assert "docs/agent-core-priority-plan.md" in instructions
+    assert "docs/agent-core-priority-plan.md" in index
+
+    for required_term in (
+        "Current Active Priority",
+        "Protocol Stabilization Budget",
+        "Priority Roadmap",
+        "Required Task Header",
+        "Architecture Drift Gate",
+        "real_accuracy=null",
+    ):
+        assert required_term in plan
 
 
 def test_project_agent_instructions_require_real_dataset_change_gate():

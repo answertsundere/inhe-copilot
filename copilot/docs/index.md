@@ -9,8 +9,10 @@ Every AI or engineer must read these before implementation:
 1. Parent workspace `AGENTS.md` and project `AGENTS.md`.
 2. `docs/PROJECT_CHARTER.md` - business mission, truth flow, non-goals, and quality definition.
 3. `docs/architecture-overview.md` - current system, target system, confirmed gaps, and convergence order.
-4. `docs/module-index.md` - behavior ownership and cross-cutting change checklist.
-5. The topic-specific documents below.
+4. `docs/agent-core-priority-plan.md` - mandatory delivery order, stage gates,
+   frozen work, and the architecture-drift check for every implementation task.
+5. `docs/module-index.md` - behavior ownership and cross-cutting change checklist.
+6. The topic-specific documents below.
 
 For major features or architecture changes, review maintained external solutions first and record durable findings under `docs/research/`. Record production-flow or module-ownership decisions under `docs/adr/` before implementation.
 
@@ -38,6 +40,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/PROJECT_CHARTER.md` - authoritative business direction and non-negotiable boundaries.
 - `docs/architecture-overview.md` - authoritative current/target architecture,
   thin-LangGraph boundary, context-first reasoning model, and convergence order.
+- `docs/agent-core-priority-plan.md` - operational priority authority for the
+  gold-service Agent Core, including the active priority, protocol-work budget,
+  promotion gates, domain portability, and required task header.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
@@ -92,7 +97,9 @@ real context, admitted evidence and tools, one reply owner, final safety, and
 outcome-based evaluation. Gold review remains an accuracy prerequisite, but
 building more review infrastructure is not the active development mainline.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
-remains disabled.
+remains disabled. The priority plan is mandatory: work outside its current
+active stage is frozen unless a documented production/security exception or an
+explicit plan update applies.
 
 ## Architecture Decisions And Research
 

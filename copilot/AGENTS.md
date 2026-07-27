@@ -12,8 +12,9 @@ Before analyzing or changing code, read these files in order:
 3. `docs/index.md`.
 4. `docs/PROJECT_CHARTER.md`.
 5. `docs/architecture-overview.md`.
-6. `docs/module-index.md`.
-7. The documents linked by `docs/index.md` for the modules being changed.
+6. `docs/agent-core-priority-plan.md`.
+7. `docs/module-index.md`.
+8. The documents linked by `docs/index.md` for the modules being changed.
 
 Do not begin implementation from a single failing sample or an old delivery
 report. Verify the current code path and current data first.
@@ -58,6 +59,9 @@ defines the intended behavior.
 
 ## Change Discipline
 
+- Name the active priority from `docs/agent-core-priority-plan.md` before
+  implementation. Work outside that priority is analysis-only unless it is a
+  documented production/security exception or the plan is explicitly updated.
 - Fix the earliest broken contract, not the latest visible sentence.
 - Do not branch on sample text, run IDs, scenario IDs, SKUs, order IDs, product
   names, or test fixture values.

@@ -250,6 +250,12 @@ This slice is not a production auto-send canary. It exists to prove that the
 Agent can answer supported parts, continue a conversation, and escalate only
 the unresolved part.
 
+`docs/agent-core-priority-plan.md` is the operational delivery contract for
+this mainline. It defines the active priority, stage exit gates, frozen work,
+protocol-stabilization budget, and the required architecture-drift check. It
+may sequence work within this architecture, but it cannot change module
+ownership or production authority without an ADR.
+
 ## Frozen Work
 
 Until a failure in the active slice identifies an earlier blocker, do not add:
