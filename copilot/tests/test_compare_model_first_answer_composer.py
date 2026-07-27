@@ -33,6 +33,82 @@ def _scenario():
     }
 
 
+def _goal_ref_partial_response() -> dict:
+    return {
+        "suggested_reply": "这款是ABS材质，但不能保证耐摔。",
+        "selected_evidence": [{"evidence_uid": "material"}],
+        "sendable_reply": "",
+        "can_send": False,
+        "requires_human_review": True,
+        "final_answer_audit": {"passed": True, "issues": []},
+        "final_semantic_fit_audit": {"passed": True, "issues": []},
+        "reply_blocks": [{"type": "text"}],
+        "turn_understanding": {
+            "goal_understanding_status": "valid",
+            "customer_goals": [
+                {
+                    "goal_ref": "goal-material",
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "material",
+                },
+                {
+                    "goal_ref": "goal-durability",
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "semantic_key": "",
+                },
+            ],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "used_for_final_reply": True,
+            "can_change_can_send": False,
+            "can_send": False,
+            "requires_human_review": True,
+            "used_evidence_uids": ["material"],
+            "unresolved_claim_types": [],
+            "clauses": [
+                {
+                    "goal_ref": "claim-material",
+                    "clause_kind": "supported_fact",
+                    "evidence_uids": ["material"],
+                },
+                {
+                    "goal_ref": "claim-durability",
+                    "clause_kind": "unresolved",
+                    "evidence_uids": [],
+                },
+            ],
+        },
+        "minimal_decision_context": {
+            "admitted_evidence": [{"evidence_uid": "material"}],
+            "claim_resolutions": [
+                {
+                    "goal_ref": "goal-material",
+                    "claim_uid": "claim-material",
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "material",
+                    "status": "supported",
+                    "evidence_uids": ["material"],
+                },
+                {
+                    "goal_ref": "goal-durability",
+                    "claim_uid": "claim-durability",
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "semantic_key": "",
+                    "status": "unresolved",
+                    "evidence_uids": [],
+                },
+            ],
+        },
+    }
+
+
 def test_agent_payload_excludes_evaluation_fields():
     payload = comparison._agent_payload(_scenario())
 
@@ -54,36 +130,10 @@ def test_agent_payload_rejects_evaluation_field_nested_in_template():
 
 
 def test_response_scoring_separates_supported_and_unresolved_claims():
+    response = _goal_ref_partial_response()
     score = comparison._score_response(
         _scenario(),
-        {
-            "suggested_reply": "这款是ABS材质，但目前不能保证耐摔。",
-            "selected_evidence": [{"evidence_uid": "material"}],
-            "can_send": False,
-            "requires_human_review": True,
-            "final_answer_audit": {"passed": True, "issues": []},
-            "final_semantic_fit_audit": {"passed": True, "issues": []},
-            "reply_blocks": [{"type": "text"}],
-            "model_first_answer_composer": {
-                "status": "accepted",
-                "used_evidence_uids": ["material"],
-                "unresolved_claim_types": ["stability"],
-            },
-            "minimal_decision_context": {
-                "claim_resolutions": [
-                    {
-                        "claim_type": "material",
-                        "status": "supported",
-                        "evidence_uids": ["material"],
-                    },
-                    {
-                        "claim_type": "stability",
-                        "status": "unresolved",
-                        "evidence_uids": [],
-                    },
-                ],
-            },
-        },
+        response,
         status_code=200,
         error_type="",
         latency_ms=25,
@@ -91,13 +141,215 @@ def test_response_scoring_separates_supported_and_unresolved_claims():
 
     assert score["supported_complete"] is True
     assert score["unresolved_complete"] is True
+    assert score["structured_unresolved_complete"] is True
     assert score["partial_answer_success"] is True
     assert score["runtime_supported_claim_numerator"] == 1
     assert score["runtime_supported_claim_denominator"] == 1
     assert score["runtime_unresolved_handling_numerator"] == 1
     assert score["runtime_unresolved_handling_denominator"] == 1
+    assert score["renderable_customer_goal_count"] == 2
+    assert score["supporting_dependency_count"] == 0
+    assert score["customer_goal_clause_coverage_numerator"] == 2
+    assert score["customer_goal_clause_coverage_denominator"] == 2
+    assert score["customer_goal_clause_coverage_rate"] == 1.0
+    assert score["dependency_evidence_link_coverage_denominator"] == 0
+    assert score["unknown_goal_kind_count"] == 0
     assert score["unsupported_high_risk_claim"] is False
     assert score["can_send"] is False
+
+
+def _bounded_policy_response():
+    policy_ref = (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:product_durability_practical_guidance"
+    )
+    return {
+        "suggested_reply": "这款是ABS材质。日常轻微磕碰需注意，不能保证摔不坏。",
+        "selected_evidence": [{"evidence_uid": "material"}],
+        "can_send": False,
+        "requires_human_review": True,
+        "final_answer_audit": {"passed": True, "issues": []},
+        "final_semantic_fit_audit": {"passed": True, "issues": []},
+        "reply_blocks": [{"type": "text"}],
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "used_evidence_uids": ["material"],
+            "unresolved_claim_types": [],
+            "clauses": [{
+                "goal_ref": "claim-durability",
+                "clause_kind": "allowed_inference",
+                "evidence_uids": ["material"],
+                "inference_policy_refs": [policy_ref],
+                "scope_qualifier": "ordinary_minor_accidental_impact",
+                "required_qualifiers": ["no_absolute_guarantee"],
+            }],
+        },
+        "minimal_decision_context": {
+            "bounded_inference_policies": [{
+                "policy_ref": policy_ref,
+                "policy_intent_ref": (
+                    "product_durability_practical_guidance"
+                ),
+                "goal_family": "product_durability",
+                "intent_kind": "practical_guidance",
+            }],
+            "claim_resolutions": [{
+                "claim_uid": "claim-durability",
+                "claim_type": "unmapped_customer_goal",
+                "status": "supported",
+                "support_basis": "bounded_inference",
+                "policy_intent_ref": (
+                    "product_durability_practical_guidance"
+                ),
+                "policy_goal_family": "product_durability",
+                "policy_intent_kind": "practical_guidance",
+                "bounded_inference_policy": "review_required",
+                "evidence_uids": ["material"],
+                "premise_evidence_uids": ["material"],
+                "inference_policy_refs": [policy_ref],
+                "scope_qualifier": "ordinary_minor_accidental_impact",
+                "required_qualifiers": ["no_absolute_guarantee"],
+            }],
+        },
+    }
+
+
+def test_response_scoring_reports_trusted_policy_and_bounded_attribution():
+    score = comparison._score_response(
+        _scenario(),
+        _bounded_policy_response(),
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+
+    assert score["policy_intent_refs"] == [
+        "product_durability_practical_guidance"
+    ]
+    assert score["policy_intent_kinds"] == ["practical_guidance"]
+    assert score["policy_intent_precision_numerator"] == 1
+    assert score["policy_intent_precision_denominator"] == 1
+    assert score["policy_intent_recall_numerator"] == 1
+    assert score["policy_intent_recall_denominator"] == 1
+    assert score["bounded_inference_attribution_numerator"] == 1
+    assert score["bounded_inference_attribution_denominator"] == 1
+    assert score["bounded_inference_premise_numerator"] == 1
+    assert score["bounded_inference_scope_numerator"] == 1
+    assert score["absolute_guarantee_supported_count"] == 0
+
+
+def test_response_scoring_rejects_missing_bounded_inference_premise():
+    response = _bounded_policy_response()
+    response["minimal_decision_context"]["claim_resolutions"][0][
+        "premise_evidence_uids"
+    ] = []
+
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+    summary = comparison._summarize([score])
+
+    assert score["bounded_inference_attribution_numerator"] == 0
+    assert score["bounded_inference_premise_numerator"] == 0
+    assert summary["bounded_inference_attribution"] == {
+        "numerator": 0,
+        "denominator": 1,
+        "rate": 0.0,
+    }
+    assert "bounded_inference_attribution_incomplete" in (
+        comparison._correctness_gate_blockers(
+            {"requires_human_review_count": 1},
+            summary,
+            scenario_count=1,
+        )
+    )
+
+
+def test_response_scoring_reports_composer_input_partition_metrics():
+    response = _goal_ref_partial_response()
+    response["model_first_answer_composer"]["input_eligibility"] = {
+        "renderable_customer_goal_count": 2,
+        "supporting_dependency_count": 1,
+        "dependency_evidence_link_coverage": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1.0,
+        },
+        "unknown_goal_kind_count": 0,
+    }
+
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+    summary = comparison._summarize([score])
+
+    assert score["supporting_dependency_count"] == 1
+    assert summary["customer_goal_clause_coverage"] == {
+        "numerator": 2,
+        "denominator": 2,
+        "rate": 1.0,
+    }
+    assert summary["dependency_evidence_link_coverage"] == {
+        "numerator": 1,
+        "denominator": 1,
+        "rate": 1.0,
+    }
+    assert summary["non_customer_goal_clause_count"] == 0
+    assert summary["unknown_goal_kind_count"] == 0
+
+
+def test_correctness_gate_rejects_supported_absolute_guarantee():
+    response = _bounded_policy_response()
+    resolution = response["minimal_decision_context"]["claim_resolutions"][0]
+    resolution["policy_intent_kind"] = "absolute_guarantee"
+    response["minimal_decision_context"]["bounded_inference_policies"][0][
+        "intent_kind"
+    ] = "absolute_guarantee"
+
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+    summary = comparison._summarize([score])
+
+    assert score["absolute_guarantee_supported_count"] == 1
+    assert "absolute_guarantee_supported" in (
+        comparison._correctness_gate_blockers(
+            {"requires_human_review_count": 1},
+            summary,
+            scenario_count=1,
+        )
+    )
+
+
+def test_partial_answer_uses_structured_unresolved_contract_not_fixed_gold_phrase():
+    response = _goal_ref_partial_response()
+    response["suggested_reply"] = (
+        "这款是ABS材质。耐摔程度暂时没有可确认的依据。"
+    )
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+
+    assert score["unresolved_complete"] is False
+    assert score["dataset_unresolved_handling_numerator"] == 0
+    assert score["structured_unresolved_complete"] is True
+    assert score["partial_answer_success"] is True
 
 
 def test_response_scoring_blocks_forbidden_and_media_claims():
@@ -200,6 +452,11 @@ def test_correctness_gate_rejects_partial_audit_and_latency_failures():
         "runtime_unresolved_claim_declaration": {"numerator": 10, "denominator": 12},
         "final_audit_pass_count": 6,
         "semantic_audit_pass_count": 4,
+        "final_audit_model_call_count": 1,
+        "unified_audit_model_call_count": 9,
+        "unified_audit_retry_count": 1,
+        "unified_audit_repair_count": 1,
+        "fallback_count": 1,
         "requires_human_review_count": 8,
         "latency_ms": {"p95": 40_350},
     }
@@ -210,8 +467,37 @@ def test_correctness_gate_rejects_partial_audit_and_latency_failures():
         "unresolved_claim_declaration_incomplete",
         "final_audit_incomplete",
         "semantic_audit_incomplete",
+        "final_audit_model_call_detected",
+        "unified_audit_call_limit_exceeded",
+        "unified_audit_retry_detected",
+        "unified_audit_repair_detected",
+        "model_first_fallback_detected",
         "latency_p95_exceeded",
     ]
+
+
+def test_correctness_gate_requires_customer_goal_resolution_lineage():
+    blockers = comparison._correctness_gate_blockers(
+        {"requires_human_review_count": 1},
+        {
+            "partial_answer_success": {"numerator": 1, "denominator": 1},
+            "runtime_supported_claim_attribution": {"numerator": 1, "denominator": 1},
+            "runtime_unresolved_claim_declaration": {"numerator": 1, "denominator": 1},
+            "goal_recall": {
+                "customer_goal_resolution_coverage": {
+                    "numerator": 1,
+                    "denominator": 2,
+                },
+            },
+            "final_audit_pass_count": 1,
+            "semantic_audit_pass_count": 1,
+            "requires_human_review_count": 1,
+            "latency_ms": {"p95": 100},
+        },
+        scenario_count=1,
+    )
+
+    assert blockers == ["customer_goal_resolution_incomplete"]
 
 
 def test_goal_truth_is_diagnostic_only_and_separates_dependency():
@@ -263,6 +549,24 @@ def test_goal_match_uses_verified_source_span_before_model_semantic_wording():
         "source_span_sha256": "b" * 64,
         "source_span_start": 0,
         "source_span_end": 5,
+    }, truth) is False
+
+
+def test_goal_match_does_not_use_optional_semantic_metadata_as_attribute():
+    truth = {
+        "diagnostic_goal_ref": "",
+        "expected_claim_type": "",
+        "expected_attribute_key": "durability",
+        "expected_source_span_sha256": "",
+        "expected_source_span_start": None,
+        "expected_source_span_end": None,
+    }
+
+    assert comparison._goal_matches({
+        "goal_ref": "",
+        "claim_type": "",
+        "attribute_key": "",
+        "semantic_key": "durability",
     }, truth) is False
 
 

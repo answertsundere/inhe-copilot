@@ -32,6 +32,9 @@ from app.services.formal_knowledge_database_guard_service import (  # noqa: E402
     formal_kb_audit_hmac_key,
 )
 from app.services.claim_polarity_service import contains_asserted_claim  # noqa: E402
+from app.services.fact_type_alias_service import (  # noqa: E402
+    canonical_material_composition_claim_type,
+)
 from app.services.no_evidence_reply_policy_service import (  # noqa: E402
     contains_unsupported_media_promise,
 )
@@ -208,8 +211,7 @@ def _turn_understanding(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def _claim_type(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    return "material_composition" if text in {"material", "material_composition"} else text
+    return canonical_material_composition_claim_type(value)
 
 
 def _goal_matches(item: dict[str, Any], truth: dict[str, Any]) -> bool:
@@ -240,11 +242,7 @@ def _goal_matches(item: dict[str, Any], truth: dict[str, Any]) -> bool:
     expected_claim = _claim_type(truth["expected_claim_type"])
     observed_claim = _claim_type(item.get("claim_type") or item.get("query_fact_type"))
     expected_attribute = str(truth["expected_attribute_key"] or "").strip().lower()
-    observed_attribute = str(
-        item.get("attribute_key")
-        or item.get("semantic_key")
-        or ""
-    ).strip().lower()
+    observed_attribute = str(item.get("attribute_key") or "").strip().lower()
     if not expected_claim:
         return bool(expected_attribute and expected_attribute == observed_attribute)
     if observed_claim != expected_claim:
@@ -298,7 +296,11 @@ def _goal_funnel(
     resolutions = _as_dict_list(minimal.get("claim_resolutions"))
     composer = _as_dict(response.get("model_first_answer_composer"))
     answer_plan = _as_dict(composer.get("answer_plan"))
-    plan_segments = _as_dict_list(answer_plan.get("segments") or composer.get("factual_clauses"))
+    plan_segments = _as_dict_list(
+        answer_plan.get("segments")
+        or composer.get("clauses")
+        or composer.get("factual_clauses")
+    )
     reply = str(response.get("suggested_reply") or "")
     canonical_present = bool(
         str((scenario.get("api_request_template") or {}).get("message") or "").strip()
@@ -319,14 +321,15 @@ def _goal_funnel(
         selected_count = sum(_goal_matches(item, truth) for item in selected)
         admitted_count = sum(_goal_matches(item, truth) for item in admitted)
         plan_count = sum(_goal_matches(item, truth) for item in plan_segments)
+        matching_resolutions = [
+            item for item in resolutions if _goal_matches(item, truth)
+        ]
         rendered_count = sum(
             1
-            for item in resolutions
-            if _goal_matches(item, truth)
-            and (
-                str(item.get("claim_type") or "") in set(composer.get("unresolved_claim_types") or [])
-                or bool(set(item.get("evidence_uids") or []) & set(composer.get("used_evidence_uids") or []))
-            )
+            for resolution in matching_resolutions
+            for clause in _as_dict_list(composer.get("clauses"))
+            if str(clause.get("goal_ref") or "").strip()
+            == str(resolution.get("claim_uid") or "").strip()
         )
         breakpoint: str | None = None
         if not canonical_present:
@@ -382,6 +385,7 @@ def _goal_recall_summary(
         and not row["diagnostic_label_uncertain"]
     ]
     observed = [row for row in scored if row["observed_in_turn_understanding"]]
+    resolved = [row for row in scored if row.get("observed_in_claim_resolution") is True]
     truth_by_scenario: dict[str, list[dict[str, Any]]] = {}
     for row in scored:
         truth_by_scenario.setdefault(row["scenario_uid"], []).append(row)
@@ -401,7 +405,7 @@ def _goal_recall_summary(
                 unexpected_runtime_goals.append({
                     "scenario_uid": scenario_uid,
                     "claim_type": _claim_type(item.get("claim_type") or item.get("query_fact_type")),
-                    "attribute_key": str(item.get("attribute_key") or item.get("semantic_key") or ""),
+                    "attribute_key": str(item.get("attribute_key") or ""),
                 })
     target = [
         row for row in scored
@@ -423,6 +427,11 @@ def _goal_recall_summary(
                 matched_runtime_goal_count / runtime_goal_count
                 if runtime_goal_count else None
             ),
+        },
+        "customer_goal_resolution_coverage": {
+            "numerator": len(resolved),
+            "denominator": len(scored),
+            "rate": len(resolved) / len(scored) if scored else None,
         },
         "unexpected_runtime_goals": unexpected_runtime_goals,
         "target_denominator": len(target),
@@ -507,57 +516,564 @@ def _expected_claim_diagnostics(
         "dataset_unresolved_handling_denominator": len(unresolved),
         "supported_complete": not supported or supported_hits == len(supported),
         "unresolved_complete": not unresolved or unresolved_hits == len(unresolved),
-        "partial_answer_expected": bool(supported and unresolved),
+        "dataset_partial_answer_expected": bool(supported and unresolved),
     }
 
 
-def _runtime_claim_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
-    context = response.get("minimal_decision_context")
-    if not isinstance(context, dict):
-        context = {}
-    claims = [
+def _goal_ref_partial_answer_diagnostics(
+    response: dict[str, Any],
+) -> dict[str, Any]:
+    understanding = _turn_understanding(response)
+    context = _as_dict(response.get("minimal_decision_context"))
+    composer = _as_dict(response.get("model_first_answer_composer"))
+    composer_eligibility = _as_dict(composer.get("input_eligibility"))
+    goals = [
         item
-        for item in context.get("claim_resolutions") or []
-        if isinstance(item, dict)
+        for item in _as_dict_list(understanding.get("customer_goals"))
+        if str(item.get("goal_kind") or "").strip() == "customer_goal"
     ]
-    supported = [item for item in claims if item.get("status") == "supported"]
-    unresolved = [
-        item
-        for item in claims
-        if item.get("status") in {"unresolved", "conflicting", "prohibited"}
-    ]
-    composer = response.get("model_first_answer_composer") or {}
-    accepted = composer.get("status") == "accepted"
-    final_audit_passed = (response.get("final_answer_audit") or {}).get("passed") is True
+    resolutions = _as_dict_list(context.get("claim_resolutions"))
+    clauses = _as_dict_list(composer.get("clauses"))
+    admitted_uids = {
+        str(item.get("evidence_uid") or "").strip()
+        for item in _as_dict_list(
+            context.get("admitted_evidence")
+            or context.get("admitted_direct_facts")
+        )
+        if str(item.get("evidence_uid") or "").strip()
+    }
     used_evidence_uids = {
-        str(item)
+        str(item).strip()
         for item in composer.get("used_evidence_uids") or []
         if str(item).strip()
     }
-    declared_unresolved = {
-        str(item)
-        for item in composer.get("unresolved_claim_types") or []
-        if str(item).strip()
+    reasons: list[str] = []
+
+    if understanding.get("goal_understanding_status") != "valid":
+        reasons.append("authoritative_goal_understanding_invalid")
+
+    goal_ref_counts = Counter(
+        str(item.get("goal_ref") or "").strip() for item in goals
+    )
+    missing_goal_ref_count = goal_ref_counts.pop("", 0)
+    duplicate_goal_ref_count = sum(
+        count - 1 for count in goal_ref_counts.values() if count > 1
+    )
+    if missing_goal_ref_count:
+        reasons.append("authoritative_goal_ref_missing")
+    if duplicate_goal_ref_count:
+        reasons.append("authoritative_goal_ref_duplicate")
+    goals_by_ref = {
+        ref: next(item for item in goals if item.get("goal_ref") == ref)
+        for ref, count in goal_ref_counts.items()
+        if count == 1
     }
+
+    resolutions_by_goal_ref: dict[str, list[dict[str, Any]]] = {}
+    resolutions_by_claim_uid: dict[str, list[dict[str, Any]]] = {}
+    for resolution in resolutions:
+        goal_ref = str(resolution.get("goal_ref") or "").strip()
+        claim_uid = str(resolution.get("claim_uid") or "").strip()
+        if goal_ref:
+            resolutions_by_goal_ref.setdefault(goal_ref, []).append(resolution)
+        if claim_uid:
+            resolutions_by_claim_uid.setdefault(claim_uid, []).append(resolution)
+
+    unknown_resolution_goal_ref_count = sum(
+        len(items)
+        for ref, items in resolutions_by_goal_ref.items()
+        if ref not in goals_by_ref
+        and any(
+            str(item.get("goal_kind") or "").strip() == "customer_goal"
+            for item in items
+        )
+    )
+    duplicate_resolution_count = sum(
+        len(resolutions_by_goal_ref.get(ref, [])) - 1
+        for ref in goals_by_ref
+        if len(resolutions_by_goal_ref.get(ref, [])) > 1
+    )
+    duplicate_claim_uid_count = sum(
+        len(items) - 1
+        for items in resolutions_by_claim_uid.values()
+        if len(items) > 1
+    )
+    if unknown_resolution_goal_ref_count:
+        reasons.append("unknown_resolution_goal_ref")
+    if duplicate_resolution_count:
+        reasons.append("customer_goal_resolution_duplicate")
+    if duplicate_claim_uid_count:
+        reasons.append("resolution_claim_uid_duplicate")
+
+    supported: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    missing_resolution_count = 0
+    resolution_claim_uid_missing_count = 0
+    for goal_ref in sorted(goals_by_ref):
+        matching = resolutions_by_goal_ref.get(goal_ref, [])
+        if len(matching) != 1:
+            if not matching:
+                missing_resolution_count += 1
+            continue
+        resolution = matching[0]
+        if str(resolution.get("goal_kind") or "").strip() != "customer_goal":
+            reasons.append("customer_goal_resolution_kind_invalid")
+            continue
+        claim_uid = str(resolution.get("claim_uid") or "").strip()
+        if not claim_uid:
+            resolution_claim_uid_missing_count += 1
+            continue
+        status = str(resolution.get("status") or "").strip()
+        if status == "supported":
+            supported.append(resolution)
+        elif status in {"unresolved", "conflicting", "prohibited"}:
+            unresolved.append(resolution)
+        else:
+            reasons.append("customer_goal_resolution_status_invalid")
+    if missing_resolution_count:
+        reasons.append("customer_goal_resolution_missing")
+    if resolution_claim_uid_missing_count:
+        reasons.append("resolution_claim_uid_missing")
+
+    clause_ref_counts: Counter[str] = Counter()
+    multiple_goal_ref_clause_count = 0
+    missing_clause_goal_ref_count = 0
+    for clause in clauses:
+        raw_ref = clause.get("goal_ref")
+        if not isinstance(raw_ref, str):
+            multiple_goal_ref_clause_count += int(
+                isinstance(raw_ref, (list, tuple, set))
+            )
+            missing_clause_goal_ref_count += int(raw_ref is None)
+            continue
+        ref = raw_ref.strip()
+        if not ref:
+            missing_clause_goal_ref_count += 1
+            continue
+        clause_ref_counts[ref] += 1
+    duplicate_goal_ref_clause_count = sum(
+        count - 1 for count in clause_ref_counts.values() if count > 1
+    )
+    if multiple_goal_ref_clause_count:
+        reasons.append("clause_multiple_goal_refs")
+    if missing_clause_goal_ref_count:
+        reasons.append("clause_goal_ref_missing")
+    if duplicate_goal_ref_clause_count:
+        reasons.append("duplicate_goal_ref_clause")
+
+    known_claim_uids = set(resolutions_by_claim_uid)
+    unknown_goal_ref_count = sum(
+        count
+        for ref, count in clause_ref_counts.items()
+        if ref not in known_claim_uids
+    )
+    if unknown_goal_ref_count:
+        reasons.append("unknown_goal_ref_clause")
+
+    non_customer_goal_clause_count = 0
+    service_action_fact_clause_count = 0
+    media_request_fact_clause_count = 0
+    for ref, count in clause_ref_counts.items():
+        matching = resolutions_by_claim_uid.get(ref, [])
+        if len(matching) != 1:
+            continue
+        goal_kind = str(matching[0].get("goal_kind") or "").strip()
+        if goal_kind == "customer_goal":
+            continue
+        matching_clauses = [
+            clause
+            for clause in clauses
+            if isinstance(clause.get("goal_ref"), str)
+            and clause.get("goal_ref").strip() == ref
+        ]
+        factual_count = sum(
+            str(clause.get("clause_kind") or "").strip()
+            in {"supported_fact", "unresolved"}
+            for clause in matching_clauses
+        )
+        non_customer_goal_clause_count += factual_count
+        service_action_fact_clause_count += (
+            factual_count if goal_kind == "service_action" else 0
+        )
+        media_request_fact_clause_count += (
+            factual_count if goal_kind == "media_request" else 0
+        )
+    if non_customer_goal_clause_count:
+        reasons.append("non_customer_goal_rendered_as_fact")
+
+    wrong_clause_kind_count = 0
+    unsupported_evidence_ref_count = 0
+    unknown_evidence_ref_count = 0
     supported_hits = 0
-    for claim in supported:
-        required = {
-            str(item)
-            for item in claim.get("evidence_uids") or []
+    unresolved_hits = 0
+
+    def matching_clauses(resolution: dict[str, Any]) -> list[dict[str, Any]]:
+        claim_uid = str(resolution.get("claim_uid") or "").strip()
+        return [
+            clause
+            for clause in clauses
+            if isinstance(clause.get("goal_ref"), str)
+            and clause.get("goal_ref").strip() == claim_uid
+        ]
+
+    for resolution in supported:
+        matched = matching_clauses(resolution)
+        if len(matched) != 1:
+            continue
+        clause = matched[0]
+        if str(clause.get("clause_kind") or "").strip() != "supported_fact":
+            wrong_clause_kind_count += 1
+            continue
+        allowed = {
+            str(item).strip()
+            for item in resolution.get("evidence_uids") or []
             if str(item).strip()
         }
-        if accepted and final_audit_passed and required and required.issubset(used_evidence_uids):
+        referenced = {
+            str(item).strip()
+            for item in clause.get("evidence_uids") or []
+            if str(item).strip()
+        }
+        unsupported = referenced - allowed
+        unknown = referenced - admitted_uids
+        unsupported_evidence_ref_count += len(unsupported)
+        unknown_evidence_ref_count += len(unknown)
+        if (
+            allowed
+            and referenced
+            and not unsupported
+            and not unknown
+            and referenced.issubset(used_evidence_uids)
+        ):
             supported_hits += 1
-    unresolved_hits = sum(
-        accepted
-        and str(item.get("claim_type") or "").strip() in declared_unresolved
-        for item in unresolved
+
+    for resolution in unresolved:
+        matched = matching_clauses(resolution)
+        if len(matched) != 1:
+            continue
+        clause = matched[0]
+        if str(clause.get("clause_kind") or "").strip() != "unresolved":
+            wrong_clause_kind_count += 1
+            continue
+        referenced = {
+            str(item).strip()
+            for item in clause.get("evidence_uids") or []
+            if str(item).strip()
+        }
+        unsupported_evidence_ref_count += len(referenced)
+        unknown_evidence_ref_count += len(referenced - admitted_uids)
+        if not referenced:
+            unresolved_hits += 1
+
+    if wrong_clause_kind_count:
+        reasons.append("wrong_clause_kind")
+    if unsupported_evidence_ref_count:
+        reasons.append("unsupported_evidence_ref")
+    if unknown_evidence_ref_count:
+        reasons.append("unknown_evidence_ref")
+
+    shadow_candidate_formal_use_count = sum(
+        _as_dict(response.get(field)).get("used_for_final_reply") is True
+        for field in (
+            "supervisor_candidate_preview",
+            "llm_decision_shadow",
+            "grounded_reasoning_shadow",
+            "answer_memory_shadow",
+            "evidence_action_shadow",
+        )
+    )
+    if shadow_candidate_formal_use_count:
+        reasons.append("shadow_candidate_formal_use")
+    if composer.get("status") != "accepted":
+        reasons.append("composer_not_accepted")
+    if composer.get("used_for_final_reply") is not True:
+        reasons.append("composer_not_used_for_final_reply")
+    if composer.get("can_change_can_send") is not False:
+        reasons.append("composer_can_change_can_send")
+    if composer.get("can_send") is not False:
+        reasons.append("composer_can_send_invalid")
+    if composer.get("requires_human_review") is not True:
+        reasons.append("composer_human_review_missing")
+    if (response.get("final_answer_audit") or {}).get("passed") is not True:
+        reasons.append("final_audit_failed")
+    if (
+        response.get("final_semantic_fit_audit") or {}
+    ).get("passed") is not True:
+        reasons.append("semantic_audit_failed")
+    if response.get("can_send") is not False:
+        reasons.append("can_send_pollution")
+    if response.get("requires_human_review") is not True:
+        reasons.append("human_review_contract_missing")
+    if str(response.get("sendable_reply") or ""):
+        reasons.append("sendable_reply_pollution")
+    if not goals:
+        reasons.append("partial_answer_denominator_empty")
+
+    applicable = bool(supported and unresolved)
+    supported_rate = supported_hits / len(supported) if supported else None
+    unresolved_rate = unresolved_hits / len(unresolved) if unresolved else None
+    customer_goal_clause_numerator = supported_hits + unresolved_hits
+    customer_goal_clause_denominator = len(supported) + len(unresolved)
+    dependency_coverage = _as_dict(
+        composer_eligibility.get("dependency_evidence_link_coverage")
     )
     return {
+        "renderable_customer_goal_count": int(
+            composer_eligibility.get(
+                "renderable_customer_goal_count",
+                len(goals),
+            )
+            or 0
+        ),
+        "supporting_dependency_count": int(
+            composer_eligibility.get("supporting_dependency_count") or 0
+        ),
+        "customer_goal_clause_coverage_numerator": (
+            customer_goal_clause_numerator
+        ),
+        "customer_goal_clause_coverage_denominator": (
+            customer_goal_clause_denominator
+        ),
+        "customer_goal_clause_coverage_rate": (
+            customer_goal_clause_numerator
+            / customer_goal_clause_denominator
+            if customer_goal_clause_denominator
+            else None
+        ),
+        "dependency_evidence_link_coverage_numerator": int(
+            dependency_coverage.get("numerator") or 0
+        ),
+        "dependency_evidence_link_coverage_denominator": int(
+            dependency_coverage.get("denominator") or 0
+        ),
+        "dependency_evidence_link_coverage_rate": (
+            dependency_coverage.get("rate")
+        ),
+        "unknown_goal_kind_count": int(
+            composer_eligibility.get("unknown_goal_kind_count") or 0
+        ),
+        "authoritative_customer_goal_count": len(goals),
+        "supported_goal_count": len(supported),
+        "supported_clause_count": sum(
+            len(matching_clauses(item)) for item in supported
+        ),
+        "supported_goal_coverage_numerator": supported_hits,
+        "supported_goal_coverage_denominator": len(supported),
+        "supported_goal_coverage_rate": supported_rate,
+        "unresolved_goal_count": len(unresolved),
+        "unresolved_clause_count": sum(
+            len(matching_clauses(item)) for item in unresolved
+        ),
+        "unresolved_goal_coverage_numerator": unresolved_hits,
+        "unresolved_goal_coverage_denominator": len(unresolved),
+        "unresolved_goal_coverage_rate": unresolved_rate,
+        "unknown_goal_ref_count": unknown_goal_ref_count,
+        "duplicate_goal_ref_clause_count": duplicate_goal_ref_clause_count,
+        "wrong_clause_kind_count": wrong_clause_kind_count,
+        "unsupported_evidence_ref_count": unsupported_evidence_ref_count,
+        "unknown_evidence_ref_count": unknown_evidence_ref_count,
+        "non_customer_goal_clause_count": non_customer_goal_clause_count,
+        "service_action_fact_clause_count": service_action_fact_clause_count,
+        "media_request_fact_clause_count": media_request_fact_clause_count,
+        "multiple_goal_ref_clause_count": multiple_goal_ref_clause_count,
+        "missing_clause_goal_ref_count": missing_clause_goal_ref_count,
+        "missing_goal_ref_count": missing_goal_ref_count,
+        "duplicate_goal_ref_count": duplicate_goal_ref_count,
+        "missing_resolution_count": missing_resolution_count,
+        "duplicate_resolution_count": duplicate_resolution_count,
+        "duplicate_claim_uid_count": duplicate_claim_uid_count,
+        "unknown_resolution_goal_ref_count": (
+            unknown_resolution_goal_ref_count
+        ),
+        "resolution_claim_uid_missing_count": (
+            resolution_claim_uid_missing_count
+        ),
+        "shadow_candidate_formal_use_count": (
+            shadow_candidate_formal_use_count
+        ),
+        "partial_answer_applicable": applicable,
+        "partial_answer_contract_pass": (
+            None
+            if not goals
+            else False
+            if reasons
+            else (
+                supported_rate == 1.0 and unresolved_rate == 1.0
+                if applicable
+                else None
+            )
+        ),
+        "partial_answer_contract_reasons": sorted(set(reasons)),
         "runtime_supported_claim_numerator": supported_hits,
         "runtime_supported_claim_denominator": len(supported),
         "runtime_unresolved_handling_numerator": unresolved_hits,
         "runtime_unresolved_handling_denominator": len(unresolved),
+    }
+
+
+def _runtime_claim_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
+    return _goal_ref_partial_answer_diagnostics(response)
+
+
+def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
+    context = _as_dict(response.get("minimal_decision_context"))
+    resolutions = _as_dict_list(context.get("claim_resolutions"))
+    policies = _as_dict_list(context.get("bounded_inference_policies"))
+    composer = _as_dict(response.get("model_first_answer_composer"))
+    clauses = _as_dict_list(composer.get("clauses"))
+
+    policies_by_intent: dict[str, list[dict[str, Any]]] = {}
+    for policy in policies:
+        intent_ref = str(policy.get("policy_intent_ref") or "").strip()
+        if intent_ref:
+            policies_by_intent.setdefault(intent_ref, []).append(policy)
+
+    nominated = [
+        item
+        for item in resolutions
+        if str(item.get("policy_intent_ref") or "").strip()
+    ]
+    eligible = [
+        item
+        for item in resolutions
+        if (
+            str(item.get("policy_intent_ref") or "").strip()
+            or item.get("support_basis") == "bounded_inference"
+            or item.get("bounded_inference_policy") in {
+                "allowed",
+                "review_required",
+            }
+        )
+    ]
+    valid_claim_uids: set[str] = set()
+    for resolution in nominated:
+        intent_ref = str(resolution.get("policy_intent_ref") or "").strip()
+        candidates = policies_by_intent.get(intent_ref, [])
+        if len(candidates) != 1:
+            continue
+        policy = candidates[0]
+        if (
+            str(resolution.get("policy_goal_family") or "").strip()
+            != str(policy.get("goal_family") or "").strip()
+            or str(resolution.get("policy_intent_kind") or "").strip()
+            != str(policy.get("intent_kind") or "").strip()
+        ):
+            continue
+        claim_uid = str(resolution.get("claim_uid") or "").strip()
+        if claim_uid:
+            valid_claim_uids.add(claim_uid)
+
+    bounded = [
+        item
+        for item in resolutions
+        if item.get("support_basis") == "bounded_inference"
+    ]
+    attributed = 0
+    premise_complete = 0
+    scope_complete = 0
+    clauses_by_goal = {
+        str(item.get("goal_ref") or "").strip(): item
+        for item in clauses
+        if str(item.get("goal_ref") or "").strip()
+    }
+    for resolution in bounded:
+        claim_uid = str(resolution.get("claim_uid") or "").strip()
+        clause = clauses_by_goal.get(claim_uid, {})
+        evidence_uids = {
+            str(item).strip()
+            for item in resolution.get("evidence_uids") or []
+            if str(item).strip()
+        }
+        premise_uids = {
+            str(item).strip()
+            for item in resolution.get("premise_evidence_uids") or []
+            if str(item).strip()
+        }
+        policy_refs = {
+            str(item).strip()
+            for item in resolution.get("inference_policy_refs") or []
+            if str(item).strip()
+        }
+        required_qualifiers = {
+            str(item).strip()
+            for item in resolution.get("required_qualifiers") or []
+            if str(item).strip()
+        }
+        premise_ok = bool(
+            premise_uids
+            and premise_uids == evidence_uids
+            and premise_uids
+            == {
+                str(item).strip()
+                for item in clause.get("evidence_uids") or []
+                if str(item).strip()
+            }
+        )
+        scope_qualifier = str(
+            resolution.get("scope_qualifier") or ""
+        ).strip()
+        scope_ok = bool(
+            scope_qualifier
+            and required_qualifiers
+            and scope_qualifier
+            == str(clause.get("scope_qualifier") or "").strip()
+            and required_qualifiers
+            == {
+                str(item).strip()
+                for item in clause.get("required_qualifiers") or []
+                if str(item).strip()
+            }
+        )
+        if premise_ok:
+            premise_complete += 1
+        if scope_ok:
+            scope_complete += 1
+        if (
+            composer.get("status") == "accepted"
+            and resolution.get("status") == "supported"
+            and claim_uid in valid_claim_uids
+            and clause.get("clause_kind") == "allowed_inference"
+            and policy_refs
+            == {
+                str(item).strip()
+                for item in clause.get("inference_policy_refs") or []
+                if str(item).strip()
+            }
+            and premise_ok
+            and scope_ok
+        ):
+            attributed += 1
+
+    valid_eligible = sum(
+        str(item.get("claim_uid") or "").strip() in valid_claim_uids
+        for item in eligible
+    )
+    return {
+        "policy_intent_refs": sorted({
+            str(item.get("policy_intent_ref") or "").strip()
+            for item in nominated
+            if str(item.get("policy_intent_ref") or "").strip()
+        }),
+        "policy_intent_kinds": sorted({
+            str(item.get("policy_intent_kind") or "").strip()
+            for item in nominated
+            if str(item.get("policy_intent_kind") or "").strip()
+        }),
+        "policy_intent_precision_numerator": len(valid_claim_uids),
+        "policy_intent_precision_denominator": len(nominated),
+        "policy_intent_recall_numerator": valid_eligible,
+        "policy_intent_recall_denominator": len(eligible),
+        "bounded_inference_attribution_numerator": attributed,
+        "bounded_inference_attribution_denominator": len(bounded),
+        "bounded_inference_premise_numerator": premise_complete,
+        "bounded_inference_premise_denominator": len(bounded),
+        "bounded_inference_scope_numerator": scope_complete,
+        "bounded_inference_scope_denominator": len(bounded),
+        "absolute_guarantee_supported_count": sum(
+            item.get("policy_intent_kind") == "absolute_guarantee"
+            and item.get("status") == "supported"
+            for item in resolutions
+        ),
     }
 
 
@@ -578,6 +1094,8 @@ def _score_response(
     ]
     issue_text = _issue_text(response)
     claim_diagnostics = _expected_claim_diagnostics(scenario, response, reply)
+    runtime_claim_diagnostics = _runtime_claim_diagnostics(response)
+    policy_contract_diagnostics = _policy_contract_diagnostics(response)
     payload = scenario.get("api_request_template") or {}
     order_present = bool(payload.get("order_id") or (payload.get("copilot_context") or {}).get("order_id"))
     product_present = bool(payload.get("sku_code") or payload.get("i_id") or payload.get("product_name"))
@@ -587,7 +1105,6 @@ def _score_response(
         product_present and any(term in reply for term in _PRODUCT_REQUEST_TERMS)
     )
     selected = response.get("selected_evidence") or []
-    runtime_claim_diagnostics = _runtime_claim_diagnostics(response)
     unsupported_media = contains_unsupported_media_promise(reply, bool(media_types))
     unsupported_high_risk = bool(forbidden_hits) or "unsupported_high_risk_claim" in issue_text
     unsupported_service_action = any(
@@ -603,11 +1120,34 @@ def _score_response(
         not scenario.get("must_handoff")
         and any(term in reply for term in _SYSTEM_TONE_TERMS[:6])
     )
+    structured_unresolved_complete = bool(
+        runtime_claim_diagnostics[
+            "runtime_unresolved_handling_denominator"
+        ]
+        and runtime_claim_diagnostics[
+            "runtime_unresolved_handling_numerator"
+        ]
+        == runtime_claim_diagnostics[
+            "runtime_unresolved_handling_denominator"
+        ]
+    )
     partial_success = bool(
-        claim_diagnostics["partial_answer_expected"]
-        and claim_diagnostics["supported_complete"]
-        and claim_diagnostics["unresolved_complete"]
+        runtime_claim_diagnostics["partial_answer_contract_pass"] is True
         and not forbidden_hits
+        and not unsupported_media
+        and not unsupported_service_action
+    )
+    composer_audit = _as_dict(response.get("model_first_answer_composer"))
+    composer_provider = _as_dict(composer_audit.get("provider_diagnostics"))
+    final_audit = _as_dict(response.get("final_answer_audit"))
+    unified_audit = _as_dict(response.get("final_semantic_fit_audit"))
+    unified_provider = _as_dict(unified_audit.get("provider_diagnostics"))
+    pipeline_stages = _as_dict_list(
+        _as_dict(response.get("final_response_pipeline")).get("stages")
+    )
+    fallback_used = bool(
+        final_audit.get("fallback_used") is True
+        or any(item.get("fallback_used") is True for item in pipeline_stages)
     )
     return {
         "status_code": status_code,
@@ -617,10 +1157,31 @@ def _score_response(
         "reply_sha256": hashlib.sha256(reply.encode("utf-8")).hexdigest(),
         "nonempty_reply": bool(reply),
         "selected_evidence_count": len(selected),
-        "composer_status": (response.get("model_first_answer_composer") or {}).get("status", ""),
-        "composer_rejection_reason": (response.get("model_first_answer_composer") or {}).get("rejection_reason", ""),
-        "final_audit_passed": (response.get("final_answer_audit") or {}).get("passed"),
-        "semantic_audit_passed": (response.get("final_semantic_fit_audit") or {}).get("passed"),
+        "composer_status": composer_audit.get("status", ""),
+        "composer_rejection_reason": composer_audit.get("rejection_reason", ""),
+        "composer_model_call_count": int(
+            composer_provider.get("model_call_count") or 0
+        ),
+        "composer_latency_ms": composer_provider.get("provider_latency_ms"),
+        "final_audit_passed": final_audit.get("passed"),
+        "final_audit_mode": str(final_audit.get("mode") or ""),
+        "final_audit_model_call_count": int(
+            final_audit.get("model_call_count") or 0
+        ),
+        "semantic_audit_passed": unified_audit.get("passed"),
+        "unified_audit_model_call_count": int(
+            unified_provider.get("model_call_count") or 0
+        ),
+        "unified_audit_retry_count": int(
+            unified_provider.get("retry_count") or 0
+        ),
+        "unified_audit_repair_count": int(
+            unified_provider.get("repair_count") or 0
+        ),
+        "unified_audit_latency_ms": unified_provider.get(
+            "provider_latency_ms"
+        ),
+        "fallback_used": fallback_used,
         "can_send": bool(response.get("can_send")),
         "requires_human_review": bool(response.get("requires_human_review")),
         "media_types": media_types,
@@ -632,8 +1193,13 @@ def _score_response(
         "unsupported_service_action": unsupported_service_action,
         "forbidden_claim_hits": forbidden_hits,
         "partial_answer_success": partial_success,
+        "partial_answer_expected": runtime_claim_diagnostics[
+            "partial_answer_applicable"
+        ],
+        "structured_unresolved_complete": structured_unresolved_complete,
         **claim_diagnostics,
         **runtime_claim_diagnostics,
+        **policy_contract_diagnostics,
     }
 
 
@@ -649,6 +1215,16 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
         return {}
     latencies = [int(row["latency_ms"]) for row in rows if not row["error_type"]]
+    composer_latencies = [
+        int(row["composer_latency_ms"])
+        for row in rows
+        if row.get("composer_latency_ms") is not None
+    ]
+    unified_latencies = [
+        int(row["unified_audit_latency_ms"])
+        for row in rows
+        if row.get("unified_audit_latency_ms") is not None
+    ]
     dataset_supported_num = sum(int(row["dataset_supported_claim_numerator"]) for row in rows)
     dataset_supported_den = sum(int(row["dataset_supported_claim_denominator"]) for row in rows)
     dataset_unresolved_num = sum(int(row["dataset_unresolved_handling_numerator"]) for row in rows)
@@ -657,6 +1233,52 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     runtime_supported_den = sum(int(row["runtime_supported_claim_denominator"]) for row in rows)
     runtime_unresolved_num = sum(int(row["runtime_unresolved_handling_numerator"]) for row in rows)
     runtime_unresolved_den = sum(int(row["runtime_unresolved_handling_denominator"]) for row in rows)
+    customer_goal_clause_num = sum(
+        int(row["customer_goal_clause_coverage_numerator"])
+        for row in rows
+    )
+    customer_goal_clause_den = sum(
+        int(row["customer_goal_clause_coverage_denominator"])
+        for row in rows
+    )
+    dependency_link_num = sum(
+        int(row["dependency_evidence_link_coverage_numerator"])
+        for row in rows
+    )
+    dependency_link_den = sum(
+        int(row["dependency_evidence_link_coverage_denominator"])
+        for row in rows
+    )
+    policy_precision_num = sum(
+        int(row["policy_intent_precision_numerator"]) for row in rows
+    )
+    policy_precision_den = sum(
+        int(row["policy_intent_precision_denominator"]) for row in rows
+    )
+    policy_recall_num = sum(
+        int(row["policy_intent_recall_numerator"]) for row in rows
+    )
+    policy_recall_den = sum(
+        int(row["policy_intent_recall_denominator"]) for row in rows
+    )
+    bounded_num = sum(
+        int(row["bounded_inference_attribution_numerator"]) for row in rows
+    )
+    bounded_den = sum(
+        int(row["bounded_inference_attribution_denominator"]) for row in rows
+    )
+    premise_num = sum(
+        int(row["bounded_inference_premise_numerator"]) for row in rows
+    )
+    premise_den = sum(
+        int(row["bounded_inference_premise_denominator"]) for row in rows
+    )
+    scope_num = sum(
+        int(row["bounded_inference_scope_numerator"]) for row in rows
+    )
+    scope_den = sum(
+        int(row["bounded_inference_scope_denominator"]) for row in rows
+    )
     partial_rows = [row for row in rows if row["partial_answer_expected"]]
     reply_counts = Counter(row["reply_sha256"] for row in rows if row["reply"])
     duplicate_rows = sum(count for count in reply_counts.values() if count > 1)
@@ -666,6 +1288,33 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "nonempty_reply_count": sum(row["nonempty_reply"] for row in rows),
         "selected_evidence_total_count": sum(int(row["selected_evidence_count"]) for row in rows),
         "selected_evidence_scenario_count": sum(int(row["selected_evidence_count"]) > 0 for row in rows),
+        "renderable_customer_goal_count": sum(
+            int(row["renderable_customer_goal_count"]) for row in rows
+        ),
+        "supporting_dependency_count": sum(
+            int(row["supporting_dependency_count"]) for row in rows
+        ),
+        "customer_goal_clause_coverage": {
+            "numerator": customer_goal_clause_num,
+            "denominator": customer_goal_clause_den,
+            "rate": (
+                customer_goal_clause_num / customer_goal_clause_den
+                if customer_goal_clause_den
+                else None
+            ),
+        },
+        "dependency_evidence_link_coverage": {
+            "numerator": dependency_link_num,
+            "denominator": dependency_link_den,
+            "rate": (
+                dependency_link_num / dependency_link_den
+                if dependency_link_den
+                else None
+            ),
+        },
+        "unknown_goal_kind_count": sum(
+            int(row["unknown_goal_kind_count"]) for row in rows
+        ),
         "dataset_required_point_coverage": {
             "numerator": dataset_supported_num,
             "denominator": dataset_supported_den,
@@ -698,6 +1347,87 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 if runtime_unresolved_den else None
             ),
         },
+        "supported_goal_coverage": {
+            "numerator": runtime_supported_num,
+            "denominator": runtime_supported_den,
+            "rate": (
+                runtime_supported_num / runtime_supported_den
+                if runtime_supported_den else None
+            ),
+        },
+        "unresolved_goal_coverage": {
+            "numerator": runtime_unresolved_num,
+            "denominator": runtime_unresolved_den,
+            "rate": (
+                runtime_unresolved_num / runtime_unresolved_den
+                if runtime_unresolved_den else None
+            ),
+        },
+        "policy_intent_precision": {
+            "numerator": policy_precision_num,
+            "denominator": policy_precision_den,
+            "rate": (
+                policy_precision_num / policy_precision_den
+                if policy_precision_den else None
+            ),
+        },
+        "policy_intent_recall": {
+            "numerator": policy_recall_num,
+            "denominator": policy_recall_den,
+            "rate": (
+                policy_recall_num / policy_recall_den
+                if policy_recall_den else None
+            ),
+        },
+        "bounded_inference_attribution": {
+            "numerator": bounded_num,
+            "denominator": bounded_den,
+            "rate": bounded_num / bounded_den if bounded_den else None,
+        },
+        "bounded_inference_premise_coverage": {
+            "numerator": premise_num,
+            "denominator": premise_den,
+            "rate": premise_num / premise_den if premise_den else None,
+        },
+        "bounded_inference_scope_coverage": {
+            "numerator": scope_num,
+            "denominator": scope_den,
+            "rate": scope_num / scope_den if scope_den else None,
+        },
+        "policy_intent_ref_counts": dict(sorted(Counter(
+            intent_ref
+            for row in rows
+            for intent_ref in row["policy_intent_refs"]
+        ).items())),
+        "policy_intent_kind_counts": dict(sorted(Counter(
+            intent_kind
+            for row in rows
+            for intent_kind in row["policy_intent_kinds"]
+        ).items())),
+        "absolute_guarantee_supported_count": sum(
+            int(row["absolute_guarantee_supported_count"]) for row in rows
+        ),
+        "unknown_goal_ref_count": sum(
+            int(row["unknown_goal_ref_count"]) for row in rows
+        ),
+        "duplicate_goal_ref_clause_count": sum(
+            int(row["duplicate_goal_ref_clause_count"]) for row in rows
+        ),
+        "wrong_clause_kind_count": sum(
+            int(row["wrong_clause_kind_count"]) for row in rows
+        ),
+        "unsupported_evidence_ref_count": sum(
+            int(row["unsupported_evidence_ref_count"]) for row in rows
+        ),
+        "unknown_evidence_ref_count": sum(
+            int(row["unknown_evidence_ref_count"]) for row in rows
+        ),
+        "non_customer_goal_clause_count": sum(
+            int(row["non_customer_goal_clause_count"]) for row in rows
+        ),
+        "shadow_candidate_formal_use_count": sum(
+            int(row["shadow_candidate_formal_use_count"]) for row in rows
+        ),
         "partial_answer_success": {
             "numerator": sum(row["partial_answer_success"] for row in partial_rows),
             "denominator": len(partial_rows),
@@ -725,6 +1455,33 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         ).items())),
         "final_audit_pass_count": sum(row["final_audit_passed"] is True for row in rows),
         "semantic_audit_pass_count": sum(row["semantic_audit_passed"] is True for row in rows),
+        "final_audit_model_call_count": sum(
+            int(row["final_audit_model_call_count"]) for row in rows
+        ),
+        "unified_audit_model_call_count": sum(
+            int(row["unified_audit_model_call_count"]) for row in rows
+        ),
+        "unified_audit_retry_count": sum(
+            int(row["unified_audit_retry_count"]) for row in rows
+        ),
+        "unified_audit_repair_count": sum(
+            int(row["unified_audit_repair_count"]) for row in rows
+        ),
+        "fallback_count": sum(row["fallback_used"] for row in rows),
+        "composer_latency_ms": {
+            "p50": (
+                round(statistics.median(composer_latencies))
+                if composer_latencies else None
+            ),
+            "p95": _percentile(composer_latencies, 0.95),
+        },
+        "unified_audit_latency_ms": {
+            "p50": (
+                round(statistics.median(unified_latencies))
+                if unified_latencies else None
+            ),
+            "p95": _percentile(unified_latencies, 0.95),
+        },
         "latency_ms": {
             "p50": round(statistics.median(latencies)) if latencies else None,
             "p95": _percentile(latencies, 0.95),
@@ -745,14 +1502,66 @@ def _correctness_gate_blockers(
     for field, blocker in (
         ("runtime_supported_claim_attribution", "supported_claim_attribution_incomplete"),
         ("runtime_unresolved_claim_declaration", "unresolved_claim_declaration_incomplete"),
+        ("customer_goal_clause_coverage", "customer_goal_clause_coverage_incomplete"),
+        (
+            "dependency_evidence_link_coverage",
+            "dependency_evidence_link_coverage_incomplete",
+        ),
+        ("policy_intent_precision", "policy_intent_precision_incomplete"),
+        ("policy_intent_recall", "policy_intent_recall_incomplete"),
+        ("bounded_inference_attribution", "bounded_inference_attribution_incomplete"),
+        ("bounded_inference_premise_coverage", "bounded_inference_premise_incomplete"),
+        ("bounded_inference_scope_coverage", "bounded_inference_scope_incomplete"),
     ):
         metric = on_summary.get(field) or {}
         if int(metric.get("denominator") or 0) and int(metric.get("numerator") or 0) != int(metric["denominator"]):
             blockers.append(blocker)
+    if int(on_summary.get("absolute_guarantee_supported_count") or 0):
+        blockers.append("absolute_guarantee_supported")
+    for field, blocker in (
+        ("unknown_goal_ref_count", "unknown_goal_ref_clause"),
+        (
+            "duplicate_goal_ref_clause_count",
+            "duplicate_goal_ref_clause",
+        ),
+        ("wrong_clause_kind_count", "wrong_clause_kind"),
+        ("unsupported_evidence_ref_count", "unsupported_evidence_ref"),
+        ("unknown_evidence_ref_count", "unknown_evidence_ref"),
+        (
+            "non_customer_goal_clause_count",
+            "non_customer_goal_rendered_as_fact",
+        ),
+        (
+            "shadow_candidate_formal_use_count",
+            "shadow_candidate_formal_use",
+        ),
+        ("unknown_goal_kind_count", "unknown_goal_kind"),
+    ):
+        if int(on_summary.get(field) or 0):
+            blockers.append(blocker)
+    goal_resolution = (on_summary.get("goal_recall") or {}).get(
+        "customer_goal_resolution_coverage"
+    ) or {}
+    if (
+        int(goal_resolution.get("denominator") or 0)
+        and int(goal_resolution.get("numerator") or 0)
+        != int(goal_resolution["denominator"])
+    ):
+        blockers.append("customer_goal_resolution_incomplete")
     if int(on_summary.get("final_audit_pass_count") or 0) != scenario_count:
         blockers.append("final_audit_incomplete")
     if int(on_summary.get("semantic_audit_pass_count") or 0) != scenario_count:
         blockers.append("semantic_audit_incomplete")
+    if int(on_summary.get("final_audit_model_call_count") or 0):
+        blockers.append("final_audit_model_call_detected")
+    if int(on_summary.get("unified_audit_model_call_count") or 0) > scenario_count:
+        blockers.append("unified_audit_call_limit_exceeded")
+    if int(on_summary.get("unified_audit_retry_count") or 0):
+        blockers.append("unified_audit_retry_detected")
+    if int(on_summary.get("unified_audit_repair_count") or 0):
+        blockers.append("unified_audit_repair_detected")
+    if int(on_summary.get("fallback_count") or 0):
+        blockers.append("model_first_fallback_detected")
     if int(on_summary.get("requires_human_review_count") or 0) < int(off_summary.get("requires_human_review_count") or 0):
         blockers.append("requires_human_review_decreased")
     if int((on_summary.get("latency_ms") or {}).get("p95") or 0) > 35_000:

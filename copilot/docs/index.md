@@ -44,6 +44,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   gold-service Agent Core, including the active priority, protocol-work budget,
   promotion gates, domain portability, and required task header.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
+- `docs/agent-core-candidate-change-ownership.md` - P0-R0 ownership and
+  disposition manifest for the 45-file feature-disabled Agent Core checkpoint.
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.

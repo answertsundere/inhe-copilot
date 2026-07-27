@@ -130,6 +130,14 @@ Complete traces, unfiltered retrieval stores, all historical answers, private
 reasoning, benchmark labels, and entire product catalogs stay outside the
 prompt.
 
+Provider-bound and evaluation-bound privacy projection is field-aware.
+Structured customer, order, tracking, account, URL, and credential fields are
+redacted or pseudonymised before external-model use. Natural-language address
+redaction requires an explicit address label, administrative chain, or
+road/street plus number; room and usage words such as bedroom, bathroom, living
+room, space saving, and moisture questions remain business semantics. Customer-
+visible redaction markers remain invalid reply content and fail the final audit.
+
 `answer_eligibility_context/v1` is a diagnostic projection inside the existing
 Minimal Decision Context. It preserves, without recomputing, the current
 understanding, conversation-reference, tool-requirement, inference-requirement,
@@ -206,9 +214,46 @@ reconstruct customer meaning from growing phrase lists.
 review-only and disabled by default. It may not retrieve again, establish facts,
 execute tools, deliver media, or grant `can_send`.
 
+Its input is partitioned before the model call. Only current-turn,
+owner-stamped `customer_goal` items with valid provenance and exactly one Claim
+Resolution are renderable. Evidence dependencies remain linked through
+`supporting_for_goal_ref`; service actions, media context, and contextual
+constraints stay in their own non-factual channels. Missing or unknown goal
+kinds, duplicate goal references, invalid provenance, and unbound dependencies
+fail closed. The model must return exactly one clause for each renderable
+customer goal and no clause for any other partition.
+
+The P0.2d fixed-eight diagnostic qualified this Composer input boundary:
+customer-goal clause coverage was 15/15 and no non-customer goal was rendered
+as fact. Final and semantic audit gates remained incomplete, so the candidate
+stays review-only and disabled; the result does not authorize promotion.
+
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
 reply, but must not become independent answer engines.
+
+The current feature-disabled model-first candidate implements this ownership
+sequence:
+
+```text
+Model-first Composer
+-> Deterministic Final Contract
+-> One Unified Textual Audit
+-> Delivery Gate
+```
+
+The Composer is the sole candidate reply generator. `FinalAnswerAuditor`
+performs the deterministic goal/clause/evidence, canonical-truth, high-risk,
+action, media, privacy, and send-prerequisite checks with zero model calls.
+`FinalSemanticQualityService` performs the candidate's sole textual LLM audit.
+`FinalResponseOrchestrator` owns ordering, state synchronization, and
+fail-closed delivery, not reply generation or rewriting.
+
+The legacy production path still has its historical polish and fallback
+behavior and is explicitly a compatibility path, not the target ownership
+model. Formal Evidence Convergence and the model-first Composer remain disabled
+by default. Committing the candidate is a reviewable checkpoint, not production
+qualification.
 
 ### Final Safety And Delivery
 

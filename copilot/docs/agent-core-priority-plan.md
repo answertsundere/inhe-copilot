@@ -79,14 +79,17 @@ The following rules are non-negotiable:
 **Active priority: P0 - close the existing Agent Core vertical slice.**
 
 The current candidate has demonstrated a real single-scenario partial-answer
-path, but the fixed eight-case slice is not yet stable. The immediate work is:
+path and a feature-disabled fixed-eight diagnostic. P0.2d through P0.2f are
+historical diagnostics, not an open-ended development roadmap. The immediate
+work is:
 
-1. close the bounded Composer transport and clause-contract failures;
-2. classify remaining Semantic Auditor rejections using frozen candidates;
-3. reach one clean fixed-eight result through the same formal Pipeline;
-4. commit and deploy the accumulated Agent Core contract as one reviewable
-   candidate; and
-5. stop protocol work immediately after it no longer blocks customer outcomes.
+1. consolidate the accumulated Agent Core changes into a reviewable,
+   feature-disabled checkpoint;
+2. keep one formal Pipeline and the documented reply-owner boundary;
+3. rerun the fixed-eight customer-outcome gate without changing its cases or
+   acceptance rules; and
+4. stop protocol work immediately when a provider or transport boundary is
+   blocked rather than seeking a stochastic pass.
 
 Frontend review work, new shadow systems, new provider matrices, vision work,
 Fast Path implementation, and new platform adapters remain frozen during P0.
@@ -130,6 +133,8 @@ and similar transport defects:
 - After two consecutive non-semantic failures at the same boundary, stop adding
   validators. Reuse the approved adapter contract, change the provider
   integration, or mark the provider blocked.
+- Do not obtain acceptance by repeating an unchanged stochastic call until it
+  happens to pass.
 - Do not create a new phase, framework, or qualification matrix merely to wait
   for a stochastic `5/5`.
 - A protocol fix is complete when the customer-outcome suite can run. It is not
@@ -172,8 +177,7 @@ and remains review-only.
 - customer-goal coverage: `100%`;
 - supported-claim evidence attribution: `100%`;
 - unresolved/conflicting/prohibited goal declaration: `100%`;
-- Composer, Final Audit, and Semantic Audit contracts: `8/8`, with every
-  rejection classified as correct or fixed at its authoritative owner;
+- deterministic Final Contract and Unified Textual Audit acceptance: `8/8`;
 - unsupported factual, high-risk, media, and completed-action claims: `0`;
 - unknown or duplicate goal/evidence references: `0`;
 - `can_send=true`: `0`;
@@ -182,7 +186,10 @@ and remains review-only.
 - one clean, reviewable commit deployed to an isolated candidate runtime.
 
 Passing P0 proves a core capability slice. It does not prove real accuracy or
-gold-service quality.
+gold-service quality. Raw finding codes, secondary diagnostic labels, and
+literal stability of internal diagnostic wording are observable data, not
+business exit gates. Latency must be disclosed, but it is not a P0 hard stop;
+latency optimization follows correctness and real-conversation quality.
 
 ### P1 - Gold Conversation Quality
 
@@ -204,7 +211,10 @@ customer toward a resolution.
 
 1. Correct missing or incomplete customer goals.
 2. Correct context, identity, evidence, and live-tool gaps.
-3. Add bounded Domain Pack inference for low-risk ordinary questions.
+3. Add bounded low-risk inference only when premises, domain policy, limits, and
+   customer-visible uncertainty are explicit. It must not infer safety,
+   compliance, load, medical, order, refund, replacement, compensation, or
+   media delivery facts.
 4. Remove unnecessary handoff while preserving genuine unresolved claims.
 5. Improve naturalness, empathy, commercial clarity, and answer progression.
 6. Remove duplicated wording and internal-process language.
@@ -436,6 +446,10 @@ Every behavior-affecting change reports the same scorecard:
 If approved labels are insufficient, report `real_accuracy=null` and
 `optimization_unverified`.
 
+Evaluators observe customer-visible outcomes and authoritative structured
+events. Their finding codes and expected labels may not become new Agent rules,
+reply templates, or production routing inputs.
+
 ## Model And Training Strategy
 
 The default strategy is strong foundation models plus compact context, tools,
@@ -537,8 +551,8 @@ Changing priority order requires:
 
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
-| P0 Agent Core Closure | active | Single real partial-answer case passed repeatedly; fixed-eight Composer and Semantic Audit remain incomplete | Fixed-eight full path `8/8`, zero unsafe claims, clean candidate commit |
-| P1 Gold Conversation Quality | blocked by P0 | Long-conversation assets exist, but no valid production-quality result | Run the pinned 26-case set after P0 |
+| P0 Agent Core Closure | active | P0.2d-f established a feature-disabled candidate and exposed a provider/transport block; the accumulated changes still need a clean checkpoint | Fixed-eight business gate `8/8`, zero unsafe claims, clean candidate commit |
+| P1 Gold Conversation Quality | blocked by P0 | Long-conversation assets exist, but no valid production-quality result | After P0, run the pinned 26-case set and evaluate customer outcomes rather than internal finding codes |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

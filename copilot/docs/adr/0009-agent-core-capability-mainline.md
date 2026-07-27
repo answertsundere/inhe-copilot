@@ -79,23 +79,39 @@ complete goal set and renders the verified clauses in stable order without
 adding fallback wording. This remains one model call and review-only; it cannot
 change `can_send`, delivery, evidence admission, or final safety ownership.
 
-The Final Auditor evaluates accepted model-first candidates against two
-separate inputs. `canonical_truth` contains only admitted evidence and claim
-resolution state, with anonymous evidence and provenance references.
-`conversation_continuity` retains bounded customer and historical agent turns
-for referent, prior-question, already-provided-information, and service
-commitment continuity. Historical agent turns are explicitly non-authoritative
-for product, policy, order, and action-completion facts. A historical factual
-conflict therefore cannot override canonical truth or reject a candidate that
-uses canonical truth, while a candidate that actually relies on an unsupported
-historical fact must still fail closed. The strict audit remains one model call;
-provider or schema failure blocks the candidate. Style and harmless repetition
-remain the Semantic Quality owner's concern rather than a second Final Auditor
-policy.
+The disabled model-first candidate has four explicit reply-stage owners:
 
-This boundary does not promote the composer or change delivery permission.
-Composer acceptance and Final Auditor acceptance are necessary but not
-sufficient for final orchestration or production enablement.
+1. `ModelFirstAnswerComposerService` is the only model-first customer-reply
+   generator.
+2. `FinalAnswerAuditor` applies the deterministic Final Contract. It validates
+   goal/clause/evidence references, canonical truth, high-risk boundaries,
+   service-action completion, media eligibility, privacy/process leakage, and
+   prerequisites for `can_send`. This candidate branch makes zero model calls.
+3. `FinalSemanticQualityService` owns the candidate's one Unified Textual Audit.
+   It evaluates factual faithfulness, unresolved polarity, goal coverage,
+   conversation continuity, query/reply fit, serious repetition, and internal
+   process language against `canonical_truth` plus bounded
+   `conversation_continuity`. Provider or schema failure blocks the candidate.
+4. `FinalResponseOrchestrator` owns sequence, state synchronization, and
+   fail-closed delivery only. It does not generate or rewrite a model-first
+   candidate reply.
+
+Historical agent turns remain non-authoritative for product, policy, order, and
+action-completion facts. A historical factual conflict cannot override
+canonical truth, while a candidate that relies on unsupported history still
+fails closed.
+
+The legacy production path is retained as `legacy`: it may still use its
+existing deterministic/LLM polish and fallback behavior. That compatibility
+path is not the target ownership model and must not be cited as evidence that
+the candidate has multiple reply generators.
+
+This boundary does not promote the Composer or change delivery permission.
+Formal Evidence Convergence and the model-first Composer remain disabled by
+default. A reviewable, feature-disabled candidate checkpoint is not production
+qualification. After P0 correctness is established, development moves to real
+long-conversation customer quality rather than more protocol qualification
+layers.
 
 Phase 1.9 adds a canonical answer-eligibility projection without adding a
 router, graph node, model call, or safety gate. Owner boundaries are fixed:

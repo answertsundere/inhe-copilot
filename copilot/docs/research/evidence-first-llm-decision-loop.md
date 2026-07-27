@@ -336,6 +336,15 @@ stable anonymous references before serialization; local read-only tools retain
 the original structured identity outside the model prompt. This prevents broad
 address matching from erasing product context.
 
+The downstream evaluation/trace sanitizer uses the same semantic-preservation
+boundary. A natural-language address must have an explicit address label,
+administrative chain, or road/street plus a number; suffixes such as bedroom,
+bathroom, living room, or room alone are not address evidence. This boundary
+keeps usage, moisture, material, size, and colour questions intact while phone,
+email, concrete address, account, order, tracking, URL, and credential values
+remain redacted. Any redaction marker that reaches customer-visible reply text
+is still rejected by the Final Auditor.
+
 Tier D action coverage is not a keyword counter. It requires an independently
 qualified strict-schema transcript grader that sees only customer-visible Agent
 replies and action definitions after the response is produced. A missing or
@@ -520,6 +529,50 @@ attribution plus final audit, four candidates were rejected for process
 language, partial-answer success remained 0/8 under the conservative
 post-response matcher, and semantic-audit passes fell from 15 to 9. The
 candidate is therefore not ready for production promotion.
+
+### P0.2d Composer input eligibility
+
+Resolution status alone is not reply eligibility. The Composer now accepts
+customer-visible goals only when the current server Turn Understanding owns a
+valid `customer_goal` reference with complete provenance and Claim Resolution
+maps it uniquely. Inputs are kept in five explicit partitions:
+`renderable_customer_goals`, `supporting_dependencies`, `service_actions`,
+`media_context`, and `contextual_constraints`. They are not recombined into a
+broad goals list.
+
+Dependencies may supply admitted evidence only through an explicit
+`supporting_for_goal_ref` link to a renderable customer goal. They never receive
+a customer-visible clause. Service, media, and context entries likewise remain
+non-factual. Missing or unknown kinds, degraded compatibility claims, duplicate
+references, invalid provenance, unbound dependencies, omitted customer goals,
+and extra model clauses fail closed without retry, repair, clause deletion, or
+Python-authored fallback.
+
+The frozen anonymous qualification passed five consecutive single-call
+attempts. The subsequent fixed-eight run accepted all eight Composer outputs,
+covered 15/15 renderable customer goals, rendered zero non-customer goals, made
+no formal knowledge writes, and left `can_send=false` for all cases. Final audit
+passed 7/8 and semantic audit 4/8, with partial-answer success 3/4; therefore the
+durable P0.2d status was `composer_input_qualified_audit_stack_blocked`, not
+production qualification.
+
+P0.2e then consolidated the disabled candidate into:
+
+```text
+Composer
+-> Deterministic Final Contract
+-> One Unified Textual Audit
+-> Delivery Gate
+```
+
+The deterministic Final Contract makes no model call. Unified Textual Audit is
+the candidate's sole textual LLM audit, and orchestration only sequences and
+synchronizes fail-closed state. The P0.2e.2 fixed-eight diagnostic reached
+Composer `7/8` and Unified Textual Audit `7/8`; the remaining unknown reference
+was attributed to provider/transport behavior. P0.2f correctly stopped rather
+than adding another validator or retry. These are historical diagnostics. The
+feature-disabled checkpoint is reviewable but not production-qualified, and
+latency remains disclosed rather than treated as a P0 correctness gate.
 
 ### Phase 0.8G fixed real-turn replay
 
