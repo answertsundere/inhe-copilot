@@ -4,9 +4,55 @@ from app.main import create_app
 from app.agent.nodes.query_fact_type_classifier import (
     _requested_claims_from_customer_goals,
     _turn_understanding_from_result,
+    query_fact_type_classifier,
 )
 from app.services import semantic_fact_type_service
+from app.services.analysis_pipeline_service import AnalysisPipelineService
 from app.services.fact_type_service import classify_query_fact_type
+
+
+@pytest.fixture(autouse=True)
+def _disable_runtime_readiness_for_classifier_contracts(monkeypatch):
+    monkeypatch.setattr(
+        AnalysisPipelineService,
+        "_knowledge_readiness_for_request",
+        staticmethod(lambda _request: None),
+    )
+
+
+def _authoritative_llm_result(
+    message: str,
+    *,
+    fact_type: str,
+    secondary_fact_types: list[str],
+) -> dict:
+    goals, status, diagnostics = (
+        semantic_fact_type_service._sanitize_customer_goals(
+            [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": fact_type,
+                "attribute_key": "",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": message,
+            }],
+            message=message,
+        )
+    )
+    return {
+        "query_fact_type": fact_type,
+        "confidence": 1.0,
+        "matched_terms": [],
+        "source": "llm",
+        "reason": "minimal_turn_understanding_validated",
+        "risk_hint": "",
+        "query_fact_type_label": fact_type,
+        "secondary_fact_types": secondary_fact_types,
+        "customer_goals": goals,
+        "goal_understanding_status": status,
+        "goal_understanding_diagnostics": diagnostics,
+    }
 
 
 def test_query_fact_type_classifier_high_frequency_fields():
@@ -143,12 +189,29 @@ def test_bite_or_toxicity_is_a_distinct_high_risk_fact_type():
     assert result["query_fact_type"] == "bite_or_toxicity"
 
 
-def test_api_exposes_query_fact_type_debug():
+def test_api_exposes_query_fact_type_debug(monkeypatch):
+    message = "\u6ca1\u6709\u7532\u919b\u7684\u68c0\u67e5\u62a5\u544a\u5417\uff1f"
+    monkeypatch.setattr(
+        semantic_fact_type_service.config,
+        "COPILOT_FACT_TYPE_LLM_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        semantic_fact_type_service,
+        "_classify_with_llm",
+        lambda _state, _message, _intent, **_kwargs: (
+            _authoritative_llm_result(
+                message,
+                fact_type="certification_report",
+                secondary_fact_types=[],
+            )
+        ),
+    )
     app = create_app()
     client = app.test_client()
 
     result = client.post("/ask/api/analyze", json={
-        "message": "\u6ca1\u6709\u7532\u919b\u7684\u68c0\u67e5\u62a5\u544a\u5417\uff1f",
+        "message": message,
         "conversation_id": "test_query_fact_type_debug",
         "sku_code": "YH06K53B05S13",
         "product_candidates": [
@@ -236,6 +299,9 @@ def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
             "claim_type": "",
             "attribute_key": "durability",
             "semantic_key": "durability",
+            "policy_intent_ref": "",
+            "policy_goal_family": "",
+            "policy_intent_kind": "",
             "goal_summary": "confirm durability boundary",
             "source": "current_customer_message",
             "source_span_start": 0,
@@ -252,6 +318,9 @@ def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
         "claim_type": "",
         "attribute_key": "durability",
         "semantic_key": "durability",
+        "policy_intent_ref": "",
+        "policy_goal_family": "",
+        "policy_intent_kind": "",
         "goal_summary": "confirm durability boundary",
         "source": "current_customer_message",
         "source_span_start": 0,
@@ -262,6 +331,36 @@ def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
         "question": "multi-goal customer turn",
         "risk_level": "medium",
     }]
+
+
+def test_trusted_policy_intent_fields_are_projected_to_requested_claim():
+    claims = _requested_claims_from_customer_goals(
+        [{
+            "goal_ref": "goal-durability",
+            "goal_kind": "customer_goal",
+            "claim_type": "",
+            "attribute_key": "drop_durability",
+            "semantic_key": "diagnostic_only",
+            "policy_intent_ref": (
+                "product_durability_practical_guidance"
+            ),
+            "policy_goal_family": "product_durability",
+            "policy_intent_kind": "practical_guidance",
+            "goal_summary": "confirm practical durability boundary",
+            "source": "current_customer_message",
+            "source_span_start": 0,
+            "source_span_end": 11,
+            "source_span_sha256": "c" * 64,
+        }],
+        question="multi-goal customer turn",
+        risk_hint="medium",
+    )
+
+    assert claims[0]["policy_intent_ref"] == (
+        "product_durability_practical_guidance"
+    )
+    assert claims[0]["policy_goal_family"] == "product_durability"
+    assert claims[0]["policy_intent_kind"] == "practical_guidance"
 
 
 @pytest.mark.parametrize("goal_kind", ["evidence_dependency", "service_action"])
@@ -301,12 +400,72 @@ def test_server_understanding_clears_injected_requested_claims_without_customer_
     assert understanding["customer_goals"][0]["goal_kind"] == goal_kind
 
 
-def test_api_final_audit_blocks_pinch_as_battery_topic():
+def test_preclassified_top_level_fact_type_does_not_override_multi_goal_owner(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.agent.nodes.query_fact_type_classifier."
+        "classify_query_fact_type_llm_first",
+        lambda _state: {
+            "query_fact_type": "",
+            "confidence": 0.9,
+            "source": "llm",
+            "reason": "multi-goal understanding",
+            "risk_hint": "medium",
+            "secondary_fact_types": [],
+            "semantic_query": {},
+            "customer_goals": [{
+                "goal_ref": "goal-unmapped",
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "durability",
+                "semantic_key": "product_drop_durability",
+                "goal_summary": "confirm durability boundary",
+                "source": "current_customer_message",
+                "source_span_start": 0,
+                "source_span_end": 10,
+                "source_span_sha256": "a" * 64,
+            }],
+            "goal_understanding_status": "valid",
+            "goal_understanding_diagnostics": [],
+        },
+    )
+
+    result = query_fact_type_classifier({
+        "customer_message": "multi goal",
+        "query_fact_type": "material",
+    })
+
+    assert result["query_fact_type"] == ""
+    assert result["turn_understanding"]["customer_goals"][0][
+        "claim_type_status"
+    ] == "unmapped"
+
+
+def test_api_final_audit_blocks_pinch_as_battery_topic(monkeypatch):
+    message = "\u5bb6\u91cc\u6709\u4e24\u5c81\u5b9d\u5b9d\uff0c\u8fd9\u4e2a\u4f1a\u4e0d\u4f1a\u5939\u624b\u6216\u8005\u6709\u5b89\u5168\u9690\u60a3\uff1f"
+    monkeypatch.setattr(
+        semantic_fact_type_service.config,
+        "COPILOT_FACT_TYPE_LLM_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        semantic_fact_type_service,
+        "_classify_with_llm",
+        lambda _state, _message, _intent, **_kwargs: (
+            _authoritative_llm_result(
+                message,
+                fact_type="pinch_safety",
+                secondary_fact_types=[],
+            )
+        ),
+    )
     app = create_app()
     client = app.test_client()
 
     result = client.post("/ask/api/analyze", json={
-        "message": "\u5bb6\u91cc\u6709\u4e24\u5c81\u5b9d\u5b9d\uff0c\u8fd9\u4e2a\u4f1a\u4e0d\u4f1a\u5939\u624b\u6216\u8005\u6709\u5b89\u5168\u9690\u60a3\uff1f",
+        "message": message,
         "product_title": "\u82f1\u79be\u9632\u5939\u6ed1\u95e8\u6536\u7eb3\u67b6\u6574\u7406\u5ba2\u5385\u96f6\u98df\u684c\u9762\u513f\u7ae5\u73a9\u5177\u5367\u5ba4\u53ef\u62fc\u642d\u50a8\u7269\u62bd\u5c49",
         "conversation_id": "test_api_final_audit_pinch_safety",
     }).get_json()
@@ -324,15 +483,11 @@ def test_llm_fact_type_classification_can_override_rule_hint(monkeypatch):
     monkeypatch.setattr(
         semantic_fact_type_service,
         "_classify_with_llm",
-        lambda state, message, intent: {
-            "query_fact_type": "odor",
-            "confidence": 0.9,
-            "matched_terms": [],
-            "source": "llm",
-            "reason": "semantic focus is odor",
-            "risk_hint": "",
-            "secondary_fact_types": ["material"],
-        },
+        lambda state, message, intent, **_kwargs: _authoritative_llm_result(
+            message,
+            fact_type="odor",
+            secondary_fact_types=["material"],
+        ),
     )
 
     result = semantic_fact_type_service.classify_query_fact_type_llm_first({
@@ -350,15 +505,11 @@ def test_llm_fact_type_space_fit_is_not_overridden_by_rule_hint(monkeypatch):
     monkeypatch.setattr(
         semantic_fact_type_service,
         "_classify_with_llm",
-        lambda state, message, intent: {
-            "query_fact_type": "space_fit",
-            "confidence": 0.92,
-            "matched_terms": [],
-            "source": "llm",
-            "reason": "customer asks whether the room has enough space",
-            "risk_hint": "low",
-            "secondary_fact_types": ["dimensions"],
-        },
+        lambda state, message, intent, **_kwargs: _authoritative_llm_result(
+            message,
+            fact_type="space_fit",
+            secondary_fact_types=["dimensions"],
+        ),
     )
 
     result = semantic_fact_type_service.classify_query_fact_type_llm_first({

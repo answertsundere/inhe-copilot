@@ -18,7 +18,17 @@ _DATA_URL_RE = re.compile(r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]{8
 _BARE_BASE64_RE = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{160,}={0,2}(?![A-Za-z0-9+/=])")
 _ACCOUNT_RE = re.compile(r"(?i)(微信|VX|wx|旺旺|钉钉|DingTalk|买家昵称|昵称|账号)[:：]?\s*[\w@\-.一-龥]{2,32}")
 _ADDRESS_RE = re.compile(
-    r"[\u4e00-\u9fff]{2,}(省|市|区|县|镇|乡|街道|路|巷|小区|村|号楼|单元|室)[\u4e00-\u9fff0-9A-Za-z#\-]{2,}"
+    r"(?:"
+    r"(?:收货地址|地址|寄往|送到|收件人住址)\s*[:：]?\s*"
+    r"(?=[^，。；;\n]{0,64}(?:省|市|区|县|镇|乡|街道|路|街|巷|小区|村|号楼|单元|室|\d))"
+    r"[^，。；;\n]{4,80}"
+    r"|(?:[\u4e00-\u9fff]{2,}(?:省|自治区))?"
+    r"[\u4e00-\u9fff]{2,}(?:市|自治州)"
+    r"[\u4e00-\u9fff]{2,}(?:区|县|市)"
+    r"[\u4e00-\u9fff0-9A-Za-z#\-]{2,}"
+    r"|[\u4e00-\u9fff]{2,}(?:路|街|巷|道|小区|村)\s*"
+    r"\d+(?:号|弄|栋|幢|号楼|单元|室)?"
+    r")"
 )
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 _SAFE_INTERNAL_ID_KEYS = {
@@ -100,9 +110,9 @@ def sanitize_product_title(text: str | None) -> str:
     """Sanitize a product title without treating room/category words as address PII.
 
     QianNiu product titles often contain words like 客厅、卧室、桌面、儿童. The generic
-    address regex is intentionally broad for buyer messages, but it can erase
-    product identity and break downstream SKU/i_id resolution. Product-title
-    fields still go through URL, secret, phone/account, and long-id redaction.
+    sanitizer applies concrete-address detection to buyer messages, while product
+    titles do not carry buyer address authority. Product-title fields still go
+    through URL, secret, phone/account, and long-id redaction.
     """
     value = str(text or "")
     if not value:

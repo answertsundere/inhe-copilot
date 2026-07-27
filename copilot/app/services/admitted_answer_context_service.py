@@ -19,10 +19,13 @@ from app.services.claim_resolution_service import (
 )
 from app.services.fact_type_alias_service import (
     build_risk_policy_status,
+    canonical_attribute_slot,
+    canonical_material_composition_claim_type,
     normalize_high_risk_claim_type,
 )
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
 from app.services.semantic_fact_type_service import (
+    GOAL_IDENTITY_SCHEMA_VERSION,
     canonical_source_span_text,
     goal_understanding_eligibility_status,
 )
@@ -66,7 +69,6 @@ _PLACEHOLDER_PATTERNS = (
 
 COMPATIBLE_FACT_TYPES = {
     "installation_media": {"installation", "installation_media", "installation_media_request"},
-    "material_composition": {"material", "material_composition"},
     # High-risk claims require evidence explicitly reviewed for that claim.
     # A composition fact can answer "what is it made of", but cannot establish
     # non-toxicity, certification, child safety, or another safety conclusion.
@@ -189,6 +191,19 @@ def _attribute_key(item: dict[str, Any]) -> str:
         or item.get("fact_key")
         or item.get("structured_field")
     ).lower()
+
+
+def _canonical_attribute_key(item: dict[str, Any]) -> str:
+    declared_claim_type = sanitize_text(item.get("claim_type")).lower()
+    return canonical_attribute_slot(
+        sanitize_text(
+            item.get("canonical_attribute_key") or _attribute_key(item)
+        ).lower(),
+        fact_type=_fact_type(item) or declared_claim_type,
+        supported_claim_types=item.get("claim_types_supported")
+        or item.get("supported_claim_types")
+        or (),
+    )
 
 
 def _identity_scope(item: dict[str, Any]) -> list[dict[str, str]]:
@@ -379,9 +394,21 @@ def _claim_types(item: dict[str, Any]) -> list[str]:
     fact_type = normalize_high_risk_claim_type(fact_type) or fact_type
     if fact_type and fact_type not in values:
         values.append(fact_type)
-    if fact_type == "material" and "material_composition" not in values:
-        values.append("material_composition")
     return values
+
+
+def _canonical_claim_types(values: list[str] | set[str]) -> set[str]:
+    return {
+        canonical_material_composition_claim_type(value)
+        for value in values
+        if sanitize_text(value)
+    }
+
+
+def _compatible_claim_types(claim_type: str) -> set[str]:
+    return _canonical_claim_types(
+        COMPATIBLE_FACT_TYPES.get(claim_type, {claim_type})
+    )
 
 
 def _admission_reason(
@@ -421,8 +448,10 @@ def _admission_reason(
         if identity_reason:
             return identity_reason
     if requested_claim_types:
-        supported = set(_claim_types(item))
-        compatible = set().union(*(COMPATIBLE_FACT_TYPES.get(claim, {claim}) for claim in requested_claim_types))
+        supported = _canonical_claim_types(_claim_types(item))
+        compatible = set().union(
+            *(_compatible_claim_types(claim) for claim in requested_claim_types)
+        )
         if supported.isdisjoint(compatible):
             return "fact_type_incompatible"
     material_reason = material_evidence_admission_reason(item)
@@ -437,7 +466,11 @@ def _normalized_quantity(item: dict[str, Any], text: str) -> tuple[str, str, str
     if not match:
         fact_type = _fact_type(item)
         explicit_value = sanitize_text(item.get("value") or item.get("fact_value")).lower()
-        if explicit_value and fact_type in {"material", "material_composition", "color", "colour"}:
+        if explicit_value and (
+            canonical_material_composition_claim_type(fact_type)
+            == "material_composition"
+            or fact_type in {"color", "colour"}
+        ):
             canonical = re.sub(r"\s+", "", explicit_value)
             return value, "structured_text", f"text:{canonical}"
         return value, "", ""
@@ -506,6 +539,95 @@ def _candidate_containers(response: dict[str, Any]) -> list[tuple[str, dict[str,
     return candidates
 
 
+def _product_context_capabilities(
+    response: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    debug = _as_dict(response.get("evidence_debug"))
+    context = _as_dict(response.get("context_used"))
+    pack = (
+        _as_dict(response.get("product_context_pack"))
+        or _as_dict(context.get("product_context_pack"))
+        or _as_dict(debug.get("product_context_pack_summary"))
+    )
+    profile = _as_dict(pack.get("structured_profile"))
+    category = _as_dict(profile.get("category"))
+    has_category = (
+        sanitize_text(profile.get("source")) == "kb_product"
+        and any(
+            sanitize_text(category.get(level))
+            for level in ("l1", "l2", "l3")
+        )
+    )
+    return (
+        {
+            "product_category": {
+                "available": True,
+                "source": "product_context_pack.structured_profile.category",
+            }
+        }
+        if has_category
+        else {}
+    )
+
+
+def _bounded_inference_policy_projection(
+    domain_policy_pack: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if sanitize_text(domain_policy_pack.get("status")).lower() != "loaded":
+        return []
+    prefix = (
+        f"domain-policy:{sanitize_text(domain_policy_pack.get('domain_id'))}"
+        f"@{sanitize_text(domain_policy_pack.get('version'))}"
+    )
+    projections: list[dict[str, Any]] = []
+    for item in _as_list(domain_policy_pack.get("bounded_inference_policies")):
+        if not isinstance(item, dict):
+            continue
+        policy_intent_ref = sanitize_text(
+            item.get("policy_intent_ref")
+        ).lower()
+        if not policy_intent_ref:
+            continue
+        projections.append({
+            "policy_ref": f"{prefix}:intent:{policy_intent_ref}",
+            "policy_intent_ref": policy_intent_ref,
+            "goal_family": sanitize_text(
+                item.get("goal_family")
+            ).lower(),
+            "intent_kind": sanitize_text(
+                item.get("intent_kind")
+            ).lower(),
+            "premise_fact_families": sorted(_unique(
+                sanitize_text(value)
+                for value in _as_list(item.get("premise_fact_families"))
+                if sanitize_text(value)
+            )),
+            "required_context_capabilities": sorted(_unique(
+                sanitize_text(value)
+                for value in _as_list(
+                    item.get("required_context_capabilities")
+                )
+                if sanitize_text(value)
+            )),
+            "allowed_scope": sanitize_text(item.get("allowed_scope")),
+            "required_qualifiers": sorted(_unique(
+                sanitize_text(value)
+                for value in _as_list(item.get("required_qualifiers"))
+                if sanitize_text(value)
+            )),
+            "prohibited_claim_families": sorted(_unique(
+                sanitize_text(value)
+                for value in _as_list(item.get("prohibited_claim_families"))
+                if sanitize_text(value)
+            )),
+            "review_only": item.get("review_only") is True,
+        })
+    return sorted(
+        projections,
+        key=lambda item: sanitize_text(item.get("policy_ref")),
+    )
+
+
 def collect_admitted_product_facts(
     response: dict[str, Any],
     *,
@@ -560,6 +682,9 @@ def collect_admitted_product_facts(
             "claim_types_supported": _claim_types(item),
             "fact_type": _fact_type(item),
             "attribute_key": _attribute_key(item),
+            "canonical_attribute_key": _canonical_attribute_key(item),
+            "original_fact_type": _fact_type(item),
+            "original_evidence_attribute_key": _attribute_key(item),
             "fact_scope": sanitize_text(item.get("fact_scope") or item.get("product_scope")).lower(),
             "text": _clip(text),
             "value": _clip(item.get("value") or item.get("fact_value") or text),
@@ -572,7 +697,7 @@ def collect_admitted_product_facts(
     admitted: list[dict[str, Any]] = []
     grouped: dict[str, list[dict[str, Any]]] = {}
     for candidate in candidates:
-        slot = sanitize_text(candidate.get("attribute_key"))
+        slot = sanitize_text(candidate.get("canonical_attribute_key"))
         if not slot:
             admitted.append(candidate)
             warnings.append({**candidate, "reason": "conflict_check_skipped"})
@@ -591,10 +716,17 @@ def collect_admitted_product_facts(
             rejected.extend({**item, "reason": "incomparable_unit_domain", "conflict_status": "blocked"} for item in comparable)
             continue
         if len({sanitize_text(item.get("normalized_value")) for item in comparable}) > 1:
-            conflict_reason = "material_conflicting_evidence" if all(
-                sanitize_text(item.get("fact_type")) in {"material", "material_composition"}
-                for item in comparable
-            ) else "conflicting_evidence"
+            conflict_reason = (
+                "material_conflicting_evidence"
+                if all(
+                    canonical_material_composition_claim_type(
+                        item.get("fact_type")
+                    )
+                    == "material_composition"
+                    for item in comparable
+                )
+                else "conflicting_evidence"
+            )
             rejected.extend({**item, "reason": conflict_reason, "conflict_status": "blocked"} for item in comparable)
             continue
         admitted.append(comparable[0])
@@ -840,9 +972,14 @@ def build_turn_evidence_funnel(
             allow_global=role == "faq_direct",
         )
         row["identity_matched"] = row["identity_matched"] or bool(row["direct_reviewed"] and not identity_reason)
-        supported = set(_claim_types(item))
+        supported = _canonical_claim_types(_claim_types(item))
         compatible = (
-            set().union(*(COMPATIBLE_FACT_TYPES.get(claim, {claim}) for claim in requested_claim_types))
+            set().union(
+                *(
+                    _compatible_claim_types(claim)
+                    for claim in requested_claim_types
+                )
+            )
             if requested_claim_types else supported
         )
         fact_compatible = not requested_claim_types or not supported.isdisjoint(compatible)
@@ -968,21 +1105,53 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     for item in _as_list(understanding.get("requested_claims")):
         if isinstance(item, dict):
             allowed_fields = {
-                "goal_ref", "goal_kind", "claim_type", "attribute_key",
-                "semantic_key", "goal_summary", "source", "source_span_start",
-                "source_span_end", "source_span_sha256", "question", "risk_level",
+                "schema_version", "goal_ref", "goal_kind",
+                "claim_type_status", "claim_type", "claim_type_exact_match",
+                "attribute_key",
+                "semantic_key", "policy_intent_ref", "policy_goal_family",
+                "policy_intent_kind", "goal_summary", "source", "source_span_start",
+                "source_span_end", "source_span_sha256", "source_text_sha256",
+                "source_turn_uid", "question", "risk_level",
                 "owner", "source_stage", "supporting_only", "eligibility_source",
                 "customer_goal_eligible", "direct_handling_prohibited",
                 "prohibited", "prohibition_reason",
             }
             raw_claim_type = sanitize_text(item.get("claim_type")).lower()
             claim_type = normalize_high_risk_claim_type(raw_claim_type) or raw_claim_type
-            if claim_type:
+            goal_kind = sanitize_text(item.get("goal_kind")).lower()
+            claim_type_status = sanitize_text(
+                item.get("claim_type_status")
+            ).lower()
+            semantic_key = sanitize_text(item.get("semantic_key")).lower()
+            preserve_unmapped_goal = (
+                goal_kind == "customer_goal"
+                and claim_type_status == "unmapped"
+                and not claim_type
+            )
+            if claim_type or preserve_unmapped_goal:
                 result.append({
+                    "schema_version": sanitize_text(
+                        item.get("schema_version")
+                    ),
                     "goal_ref": sanitize_text(item.get("goal_ref")),
-                    "goal_kind": sanitize_text(item.get("goal_kind")).lower(),
+                    "goal_kind": goal_kind,
+                    "claim_type_status": claim_type_status,
                     "claim_type": claim_type,
+                    "claim_type_exact_match": (
+                        item.get("claim_type_exact_match") is True
+                    ),
                     "attribute_key": sanitize_text(item.get("attribute_key")).lower(),
+                    "semantic_key": semantic_key,
+                    "policy_intent_ref": sanitize_text(
+                        item.get("policy_intent_ref")
+                    ).lower(),
+                    "policy_goal_family": sanitize_text(
+                        item.get("policy_goal_family")
+                    ).lower(),
+                    "policy_intent_kind": sanitize_text(
+                        item.get("policy_intent_kind")
+                    ).lower(),
+                    "goal_summary": _clip(item.get("goal_summary"), 160),
                     "question": _clip(item.get("question"), 160),
                     "risk_level": sanitize_text(item.get("risk_level")).lower() or "medium",
                     "source": sanitize_text(item.get("source")).lower(),
@@ -991,6 +1160,12 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                     "source_span_sha256": _structured_sha256(
                         item.get("source_span_sha256")
                     ),
+                    "source_text_sha256": _structured_sha256(
+                        item.get("source_text_sha256")
+                    ),
+                    "source_turn_uid": sanitize_text(
+                        item.get("source_turn_uid")
+                    ).lower(),
                     "owner": sanitize_text(item.get("owner")).lower(),
                     "source_stage": sanitize_text(item.get("source_stage")).lower(),
                     "unexpected_fields": sorted(set(item) - allowed_fields),
@@ -1032,6 +1207,16 @@ def _canonical_customer_goals_for_eligibility(
         if not sanitize_text(item.get("goal_ref")):
             reasons.append("canonical_customer_goal_goal_ref_missing")
             continue
+        if (
+            sanitize_text(item.get("schema_version"))
+            != GOAL_IDENTITY_SCHEMA_VERSION
+            or not re.fullmatch(
+                r"turn-[0-9a-f]{20}",
+                sanitize_text(item.get("source_turn_uid")).lower(),
+            )
+        ):
+            reasons.append("canonical_customer_goal_identity_invalid")
+            continue
         if not sanitize_text(item.get("claim_type")).lower():
             reasons.append("canonical_customer_goal_claim_type_missing")
             continue
@@ -1051,6 +1236,9 @@ def _canonical_customer_goals_for_eligibility(
         start = item.get("source_span_start")
         end = item.get("source_span_end")
         digest = _structured_sha256(item.get("source_span_sha256"))
+        source_text_digest = _structured_sha256(
+            item.get("source_text_sha256")
+        )
         if (
             not isinstance(start, int)
             or isinstance(start, bool)
@@ -1059,6 +1247,7 @@ def _canonical_customer_goals_for_eligibility(
             or start < 0
             or end <= start
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or source_text_digest != digest
         ):
             reasons.append("canonical_customer_goal_source_span_missing")
             continue
@@ -1140,17 +1329,18 @@ def _resolution_matches_goal(
     resolution: dict[str, Any],
     goal: dict[str, Any],
 ) -> bool:
-    goal_claim_type = sanitize_text(goal.get("claim_type")).lower()
-    resolution_claim_type = sanitize_text(resolution.get("claim_type")).lower()
-    compatible_claim_types = COMPATIBLE_FACT_TYPES.get(
-        goal_claim_type,
-        {goal_claim_type},
+    goal_claim_type = canonical_material_composition_claim_type(
+        goal.get("claim_type")
     )
-    if resolution_claim_type not in compatible_claim_types:
+    resolution_claim_type = canonical_material_composition_claim_type(
+        resolution.get("claim_type")
+    )
+    canonical_compatible_claim_types = _compatible_claim_types(goal_claim_type)
+    if resolution_claim_type not in canonical_compatible_claim_types:
         return False
-    goal_attribute = sanitize_text(goal.get("attribute_key")).lower()
+    goal_attribute = _canonical_attribute_key(goal)
     if goal_attribute and (
-        sanitize_text(resolution.get("attribute_key")).lower()
+        _canonical_attribute_key(resolution)
         != goal_attribute
     ):
         return False
@@ -1162,16 +1352,19 @@ def _admitted_fact_matches_goal(
     goal: dict[str, Any],
     product_identity: dict[str, Any],
 ) -> bool:
-    goal_claim_type = sanitize_text(goal.get("claim_type")).lower()
-    compatible_claim_types = COMPATIBLE_FACT_TYPES.get(
-        goal_claim_type,
-        {goal_claim_type},
+    goal_claim_type = canonical_material_composition_claim_type(
+        goal.get("claim_type")
     )
-    if set(_claim_types(fact)).isdisjoint(compatible_claim_types):
+    canonical_compatible_claim_types = _compatible_claim_types(goal_claim_type)
+    fact_claim_types = {
+        canonical_material_composition_claim_type(item)
+        for item in _claim_types(fact)
+    }
+    if fact_claim_types.isdisjoint(canonical_compatible_claim_types):
         return False
 
-    goal_attribute = sanitize_text(goal.get("attribute_key")).lower()
-    if goal_attribute and _attribute_key(fact) != goal_attribute:
+    goal_attribute = _canonical_attribute_key(goal)
+    if goal_attribute and _canonical_attribute_key(fact) != goal_attribute:
         return False
 
     expected = {
@@ -1429,9 +1622,18 @@ class AdmittedAnswerContextService:
                 "status": "missing",
                 "reason_codes": ["domain_policy_pack_not_provided"],
                 "claim_policies": {},
+                "bounded_inference_policies": [],
             }
+        product_context_capabilities = _product_context_capabilities(response)
+        bounded_inference_policies = _bounded_inference_policy_projection(
+            domain_policy_pack
+        )
         requested_claims = _requested_claims(understanding)
-        requested_claim_types = [item["claim_type"] for item in requested_claims]
+        requested_claim_types = [
+            item["claim_type"]
+            for item in requested_claims
+            if item.get("claim_type")
+        ]
         direct_product, rejected, warnings = collect_admitted_product_facts(
             response,
             product_identity=identity,
@@ -1485,6 +1687,10 @@ class AdmittedAnswerContextService:
             direct_policy_facts=direct_policy,
             conflicts=conflicts,
             claim_policies=_as_dict(domain_policy_pack.get("claim_policies")),
+            bounded_inference_policies=_as_list(
+                domain_policy_pack.get("bounded_inference_policies")
+            ),
+            context_capabilities=product_context_capabilities,
             policy_ref_prefix=(
                 f"domain-policy:{sanitize_text(domain_policy_pack.get('domain_id'))}"
                 f"@{sanitize_text(domain_policy_pack.get('version'))}"
@@ -1509,6 +1715,11 @@ class AdmittedAnswerContextService:
             has_actions=bool(actions),
             has_media=bool(media),
         )
+        requested_by_goal = {
+            sanitize_text(item.get("goal_ref")): item
+            for item in requested_claims
+            if sanitize_text(item.get("goal_ref"))
+        }
         requested_by_claim = {
             sanitize_text(item.get("claim_type")): item
             for item in requested_claims
@@ -1516,7 +1727,15 @@ class AdmittedAnswerContextService:
         }
         unresolved = [
             {
-                **requested_by_claim.get(sanitize_text(resolution.get("claim_type")), {}),
+                **(
+                    requested_by_goal.get(
+                        sanitize_text(resolution.get("goal_ref"))
+                    )
+                    or requested_by_claim.get(
+                        sanitize_text(resolution.get("claim_type"))
+                    )
+                    or {}
+                ),
                 "claim_uid": sanitize_text(resolution.get("claim_uid")),
                 "reason": resolution["reason"],
                 "status": resolution["status"],
@@ -1541,6 +1760,8 @@ class AdmittedAnswerContextService:
             "conflicts": conflicts,
             "requested_claims": requested_claims,
             "product_identity": identity,
+            "product_context_capabilities": product_context_capabilities,
+            "bounded_inference_policies": bounded_inference_policies,
             "answer_eligibility_context": answer_eligibility_context,
             "read_only": True,
             "used_for_final_reply": False,
@@ -1680,6 +1901,12 @@ def build_minimal_decision_context(
         "product_identity": _as_dict(admitted_context.get("product_identity")),
         "admitted_evidence": selected,
         "claim_resolutions": _as_list(admitted_context.get("claim_resolutions")),
+        "product_context_capabilities": _as_dict(
+            admitted_context.get("product_context_capabilities")
+        ),
+        "bounded_inference_policies": _as_list(
+            admitted_context.get("bounded_inference_policies")
+        ),
         "unresolved_claims": _as_list(admitted_context.get("unresolved_claims")),
         "conflicting_claims": _as_list(admitted_context.get("conflicting_claims")),
         "service_actions": actions,

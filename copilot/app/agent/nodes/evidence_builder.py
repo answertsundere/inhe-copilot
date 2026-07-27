@@ -510,6 +510,20 @@ def _formal_product_identity(state: dict) -> dict:
 def _formal_understanding(state: dict) -> dict:
     understanding = state.get("turn_understanding") if isinstance(state.get("turn_understanding"), dict) else {}
     result = dict(understanding)
+    status = str(
+        result.get("goal_understanding_status") or ""
+    ).strip().lower()
+    if status in {"invalid", "degraded"}:
+        result["requested_claims"] = []
+        diagnostics = result.get("goal_understanding_diagnostics")
+        result["goal_understanding_diagnostics"] = list(dict.fromkeys(
+            str(reason).strip()
+            for reason in (
+                diagnostics if isinstance(diagnostics, list) else []
+            )
+            if str(reason or "").strip()
+        ))
+        return result
     claims = result.get("requested_claims") if isinstance(result.get("requested_claims"), list) else []
     if not claims:
         fact_types = [state.get("query_fact_type"), *(state.get("secondary_fact_types") or [])]
@@ -536,7 +550,11 @@ def _formal_understanding(state: dict) -> dict:
             diagnostics = result.get("goal_understanding_diagnostics")
             diagnostics = list(diagnostics) if isinstance(diagnostics, list) else []
             diagnostics.append("query_fact_type_compatibility_fallback")
-            result["goal_understanding_diagnostics"] = sorted(set(diagnostics))
+            result["goal_understanding_diagnostics"] = list(dict.fromkeys(
+                str(reason).strip()
+                for reason in diagnostics
+                if str(reason or "").strip()
+            ))
     result["requested_claims"] = expand_claim_dependencies(
         result.get("requested_claims") if isinstance(result.get("requested_claims"), list) else []
     )

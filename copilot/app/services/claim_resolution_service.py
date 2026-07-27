@@ -12,6 +12,11 @@ import json
 from typing import Any
 
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
+from app.services.fact_type_alias_service import (
+    canonical_attribute_slot,
+    canonical_material_composition_claim_type,
+    normalize_high_risk_claim_type,
+)
 from app.services.product_media_annotation_schema_service import canonical_dimension_attribute
 
 
@@ -74,27 +79,27 @@ def _claim_types(fact: dict[str, Any]) -> set[str]:
 
 def _canonical_claim_type(value: str) -> str:
     """Unify only the explicit legacy material/composition aliases."""
-    return "material_composition" if value in {"material", "material_composition"} else value
+    return canonical_material_composition_claim_type(value)
 
 
-def _attribute_key(item: dict[str, Any]) -> str:
-    value = sanitize_text(
+def _original_attribute_key(item: dict[str, Any]) -> str:
+    return sanitize_text(
         item.get("attribute_key")
         or item.get("field_name")
         or item.get("fact_key")
         or item.get("structured_field")
-    ).lower()
-    if value:
-        return canonical_dimension_attribute(value)
-    # `material` is the canonical slot for the legacy primary material fact
-    # and the dependency-expanded material composition claim.  This prevents
-    # otherwise equivalent, directly admitted structured material facts from
-    # becoming an artificial multi-attribute ambiguity.
+    )
+
+
+def _attribute_key(item: dict[str, Any]) -> str:
+    value = _original_attribute_key(item).lower()
+    normalized_attribute = canonical_dimension_attribute(value) if value else ""
     claim_type = sanitize_text(item.get("claim_type") or item.get("fact_type")).lower()
-    supported_claim_types = _claim_types(item)
-    if claim_type in {"material", "material_composition"} or supported_claim_types & {"material", "material_composition"}:
-        return "material"
-    return ""
+    return canonical_attribute_slot(
+        normalized_attribute,
+        fact_type=claim_type,
+        supported_claim_types=_claim_types(item),
+    )
 
 
 def _facts_for_claim(claim_type: str, facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -131,12 +136,17 @@ def _select_for_attribute(
 
 def _claim_uid(requested: dict[str, Any]) -> str:
     """Create a stable claim identity from declared understanding, not input order."""
-    canonical = {
-        "claim_type": sanitize_text(requested.get("claim_type")).lower(),
-        "attribute_key": sanitize_text(requested.get("attribute_key")).lower(),
-        "question": sanitize_text(requested.get("question")).lower(),
-        "risk_level": sanitize_text(requested.get("risk_level")).lower(),
-    }
+    goal_ref = sanitize_text(requested.get("goal_ref"))
+    canonical = (
+        {"goal_ref": goal_ref}
+        if goal_ref
+        else {
+            "claim_type": sanitize_text(requested.get("claim_type")).lower(),
+            "attribute_key": sanitize_text(requested.get("attribute_key")).lower(),
+            "question": sanitize_text(requested.get("question")).lower(),
+            "risk_level": sanitize_text(requested.get("risk_level")).lower(),
+        }
+    )
     digest = hashlib.sha256(
         json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()[:16]
@@ -159,6 +169,156 @@ def _claim_policy(
     return value if isinstance(value, dict) else {}
 
 
+def _structured_claim_families(requested: dict[str, Any]) -> set[str]:
+    return {
+        value
+        for value in (
+            _canonical_claim_type(sanitize_text(requested.get("claim_type")).lower()),
+            _attribute_key(requested),
+        )
+        if value
+    }
+
+
+def _policy_values(policy: dict[str, Any], key: str) -> list[str]:
+    values = policy.get(key)
+    if not isinstance(values, list):
+        return []
+    return sorted({
+        sanitize_text(value).lower()
+        for value in values
+        if sanitize_text(value)
+    })
+
+
+def _bounded_inference_resolution(
+    requested: dict[str, Any],
+    *,
+    direct_product_facts: list[dict[str, Any]],
+    conflicts: list[dict[str, Any]],
+    bounded_inference_policies: list[dict[str, Any]],
+    context_capabilities: dict[str, Any],
+    policy_ref_prefix: str,
+) -> dict[str, Any] | None:
+    policy_intent_ref = sanitize_text(
+        requested.get("policy_intent_ref")
+    ).lower()
+    if not policy_intent_ref:
+        return None
+
+    matching_policies = sorted(
+        (
+            policy
+            for policy in bounded_inference_policies
+            if isinstance(policy, dict)
+            and policy.get("review_only") is True
+            and sanitize_text(policy.get("policy_intent_ref")).lower()
+            == policy_intent_ref
+        ),
+        key=lambda item: sanitize_text(item.get("policy_intent_ref")),
+    )
+    if not matching_policies:
+        return {"reason": "bounded_inference_policy_intent_unknown"}
+    if len(matching_policies) != 1:
+        return {"reason": "bounded_inference_policy_ambiguous"}
+
+    policy = matching_policies[0]
+    policy_goal_family = sanitize_text(
+        requested.get("policy_goal_family")
+    ).lower()
+    if (
+        not policy_goal_family
+        or policy_goal_family
+        != sanitize_text(policy.get("goal_family")).lower()
+    ):
+        return {"reason": "bounded_inference_goal_family_mismatch"}
+    policy_intent_kind = sanitize_text(
+        requested.get("policy_intent_kind")
+    ).lower()
+    if (
+        not policy_intent_kind
+        or policy_intent_kind
+        != sanitize_text(policy.get("intent_kind")).lower()
+    ):
+        return {"reason": "bounded_inference_intent_kind_mismatch"}
+
+    claim_families = _structured_claim_families(requested)
+    if (
+        any(normalize_high_risk_claim_type(value) for value in claim_families)
+        or sanitize_text(requested.get("risk_level")).lower()
+        in {"high", "critical", "prohibited"}
+    ):
+        return {"reason": "bounded_inference_high_risk_prohibited"}
+
+    if claim_families.intersection(
+        _policy_values(policy, "prohibited_claim_families")
+    ):
+        return {"reason": "bounded_inference_prohibited_extension"}
+    if policy_intent_kind == "absolute_guarantee":
+        return {"reason": "bounded_inference_absolute_guarantee_prohibited"}
+    if policy_intent_kind == "test_standard_request":
+        return {
+            "reason": "bounded_inference_direct_test_evidence_required"
+        }
+    if policy_intent_kind == "warranty_or_liability_request":
+        return {
+            "reason": (
+                "bounded_inference_policy_or_service_evidence_required"
+            )
+        }
+    if policy_intent_kind != "practical_guidance":
+        return {"reason": "bounded_inference_intent_kind_unsupported"}
+
+    required_capabilities = _policy_values(
+        policy,
+        "required_context_capabilities",
+    )
+    if any(
+        not isinstance(context_capabilities.get(capability), dict)
+        or context_capabilities[capability].get("available") is not True
+        for capability in required_capabilities
+    ):
+        return {"reason": "bounded_inference_context_capability_missing"}
+
+    premise_families = _policy_values(policy, "premise_fact_families")
+    premise_facts: list[dict[str, Any]] = []
+    for family in premise_families:
+        if _facts_for_claim(family, conflicts):
+            return {"reason": "bounded_inference_premise_conflicting"}
+        family_facts = _facts_for_claim(family, direct_product_facts)
+        if not family_facts:
+            return {"reason": "bounded_inference_premise_missing"}
+        premise_facts.extend(family_facts)
+    premise_by_uid = {
+        sanitize_text(item.get("evidence_uid")): item
+        for item in premise_facts
+        if sanitize_text(item.get("evidence_uid"))
+    }
+    if not premise_by_uid:
+        return {"reason": "bounded_inference_premise_missing"}
+
+    if not policy_ref_prefix:
+        return {"reason": "bounded_inference_policy_reference_missing"}
+    premise_uids = sorted(premise_by_uid)
+    return {
+        "reason": "policy_bounded_inference",
+        "facts": [premise_by_uid[uid] for uid in premise_uids],
+        "premise_evidence_uids": premise_uids,
+        "inference_policy_refs": [
+            f"{policy_ref_prefix}:intent:{policy_intent_ref}"
+        ],
+        "scope_qualifier": sanitize_text(policy.get("allowed_scope")).lower(),
+        "required_qualifiers": _policy_values(
+            policy,
+            "required_qualifiers",
+        ),
+        "prohibited_extensions": _policy_values(
+            policy,
+            "prohibited_claim_families",
+        ),
+    }
+
+
 def build_claim_resolutions(
     requested_claims: list[dict[str, Any]],
     *,
@@ -166,6 +326,8 @@ def build_claim_resolutions(
     direct_policy_facts: list[dict[str, Any]],
     conflicts: list[dict[str, Any]],
     claim_policies: dict[str, Any] | None = None,
+    bounded_inference_policies: list[dict[str, Any]] | None = None,
+    context_capabilities: dict[str, Any] | None = None,
     policy_ref_prefix: str = "",
 ) -> list[dict[str, Any]]:
     """Return one deterministic claim decision per declared claim.
@@ -180,21 +342,44 @@ def build_claim_resolutions(
         key=_claim_uid,
     )
     for requested in ordered_requests:
-        claim_type = sanitize_text(requested.get("claim_type")).lower()
-        if not claim_type:
+        original_claim_type = sanitize_text(requested.get("claim_type"))
+        original_attribute_key = _original_attribute_key(requested)
+        claim_type = original_claim_type.lower()
+        claim_type_status = sanitize_text(
+            requested.get("claim_type_status")
+        ).lower()
+        unmapped_customer_goal = (
+            not claim_type
+            and claim_type_status == "unmapped"
+            and sanitize_text(requested.get("goal_kind")).lower()
+            == "customer_goal"
+        )
+        if not claim_type and not unmapped_customer_goal:
             continue
-        policy = _claim_policy(claim_type, claim_policies)
+        policy = (
+            {}
+            if unmapped_customer_goal
+            else _claim_policy(claim_type, claim_policies)
+        )
         policy_refs = (
             [f"{policy_ref_prefix}:{_canonical_claim_type(claim_type)}"]
             if policy and policy_ref_prefix
             else []
         )
         requested_attribute = _attribute_key(requested)
-        matching_facts, fact_selection_reason = _select_for_attribute(
-            requested_attribute,
-            _facts_for_claim(claim_type, direct_facts),
+        matching_facts, fact_selection_reason = (
+            ([], "")
+            if unmapped_customer_goal
+            else _select_for_attribute(
+                requested_attribute,
+                _facts_for_claim(claim_type, direct_facts),
+            )
         )
-        conflict_candidates = _facts_for_claim(claim_type, conflicts)
+        conflict_candidates = (
+            []
+            if unmapped_customer_goal
+            else _facts_for_claim(claim_type, conflicts)
+        )
         matching_conflicts, _conflict_selection_reason = (
             _select_for_attribute(requested_attribute, conflict_candidates)
             if conflict_candidates
@@ -205,7 +390,11 @@ def build_claim_resolutions(
             for fact in matching_conflicts
             if sanitize_text(fact.get("evidence_uid"))
         ]
-        if _claim_is_prohibited(requested):
+        if unmapped_customer_goal:
+            status = "unresolved"
+            reason = "unmapped_claim_type"
+            facts = []
+        elif _claim_is_prohibited(requested):
             status = "prohibited"
             reason = sanitize_text(requested.get("prohibition_reason")) or "direct_handling_prohibited"
             facts = []
@@ -225,13 +414,65 @@ def build_claim_resolutions(
             status = "unresolved"
             reason = "no_admitted_direct_evidence"
             facts = []
+        bounded: dict[str, Any] | None = None
+        if (
+            not unmapped_customer_goal
+            and status == "unresolved"
+            and reason == "no_admitted_direct_evidence"
+        ):
+            bounded = _bounded_inference_resolution(
+                requested,
+                direct_product_facts=direct_product_facts,
+                conflicts=conflicts,
+                bounded_inference_policies=[
+                    item
+                    for item in (bounded_inference_policies or [])
+                    if isinstance(item, dict)
+                ],
+                context_capabilities=(
+                    context_capabilities
+                    if isinstance(context_capabilities, dict)
+                    else {}
+                ),
+                policy_ref_prefix=policy_ref_prefix,
+            )
+            if bounded:
+                reason = sanitize_text(bounded.get("reason"))
+                if bounded.get("facts"):
+                    status = "supported"
+                    facts = list(bounded["facts"])
+                    policy_refs = list(
+                        bounded.get("inference_policy_refs") or []
+                    )
         results.append({
             "claim_uid": _claim_uid(requested),
             "goal_ref": sanitize_text(requested.get("goal_ref")),
             "goal_kind": sanitize_text(requested.get("goal_kind")).lower(),
+            "claim_type_status": claim_type_status,
+            "semantic_key": sanitize_text(requested.get("semantic_key")).lower(),
+            "policy_intent_ref": sanitize_text(
+                requested.get("policy_intent_ref")
+            ).lower(),
+            "policy_goal_family": sanitize_text(
+                requested.get("policy_goal_family")
+            ).lower(),
+            "policy_intent_kind": sanitize_text(
+                requested.get("policy_intent_kind")
+            ).lower(),
+            "goal_summary": sanitize_text(requested.get("goal_summary")),
+            "source": sanitize_text(requested.get("source")).lower(),
+            "source_span_start": requested.get("source_span_start"),
+            "source_span_end": requested.get("source_span_end"),
+            "source_span_sha256": sanitize_text(
+                requested.get("source_span_sha256")
+            ).lower(),
             "supporting_only": requested.get("supporting_only") is True,
             "claim_type": claim_type,
             "attribute_key": requested_attribute,
+            "original_claim_type": original_claim_type,
+            "original_attribute_key": original_attribute_key,
+            "canonical_claim_family": _canonical_claim_type(claim_type),
+            "canonical_attribute_key": requested_attribute,
             "status": status,
             "evidence_uids": [
                 sanitize_text(fact.get("evidence_uid")) for fact in facts if sanitize_text(fact.get("evidence_uid"))
@@ -241,17 +482,46 @@ def build_claim_resolutions(
             ],
             "conflicting_evidence_uids": conflict_uids if status == "conflicting" else [],
             "support_basis": (
-                "direct_evidence"
+                "bounded_inference"
+                if status == "supported" and bounded and bounded.get("facts")
+                else "direct_evidence"
                 if status == "supported"
                 else "prohibited"
                 if status == "prohibited"
                 else "none"
             ),
             "inference_policy_refs": policy_refs,
-            "bounded_inference_policy": sanitize_text(
-                policy.get("bounded_inference_policy")
+            "premise_evidence_uids": (
+                list(bounded.get("premise_evidence_uids") or [])
+                if bounded and bounded.get("facts")
+                else []
             ),
-            "requires_human_review": status != "supported" or sanitize_text(requested.get("risk_level")).lower() in {"high", "critical"},
+            "scope_qualifier": (
+                sanitize_text(bounded.get("scope_qualifier"))
+                if bounded and bounded.get("facts")
+                else ""
+            ),
+            "required_qualifiers": (
+                list(bounded.get("required_qualifiers") or [])
+                if bounded and bounded.get("facts")
+                else []
+            ),
+            "prohibited_extensions": (
+                list(bounded.get("prohibited_extensions") or [])
+                if bounded and bounded.get("facts")
+                else []
+            ),
+            "bounded_inference_policy": sanitize_text(
+                "review_required"
+                if bounded and bounded.get("facts")
+                else policy.get("bounded_inference_policy")
+            ),
+            "requires_human_review": (
+                bool(bounded and bounded.get("facts"))
+                or status != "supported"
+                or sanitize_text(requested.get("risk_level")).lower()
+                in {"high", "critical"}
+            ),
             "reason": reason,
         })
     return sanitize_obj(results)
@@ -293,6 +563,11 @@ def build_inference_requirement_status(
         }
     if all(item.get("support_basis") == "direct_evidence" for item in resolutions):
         return {**base, "status": "direct_evidence_only"}
+    if (
+        any(item.get("support_basis") == "bounded_inference" for item in resolutions)
+        and all(item.get("status") == "supported" for item in resolutions)
+    ):
+        return {**base, "status": "bounded_inference_completed"}
     if any(
         item.get("status") in {"unresolved", "conflicting"}
         and item.get("bounded_inference_policy") in {"allowed", "review_required"}

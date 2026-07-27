@@ -218,6 +218,52 @@ def test_client_uses_field_aware_projection_for_json_system_and_multimodal_text_
     assert "2026071900012345" not in rendered
 
 
+def test_client_preserves_room_semantics_and_redacts_structured_private_fields():
+    client, completions = _client(
+        "https://api.deepseek.com/v1",
+        _response(content='{"suggested_reply":"ok"}'),
+    )
+    payload = {
+        "customer_message": "放浴室是不是就不怕水",
+        "product_title": "客厅卧室浴室收纳凳",
+        "fact": "主体材质为PP，宽80厘米，颜色为白色",
+        "buyer_id": "buyer-private-001",
+        "account": "buyer-account-001",
+        "email": "buyer@example.test",
+        "address": "北京市朝阳区幸福路12号",
+        "tracking_no": "SF1234567890123",
+        "url": "https://example.test/private/path?token=value",
+    }
+
+    client.create_chat_completion(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "保留卧室、浴室、客厅等商品使用语义。"},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(payload, ensure_ascii=False),
+                    },
+                ],
+            },
+        ],
+    )
+
+    rendered = str(completions.calls[0]["messages"])
+    assert "放浴室是不是就不怕水" in rendered
+    assert "客厅卧室浴室收纳凳" in rendered
+    assert "主体材质为PP，宽80厘米，颜色为白色" in rendered
+    assert "buyer-private-001" not in rendered
+    assert "buyer-account-001" not in rendered
+    assert "buyer@example.test" not in rendered
+    assert "幸福路12号" not in rendered
+    assert "SF1234567890123" not in rendered
+    assert "https://example.test/private/path?token=value" not in rendered
+
+
 def test_client_projects_fenced_json_and_label_lines_in_text_parts_without_mutating_product_facts():
     client, completions = _client(
         "https://api.deepseek.com/v1",

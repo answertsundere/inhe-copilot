@@ -192,6 +192,15 @@ class FilePolicyRepository(PolicyRepositoryBase):
                 str(key): dict(value)
                 for key, value in sorted(data["claim_policies"].items())
             },
+            "bounded_inference_policies": [
+                dict(value)
+                for value in sorted(
+                    data.get("bounded_inference_policies") or [],
+                    key=lambda item: str(
+                        item.get("policy_intent_ref") or ""
+                    ),
+                )
+            ],
         }
 
     @staticmethod
@@ -208,6 +217,7 @@ class FilePolicyRepository(PolicyRepositoryBase):
             "status": status,
             "reason_codes": [reason],
             "claim_policies": {},
+            "bounded_inference_policies": [],
         }
 
     @staticmethod
@@ -220,12 +230,20 @@ class FilePolicyRepository(PolicyRepositoryBase):
             return "domain_policy_pack_not_object"
         if data.get("schema_version") != "domain-policy-pack/v1":
             return "domain_policy_schema_invalid"
-        if set(data) != {
+        required_top_level = {
             "schema_version",
             "domain_id",
             "version",
             "claim_policies",
-        }:
+        }
+        allowed_top_level = {
+            *required_top_level,
+            "bounded_inference_policies",
+        }
+        if (
+            not required_top_level.issubset(data)
+            or not set(data).issubset(allowed_top_level)
+        ):
             return "domain_policy_top_level_schema_invalid"
         if str(data.get("domain_id") or "").strip() != expected_domain_id:
             return "domain_policy_identity_mismatch"
@@ -270,4 +288,67 @@ class FilePolicyRepository(PolicyRepositoryBase):
                 "action",
             }:
                 return "domain_policy_freshness_invalid"
+        inference_policies = data.get("bounded_inference_policies", [])
+        if not isinstance(inference_policies, list):
+            return "domain_policy_bounded_inference_policies_invalid"
+        policy_intent_refs: set[str] = set()
+        inference_keys = {
+            "policy_intent_ref",
+            "goal_family",
+            "intent_kind",
+            "premise_fact_families",
+            "required_context_capabilities",
+            "allowed_scope",
+            "required_qualifiers",
+            "prohibited_claim_families",
+            "review_only",
+        }
+        identifier_pattern = re.compile(r"[a-z0-9][a-z0-9_.-]{0,95}")
+        for policy in inference_policies:
+            if not isinstance(policy, dict) or set(policy) != inference_keys:
+                return "domain_policy_bounded_inference_schema_invalid"
+            policy_intent_ref = str(
+                policy.get("policy_intent_ref") or ""
+            ).strip()
+            if (
+                not identifier_pattern.fullmatch(policy_intent_ref)
+                or policy_intent_ref in policy_intent_refs
+            ):
+                return "domain_policy_policy_intent_ref_invalid"
+            policy_intent_refs.add(policy_intent_ref)
+            if not identifier_pattern.fullmatch(
+                str(policy.get("goal_family") or "")
+            ):
+                return "domain_policy_goal_family_invalid"
+            if policy.get("intent_kind") not in {
+                "practical_guidance",
+                "absolute_guarantee",
+                "test_standard_request",
+                "warranty_or_liability_request",
+            }:
+                return "domain_policy_intent_kind_invalid"
+            for key in (
+                "premise_fact_families",
+                "required_context_capabilities",
+                "required_qualifiers",
+                "prohibited_claim_families",
+            ):
+                values = policy.get(key)
+                if (
+                    not isinstance(values, list)
+                    or not values
+                    or len(values) != len(set(values))
+                    or any(
+                        not isinstance(value, str)
+                        or not identifier_pattern.fullmatch(value)
+                        for value in values
+                    )
+                ):
+                    return "domain_policy_bounded_inference_values_invalid"
+            if not identifier_pattern.fullmatch(
+                str(policy.get("allowed_scope") or "")
+            ):
+                return "domain_policy_bounded_inference_scope_invalid"
+            if policy.get("review_only") is not True:
+                return "domain_policy_bounded_inference_review_only_required"
         return ""

@@ -7,6 +7,7 @@ original query fact type or final answer gates.
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 
 
@@ -112,6 +113,108 @@ def _clean(value: Any) -> str:
 def normalize_high_risk_claim_type(value: Any) -> str:
     """Return the canonical high-risk claim, or an empty value when unknown."""
     return _HIGH_RISK_CLAIM_ALIASES.get(_clean(value).lower(), "")
+
+
+_BASE_MATERIAL_COMPOSITION_ALIASES = frozenset({
+    "material",
+    "material_composition",
+})
+
+_CANONICAL_ATTRIBUTE_FAMILIES = (
+    {
+        "canonical_family": "material_composition",
+        "fact_type_aliases": _BASE_MATERIAL_COMPOSITION_ALIASES,
+        "canonical_default_attribute_slot": "material_composition",
+        "accepted_self_attribute_aliases": frozenset({
+            "",
+            "material",
+            "material_composition",
+            "材质",
+            "材料",
+            "材质组成",
+            "材料组成",
+            "材质成分",
+        }),
+        "preserve_specific_attributes": frozenset({
+            "material_safety",
+            "non_toxic",
+            "food_grade",
+            "certification",
+            "moisture_resistance",
+            "waterproof",
+            "durability",
+            "drop_resistance",
+            "load_capacity",
+            "child_safety",
+            "component_material",
+            "frame_material",
+            "coating_material",
+            "surface_material",
+        }),
+    },
+)
+
+
+def _normalize_contract_token(value: Any) -> str:
+    return unicodedata.normalize("NFKC", str(value or "")).strip().casefold()
+
+
+def canonical_material_composition_claim_type(value: Any) -> str:
+    """Canonicalize only the legacy base-material claim aliases."""
+    claim_type = _normalize_contract_token(value)
+    if claim_type in _BASE_MATERIAL_COMPOSITION_ALIASES:
+        return "material_composition"
+    return claim_type
+
+
+def canonical_attribute_slot(
+    value: Any,
+    *,
+    fact_type: Any = "",
+    supported_claim_types: Any = (),
+) -> str:
+    """Return a canonical attribute slot without widening fact eligibility."""
+    attribute = _normalize_contract_token(value)
+    primary_fact_type = _normalize_contract_token(fact_type)
+    declared = (
+        supported_claim_types
+        if isinstance(supported_claim_types, (list, tuple, set, frozenset))
+        else (supported_claim_types,)
+    )
+    declared_types = {
+        token
+        for item in declared
+        if (token := _normalize_contract_token(item))
+    }
+
+    for family in _CANONICAL_ATTRIBUTE_FAMILIES:
+        aliases = family["fact_type_aliases"]
+        if attribute in family["preserve_specific_attributes"]:
+            return attribute
+        if primary_fact_type:
+            belongs_to_family = primary_fact_type in aliases
+        else:
+            belongs_to_family = bool(declared_types) and declared_types <= aliases
+        if (
+            belongs_to_family
+            and attribute in family["accepted_self_attribute_aliases"]
+        ):
+            return str(family["canonical_default_attribute_slot"])
+    return attribute
+
+
+def canonical_material_composition_slot(
+    value: Any,
+    *,
+    fact_type: Any = "",
+    supported_claim_types: Any = (),
+) -> str:
+    """Compatibility wrapper for the shared canonical attribute owner."""
+    return canonical_attribute_slot(
+        value,
+        fact_type=fact_type,
+        supported_claim_types=supported_claim_types,
+    )
 
 
 def high_risk_claim_types() -> frozenset[str]:

@@ -1,6 +1,89 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.0.0
+version: 1.1.0
+bounded_inference_policies:
+  - policy_intent_ref: product_durability_practical_guidance
+    goal_family: product_durability
+    intent_kind: practical_guidance
+    premise_fact_families:
+      - material_composition
+    required_context_capabilities:
+      - product_category
+    allowed_scope: ordinary_minor_accidental_impact
+    required_qualifiers:
+      - no_absolute_guarantee
+      - avoid_high_or_repeated_impact
+      - no_test_claim
+    prohibited_claim_families:
+      - certification_report
+      - child_safety
+      - food_grade
+      - load_capacity
+      - non_toxic_claim
+      - refund
+      - replacement
+      - warranty
+    review_only: true
+  - policy_intent_ref: product_durability_absolute_guarantee
+    goal_family: product_durability
+    intent_kind: absolute_guarantee
+    premise_fact_families:
+      - material_composition
+    required_context_capabilities:
+      - product_category
+    allowed_scope: absolute_guarantee_disallowed
+    required_qualifiers:
+      - no_absolute_guarantee
+    prohibited_claim_families:
+      - certification_report
+      - child_safety
+      - food_grade
+      - load_capacity
+      - non_toxic_claim
+      - refund
+      - replacement
+      - warranty
+    review_only: true
+  - policy_intent_ref: product_durability_test_standard
+    goal_family: product_durability
+    intent_kind: test_standard_request
+    premise_fact_families:
+      - certification_report
+    required_context_capabilities:
+      - product_category
+    allowed_scope: direct_test_evidence_required
+    required_qualifiers:
+      - no_test_claim_without_direct_evidence
+    prohibited_claim_families:
+      - certification_report
+      - child_safety
+      - food_grade
+      - load_capacity
+      - non_toxic_claim
+      - refund
+      - replacement
+      - warranty
+    review_only: true
+  - policy_intent_ref: product_durability_warranty_liability
+    goal_family: product_durability
+    intent_kind: warranty_or_liability_request
+    premise_fact_families:
+      - aftersales_policy
+    required_context_capabilities:
+      - product_category
+    allowed_scope: policy_or_service_evidence_required
+    required_qualifiers:
+      - no_warranty_or_liability_commitment
+    prohibited_claim_families:
+      - certification_report
+      - child_safety
+      - food_grade
+      - load_capacity
+      - non_toxic_claim
+      - refund
+      - replacement
+      - warranty
+    review_only: true
 claim_policies:
   material:
     risk_level: low

@@ -23,12 +23,21 @@ def _requested_claims_from_customer_goals(
         if not goal_ref or goal_ref in seen:
             continue
         seen.add(goal_ref)
-        claims.append({
+        claim = {
             "goal_ref": goal_ref,
             "goal_kind": "customer_goal",
             "claim_type": str(goal.get("claim_type") or "").strip(),
             "attribute_key": str(goal.get("attribute_key") or "").strip(),
             "semantic_key": str(goal.get("semantic_key") or "").strip(),
+            "policy_intent_ref": str(
+                goal.get("policy_intent_ref") or ""
+            ).strip(),
+            "policy_goal_family": str(
+                goal.get("policy_goal_family") or ""
+            ).strip(),
+            "policy_intent_kind": str(
+                goal.get("policy_intent_kind") or ""
+            ).strip(),
             "goal_summary": str(goal.get("goal_summary") or "").strip(),
             "source": str(goal.get("source") or "").strip(),
             "source_span_start": goal.get("source_span_start"),
@@ -38,7 +47,17 @@ def _requested_claims_from_customer_goals(
             "source_stage": "query_fact_type_classifier",
             "question": question,
             "risk_level": risk_hint,
-        })
+        }
+        for field in (
+            "schema_version",
+            "claim_type_status",
+            "claim_type_exact_match",
+            "source_turn_uid",
+            "source_text_sha256",
+        ):
+            if field in goal:
+                claim[field] = goal[field]
+        claims.append(claim)
     return sorted(claims, key=lambda item: item["goal_ref"])
 
 
@@ -48,11 +67,39 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
         for item in result.get("customer_goals") or []
         if isinstance(item, dict)
     ]
-    requested_claims = _requested_claims_from_customer_goals(
-        goals,
-        question=str(state.get("normalized_message") or state.get("customer_message") or ""),
-        risk_hint=str(result.get("risk_hint") or ""),
-    )
+    status = str(
+        result.get("goal_understanding_status") or "degraded"
+    ).strip().lower()
+    diagnostics = result.get("goal_understanding_diagnostics")
+    diagnostics = list(diagnostics) if isinstance(diagnostics, list) else []
+    diagnostics = list(dict.fromkeys(
+        str(reason).strip()
+        for reason in diagnostics
+        if str(reason or "").strip()
+    ))
+    requested_claims = []
+    if status == "valid":
+        requested_claims = _requested_claims_from_customer_goals(
+            goals,
+            question=str(
+                state.get("normalized_message")
+                or state.get("customer_message")
+                or ""
+            ),
+            risk_hint=str(result.get("risk_hint") or ""),
+        )
+        customer_goal_count = sum(
+            1
+            for goal in goals
+            if goal.get("goal_kind") == "customer_goal"
+        )
+        if len(requested_claims) != customer_goal_count:
+            status = "invalid"
+            requested_claims = []
+            diagnostics = list(dict.fromkeys([
+                *diagnostics,
+                "requested_claim_count_mismatch",
+            ]))
     return {
         "schema_version": "turn-understanding/v2",
         "owner": "turn_understanding_owner",
@@ -60,8 +107,8 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
         "query_fact_type": result.get("query_fact_type", ""),
         "secondary_fact_types": result.get("secondary_fact_types", []),
         "customer_goals": goals,
-        "goal_understanding_status": result.get("goal_understanding_status", "degraded"),
-        "goal_understanding_diagnostics": result.get("goal_understanding_diagnostics", []),
+        "goal_understanding_status": status,
+        "goal_understanding_diagnostics": diagnostics,
         "requested_claims": requested_claims,
     }
 
@@ -93,7 +140,14 @@ def query_fact_type_classifier(state: dict) -> dict:
         }
 
     result = classify_query_fact_type_llm_first(state)
-    if not result.get("query_fact_type") and state.get("query_fact_type"):
+    if (
+        not result.get("query_fact_type")
+        and state.get("query_fact_type")
+        and not (result.get("customer_goals") or [])
+        and str(
+            result.get("goal_understanding_status") or ""
+        ).strip().lower() not in {"invalid", "degraded"}
+    ):
         result = {
             **result,
             "query_fact_type": state.get("query_fact_type", ""),

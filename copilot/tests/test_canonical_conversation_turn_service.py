@@ -7,12 +7,38 @@ import pytest
 from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
 from app.services.canonical_conversation_turn_service import (
     ConversationContextContractError,
+    canonical_current_customer_turn_uid,
     is_strict_evaluation_source,
     normalize_conversation_turns,
     project_conversation_turns_for_external_model,
     project_provider_message_text,
     project_value_for_external_model,
 )
+
+
+def test_current_customer_turn_uid_ignores_caller_supplied_turn_uid():
+    message = "继续确认这个问题"
+    first = canonical_current_customer_turn_uid(
+        message,
+        conversation_history=[{
+            "role": "agent",
+            "content": "上一条回复",
+            "turn_index": 3,
+            "turn_uid": "turn-forged-first",
+        }],
+    )
+    second = canonical_current_customer_turn_uid(
+        message,
+        conversation_history=[{
+            "role": "agent",
+            "content": "上一条回复",
+            "turn_index": 3,
+            "turn_uid": "turn-forged-second",
+        }],
+    )
+
+    assert first == second
+    assert first.startswith("turn-")
 
 
 def test_normalizes_role_aware_turns_without_preserving_legacy_text_key():

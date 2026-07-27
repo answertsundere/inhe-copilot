@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import pytest
+
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
     build_minimal_decision_context,
@@ -185,6 +187,150 @@ def test_conflicting_structured_material_values_are_both_blocked():
     assert {item["reason"] for item in context["rejected_evidence"]} == {"material_conflicting_evidence"}
 
 
+def test_material_alias_conflicts_share_one_slot_without_changing_provenance():
+    response = {
+        "selected_evidence": [
+            _fact(
+                evidence_uid="material-pp",
+                origin_evidence_key="kb:material-pp",
+                fact_type="material",
+                attribute_key="material",
+                value="PP",
+                content="主体材质为PP。",
+            ),
+            _fact(
+                evidence_uid="material-abs",
+                origin_evidence_key="kb:material-abs",
+                evidence_role="faq_direct",
+                source_type="faq",
+                fact_type="material_composition",
+                attribute_key="material_composition",
+                value="ABS",
+                content="主体材质为ABS。",
+            ),
+        ]
+    }
+
+    context = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material"),
+    )
+
+    assert context["direct_product_facts"] == []
+    conflicts = {
+        item["evidence_uid"]: item
+        for item in context["conflicts"]
+    }
+    assert set(conflicts) == {"material-pp", "material-abs"}
+    assert conflicts["material-pp"]["origin_evidence_key"] == "kb:material-pp"
+    assert conflicts["material-abs"]["origin_evidence_key"] == "kb:material-abs"
+    assert {
+        item["canonical_attribute_key"]
+        for item in conflicts.values()
+    } == {"material_composition"}
+
+
+def test_material_alias_admission_preserves_uid_identity_and_raw_attribute():
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(
+                    evidence_uid="material-profile",
+                    origin_evidence_key="kb:material-profile",
+                    fact_type="material_composition",
+                    attribute_key="material_composition",
+                    value="PP",
+                    content="主体材质为PP。",
+                )
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material"),
+    )
+
+    fact = context["direct_product_facts"][0]
+    assert fact["evidence_uid"] == "material-profile"
+    assert fact["origin_evidence_key"] == "kb:material-profile"
+    assert fact["product_identity_scope"] == [
+        {"namespace": "sku_code", "value": "SKU-A"}
+    ]
+    assert fact["attribute_key"] == "material_composition"
+    assert fact["canonical_attribute_key"] == "material_composition"
+    assert fact["original_fact_type"] == "material_composition"
+    assert fact["original_evidence_attribute_key"] == "material_composition"
+    assert context["claim_resolutions"][0]["status"] == "supported"
+
+
+def test_material_display_attribute_and_empty_evidence_slot_preserve_provenance():
+    understanding = {
+        "requested_claims": [{
+            "claim_type": "material",
+            "attribute_key": "材质",
+            "question": "材质",
+            "risk_level": "medium",
+        }]
+    }
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(
+                    evidence_uid="material-empty-slot",
+                    origin_evidence_key="kb:material-empty-slot",
+                    attribute_key="",
+                )
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+    )
+
+    fact = context["direct_product_facts"][0]
+    resolution = context["claim_resolutions"][0]
+    assert fact["attribute_key"] == ""
+    assert fact["canonical_attribute_key"] == "material_composition"
+    assert fact["original_fact_type"] == "material"
+    assert fact["original_evidence_attribute_key"] == ""
+    assert fact["evidence_uid"] == "material-empty-slot"
+    assert fact["origin_evidence_key"] == "kb:material-empty-slot"
+    assert fact["product_identity_scope"] == [
+        {"namespace": "sku_code", "value": "SKU-A"}
+    ]
+    assert resolution["status"] == "supported"
+    assert resolution["evidence_uids"] == ["material-empty-slot"]
+    assert resolution["original_claim_type"] == "material"
+    assert resolution["original_attribute_key"] == "材质"
+    assert resolution["canonical_attribute_key"] == "material_composition"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        ({"sku_code": "SKU-B"}, "product_identity_mismatch"),
+        ({"fact_review_status": "pending_review"}, "review_status_missing"),
+        ({"gate_status": "blocked"}, "gate_not_allowed"),
+        ({"direct_answer_allowed": False}, "not_direct_answerable"),
+    ],
+)
+def test_material_alias_does_not_bypass_admission_boundaries(overrides, reason):
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(
+                    fact_type="material_composition",
+                    attribute_key="material_composition",
+                    **overrides,
+                )
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("material"),
+    )
+
+    assert context["direct_product_facts"] == []
+    assert context["rejected_evidence"][0]["reason"] == reason
+
+
 def test_compound_claims_do_not_promote_material_into_safety_or_moisture():
     context = AdmittedAnswerContextService().build_for_response(
         {"selected_evidence": [_fact()]},
@@ -202,6 +348,142 @@ def test_compound_claims_do_not_promote_material_into_safety_or_moisture():
     assert resolutions["material_composition"]["evidence_uids"] == ["fact-material"]
     assert resolutions["material_safety"]["status"] == "unresolved"
     assert resolutions["moisture_resistance"]["status"] == "unresolved"
+
+
+def test_unmapped_customer_goal_is_preserved_as_unresolved():
+    understanding = {
+        "requested_claims": [
+            {
+                "goal_ref": "goal-material",
+                "goal_kind": "customer_goal",
+                "claim_type": "material",
+                "semantic_key": "",
+                "goal_summary": "确认商品材质",
+                "question": "这款是什么材质，能保证摔不坏吗？",
+                "risk_level": "medium",
+            },
+            {
+                "goal_ref": "goal-durability",
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "semantic_key": "",
+                "goal_summary": "确认是否能保证摔不坏",
+                "question": "这款是什么材质，能保证摔不坏吗？",
+                "risk_level": "medium",
+            },
+        ]
+    }
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+    )
+
+    requested = {
+        item["goal_ref"]: item
+        for item in context["requested_claims"]
+        if item.get("goal_kind") == "customer_goal"
+    }
+    resolutions = {
+        item["goal_ref"]: item
+        for item in context["claim_resolutions"]
+        if item.get("goal_kind") == "customer_goal"
+    }
+    assert requested["goal-durability"]["claim_type"] == ""
+    assert requested["goal-durability"]["semantic_key"] == ""
+    assert resolutions["goal-durability"]["status"] == "unresolved"
+    assert resolutions["goal-durability"]["reason"] == (
+        "unmapped_claim_type"
+    )
+    assert resolutions["goal-durability"]["evidence_uids"] == []
+    assert resolutions["goal-durability"]["semantic_key"] == ""
+    assert resolutions["goal-durability"]["goal_summary"] == (
+        "确认是否能保证摔不坏"
+    )
+    assert context["answer_eligibility_context"][
+        "fast_path_preconditions_complete"
+    ] is False
+
+
+def test_semantic_key_variation_cannot_change_admission_or_send_contract():
+    from app.agent.nodes.query_fact_type_classifier import (
+        _requested_claims_from_customer_goals,
+    )
+    from app.services import semantic_fact_type_service
+
+    message = "material request and durability request"
+    base_goals = [
+        {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material",
+            "attribute_key": "material",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": "material request",
+        },
+        {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "drop_durability",
+            "semantic_key": "first_durability_wording",
+            "policy_intent_ref": "",
+            "source_text": "durability request",
+        },
+    ]
+    alternate_goals = deepcopy(base_goals)
+    alternate_goals[1]["semantic_key"] = "second_durability_wording"
+
+    contexts = []
+    responses = []
+    for raw_goals in (base_goals, alternate_goals):
+        goals, status, diagnostics = (
+            semantic_fact_type_service._sanitize_customer_goals(
+                raw_goals,
+                message=message,
+            )
+        )
+        assert status == "valid"
+        assert diagnostics == []
+        requested = _requested_claims_from_customer_goals(
+            goals,
+            question=message,
+            risk_hint="medium",
+        )
+        response = {
+            "selected_evidence": [_fact()],
+            "can_send": False,
+            "requires_human_review": True,
+        }
+        original = deepcopy(response)
+        contexts.append(
+            AdmittedAnswerContextService().build_for_response(
+                response,
+                product_identity={"sku_code": "SKU-A"},
+                understanding={"requested_claims": requested},
+            )
+        )
+        responses.append((response, original))
+
+    assert [
+        item["evidence_uid"]
+        for item in contexts[0]["direct_product_facts"]
+    ] == [
+        item["evidence_uid"]
+        for item in contexts[1]["direct_product_facts"]
+    ] == ["fact-material"]
+    assert [
+        (item["goal_ref"], item["status"])
+        for item in contexts[0]["claim_resolutions"]
+    ] == [
+        (item["goal_ref"], item["status"])
+        for item in contexts[1]["claim_resolutions"]
+    ]
+    assert all(item["can_change_can_send"] is False for item in contexts)
+    assert all(response == original for response, original in responses)
 
 
 def test_material_composition_cannot_admit_a_material_safety_claim():
@@ -425,3 +707,170 @@ def test_structured_pack_fact_with_nonmatching_explicit_scope_stays_rejected():
     assert context["direct_product_facts"] == []
     assert context["rejected_evidence"][0]["reason"] == "product_identity_mismatch"
     assert context["evidence_convergence"]["records"][0]["llm_context"] is False
+
+
+def _bounded_inference_pack() -> dict:
+    return {
+        "schema_version": "domain-policy-pack/v1",
+        "domain_id": "fixture_domain",
+        "version": "1.0.0",
+        "status": "loaded",
+        "reason_codes": [],
+        "claim_policies": {
+            "material_composition": {
+                "risk_level": "low",
+                "direct_fact_fast_path_allowed": True,
+                "bounded_inference_policy": "none",
+                "freshness_requirement": "static",
+            },
+        },
+        "bounded_inference_policies": [{
+            "policy_intent_ref": "product_durability_practical_guidance",
+            "goal_family": "product_durability",
+            "intent_kind": "practical_guidance",
+            "premise_fact_families": ["material_composition"],
+            "required_context_capabilities": ["product_category"],
+            "allowed_scope": "ordinary_minor_accidental_impact",
+            "required_qualifiers": ["no_absolute_guarantee"],
+            "prohibited_claim_families": [
+                "certification_report",
+                "child_safety",
+                "warranty",
+            ],
+            "review_only": True,
+        }],
+    }
+
+
+def _bounded_inference_understanding() -> dict:
+    return {
+        "requested_claims": [
+            {
+                "goal_ref": "goal-material",
+                "goal_kind": "customer_goal",
+                "claim_type": "material_composition",
+                "attribute_key": "material",
+                "semantic_key": "product_material",
+                "goal_summary": "了解商品材质",
+                "risk_level": "low",
+            },
+            {
+                "goal_ref": "goal-durability",
+                "goal_kind": "customer_goal",
+                "claim_type": "unmapped_customer_goal",
+                "attribute_key": "drop_durability",
+                "semantic_key": "product_drop_durability",
+                "policy_intent_ref": (
+                    "product_durability_practical_guidance"
+                ),
+                "policy_goal_family": "product_durability",
+                "policy_intent_kind": "practical_guidance",
+                "goal_summary": "了解日常意外跌落的耐用边界",
+                "risk_level": "medium",
+            },
+        ],
+    }
+
+
+def test_admitted_context_builds_policy_bounded_inference_from_trusted_context():
+    response = {
+        "selected_evidence": [
+            _fact(fact_type="material_composition", attribute_key="material")
+        ],
+        "product_context_pack": {
+            "structured_profile": {
+                "source": "kb_product",
+                "category": {"l1": "fixture category", "l2": "", "l3": ""},
+            },
+        },
+    }
+    context = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_bounded_inference_understanding(),
+        answer_eligibility_inputs={
+            "domain_policy_pack": _bounded_inference_pack(),
+        },
+    )
+
+    by_goal = {
+        item["goal_ref"]: item for item in context["claim_resolutions"]
+    }
+    assert by_goal["goal-material"]["support_basis"] == "direct_evidence"
+    assert by_goal["goal-durability"]["support_basis"] == "bounded_inference"
+    assert by_goal["goal-durability"]["premise_evidence_uids"] == [
+        "fact-material"
+    ]
+    assert context["product_context_capabilities"] == {
+        "product_category": {
+            "available": True,
+            "source": "product_context_pack.structured_profile.category",
+        }
+    }
+    minimal = build_minimal_decision_context(
+        context,
+        customer_message="材质和日常耐用边界怎么样",
+    )
+    assert minimal["product_context_capabilities"] == (
+        context["product_context_capabilities"]
+    )
+    assert minimal["bounded_inference_policies"][0]["policy_ref"] == (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:product_durability_practical_guidance"
+    )
+
+
+@pytest.mark.parametrize(
+    ("evidence_overrides", "include_category", "include_pack"),
+    [
+        ({"sku_code": "SKU-B"}, True, True),
+        ({"fact_review_status": "pending_review"}, True, True),
+        ({"reference_only": True}, True, True),
+        ({}, False, True),
+        ({}, True, False),
+    ],
+)
+def test_admitted_context_blocks_bounded_inference_without_all_trusted_inputs(
+    evidence_overrides,
+    include_category,
+    include_pack,
+):
+    response = {
+        "selected_evidence": [
+            _fact(
+                fact_type="material_composition",
+                attribute_key="material",
+                **evidence_overrides,
+            )
+        ],
+        "product_context_pack": {
+            "structured_profile": {
+                "source": "kb_product",
+                "category": (
+                    {"l1": "fixture category", "l2": "", "l3": ""}
+                    if include_category
+                    else {}
+                ),
+            },
+        },
+    }
+    eligibility = (
+        {"domain_policy_pack": _bounded_inference_pack()}
+        if include_pack
+        else {}
+    )
+    context = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_bounded_inference_understanding(),
+        answer_eligibility_inputs=eligibility,
+    )
+
+    durability = next(
+        item
+        for item in context["claim_resolutions"]
+        if item["goal_ref"] == "goal-durability"
+    )
+    assert durability["status"] == "unresolved"
+    assert durability["support_basis"] == "none"
+    assert durability["evidence_uids"] == []

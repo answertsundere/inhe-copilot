@@ -197,6 +197,33 @@ def _stable_turn_uid(role: str, content: str, turn_index: int, timestamp: str) -
     return "turn-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
 
 
+def canonical_current_customer_turn_uid(
+    message: Any,
+    *,
+    conversation_history: Any = None,
+) -> str:
+    """Build the current buyer-turn UID from canonical content and position.
+
+    Caller-supplied turn UIDs are deliberately ignored. The current message is
+    not yet part of conversation history, so its canonical index follows the
+    last normalized history turn.
+    """
+    content = _formal_text(message)
+    if not content:
+        return ""
+
+    next_index = 0
+    if isinstance(conversation_history, list):
+        for position, item in enumerate(conversation_history):
+            if not isinstance(item, dict):
+                continue
+            turn_index = item.get("turn_index")
+            if not isinstance(turn_index, int) or isinstance(turn_index, bool):
+                turn_index = position
+            next_index = max(next_index, turn_index + 1)
+    return _stable_turn_uid("customer", content, next_index, "")
+
+
 def _diagnostics(*, status: str, reason: str = "", turn_count: int = 0, repairs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     repair_rows = repairs or []
     return {

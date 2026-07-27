@@ -62,6 +62,83 @@ def test_canonical_high_risk_registry_normalizes_aliases_without_promoting_mater
     ) is False
 
 
+def test_material_composition_aliases_share_only_the_base_material_family():
+    from app.services.fact_type_alias_service import (
+        canonical_attribute_slot,
+        canonical_material_composition_claim_type,
+        canonical_material_composition_slot,
+    )
+
+    assert canonical_material_composition_claim_type("material") == (
+        "material_composition"
+    )
+    assert canonical_material_composition_claim_type("material_composition") == (
+        "material_composition"
+    )
+    assert canonical_material_composition_slot(
+        "material_composition",
+        fact_type="material",
+    ) == "material_composition"
+    assert canonical_material_composition_slot(
+        "",
+        fact_type="material_composition",
+    ) == "material_composition"
+    assert canonical_attribute_slot(
+        " 材质 ",
+        fact_type="ＭＡＴＥＲＩＡＬ",
+    ) == "material_composition"
+    assert canonical_attribute_slot(
+        "材料组成",
+        fact_type="material_composition",
+    ) == "material_composition"
+
+    for value in (
+        "material_safety",
+        "non_toxic",
+        "food_grade",
+        "certification",
+        "moisture_resistance",
+        "waterproof",
+        "durability",
+        "drop_resistance",
+        "load_capacity",
+        "child_safety",
+        "component_material",
+        "frame_material",
+        "coating_material",
+        "surface_material",
+    ):
+        assert canonical_attribute_slot(
+            value,
+            fact_type="material",
+        ) == value
+
+    for fact_type in (
+        "material_safety",
+        "non_toxic",
+        "food_grade",
+        "certification",
+        "moisture_resistance",
+        "waterproof",
+        "durability",
+        "drop_resistance",
+        "load_capacity",
+        "child_safety",
+        "component_material",
+        "frame_material",
+        "coating_material",
+        "surface_material",
+    ):
+        assert canonical_material_composition_claim_type(fact_type) == fact_type
+        assert canonical_attribute_slot("", fact_type=fact_type) == ""
+
+    assert canonical_attribute_slot("", fact_type="dimensions") == ""
+    assert canonical_attribute_slot(
+        "",
+        supported_claim_types=["dimensions"],
+    ) == ""
+
+
 def test_service_action_and_media_reference_are_not_direct_answer_aliases():
     from app.services.fact_type_alias_service import is_alias_safe_for_direct_answer
 

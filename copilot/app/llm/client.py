@@ -65,6 +65,9 @@ class LLMClient:
         reasoning keeps existing JSON and plain-text consumers unchanged.
         """
         request = dict(kwargs)
+        single_attempt_no_repair = bool(
+            request.pop("_single_attempt_no_repair", False)
+        )
         request["messages"] = self._privacy_project_messages(request.get("messages"))
         if self.provider_name == "minimax":
             temperature = float(request.get("temperature", 0.3) or 0)
@@ -81,6 +84,9 @@ class LLMClient:
             if is_m3:
                 extra_body.setdefault("thinking", {"type": "disabled"})
             request["extra_body"] = extra_body
+
+        if single_attempt_no_repair:
+            return self.client.chat.completions.create(**request)
 
         response_format = request.get("response_format") or {}
         max_attempts = 2 if (

@@ -25,6 +25,9 @@ from app.services.admitted_answer_context_service import (
 from app.services.canonical_conversation_turn_service import (
     canonical_conversation_reference_status,
 )
+from app.services.semantic_fact_type_service import (
+    GOAL_IDENTITY_SCHEMA_VERSION,
+)
 
 
 def _write_pack(
@@ -34,24 +37,28 @@ def _write_pack(
     claim_type: str,
     risk_level: str,
     inference: str = "none",
+    bounded_inference_policies: list[dict] | None = None,
 ) -> None:
     path = rules_dir / "domain_policy_packs" / f"{domain_id}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": "domain-policy-pack/v1",
+        "domain_id": domain_id,
+        "version": "1.0.0",
+        "claim_policies": {
+            claim_type: {
+                "risk_level": risk_level,
+                "direct_fact_fast_path_allowed": risk_level == "low",
+                "bounded_inference_policy": inference,
+                "freshness_requirement": "static",
+            }
+        },
+    }
+    if bounded_inference_policies is not None:
+        payload["bounded_inference_policies"] = bounded_inference_policies
     path.write_text(
         yaml.safe_dump(
-            {
-                "schema_version": "domain-policy-pack/v1",
-                "domain_id": domain_id,
-                "version": "1.0.0",
-                "claim_policies": {
-                    claim_type: {
-                        "risk_level": risk_level,
-                        "direct_fact_fast_path_allowed": risk_level == "low",
-                        "bounded_inference_policy": inference,
-                        "freshness_requirement": "static",
-                    }
-                },
-            },
+            payload,
             allow_unicode=True,
             sort_keys=True,
         ),
@@ -82,6 +89,7 @@ def _understanding(
     risk_level: str = "low",
 ) -> dict:
     source_text = "current question"
+    source_digest = sha256(source_text.encode("utf-8")).hexdigest()
     return {
         "schema_version": "turn-understanding/v2",
         "owner": "turn_understanding_owner",
@@ -90,18 +98,26 @@ def _understanding(
         "goal_understanding_diagnostics": [] if status == "valid" else ["goal_contract_degraded"],
         "requested_claims": [
             {
+                "schema_version": GOAL_IDENTITY_SCHEMA_VERSION,
                 "goal_ref": f"goal-{claim_type}",
                 "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
                 "claim_type": claim_type,
                 "attribute_key": "material" if claim_type == "material_composition" else "",
+                "semantic_key": "",
+                "policy_intent_ref": "",
                 "source": "current_customer_message",
                 "source_span_start": 0,
                 "source_span_end": len(source_text),
-                "source_span_sha256": sha256(source_text.encode("utf-8")).hexdigest(),
+                "source_span_sha256": source_digest,
+                "source_text_sha256": source_digest,
+                "source_turn_uid": f"turn-{source_digest[:20]}",
                 "owner": "turn_understanding_owner",
                 "source_stage": "query_fact_type_classifier",
                 "question": source_text,
+                "goal_summary": source_text,
                 "risk_level": risk_level,
+                "customer_goal_eligible": True,
             }
         ],
     }
@@ -237,6 +253,99 @@ def test_second_domain_pack_changes_policy_without_core_branch(tmp_path):
     assert second_context["answer_eligibility_context"]["risk_policy_status"][
         "status"
     ] == "high_risk"
+
+
+def test_domain_pack_loads_generic_bounded_inference_policies_across_domains(
+    tmp_path,
+):
+    household_policy = {
+        "policy_intent_ref": "product_durability_practical_guidance",
+        "goal_family": "product_durability",
+        "intent_kind": "practical_guidance",
+        "premise_fact_families": ["material_composition"],
+        "required_context_capabilities": ["product_category"],
+        "allowed_scope": "ordinary_minor_accidental_impact",
+        "required_qualifiers": ["no_absolute_guarantee"],
+        "prohibited_claim_families": [
+            "certification_report",
+            "child_safety",
+            "warranty",
+        ],
+        "review_only": True,
+    }
+    sports_policy = {
+        **household_policy,
+        "policy_intent_ref": "handling_balance_practical_guidance",
+        "goal_family": "handling_balance",
+        "premise_fact_families": ["gross_weight"],
+    }
+    _write_pack(
+        tmp_path,
+        domain_id="household_fixture",
+        claim_type="material_composition",
+        risk_level="low",
+        bounded_inference_policies=[household_policy],
+    )
+    _write_pack(
+        tmp_path,
+        domain_id="sports_fixture",
+        claim_type="gross_weight",
+        risk_level="low",
+        bounded_inference_policies=[sports_policy],
+    )
+    repository = FilePolicyRepository(rules_dir=str(tmp_path))
+
+    household = repository.resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "household_fixture"}}
+    )
+    sports = repository.resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "sports_fixture"}}
+    )
+
+    assert household["status"] == sports["status"] == "loaded"
+    assert household["bounded_inference_policies"] == [household_policy]
+    assert sports["bounded_inference_policies"] == [sports_policy]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"review_only": False},
+        {"goal_family": ""},
+        {"intent_kind": "unknown_intent"},
+        {"premise_fact_families": ["material_composition", "material_composition"]},
+        {"unexpected_field": "reply text"},
+    ],
+)
+def test_domain_pack_rejects_invalid_bounded_inference_policy_schema(
+    tmp_path,
+    mutation,
+):
+    policy = {
+        "policy_intent_ref": "product_durability_practical_guidance",
+        "goal_family": "product_durability",
+        "intent_kind": "practical_guidance",
+        "premise_fact_families": ["material_composition"],
+        "required_context_capabilities": ["product_category"],
+        "allowed_scope": "ordinary_minor_accidental_impact",
+        "required_qualifiers": ["no_absolute_guarantee"],
+        "prohibited_claim_families": ["certification_report"],
+        "review_only": True,
+    }
+    policy.update(mutation)
+    _write_pack(
+        tmp_path,
+        domain_id="invalid_bounded_fixture",
+        claim_type="material_composition",
+        risk_level="low",
+        bounded_inference_policies=[policy],
+    )
+
+    result = FilePolicyRepository(rules_dir=str(tmp_path)).resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "invalid_bounded_fixture"}}
+    )
+
+    assert result["status"] == "invalid"
 
 
 def test_all_registered_tools_declare_freshness_class():
@@ -380,9 +489,15 @@ def test_customer_goal_digest_must_match_current_customer_message(tmp_path):
         {"catalog_metadata": {"domain_policy_id": "test"}}
     )
     understanding = _understanding("material_composition")
-    understanding["requested_claims"][0]["source_span_sha256"] = sha256(
+    changed_digest = sha256(
         "another question".encode("utf-8")
     ).hexdigest()
+    understanding["requested_claims"][0]["source_span_sha256"] = (
+        changed_digest
+    )
+    understanding["requested_claims"][0]["source_text_sha256"] = (
+        changed_digest
+    )
 
     eligibility = _eligibility(pack, understanding)
 
@@ -413,7 +528,7 @@ def test_customer_goal_digest_must_match_current_customer_message(tmp_path):
             "canonical_customer_goal_provenance_invalid",
         ),
         (
-            {"unexpected_authority": True},
+            {"unexpected_fields": ["unexpected_authority"]},
             "canonical_customer_goal_schema_invalid",
         ),
     ],
