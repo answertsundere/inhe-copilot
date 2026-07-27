@@ -94,10 +94,12 @@ platform-neutral adapters
 Do not optimize for graph-node count, add parallel shadow subsystems without a
 promotion path, or pass complete traces and candidate stores to the model.
 Formal Evidence Convergence and the model-first composer are implemented but
-disabled in production. The current priority is the ADR 0009 Agent Core slice:
-real context, admitted evidence and tools, one reply owner, final safety, and
-outcome-based evaluation. Gold review remains an accuracy prerequisite, but
-building more review infrastructure is not the active development mainline.
+disabled in production. P0 has qualified the feature-disabled ADR 0009 Agent
+Core correctness slice: real context, admitted evidence and tools, one reply
+owner, and deterministic final safety. The active priority is now P1 Gold
+Conversation Quality through outcome-based long-conversation evaluation. Gold
+review remains an accuracy prerequisite, but building more review
+infrastructure is not the active development mainline.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an

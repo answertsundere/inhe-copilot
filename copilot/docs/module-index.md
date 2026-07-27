@@ -25,7 +25,7 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Answer eligibility owner boundary | `app/services/analysis_pipeline_service.py`, `app/services/canonical_conversation_turn_service.py`, `app/agent/nodes/query_fact_type_classifier.py` | formal internal input boundary | Removes reserved owner data and public Turn Understanding in full before graph execution; the server classifier replaces customer goals and status every turn; admits only explicit versioned internal source/provenance for Domain Pack and canonical reference verdicts |
 | Answer eligibility projection | `app/services/admitted_answer_context_service.py` | diagnostic within opt-in convergence context | Counts only owner-stamped customer goals whose exact current-message span and SHA-256 recomputation match, projects owner verdicts into Minimal Decision Context, and leaves missing outputs unknown; cannot route, reply, audit, or grant send permission |
 | Tool metadata | `app/agent/tools/base.py`, `app/agent/tools/registry.py` | formal utility | Planner metadata is limited to name, description, and input schema; deterministic eligibility reads freshness directly from the registry |
-| Candidate reply | `app/services/model_first_answer_composer_service.py` | opt-in, review-only, disabled | Partitions authoritative current-turn customer goals from supporting dependencies, service actions, media context, and contextual constraints; emits exactly one validated clause per renderable customer goal, requires evidence dependencies to bind through `supporting_for_goal_ref`, and rejects non-customer clauses, invalid provenance, duplicate/unknown refs, and missing goals; no tools, fact creation, delivery, or send permission |
+| Candidate reply | `app/services/model_first_answer_composer_service.py` | P0-correctness-qualified; opt-in, review-only, disabled | Partitions authoritative current-turn customer goals from supporting dependencies, service actions, media context, and contextual constraints; emits exactly one validated clause per renderable customer goal, requires evidence dependencies to bind through `supporting_for_goal_ref`, and rejects non-customer clauses, invalid provenance, duplicate/unknown refs, and missing goals; no tools, fact creation, delivery, or send permission |
 | No-evidence strategy | `app/services/no_evidence_reply_policy_service.py` | formal but oversized | Safe strategy only; must not become another fact or reply engine |
 | Handoff wording | `app/services/customer_facing_safe_handoff_service.py` | formal | Customer-facing wording without changing risk or task state |
 | Deterministic Final Contract | `app/services/final_answer_auditor.py` | formal; candidate branch zero model calls | Validate goal/clause/evidence references, canonical truth, high-risk boundaries, action completion, media eligibility, privacy/process leakage, and `can_send` prerequisites |
@@ -83,7 +83,7 @@ until the active Agent Core slice identifies them as the earliest blocker.
 | pgvector retriever | shadow | None |
 | Evidence-First Decision Proposal | shadow/qualification-gated | None |
 | Buyer simulator and transcript grader | evaluation | None |
-| Model-first composer | active candidate | Review-only; no `can_send` |
+| Model-first composer | P0-correctness-qualified candidate, disabled | Review-only; no `can_send` |
 
 ## Cross-Cutting Change Checklist
 

@@ -574,6 +574,29 @@ than adding another validator or retry. These are historical diagnostics. The
 feature-disabled checkpoint is reviewable but not production-qualified, and
 latency remains disclosed rather than treated as a P0 correctness gate.
 
+P0-R1 made the bounded Provider decision without another protocol layer. The
+current MiniMax-M3 OpenAI-compatible `json_object` transport passed three fixed,
+privacy-safe Composer inputs (`1` supported goal, `2` supported goals, and
+supported plus unresolved) in exactly three calls. All returned short goal
+references matched the dynamic allowed set, and retry, repair, free-text
+fallback, timeout, schema failure, and formal knowledge writes were zero.
+Because the current transport passed `3/3`, no forced-tool or strict-schema
+alternative was tested.
+
+The sole follow-up fixed-eight run used dataset
+`hq-long-conversation-real-derived-v4` version `1.3.2-draft`, content SHA-256
+`610c6078ae14118451bee8852ab669208cf824ff809a2c506260bbe80e10f1cf`.
+Execution and non-empty replies were `8/8`; Composer, Deterministic Final
+Contract, and Unified Textual Audit were `8/8`; customer-goal coverage was
+`14/14`, supported attribution `5/5`, unresolved declaration `9/9`, and
+eligible Partial Answer `4/4`. Unknown/duplicate/wrong-kind references,
+non-customer clauses, unsupported high-risk/media/service claims, fallback,
+automatic send, formal knowledge changes, DML, retry, and repair were zero.
+Pipeline p50/p95 were `20.411s/28.634s`, Composer `1.986s/3.176s`, and Unified
+Audit `2.372s/8.365s`. This qualifies P0 correctness while leaving real
+conversation quality, production enablement, and latency optimization to later
+gates.
+
 ### Phase 0.8G fixed real-turn replay
 
 Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely

@@ -226,7 +226,17 @@ customer goal and no clause for any other partition.
 The P0.2d fixed-eight diagnostic qualified this Composer input boundary:
 customer-goal clause coverage was 15/15 and no non-customer goal was rendered
 as fact. Final and semantic audit gates remained incomplete, so the candidate
-stays review-only and disabled; the result does not authorize promotion.
+stayed review-only and disabled at that stage.
+
+P0-R1 subsequently tested the existing MiniMax-M3 `json_object` transport
+without changing Composer semantics. A bounded single-call preflight passed
+three representative goal shapes, so no alternative transport was attempted.
+The one permitted fixed-eight run reached Composer, Deterministic Final
+Contract, and Unified Textual Audit `8/8`, with complete runtime supported and
+unresolved coverage and no unknown/duplicate references, unsafe claims,
+automatic send, retry, repair, or formal knowledge writes. This qualifies the
+feature-disabled Agent Core correctness slice. It does not establish real
+conversation quality or authorize production enablement.
 
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
@@ -252,8 +262,9 @@ fail-closed delivery, not reply generation or rewriting.
 The legacy production path still has its historical polish and fallback
 behavior and is explicitly a compatibility path, not the target ownership
 model. Formal Evidence Convergence and the model-first Composer remain disabled
-by default. Committing the candidate is a reviewable checkpoint, not production
-qualification.
+by default. P0 qualification is a reviewable correctness checkpoint, not
+production qualification; the active priority is now P1 Gold Conversation
+Quality.
 
 ### Final Safety And Delivery
 

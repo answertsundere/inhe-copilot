@@ -113,6 +113,14 @@ qualification. After P0 correctness is established, development moves to real
 long-conversation customer quality rather than more protocol qualification
 layers.
 
+P0-R1 established that correctness boundary. The existing MiniMax-M3
+`json_object` transport passed a three-input, one-call-per-input preflight, and
+the only permitted fixed-eight run passed Composer, Deterministic Final
+Contract, and Unified Textual Audit `8/8` with complete goal, supported, and
+unresolved coverage. No alternative transport, retry, repair, new model call,
+or new owner was introduced. Formal feature flags remain disabled; the next
+decision gate is P1 Gold Conversation Quality, not production promotion.
+
 Phase 1.9 adds a canonical answer-eligibility projection without adding a
 router, graph node, model call, or safety gate. Owner boundaries are fixed:
 Turn Understanding owns goal status; canonical context resolution owns

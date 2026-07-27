@@ -76,23 +76,32 @@ The following rules are non-negotiable:
 
 ## Current Active Priority
 
-**Active priority: P0 - close the existing Agent Core vertical slice.**
+**Active priority: P1 - Gold Conversation Quality.**
 
-The current candidate has demonstrated a real single-scenario partial-answer
-path and a feature-disabled fixed-eight diagnostic. P0.2d through P0.2f are
-historical diagnostics, not an open-ended development roadmap. The immediate
-work is:
+P0-R1 qualified the existing Agent Core vertical slice without changing its
+business logic. The current MiniMax-M3 `json_object` transport passed the
+bounded three-case protocol preflight with one call per input. The single
+fixed-eight run then reached execution, Composer, Deterministic Final Contract,
+and Unified Textual Audit `8/8`; customer-goal coverage was `14/14`, supported
+attribution `5/5`, unresolved declaration `9/9`, and eligible Partial Answer
+`4/4`. Unsupported evidence references and explicit high-risk/media/service
+claim violations, `can_send=true`, formal knowledge changes, DML, retry, and
+repair were all zero.
 
-1. consolidate the accumulated Agent Core changes into a reviewable,
-   feature-disabled checkpoint;
-2. keep one formal Pipeline and the documented reply-owner boundary;
-3. rerun the fixed-eight customer-outcome gate without changing its cases or
-   acceptance rules; and
-4. stop protocol work immediately when a provider or transport boundary is
-   blocked rather than seeking a stochastic pass.
+This closes P0 correctness only. Formal Evidence Convergence and the
+Model-first Composer remain disabled by default, the candidate remains
+review-only, and no production promotion or real-accuracy claim follows. The
+immediate work is now:
 
-Frontend review work, new shadow systems, new provider matrices, vision work,
-Fast Path implementation, and new platform adapters remain frozen during P0.
+1. run the pinned high-quality long-conversation set through the same formal
+   Pipeline;
+2. score customer outcome, naturalness, continuity, and useful progress rather
+   than internal finding-code wording;
+3. preserve the P0 owner and safety boundaries while locating the earliest
+   quality gap; and
+4. keep new provider matrices, protocol validators, Fast Path work, frontend
+   expansion, vision work, and platform adapters frozen unless P1 evidence
+   makes one of them the earliest blocker.
 
 ## Priority Selection Rules
 
@@ -178,7 +187,8 @@ and remains review-only.
 - supported-claim evidence attribution: `100%`;
 - unresolved/conflicting/prohibited goal declaration: `100%`;
 - deterministic Final Contract and Unified Textual Audit acceptance: `8/8`;
-- unsupported factual, high-risk, media, and completed-action claims: `0`;
+- unsupported evidence references and explicit high-risk, media, and
+  completed-action claim violations: `0`;
 - unknown or duplicate goal/evidence references: `0`;
 - `can_send=true`: `0`;
 - formal knowledge writes: `0`;
@@ -551,8 +561,8 @@ Changing priority order requires:
 
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
-| P0 Agent Core Closure | active | P0.2d-f established a feature-disabled candidate and exposed a provider/transport block; the accumulated changes still need a clean checkpoint | Fixed-eight business gate `8/8`, zero unsafe claims, clean candidate commit |
-| P1 Gold Conversation Quality | blocked by P0 | Long-conversation assets exist, but no valid production-quality result | After P0, run the pinned 26-case set and evaluate customer outcomes rather than internal finding codes |
+| P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
+| P1 Gold Conversation Quality | active | Long-conversation assets exist, but no valid production-quality result | Run the pinned 26-case set and evaluate customer outcomes rather than internal finding codes |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
