@@ -15,12 +15,182 @@ does not try to classify Chinese customer intent from raw keywords.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 from typing import Any
 
 from app import config
 from app.services.customer_facing_safe_handoff_service import customer_facing_safe_handoff_reply
+from app.services.model_first_answer_composer_service import (
+    COMPOSER_ENVELOPE_CONTRACT_VERSION,
+    ModelFirstAnswerComposerService,
+)
 from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
+
+
+_LLM_SEMANTIC_ISSUE_CODES = {
+    "accessory_availability_answered_with_installation",
+    "answered_space_fit_as_load_capacity",
+    "gross_weight_answered_with_dimensions_or_capacity",
+    "gross_weight_answered_with_load_capacity",
+    "historical_agent_fact_used",
+    "inference_scope_exceeded",
+    "installation_answered_with_unrelated_product_fact",
+    "internal_language_exposure",
+    "known_context_re_requested",
+    "missing_evidence_without_human_review",
+    "omitted_customer_goal",
+    "query_reply_mismatch",
+    "repeated_generic_reply",
+    "semantic_mismatch",
+    "structure_function_answered_with_scene_or_space",
+    "unnecessary_handoff",
+    "unresolved_claim_asserted",
+    "unsupported_claim",
+    "unsupported_media_claim",
+    "unsupported_product_claim",
+    "unsupported_service_action_completion",
+}
+_FINDING_ONTOLOGY_VERSION = "unified-textual-finding-ontology-v1"
+_FINDING_OWNERSHIP = {
+    "accessory_availability_answered_with_installation": {
+        "canonical_family": "relevance",
+        "specificity": 90,
+        "role": "root",
+    },
+    "answered_space_fit_as_load_capacity": {
+        "canonical_family": "relevance",
+        "specificity": 90,
+        "role": "root",
+    },
+    "gross_weight_answered_with_dimensions_or_capacity": {
+        "canonical_family": "relevance",
+        "specificity": 90,
+        "role": "root",
+    },
+    "gross_weight_answered_with_load_capacity": {
+        "canonical_family": "relevance",
+        "specificity": 90,
+        "role": "root",
+    },
+    "historical_agent_fact_used": {
+        "canonical_family": "conversation_continuity",
+        "specificity": 90,
+        "role": "root",
+    },
+    "inference_scope_exceeded": {
+        "canonical_family": "factual_fidelity",
+        "specificity": 95,
+        "role": "root",
+    },
+    "installation_answered_with_unrelated_product_fact": {
+        "canonical_family": "relevance",
+        "specificity": 90,
+        "role": "root",
+    },
+    "internal_language_exposure": {
+        "canonical_family": "communication_quality",
+        "specificity": 90,
+        "role": "root",
+    },
+    "known_context_re_requested": {
+        "canonical_family": "conversation_continuity",
+        "specificity": 90,
+        "role": "root",
+    },
+    "missing_evidence_without_human_review": {
+        "canonical_family": "factual_fidelity",
+        "specificity": 95,
+        "role": "root",
+    },
+    "omitted_customer_goal": {
+        "canonical_family": "goal_coverage",
+        "specificity": 95,
+        "role": "root",
+    },
+    "query_reply_mismatch": {
+        "canonical_family": "relevance",
+        "specificity": 80,
+        "role": "root",
+    },
+    "repeated_generic_reply": {
+        "canonical_family": "communication_quality",
+        "specificity": 80,
+        "role": "root",
+    },
+    "semantic_mismatch": {
+        "canonical_family": "relevance",
+        "specificity": 10,
+        "role": "generic_symptom",
+    },
+    "structure_function_answered_with_scene_or_space": {
+        "canonical_family": "relevance",
+        "specificity": 90,
+        "role": "root",
+    },
+    "unnecessary_handoff": {
+        "canonical_family": "relevance",
+        "specificity": 80,
+        "role": "root",
+    },
+    "unresolved_claim_asserted": {
+        "canonical_family": "unresolved_boundary",
+        "specificity": 100,
+        "role": "root",
+    },
+    "unsupported_claim": {
+        "canonical_family": "factual_fidelity",
+        "canonical_root_code": "unsupported_claim",
+        "canonical_subtype": "generic",
+        "specificity": 100,
+        "role": "root",
+    },
+    "unsupported_media_claim": {
+        "canonical_family": "unsupported_completion",
+        "specificity": 100,
+        "role": "root",
+    },
+    "unsupported_product_claim": {
+        "canonical_family": "factual_fidelity",
+        "canonical_root_code": "unsupported_claim",
+        "canonical_subtype": "product_claim",
+        "specificity": 100,
+        "role": "root",
+    },
+    "unsupported_service_action_completion": {
+        "canonical_family": "unsupported_completion",
+        "specificity": 100,
+        "role": "root",
+    },
+}
+_FINDING_SECONDARY_OVERLAPS = {
+    "unsupported_claim": {"semantic_mismatch"},
+}
+_FINDING_CONFLICTS = {
+    frozenset({
+        "missing_evidence_without_human_review",
+        "unnecessary_handoff",
+    }),
+}
+_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v1"
+_ATOMIC_SEMANTIC_OUTPUT_FIELDS = {
+    "schema_version",
+    "goal_reviews",
+    "global_finding_codes",
+}
+_ATOMIC_SEGMENT_FIELDS = {
+    "goal_ref",
+    "clause_ref",
+    "clause_kind",
+    "textual_status",
+    "finding_codes",
+}
+_ATOMIC_EXPECTED_KINDS = {
+    "supported_fact",
+    "unresolved",
+    "allowed_inference",
+}
 
 
 def audit_customer_reply_semantic_fit(
@@ -32,6 +202,14 @@ def audit_customer_reply_semantic_fit(
     reply = str(response.get("suggested_reply") or "").strip()
     if not reply:
         return _result(False, ["empty_reply"], "Final reply is empty.", "deterministic")
+
+    if _is_model_first_candidate(response):
+        result = _llm_semantic_fit_check(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context or {},
+        )
+        return result or _semantic_judge_failure("semantic_judge_unavailable")
 
     structural = _structural_semantic_checks(response)
     if structural["issues"]:
@@ -91,9 +269,24 @@ def apply_semantic_fit_result(
     if result.get("passed", True):
         return response
 
+    if _is_model_first_candidate(response):
+        response["requires_human_review"] = True
+        response["can_send"] = False
+        response["sendable_reply"] = ""
+        response["reply_status"] = "needs_human_review"
+        response["reason_for_review"] = _append_reason(
+            str(response.get("reason_for_review") or ""),
+            "model_first_unified_textual_audit_failed",
+        )
+        return response
+
     original = str(response.get("suggested_reply") or "")
     response["suggested_reply"] = _semantic_fit_fallback(response)
     response["requires_human_review"] = True
+    if _is_model_first_candidate(response):
+        response["can_send"] = False
+        response["sendable_reply"] = ""
+        response["reply_status"] = "needs_human_review"
     response["generation_mode"] = "final_semantic_fit_fallback"
     response["reason_for_review"] = _append_reason(
         str(response.get("reason_for_review") or ""),
@@ -284,20 +477,36 @@ def _llm_semantic_fit_check(
 ) -> dict[str, Any] | None:
     if not config.COPILOT_FINAL_AUDIT_LLM_ENABLED:
         return None
+    model_first_candidate = _is_model_first_candidate(response)
     try:
         from app.llm.client import get_llm_client
 
         client = get_llm_client()
         if not client.api_key:
+            if model_first_candidate:
+                return _semantic_judge_failure("semantic_judge_unavailable")
             return None
 
         payload = _semantic_payload(response, customer_message, copilot_context)
-        result = client.create_chat_completion(
-            model=client.model,
-            messages=[
+        atomic_contract = (
+            _atomic_semantic_contract(response)
+            if model_first_candidate
+            else []
+        )
+        if model_first_candidate:
+            if not atomic_contract:
+                return _semantic_judge_failure("semantic_judge_schema_invalid")
+            payload["unified_textual_contract"] = atomic_contract
+        started_at = time.perf_counter()
+        completion_kwargs = {
+            "model": client.model,
+            "messages": [
                 {
                     "role": "system",
                     "content": (
+                        _atomic_semantic_system_prompt()
+                        if model_first_candidate
+                        else
                         "You are the final semantic quality judge for a customer-service agent. "
                         "Judge only whether final_reply can be sent as a coherent answer to customer_message. "
                         "Use semantic_query and admitted_direct_facts as the only factual ground truth. "
@@ -311,25 +520,930 @@ def _llm_semantic_fit_check(
                         "Fail if the reply answers a different fact type, asks for information already provided, "
                         "turns to human review while direct evidence is available, or claims facts not supported by evidence. "
                         "Pass if the reply gives a safe handoff because evidence is missing or risk requires review. "
-                        "Return strict JSON: {\"passed\": boolean, \"issues\": string[], \"reason\": string}."
+                        "Return exactly three JSON fields: passed, issues, reason. "
+                        f"issues may contain only these codes: {sorted(_LLM_SEMANTIC_ISSUE_CODES)}. "
+                        "If passed=true, issues must be empty. If passed=false, issues must contain at least one code. "
+                        "reason must be one short sentence under 500 characters. "
+                        "Do not include analysis, self-correction, alternatives, markdown, or prose inside issues."
                     ),
                 },
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
-            temperature=0,
-            max_tokens=240,
-            response_format={"type": "json_object"},
+            "temperature": 0,
+            "max_tokens": 800 if model_first_candidate else 120,
+            "response_format": {"type": "json_object"},
+        }
+        if model_first_candidate:
+            completion_kwargs["_single_attempt_no_repair"] = True
+        result = client.create_chat_completion(
+            **completion_kwargs,
         )
-        raw = result.choices[0].message.content
-        parsed = json.loads(raw)
+        provider_latency_ms = int((time.perf_counter() - started_at) * 1000)
+        choice = result.choices[0]
+        raw = choice.message.content
+        raw_text = str(raw or "")
+        provider_diagnostics = _semantic_provider_diagnostics(
+            raw_text,
+            finish_reason=str(getattr(choice, "finish_reason", "") or ""),
+            latency_ms=provider_latency_ms,
+        )
+        if model_first_candidate:
+            if str(getattr(choice, "finish_reason", "") or "") == "length":
+                return _semantic_judge_failure(
+                    "semantic_judge_schema_invalid",
+                    provider_diagnostics=provider_diagnostics,
+                    validation_diagnostics=_semantic_validation_diagnostics(
+                        "truncated_response",
+                        json_path="$",
+                        expected_type="complete_json_object",
+                        actual_type="truncated",
+                    ),
+                )
+            (
+                bounded_json,
+                response_envelope,
+                envelope_unwrap_count,
+                envelope_issue,
+            ) = ModelFirstAnswerComposerService._unwrap_json_envelope(raw_text)
+            provider_diagnostics.update({
+                "response_envelope": response_envelope,
+                "envelope_unwrap_count": envelope_unwrap_count,
+            })
+            if envelope_issue:
+                return _semantic_judge_failure(
+                    "semantic_judge_schema_invalid",
+                    provider_diagnostics=provider_diagnostics,
+                    validation_diagnostics=_semantic_validation_diagnostics(
+                        envelope_issue,
+                        json_path="$",
+                        expected_type="raw_json_or_single_json_fence",
+                        actual_type=response_envelope,
+                    ),
+                )
+        else:
+            bounded_json = raw_text
+        try:
+            parsed = json.loads(bounded_json)
+        except (TypeError, json.JSONDecodeError):
+            if model_first_candidate:
+                return _semantic_judge_failure(
+                    "semantic_judge_schema_invalid",
+                    provider_diagnostics=provider_diagnostics,
+                    validation_diagnostics=_semantic_validation_diagnostics(
+                        "json_decode_error",
+                        json_path="$",
+                        expected_type="json_object",
+                        actual_type="invalid_json",
+                    ),
+                )
+            return _result(
+                True,
+                [],
+                "LLM semantic fit unavailable: schema_invalid",
+                "deterministic",
+            )
+        if model_first_candidate:
+            atomic_result, validation_diagnostics = _atomic_semantic_result_with_diagnostics(
+                parsed,
+                atomic_contract=atomic_contract,
+            )
+            if atomic_result is None:
+                return _semantic_judge_failure(
+                    "semantic_judge_schema_invalid",
+                    provider_diagnostics=provider_diagnostics,
+                    validation_diagnostics=validation_diagnostics,
+                )
+            atomic_result["provider_diagnostics"] = provider_diagnostics
+            atomic_result["validation_diagnostics"] = validation_diagnostics
+            return atomic_result
+
+        validation_issue = _validate_llm_semantic_result(parsed)
+        if validation_issue:
+            if model_first_candidate:
+                return _semantic_judge_failure("semantic_judge_schema_invalid")
+            return _result(
+                True,
+                [],
+                "LLM semantic fit unavailable: schema_invalid",
+                "deterministic",
+            )
         return _result(
-            bool(parsed.get("passed", True)),
-            [str(item) for item in (parsed.get("issues") or [])],
-            str(parsed.get("reason") or "")[:500],
+            parsed["passed"],
+            list(parsed["issues"]),
+            parsed["reason"],
             "llm_semantic_fit",
         )
     except Exception as exc:
+        if model_first_candidate:
+            return _semantic_judge_failure(
+                "semantic_judge_unavailable",
+                provider_diagnostics=_semantic_provider_failure_diagnostics(exc),
+                validation_diagnostics=_semantic_validation_diagnostics(
+                    "provider_error",
+                    json_path="$",
+                    expected_type="strict_semantic_response",
+                    actual_type=type(exc).__name__,
+                ),
+            )
         return _result(True, [], f"LLM semantic fit unavailable: {type(exc).__name__}", "deterministic")
+
+
+def _atomic_semantic_system_prompt() -> str:
+    return (
+        "You are the sole textual fidelity auditor for a model-first customer-service candidate. "
+        "The deterministic final contract has already validated references, clause kinds, media blocks, "
+        "structured action completion, high-risk gates, and delivery boundaries. Do not relabel that "
+        "structured truth. Evaluate each unified_textual_contract item once against final_reply, its "
+        "cited anonymous evidence, canonical resolution, and continuity-only conversation context. "
+        "History can show what the customer already supplied, but historical agent text never proves a "
+        "fact or completed action. A supported_fact clause must stay within cited evidence. An unresolved "
+        "clause that directly says the requested proposition cannot be confirmed or guaranteed answers "
+        "the goal without asserting the fact. An allowed_inference clause must preserve every qualifier "
+        "and prohibited boundary. Reject omitted goals, unrelated answers, unsupported inference, use of "
+        "history as truth, repeated requests for known information, unsupported service/media completion, "
+        "internal language, and materially repetitive generic replies. "
+        "Echo every goal_ref, clause_ref, and clause_kind exactly once. For each goal return textual_status "
+        "accepted with an empty finding_codes list, or rejected with one or more allowed finding codes. "
+        "Return strict JSON with exactly schema_version, goal_reviews, global_finding_codes. "
+        "schema_version must be unified-textual-audit-v1. Each goal review must contain exactly goal_ref, "
+        "clause_ref, clause_kind, textual_status, finding_codes. Use only codes supplied in "
+        "allowed_finding_codes. Do not return passed, verdict, reason, conclusion, analysis, markdown, "
+        "self-correction, or extra fields."
+    )
+
+
+def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
+    from app.services.final_answer_auditor import _model_first_audit_context
+
+    composer = response.get("model_first_answer_composer")
+    if not isinstance(composer, dict) or composer.get("status") != "accepted":
+        return []
+    audit_context = _model_first_audit_context(response, {})
+    truth = audit_context.get("canonical_truth")
+    clauses = (
+        truth.get("candidate_clauses")
+        if isinstance(truth, dict)
+        and isinstance(truth.get("candidate_clauses"), list)
+        else []
+    )
+    if not clauses:
+        return []
+    contract: list[dict[str, Any]] = []
+    seen_goals: set[str] = set()
+    seen_clauses: set[str] = set()
+    for clause in clauses:
+        if not isinstance(clause, dict):
+            return []
+        goal_ref = str(clause.get("goal_ref") or "").strip()
+        clause_ref = str(clause.get("clause_ref") or "").strip()
+        if (
+            not goal_ref
+            or not clause_ref
+            or goal_ref in seen_goals
+            or clause_ref in seen_clauses
+        ):
+            return []
+        seen_goals.add(goal_ref)
+        seen_clauses.add(clause_ref)
+        clause_kind = str(clause.get("expected_kind") or "").strip()
+        if clause_kind not in _ATOMIC_EXPECTED_KINDS:
+            return []
+        contract.append({
+            "goal_ref": goal_ref,
+            "clause_ref": clause_ref,
+            "clause_kind": clause_kind,
+            "clause_text": str(clause.get("text") or "").strip(),
+            "evidence_refs": list(clause.get("evidence_refs") or []),
+            "premise_evidence_refs": list(
+                clause.get("premise_evidence_refs") or []
+            ),
+            "inference_policy_refs": sorted({
+                str(item).strip()
+                for item in clause.get("inference_policy_refs") or []
+                if str(item).strip()
+            }),
+            "scope_qualifier": str(
+                clause.get("scope_qualifier") or ""
+            ).strip(),
+            "prohibited_extensions": sorted({
+                str(item).strip()
+                for item in clause.get("prohibited_extensions") or []
+                if str(item).strip()
+            }),
+            "allowed_finding_codes": sorted(_LLM_SEMANTIC_ISSUE_CODES),
+        })
+    return contract
+
+
+def _atomic_semantic_result(
+    parsed: Any,
+    *,
+    atomic_contract: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    result, _ = _atomic_semantic_result_with_diagnostics(
+        parsed,
+        atomic_contract=atomic_contract,
+    )
+    return result
+
+
+def finding_ownership_matrix() -> list[dict[str, Any]]:
+    matrix: list[dict[str, Any]] = []
+    for code in sorted(_FINDING_OWNERSHIP):
+        item = _FINDING_OWNERSHIP[code]
+        matrix.append({
+            "raw_finding_code": code,
+            "canonical_family": item["canonical_family"],
+            "canonical_root_code": item.get(
+                "canonical_root_code",
+                code,
+            ),
+            "canonical_subtype": item.get(
+                "canonical_subtype",
+                "",
+            ),
+            "specificity": item["specificity"],
+            "blocking": True,
+            "can_be_primary": True,
+            "diagnostic_role": item["role"],
+            "secondary_when_primary_codes": sorted(
+                primary
+                for primary, secondary_codes in _FINDING_SECONDARY_OVERLAPS.items()
+                if code in secondary_codes
+            ),
+            "conflicts_with": sorted({
+                other
+                for pair in _FINDING_CONFLICTS
+                if code in pair
+                for other in pair
+                if other != code
+            }),
+        })
+    return matrix
+
+
+def _canonicalize_finding_codes(
+    raw_finding_codes: Any,
+) -> tuple[dict[str, Any] | None, str]:
+    if not isinstance(raw_finding_codes, list):
+        return None, "finding_codes_type_invalid"
+    if any(
+        not isinstance(item, str)
+        or item not in _FINDING_OWNERSHIP
+        for item in raw_finding_codes
+    ):
+        return None, "finding_code_unknown"
+
+    raw_codes = list(raw_finding_codes)
+    unique_codes = sorted(set(raw_codes))
+    unique_set = set(unique_codes)
+    if any(pair <= unique_set for pair in _FINDING_CONFLICTS):
+        return None, "finding_code_conflict"
+
+    raw_codes_by_root: dict[str, set[str]] = {}
+    for code in unique_codes:
+        root_code = str(
+            _FINDING_OWNERSHIP[code].get(
+                "canonical_root_code",
+                code,
+            )
+        )
+        raw_codes_by_root.setdefault(root_code, set()).add(code)
+
+    secondary_by_primary: dict[str, list[str]] = {}
+    root_codes = set(raw_codes_by_root)
+    for primary, possible_secondary in _FINDING_SECONDARY_OVERLAPS.items():
+        if primary not in root_codes:
+            continue
+        secondary = sorted(
+            code
+            for code in unique_codes
+            if code in possible_secondary
+        )
+        if secondary:
+            secondary_by_primary[primary] = secondary
+            root_codes.difference_update({
+                str(
+                    _FINDING_OWNERSHIP[code].get(
+                        "canonical_root_code",
+                        code,
+                    )
+                )
+                for code in secondary
+            })
+
+    canonical_findings = [
+        {
+            "finding_family": _FINDING_OWNERSHIP[
+                sorted(raw_codes_by_root[code])[0]
+            ][
+                "canonical_family"
+            ],
+            "finding_code": code,
+            "canonical_root_code": code,
+            "raw_finding_codes": sorted(raw_codes_by_root[code]),
+            "canonical_subtypes": sorted({
+                str(
+                    _FINDING_OWNERSHIP[raw_code].get(
+                        "canonical_subtype",
+                        "",
+                    )
+                )
+                for raw_code in raw_codes_by_root[code]
+                if str(
+                    _FINDING_OWNERSHIP[raw_code].get(
+                        "canonical_subtype",
+                        "",
+                    )
+                )
+            }),
+            "blocking": True,
+            "secondary_finding_codes": secondary_by_primary.get(code, []),
+        }
+        for code in sorted(
+            root_codes,
+            key=lambda item: (
+                -max(
+                    int(_FINDING_OWNERSHIP[raw]["specificity"])
+                    for raw in raw_codes_by_root[item]
+                ),
+                item,
+            ),
+        )
+    ]
+    primary = canonical_findings[0] if canonical_findings else {}
+    changed = (
+        len(raw_codes) != len(unique_codes)
+        or bool(secondary_by_primary)
+        or raw_codes != unique_codes
+        or any(
+            str(
+                _FINDING_OWNERSHIP[code].get(
+                    "canonical_root_code",
+                    code,
+                )
+            )
+            != code
+            for code in unique_codes
+        )
+        or len(raw_codes_by_root) != len(unique_codes)
+    )
+    return {
+        "blocking": bool(canonical_findings),
+        "primary_finding_family": str(
+            primary.get("finding_family") or ""
+        ),
+        "primary_finding_code": str(primary.get("finding_code") or ""),
+        "primary_canonical_root_code": str(
+            primary.get("canonical_root_code") or ""
+        ),
+        "primary_raw_finding_codes": list(
+            primary.get("raw_finding_codes") or []
+        ),
+        "primary_canonical_subtypes": list(
+            primary.get("canonical_subtypes") or []
+        ),
+        "secondary_finding_codes": sorted({
+            item
+            for finding in canonical_findings
+            for item in finding["secondary_finding_codes"]
+        }),
+        "raw_finding_codes": raw_codes,
+        "raw_finding_details": [
+            {
+                "raw_finding_code": code,
+                "canonical_family": _FINDING_OWNERSHIP[code][
+                    "canonical_family"
+                ],
+                "canonical_root_code": _FINDING_OWNERSHIP[
+                    code
+                ].get("canonical_root_code", code),
+                "canonical_subtype": _FINDING_OWNERSHIP[
+                    code
+                ].get("canonical_subtype", ""),
+                "blocking": True,
+            }
+            for code in raw_codes
+        ],
+        "canonical_findings": canonical_findings,
+        "normalization_status": (
+            "canonicalized"
+            if changed
+            else "unchanged"
+            if canonical_findings
+            else "no_findings"
+        ),
+    }, ""
+
+
+def _canonical_goal_finding(
+    check: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str]:
+    normalized, issue = _canonicalize_finding_codes(
+        check.get("finding_codes")
+    )
+    if normalized is None:
+        return None, issue
+    return {
+        "goal_ref": check["goal_ref"],
+        "clause_ref": check["clause_ref"],
+        **normalized,
+    }, ""
+
+
+def _atomic_semantic_result_with_diagnostics(
+    parsed: Any,
+    *,
+    atomic_contract: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    if not isinstance(parsed, dict):
+        return None, _semantic_validation_diagnostics(
+            "top_level_type_invalid",
+            json_path="$",
+            expected_type="object",
+            actual_type=type(parsed).__name__,
+        )
+    if set(parsed) != _ATOMIC_SEMANTIC_OUTPUT_FIELDS:
+        return None, _semantic_validation_diagnostics(
+            "top_level_fields_invalid",
+            json_path="$",
+            expected_type="exact_atomic_semantic_fields",
+            actual_type="object",
+            missing_field_count=len(_ATOMIC_SEMANTIC_OUTPUT_FIELDS - set(parsed)),
+            extra_field_count=len(set(parsed) - _ATOMIC_SEMANTIC_OUTPUT_FIELDS),
+        )
+    if parsed.get("schema_version") != _ATOMIC_SEMANTIC_SCHEMA_VERSION:
+        return None, _semantic_validation_diagnostics(
+            "schema_version_invalid",
+            json_path="$.schema_version",
+            expected_type=_ATOMIC_SEMANTIC_SCHEMA_VERSION,
+            actual_type=type(parsed.get("schema_version")).__name__,
+        )
+    checks = parsed.get("goal_reviews")
+    global_issues = parsed.get("global_finding_codes")
+    if not isinstance(checks, list):
+        return None, _semantic_validation_diagnostics(
+            "goal_reviews_type_invalid",
+            json_path="$.goal_reviews",
+            expected_type="array",
+            actual_type=type(checks).__name__,
+        )
+    if not isinstance(global_issues, list):
+        return None, _semantic_validation_diagnostics(
+            "global_finding_codes_type_invalid",
+            json_path="$.global_finding_codes",
+            expected_type="array",
+            actual_type=type(global_issues).__name__,
+        )
+    if any(
+        not isinstance(item, str)
+        or item not in _LLM_SEMANTIC_ISSUE_CODES
+        for item in global_issues
+    ):
+        return None, _semantic_validation_diagnostics(
+            "global_issue_code_invalid",
+            json_path="$.global_finding_codes",
+            expected_type="allowed_issue_codes",
+            actual_type="invalid_issue_code",
+            invalid_enum_count=1,
+        )
+
+    expected = {
+        (item["goal_ref"], item["clause_ref"]): item
+        for item in atomic_contract
+    }
+    observed: dict[tuple[str, str], dict[str, Any]] = {}
+    for index, check in enumerate(checks):
+        path = f"$.goal_reviews[{index}]"
+        if not isinstance(check, dict):
+            return None, _semantic_validation_diagnostics(
+                "segment_type_invalid",
+                json_path=path,
+                expected_type="object",
+                actual_type=type(check).__name__,
+            )
+        if set(check) != _ATOMIC_SEGMENT_FIELDS:
+            return None, _semantic_validation_diagnostics(
+                "segment_fields_invalid",
+                json_path=path,
+                expected_type="exact_atomic_segment_fields",
+                actual_type="object",
+                missing_field_count=len(_ATOMIC_SEGMENT_FIELDS - set(check)),
+                extra_field_count=len(set(check) - _ATOMIC_SEGMENT_FIELDS),
+            )
+        goal_ref = str(check.get("goal_ref") or "").strip()
+        clause_ref = str(check.get("clause_ref") or "").strip()
+        key = (goal_ref, clause_ref)
+        contract = expected.get(key)
+        if key in observed:
+            return None, _semantic_validation_diagnostics(
+                "duplicate_segment_reference",
+                json_path=path,
+                expected_type="unique_goal_and_clause_reference",
+                actual_type="duplicate_reference",
+            )
+        if contract is None:
+            return None, _semantic_validation_diagnostics(
+                "unknown_segment_reference",
+                json_path=path,
+                expected_type="known_goal_and_clause_reference",
+                actual_type="unknown_reference",
+            )
+        if check.get("clause_kind") != contract["clause_kind"]:
+            return None, _semantic_validation_diagnostics(
+                "clause_kind_mismatch",
+                json_path=f"{path}.clause_kind",
+                expected_type=contract["clause_kind"],
+                actual_type=str(check.get("clause_kind") or ""),
+            )
+        textual_status = check.get("textual_status")
+        if textual_status not in {"accepted", "rejected"}:
+            return None, _semantic_validation_diagnostics(
+                "textual_status_invalid",
+                json_path=f"{path}.textual_status",
+                expected_type="accepted_or_rejected",
+                actual_type=str(textual_status or ""),
+                invalid_enum_count=1,
+            )
+        issue_codes = check.get("finding_codes")
+        if not isinstance(issue_codes, list):
+            return None, _semantic_validation_diagnostics(
+                "finding_codes_type_invalid",
+                json_path=f"{path}.finding_codes",
+                expected_type="array",
+                actual_type=type(issue_codes).__name__,
+            )
+        if any(
+            not isinstance(item, str)
+            or item not in _LLM_SEMANTIC_ISSUE_CODES
+            for item in issue_codes
+        ):
+            return None, _semantic_validation_diagnostics(
+                "issue_code_invalid",
+                json_path=f"{path}.finding_codes",
+                expected_type="allowed_issue_codes",
+                actual_type="invalid_issue_code",
+                invalid_enum_count=1,
+            )
+        if (
+            textual_status == "accepted" and issue_codes
+        ) or (
+            textual_status == "rejected" and not issue_codes
+        ):
+            return None, _semantic_validation_diagnostics(
+                "textual_status_finding_mismatch",
+                json_path=f"{path}.finding_codes",
+                expected_type="status_consistent_finding_set",
+                actual_type="inconsistent_finding_set",
+            )
+        observed[key] = {
+            **check,
+            "finding_codes": list(issue_codes),
+        }
+    if set(observed) != set(expected):
+        return None, _semantic_validation_diagnostics(
+            "segment_reference_set_incomplete",
+            json_path="$.goal_reviews",
+            expected_type="complete_atomic_contract",
+            actual_type="incomplete_reference_set",
+            missing_field_count=len(set(expected) - set(observed)),
+        )
+
+    normalized_checks = [
+        observed[(item["goal_ref"], item["clause_ref"])]
+        for item in atomic_contract
+    ]
+    canonical_goal_findings: list[dict[str, Any]] = []
+    for index, check in enumerate(normalized_checks):
+        canonical, normalization_issue = _canonical_goal_finding(check)
+        if canonical is None:
+            return None, _semantic_validation_diagnostics(
+                normalization_issue,
+                json_path=f"$.goal_reviews[{index}].finding_codes",
+                expected_type="consistent_known_finding_codes",
+                actual_type="normalization_invalid",
+            )
+        canonical_goal_findings.append(canonical)
+
+    canonical_global_findings, global_normalization_issue = (
+        _canonicalize_finding_codes(global_issues)
+    )
+    if canonical_global_findings is None:
+        return None, _semantic_validation_diagnostics(
+            global_normalization_issue,
+            json_path="$.global_finding_codes",
+            expected_type="consistent_known_finding_codes",
+            actual_type="normalization_invalid",
+        )
+    goal_bound_codes = {
+        finding["finding_code"]
+        for goal in canonical_goal_findings
+        for finding in goal["canonical_findings"]
+    }
+    duplicate_global_codes = sorted(
+        goal_bound_codes
+        & {
+            finding["finding_code"]
+            for finding in canonical_global_findings["canonical_findings"]
+        }
+    )
+    if duplicate_global_codes:
+        retained_global_findings = [
+            finding
+            for finding in canonical_global_findings["canonical_findings"]
+            if finding["finding_code"] not in duplicate_global_codes
+        ]
+        primary_global = (
+            retained_global_findings[0]
+            if retained_global_findings
+            else {}
+        )
+        canonical_global_findings.update({
+            "blocking": bool(retained_global_findings),
+            "primary_finding_family": str(
+                primary_global.get("finding_family") or ""
+            ),
+            "primary_finding_code": str(
+                primary_global.get("finding_code") or ""
+            ),
+            "primary_canonical_root_code": str(
+                primary_global.get("canonical_root_code") or ""
+            ),
+            "primary_raw_finding_codes": list(
+                primary_global.get("raw_finding_codes") or []
+            ),
+            "primary_canonical_subtypes": list(
+                primary_global.get("canonical_subtypes") or []
+            ),
+            "secondary_finding_codes": sorted({
+                *canonical_global_findings["secondary_finding_codes"],
+                *duplicate_global_codes,
+            }),
+            "canonical_findings": retained_global_findings,
+            "normalization_status": "goal_attribution_preferred",
+        })
+
+    issues = sorted({
+        *global_issues,
+        *(
+            issue
+            for check in normalized_checks
+            for issue in check["finding_codes"]
+        ),
+    })
+    blocking = (
+        any(item["blocking"] for item in canonical_goal_findings)
+        or canonical_global_findings["blocking"]
+    )
+    result = _result(
+        not blocking,
+        issues,
+        (
+            "Unified textual audit passed."
+            if not blocking
+            else "Unified textual audit failed: " + ",".join(issues)
+        ),
+        "llm_unified_textual_audit",
+    )
+    result.update({
+        "schema_version": _ATOMIC_SEMANTIC_SCHEMA_VERSION,
+        "goal_reviews": normalized_checks,
+        "global_finding_codes": list(global_issues),
+        "finding_ontology_version": _FINDING_ONTOLOGY_VERSION,
+        "canonical_goal_findings": canonical_goal_findings,
+        "canonical_global_findings": canonical_global_findings,
+        "normalization_status": (
+            "canonicalized"
+            if any(
+                item["normalization_status"] != "unchanged"
+                and item["normalization_status"] != "no_findings"
+                for item in canonical_goal_findings
+            )
+            or canonical_global_findings["normalization_status"]
+            not in {"unchanged", "no_findings"}
+            else "unchanged"
+        ),
+    })
+    return result, _semantic_validation_diagnostics(
+        "accepted",
+        json_path="$",
+        expected_type="unified_textual_audit_response",
+        actual_type="unified_textual_audit_response",
+    )
+
+
+def _validate_llm_semantic_result(parsed: Any) -> str:
+    if not isinstance(parsed, dict) or set(parsed) != {"passed", "issues", "reason"}:
+        return "object_schema_invalid"
+    if not isinstance(parsed["passed"], bool):
+        return "passed_type_invalid"
+    issues = parsed["issues"]
+    if not isinstance(issues, list) or any(
+        not isinstance(item, str) or item not in _LLM_SEMANTIC_ISSUE_CODES
+        for item in issues
+    ):
+        return "issue_code_invalid"
+    if len(issues) != len(set(issues)):
+        return "duplicate_issue_code"
+    if parsed["passed"] and issues:
+        return "passed_with_issues"
+    if not parsed["passed"] and not issues:
+        return "failed_without_issue"
+    reason = parsed["reason"]
+    if (
+        not isinstance(reason, str)
+        or not reason.strip()
+        or len(reason) > 500
+        or "\n" in reason
+        or "\r" in reason
+    ):
+        return "reason_invalid"
+    return ""
+
+
+def _semantic_judge_failure(
+    issue: str,
+    *,
+    provider_diagnostics: dict[str, Any] | None = None,
+    validation_diagnostics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    reason = (
+        "Semantic judge is unavailable."
+        if issue == "semantic_judge_unavailable"
+        else "Semantic judge response schema is invalid."
+    )
+    result = _result(False, [issue], reason, "llm_semantic_fit")
+    if provider_diagnostics is not None:
+        result["provider_diagnostics"] = provider_diagnostics
+    if validation_diagnostics is not None:
+        result["validation_diagnostics"] = validation_diagnostics
+    return result
+
+
+def _semantic_provider_diagnostics(
+    content: str,
+    *,
+    finish_reason: str,
+    latency_ms: int,
+) -> dict[str, Any]:
+    return {
+        "response_envelope": "unclassified",
+        "response_length": len(content),
+        "response_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "finish_reason": finish_reason,
+        "provider_latency_ms": max(0, latency_ms),
+        "provider_error_type": "",
+        "model_call_count": 1,
+        "retry_count": 0,
+        "repair_count": 0,
+        "json_repair_count": 0,
+        "envelope_contract_version": COMPOSER_ENVELOPE_CONTRACT_VERSION,
+        "envelope_unwrap_count": 0,
+    }
+
+
+def _semantic_provider_failure_diagnostics(exc: Exception) -> dict[str, Any]:
+    return {
+        "response_envelope": "provider_error",
+        "response_length": 0,
+        "response_sha256": "",
+        "finish_reason": "",
+        "provider_latency_ms": None,
+        "provider_error_type": type(exc).__name__,
+        "model_call_count": 1,
+        "retry_count": 0,
+        "repair_count": 0,
+        "json_repair_count": 0,
+        "envelope_contract_version": COMPOSER_ENVELOPE_CONTRACT_VERSION,
+        "envelope_unwrap_count": 0,
+    }
+
+
+def _semantic_validation_diagnostics(
+    category: str,
+    *,
+    json_path: str,
+    expected_type: str,
+    actual_type: str,
+    missing_field_count: int = 0,
+    extra_field_count: int = 0,
+    invalid_enum_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "category": category,
+        "json_path": json_path,
+        "expected_type": expected_type,
+        "actual_type": actual_type,
+        "missing_field_count": missing_field_count,
+        "extra_field_count": extra_field_count,
+        "invalid_enum_count": invalid_enum_count,
+    }
+
+
+def _is_model_first_candidate(response: dict[str, Any]) -> bool:
+    composer = response.get("model_first_answer_composer")
+    return isinstance(composer, dict) and composer.get("status") == "accepted"
+
+
+def _model_first_unified_audit_payload(
+    response: dict[str, Any],
+    customer_message: str,
+    copilot_context: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.canonical_conversation_turn_service import (
+        project_text_for_external_model,
+    )
+    from app.services.final_answer_auditor import _model_first_audit_context
+
+    audit_context = _model_first_audit_context(response, copilot_context)
+    truth = audit_context.get("canonical_truth")
+    if not isinstance(truth, dict):
+        truth = {}
+    candidate_clauses = [
+        item
+        for item in truth.get("candidate_clauses") or []
+        if isinstance(item, dict)
+    ]
+    goal_refs = {
+        str(item.get("goal_ref") or "")
+        for item in candidate_clauses
+        if str(item.get("goal_ref") or "")
+    }
+    evidence_refs = {
+        str(ref)
+        for item in candidate_clauses
+        for ref in (
+            list(item.get("evidence_refs") or [])
+            + list(item.get("premise_evidence_refs") or [])
+        )
+        if str(ref)
+    }
+    completed_action_refs = sorted({
+        "action_"
+        + hashlib.sha256(
+            str(item.get("action_id") or "").encode("utf-8")
+        ).hexdigest()[:12]
+        for item in response.get("action_events") or []
+        if isinstance(item, dict)
+        and str(item.get("status") or "") == "completed"
+        and str(item.get("action_id") or "").strip()
+    })
+    media_blocks = [
+        {
+            "type": str(item.get("type") or ""),
+            "send_mode": str(item.get("send_mode") or ""),
+        }
+        for item in response.get("reply_blocks") or []
+        if isinstance(item, dict)
+        and str(item.get("type") or "") in {"image", "video"}
+        and str(item.get("url") or item.get("asset_url") or "").strip()
+    ]
+    final_audit = response.get("final_answer_audit")
+    if not isinstance(final_audit, dict):
+        final_audit = {}
+    return {
+        "schema_version": "unified-textual-audit-input-v1",
+        "current_customer_message": project_text_for_external_model(
+            customer_message
+        ),
+        "final_reply": project_text_for_external_model(
+            response.get("suggested_reply") or ""
+        ),
+        "canonical_truth": {
+            "evidence": [
+                item
+                for item in truth.get("evidence") or []
+                if isinstance(item, dict)
+                and str(item.get("evidence_ref") or "") in evidence_refs
+            ],
+            "claim_resolutions": [
+                item
+                for item in truth.get("claim_resolutions") or []
+                if isinstance(item, dict)
+                and str(item.get("claim_ref") or "") in goal_refs
+            ],
+            "candidate_clauses": candidate_clauses,
+            "unresolved_or_prohibited_claims": [
+                item
+                for item in truth.get("unresolved_or_prohibited_claims") or []
+                if isinstance(item, dict)
+                and str(item.get("claim_ref") or "") in goal_refs
+            ],
+        },
+        "conversation_continuity": audit_context.get(
+            "conversation_continuity"
+        )
+        or {},
+        "completion_evidence": {
+            "completed_action_refs": completed_action_refs,
+            "attached_media_blocks": media_blocks,
+        },
+        "deterministic_final_contract": {
+            "passed": final_audit.get("passed") is True,
+            "issues": list(final_audit.get("issues") or []),
+            "model_call_count": int(final_audit.get("model_call_count") or 0),
+        },
+    }
 
 
 def _semantic_payload(
@@ -337,6 +1451,13 @@ def _semantic_payload(
     customer_message: str,
     copilot_context: dict[str, Any],
 ) -> dict[str, Any]:
+    if _is_model_first_candidate(response):
+        return _model_first_unified_audit_payload(
+            response,
+            customer_message,
+            copilot_context,
+        )
+
     debug = response.get("evidence_debug") or {}
     evidence_pack = _evidence_pack(response)
     admitted = debug.get("admitted_answer_context")

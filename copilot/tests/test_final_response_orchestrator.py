@@ -713,18 +713,41 @@ def test_formal_non_fact_only_context_cannot_create_sendable_media(monkeypatch):
 def test_model_first_candidate_skips_semantic_polish_and_stays_review_only(
     monkeypatch,
 ):
+    calls = []
+
+    def fake_final(response, **_kwargs):
+        calls.append("final")
+        return {
+            **response,
+            "final_answer_audit": {
+                "passed": True,
+                "issues": [],
+                "model_call_count": 0,
+            },
+        }
+
+    def fake_unified(*_args, **_kwargs):
+        calls.append("unified")
+        return {
+            "passed": True,
+            "issues": [],
+            "mode": "test",
+            "provider_diagnostics": {
+                "model_call_count": 1,
+                "retry_count": 0,
+                "repair_count": 0,
+            },
+        }
+
     monkeypatch.setattr(
         orchestrator,
         "audit_final_answer",
-        lambda response, **_kwargs: {
-            **response,
-            "final_answer_audit": {"passed": True, "issues": []},
-        },
+        fake_final,
     )
     monkeypatch.setattr(
         orchestrator,
         "audit_customer_reply_semantic_fit",
-        lambda *_args, **_kwargs: {"passed": True, "issues": [], "mode": "test"},
+        fake_unified,
     )
     monkeypatch.setattr(
         orchestrator,
@@ -758,9 +781,81 @@ def test_model_first_candidate_skips_semantic_polish_and_stays_review_only(
     )
 
     assert result["suggested_reply"] == "宽度是80厘米。\n\n儿童安全方面目前没有直接依据。"
+    assert calls == ["final", "unified"]
     assert result["final_response_pipeline"]["mode"] == "model_first_candidate"
+    assert result["final_response_pipeline"]["order"] == [
+        "non_semantic_cleanup",
+        "model_first_preflight_redline",
+        "model_first_deterministic_final_contract",
+        "model_first_unified_textual_audit",
+        "reply_block_sync",
+    ]
+    assert [
+        item["model_call_count"]
+        for item in result["final_response_pipeline"]["stages"]
+        if "model_call_count" in item
+    ] == [0, 1]
     assert result["customer_reply_polish"]["mode"] == "non_semantic_cleanup_only"
     assert result["can_send"] is False
     assert result["requires_human_review"] is True
     assert result["sendable_reply"] == ""
     assert result["reply_blocks"][0]["content"] == result["suggested_reply"]
+
+
+def test_model_first_final_failure_skips_unified_audit_without_rewrite(
+    monkeypatch,
+):
+    calls = []
+    candidate = "宽度是80厘米。"
+
+    def fake_final(response, **_kwargs):
+        calls.append("final")
+        response["final_answer_audit"] = {
+            "passed": False,
+            "issues": ["model_first_candidate_unknown_evidence"],
+            "model_call_count": 0,
+        }
+        response["can_send"] = False
+        response["requires_human_review"] = True
+        response["sendable_reply"] = ""
+        return response
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_final)
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_customer_reply_semantic_fit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unified audit must not run")
+        ),
+    )
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": candidate,
+            "can_send": True,
+            "sendable_reply": candidate,
+            "requires_human_review": False,
+            "model_first_answer_composer": {
+                "status": "accepted",
+                "used_for_final_reply": True,
+                "can_change_can_send": False,
+            },
+        },
+        customer_message="宽度多少",
+    )
+
+    assert calls == ["final"]
+    assert result["suggested_reply"] == candidate
+    assert result["can_send"] is False
+    assert result["requires_human_review"] is True
+    assert result["sendable_reply"] == ""
+    assert result["final_semantic_fit_audit"]["mode"] == (
+        "unified_textual_audit_not_run"
+    )
+    assert result["final_semantic_fit_audit"][
+        "provider_diagnostics"
+    ]["model_call_count"] == 0
+    assert all(
+        item.get("fallback_used") is not True
+        for item in result["final_response_pipeline"]["stages"]
+    )

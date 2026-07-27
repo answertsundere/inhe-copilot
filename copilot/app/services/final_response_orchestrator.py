@@ -293,22 +293,9 @@ def _orchestrate_model_first_response(
     customer_message: str,
     copilot_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Audit a composed candidate without handing reply ownership to polishers."""
+    """Run one deterministic contract and one textual audit for a candidate."""
     pipeline: list[dict[str, Any]] = []
     _apply_formal_delivery_boundary(response)
-
-    response = audit_final_answer(
-        response,
-        customer_message=customer_message,
-        copilot_context=copilot_context,
-    )
-    first_audit = response.get("final_answer_audit") or {}
-    pipeline.append({
-        "stage": "model_first_final_audit",
-        "passed": bool(first_audit.get("passed", True)),
-        "issues": list(first_audit.get("issues") or []),
-        "fallback_used": bool(first_audit.get("fallback_used")),
-    })
 
     before_cleanup = str(response.get("suggested_reply") or "")
     cleaned = _non_semantic_reply_cleanup(before_cleanup)
@@ -322,62 +309,74 @@ def _orchestrate_model_first_response(
         "stage": "non_semantic_cleanup",
         "changed": cleaned != before_cleanup,
     })
-    if cleaned != before_cleanup:
-        response = audit_final_answer(
-            response,
-            customer_message=customer_message,
-            copilot_context=copilot_context,
-        )
 
-    semantic_fit = audit_customer_reply_semantic_fit(
+    post_issues = _post_polish_redline_issues(cleaned)
+    response.setdefault("evidence_debug", {})[
+        "model_first_preflight_redline"
+    ] = {
+        "passed": not post_issues,
+        "issues": post_issues,
+    }
+    pipeline.append({
+        "stage": "model_first_preflight_redline",
+        "passed": not post_issues,
+        "issues": post_issues,
+    })
+    response = audit_final_answer(
         response,
         customer_message=customer_message,
         copilot_context=copilot_context,
     )
-    # Candidate mode records semantic fitness but never lets a semantic fallback
-    # replace already-supported clauses. Delivery remains review-only.
-    response["final_semantic_fit_audit"] = semantic_fit
-    response.setdefault("evidence_debug", {})[
-        "final_semantic_fit_audit"
-    ] = semantic_fit
+    final_audit = response.get("final_answer_audit") or {}
     pipeline.append({
-        "stage": "model_first_semantic_fit_audit",
-        "passed": bool(semantic_fit.get("passed", True)),
-        "issues": list(semantic_fit.get("issues") or []),
-        "fallback_applied": False,
+        "stage": "model_first_deterministic_final_contract",
+        "passed": bool(final_audit.get("passed", False)),
+        "issues": list(final_audit.get("issues") or []),
+        "model_call_count": int(final_audit.get("model_call_count") or 0),
+        "fallback_used": False,
     })
 
-    post_issues = _post_polish_redline_issues(
-        str(response.get("suggested_reply") or "")
-    )
-    if post_issues:
-        response["suggested_reply"] = _safe_post_polish_fallback(response)
-        response["requires_human_review"] = True
-        response["generation_mode"] = "model_first_redline_fallback"
-        response = audit_final_answer(
-            response,
-            customer_message=customer_message,
-            copilot_context=copilot_context,
-        )
+    if final_audit.get("passed") is True:
         semantic_fit = audit_customer_reply_semantic_fit(
             response,
             customer_message=customer_message,
             copilot_context=copilot_context,
         )
-        response["final_semantic_fit_audit"] = semantic_fit
-        response.setdefault("evidence_debug", {})[
-            "final_semantic_fit_audit"
-        ] = semantic_fit
-    response.setdefault("evidence_debug", {})["post_polish_redline"] = {
-        "passed": not post_issues,
-        "issues": post_issues,
-    }
+    else:
+        semantic_fit = {
+            "checked": False,
+            "passed": False,
+            "issues": ["deterministic_final_contract_failed"],
+            "reason": "Unified textual audit was not run.",
+            "mode": "unified_textual_audit_not_run",
+            "provider_diagnostics": {
+                "model_call_count": 0,
+                "retry_count": 0,
+                "repair_count": 0,
+            },
+        }
+    response["final_semantic_fit_audit"] = semantic_fit
+    response.setdefault("evidence_debug", {})[
+        "final_semantic_fit_audit"
+    ] = semantic_fit
     pipeline.append({
-        "stage": "post_polish_redline",
-        "passed": not post_issues,
-        "issues": post_issues,
+        "stage": "model_first_unified_textual_audit",
+        "passed": bool(semantic_fit.get("passed", False)),
+        "issues": list(semantic_fit.get("issues") or []),
+        "model_call_count": int(
+            (semantic_fit.get("provider_diagnostics") or {}).get(
+                "model_call_count"
+            )
+            or 0
+        ),
+        "fallback_used": False,
     })
 
+    if semantic_fit.get("passed") is not True:
+        response["reason_for_review"] = _append_reason(
+            str(response.get("reason_for_review") or ""),
+            "model_first_unified_textual_audit_failed",
+        )
     response["requires_human_review"] = True
     response["can_send"] = False
     response["sendable_reply"] = ""
@@ -387,10 +386,10 @@ def _orchestrate_model_first_response(
         "version": FINAL_RESPONSE_PIPELINE_VERSION,
         "mode": "model_first_candidate",
         "order": [
-            "model_first_final_audit",
             "non_semantic_cleanup",
-            "model_first_semantic_fit_audit",
-            "post_polish_redline",
+            "model_first_preflight_redline",
+            "model_first_deterministic_final_contract",
+            "model_first_unified_textual_audit",
             "reply_block_sync",
         ],
         "stages": pipeline,

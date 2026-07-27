@@ -22,15 +22,41 @@ from app.services.media_asset_service import is_delivery_media_asset_eligible
 
 logger = logging.getLogger(__name__)
 
-_MODEL_FIRST_AUDIT_SCHEMA_VERSION = "model-first-final-audit-v2"
+_MODEL_FIRST_AUDIT_SCHEMA_VERSION = "atomic-final-audit-v3"
 _MODEL_FIRST_AUDIT_OUTPUT_FIELDS = {
+    "schema_version",
+    "clause_checks",
+    "global_issue_codes",
+}
+_MODEL_FIRST_AUDIT_OPTIONAL_DIAGNOSTIC_FIELDS = {
     "passed",
-    "issues",
-    "reason_code",
-    "canonical_truth_respected",
-    "unresolved_declaration_recognized",
-    "conversation_continuity_checked",
+    "reason",
+}
+_MODEL_FIRST_AUDIT_CLAUSE_FIELDS = {
+    "clause_ref",
+    "goal_ref",
+    "canonical_status",
+    "factual_grounding_respected",
+    "unresolved_boundary_respected",
+    "inference_scope_respected",
+    "customer_goal_answered",
+    "issue_codes",
+}
+_MODEL_FIRST_AUDIT_CLAUSE_ISSUE_CODES = {
+    "unsupported_claim",
+    "unresolved_claim_asserted",
+    "inference_scope_exceeded",
+    "query_reply_mismatch",
+}
+_MODEL_FIRST_AUDIT_GLOBAL_ISSUE_CODES = {
+    "conversation_continuity_failure",
     "historical_agent_fact_used",
+    "asks_for_existing_information",
+    "unsupported_service_action_completion",
+    "unsupported_media_claim",
+    "internal_language_exposure",
+    "identity_leakage",
+    "prohibited_high_risk_claim",
 }
 _REDACTION_MARKERS = (
     "[PHONE_REDACTED]",
@@ -270,8 +296,67 @@ def audit_final_answer(
 
     expected = _expected_topics(customer_message, response)
     actual = _detect_topics(reply, ignore_quoted_names=True)
+    model_first_candidate = (
+        isinstance(response.get("model_first_answer_composer"), dict)
+        and response["model_first_answer_composer"].get("status") == "accepted"
+    )
+    model_first_contract_issues = _model_first_candidate_contract_issues(
+        response
+    )
+    if model_first_candidate:
+        preflight = (
+            (response.get("evidence_debug") or {}).get(
+                "model_first_preflight_redline"
+            )
+            or {}
+        )
+        issues = _hard_safety_issues(
+            reply,
+            response,
+            copilot_context or {},
+        )
+        issues.extend(model_first_contract_issues)
+        issues.extend(
+            f"post_polish_redline:{issue}"
+            for issue in (preflight.get("issues") or [])
+            if str(issue).strip()
+        )
+        issues = _dedupe(issues)
+        audit = {
+            "checked": True,
+            "passed": not issues,
+            "issues": issues,
+            "expected_topics": sorted(expected),
+            "reply_topics": sorted(actual),
+            "mode": "model_first_deterministic_final_contract",
+            "model_call_count": 0,
+            "candidate_reply_sha256": hashlib.sha256(
+                reply.encode("utf-8")
+            ).hexdigest(),
+        }
+        response["final_answer_audit"] = audit
+        response.setdefault("evidence_debug", {})["final_answer_audit"] = audit
+        if any(
+            str(issue).startswith("unsupported_high_risk_claim:")
+            for issue in issues
+        ):
+            _force_high_risk_handoff_contract(response)
+        if issues:
+            response["requires_human_review"] = True
+            response["can_send"] = False
+            response["sendable_reply"] = ""
+            response["reply_status"] = "needs_human_review"
+            response["reason_for_review"] = _append_reason(
+                str(response.get("reason_for_review") or ""),
+                "model_first_deterministic_final_contract_failed",
+            )
+        return response
+
     llm_audit = None
-    if config.COPILOT_FINAL_AUDIT_LLM_ENABLED:
+    if (
+        config.COPILOT_FINAL_AUDIT_LLM_ENABLED
+        and not model_first_contract_issues
+    ):
         llm_audit = _semantic_llm_audit(
             customer_message,
             reply,
@@ -286,10 +371,10 @@ def audit_final_answer(
         if not llm_audit.get("passed", True):
             issues.extend(f"llm:{issue}" for issue in llm_audit.get("issues", []) or ["semantic_mismatch"])
         issues.extend(_hard_safety_issues(reply, response, copilot_context or {}))
-        issues.extend(_model_first_candidate_contract_issues(response))
+        issues.extend(model_first_contract_issues)
     else:
         issues = _audit_issues(customer_message, reply, expected, actual, response, copilot_context or {})
-        issues.extend(_model_first_candidate_contract_issues(response))
+        issues.extend(model_first_contract_issues)
     passed = not issues
 
     audit = {
@@ -697,6 +782,21 @@ def _model_first_claim_resolutions(response: dict[str, Any]) -> list[dict[str, A
     )
 
 
+def _model_first_expected_clause_kind(claim: dict[str, Any]) -> str:
+    status = str(claim.get("status") or "").strip()
+    if (
+        status == "supported"
+        and str(claim.get("support_basis") or "").strip()
+        == "bounded_inference"
+    ):
+        return "allowed_inference"
+    if status == "supported":
+        return "supported_fact"
+    if status in {"unresolved", "conflicting", "prohibited"}:
+        return "unresolved"
+    return ""
+
+
 def _anonymous_ref(prefix: str, value: Any) -> str:
     digest = hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:12]
     return f"{prefix}_{digest}"
@@ -743,23 +843,113 @@ def _model_first_audit_context(
             "provenance_ref": _anonymous_ref("provenance", provenance_seed),
         })
 
-    claim_rows = _model_first_claim_resolutions(response)
+    claim_rows = sorted(
+        _model_first_claim_resolutions(response),
+        key=lambda item: (
+            str(item.get("claim_uid") or ""),
+            str(item.get("claim_type") or ""),
+            str(item.get("attribute_key") or ""),
+        ),
+    )
     canonical_claims = []
+    canonical_goal_ref_by_uid: dict[str, str] = {}
     for index, item in enumerate(claim_rows, start=1):
+        claim_uid = str(item.get("claim_uid") or "").strip()
+        canonical_goal_ref = f"goal_{index:02d}"
+        canonical_goal_ref_by_uid[claim_uid] = canonical_goal_ref
         canonical_claims.append({
-            "claim_ref": f"goal_{index:02d}",
+            "claim_ref": canonical_goal_ref,
             "claim_type": str(item.get("claim_type") or ""),
             "attribute_key": str(item.get("attribute_key") or ""),
             "status": str(item.get("status") or ""),
+            "support_basis": str(item.get("support_basis") or ""),
             "evidence_refs": sorted({
                 evidence_ref_by_uid[str(uid)]
                 for uid in item.get("evidence_uids") or []
                 if str(uid) in evidence_ref_by_uid
             }),
+            "premise_evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in item.get("premise_evidence_uids") or []
+                if str(uid) in evidence_ref_by_uid
+            }),
+            "inference_policy_refs": sorted({
+                str(value).strip()
+                for value in item.get("inference_policy_refs") or []
+                if str(value).strip()
+            }),
+            "scope_qualifier": str(
+                item.get("scope_qualifier") or ""
+            ).strip(),
+            "required_qualifiers": sorted({
+                str(value).strip()
+                for value in item.get("required_qualifiers") or []
+                if str(value).strip()
+            }),
+            "prohibited_extensions": sorted({
+                str(value).strip()
+                for value in item.get("prohibited_extensions") or []
+                if str(value).strip()
+            }),
             "conflicting_evidence_refs": sorted({
                 evidence_ref_by_uid[str(uid)]
                 for uid in item.get("conflicting_evidence_uids") or []
                 if str(uid) in evidence_ref_by_uid
+            }),
+        })
+
+    composer = response.get("model_first_answer_composer")
+    composer_clauses = (
+        composer.get("clauses")
+        if isinstance(composer, dict)
+        and isinstance(composer.get("clauses"), list)
+        else []
+    )
+    clause_by_goal = {
+        str(item.get("goal_ref") or "").strip(): item
+        for item in composer_clauses
+        if isinstance(item, dict)
+        and str(item.get("goal_ref") or "").strip()
+    }
+    canonical_candidate_clauses = []
+    for index, claim in enumerate(claim_rows, start=1):
+        claim_uid = str(claim.get("claim_uid") or "").strip()
+        clause = clause_by_goal.get(claim_uid)
+        if not isinstance(clause, dict):
+            continue
+        canonical_candidate_clauses.append({
+            "clause_ref": f"clause_{index:02d}",
+            "goal_ref": canonical_goal_ref_by_uid[claim_uid],
+            "canonical_status": str(claim.get("status") or "").strip(),
+            "expected_kind": _model_first_expected_clause_kind(claim),
+            "text": project_text_for_external_model(clause.get("text") or ""),
+            "evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in clause.get("evidence_uids") or []
+                if str(uid) in evidence_ref_by_uid
+            }),
+            "premise_evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in claim.get("premise_evidence_uids") or []
+                if str(uid) in evidence_ref_by_uid
+            }),
+            "inference_policy_refs": sorted({
+                str(value).strip()
+                for value in claim.get("inference_policy_refs") or []
+                if str(value).strip()
+            }),
+            "scope_qualifier": str(
+                claim.get("scope_qualifier") or ""
+            ).strip(),
+            "required_qualifiers": sorted({
+                str(value).strip()
+                for value in claim.get("required_qualifiers") or []
+                if str(value).strip()
+            }),
+            "prohibited_extensions": sorted({
+                str(value).strip()
+                for value in claim.get("prohibited_extensions") or []
+                if str(value).strip()
             }),
         })
 
@@ -826,6 +1016,7 @@ def _model_first_audit_context(
         "canonical_truth": {
             "evidence": canonical_evidence,
             "claim_resolutions": canonical_claims,
+            "candidate_clauses": canonical_candidate_clauses,
             "unresolved_or_prohibited_claims": unresolved,
         },
         "conversation_continuity": {
@@ -870,39 +1061,83 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
         if str(item.get("evidence_uid") or "")
     }
     minimal = _model_first_minimal_context(response)
-    dependency_keys = {
-        (
-            str(item.get("claim_type") or ""),
-            str(item.get("attribute_key") or ""),
-        )
-        for item in minimal.get("requested_claims") or []
-        if isinstance(item, dict) and item.get("supporting_only") is True
+    trusted_policy_refs = {
+        str(item.get("policy_ref") or "").strip()
+        for item in minimal.get("bounded_inference_policies") or []
+        if isinstance(item, dict)
+        and str(item.get("policy_ref") or "").strip()
     }
-    claims = {
-        str(item.get("claim_uid") or ""): item
-        for item in _model_first_claim_resolutions(response)
-        if str(item.get("claim_uid") or "")
-        and (
-            str(item.get("claim_type") or ""),
-            str(item.get("attribute_key") or ""),
-        ) not in dependency_keys
+    resolution_rows = _model_first_claim_resolutions(response)
+    covered_goal_refs = {
+        str(value).strip()
+        for value in composer.get("covered_goal_refs") or []
+        if str(value).strip()
     }
+    if covered_goal_refs:
+        claims = {
+            str(item.get("claim_uid") or ""): item
+            for item in resolution_rows
+            if str(item.get("claim_uid") or "") in covered_goal_refs
+        }
+    elif any(str(item.get("goal_kind") or "").strip() for item in resolution_rows):
+        claims = {
+            str(item.get("claim_uid") or ""): item
+            for item in resolution_rows
+            if str(item.get("claim_uid") or "")
+            and str(item.get("goal_kind") or "").strip() == "customer_goal"
+            and item.get("supporting_only") is not True
+        }
+    else:
+        dependency_keys = {
+            (
+                str(item.get("claim_type") or ""),
+                str(item.get("attribute_key") or ""),
+            )
+            for item in minimal.get("requested_claims") or []
+            if isinstance(item, dict) and item.get("supporting_only") is True
+        }
+        claims = {
+            str(item.get("claim_uid") or ""): item
+            for item in resolution_rows
+            if str(item.get("claim_uid") or "")
+            and (
+                str(item.get("claim_type") or ""),
+                str(item.get("attribute_key") or ""),
+            ) not in dependency_keys
+        }
     clauses = composer.get("clauses")
     if not isinstance(clauses, list):
         return ["model_first_candidate_clauses_invalid"]
     clauses_by_goal: dict[str, dict[str, Any]] = {}
+    clause_refs: set[str] = set()
     issues: list[str] = []
     for clause in clauses:
         if not isinstance(clause, dict):
             issues.append("model_first_candidate_clause_invalid")
             continue
         goal_ref = str(clause.get("goal_ref") or "")
-        if not goal_ref or goal_ref in clauses_by_goal:
+        clause_ref = str(clause.get("clause_ref") or "").strip()
+        clause_text = str(clause.get("text") or "").strip()
+        if (
+            not goal_ref
+            or goal_ref in clauses_by_goal
+            or not clause_ref
+            or clause_ref in clause_refs
+        ):
             issues.append("model_first_candidate_goal_duplicate_or_missing")
             continue
+        if not clause_text:
+            issues.append("model_first_candidate_clause_text_missing")
+        clause_refs.add(clause_ref)
         clauses_by_goal[goal_ref] = clause
+        evidence_values = clause.get("evidence_uids")
+        if not isinstance(evidence_values, list):
+            issues.append("model_first_candidate_evidence_refs_invalid")
+            evidence_values = []
+        elif len(evidence_values) != len(set(map(str, evidence_values))):
+            issues.append("model_first_candidate_duplicate_evidence")
         unknown = {
-            str(uid) for uid in clause.get("evidence_uids") or []
+            str(uid) for uid in evidence_values
             if str(uid) not in evidence_uids
         }
         if unknown:
@@ -915,11 +1150,82 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
         status = str(claim.get("status") or "")
         actual_evidence = {str(uid) for uid in clause.get("evidence_uids") or []}
         expected_evidence = {str(uid) for uid in claim.get("evidence_uids") or []}
+        expected_kind = _model_first_expected_clause_kind(claim)
+        if not expected_kind:
+            issues.append("model_first_candidate_claim_status_invalid")
+            continue
         if status == "supported":
-            if clause.get("clause_kind") != "supported_fact" or actual_evidence != expected_evidence:
+            support_basis = str(claim.get("support_basis") or "")
+            if support_basis == "bounded_inference":
+                premise_evidence = {
+                    str(uid)
+                    for uid in claim.get("premise_evidence_uids") or []
+                    if str(uid)
+                }
+                claim_policy_refs = sorted({
+                    str(value)
+                    for value in claim.get("inference_policy_refs") or []
+                    if str(value)
+                })
+                clause_policy_refs = sorted({
+                    str(value)
+                    for value in clause.get("inference_policy_refs") or []
+                    if str(value)
+                })
+                claim_qualifiers = sorted({
+                    str(value)
+                    for value in claim.get("required_qualifiers") or []
+                    if str(value)
+                })
+                clause_qualifiers = sorted({
+                    str(value)
+                    for value in clause.get("required_qualifiers") or []
+                    if str(value)
+                })
+                claim_prohibited = sorted({
+                    str(value)
+                    for value in claim.get("prohibited_extensions") or []
+                    if str(value)
+                })
+                clause_prohibited = sorted({
+                    str(value)
+                    for value in clause.get("prohibited_extensions") or []
+                    if str(value)
+                })
+                if (
+                    clause.get("clause_kind") != "allowed_inference"
+                    or not premise_evidence
+                    or actual_evidence != premise_evidence
+                    or expected_evidence != premise_evidence
+                    or not claim_policy_refs
+                    or not trusted_policy_refs
+                    or not set(claim_policy_refs).issubset(trusted_policy_refs)
+                    or clause_policy_refs != claim_policy_refs
+                    or not str(claim.get("scope_qualifier") or "")
+                    or str(clause.get("scope_qualifier") or "")
+                    != str(claim.get("scope_qualifier") or "")
+                    or not claim_qualifiers
+                    or clause_qualifiers != claim_qualifiers
+                    or not claim_prohibited
+                    or clause_prohibited != claim_prohibited
+                ):
+                    issues.append(
+                        "model_first_candidate_bounded_inference_clause_invalid"
+                    )
+            elif (
+                clause.get("clause_kind") != "supported_fact"
+                or actual_evidence != expected_evidence
+                or clause.get("inference_policy_refs")
+                or clause.get("scope_qualifier")
+            ):
                 issues.append("model_first_candidate_supported_clause_invalid")
         elif status in {"unresolved", "conflicting", "prohibited"}:
-            if clause.get("clause_kind") != "unresolved" or actual_evidence:
+            if (
+                clause.get("clause_kind") != "unresolved"
+                or actual_evidence
+                or clause.get("inference_policy_refs")
+                or clause.get("scope_qualifier")
+            ):
                 issues.append("model_first_candidate_unresolved_clause_invalid")
     return _dedupe(issues)
 
@@ -1551,107 +1857,347 @@ def _dedupe(items: list[str]) -> list[str]:
 
 def _model_first_audit_system_prompt() -> str:
     return (
-        "你是智能客服 Model-first 候选的最终语义审核员，只判断，不改写。"
-        "输入中的 canonical_truth 是商品、政策和订单事实的唯一权威来源。"
-        "conversation_continuity 仅用于判断上下文承接、重复索取、此前询问和服务承诺；"
-        "historical_agent_turns_non_authoritative 中所有历史客服回合都明确不是"
-        "商品事实、政策事实、订单状态或服务动作已完成的证明，"
-        "不得与 canonical_truth 竞争、覆盖或否定 canonical_truth。"
-        "当候选回复采用 canonical_truth 时，即使历史客服曾说过不同事实，也必须按事实一致性通过；"
-        "不得仅因历史客服事实与 canonical_truth 不同而拒绝，也不得要求候选解释或调和该事实冲突。"
-        "historical_agent_fact_used 只有在候选事实缺少 canonical_truth 支持、"
-        "却由历史客服话术提供时才为 true；仅仅看到历史冲突不算使用。"
-        "按顺序先审核候选是否符合 canonical_truth，再审核 unresolved 状态，"
-        "最后只按 conversation_continuity.allowed_uses 检查会话承接；"
-        "不得使用 prohibited_uses 中的用途。"
-        "本审核不负责风格润色、简洁度、礼貌程度或不改变事实含义的文字重复；"
-        "这些问题不得单独导致 passed=false。只有重复导致客户目标遗漏、事实冲突或连续性失败时才阻断。"
-        "context_presence 只能证明某类上下文存在，不能证明具体状态或处理结果。"
-        "supported claim 必须采用 canonical_truth 中对应 evidence；"
-        "unresolved/conflicting/prohibited claim 必须保留为无法确认或不能保证，不能写成确定事实。"
-        "回复不得遗漏客户目标、引用未知 evidence、重复索取已提供的信息、"
-        "无依据声称退款补发物流已完成、违背此前服务承诺、承诺未附带媒体、"
-        "暴露内部系统语言或客户及商品身份。"
-        "只输出 JSON 对象，字段必须且只能是："
-        "passed、issues、reason_code、canonical_truth_respected、"
-        "unresolved_declaration_recognized、conversation_continuity_checked、"
-        "historical_agent_fact_used。"
-        "passed 和四个诊断字段必须是 boolean；issues 必须是简短 reason code 数组；"
-        "reason_code 必须是小写英文、数字、下划线或冒号组成的单个 reason code。"
-        "不得输出原始身份、凭证、推理过程或额外字段。"
+        "You are the atomic final auditor for a customer-service candidate. "
+        "The input already supplies canonical claim status, expected clause kind, "
+        "admitted evidence references, approved inference policy references, and "
+        "non-authoritative conversation history. Do not infer or relabel those fields "
+        "from the full reply. Evaluate each canonical_truth.candidate_clauses item "
+        "independently and echo every clause_ref, goal_ref, and canonical_status "
+        "exactly once. For supported_fact, factual_grounding_respected is true only "
+        "when the clause stays within its cited canonical evidence. For unresolved, "
+        "a clear refusal to confirm or guarantee respects the boundary and is not an "
+        "asserted fact; do not reject it as a redundant question. For allowed_inference, "
+        "inference_scope_respected is true only when premise evidence, approved policy, "
+        "scope, required qualifiers, and prohibited extensions remain respected. "
+        "Historical agent turns never prove product facts, policy facts, order status, "
+        "or completed actions. Use them only for continuity and information-already-"
+        "provided checks. For each clause, issue_codes must exactly be unsupported_claim "
+        "when factual_grounding_respected=false; unresolved_claim_asserted when an "
+        "unresolved clause violates its boundary; inference_scope_exceeded when an "
+        "allowed inference exceeds its scope; and query_reply_mismatch when "
+        "customer_goal_answered=false. global_issue_codes may use only the supplied "
+        "allowed_global_issue_codes. Return JSON with required fields schema_version, "
+        "clause_checks, global_issue_codes. schema_version must be atomic-final-audit-v3. "
+        "Each clause check must contain exactly clause_ref, goal_ref, canonical_status, "
+        "factual_grounding_respected, unresolved_boundary_respected, "
+        "inference_scope_respected, customer_goal_answered, issue_codes. "
+        "You may additionally return a top-level passed boolean and reason string as "
+        "diagnostics. The local verifier derives passed from the atomic clause verdicts "
+        "and ignores reason; a supplied passed value must agree with that derivation. "
+        "Do not return analysis, self-correction, markdown, or other extra fields."
     )
 
 
-def _model_first_semantic_audit_failure(reason: str) -> dict[str, Any]:
-    return {
+def _model_first_semantic_audit_failure(
+    reason: str,
+    *,
+    error_category: str = "",
+    error_scope: str = "",
+    missing_fields: tuple[str, ...] | list[str] = (),
+    extra_fields: tuple[str, ...] | list[str] = (),
+) -> dict[str, Any]:
+    result = {
         "passed": False,
         "issues": [reason],
-        "reason_code": reason,
         "canonical_truth_respected": False,
         "unresolved_declaration_recognized": False,
         "conversation_continuity_checked": False,
         "historical_agent_fact_used": False,
         "schema_version": _MODEL_FIRST_AUDIT_SCHEMA_VERSION,
+        "clause_checks": [],
+        "global_issue_codes": [],
     }
+    if error_category:
+        result["error_category"] = error_category
+    if error_scope:
+        result["error_scope"] = error_scope
+    if missing_fields:
+        result["missing_fields"] = sorted({
+            str(field) for field in missing_fields if str(field)
+        })
+    if extra_fields:
+        result["extra_fields"] = sorted({
+            str(field) for field in extra_fields if str(field)
+        })
+    return result
+
+
+def _model_first_schema_failure(
+    error_category: str,
+    *,
+    error_scope: str,
+    missing_fields: tuple[str, ...] | list[str] = (),
+    extra_fields: tuple[str, ...] | list[str] = (),
+) -> dict[str, Any]:
+    return _model_first_semantic_audit_failure(
+        "model_first_audit_schema_invalid",
+        error_category=error_category,
+        error_scope=error_scope,
+        missing_fields=missing_fields,
+        extra_fields=extra_fields,
+    )
 
 
 def _parse_model_first_semantic_audit(
     parsed: Any,
     *,
+    atomic_contract: list[dict[str, Any]],
     input_metrics: dict[str, int],
 ) -> dict[str, Any]:
-    if not isinstance(parsed, dict) or set(parsed) != _MODEL_FIRST_AUDIT_OUTPUT_FIELDS:
-        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
-    boolean_fields = (
-        "passed",
-        "canonical_truth_respected",
-        "unresolved_declaration_recognized",
-        "conversation_continuity_checked",
-        "historical_agent_fact_used",
+    if not isinstance(parsed, dict):
+        return _model_first_schema_failure(
+            "field_type_error",
+            error_scope="top_level",
+        )
+    parsed_fields = set(parsed)
+    missing_fields = _MODEL_FIRST_AUDIT_OUTPUT_FIELDS - parsed_fields
+    if missing_fields:
+        return _model_first_schema_failure(
+            "missing_field",
+            error_scope="top_level",
+            missing_fields=sorted(missing_fields),
+        )
+    extra_fields = (
+        parsed_fields
+        - _MODEL_FIRST_AUDIT_OUTPUT_FIELDS
+        - _MODEL_FIRST_AUDIT_OPTIONAL_DIAGNOSTIC_FIELDS
     )
-    if any(not isinstance(parsed.get(field), bool) for field in boolean_fields):
-        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
-    issues = parsed.get("issues")
-    reason_code = parsed.get("reason_code")
+    if extra_fields:
+        return _model_first_schema_failure(
+            "extra_field",
+            error_scope="top_level",
+            extra_fields=sorted(extra_fields),
+        )
     if (
-        not isinstance(issues, list)
-        or any(not isinstance(item, str) for item in issues)
-        or not isinstance(reason_code, str)
-        or not re.fullmatch(r"[a-z0-9_:]{1,80}", reason_code)
+        "passed" in parsed
+        and not isinstance(parsed.get("passed"), bool)
+    ) or (
+        "reason" in parsed
+        and not isinstance(parsed.get("reason"), str)
     ):
-        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
-    normalized_issues = [
-        item for item in issues
-        if re.fullmatch(r"[a-z0-9_:]{1,80}", item)
+        return _model_first_schema_failure(
+            "field_type_error",
+            error_scope="top_level",
+        )
+    if parsed.get("schema_version") != _MODEL_FIRST_AUDIT_SCHEMA_VERSION:
+        return _model_first_schema_failure(
+            "enum_error",
+            error_scope="schema_version",
+        )
+
+    checks = parsed.get("clause_checks")
+    global_issues = parsed.get("global_issue_codes")
+    if not isinstance(checks, list):
+        return _model_first_schema_failure(
+            "field_type_error",
+            error_scope="clause_checks",
+        )
+    if len(checks) != len(atomic_contract):
+        return _model_first_schema_failure(
+            "clause_count_error",
+            error_scope="clause_checks",
+        )
+    if not isinstance(global_issues, list):
+        return _model_first_schema_failure(
+            "field_type_error",
+            error_scope="global_issue_codes",
+        )
+    if (
+        len(global_issues) != len(set(global_issues))
+        or any(
+            not isinstance(item, str)
+            or item not in _MODEL_FIRST_AUDIT_GLOBAL_ISSUE_CODES
+            for item in global_issues
+        )
+    ):
+        return _model_first_schema_failure(
+            "issue_code_error",
+            error_scope="global_issue_codes",
+        )
+
+    expected = {
+        (item["goal_ref"], item["clause_ref"]): item
+        for item in atomic_contract
+    }
+    expected_by_goal = {
+        item["goal_ref"]: item for item in atomic_contract
+    }
+    expected_by_clause = {
+        item["clause_ref"]: item for item in atomic_contract
+    }
+    observed: dict[tuple[str, str], dict[str, Any]] = {}
+    observed_goals: set[str] = set()
+    observed_clauses: set[str] = set()
+    for check in checks:
+        if not isinstance(check, dict):
+            return _model_first_schema_failure(
+                "field_type_error",
+                error_scope="clause",
+            )
+        check_fields = set(check)
+        missing_clause_fields = (
+            _MODEL_FIRST_AUDIT_CLAUSE_FIELDS - check_fields
+        )
+        if missing_clause_fields:
+            return _model_first_schema_failure(
+                "missing_field",
+                error_scope="clause",
+                missing_fields=sorted(missing_clause_fields),
+            )
+        extra_clause_fields = (
+            check_fields - _MODEL_FIRST_AUDIT_CLAUSE_FIELDS
+        )
+        if extra_clause_fields:
+            return _model_first_schema_failure(
+                "extra_field",
+                error_scope="clause",
+                extra_fields=sorted(extra_clause_fields),
+            )
+        if not isinstance(check.get("goal_ref"), str):
+            return _model_first_schema_failure(
+                "field_type_error",
+                error_scope="goal_ref",
+            )
+        if not isinstance(check.get("clause_ref"), str):
+            return _model_first_schema_failure(
+                "field_type_error",
+                error_scope="clause_ref",
+            )
+        goal_ref = check["goal_ref"].strip()
+        clause_ref = check["clause_ref"].strip()
+        if goal_ref not in expected_by_goal or goal_ref in observed_goals:
+            return _model_first_schema_failure(
+                "goal_ref_error",
+                error_scope="clause",
+            )
+        if (
+            clause_ref not in expected_by_clause
+            or clause_ref in observed_clauses
+        ):
+            return _model_first_schema_failure(
+                "clause_ref_error",
+                error_scope="clause",
+            )
+        key = (goal_ref, clause_ref)
+        contract = expected.get(key)
+        if contract is None:
+            return _model_first_schema_failure(
+                "clause_ref_error",
+                error_scope="clause",
+            )
+        if check.get("canonical_status") != contract["canonical_status"]:
+            return _model_first_schema_failure(
+                "enum_error",
+                error_scope="canonical_status",
+            )
+        if any(
+            not isinstance(check.get(field), bool)
+            for field in (
+                "factual_grounding_respected",
+                "unresolved_boundary_respected",
+                "inference_scope_respected",
+                "customer_goal_answered",
+            )
+        ):
+            return _model_first_schema_failure(
+                "field_type_error",
+                error_scope="clause",
+            )
+        issue_codes = check.get("issue_codes")
+        if (
+            not isinstance(issue_codes, list)
+            or len(issue_codes) != len(set(issue_codes))
+            or any(
+                not isinstance(item, str)
+                or item not in _MODEL_FIRST_AUDIT_CLAUSE_ISSUE_CODES
+                for item in issue_codes
+            )
+        ):
+            return _model_first_schema_failure(
+                "issue_code_error",
+                error_scope="clause",
+            )
+        derived_issues: set[str] = set()
+        if not check["factual_grounding_respected"]:
+            derived_issues.add("unsupported_claim")
+        if (
+            contract["expected_kind"] == "unresolved"
+            and not check["unresolved_boundary_respected"]
+        ):
+            derived_issues.add("unresolved_claim_asserted")
+        if (
+            contract["expected_kind"] == "allowed_inference"
+            and not check["inference_scope_respected"]
+        ):
+            derived_issues.add("inference_scope_exceeded")
+        if not check["customer_goal_answered"]:
+            derived_issues.add("query_reply_mismatch")
+        if set(issue_codes) != derived_issues:
+            return _model_first_schema_failure(
+                "issue_code_error",
+                error_scope="clause_verdict",
+            )
+        observed[key] = {
+            **check,
+            "issue_codes": sorted(derived_issues),
+        }
+        observed_goals.add(goal_ref)
+        observed_clauses.add(clause_ref)
+    if set(observed) != set(expected):
+        return _model_first_schema_failure(
+            "clause_count_error",
+            error_scope="clause_checks",
+        )
+
+    normalized_checks = [
+        observed[(item["goal_ref"], item["clause_ref"])]
+        for item in atomic_contract
     ]
-    if len(normalized_issues) != len(issues):
-        return _model_first_semantic_audit_failure("model_first_audit_schema_invalid")
-    passed = parsed["passed"]
-    if not parsed["canonical_truth_respected"]:
-        normalized_issues.append("canonical_truth_not_respected")
-        passed = False
-    if not parsed["unresolved_declaration_recognized"]:
-        normalized_issues.append("unresolved_declaration_not_recognized")
-        passed = False
-    if not parsed["conversation_continuity_checked"]:
-        normalized_issues.append("conversation_continuity_not_checked")
-        passed = False
-    if parsed["historical_agent_fact_used"]:
-        normalized_issues.append("historical_agent_fact_used")
-        passed = False
+    normalized_issues = sorted({
+        *global_issues,
+        *(
+            issue
+            for check in normalized_checks
+            for issue in check["issue_codes"]
+        ),
+    })
+    canonical_truth_respected = all(
+        check["factual_grounding_respected"]
+        and (
+            check["inference_scope_respected"]
+            or contract["expected_kind"] != "allowed_inference"
+        )
+        for check, contract in zip(normalized_checks, atomic_contract)
+    )
+    unresolved_declaration_recognized = all(
+        check["unresolved_boundary_respected"]
+        for check, contract in zip(normalized_checks, atomic_contract)
+        if contract["expected_kind"] == "unresolved"
+    )
+    historical_agent_fact_used = (
+        "historical_agent_fact_used" in global_issues
+    )
+    locally_passed = not normalized_issues
+    if (
+        "passed" in parsed
+        and parsed["passed"] is not locally_passed
+    ):
+        return _model_first_schema_failure(
+            "verdict_contradiction",
+            error_scope="top_level",
+        )
     return {
-        "passed": passed and not normalized_issues,
-        "issues": _dedupe(normalized_issues)[:8],
-        "reason_code": reason_code,
-        "canonical_truth_respected": parsed["canonical_truth_respected"],
-        "unresolved_declaration_recognized": parsed[
-            "unresolved_declaration_recognized"
-        ],
-        "conversation_continuity_checked": parsed[
-            "conversation_continuity_checked"
-        ],
-        "historical_agent_fact_used": parsed["historical_agent_fact_used"],
+        "passed": locally_passed,
+        "issues": normalized_issues[:8],
+        "canonical_truth_respected": canonical_truth_respected,
+        "unresolved_declaration_recognized": unresolved_declaration_recognized,
+        "conversation_continuity_checked": (
+            "conversation_continuity_failure" not in global_issues
+        ),
+        "historical_agent_fact_used": historical_agent_fact_used,
         "schema_version": _MODEL_FIRST_AUDIT_SCHEMA_VERSION,
+        "clause_checks": normalized_checks,
+        "global_issue_codes": sorted(global_issues),
         "input_metrics": input_metrics,
     }
 
@@ -1685,15 +2231,24 @@ def _semantic_llm_audit(
             audit_context = _model_first_audit_context(response, copilot_context)
             canonical_truth = audit_context["canonical_truth"]
             continuity = audit_context["conversation_continuity"]
+            atomic_contract = canonical_truth["candidate_clauses"]
+            if not atomic_contract:
+                return _model_first_semantic_audit_failure(
+                    "model_first_audit_contract_invalid"
+                )
             payload = {
                 "customer_message": customer_message,
                 "suggested_reply": reply,
                 "model_first_candidate": True,
+                "allowed_global_issue_codes": sorted(
+                    _MODEL_FIRST_AUDIT_GLOBAL_ISSUE_CODES
+                ),
                 **audit_context,
             }
             input_metrics = {
                 "canonical_evidence_count": len(canonical_truth["evidence"]),
                 "claim_resolution_count": len(canonical_truth["claim_resolutions"]),
+                "candidate_clause_count": len(atomic_contract),
                 "unresolved_claim_count": len(
                     canonical_truth["unresolved_or_prohibited_claims"]
                 ),
@@ -1758,16 +2313,31 @@ def _semantic_llm_audit(
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             temperature=0,
-            max_tokens=260,
+            max_tokens=800 if model_first_candidate else 260,
             response_format={"type": "json_object"},
         )
-        raw = result.choices[0].message.content.strip()
-        parsed = json.loads(raw)
         if model_first_candidate:
+            content = result.choices[0].message.content
+            if not isinstance(content, str) or not content.strip():
+                return _model_first_semantic_audit_failure(
+                    "model_first_audit_empty_response",
+                    error_category="empty_response",
+                    error_scope="provider_response",
+                )
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError:
+                return _model_first_schema_failure(
+                    "json_decode_error",
+                    error_scope="provider_response",
+                )
             return _parse_model_first_semantic_audit(
                 parsed,
+                atomic_contract=atomic_contract,
                 input_metrics=input_metrics,
             )
+        raw = result.choices[0].message.content.strip()
+        parsed = json.loads(raw)
         issues = parsed.get("issues") or []
         if not isinstance(issues, list):
             issues = [str(issues)]
@@ -1777,10 +2347,26 @@ def _semantic_llm_audit(
             "reason": str(parsed.get("reason", ""))[:300],
         }
     except Exception as exc:
-        logger.warning("semantic final answer llm audit failed: %s", exc)
+        error_type = type(exc).__name__
+        logger.warning(
+            "semantic final answer llm audit failed: %s",
+            error_type if model_first_candidate else exc,
+        )
+        model_first_timeout = (
+            isinstance(exc, TimeoutError)
+            or "timeout" in error_type.casefold()
+        )
         return (
             _model_first_semantic_audit_failure(
-                f"model_first_audit_provider_error:{type(exc).__name__.lower()}"
+                (
+                    "model_first_audit_timeout"
+                    if model_first_timeout
+                    else "model_first_audit_provider_error"
+                ),
+                error_category=(
+                    "timeout" if model_first_timeout else "provider_error"
+                ),
+                error_scope="provider",
             )
             if model_first_candidate
             else None

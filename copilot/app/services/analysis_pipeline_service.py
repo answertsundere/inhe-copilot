@@ -212,6 +212,29 @@ class AnalysisPipelineService:
                 request.trusted_answer_eligibility_context
             )
         )
+        if not trusted_eligibility_context:
+            configured_domain_policy_id = str(
+                os.getenv("COPILOT_DOMAIN_POLICY_ID", "")
+            ).strip()
+            if re.fullmatch(
+                r"[a-z0-9][a-z0-9_-]{0,63}",
+                configured_domain_policy_id,
+            ):
+                trusted_eligibility_context = (
+                    normalize_trusted_answer_eligibility_owner_context({
+                        "schema_version": "answer-eligibility-owner-context/v1",
+                        "source": "server_configuration",
+                        "owner": "analysis_pipeline",
+                        "provenance": {
+                            "boundary": "analysis_pipeline_internal",
+                        },
+                        "domain_policy_context": {
+                            "catalog_metadata": {
+                                "domain_policy_id": configured_domain_policy_id,
+                            },
+                        },
+                    })
+                )
         if trusted_eligibility_context:
             context["_answer_eligibility_owner_context"] = (
                 trusted_eligibility_context
@@ -312,14 +335,43 @@ class AnalysisPipelineService:
             if identity.get(key) not in (None, ""):
                 response.setdefault(key, identity[key])
 
-        response, media_stage = self._apply_media_delivery(response, request, identity)
-        stages.append(media_stage)
+        understanding_verdict = self._turn_understanding_verdict(response)
+        understanding_blocked = understanding_verdict["status"] in {
+            "invalid",
+            "degraded",
+        }
+        if understanding_blocked:
+            response = self._apply_invalid_understanding_boundary(
+                response,
+                understanding_verdict,
+                clear_candidate_reply=True,
+            )
+            stages.extend([
+                {
+                    "stage": "media_delivery",
+                    "status": "blocked",
+                    "reason": "turn_understanding_not_authoritative",
+                },
+                {
+                    "stage": "model_first_answer_composer",
+                    "status": "blocked",
+                    "reason": "turn_understanding_not_authoritative",
+                    "used_for_final_reply": False,
+                },
+            ])
+        else:
+            response, media_stage = self._apply_media_delivery(
+                response,
+                request,
+                identity,
+            )
+            stages.append(media_stage)
 
-        response, composer_stage = self._apply_model_first_answer_composer(
-            response,
-            request,
-        )
-        stages.append(composer_stage)
+            response, composer_stage = self._apply_model_first_answer_composer(
+                response,
+                request,
+            )
+            stages.append(composer_stage)
 
         final_completed = False
         try:
@@ -330,7 +382,13 @@ class AnalysisPipelineService:
                 customer_message=request.delivery_message or request.customer_message,
                 copilot_context=request.copilot_context,
             )
-            if self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
+            if understanding_blocked:
+                response = self._apply_invalid_understanding_boundary(
+                    response,
+                    understanding_verdict,
+                    clear_candidate_reply=False,
+                )
+            elif self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
                 response = self._force_model_first_review_boundary(response)
             final_completed = True
             stages.append({"stage": "final_response_orchestration", "status": "completed"})
@@ -363,6 +421,121 @@ class AnalysisPipelineService:
             "summary": "graph, media delivery, final response, shadow; persistence follows in AnalysisExecutionService",
             "stages": stages,
         })
+        return response
+
+    @staticmethod
+    def _turn_understanding_verdict(
+        response: dict[str, Any],
+    ) -> dict[str, Any]:
+        debug = (
+            response.get("evidence_debug")
+            if isinstance(response.get("evidence_debug"), dict)
+            else {}
+        )
+        understanding = response.get("turn_understanding")
+        if not isinstance(understanding, dict):
+            understanding = debug.get("turn_understanding")
+        understanding = (
+            understanding if isinstance(understanding, dict) else {}
+        )
+        status = str(
+            understanding.get("goal_understanding_status") or ""
+        ).strip().lower()
+        if status not in {"valid", "degraded", "invalid"}:
+            status = "unknown"
+        diagnostics = understanding.get(
+            "goal_understanding_diagnostics"
+        )
+        reasons = list(dict.fromkeys(
+            str(reason).strip()
+            for reason in (
+                diagnostics if isinstance(diagnostics, list) else []
+            )
+            if str(reason or "").strip()
+        ))
+        if status in {"invalid", "degraded"} and not reasons:
+            reasons = ["turn_understanding_not_authoritative"]
+        return {
+            "status": status,
+            "reason_codes": reasons,
+            "source_stage": "turn_understanding",
+        }
+
+    @classmethod
+    def _apply_invalid_understanding_boundary(
+        cls,
+        response: dict[str, Any],
+        verdict: dict[str, Any],
+        *,
+        clear_candidate_reply: bool,
+    ) -> dict[str, Any]:
+        response = dict(response or {})
+        reason_codes = list(verdict.get("reason_codes") or [])
+        earliest_reason = (
+            str(reason_codes[0]).strip()
+            if reason_codes
+            else "turn_understanding_not_authoritative"
+        )
+        if clear_candidate_reply:
+            response["suggested_reply"] = ""
+        response["draft_reply"] = ""
+        response["sendable_reply"] = ""
+        response["can_send"] = False
+        response["requires_human_review"] = True
+        response["reply_status"] = "needs_human_review"
+        response["recommended_assets"] = []
+        response["recommended_assets_meta"] = {
+            "priority_types": [],
+            "has_unapproved": False,
+            "source": "turn_understanding_boundary",
+        }
+        response["reply_blocks"] = (
+            []
+            if clear_candidate_reply
+            else [
+                {
+                    **block,
+                    "send_mode": "manual",
+                }
+                for block in (response.get("reply_blocks") or [])
+                if isinstance(block, dict)
+                and block.get("type") == "text"
+                and str(block.get("content") or "").strip()
+            ]
+        )
+        response["reply_delivery"] = {
+            "mode": "blocked",
+            "auto_send_ready": False,
+            "reason": "turn_understanding_not_authoritative",
+        }
+        response["reason_for_review"] = cls._append_reason(
+            str(response.get("reason_for_review") or ""),
+            "turn_understanding_not_authoritative",
+        )
+        block_reasons = response.get("block_reasons")
+        block_reasons = (
+            list(block_reasons)
+            if isinstance(block_reasons, list)
+            else []
+        )
+        response["block_reasons"] = list(dict.fromkeys([
+            *block_reasons,
+            "turn_understanding_not_authoritative",
+            earliest_reason,
+        ]))
+        diagnostics = {
+            "status": verdict.get("status"),
+            "reason_codes": reason_codes,
+            "earliest_reason_code": earliest_reason,
+            "requested_claims": [],
+            "selected_evidence_diagnostic_only": True,
+            "used_for_final_reply": False,
+            "can_change_can_send": False,
+        }
+        response["turn_understanding_boundary"] = diagnostics
+        response.setdefault("evidence_debug", {})[
+            "turn_understanding_boundary"
+        ] = diagnostics
         return response
 
     def _apply_model_first_answer_composer(

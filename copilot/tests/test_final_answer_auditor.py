@@ -1,4 +1,9 @@
-from app.services.final_answer_auditor import _expected_topics, _is_visual_media_answer, audit_final_answer
+from app.services.final_answer_auditor import (
+    _expected_topics,
+    _is_visual_media_answer,
+    _model_first_candidate_contract_issues,
+    audit_final_answer,
+)
 from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
 
 
@@ -49,6 +54,31 @@ class _CapturingFakeClient(_FakeClient):
     def create_chat_completion(self, **kwargs):
         self.kwargs = kwargs
         return super().create_chat_completion(**kwargs)
+
+
+def _atomic_model_first_audit_json(
+    *,
+    statuses=("supported", "unresolved"),
+):
+    import json
+
+    return json.dumps({
+        "schema_version": "atomic-final-audit-v3",
+        "clause_checks": [
+            {
+                "clause_ref": f"clause_{index:02d}",
+                "goal_ref": f"goal_{index:02d}",
+                "canonical_status": status,
+                "factual_grounding_respected": True,
+                "unresolved_boundary_respected": True,
+                "inference_scope_respected": True,
+                "customer_goal_answered": True,
+                "issue_codes": [],
+            }
+            for index, status in enumerate(statuses, start=1)
+        ],
+        "global_issue_codes": [],
+    })
 
 
 def test_expected_topics_prefer_explicit_accessory_availability_over_stale_installation_intent():
@@ -409,16 +439,10 @@ def test_final_answer_auditor_uses_llm_semantic_judge(monkeypatch):
 
 
 def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkeypatch):
-    import json
-
     from app import config
     from app.llm import client as llm_client
 
-    client = _CapturingFakeClient(
-        '{"passed":true,"issues":[],"reason_code":"canonical_reply_valid",'
-        '"canonical_truth_respected":true,"unresolved_declaration_recognized":true,'
-        '"conversation_continuity_checked":true,"historical_agent_fact_used":false}'
-    )
+    client = _CapturingFakeClient(_atomic_model_first_audit_json())
     monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
     monkeypatch.setattr(llm_client, "get_llm_client", lambda: client)
     response = {
@@ -429,12 +453,14 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
             "status": "accepted",
             "clauses": [
                 {
+                    "clause_ref": "C1",
                     "goal_ref": "claim-material",
                     "clause_kind": "supported_fact",
                     "text": "这款是ABS材质",
                     "evidence_uids": ["selected-material"],
                 },
                 {
+                    "clause_ref": "C2",
                     "goal_ref": "claim-stability",
                     "clause_kind": "unresolved",
                     "text": "抗摔性目前无法确认",
@@ -476,15 +502,158 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
         customer_message="\u8fd9\u6b3e\u662f\u4ec0\u4e48\u6750\u8d28\uff0c\u8010\u6454\u5417\uff1f",
     )
 
-    payload = json.loads(client.kwargs["messages"][1]["content"])
-    assert payload["model_first_candidate"] is True
-    truth = payload["canonical_truth"]
-    assert truth["evidence"][0]["evidence_ref"] == "E1"
-    assert truth["claim_resolutions"][1]["status"] == "unresolved"
-    assert "evidence_summary" not in payload
-    assert "conversation_context" not in payload
-    assert "\u91d1\u5c5e" not in client.kwargs["messages"][1]["content"]
+    assert client.kwargs is None
     assert audited["final_answer_audit"]["passed"] is True
+    assert audited["final_answer_audit"]["mode"] == (
+        "model_first_deterministic_final_contract"
+    )
+    assert audited["final_answer_audit"]["model_call_count"] == 0
+
+
+def _bounded_inference_audit_response() -> dict:
+    policy_ref = (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:product_durability_practical_guidance"
+    )
+    claim = {
+        "claim_uid": "claim-durability",
+        "claim_type": "unmapped_customer_goal",
+        "attribute_key": "drop_durability",
+        "status": "supported",
+        "support_basis": "bounded_inference",
+        "evidence_uids": ["selected-material"],
+        "premise_evidence_uids": ["selected-material"],
+        "inference_policy_refs": [policy_ref],
+        "scope_qualifier": "ordinary_minor_accidental_impact",
+        "required_qualifiers": ["no_absolute_guarantee"],
+        "prohibited_extensions": [
+            "certification_report",
+            "child_safety",
+            "warranty",
+        ],
+    }
+    return {
+        "suggested_reply": "日常轻微意外一般不用过度担心，但不能保证耐摔。",
+        "selected_evidence": [{
+            "evidence_uid": "selected-material",
+            "evidence_role": "product_fact_direct",
+            "fact_type": "material_composition",
+            "attribute_key": "material",
+            "content": "主体为通用聚合物材料",
+        }],
+        "minimal_decision_context": {
+            "requested_claims": [{
+                "claim_type": "unmapped_customer_goal",
+                "attribute_key": "drop_durability",
+            }],
+            "claim_resolutions": [claim],
+            "admitted_evidence": [{
+                "evidence_uid": "selected-material",
+                "fact_type": "material_composition",
+                "attribute_key": "material",
+                "content": "主体为通用聚合物材料",
+            }],
+            "bounded_inference_policies": [{
+                "policy_ref": policy_ref,
+            }],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "clauses": [{
+                "clause_ref": "C1",
+                "goal_ref": "claim-durability",
+                "clause_kind": "allowed_inference",
+                "text": "日常轻微意外一般不用过度担心，但不能保证耐摔。",
+                "evidence_uids": ["selected-material"],
+                "inference_policy_refs": [policy_ref],
+                "scope_qualifier": "ordinary_minor_accidental_impact",
+                "required_qualifiers": ["no_absolute_guarantee"],
+                "prohibited_extensions": [
+                    "certification_report",
+                    "child_safety",
+                    "warranty",
+                ],
+            }],
+        },
+    }
+
+
+def test_final_auditor_accepts_canonical_policy_bounded_inference_contract():
+    response = _bounded_inference_audit_response()
+
+    assert _model_first_candidate_contract_issues(response) == []
+
+
+def test_final_auditor_exposes_policy_bounded_inference_as_canonical_truth(
+    monkeypatch,
+):
+    from app import config
+    from app.llm import client as llm_client
+
+    client = _CapturingFakeClient(
+        _atomic_model_first_audit_json(statuses=("supported",))
+    )
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+    monkeypatch.setattr(llm_client, "get_llm_client", lambda: client)
+    response = _bounded_inference_audit_response()
+
+    audited = audit_final_answer(
+        response,
+        customer_message="日常不小心碰落会怎样",
+    )
+
+    assert client.kwargs is None
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["final_answer_audit"]["model_call_count"] == 0
+
+
+def test_final_auditor_rejects_bounded_inference_canonical_contract_mutations():
+    mutations = [
+        ("clause_kind", "supported_fact"),
+        ("evidence_uids", []),
+        ("inference_policy_refs", []),
+        ("inference_policy_refs", ["domain-policy:unknown@1.0.0:intent:x"]),
+        ("scope_qualifier", ""),
+        ("prohibited_extensions", []),
+    ]
+    for field, value in mutations:
+        response = _bounded_inference_audit_response()
+        response["model_first_answer_composer"]["clauses"][0][field] = value
+
+        issues = _model_first_candidate_contract_issues(response)
+
+        assert "model_first_candidate_bounded_inference_clause_invalid" in issues
+
+
+def test_atomic_final_auditor_rejects_bounded_inference_outside_scope(
+    monkeypatch,
+):
+    import json
+
+    from app import config
+    from app.llm import client as llm_client
+
+    payload = json.loads(
+        _atomic_model_first_audit_json(statuses=("supported",))
+    )
+    payload["clause_checks"][0].update({
+        "inference_scope_respected": False,
+        "issue_codes": ["inference_scope_exceeded"],
+    })
+    client = _CapturingFakeClient(
+        json.dumps(payload, ensure_ascii=False)
+    )
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+    monkeypatch.setattr(llm_client, "get_llm_client", lambda: client)
+
+    audited = audit_final_answer(
+        _bounded_inference_audit_response(),
+        customer_message="日常轻微意外会怎样",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["final_answer_audit"]["model_call_count"] == 0
+    assert client.kwargs is None
 
 
 def test_final_answer_auditor_llm_blocks_space_question_answered_as_load(monkeypatch):

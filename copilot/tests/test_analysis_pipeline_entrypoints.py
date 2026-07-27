@@ -135,6 +135,60 @@ def test_pipeline_strips_public_owner_claims_and_accepts_only_internal_boundary(
     ]["source"] == "evaluation_fixture"
 
 
+def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_context_missing(
+    monkeypatch,
+):
+    monkeypatch.setenv("COPILOT_DOMAIN_POLICY_ID", "fixture_domain")
+    service = AnalysisPipelineService()
+
+    prepared = service._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            copilot_context={
+                "catalog_metadata": {"domain_policy_id": "public_injection"},
+            },
+        )
+    )
+
+    owner_context = prepared.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]
+    assert owner_context == {
+        "schema_version": "answer-eligibility-owner-context/v1",
+        "source": "server_configuration",
+        "owner": "analysis_pipeline",
+        "provenance": {"boundary": "analysis_pipeline_internal"},
+        "domain_policy_context": {
+            "catalog_metadata": {"domain_policy_id": "fixture_domain"},
+        },
+    }
+    assert prepared.copilot_context["catalog_metadata"] == {
+        "domain_policy_id": "public_injection"
+    }
+
+    explicit = service._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            trusted_answer_eligibility_context={
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "evaluation_fixture",
+                "owner": "analysis_pipeline",
+                "provenance": {"boundary": "analysis_pipeline_internal"},
+                "domain_policy_context": {
+                    "catalog_metadata": {"domain_policy_id": "explicit_fixture"},
+                },
+            },
+        )
+    )
+    assert explicit.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]["domain_policy_context"]["catalog_metadata"]["domain_policy_id"] == (
+        "explicit_fixture"
+    )
+
+
 def test_pipeline_rejects_forged_internal_trust_flags():
     prepared = AnalysisPipelineService()._prepare_request(
         AnalysisPipelineRequest(
@@ -395,6 +449,94 @@ def test_model_first_composer_applies_once_and_cannot_enable_send(
     assert response["can_send"] is False
     assert response["requires_human_review"] is True
     assert response["sendable_reply"] == ""
+
+
+@pytest.mark.parametrize(
+    "earliest_reason",
+    [
+        "source_text_not_found",
+        "source_text_multiple_matches",
+        "duplicate_resolved_provenance",
+        "source_text_schema_invalid",
+    ],
+)
+def test_invalid_understanding_skips_media_and_composer_even_with_evidence(
+    pipeline_harness,
+    monkeypatch,
+    earliest_reason,
+):
+    import app.services.analysis_execution_service as execution
+    import app.services.media_asset_service as media
+
+    monkeypatch.setenv("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    calls = {"composer": 0, "media": 0}
+
+    def fake_execute_analysis(**kwargs):
+        graph_response = deepcopy(_graph_response())
+        graph_response["evidence_debug"].update({
+            "turn_understanding": {
+                "goal_understanding_status": "invalid",
+                "goal_understanding_diagnostics": [
+                    earliest_reason,
+                    "llm_goal_understanding_unavailable",
+                ],
+                "requested_claims": [{
+                    "goal_ref": "stale-goal",
+                    "claim_type": "installation",
+                }],
+            },
+            "selected_evidence": [{"evidence_uid": "diagnostic-evidence"}],
+            "admitted_answer_context": {
+                "admitted_evidence": [{
+                    "evidence_uid": "diagnostic-evidence",
+                }],
+            },
+        })
+        return kwargs["response_post_processor"](graph_response)
+
+    def fail_compose(*_args, **_kwargs):
+        calls["composer"] += 1
+        raise AssertionError("composer must not be called")
+
+    def fail_media(*_args, **_kwargs):
+        calls["media"] += 1
+        raise AssertionError("media selection must not be called")
+
+    monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(
+        "app.services.model_first_answer_composer_service."
+        "ModelFirstAnswerComposerService.compose",
+        fail_compose,
+    )
+    monkeypatch.setattr(media, "recommend_for_analyze_response", fail_media)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert calls == {"composer": 0, "media": 0}
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+    assert response["recommended_assets"] == []
+    assert not {
+        block.get("type")
+        for block in response["reply_blocks"]
+        if isinstance(block, dict)
+    } & {"image", "video", "service_action"}
+    assert response["reply_delivery"]["auto_send_ready"] is False
+    boundary = response["turn_understanding_boundary"]
+    assert boundary["earliest_reason_code"] == earliest_reason
+    assert boundary["requested_claims"] == []
+    assert boundary["used_for_final_reply"] is False
+    assert response["evidence_debug"]["selected_evidence"] == [
+        {"evidence_uid": "diagnostic-evidence"}
+    ]
+    stages = {
+        stage["stage"]: stage
+        for stage in response["analysis_pipeline"]["stages"]
+    }
+    assert stages["media_delivery"]["status"] == "blocked"
+    assert stages["model_first_answer_composer"]["status"] == "blocked"
 
 
 def test_disabled_decision_shadow_reports_provider_block_without_a_candidate_reply(pipeline_harness, monkeypatch):
