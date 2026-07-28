@@ -69,6 +69,7 @@ evaluation owner only; no Fast Path or Composer module has been added.
 | Real accuracy Gold Set | Gold/privacy/label services | Labels never enter Agent input; insufficient approval means `real_accuracy=null` |
 | Formal answer QA | `scripts/run_full_answer_validation.py` | Read-only safety and response-contract validation |
 | Real-derived capability slice | existing real-derived export and vertical-slice scripts | Proves evidence plumbing/capability, not customer accuracy |
+| P1 Gold conversation baseline | `scripts/run_p1_gold_conversation_baseline.py`, `app/services/high_quality_long_conversation_review_service.py` | Development diagnostic only; validates server-owned goal provenance, aliases control references, writes split privacy-checked reports and an atomic projection-failure capsule containing shapes/hashes only, and cannot claim real accuracy or change Agent output |
 
 ## Frozen Shadow And Experimental Modules
 

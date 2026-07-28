@@ -217,6 +217,24 @@ customer toward a resolution.
 - supervisor naturalness review that does not expose labels to the Agent; and
 - the synthetic safety benchmark as a separate regression suite.
 
+The first P1.1a 26-call attempt is retained as an integrity-blocked diagnostic,
+not a baseline: report projection omitted the canonical history position and
+the finalization failure prevented persistence of the start knowledge
+fingerprint. The evaluator contract is being corrected without rerunning the
+Agent in the same phase. No P1.2 owner may be selected until one new,
+fully-attributed split report passes all integrity gates.
+
+The subsequent P1.1b attempt stopped on its second response because trusted
+reference projection failed before the raw response shape could be diagnosed.
+P1.1d therefore adds the final permitted evaluator-infrastructure change: a
+private, privacy-checked projection failure capsule is atomically persisted
+before case projection. It records only field shapes, counts, allowlisted enum
+codes, HMAC/Base32 reference aliases, relationships, hashes, and a safe failure
+code. It is never used for scoring, Agent input, delivery, or a business result.
+After this checkpoint, evaluator expansion is frozen; the next clean 26-case
+run must either establish the baseline or identify one concrete production
+owner from the capsule.
+
 **Work order**
 
 1. Correct missing or incomplete customer goals.

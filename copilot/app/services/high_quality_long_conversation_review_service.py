@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -40,8 +43,16 @@ class HighQualityReviewConflictError(ValueError):
     pass
 
 
+class HighQualityReviewProjectionError(ValueError):
+    pass
+
+
 _LABEL_STATUSES = {"draft", "reviewed", "approved", "rejected"}
 _AUTHORITATIVE_AUTH_TYPE = "cloudflare_access"
+_TURN_UNDERSTANDING_SCHEMA = "turn-understanding/v2"
+_TURN_UNDERSTANDING_OWNER = "turn_understanding_owner"
+_TURN_UNDERSTANDING_STAGE = "query_fact_type_classifier"
+_PIPELINE_VERSION = "analysis-pipeline-v1"
 
 
 def load_and_validate_review_dataset(path: str | Path) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -163,6 +174,281 @@ def build_review_inventory(payload: dict[str, Any]) -> dict[str, Any]:
         "validation_status": validation["validation_status"],
         "source_mutated": False,
     }
+
+
+def project_trusted_goal_references(
+    response: dict[str, Any],
+    *,
+    customer_message: str,
+    conversation_history: list[dict[str, Any]] | None = None,
+    alias_secret: bytes | str,
+) -> dict[str, Any]:
+    """Validate server-owned goal identity before emitting report-safe aliases."""
+    from app.services.claim_resolution_service import _claim_uid
+    from app.services.semantic_fact_type_service import (
+        _validate_canonical_customer_goals,
+        canonical_current_customer_turn_uid,
+    )
+
+    if not isinstance(response, dict):
+        raise HighQualityReviewProjectionError("pipeline_response_object_required")
+    secret = (
+        alias_secret.encode("utf-8")
+        if isinstance(alias_secret, str)
+        else alias_secret
+    )
+    if not isinstance(secret, bytes) or not secret:
+        raise HighQualityReviewProjectionError("alias_secret_required")
+
+    pipeline = response.get("analysis_pipeline")
+    if not isinstance(pipeline, dict) or pipeline.get("version") != _PIPELINE_VERSION:
+        raise HighQualityReviewProjectionError("trusted_pipeline_result_required")
+    stage_status = {
+        str(item.get("stage") or ""): str(item.get("status") or "")
+        for item in pipeline.get("stages") or []
+        if isinstance(item, dict)
+    }
+    if any(
+        stage_status.get(stage) != "completed"
+        for stage in ("canonical_input", "graph_execution")
+    ):
+        raise HighQualityReviewProjectionError("trusted_pipeline_stage_required")
+
+    understanding = _response_turn_understanding(response)
+    if (
+        understanding.get("schema_version") != _TURN_UNDERSTANDING_SCHEMA
+        or understanding.get("owner") != _TURN_UNDERSTANDING_OWNER
+        or understanding.get("source_stage") != _TURN_UNDERSTANDING_STAGE
+    ):
+        raise HighQualityReviewProjectionError("turn_understanding_owner_invalid")
+    understanding_status = str(
+        understanding.get("goal_understanding_status") or ""
+    ).strip().lower()
+    if understanding_status not in {"valid", "degraded", "invalid"}:
+        raise HighQualityReviewProjectionError(
+            "turn_understanding_status_invalid"
+        )
+
+    message = str(customer_message or "")
+    source_turn_uid = canonical_current_customer_turn_uid(
+        message,
+        conversation_history=conversation_history,
+    )
+    goals = understanding.get("customer_goals")
+    goals = goals if isinstance(goals, list) else []
+    if understanding_status != "valid":
+        if goals:
+            raise HighQualityReviewProjectionError(
+                "non_authoritative_goal_references_present"
+            )
+        return {
+            "schema_version": "trusted-control-reference-projection/v1",
+            "status": "not_authoritative",
+            "reason_code": f"goal_understanding_{understanding_status}",
+            "goal_understanding_status": understanding_status,
+            "goal_count": 0,
+            "resolution_count": 0,
+            "clause_count": 0,
+            "goals": [],
+            "resolutions": [],
+            "composer_clauses": [],
+        }
+    if not goals:
+        raise HighQualityReviewProjectionError(
+            "canonical_customer_goals_missing"
+        )
+    valid, reasons = _validate_canonical_customer_goals(
+        goals,
+        message=message,
+        source_turn_uid=source_turn_uid,
+    )
+    if not valid:
+        raise HighQualityReviewProjectionError(
+            "canonical_goal_provenance_invalid:"
+            + ",".join(sorted(set(reasons)))
+        )
+
+    goal_alias_by_ref = {
+        str(goal["goal_ref"]): _stable_control_alias(
+            secret,
+            "goal",
+            str(goal["goal_ref"]),
+        )
+        for goal in goals
+        if isinstance(goal, dict) and str(goal.get("goal_ref") or "")
+    }
+    projected_goals = [
+        {
+            "goal_alias": goal_alias_by_ref[str(goal["goal_ref"])],
+            "goal_kind": str(goal.get("goal_kind") or ""),
+            "claim_type": str(goal.get("claim_type") or ""),
+            "claim_type_status": str(
+                goal.get("claim_type_status") or ""
+            ),
+            "attribute_key": str(goal.get("attribute_key") or ""),
+            "semantic_key": str(goal.get("semantic_key") or ""),
+            "source_span_start": goal.get("source_span_start"),
+            "source_span_end": goal.get("source_span_end"),
+            "provenance_status": "validated_current_customer_turn",
+        }
+        for goal in sorted(
+            (item for item in goals if isinstance(item, dict)),
+            key=lambda item: str(item.get("goal_ref") or ""),
+        )
+    ]
+
+    minimal = response.get("minimal_decision_context")
+    minimal = minimal if isinstance(minimal, dict) else {}
+    resolutions = [
+        item
+        for item in minimal.get("claim_resolutions") or []
+        if isinstance(item, dict)
+    ]
+    claim_alias_by_uid: dict[str, str] = {}
+    projected_resolutions: list[dict[str, Any]] = []
+    for resolution in sorted(
+        resolutions,
+        key=lambda item: (
+            str(item.get("goal_ref") or ""),
+            str(item.get("claim_uid") or ""),
+        ),
+    ):
+        raw_goal_ref = str(resolution.get("goal_ref") or "")
+        raw_claim_uid = str(resolution.get("claim_uid") or "")
+        if not raw_goal_ref:
+            raise HighQualityReviewProjectionError(
+                "claim_resolution_goal_ref_missing"
+            )
+        if raw_goal_ref not in goal_alias_by_ref:
+            raise HighQualityReviewProjectionError(
+                "claim_resolution_goal_ref_untrusted"
+            )
+        if not raw_claim_uid or raw_claim_uid != _claim_uid(
+            {"goal_ref": raw_goal_ref}
+        ):
+            raise HighQualityReviewProjectionError(
+                "claim_resolution_identity_invalid"
+            )
+        claim_alias = _stable_control_alias(
+            secret,
+            "claim",
+            raw_claim_uid,
+        )
+        claim_alias_by_uid[raw_claim_uid] = claim_alias
+        projected_resolutions.append({
+            "goal_alias": goal_alias_by_ref[raw_goal_ref],
+            "claim_alias": claim_alias,
+            "claim_type": str(resolution.get("claim_type") or ""),
+            "attribute_key": str(resolution.get("attribute_key") or ""),
+            "status": str(resolution.get("status") or ""),
+            "support_basis": str(
+                resolution.get("support_basis") or ""
+            ),
+            "evidence_aliases": sorted(
+                _stable_control_alias(secret, "evidence", str(value))
+                for value in resolution.get("evidence_uids") or []
+                if str(value or "")
+            ),
+            "reason_code": str(resolution.get("reason") or ""),
+        })
+
+    composer = response.get("model_first_answer_composer")
+    composer = composer if isinstance(composer, dict) else {}
+    clauses = [
+        item for item in composer.get("clauses") or []
+        if isinstance(item, dict)
+    ]
+    projected_clauses: list[dict[str, Any]] = []
+    for clause in sorted(
+        clauses,
+        key=lambda item: str(item.get("clause_ref") or ""),
+    ):
+        raw_claim_uid = str(clause.get("goal_ref") or "")
+        if raw_claim_uid not in claim_alias_by_uid:
+            raise HighQualityReviewProjectionError(
+                "composer_claim_reference_untrusted"
+            )
+        projected_clauses.append({
+            "clause_alias": _stable_control_alias(
+                secret,
+                "clause",
+                str(clause.get("clause_ref") or raw_claim_uid),
+            ),
+            "claim_alias": claim_alias_by_uid[raw_claim_uid],
+            "clause_kind": str(clause.get("clause_kind") or ""),
+            "text": str(clause.get("text") or "").strip(),
+            "evidence_aliases": sorted(
+                _stable_control_alias(secret, "evidence", str(value))
+                for value in clause.get("evidence_uids") or []
+                if str(value or "")
+            ),
+        })
+
+    return {
+        "schema_version": "trusted-control-reference-projection/v1",
+        "status": "valid",
+        "reason_code": "",
+        "goal_understanding_status": understanding_status,
+        "goal_count": len(projected_goals),
+        "resolution_count": len(projected_resolutions),
+        "clause_count": len(projected_clauses),
+        "goals": projected_goals,
+        "resolutions": projected_resolutions,
+        "composer_clauses": projected_clauses,
+    }
+
+
+def stable_evaluation_alias(
+    namespace: str,
+    value: str,
+    *,
+    alias_secret: bytes | str,
+) -> str:
+    secret = (
+        alias_secret.encode("utf-8")
+        if isinstance(alias_secret, str)
+        else alias_secret
+    )
+    if not isinstance(secret, bytes) or not secret:
+        raise HighQualityReviewProjectionError("alias_secret_required")
+    return _stable_control_alias(secret, namespace, value)
+
+
+def _stable_control_alias(
+    secret: bytes,
+    namespace: str,
+    value: str,
+) -> str:
+    normalized_namespace = str(namespace or "").strip().lower()
+    normalized_value = str(value or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", normalized_namespace):
+        raise HighQualityReviewProjectionError("alias_namespace_invalid")
+    if not normalized_value:
+        raise HighQualityReviewProjectionError("alias_value_required")
+    digest = hmac.new(
+        secret,
+        f"{normalized_namespace}:{normalized_value}".encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    suffix = base64.b32encode(digest).decode("ascii").rstrip("=")[:16]
+    return f"{normalized_namespace}_{suffix}"
+
+
+def _response_turn_understanding(
+    response: dict[str, Any],
+) -> dict[str, Any]:
+    for container in (
+        response,
+        response.get("evidence_debug"),
+        response.get("answer_trace"),
+        response.get("context_used"),
+    ):
+        if not isinstance(container, dict):
+            continue
+        understanding = container.get("turn_understanding")
+        if isinstance(understanding, dict):
+            return understanding
+    raise HighQualityReviewProjectionError("turn_understanding_missing")
 
 
 def default_review_label_db_path() -> Path:

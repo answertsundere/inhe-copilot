@@ -564,3 +564,67 @@ affirmative forbidden claims. The full 26-scenario run passed deterministic
 safety and knowledge-write gates but did not meet the answer-quality promotion
 bar. It cannot replace Tier A or approved long-conversation evaluation, and it
 does not authorize enabling either candidate flag in production.
+
+## P1 Gold Conversation Report Integrity
+
+The P1 long-conversation evaluator treats canonical goal and claim references
+as control-plane identifiers, not customer text. A reference is reportable only
+after the evaluator verifies the server-owned Analysis Pipeline stages, Turn
+Understanding schema/owner/source stage, current-message span digests, canonical
+goal identity, and cross-stage goal-to-claim-to-clause linkage. The current
+buyer-turn UID is recomputed with the same canonical conversation history
+position used by the runtime. Valid references are emitted only as run-stable
+HMAC/Base32 aliases. A degraded or invalid Turn Understanding result with no
+references is a business result; a wrong owner, invalid provenance, malformed
+identity, or untrusted cross-stage reference remains an integrity failure.
+
+Reports are split into a compact summary, manifest, one privacy-checked file per
+case, and a bounded supervisor review pack. The deterministic summary is an
+explicit metric allowlist. Raw policy/goal/claim identifiers, prompts,
+reasoning, full traces, credentials, and provider URLs are not serialized.
+Checkpoints persist the runner source hash, runtime identity, formal-knowledge
+start fingerprint, DML offset, and completed case-file hashes so a finalization
+failure cannot erase the start-of-run integrity evidence.
+
+The first P1.1a attempt completed all 26 Agent calls but is not an authoritative
+baseline. Its evaluator recomputed current-turn identity without conversation
+history, so 24 valid provenance chains were rejected; two non-authoritative
+understanding outcomes were incorrectly conflated with owner failure. Final
+summary serialization then rejected an unprojected control reference, and the
+start knowledge fingerprint existed only in process memory. The case files and
+checkpoint are retained as a blocked diagnostic, but no review pack, P1.2 owner,
+or accuracy result may be inferred from them. `real_customer_accuracy` remains
+`null`, and the one-run stop rule prevents an opportunistic third run in this
+phase.
+
+The P1.1b attempt also remains diagnostic-only. It stopped after one completed
+case when the second response failed trusted projection with
+`claim_resolution_goal_ref_missing`. Because the response shape had not been
+persisted before projection, an offline reconstruction could verify the saved
+hashes but could not determine whether the missing reference belonged to a
+customer goal, dependency, service action, media request, contextual
+constraint, legacy diagnostic, or malformed result. No ownership inference was
+made from that incomplete artifact.
+
+P1.1d closes that observability gap with
+`projection-failure-capsule/v1`, implemented privately inside the existing
+runner. The runner atomically writes a pending capsule after receiving an API
+response and before `build_case_observation()`, then atomically replaces it
+with `completed` or `projection_failed`. The capsule contains only run/case
+aliases, array positions, response and value hashes, field types/counts,
+allowlisted enum codes, HMAC/Base32 reference aliases, relationship booleans,
+reply length/hash/privacy finding counts, and a safe exception code. Unknown
+values are represented by type, encoded length, and SHA-256; raw messages,
+replies, evidence, product/order identity, internal references, prompts,
+reasoning, provider configuration, tracebacks, and database values are
+forbidden.
+
+Capsule metadata and hashes are part of checkpoint and final manifest
+validation. A successful authoritative development baseline requires exactly
+one completed capsule and one case observation for every frozen scenario.
+Projection failure remains a hard stop, but the retained capsule is strictly
+diagnostic: `used_for_scoring=false`, `used_for_agent_input=false`,
+`can_change_can_send=false`, and `authoritative_business_result=false`.
+The capsule does not classify goal ownership and does not add a second
+evaluator, registry, ontology, or Agent owner. `real_customer_accuracy` remains
+`null`.
