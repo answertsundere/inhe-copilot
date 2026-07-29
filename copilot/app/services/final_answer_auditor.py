@@ -851,62 +851,6 @@ def _model_first_audit_context(
             str(item.get("attribute_key") or ""),
         ),
     )
-    canonical_claims = []
-    canonical_goal_ref_by_uid: dict[str, str] = {}
-    for index, item in enumerate(claim_rows, start=1):
-        claim_uid = str(item.get("claim_uid") or "").strip()
-        canonical_goal_ref = f"goal_{index:02d}"
-        canonical_goal_ref_by_uid[claim_uid] = canonical_goal_ref
-        canonical_claims.append({
-            "claim_ref": canonical_goal_ref,
-            "claim_type": str(item.get("claim_type") or ""),
-            "attribute_key": str(item.get("attribute_key") or ""),
-            "status": str(item.get("status") or ""),
-            "support_basis": str(item.get("support_basis") or ""),
-            "evidence_refs": sorted({
-                evidence_ref_by_uid[str(uid)]
-                for uid in item.get("evidence_uids") or []
-                if str(uid) in evidence_ref_by_uid
-            }),
-            "premise_evidence_refs": sorted({
-                evidence_ref_by_uid[str(uid)]
-                for uid in item.get("premise_evidence_uids") or []
-                if str(uid) in evidence_ref_by_uid
-            }),
-            "inference_policy_refs": sorted({
-                str(value).strip()
-                for value in item.get("inference_policy_refs") or []
-                if str(value).strip()
-            }),
-            "scope_qualifier": str(
-                item.get("scope_qualifier") or ""
-            ).strip(),
-            "inference_risk_level": str(
-                item.get("inference_risk_level") or ""
-            ).strip(),
-            "maximum_risk_level": str(
-                item.get("maximum_risk_level") or ""
-            ).strip(),
-            "inference_review_only": (
-                item.get("inference_review_only") is True
-            ),
-            "required_qualifiers": sorted({
-                str(value).strip()
-                for value in item.get("required_qualifiers") or []
-                if str(value).strip()
-            }),
-            "prohibited_extensions": sorted({
-                str(value).strip()
-                for value in item.get("prohibited_extensions") or []
-                if str(value).strip()
-            }),
-            "conflicting_evidence_refs": sorted({
-                evidence_ref_by_uid[str(uid)]
-                for uid in item.get("conflicting_evidence_uids") or []
-                if str(uid) in evidence_ref_by_uid
-            }),
-        })
-
     composer = response.get("model_first_answer_composer")
     composer_clauses = (
         composer.get("clauses")
@@ -920,17 +864,136 @@ def _model_first_audit_context(
         if isinstance(item, dict)
         and str(item.get("goal_ref") or "").strip()
     }
+    canonical_claims = []
+    canonical_goal_ref_by_uid: dict[str, str] = {}
+    for index, item in enumerate(claim_rows, start=1):
+        claim_uid = str(item.get("claim_uid") or "").strip()
+        selected_clause = clause_by_goal.get(claim_uid) or {}
+        bounded_selected = (
+            selected_clause.get("clause_kind") == "allowed_inference"
+        )
+        selected_evidence_uids = (
+            selected_clause.get("evidence_uids") or []
+            if bounded_selected
+            else item.get("evidence_uids") or []
+        )
+        selected_policy_refs = (
+            selected_clause.get("inference_policy_refs") or []
+            if bounded_selected
+            else item.get("inference_policy_refs") or []
+        )
+        canonical_goal_ref = f"goal_{index:02d}"
+        canonical_goal_ref_by_uid[claim_uid] = canonical_goal_ref
+        canonical_claims.append({
+            "claim_ref": canonical_goal_ref,
+            "claim_type": str(item.get("claim_type") or ""),
+            "attribute_key": str(item.get("attribute_key") or ""),
+            "status": (
+                "supported"
+                if bounded_selected
+                else str(item.get("status") or "")
+            ),
+            "support_basis": (
+                "bounded_inference"
+                if bounded_selected
+                else str(item.get("support_basis") or "")
+            ),
+            "evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in selected_evidence_uids
+                if str(uid) in evidence_ref_by_uid
+            }),
+            "premise_evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in (
+                    selected_clause.get("premise_evidence_uids") or []
+                    if bounded_selected
+                    else item.get("premise_evidence_uids") or []
+                )
+                if str(uid) in evidence_ref_by_uid
+            }),
+            "inference_policy_refs": sorted({
+                str(value).strip()
+                for value in selected_policy_refs
+                if str(value).strip()
+            }),
+            "scope_qualifier": str(
+                (
+                    selected_clause.get("scope_qualifier")
+                    if bounded_selected
+                    else item.get("scope_qualifier")
+                )
+                or ""
+            ).strip(),
+            "inference_risk_level": str(
+                (
+                    selected_clause.get("inference_risk_level")
+                    if bounded_selected
+                    else item.get("inference_risk_level")
+                )
+                or ""
+            ).strip(),
+            "maximum_risk_level": str(
+                (
+                    selected_clause.get("maximum_risk_level")
+                    if bounded_selected
+                    else item.get("maximum_risk_level")
+                )
+                or ""
+            ).strip(),
+            "inference_review_only": (
+                (
+                    selected_clause.get("inference_review_only")
+                    if bounded_selected
+                    else item.get("inference_review_only")
+                )
+                is True
+            ),
+            "required_qualifiers": sorted({
+                str(value).strip()
+                for value in (
+                    selected_clause.get("required_qualifiers") or []
+                    if bounded_selected
+                    else item.get("required_qualifiers") or []
+                )
+                if str(value).strip()
+            }),
+            "prohibited_extensions": sorted({
+                str(value).strip()
+                for value in (
+                    selected_clause.get("prohibited_extensions") or []
+                    if bounded_selected
+                    else item.get("prohibited_extensions") or []
+                )
+                if str(value).strip()
+            }),
+            "conflicting_evidence_refs": sorted({
+                evidence_ref_by_uid[str(uid)]
+                for uid in item.get("conflicting_evidence_uids") or []
+                if str(uid) in evidence_ref_by_uid
+            }),
+        })
+
     canonical_candidate_clauses = []
     for index, claim in enumerate(claim_rows, start=1):
         claim_uid = str(claim.get("claim_uid") or "").strip()
         clause = clause_by_goal.get(claim_uid)
         if not isinstance(clause, dict):
             continue
+        bounded_selected = clause.get("clause_kind") == "allowed_inference"
         canonical_candidate_clauses.append({
             "clause_ref": f"clause_{index:02d}",
             "goal_ref": canonical_goal_ref_by_uid[claim_uid],
-            "canonical_status": str(claim.get("status") or "").strip(),
-            "expected_kind": _model_first_expected_clause_kind(claim),
+            "canonical_status": (
+                "supported"
+                if bounded_selected
+                else str(claim.get("status") or "").strip()
+            ),
+            "expected_kind": (
+                "allowed_inference"
+                if bounded_selected
+                else _model_first_expected_clause_kind(claim)
+            ),
             "text": project_text_for_external_model(clause.get("text") or ""),
             "evidence_refs": sorted({
                 evidence_ref_by_uid[str(uid)]
@@ -939,34 +1002,70 @@ def _model_first_audit_context(
             }),
             "premise_evidence_refs": sorted({
                 evidence_ref_by_uid[str(uid)]
-                for uid in claim.get("premise_evidence_uids") or []
+                for uid in (
+                    clause.get("premise_evidence_uids") or []
+                    if bounded_selected
+                    else claim.get("premise_evidence_uids") or []
+                )
                 if str(uid) in evidence_ref_by_uid
             }),
             "inference_policy_refs": sorted({
                 str(value).strip()
-                for value in claim.get("inference_policy_refs") or []
+                for value in (
+                    clause.get("inference_policy_refs") or []
+                    if bounded_selected
+                    else claim.get("inference_policy_refs") or []
+                )
                 if str(value).strip()
             }),
             "scope_qualifier": str(
-                claim.get("scope_qualifier") or ""
+                (
+                    clause.get("scope_qualifier")
+                    if bounded_selected
+                    else claim.get("scope_qualifier")
+                )
+                or ""
             ).strip(),
             "inference_risk_level": str(
-                claim.get("inference_risk_level") or ""
+                (
+                    clause.get("inference_risk_level")
+                    if bounded_selected
+                    else claim.get("inference_risk_level")
+                )
+                or ""
             ).strip(),
             "maximum_risk_level": str(
-                claim.get("maximum_risk_level") or ""
+                (
+                    clause.get("maximum_risk_level")
+                    if bounded_selected
+                    else claim.get("maximum_risk_level")
+                )
+                or ""
             ).strip(),
             "inference_review_only": (
-                claim.get("inference_review_only") is True
+                (
+                    clause.get("inference_review_only")
+                    if bounded_selected
+                    else claim.get("inference_review_only")
+                )
+                is True
             ),
             "required_qualifiers": sorted({
                 str(value).strip()
-                for value in claim.get("required_qualifiers") or []
+                for value in (
+                    clause.get("required_qualifiers") or []
+                    if bounded_selected
+                    else claim.get("required_qualifiers") or []
+                )
                 if str(value).strip()
             }),
             "prohibited_extensions": sorted({
                 str(value).strip()
-                for value in claim.get("prohibited_extensions") or []
+                for value in (
+                    clause.get("prohibited_extensions") or []
+                    if bounded_selected
+                    else claim.get("prohibited_extensions") or []
+                )
                 if str(value).strip()
             }),
         })
@@ -1172,12 +1271,70 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
         actual_evidence = {str(uid) for uid in clause.get("evidence_uids") or []}
         expected_evidence = {str(uid) for uid in claim.get("evidence_uids") or []}
         expected_kind = _model_first_expected_clause_kind(claim)
+        eligible_options = {
+            str(item.get("policy_ref") or "").strip(): item
+            for item in claim.get("eligible_policy_options") or []
+            if (
+                isinstance(item, dict)
+                and str(item.get("policy_ref") or "").strip()
+            )
+        }
         if not expected_kind:
             issues.append("model_first_candidate_claim_status_invalid")
             continue
-        if status == "supported":
-            support_basis = str(claim.get("support_basis") or "")
-            if support_basis == "bounded_inference":
+        support_basis = str(claim.get("support_basis") or "")
+        clause_policy_refs = sorted({
+            str(value)
+            for value in clause.get("inference_policy_refs") or []
+            if str(value)
+        })
+        selected_option = (
+            eligible_options.get(clause_policy_refs[0], {})
+            if len(clause_policy_refs) == 1
+            else {}
+        )
+        bounded_clause = clause.get("clause_kind") == "allowed_inference"
+        if bounded_clause or clause_policy_refs or (
+            status == "supported"
+            and support_basis == "bounded_inference"
+        ):
+            if selected_option:
+                premise_evidence = {
+                    str(uid)
+                    for uid in selected_option.get(
+                        "premise_evidence_refs"
+                    )
+                    or []
+                    if str(uid)
+                }
+                claim_policy_refs = clause_policy_refs
+                claim_qualifiers = sorted({
+                    str(value)
+                    for value in selected_option.get(
+                        "required_qualifiers"
+                    )
+                    or []
+                    if str(value)
+                })
+                claim_prohibited = sorted({
+                    str(value)
+                    for value in selected_option.get(
+                        "forbidden_claim_families"
+                    )
+                    or []
+                    if str(value)
+                })
+                inference_risk_level = str(
+                    selected_option.get("requested_risk") or ""
+                )
+                maximum_risk_level = str(
+                    selected_option.get("maximum_risk") or ""
+                )
+                scope_qualifier = str(
+                    selected_option.get("allowed_scope") or ""
+                )
+                review_only = selected_option.get("review_only") is True
+            else:
                 premise_evidence = {
                     str(uid)
                     for uid in claim.get("premise_evidence_uids") or []
@@ -1186,11 +1343,6 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 claim_policy_refs = sorted({
                     str(value)
                     for value in claim.get("inference_policy_refs") or []
-                    if str(value)
-                })
-                clause_policy_refs = sorted({
-                    str(value)
-                    for value in clause.get("inference_policy_refs") or []
                     if str(value)
                 })
                 claim_qualifiers = sorted({
@@ -1219,50 +1371,129 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 maximum_risk_level = str(
                     claim.get("maximum_risk_level") or ""
                 )
-                trusted_policy = (
-                    trusted_policies.get(claim_policy_refs[0], {})
-                    if len(claim_policy_refs) == 1
-                    else {}
+                scope_qualifier = str(
+                    claim.get("scope_qualifier") or ""
                 )
-                if (
-                    clause.get("clause_kind") != "allowed_inference"
-                    or not premise_evidence
-                    or actual_evidence != premise_evidence
-                    or expected_evidence != premise_evidence
-                    or not claim_policy_refs
-                    or len(claim_policy_refs) != 1
-                    or not trusted_policy_refs
-                    or not set(claim_policy_refs).issubset(trusted_policy_refs)
-                    or maximum_risk_level
-                    != str(
-                        trusted_policy.get("maximum_risk_level")
+                review_only = (
+                    claim.get("inference_review_only") is True
+                )
+            clause_qualifiers = sorted({
+                str(value)
+                for value in clause.get("required_qualifiers") or []
+                if str(value)
+            })
+            clause_prohibited = sorted({
+                str(value)
+                for value in clause.get("prohibited_extensions") or []
+                if str(value)
+            })
+            trusted_policy = (
+                trusted_policies.get(claim_policy_refs[0], {})
+                if len(claim_policy_refs) == 1
+                else {}
+            )
+            option_contract_invalid = bool(
+                selected_option
+                and (
+                    selected_option.get("review_only") is not True
+                    or str(
+                        selected_option.get("applicable_goal_ref") or ""
+                    )
+                    != str(claim.get("goal_ref") or "")
+                    or str(
+                        selected_option.get("trusted_domain_pack_ref")
                         or ""
                     )
-                    or clause_policy_refs != claim_policy_refs
-                    or not str(claim.get("scope_qualifier") or "")
-                    or str(clause.get("scope_qualifier") or "")
-                    != str(claim.get("scope_qualifier") or "")
-                    or inference_risk_level not in {"low", "medium"}
-                    or maximum_risk_level not in {"low", "medium"}
+                    != str(claim_policy_refs[0]).rsplit(
+                        ":intent:",
+                        1,
+                    )[0]
+                    or str(selected_option.get("intent_kind") or "")
+                    != "practical_guidance"
+                    or str(
+                        selected_option.get("policy_intent_ref") or ""
+                    )
+                    != str(
+                        trusted_policy.get("policy_intent_ref") or ""
+                    )
+                    or str(selected_option.get("goal_family") or "")
+                    != str(trusted_policy.get("goal_family") or "")
+                    or str(selected_option.get("allowed_scope") or "")
+                    != str(trusted_policy.get("allowed_scope") or "")
+                    or sorted(
+                        selected_option.get("premise_families") or []
+                    )
+                    != sorted(
+                        trusted_policy.get("premise_fact_families") or []
+                    )
+                    or claim_qualifiers
+                    != sorted(
+                        trusted_policy.get("required_qualifiers") or []
+                    )
+                    or claim_prohibited
+                    != sorted(
+                        trusted_policy.get(
+                            "prohibited_claim_families"
+                        )
+                        or []
+                    )
+                    or not isinstance(
+                        selected_option.get("option_provenance"),
+                        dict,
+                    )
                     or (
-                        inference_risk_level == "medium"
-                        and maximum_risk_level == "low"
-                    )
-                    or claim.get("inference_review_only") is not True
-                    or clause.get("inference_risk_level")
-                    != inference_risk_level
-                    or clause.get("maximum_risk_level")
-                    != maximum_risk_level
-                    or clause.get("inference_review_only") is not True
-                    or not claim_qualifiers
-                    or clause_qualifiers != claim_qualifiers
-                    or not claim_prohibited
-                    or clause_prohibited != claim_prohibited
-                ):
-                    issues.append(
-                        "model_first_candidate_bounded_inference_clause_invalid"
-                    )
-            elif (
+                        selected_option.get("option_provenance") or {}
+                    ).get("policy_owner") != "domain_policy_pack"
+                    or (
+                        selected_option.get("option_provenance") or {}
+                    ).get("filter_owner") != "claim_resolution"
+                    or (
+                        selected_option.get("option_provenance") or {}
+                    ).get("premise_owner")
+                    != "admitted_answer_context"
+                )
+            )
+            if (
+                status not in {"supported", "unresolved"}
+                or clause.get("clause_kind") != "allowed_inference"
+                or not premise_evidence
+                or actual_evidence != premise_evidence
+                or not claim_policy_refs
+                or len(claim_policy_refs) != 1
+                or not trusted_policy_refs
+                or not set(claim_policy_refs).issubset(trusted_policy_refs)
+                or maximum_risk_level
+                != str(
+                    trusted_policy.get("maximum_risk_level")
+                    or ""
+                )
+                or not scope_qualifier
+                or str(clause.get("scope_qualifier") or "")
+                != scope_qualifier
+                or inference_risk_level not in {"low", "medium"}
+                or maximum_risk_level not in {"low", "medium"}
+                or (
+                    inference_risk_level == "medium"
+                    and maximum_risk_level == "low"
+                )
+                or not review_only
+                or clause.get("inference_risk_level")
+                != inference_risk_level
+                or clause.get("maximum_risk_level")
+                != maximum_risk_level
+                or clause.get("inference_review_only") is not True
+                or not claim_qualifiers
+                or clause_qualifiers != claim_qualifiers
+                or not claim_prohibited
+                or clause_prohibited != claim_prohibited
+                or claim.get("conflicting_evidence_uids")
+                or option_contract_invalid
+            ):
+                issues.append(
+                    "model_first_candidate_bounded_inference_clause_invalid"
+                )
+        elif status == "supported":
+            if (
                 clause.get("clause_kind") != "supported_fact"
                 or actual_evidence != expected_evidence
                 or clause.get("inference_policy_refs")

@@ -626,6 +626,42 @@ content was unchanged, DML was zero, and `can_send` remained false. This
 evidence qualifies the disabled contract implementation only, not naturalness,
 business usefulness, real-customer accuracy, or production use.
 
+### P1.2c policy nomination funnel
+
+The P1.2b four-case structure was frozen before implementation with anonymous
+HMAC/Base32 aliases. All four first broke at
+`policy_intent_not_generated`: each had one admitted direct premise but no
+policy nomination. The comparison case also reported an unknown Composer goal
+reference, but the raw provider reference was not retained, so that secondary
+attribution remains inconclusive and no alias-repair behavior was added.
+
+The corrected owner matrix is:
+
+```text
+trusted Domain Pack + admitted direct premises + authoritative goal
+-> Claim Resolution eligible_policy_options
+-> Composer selects zero or one option per goal
+-> Deterministic Final validates the selection
+-> Unified Textual Audit checks rendered faithfulness
+```
+
+Each option retains the trusted pack reference, applicable goal, premise UIDs
+and families, allowed scope, forbidden claim families, maximum/requested risk,
+required qualifiers, review-only status, and owner provenance. Missing trusted
+intent no longer empties the safe set; a valid intent may only narrow it.
+Unknown or public-injected intent, missing/conflicting premise, high risk,
+service/media/dependency/context goals, wrong goal/policy/evidence references,
+and policy metadata mutations fail closed.
+
+The existing comparison runner now reports option coverage, policy selection,
+selected-policy validity, premise attribution, scope validity, and missed
+inference opportunities separately. Gold replies, alternate replies, reviewer
+notes, capability inventory, expected policy, and scoring rubric remain
+outside Agent, RAG, Composer, and Audit input. This remains a default-off,
+review-only Shadow candidate with `can_send=false`; live 4-case, 16-case, and
+synthetic results must be recorded after the gated run and cannot establish
+`real_customer_accuracy`.
+
 ### Phase 0.8G fixed real-turn replay
 
 Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely

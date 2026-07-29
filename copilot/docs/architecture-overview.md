@@ -238,22 +238,34 @@ automatic send, retry, repair, or formal knowledge writes. This qualifies the
 feature-disabled Agent Core correctness slice. It does not establish real
 conversation quality or authorize production enablement.
 
-P1.2b extends that same disabled path with bounded low-risk inference metadata,
-without adding another reasoning service or model call. A trusted Domain Pack
-defines premise families, qualitative scope, maximum `low`/`medium` risk,
-required qualifiers, prohibited claim families, and mandatory review. Claim
-Resolution binds a nominated policy to admitted evidence and preserves premise
-UIDs; the Composer only renders the validated clause. Deterministic Final
-checks the policy, premise, scope, risk ceiling, review-only marker, and
-evidence references, while Unified Textual Audit checks the rendered text.
+P1.2b extended that same disabled path with bounded low-risk inference
+metadata, without adding another reasoning service or model call. Its live
+gate exposed an ownership error: Claim Resolution required a policy intent
+that the four representative turns never nominated, so the safe option
+denominator remained zero.
 
-The live qualification did not pass: the one-call provider preflight was
+P1.2c keeps the same owners but separates deterministic eligibility from
+semantic choice. A trusted Domain Pack defines premise families, qualitative
+scope, maximum `low`/`medium` risk, required qualifiers, prohibited claim
+families, and mandatory review. Claim Resolution projects every policy in the
+safe deterministic intersection as `eligible_policy_options`; a trusted intent
+may narrow the set but missing intent does not select or authorize inference.
+For each authoritative customer goal, the Composer chooses zero or one offered
+policy and returns its policy reference, admitted premise references, and
+exact scope with the clause. Deterministic Final checks offered-set
+membership, Domain Pack identity and provenance, premises, scope, risk ceiling,
+review-only status, qualifiers, prohibitions, and conflicts. Unified Textual
+Audit checks the rendered text.
+
+The P1.2b live qualification did not pass: the one-call provider preflight was
 available, but the representative gate produced no policy nominations or
 bounded-inference denominator in four real-derived cases and stopped at
-`0/4`. One comparison candidate also had an unknown goal reference. The
-16-case and synthetic qualification stages were not run. The contract remains
-default-off, review-only, and unqualified; production reply and `can_send`
-behavior are unchanged.
+`0/4`. One comparison candidate also had an unknown goal reference whose exact
+provider alias was not retained, so its attribution remains inconclusive.
+P1.2c changes no alias repair rule and will rerun the gated qualification
+without extra preflight, retry, or repair. The contract remains default-off,
+review-only, and unqualified until that run completes; production reply and
+`can_send` behavior are unchanged.
 
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that

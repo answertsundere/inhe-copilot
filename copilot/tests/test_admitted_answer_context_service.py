@@ -798,10 +798,19 @@ def test_admitted_context_builds_policy_bounded_inference_from_trusted_context()
         item["goal_ref"]: item for item in context["claim_resolutions"]
     }
     assert by_goal["goal-material"]["support_basis"] == "direct_evidence"
-    assert by_goal["goal-durability"]["support_basis"] == "bounded_inference"
-    assert by_goal["goal-durability"]["premise_evidence_uids"] == [
+    assert by_goal["goal-durability"]["support_basis"] == "none"
+    assert by_goal["goal-durability"]["premise_evidence_uids"] == []
+    assert by_goal["goal-durability"]["inference_policy_refs"] == []
+    options = by_goal["goal-durability"]["eligible_policy_options"]
+    assert len(options) == 1
+    assert options[0]["premise_evidence_refs"] == [
         "fact-material"
     ]
+    assert options[0]["policy_ref"] == (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:product_durability_practical_guidance"
+    )
+    assert options[0]["review_only"] is True
     assert context["product_context_capabilities"] == {
         "product_category": {
             "available": True,

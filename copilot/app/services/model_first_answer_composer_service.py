@@ -20,7 +20,7 @@ from app.services.no_evidence_reply_policy_service import (
 )
 
 
-COMPOSER_VERSION = "model-first-answer-composer-v3"
+COMPOSER_VERSION = "model-first-answer-composer-v4"
 COMPOSER_ENVELOPE_CONTRACT_VERSION = "bounded-json-envelope-v1"
 _ALLOWED_OUTPUT_FIELDS = {
     "clauses",
@@ -30,6 +30,9 @@ _ALLOWED_CLAUSE_FIELDS = {
     "clause_kind",
     "text",
     "evidence_refs",
+    "selected_policy_ref",
+    "premise_evidence_refs",
+    "inference_scope",
 }
 _ALLOWED_CLAUSE_KINDS = {
     "supported_fact",
@@ -270,18 +273,19 @@ class ModelFirstAnswerComposerService:
         })
         unresolved_types = {
             str(goal["claim_type"])
-            for goal in customer_goals
+            for goal, clause in zip(customer_goals, ordered_clauses)
             if goal["resolution_status"] in _UNRESOLVED_STATUSES
+            and clause["clause_kind"] == "unresolved"
             and str(goal.get("claim_type") or "").strip()
         }
         goals_by_ref = {
             str(goal["goal_ref"]): goal for goal in customer_goals
         }
         allowed_reasoning = sorted({
-            str(goal.get("scope_qualifier") or "")
-            for goal in customer_goals
-            if goal.get("required_clause_kind") == "allowed_inference"
-            and str(goal.get("scope_qualifier") or "")
+            str(clause.get("inference_scope") or "")
+            for clause in ordered_clauses
+            if clause.get("clause_kind") == "allowed_inference"
+            and str(clause.get("inference_scope") or "")
         })
         result.update({
             "status": "accepted",
@@ -301,47 +305,10 @@ class ModelFirstAnswerComposerService:
                     "evidence_uids": [
                         uid_by_ref[str(ref)] for ref in clause["evidence_refs"]
                     ],
-                    "inference_policy_refs": list(
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "required_inference_policy_refs"
-                        )
-                        or []
-                    ),
-                    "scope_qualifier": str(
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "scope_qualifier"
-                        )
-                        or ""
-                    ),
-                    "inference_risk_level": str(
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "inference_risk_level"
-                        )
-                        or ""
-                    ),
-                    "maximum_risk_level": str(
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "maximum_risk_level"
-                        )
-                        or ""
-                    ),
-                    "inference_review_only": (
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "inference_review_only"
-                        )
-                        is True
-                    ),
-                    "required_qualifiers": list(
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "required_qualifiers"
-                        )
-                        or []
-                    ),
-                    "prohibited_extensions": list(
-                        goals_by_ref[str(clause["goal_ref"])].get(
-                            "prohibited_extensions"
-                        )
-                        or []
+                    **self._selected_policy_clause_metadata(
+                        clause,
+                        goals_by_ref[str(clause["goal_ref"])],
+                        uid_by_ref=uid_by_ref,
                     ),
                 }
                 for index, clause in enumerate(ordered_clauses, start=1)
@@ -695,111 +662,21 @@ class ModelFirstAnswerComposerService:
                     {},
                     "composer_supported_goal_evidence_missing",
                 )
-            required_policy_refs: list[str] = []
-            scope_qualifier = ""
-            inference_risk_level = ""
-            maximum_risk_level = ""
-            inference_review_only = False
-            required_qualifiers: list[str] = []
-            prohibited_extensions: list[str] = []
             required_clause_kind = (
                 "supported_fact"
                 if status == "supported"
                 else "unresolved"
             )
-            if support_basis == "bounded_inference":
-                required_policy_refs = sorted({
-                    str(item).strip()
-                    for item in resolution.get("inference_policy_refs") or []
-                    if str(item).strip()
-                })
-                if (
-                    not required_policy_refs
-                    or any(
-                        policy_ref not in policy_by_ref
-                        for policy_ref in required_policy_refs
-                    )
-                ):
-                    return (
-                        partitions,
-                        {},
-                        "composer_unknown_inference_policy_reference",
-                    )
-                premise_uids = sorted({
-                    str(item).strip()
-                    for item in resolution.get("premise_evidence_uids") or []
-                    if str(item).strip()
-                })
-                premise_refs = sorted({
-                    ref_by_uid[uid]
-                    for uid in premise_uids
-                    if uid in ref_by_uid
-                })
-                if (
-                    not premise_uids
-                    or len(premise_refs) != len(premise_uids)
-                    or set(evidence_refs) != set(premise_refs)
-                ):
-                    return (
-                        partitions,
-                        {},
-                        "composer_bounded_inference_premise_omitted",
-                    )
-                selected_policies = [
-                    policy_by_ref[policy_ref]
-                    for policy_ref in required_policy_refs
-                ]
-                if len(selected_policies) != 1:
-                    return (
-                        partitions,
-                        {},
-                        "composer_unknown_inference_policy_reference",
-                    )
-                selected_policy = selected_policies[0]
-                scope_qualifier = str(
-                    resolution.get("scope_qualifier") or ""
-                ).strip()
-                inference_risk_level = str(
-                    resolution.get("inference_risk_level") or ""
-                ).strip()
-                maximum_risk_level = str(
-                    resolution.get("maximum_risk_level") or ""
-                ).strip()
-                inference_review_only = (
-                    resolution.get("inference_review_only") is True
+            eligible_options, option_error = (
+                ModelFirstAnswerComposerService._project_goal_policy_options(
+                    resolution,
+                    authoritative_goal_ref=authoritative_goal_ref,
+                    ref_by_uid=ref_by_uid,
+                    policy_by_ref=policy_by_ref,
                 )
-                required_qualifiers = sorted({
-                    str(item).strip()
-                    for item in resolution.get("required_qualifiers") or []
-                    if str(item).strip()
-                })
-                prohibited_extensions = sorted({
-                    str(item).strip()
-                    for item in resolution.get("prohibited_extensions") or []
-                    if str(item).strip()
-                })
-                if (
-                    status != "supported"
-                    or selected_policy.get("review_only") is not True
-                    or not scope_qualifier
-                    or scope_qualifier != selected_policy["allowed_scope"]
-                    or inference_risk_level not in _INFERENCE_RISK_RANK
-                    or maximum_risk_level
-                    != selected_policy["maximum_risk_level"]
-                    or _INFERENCE_RISK_RANK[inference_risk_level]
-                    > _INFERENCE_RISK_RANK[maximum_risk_level]
-                    or not inference_review_only
-                    or required_qualifiers
-                    != selected_policy["required_qualifiers"]
-                    or prohibited_extensions
-                    != selected_policy["prohibited_claim_families"]
-                ):
-                    return (
-                        partitions,
-                        {},
-                        "composer_bounded_inference_contract_invalid",
-                    )
-                required_clause_kind = "allowed_inference"
+            )
+            if option_error:
+                return partitions, {}, option_error
             goals.append({
                 "goal_ref": goal_ref,
                 "claim_type": claim_type,
@@ -817,13 +694,7 @@ class ModelFirstAnswerComposerService:
                 "support_basis": support_basis,
                 "required_clause_kind": required_clause_kind,
                 "required_evidence_refs": evidence_refs,
-                "required_inference_policy_refs": required_policy_refs,
-                "scope_qualifier": scope_qualifier,
-                "inference_risk_level": inference_risk_level,
-                "maximum_risk_level": maximum_risk_level,
-                "inference_review_only": inference_review_only,
-                "required_qualifiers": required_qualifiers,
-                "prohibited_extensions": prohibited_extensions,
+                "eligible_policy_options": eligible_options,
             })
 
         dependency_rows: list[dict[str, Any]] = []
@@ -978,6 +849,183 @@ class ModelFirstAnswerComposerService:
         )
 
     @staticmethod
+    def _project_goal_policy_options(
+        resolution: dict[str, Any],
+        *,
+        authoritative_goal_ref: str,
+        ref_by_uid: dict[str, str],
+        policy_by_ref: dict[str, dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], str]:
+        raw_options = resolution.get("eligible_policy_options") or []
+        if not isinstance(raw_options, list):
+            return [], "composer_inference_policy_schema_invalid"
+        if (
+            resolution.get("status") in {"conflicting", "prohibited"}
+            and raw_options
+        ):
+            return [], "composer_bounded_inference_contract_invalid"
+
+        projected: list[dict[str, Any]] = []
+        seen_policy_refs: set[str] = set()
+        for item in raw_options:
+            if not isinstance(item, dict):
+                return [], "composer_inference_policy_schema_invalid"
+            policy_ref = str(item.get("policy_ref") or "").strip()
+            if (
+                not policy_ref
+                or policy_ref in seen_policy_refs
+                or policy_ref not in policy_by_ref
+                or str(item.get("applicable_goal_ref") or "").strip()
+                != authoritative_goal_ref
+            ):
+                return [], "composer_unknown_inference_policy_reference"
+            seen_policy_refs.add(policy_ref)
+            policy = policy_by_ref[policy_ref]
+            premise_uids = sorted({
+                str(value).strip()
+                for value in item.get("premise_evidence_refs") or []
+                if str(value).strip()
+            })
+            premise_refs = sorted({
+                ref_by_uid[uid]
+                for uid in premise_uids
+                if uid in ref_by_uid
+            })
+            premise_families = sorted({
+                str(value).strip()
+                for value in item.get("premise_families") or []
+                if str(value).strip()
+            })
+            required_qualifiers = sorted({
+                str(value).strip()
+                for value in item.get("required_qualifiers") or []
+                if str(value).strip()
+            })
+            prohibited = sorted({
+                str(value).strip()
+                for value in item.get("forbidden_claim_families") or []
+                if str(value).strip()
+            })
+            requested_risk = str(
+                item.get("requested_risk") or ""
+            ).strip()
+            maximum_risk = str(
+                item.get("maximum_risk") or ""
+            ).strip()
+            trusted_domain_pack_ref = str(
+                item.get("trusted_domain_pack_ref") or ""
+            ).strip()
+            provenance = item.get("option_provenance")
+            if not isinstance(provenance, dict):
+                provenance = {}
+            if (
+                not premise_uids
+                or len(premise_refs) != len(premise_uids)
+                or not premise_families
+                or premise_families != policy["premise_fact_families"]
+                or str(item.get("policy_intent_ref") or "").strip()
+                != policy["policy_intent_ref"]
+                or str(item.get("goal_family") or "").strip()
+                != policy["goal_family"]
+                or str(item.get("intent_kind") or "").strip()
+                != policy["intent_kind"]
+                or str(item.get("allowed_scope") or "").strip()
+                != policy["allowed_scope"]
+                or maximum_risk != policy["maximum_risk_level"]
+                or requested_risk not in _INFERENCE_RISK_RANK
+                or maximum_risk not in _INFERENCE_RISK_RANK
+                or _INFERENCE_RISK_RANK[requested_risk]
+                > _INFERENCE_RISK_RANK[maximum_risk]
+                or required_qualifiers != policy["required_qualifiers"]
+                or prohibited != policy["prohibited_claim_families"]
+                or item.get("review_only") is not True
+                or trusted_domain_pack_ref
+                != policy["trusted_domain_pack_ref"]
+                or provenance.get("policy_owner")
+                != "domain_policy_pack"
+                or provenance.get("filter_owner")
+                != "claim_resolution"
+                or provenance.get("premise_owner")
+                != "admitted_answer_context"
+            ):
+                return [], "composer_bounded_inference_contract_invalid"
+            projected.append({
+                "policy_ref": policy_ref,
+                "goal_family": policy["goal_family"],
+                "intent_kind": policy["intent_kind"],
+                "premise_evidence_refs": premise_refs,
+                "premise_families": premise_families,
+                "allowed_scope": policy["allowed_scope"],
+                "maximum_risk_level": maximum_risk,
+                "requested_risk": requested_risk,
+                "required_qualifiers": required_qualifiers,
+                "prohibited_claim_families": prohibited,
+                "review_only": True,
+                "option_provenance": {
+                    "trusted_domain_pack": True,
+                    "admitted_premises": True,
+                    "intent_narrowed": (
+                        provenance.get("intent_narrowed") is True
+                    ),
+                },
+            })
+        return sorted(projected, key=lambda item: item["policy_ref"]), ""
+
+    @staticmethod
+    def _selected_policy_clause_metadata(
+        clause: dict[str, Any],
+        goal: dict[str, Any],
+        *,
+        uid_by_ref: dict[str, str],
+    ) -> dict[str, Any]:
+        if clause.get("clause_kind") != "allowed_inference":
+            return {
+                "inference_policy_refs": [],
+                "premise_evidence_uids": [],
+                "scope_qualifier": "",
+                "inference_risk_level": "",
+                "maximum_risk_level": "",
+                "inference_review_only": False,
+                "required_qualifiers": [],
+                "prohibited_extensions": [],
+            }
+        selected_ref = str(
+            clause.get("selected_policy_ref") or ""
+        ).strip()
+        option = next(
+            (
+                item
+                for item in goal.get("eligible_policy_options") or []
+                if item.get("policy_ref") == selected_ref
+            ),
+            {},
+        )
+        premise_refs = list(clause.get("premise_evidence_refs") or [])
+        return {
+            "inference_policy_refs": [selected_ref],
+            "premise_evidence_uids": [
+                uid_by_ref[str(ref)]
+                for ref in premise_refs
+            ],
+            "scope_qualifier": str(
+                clause.get("inference_scope") or ""
+            ).strip(),
+            "inference_risk_level": str(
+                option.get("requested_risk") or ""
+            ).strip(),
+            "maximum_risk_level": str(
+                option.get("maximum_risk_level") or ""
+            ).strip(),
+            "inference_review_only": option.get("review_only") is True,
+            "required_qualifiers": list(
+                option.get("required_qualifiers") or []
+            ),
+            "prohibited_extensions": list(
+                option.get("prohibited_claim_families") or []
+            ),
+        }
+
+    @staticmethod
     def _project_bounded_inference_policies(
         minimal_context: dict[str, Any],
     ) -> tuple[
@@ -1010,6 +1058,16 @@ class ModelFirstAnswerComposerService:
                 for value in item.get("prohibited_claim_families") or []
                 if str(value).strip()
             })
+            premise_fact_families = sorted({
+                str(value).strip()
+                for value in item.get("premise_fact_families") or []
+                if str(value).strip()
+            })
+            trusted_domain_pack_ref = (
+                policy_ref.rsplit(":intent:", 1)[0]
+                if ":intent:" in policy_ref
+                else ""
+            )
             if (
                 not policy_ref
                 or policy_ref in by_ref
@@ -1018,6 +1076,8 @@ class ModelFirstAnswerComposerService:
                 or not intent_kind
                 or not allowed_scope
                 or maximum_risk_level not in _INFERENCE_RISK_RANK
+                or not premise_fact_families
+                or not trusted_domain_pack_ref
                 or not required_qualifiers
                 or not prohibited_claim_families
                 or item.get("review_only") is not True
@@ -1028,6 +1088,8 @@ class ModelFirstAnswerComposerService:
                 "policy_intent_ref": policy_intent_ref,
                 "goal_family": goal_family,
                 "intent_kind": intent_kind,
+                "trusted_domain_pack_ref": trusted_domain_pack_ref,
+                "premise_fact_families": premise_fact_families,
                 "allowed_scope": allowed_scope,
                 "maximum_risk_level": maximum_risk_level,
                 "required_qualifiers": required_qualifiers,
@@ -1063,6 +1125,12 @@ class ModelFirstAnswerComposerService:
         partitions: dict[str, Any],
         inference_policies: list[dict[str, Any]],
     ) -> dict[str, Any]:
+        offered_policy_refs = {
+            str(option.get("policy_ref") or "")
+            for goal in partitions["renderable_customer_goals"]
+            for option in goal.get("eligible_policy_options") or []
+            if str(option.get("policy_ref") or "")
+        }
         return {
             "current_customer_question": str(
                 minimal_context.get("customer_goal") or customer_message or ""
@@ -1083,17 +1151,21 @@ class ModelFirstAnswerComposerService:
             "supporting_dependencies": list(
                 partitions["supporting_dependencies"]
             ),
-            "bounded_inference_policies": inference_policies,
+            "bounded_inference_policies": [
+                policy
+                for policy in inference_policies
+                if policy.get("policy_ref") in offered_policy_refs
+            ],
             "service_actions": list(partitions["service_actions"]),
             "media_context": dict(partitions["media_context"]),
             "contextual_constraints": dict(
                 partitions["contextual_constraints"]
             ),
             "allowed_low_risk_reasoning": sorted({
-                str(goal.get("scope_qualifier") or "")
+                str(option.get("allowed_scope") or "")
                 for goal in partitions["renderable_customer_goals"]
-                if goal.get("required_clause_kind") == "allowed_inference"
-                and str(goal.get("scope_qualifier") or "")
+                for option in goal.get("eligible_policy_options") or []
+                if str(option.get("allowed_scope") or "")
             }),
         }
 
@@ -1115,13 +1187,19 @@ class ModelFirstAnswerComposerService:
             "goal_ref 必须逐字复制 renderable_customer_goals 中的完整值，"
             "不能缩写、去前缀或改写。"
             "supporting_dependencies 只提供绑定证据，不得为 dependency_ref 输出 clause。"
-            "每个 clause 只能包含 goal_ref、clause_kind、text、evidence_refs。"
+            "每个 clause 只能包含 goal_ref、clause_kind、text、evidence_refs、"
+            "selected_policy_ref、premise_evidence_refs、inference_scope。"
             "每个 text 只写一句不超过30个汉字的直接客服表达，不重复其他 goal 的内容。"
-            "每个 clause 必须逐字复制对应 goal 的 required_clause_kind 和 required_evidence_refs，"
-            "不要自行重新判断事实状态或证据引用。"
+            "每个 goal 可以不选推理 policy，或只从该 goal 的 eligible_policy_options 选择一个。"
+            "不选 policy 时 selected_policy_ref 和 inference_scope 必须为空字符串，"
+            "premise_evidence_refs 必须为空数组，并逐字复制 required_clause_kind 和 required_evidence_refs。"
+            "选择 policy 时 clause_kind 必须为 allowed_inference，selected_policy_ref、"
+            "premise_evidence_refs 和 inference_scope 必须逐字复制同一个 eligible option，"
+            "evidence_refs 必须与 premise_evidence_refs 完全相同。"
+            "不得使用其他 goal 的 policy，不得新增 policy、premise 或 scope。"
             "required_clause_kind=supported_fact 时直接陈述已确认事实，"
             "不复述资料来源、审核状态或核对过程；"
-            "required_clause_kind=allowed_inference 时只能在给定 policy scope 内解释，"
+            "clause_kind=allowed_inference 时只能在所选 policy scope 内解释，"
             "必须保留非绝对边界，不得扩展到 prohibited claim；"
             "required_clause_kind=unresolved 时结合 goal_summary 和当前问题，"
             "自然说明该项目目前无法确认或不能保证。"
@@ -1218,6 +1296,9 @@ class ModelFirstAnswerComposerService:
             clause_kind = str(clause.get("clause_kind") or "").strip()
             text = str(clause.get("text") or "").strip()
             evidence_refs = clause.get("evidence_refs")
+            selected_policy_ref = clause.get("selected_policy_ref")
+            premise_evidence_refs = clause.get("premise_evidence_refs")
+            inference_scope = clause.get("inference_scope")
             if goal_ref not in goals_by_ref:
                 if goal_ref in (non_renderable_goal_refs or set()):
                     return "composer_non_renderable_goal_reference", ModelFirstAnswerComposerService._diagnostics(
@@ -1272,7 +1353,43 @@ class ModelFirstAnswerComposerService:
                         evidence_refs
                     ),
                 )
+            if not isinstance(selected_policy_ref, str):
+                return "composer_inference_policy_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "clause_schema_invalid",
+                    parsed=parsed,
+                    json_path=f"{path}.selected_policy_ref",
+                    expected_type="string",
+                    actual_type=ModelFirstAnswerComposerService._type_name(
+                        selected_policy_ref
+                    ),
+                )
+            if not isinstance(inference_scope, str):
+                return "composer_inference_policy_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "clause_schema_invalid",
+                    parsed=parsed,
+                    json_path=f"{path}.inference_scope",
+                    expected_type="string",
+                    actual_type=ModelFirstAnswerComposerService._type_name(
+                        inference_scope
+                    ),
+                )
+            if not isinstance(premise_evidence_refs, list) or any(
+                not isinstance(item, str) or not item.strip()
+                for item in premise_evidence_refs
+            ):
+                return "composer_inference_policy_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "clause_schema_invalid",
+                    parsed=parsed,
+                    json_path=f"{path}.premise_evidence_refs",
+                    expected_type="array_of_non_empty_strings",
+                    actual_type=ModelFirstAnswerComposerService._type_name(
+                        premise_evidence_refs
+                    ),
+                )
             refs = [str(item).strip() for item in evidence_refs]
+            premise_refs = [
+                str(item).strip() for item in premise_evidence_refs
+            ]
             if len(refs) != len(set(refs)):
                 return "composer_duplicate_evidence_reference", ModelFirstAnswerComposerService._diagnostics(
                     "unknown_evidence_ref",
@@ -1289,26 +1406,85 @@ class ModelFirstAnswerComposerService:
                     expected_type="known_evidence_refs",
                     actual_type="array",
                 )
+            if (
+                len(premise_refs) != len(set(premise_refs))
+                or not set(premise_refs).issubset(known_refs)
+            ):
+                return "composer_bounded_inference_premise_omitted", ModelFirstAnswerComposerService._diagnostics(
+                    "unknown_evidence_ref",
+                    parsed=parsed,
+                    json_path=f"{path}.premise_evidence_refs",
+                    expected_type="unique_known_evidence_refs",
+                    actual_type="array",
+                )
+            selected_policy_ref = selected_policy_ref.strip()
+            inference_scope = inference_scope.strip()
             goal = goals_by_ref[goal_ref]
             required_kind = goal["required_clause_kind"]
-            if required_kind == "allowed_inference":
-                if clause_kind != "allowed_inference":
-                    return "composer_bounded_inference_clause_invalid", ModelFirstAnswerComposerService._diagnostics(
-                        "wrong_clause_kind",
+            goal_options = {
+                str(option.get("policy_ref") or ""): option
+                for option in goal.get("eligible_policy_options") or []
+                if str(option.get("policy_ref") or "")
+            }
+            all_offered_policy_refs = {
+                str(option.get("policy_ref") or "")
+                for offered_goal in customer_goals
+                for option in offered_goal.get("eligible_policy_options") or []
+                if str(option.get("policy_ref") or "")
+            }
+            if clause_kind == "allowed_inference":
+                if not selected_policy_ref:
+                    return "composer_unknown_inference_policy_reference", ModelFirstAnswerComposerService._diagnostics(
+                        "unknown_policy_ref",
                         parsed=parsed,
-                        json_path=f"{path}.clause_kind",
-                        expected_type="required_clause_kind",
-                        actual_type="allowed_enum",
-                        invalid_enum_count=1,
+                        json_path=f"{path}.selected_policy_ref",
+                        expected_type="offered_policy_ref",
+                        actual_type="empty_string",
                     )
-                if set(refs) != set(goal["required_evidence_refs"]):
+                if selected_policy_ref not in goal_options:
+                    reason = (
+                        "composer_wrong_goal_inference_policy_reference"
+                        if selected_policy_ref in all_offered_policy_refs
+                        else "composer_unknown_inference_policy_reference"
+                    )
+                    return reason, ModelFirstAnswerComposerService._diagnostics(
+                        "unknown_policy_ref",
+                        parsed=parsed,
+                        json_path=f"{path}.selected_policy_ref",
+                        expected_type="goal_scoped_offered_policy_ref",
+                        actual_type="string",
+                    )
+                option = goal_options[selected_policy_ref]
+                option_premises = list(
+                    option.get("premise_evidence_refs") or []
+                )
+                if (
+                    set(refs) != set(option_premises)
+                    or set(premise_refs) != set(option_premises)
+                ):
                     return "composer_bounded_inference_premise_omitted", ModelFirstAnswerComposerService._diagnostics(
                         "unknown_evidence_ref",
                         parsed=parsed,
-                        json_path=f"{path}.evidence_refs",
-                        expected_type="exact_required_evidence_refs",
+                        json_path=f"{path}.premise_evidence_refs",
+                        expected_type="exact_option_premise_evidence_refs",
                         actual_type="array",
                     )
+                if inference_scope != option.get("allowed_scope"):
+                    return "composer_bounded_inference_scope_invalid", ModelFirstAnswerComposerService._diagnostics(
+                        "clause_content_invalid",
+                        parsed=parsed,
+                        json_path=f"{path}.inference_scope",
+                        expected_type="offered_policy_scope",
+                        actual_type="string",
+                    )
+            elif selected_policy_ref or premise_refs or inference_scope:
+                return "composer_unselected_policy_metadata_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "clause_schema_invalid",
+                    parsed=parsed,
+                    json_path=path,
+                    expected_type="empty_policy_selection_fields",
+                    actual_type="policy_metadata_without_allowed_inference",
+                )
             elif goal["resolution_status"] == "supported":
                 if clause_kind != required_kind:
                     return "composer_supported_goal_clause_invalid", ModelFirstAnswerComposerService._diagnostics(
@@ -1351,6 +1527,9 @@ class ModelFirstAnswerComposerService:
                 "clause_kind": clause_kind,
                 "text": text,
                 "evidence_refs": refs,
+                "selected_policy_ref": selected_policy_ref,
+                "premise_evidence_refs": premise_refs,
+                "inference_scope": inference_scope,
             }
         if set(clauses_by_ref) != set(goals_by_ref):
             return "composer_goal_clause_omitted", ModelFirstAnswerComposerService._diagnostics(

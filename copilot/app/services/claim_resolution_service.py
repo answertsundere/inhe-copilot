@@ -196,7 +196,7 @@ def _policy_values(policy: dict[str, Any], key: str) -> list[str]:
     })
 
 
-def _bounded_inference_resolution(
+def _eligible_policy_options(
     requested: dict[str, Any],
     *,
     direct_product_facts: list[dict[str, Any]],
@@ -204,54 +204,16 @@ def _bounded_inference_resolution(
     bounded_inference_policies: list[dict[str, Any]],
     context_capabilities: dict[str, Any],
     policy_ref_prefix: str,
-) -> dict[str, Any] | None:
+) -> tuple[list[dict[str, Any]], str]:
     policy_intent_ref = sanitize_text(
         requested.get("policy_intent_ref")
     ).lower()
-    if not policy_intent_ref:
-        return None
-
-    matching_policies = sorted(
-        (
-            policy
-            for policy in bounded_inference_policies
-            if isinstance(policy, dict)
-            and policy.get("review_only") is True
-            and sanitize_text(policy.get("policy_intent_ref")).lower()
-            == policy_intent_ref
-        ),
-        key=lambda item: sanitize_text(item.get("policy_intent_ref")),
-    )
-    if not matching_policies:
-        return {"reason": "bounded_inference_policy_intent_unknown"}
-    if len(matching_policies) != 1:
-        return {"reason": "bounded_inference_policy_ambiguous"}
-
-    policy = matching_policies[0]
     if (
         sanitize_text(requested.get("goal_kind")).lower()
         != "customer_goal"
         or requested.get("supporting_only") is True
     ):
-        return {"reason": "bounded_inference_goal_kind_prohibited"}
-    policy_goal_family = sanitize_text(
-        requested.get("policy_goal_family")
-    ).lower()
-    if (
-        not policy_goal_family
-        or policy_goal_family
-        != sanitize_text(policy.get("goal_family")).lower()
-    ):
-        return {"reason": "bounded_inference_goal_family_mismatch"}
-    policy_intent_kind = sanitize_text(
-        requested.get("policy_intent_kind")
-    ).lower()
-    if (
-        not policy_intent_kind
-        or policy_intent_kind
-        != sanitize_text(policy.get("intent_kind")).lower()
-    ):
-        return {"reason": "bounded_inference_intent_kind_mismatch"}
+        return [], "bounded_inference_goal_kind_prohibited"
 
     claim_families = _structured_claim_families(requested)
     if (
@@ -259,96 +221,189 @@ def _bounded_inference_resolution(
         or sanitize_text(requested.get("risk_level")).lower()
         in {"high", "critical", "prohibited"}
     ):
-        return {"reason": "bounded_inference_high_risk_prohibited"}
-
-    if claim_families.intersection(
-        _policy_values(policy, "prohibited_claim_families")
-    ):
-        return {"reason": "bounded_inference_prohibited_extension"}
-    if policy_intent_kind == "absolute_guarantee":
-        return {"reason": "bounded_inference_absolute_guarantee_prohibited"}
-    if policy_intent_kind == "test_standard_request":
-        return {
-            "reason": "bounded_inference_direct_test_evidence_required"
-        }
-    if policy_intent_kind == "warranty_or_liability_request":
-        return {
-            "reason": (
-                "bounded_inference_policy_or_service_evidence_required"
-            )
-        }
-    if policy_intent_kind != "practical_guidance":
-        return {"reason": "bounded_inference_intent_kind_unsupported"}
+        return [], "bounded_inference_high_risk_prohibited"
 
     requested_risk = (
         sanitize_text(requested.get("risk_level")).lower()
         or "medium"
     )
-    maximum_risk = sanitize_text(
-        policy.get("maximum_risk_level")
-    ).lower()
-    if (
-        requested_risk not in _BOUNDED_INFERENCE_RISK_RANK
-        or maximum_risk not in _BOUNDED_INFERENCE_RISK_RANK
-    ):
-        return {"reason": "bounded_inference_risk_contract_invalid"}
-    if (
-        _BOUNDED_INFERENCE_RISK_RANK[requested_risk]
-        > _BOUNDED_INFERENCE_RISK_RANK[maximum_risk]
-    ):
-        return {"reason": "bounded_inference_risk_limit_exceeded"}
-
-    required_capabilities = _policy_values(
-        policy,
-        "required_context_capabilities",
-    )
-    if any(
-        not isinstance(context_capabilities.get(capability), dict)
-        or context_capabilities[capability].get("available") is not True
-        for capability in required_capabilities
-    ):
-        return {"reason": "bounded_inference_context_capability_missing"}
-
-    premise_families = _policy_values(policy, "premise_fact_families")
-    premise_facts: list[dict[str, Any]] = []
-    for family in premise_families:
-        if _facts_for_claim(family, conflicts):
-            return {"reason": "bounded_inference_premise_conflicting"}
-        family_facts = _facts_for_claim(family, direct_product_facts)
-        if not family_facts:
-            return {"reason": "bounded_inference_premise_missing"}
-        premise_facts.extend(family_facts)
-    premise_by_uid = {
-        sanitize_text(item.get("evidence_uid")): item
-        for item in premise_facts
-        if sanitize_text(item.get("evidence_uid"))
-    }
-    if not premise_by_uid:
-        return {"reason": "bounded_inference_premise_missing"}
-
+    if requested_risk not in _BOUNDED_INFERENCE_RISK_RANK:
+        return [], "bounded_inference_risk_contract_invalid"
     if not policy_ref_prefix:
-        return {"reason": "bounded_inference_policy_reference_missing"}
-    premise_uids = sorted(premise_by_uid)
-    return {
-        "reason": "policy_bounded_inference",
-        "facts": [premise_by_uid[uid] for uid in premise_uids],
-        "premise_evidence_uids": premise_uids,
-        "inference_policy_refs": [
-            f"{policy_ref_prefix}:intent:{policy_intent_ref}"
-        ],
-        "scope_qualifier": sanitize_text(policy.get("allowed_scope")).lower(),
-        "inference_risk_level": requested_risk,
-        "maximum_risk_level": maximum_risk,
-        "inference_review_only": True,
-        "required_qualifiers": _policy_values(
-            policy,
-            "required_qualifiers",
+        return [], "bounded_inference_policy_reference_missing"
+
+    policies = sorted(
+        (
+            policy
+            for policy in bounded_inference_policies
+            if isinstance(policy, dict)
+            and policy.get("review_only") is True
+            and sanitize_text(policy.get("policy_intent_ref"))
         ),
-        "prohibited_extensions": _policy_values(
+        key=lambda item: sanitize_text(item.get("policy_intent_ref")),
+    )
+    if policy_intent_ref:
+        matching = [
+            policy
+            for policy in policies
+            if sanitize_text(policy.get("policy_intent_ref")).lower()
+            == policy_intent_ref
+        ]
+        if not matching:
+            return [], "bounded_inference_policy_intent_unknown"
+        if len(matching) != 1:
+            return [], "bounded_inference_policy_ambiguous"
+        policy_goal_family = sanitize_text(
+            requested.get("policy_goal_family")
+        ).lower()
+        if (
+            not policy_goal_family
+            or policy_goal_family
+            != sanitize_text(matching[0].get("goal_family")).lower()
+        ):
+            return [], "bounded_inference_goal_family_mismatch"
+        policy_intent_kind = sanitize_text(
+            requested.get("policy_intent_kind")
+        ).lower()
+        if (
+            not policy_intent_kind
+            or policy_intent_kind
+            != sanitize_text(matching[0].get("intent_kind")).lower()
+        ):
+            return [], "bounded_inference_intent_kind_mismatch"
+        policies = matching
+
+    options: list[dict[str, Any]] = []
+    rejection_reason = ""
+    for policy in policies:
+        intent_kind = sanitize_text(policy.get("intent_kind")).lower()
+        if intent_kind == "absolute_guarantee":
+            reason = "bounded_inference_absolute_guarantee_prohibited"
+        elif intent_kind == "test_standard_request":
+            reason = "bounded_inference_direct_test_evidence_required"
+        elif intent_kind == "warranty_or_liability_request":
+            reason = "bounded_inference_policy_or_service_evidence_required"
+        elif intent_kind != "practical_guidance":
+            reason = "bounded_inference_intent_kind_unsupported"
+        elif claim_families.intersection(
+            _policy_values(policy, "prohibited_claim_families")
+        ):
+            reason = "bounded_inference_prohibited_extension"
+        else:
+            reason = ""
+        if reason:
+            rejection_reason = rejection_reason or reason
+            continue
+
+        maximum_risk = sanitize_text(
+            policy.get("maximum_risk_level")
+        ).lower()
+        if maximum_risk not in _BOUNDED_INFERENCE_RISK_RANK:
+            rejection_reason = (
+                rejection_reason
+                or "bounded_inference_risk_contract_invalid"
+            )
+            continue
+        if (
+            _BOUNDED_INFERENCE_RISK_RANK[requested_risk]
+            > _BOUNDED_INFERENCE_RISK_RANK[maximum_risk]
+        ):
+            rejection_reason = (
+                rejection_reason
+                or "bounded_inference_risk_limit_exceeded"
+            )
+            continue
+
+        required_capabilities = _policy_values(
             policy,
-            "prohibited_claim_families",
-        ),
-    }
+            "required_context_capabilities",
+        )
+        if any(
+            not isinstance(context_capabilities.get(capability), dict)
+            or context_capabilities[capability].get("available") is not True
+            for capability in required_capabilities
+        ):
+            rejection_reason = (
+                rejection_reason
+                or "bounded_inference_context_capability_missing"
+            )
+            continue
+
+        premise_families = _policy_values(
+            policy,
+            "premise_fact_families",
+        )
+        premise_facts: list[dict[str, Any]] = []
+        premise_reason = ""
+        for family in premise_families:
+            if _facts_for_claim(family, conflicts):
+                premise_reason = "bounded_inference_premise_conflicting"
+                break
+            family_facts = _facts_for_claim(
+                family,
+                direct_product_facts,
+            )
+            if not family_facts:
+                premise_reason = "bounded_inference_premise_missing"
+                break
+            premise_facts.extend(family_facts)
+        premise_by_uid = {
+            sanitize_text(item.get("evidence_uid")): item
+            for item in premise_facts
+            if sanitize_text(item.get("evidence_uid"))
+        }
+        if premise_reason or not premise_by_uid:
+            rejection_reason = (
+                rejection_reason
+                or premise_reason
+                or "bounded_inference_premise_missing"
+            )
+            continue
+
+        option_intent_ref = sanitize_text(
+            policy.get("policy_intent_ref")
+        ).lower()
+        options.append({
+            "policy_ref": (
+                f"{policy_ref_prefix}:intent:{option_intent_ref}"
+            ),
+            "trusted_domain_pack_ref": policy_ref_prefix,
+            "applicable_goal_ref": (
+                sanitize_text(requested.get("goal_ref"))
+                or _claim_uid(requested)
+            ),
+            "policy_intent_ref": option_intent_ref,
+            "goal_family": sanitize_text(
+                policy.get("goal_family")
+            ).lower(),
+            "intent_kind": intent_kind,
+            "premise_evidence_refs": sorted(premise_by_uid),
+            "premise_families": premise_families,
+            "allowed_scope": sanitize_text(
+                policy.get("allowed_scope")
+            ).lower(),
+            "forbidden_claim_families": _policy_values(
+                policy,
+                "prohibited_claim_families",
+            ),
+            "maximum_risk": maximum_risk,
+            "requested_risk": requested_risk,
+            "required_qualifiers": _policy_values(
+                policy,
+                "required_qualifiers",
+            ),
+            "review_only": True,
+            "option_provenance": {
+                "policy_owner": "domain_policy_pack",
+                "filter_owner": "claim_resolution",
+                "premise_owner": "admitted_answer_context",
+                "intent_narrowed": bool(policy_intent_ref),
+            },
+        })
+    return (
+        sorted(options, key=lambda item: item["policy_ref"]),
+        "" if options else rejection_reason,
+    )
 
 
 def build_claim_resolutions(
@@ -446,13 +501,10 @@ def build_claim_resolutions(
             status = "unresolved"
             reason = "no_admitted_direct_evidence"
             facts = []
-        bounded: dict[str, Any] | None = None
-        policy_nominated = bool(
-            sanitize_text(requested.get("policy_intent_ref"))
-        )
+        eligible_policy_options: list[dict[str, Any]] = []
+        option_rejection_reason = ""
         if (
-            policy_nominated
-            and status in {"supported", "unresolved"}
+            status in {"supported", "unresolved"}
             and (
                 status == "supported"
                 or reason in {
@@ -461,7 +513,10 @@ def build_claim_resolutions(
                 }
             )
         ):
-            bounded = _bounded_inference_resolution(
+            (
+                eligible_policy_options,
+                option_rejection_reason,
+            ) = _eligible_policy_options(
                 requested,
                 direct_product_facts=direct_product_facts,
                 conflicts=conflicts,
@@ -477,16 +532,6 @@ def build_claim_resolutions(
                 ),
                 policy_ref_prefix=policy_ref_prefix,
             )
-            if bounded:
-                if bounded.get("facts"):
-                    status = "supported"
-                    reason = sanitize_text(bounded.get("reason"))
-                    facts = list(bounded["facts"])
-                    policy_refs = list(
-                        bounded.get("inference_policy_refs") or []
-                    )
-                elif status == "unresolved":
-                    reason = sanitize_text(bounded.get("reason"))
         results.append({
             "claim_uid": _claim_uid(requested),
             "goal_ref": sanitize_text(requested.get("goal_ref")),
@@ -525,66 +570,31 @@ def build_claim_resolutions(
             ],
             "conflicting_evidence_uids": conflict_uids if status == "conflicting" else [],
             "support_basis": (
-                "bounded_inference"
-                if status == "supported" and bounded and bounded.get("facts")
-                else "direct_evidence"
+                "direct_evidence"
                 if status == "supported"
                 else "prohibited"
                 if status == "prohibited"
                 else "none"
             ),
             "inference_policy_refs": policy_refs,
-            "premise_evidence_uids": (
-                list(bounded.get("premise_evidence_uids") or [])
-                if bounded and bounded.get("facts")
-                else []
-            ),
-            "scope_qualifier": (
-                sanitize_text(bounded.get("scope_qualifier"))
-                if bounded and bounded.get("facts")
-                else ""
-            ),
-            "inference_risk_level": (
-                sanitize_text(bounded.get("inference_risk_level"))
-                if bounded and bounded.get("facts")
-                else ""
-            ),
-            "maximum_risk_level": (
-                sanitize_text(bounded.get("maximum_risk_level"))
-                if bounded and bounded.get("facts")
-                else ""
-            ),
-            "inference_review_only": bool(
-                bounded
-                and bounded.get("facts")
-                and bounded.get("inference_review_only") is True
-            ),
+            "eligible_policy_options": eligible_policy_options,
+            "premise_evidence_uids": [],
+            "scope_qualifier": "",
+            "inference_risk_level": "",
+            "maximum_risk_level": "",
+            "inference_review_only": False,
             "bounded_inference_rejection_reason": (
-                sanitize_text(bounded.get("reason"))
-                if (
-                    bounded
-                    and not bounded.get("facts")
-                    and status == "supported"
-                )
-                else ""
+                option_rejection_reason
             ),
-            "required_qualifiers": (
-                list(bounded.get("required_qualifiers") or [])
-                if bounded and bounded.get("facts")
-                else []
-            ),
-            "prohibited_extensions": (
-                list(bounded.get("prohibited_extensions") or [])
-                if bounded and bounded.get("facts")
-                else []
-            ),
+            "required_qualifiers": [],
+            "prohibited_extensions": [],
             "bounded_inference_policy": sanitize_text(
                 "review_required"
-                if bounded and bounded.get("facts")
+                if eligible_policy_options
                 else policy.get("bounded_inference_policy")
             ),
             "requires_human_review": (
-                bool(bounded and bounded.get("facts"))
+                bool(eligible_policy_options)
                 or status != "supported"
                 or sanitize_text(requested.get("risk_level")).lower()
                 in {"high", "critical"}
@@ -608,7 +618,14 @@ def build_inference_requirement_status(
     refs = sorted({
         sanitize_text(ref)
         for item in resolutions
-        for ref in item.get("inference_policy_refs") or []
+        for ref in [
+            *(item.get("inference_policy_refs") or []),
+            *(
+                option.get("policy_ref")
+                for option in item.get("eligible_policy_options") or []
+                if isinstance(option, dict)
+            ),
+        ]
         if sanitize_text(ref)
     })
     base = {
@@ -630,14 +647,13 @@ def build_inference_requirement_status(
         }
     if all(item.get("support_basis") == "direct_evidence" for item in resolutions):
         return {**base, "status": "direct_evidence_only"}
-    if (
-        any(item.get("support_basis") == "bounded_inference" for item in resolutions)
-        and all(item.get("status") == "supported" for item in resolutions)
-    ):
-        return {**base, "status": "bounded_inference_completed"}
     if any(
-        item.get("status") in {"unresolved", "conflicting"}
-        and item.get("bounded_inference_policy") in {"allowed", "review_required"}
+        item.get("eligible_policy_options")
+        or (
+            item.get("status") in {"unresolved", "conflicting"}
+            and item.get("bounded_inference_policy")
+            in {"allowed", "review_required"}
+        )
         for item in resolutions
     ):
         return {

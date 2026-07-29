@@ -923,10 +923,14 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
     clauses = _as_dict_list(composer.get("clauses"))
 
     policies_by_intent: dict[str, list[dict[str, Any]]] = {}
+    policies_by_ref: dict[str, dict[str, Any]] = {}
     for policy in policies:
         intent_ref = str(policy.get("policy_intent_ref") or "").strip()
+        policy_ref = str(policy.get("policy_ref") or "").strip()
         if intent_ref:
             policies_by_intent.setdefault(intent_ref, []).append(policy)
+        if policy_ref:
+            policies_by_ref[policy_ref] = policy
 
     nominated = [
         item
@@ -952,16 +956,51 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         if len(candidates) != 1:
             continue
         policy = candidates[0]
+        matching_options = [
+            option
+            for option in _as_dict_list(
+                resolution.get("eligible_policy_options")
+            )
+            if str(option.get("policy_intent_ref") or "").strip()
+            == intent_ref
+            and str(option.get("policy_ref") or "").strip()
+            == str(policy.get("policy_ref") or "").strip()
+        ]
+        option_narrowing_valid = bool(
+            len(matching_options) == 1
+            and str(
+                matching_options[0].get("goal_family") or ""
+            ).strip()
+            == str(policy.get("goal_family") or "").strip()
+            and str(
+                matching_options[0].get("intent_kind") or ""
+            ).strip()
+            == str(policy.get("intent_kind") or "").strip()
+            and _as_dict(
+                matching_options[0].get("option_provenance")
+            ).get("intent_narrowed") is True
+        )
         if (
-            str(resolution.get("policy_goal_family") or "").strip()
-            != str(policy.get("goal_family") or "").strip()
-            or str(resolution.get("policy_intent_kind") or "").strip()
-            != str(policy.get("intent_kind") or "").strip()
-            or str(resolution.get("maximum_risk_level") or "").strip()
-            != str(policy.get("maximum_risk_level") or "").strip()
-            or str(resolution.get("inference_risk_level") or "").strip()
-            not in {"low", "medium"}
-            or resolution.get("inference_review_only") is not True
+            not option_narrowing_valid
+            and (
+                str(
+                    resolution.get("policy_goal_family") or ""
+                ).strip()
+                != str(policy.get("goal_family") or "").strip()
+                or str(
+                    resolution.get("policy_intent_kind") or ""
+                ).strip()
+                != str(policy.get("intent_kind") or "").strip()
+                or str(
+                    resolution.get("maximum_risk_level") or ""
+                ).strip()
+                != str(policy.get("maximum_risk_level") or "").strip()
+                or str(
+                    resolution.get("inference_risk_level") or ""
+                ).strip()
+                not in {"low", "medium"}
+                or resolution.get("inference_review_only") is not True
+            )
         ):
             continue
         claim_uid = str(resolution.get("claim_uid") or "").strip()
@@ -1063,6 +1102,166 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         str(item.get("claim_uid") or "").strip() in valid_claim_uids
         for item in eligible
     )
+    admitted_uids = {
+        str(item.get("evidence_uid") or "").strip()
+        for item in _as_dict_list(context.get("admitted_evidence"))
+        if str(item.get("evidence_uid") or "").strip()
+    }
+    eligible_option_goal_count = 0
+    eligible_option_total_count = 0
+    selected_policy_count = 0
+    selected_policy_valid_count = 0
+    selected_attributed_count = 0
+    selected_premise_count = 0
+    selected_scope_count = 0
+    for resolution in eligible:
+        raw_options = _as_dict_list(
+            resolution.get("eligible_policy_options")
+        )
+        valid_options: dict[str, dict[str, Any]] = {}
+        for option in raw_options:
+            policy_ref = str(option.get("policy_ref") or "").strip()
+            policy = policies_by_ref.get(policy_ref, {})
+            premise_uids = {
+                str(item).strip()
+                for item in option.get("premise_evidence_refs") or []
+                if str(item).strip()
+            }
+            maximum_risk = str(
+                option.get("maximum_risk") or ""
+            ).strip()
+            requested_risk = str(
+                option.get("requested_risk") or ""
+            ).strip()
+            provenance = _as_dict(option.get("option_provenance"))
+            valid = bool(
+                policy_ref
+                and policy
+                and str(option.get("applicable_goal_ref") or "").strip()
+                == str(resolution.get("goal_ref") or "").strip()
+                and str(
+                    option.get("trusted_domain_pack_ref") or ""
+                ).strip()
+                == policy_ref.rsplit(":intent:", 1)[0]
+                and str(option.get("policy_intent_ref") or "").strip()
+                == str(policy.get("policy_intent_ref") or "").strip()
+                and str(option.get("goal_family") or "").strip()
+                == str(policy.get("goal_family") or "").strip()
+                and str(option.get("intent_kind") or "").strip()
+                == str(policy.get("intent_kind") or "").strip()
+                == "practical_guidance"
+                and sorted(option.get("premise_families") or [])
+                == sorted(policy.get("premise_fact_families") or [])
+                and premise_uids
+                and premise_uids.issubset(admitted_uids)
+                and str(option.get("allowed_scope") or "").strip()
+                == str(policy.get("allowed_scope") or "").strip()
+                and maximum_risk
+                == str(policy.get("maximum_risk_level") or "").strip()
+                and requested_risk in {"low", "medium"}
+                and maximum_risk in {"low", "medium"}
+                and not (
+                    requested_risk == "medium"
+                    and maximum_risk == "low"
+                )
+                and sorted(option.get("required_qualifiers") or [])
+                == sorted(policy.get("required_qualifiers") or [])
+                and sorted(
+                    option.get("forbidden_claim_families") or []
+                )
+                == sorted(
+                    policy.get("prohibited_claim_families") or []
+                )
+                and option.get("review_only") is True
+                and provenance.get("policy_owner")
+                == "domain_policy_pack"
+                and provenance.get("filter_owner") == "claim_resolution"
+                and provenance.get("premise_owner")
+                == "admitted_answer_context"
+                and not resolution.get("conflicting_evidence_uids")
+            )
+            if valid and policy_ref not in valid_options:
+                valid_options[policy_ref] = option
+        if raw_options and len(valid_options) == len(raw_options):
+            eligible_option_goal_count += 1
+            eligible_option_total_count += len(valid_options)
+        if not valid_options:
+            continue
+        claim_uid = str(resolution.get("claim_uid") or "").strip()
+        clause = clauses_by_goal.get(claim_uid, {})
+        selected_refs = {
+            str(item).strip()
+            for item in clause.get("inference_policy_refs") or []
+            if str(item).strip()
+        }
+        selected_option = (
+            valid_options.get(next(iter(selected_refs)), {})
+            if len(selected_refs) == 1
+            else {}
+        )
+        if (
+            composer.get("status") == "accepted"
+            and clause.get("clause_kind") == "allowed_inference"
+            and selected_option
+        ):
+            selected_policy_count += 1
+            selected_policy_valid_count += 1
+            option_premises = {
+                str(item).strip()
+                for item in selected_option.get(
+                    "premise_evidence_refs"
+                )
+                or []
+                if str(item).strip()
+            }
+            clause_premises = {
+                str(item).strip()
+                for item in clause.get("premise_evidence_uids") or []
+                if str(item).strip()
+            }
+            clause_evidence = {
+                str(item).strip()
+                for item in clause.get("evidence_uids") or []
+                if str(item).strip()
+            }
+            premise_valid = bool(
+                option_premises == clause_premises == clause_evidence
+            )
+            if premise_valid:
+                selected_premise_count += 1
+            scope_valid = bool(
+                str(clause.get("scope_qualifier") or "").strip()
+                == str(
+                    selected_option.get("allowed_scope") or ""
+                ).strip()
+            )
+            if scope_valid:
+                selected_scope_count += 1
+            if premise_valid and scope_valid:
+                selected_attributed_count += 1
+    selected_absolute_guarantee_count = sum(
+        1
+        for resolution in resolutions
+        for clause in [
+            clauses_by_goal.get(
+                str(resolution.get("claim_uid") or "").strip(),
+                {},
+            )
+        ]
+        if clause.get("clause_kind") == "allowed_inference"
+        and {
+            str(item).strip()
+            for item in clause.get("inference_policy_refs") or []
+            if str(item).strip()
+        }.intersection({
+            str(option.get("policy_ref") or "").strip()
+            for option in _as_dict_list(
+                resolution.get("eligible_policy_options")
+            )
+            if str(option.get("intent_kind") or "").strip()
+            == "absolute_guarantee"
+        })
+    )
     return {
         "policy_intent_refs": sorted({
             str(item.get("policy_intent_ref") or "").strip()
@@ -1078,17 +1277,48 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         "policy_intent_precision_denominator": len(nominated),
         "policy_intent_recall_numerator": valid_eligible,
         "policy_intent_recall_denominator": len(eligible),
-        "bounded_inference_attribution_numerator": attributed,
-        "bounded_inference_attribution_denominator": len(bounded),
-        "bounded_inference_premise_numerator": premise_complete,
-        "bounded_inference_premise_denominator": len(bounded),
-        "bounded_inference_scope_numerator": scope_complete,
-        "bounded_inference_scope_denominator": len(bounded),
+        "eligible_policy_options_numerator": eligible_option_goal_count,
+        "eligible_policy_options_denominator": len(eligible),
+        "eligible_policy_option_total_count": (
+            eligible_option_total_count
+        ),
+        "policy_selection_numerator": selected_policy_count,
+        "policy_selection_denominator": eligible_option_goal_count,
+        "selected_policy_validity_numerator": (
+            selected_policy_valid_count
+        ),
+        "selected_policy_validity_denominator": selected_policy_count,
+        "selected_policy_premise_numerator": selected_premise_count,
+        "selected_policy_premise_denominator": selected_policy_count,
+        "selected_policy_scope_numerator": selected_scope_count,
+        "selected_policy_scope_denominator": selected_policy_count,
+        "inference_opportunity_missed_count": max(
+            0,
+            eligible_option_goal_count - selected_policy_count,
+        ),
+        "bounded_inference_attribution_numerator": (
+            attributed + selected_attributed_count
+        ),
+        "bounded_inference_attribution_denominator": (
+            len(bounded) + eligible_option_goal_count
+        ),
+        "bounded_inference_premise_numerator": (
+            premise_complete + selected_premise_count
+        ),
+        "bounded_inference_premise_denominator": (
+            len(bounded) + eligible_option_goal_count
+        ),
+        "bounded_inference_scope_numerator": (
+            scope_complete + selected_scope_count
+        ),
+        "bounded_inference_scope_denominator": (
+            len(bounded) + eligible_option_goal_count
+        ),
         "absolute_guarantee_supported_count": sum(
             item.get("policy_intent_kind") == "absolute_guarantee"
             and item.get("status") == "supported"
             for item in resolutions
-        ),
+        ) + selected_absolute_guarantee_count,
     }
 
 
@@ -1276,6 +1506,36 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     policy_recall_den = sum(
         int(row["policy_intent_recall_denominator"]) for row in rows
     )
+    option_num = sum(
+        int(row["eligible_policy_options_numerator"]) for row in rows
+    )
+    option_den = sum(
+        int(row["eligible_policy_options_denominator"]) for row in rows
+    )
+    selection_num = sum(
+        int(row["policy_selection_numerator"]) for row in rows
+    )
+    selection_den = sum(
+        int(row["policy_selection_denominator"]) for row in rows
+    )
+    selected_valid_num = sum(
+        int(row["selected_policy_validity_numerator"]) for row in rows
+    )
+    selected_valid_den = sum(
+        int(row["selected_policy_validity_denominator"]) for row in rows
+    )
+    selected_premise_num = sum(
+        int(row["selected_policy_premise_numerator"]) for row in rows
+    )
+    selected_premise_den = sum(
+        int(row["selected_policy_premise_denominator"]) for row in rows
+    )
+    selected_scope_num = sum(
+        int(row["selected_policy_scope_numerator"]) for row in rows
+    )
+    selected_scope_den = sum(
+        int(row["selected_policy_scope_denominator"]) for row in rows
+    )
     bounded_num = sum(
         int(row["bounded_inference_attribution_numerator"]) for row in rows
     )
@@ -1394,6 +1654,55 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 if policy_recall_den else None
             ),
         },
+        "eligible_policy_options_coverage": {
+            "numerator": option_num,
+            "denominator": option_den,
+            "rate": option_num / option_den if option_den else None,
+        },
+        "policy_selection_coverage": {
+            "numerator": selection_num,
+            "denominator": selection_den,
+            "rate": (
+                selection_num / selection_den
+                if selection_den
+                else None
+            ),
+        },
+        "selected_policy_validity": {
+            "numerator": selected_valid_num,
+            "denominator": selected_valid_den,
+            "rate": (
+                selected_valid_num / selected_valid_den
+                if selected_valid_den
+                else None
+            ),
+        },
+        "selected_policy_premise_coverage": {
+            "numerator": selected_premise_num,
+            "denominator": selected_premise_den,
+            "rate": (
+                selected_premise_num / selected_premise_den
+                if selected_premise_den
+                else None
+            ),
+        },
+        "selected_policy_scope_validity": {
+            "numerator": selected_scope_num,
+            "denominator": selected_scope_den,
+            "rate": (
+                selected_scope_num / selected_scope_den
+                if selected_scope_den
+                else None
+            ),
+        },
+        "eligible_policy_option_total_count": sum(
+            int(row["eligible_policy_option_total_count"])
+            for row in rows
+        ),
+        "inference_opportunity_missed_count": sum(
+            int(row["inference_opportunity_missed_count"])
+            for row in rows
+        ),
         "bounded_inference_attribution": {
             "numerator": bounded_num,
             "denominator": bounded_den,
@@ -1524,6 +1833,20 @@ def _correctness_gate_blockers(
         ),
         ("policy_intent_precision", "policy_intent_precision_incomplete"),
         ("policy_intent_recall", "policy_intent_recall_incomplete"),
+        (
+            "eligible_policy_options_coverage",
+            "eligible_policy_options_incomplete",
+        ),
+        ("policy_selection_coverage", "policy_selection_incomplete"),
+        ("selected_policy_validity", "selected_policy_invalid"),
+        (
+            "selected_policy_premise_coverage",
+            "selected_policy_premise_incomplete",
+        ),
+        (
+            "selected_policy_scope_validity",
+            "selected_policy_scope_invalid",
+        ),
         ("bounded_inference_attribution", "bounded_inference_attribution_incomplete"),
         ("bounded_inference_premise_coverage", "bounded_inference_premise_incomplete"),
         ("bounded_inference_scope_coverage", "bounded_inference_scope_incomplete"),

@@ -28,6 +28,7 @@ def _resolution(
     inference_review_only: bool = False,
     required_qualifiers: list[str] | None = None,
     prohibited_extensions: list[str] | None = None,
+    eligible_policy_options: list[dict] | None = None,
     goal_ref: str = "",
     goal_kind: str = "customer_goal",
     claim_type_status: str = "mapped",
@@ -53,6 +54,9 @@ def _resolution(
         "inference_review_only": inference_review_only,
         "required_qualifiers": list(required_qualifiers or []),
         "prohibited_extensions": list(prohibited_extensions or []),
+        "eligible_policy_options": deepcopy(
+            eligible_policy_options or []
+        ),
         "supporting_only": supporting_only,
         "supporting_for_goal_ref": supporting_for_goal_ref,
     }
@@ -158,6 +162,17 @@ def _valid_payload() -> dict:
     }
 
 
+def _with_policy_selection_fields(payload: dict) -> dict:
+    normalized = deepcopy(payload)
+    for clause in normalized.get("clauses") or []:
+        if not isinstance(clause, dict):
+            continue
+        clause.setdefault("selected_policy_ref", "")
+        clause.setdefault("premise_evidence_refs", [])
+        clause.setdefault("inference_scope", "")
+    return normalized
+
+
 class _Client:
     api_key = "configured"
     model = "MiniMax-M3"
@@ -205,8 +220,18 @@ class _TimeoutClient(_Client):
         raise TimeoutError("provider timeout")
 
 
-def _compose(payload: dict | str, response: dict | None = None):
-    client = _Client(payload)
+def _compose(
+    payload: dict | str,
+    response: dict | None = None,
+    *,
+    normalize_policy_fields: bool = True,
+):
+    client_payload = (
+        _with_policy_selection_fields(payload)
+        if normalize_policy_fields and isinstance(payload, dict)
+        else payload
+    )
+    client = _Client(client_payload)
     updated, result = ModelFirstAnswerComposerService().compose(
         response or _response(),
         customer_message="尺寸和安全怎么样",
@@ -1175,7 +1200,10 @@ def test_composer_accepts_only_bounded_json_envelopes(
     expected_envelope,
     expected_unwrap_count,
 ):
-    raw = json.dumps(_valid_payload(), ensure_ascii=False)
+    raw = json.dumps(
+        _with_policy_selection_fields(_valid_payload()),
+        ensure_ascii=False,
+    )
 
     updated, result, client = _compose(wrap(raw))
 
@@ -1196,7 +1224,10 @@ def test_composer_accepts_only_bounded_json_envelopes(
 
 
 def test_composer_raw_and_fenced_json_have_identical_canonical_clauses():
-    raw = json.dumps(_valid_payload(), ensure_ascii=False)
+    raw = json.dumps(
+        _with_policy_selection_fields(_valid_payload()),
+        ensure_ascii=False,
+    )
 
     raw_updated, raw_result, _ = _compose(raw)
     fenced_updated, fenced_result, _ = _compose(f"```json\n{raw}\n```")
@@ -1253,7 +1284,7 @@ def test_composer_rejects_unbounded_or_repaired_json_envelopes(payload):
     ],
 )
 def test_composer_fenced_json_still_requires_strict_clause_schema(mutate):
-    payload = _valid_payload()
+    payload = _with_policy_selection_fields(_valid_payload())
     mutate(payload)
     fenced = f"```json\n{json.dumps(payload, ensure_ascii=False)}\n```"
 
@@ -1573,23 +1604,45 @@ def _bounded_inference_response() -> dict:
                 _resolution(
                     "claim-durability",
                     "",
-                    "supported",
+                    "unresolved",
                     attribute_key="drop_durability",
                     claim_type_status="unmapped",
-                    evidence_uids=["ev-material"],
-                    support_basis="bounded_inference",
-                    premise_evidence_uids=["ev-material"],
-                    inference_policy_refs=[policy_ref],
-                    scope_qualifier="ordinary_minor_accidental_impact",
-                    inference_risk_level="medium",
-                    maximum_risk_level="medium",
-                    inference_review_only=True,
-                    required_qualifiers=["no_absolute_guarantee"],
-                    prohibited_extensions=[
-                        "certification_report",
-                        "child_safety",
-                        "warranty",
-                    ],
+                    eligible_policy_options=[{
+                        "policy_ref": policy_ref,
+                        "trusted_domain_pack_ref": (
+                            "domain-policy:fixture_domain@1.0.0"
+                        ),
+                        "applicable_goal_ref": "goal-durability",
+                        "policy_intent_ref": (
+                            "product_durability_practical_guidance"
+                        ),
+                        "goal_family": "product_durability",
+                        "intent_kind": "practical_guidance",
+                        "premise_evidence_refs": ["ev-material"],
+                        "premise_families": ["material_composition"],
+                        "allowed_scope": (
+                            "ordinary_minor_accidental_impact"
+                        ),
+                        "forbidden_claim_families": [
+                            "certification_report",
+                            "child_safety",
+                            "warranty",
+                        ],
+                        "maximum_risk": "medium",
+                        "requested_risk": "medium",
+                        "required_qualifiers": [
+                            "no_absolute_guarantee"
+                        ],
+                        "review_only": True,
+                        "option_provenance": {
+                            "policy_owner": "domain_policy_pack",
+                            "filter_owner": "claim_resolution",
+                            "premise_owner": (
+                                "admitted_answer_context"
+                            ),
+                            "intent_narrowed": True,
+                        },
+                    }],
                 ),
                 _resolution(
                     "claim-material",
@@ -1607,6 +1660,7 @@ def _bounded_inference_response() -> dict:
                 ),
                 "goal_family": "product_durability",
                 "intent_kind": "practical_guidance",
+                "premise_fact_families": ["material_composition"],
                 "allowed_scope": "ordinary_minor_accidental_impact",
                 "maximum_risk_level": "medium",
                 "required_qualifiers": ["no_absolute_guarantee"],
@@ -1633,6 +1687,12 @@ def _bounded_inference_payload() -> dict:
                 "clause_kind": "allowed_inference",
                 "text": "日常轻微意外一般不用过度担心，但不能保证耐摔。",
                 "evidence_refs": ["E1"],
+                "selected_policy_ref": (
+                    "domain-policy:fixture_domain@1.0.0:"
+                    "intent:product_durability_practical_guidance"
+                ),
+                "premise_evidence_refs": ["E1"],
+                "inference_scope": "ordinary_minor_accidental_impact",
             },
             {
                 "goal_ref": "goal_02",
@@ -1642,6 +1702,39 @@ def _bounded_inference_payload() -> dict:
             },
         ],
     }
+
+
+def _add_alternate_safe_option(
+    response: dict,
+    *,
+    resolution_index: int = 0,
+) -> str:
+    policy_ref = (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:material_daily_use_practical_guidance"
+    )
+    minimal = response["minimal_decision_context"]
+    resolution = minimal["claim_resolutions"][resolution_index]
+    option = deepcopy(
+        minimal["claim_resolutions"][0]["eligible_policy_options"][0]
+    )
+    option.update({
+        "policy_ref": policy_ref,
+        "applicable_goal_ref": resolution["goal_ref"],
+        "policy_intent_ref": "material_daily_use_practical_guidance",
+        "goal_family": "material_daily_use",
+        "allowed_scope": "ordinary_daily_material_handling",
+    })
+    resolution.setdefault("eligible_policy_options", []).append(option)
+    policy = deepcopy(minimal["bounded_inference_policies"][0])
+    policy.update({
+        "policy_ref": policy_ref,
+        "policy_intent_ref": "material_daily_use_practical_guidance",
+        "goal_family": "material_daily_use",
+        "allowed_scope": "ordinary_daily_material_handling",
+    })
+    minimal["bounded_inference_policies"].append(policy)
+    return policy_ref
 
 
 def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
@@ -1675,18 +1768,126 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
     prompt = json.loads(client.messages[1]["content"])
     inferred_goal = next(
         item for item in prompt["renderable_customer_goals"]
-        if item["required_clause_kind"] == "allowed_inference"
+        if item["eligible_policy_options"]
     )
-    assert inferred_goal["required_inference_policy_refs"] == [
+    assert [
+        item["policy_ref"]
+        for item in inferred_goal["eligible_policy_options"]
+    ] == [
         "domain-policy:fixture_domain@1.0.0:"
         "intent:product_durability_practical_guidance"
     ]
     assert prompt["allowed_low_risk_reasoning"] == [
         "ordinary_minor_accidental_impact"
     ]
-    assert inferred_goal["inference_risk_level"] == "medium"
-    assert inferred_goal["maximum_risk_level"] == "medium"
-    assert inferred_goal["inference_review_only"] is True
+    option = inferred_goal["eligible_policy_options"][0]
+    assert option["requested_risk"] == "medium"
+    assert option["maximum_risk_level"] == "medium"
+    assert option["review_only"] is True
+
+
+def test_composer_can_decline_an_eligible_policy_without_asserting_inference():
+    payload = _bounded_inference_payload()
+    payload["clauses"][0].update({
+        "clause_kind": "unresolved",
+        "text": "日常耐用边界目前无法确认。",
+        "evidence_refs": [],
+        "selected_policy_ref": "",
+        "premise_evidence_refs": [],
+        "inference_scope": "",
+    })
+
+    updated, result, _ = _compose(
+        payload,
+        _bounded_inference_response(),
+    )
+
+    assert result["status"] == "accepted"
+    assert all(
+        clause["inference_policy_refs"] == []
+        for clause in result["clauses"]
+    )
+    assert "无法确认" in updated["suggested_reply"]
+    assert updated["can_send"] is False
+
+
+def test_composer_selects_one_of_multiple_goal_scoped_safe_options():
+    response = _bounded_inference_response()
+    selected_ref = _add_alternate_safe_option(response)
+    payload = _bounded_inference_payload()
+    payload["clauses"][0].update({
+        "selected_policy_ref": selected_ref,
+        "inference_scope": "ordinary_daily_material_handling",
+    })
+
+    _, result, client = _compose(payload, response)
+
+    assert result["status"] == "accepted"
+    selected = next(
+        clause
+        for clause in result["clauses"]
+        if clause["clause_kind"] == "allowed_inference"
+    )
+    assert selected["inference_policy_refs"] == [selected_ref]
+    prompt = json.loads(client.messages[1]["content"])
+    goal = next(
+        item
+        for item in prompt["renderable_customer_goals"]
+        if len(item["eligible_policy_options"]) == 2
+    )
+    assert [
+        item["policy_ref"] for item in goal["eligible_policy_options"]
+    ] == sorted(
+        item["policy_ref"] for item in goal["eligible_policy_options"]
+    )
+
+
+def test_composer_rejects_policy_offered_only_to_another_goal():
+    response = _bounded_inference_response()
+    other_goal_policy = _add_alternate_safe_option(
+        response,
+        resolution_index=1,
+    )
+    payload = _bounded_inference_payload()
+    payload["clauses"][0].update({
+        "selected_policy_ref": other_goal_policy,
+        "inference_scope": "ordinary_daily_material_handling",
+    })
+
+    _, result, _ = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_wrong_goal_inference_policy_reference"
+    )
+
+
+def test_composer_rejects_duplicate_offered_policy_reference():
+    response = _bounded_inference_response()
+    options = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]["eligible_policy_options"]
+    options.append(deepcopy(options[0]))
+
+    _, result, _ = _compose(_bounded_inference_payload(), response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_unknown_inference_policy_reference"
+    )
+
+
+def test_composer_requires_policy_selection_schema_fields():
+    payload = _with_policy_selection_fields(_valid_payload())
+    payload["clauses"][0].pop("selected_policy_ref")
+
+    _, result, _ = _compose(
+        payload,
+        normalize_policy_fields=False,
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_clause_schema_invalid"
 
 
 @pytest.mark.parametrize(
@@ -1695,8 +1896,8 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
         (
             lambda response: response["minimal_decision_context"][
                 "claim_resolutions"
-            ][0].update({
-                "inference_policy_refs": ["domain-policy:unknown@1.0.0:intent:x"],
+            ][0]["eligible_policy_options"][0].update({
+                "policy_ref": "domain-policy:unknown@1.0.0:intent:x",
             }),
             lambda payload: None,
             "composer_unknown_inference_policy_reference",
@@ -1706,7 +1907,7 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
             lambda payload: payload["clauses"][0].update({
                 "clause_kind": "supported_fact",
             }),
-            "composer_bounded_inference_clause_invalid",
+            "composer_unselected_policy_metadata_invalid",
         ),
         (
             lambda response: None,
@@ -1725,14 +1926,18 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
         (
             lambda response: response["minimal_decision_context"][
                 "claim_resolutions"
-            ][0].update({"inference_review_only": False}),
+            ][0]["eligible_policy_options"][0].update({
+                "review_only": False,
+            }),
             lambda payload: None,
             "composer_bounded_inference_contract_invalid",
         ),
         (
             lambda response: response["minimal_decision_context"][
                 "claim_resolutions"
-            ][0].update({"inference_risk_level": "high"}),
+            ][0]["eligible_policy_options"][0].update({
+                "requested_risk": "high",
+            }),
             lambda payload: None,
             "composer_bounded_inference_contract_invalid",
         ),

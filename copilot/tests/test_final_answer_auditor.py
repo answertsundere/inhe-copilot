@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.final_answer_auditor import (
     _expected_topics,
     _is_visual_media_answer,
@@ -517,23 +519,44 @@ def _bounded_inference_audit_response() -> dict:
     )
     claim = {
         "claim_uid": "claim-durability",
+        "goal_ref": "claim-durability",
         "claim_type": "unmapped_customer_goal",
         "attribute_key": "drop_durability",
-        "status": "supported",
-        "support_basis": "bounded_inference",
-        "evidence_uids": ["selected-material"],
-        "premise_evidence_uids": ["selected-material"],
-        "inference_policy_refs": [policy_ref],
-        "scope_qualifier": "ordinary_minor_accidental_impact",
-        "inference_risk_level": "medium",
-        "maximum_risk_level": "medium",
-        "inference_review_only": True,
-        "required_qualifiers": ["no_absolute_guarantee"],
-        "prohibited_extensions": [
-            "certification_report",
-            "child_safety",
-            "warranty",
-        ],
+        "status": "unresolved",
+        "support_basis": "none",
+        "evidence_uids": [],
+        "premise_evidence_uids": [],
+        "inference_policy_refs": [],
+        "eligible_policy_options": [{
+            "policy_ref": policy_ref,
+            "trusted_domain_pack_ref": (
+                "domain-policy:fixture_domain@1.0.0"
+            ),
+            "applicable_goal_ref": "claim-durability",
+            "policy_intent_ref": (
+                "product_durability_practical_guidance"
+            ),
+            "goal_family": "product_durability",
+            "intent_kind": "practical_guidance",
+            "premise_evidence_refs": ["selected-material"],
+            "premise_families": ["material_composition"],
+            "allowed_scope": "ordinary_minor_accidental_impact",
+            "forbidden_claim_families": [
+                "certification_report",
+                "child_safety",
+                "warranty",
+            ],
+            "maximum_risk": "medium",
+            "requested_risk": "medium",
+            "required_qualifiers": ["no_absolute_guarantee"],
+            "review_only": True,
+            "option_provenance": {
+                "policy_owner": "domain_policy_pack",
+                "filter_owner": "claim_resolution",
+                "premise_owner": "admitted_answer_context",
+                "intent_narrowed": True,
+            },
+        }],
     }
     return {
         "suggested_reply": "日常轻微意外一般不用过度担心，但不能保证耐摔。",
@@ -558,7 +581,21 @@ def _bounded_inference_audit_response() -> dict:
             }],
             "bounded_inference_policies": [{
                 "policy_ref": policy_ref,
+                "policy_intent_ref": (
+                    "product_durability_practical_guidance"
+                ),
+                "goal_family": "product_durability",
+                "intent_kind": "practical_guidance",
+                "premise_fact_families": ["material_composition"],
+                "allowed_scope": "ordinary_minor_accidental_impact",
                 "maximum_risk_level": "medium",
+                "required_qualifiers": ["no_absolute_guarantee"],
+                "prohibited_claim_families": [
+                    "certification_report",
+                    "child_safety",
+                    "warranty",
+                ],
+                "review_only": True,
             }],
         },
         "model_first_answer_composer": {
@@ -639,8 +676,43 @@ def test_final_auditor_rejects_policy_risk_limit_mutated_in_claim_and_clause():
     response = _bounded_inference_audit_response()
     claim = response["minimal_decision_context"]["claim_resolutions"][0]
     clause = response["model_first_answer_composer"]["clauses"][0]
-    claim["maximum_risk_level"] = "low"
+    claim["eligible_policy_options"][0]["maximum_risk"] = "low"
     clause["maximum_risk_level"] = "low"
+
+    issues = _model_first_candidate_contract_issues(response)
+
+    assert "model_first_candidate_bounded_inference_clause_invalid" in issues
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("applicable_goal_ref", "claim-other"),
+        ("trusted_domain_pack_ref", "domain-policy:other@1.0.0"),
+        ("policy_intent_ref", "other_practical_guidance"),
+        ("goal_family", "other_goal_family"),
+        ("premise_families", ["gross_weight"]),
+        ("review_only", False),
+    ],
+)
+def test_final_auditor_rejects_mutated_offered_policy_option(field, value):
+    response = _bounded_inference_audit_response()
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]["eligible_policy_options"][0]
+    option[field] = value
+
+    issues = _model_first_candidate_contract_issues(response)
+
+    assert "model_first_candidate_bounded_inference_clause_invalid" in issues
+
+
+def test_final_auditor_rejects_mutated_policy_option_provenance():
+    response = _bounded_inference_audit_response()
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]["eligible_policy_options"][0]
+    option["option_provenance"]["filter_owner"] = "public_request"
 
     issues = _model_first_candidate_contract_issues(response)
 

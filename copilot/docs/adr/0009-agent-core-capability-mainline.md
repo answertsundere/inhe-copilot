@@ -185,13 +185,22 @@ bypass, formal reply mutation, or `can_send` authority.
 P1.2b keeps bounded low-risk inference inside the same ownership chain. Domain
 Pack data defines eligible premise families, qualitative scope, maximum
 `low`/`medium` risk, required qualifiers, prohibited extensions, and mandatory
-human review. Claim Resolution owns premise and policy binding. The existing
-Composer owns language only. Deterministic Final validates policy provenance,
-premise evidence, scope, risk ceiling, and review-only metadata; Unified
-Textual Audit validates textual faithfulness. Canonical unmapped customer goals
-may participate only when current Turn Understanding explicitly nominates a
-trusted policy; service, media, dependency, and contextual entries remain
-ineligible.
+human review. Its representative gate showed that requiring Turn
+Understanding to nominate a policy before Claim Resolution could expose any
+candidate made the option denominator zero.
+
+P1.2c preserves the ownership chain but separates option eligibility from
+semantic selection. Claim Resolution owns the deterministic intersection of
+trusted Domain Pack policies, admitted direct premises, authoritative goal,
+risk, context capabilities, and conflict state. It emits goal-scoped
+`eligible_policy_options` and does not select one. A valid trusted intent may
+narrow the set; a missing intent leaves the safe set available without
+authorizing inference. The existing Composer owns the zero-or-one selection
+and language. Deterministic Final validates the selected policy against the
+offered set, policy provenance, premises, scope, risk ceiling, review-only
+metadata, qualifiers, and prohibitions; Unified Textual Audit validates textual
+faithfulness. Service, media, dependency, contextual, conflicting, and
+high-risk goals remain ineligible.
 
 This does not add a service, graph node, model call, reply owner, safety gate,
 or production flag. The single provider preflight succeeded, but the required

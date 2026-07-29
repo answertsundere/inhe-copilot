@@ -179,6 +179,7 @@ def _bounded_policy_response():
                 "goal_ref": "claim-durability",
                 "clause_kind": "allowed_inference",
                 "evidence_uids": ["material"],
+                "premise_evidence_uids": ["material"],
                 "inference_policy_refs": [policy_ref],
                 "scope_qualifier": "ordinary_minor_accidental_impact",
                 "inference_risk_level": "medium",
@@ -188,6 +189,10 @@ def _bounded_policy_response():
             }],
         },
         "minimal_decision_context": {
+            "admitted_evidence": [{
+                "evidence_uid": "material",
+                "fact_type": "material_composition",
+            }],
             "bounded_inference_policies": [{
                 "policy_ref": policy_ref,
                 "policy_intent_ref": (
@@ -195,27 +200,66 @@ def _bounded_policy_response():
                 ),
                 "goal_family": "product_durability",
                 "intent_kind": "practical_guidance",
+                "premise_fact_families": ["material_composition"],
+                "allowed_scope": "ordinary_minor_accidental_impact",
                 "maximum_risk_level": "medium",
+                "required_qualifiers": ["no_absolute_guarantee"],
+                "prohibited_claim_families": [
+                    "certification_report",
+                    "child_safety",
+                    "warranty",
+                ],
+                "review_only": True,
             }],
             "claim_resolutions": [{
                 "claim_uid": "claim-durability",
+                "goal_ref": "claim-durability",
                 "claim_type": "unmapped_customer_goal",
-                "status": "supported",
-                "support_basis": "bounded_inference",
+                "status": "unresolved",
+                "support_basis": "none",
                 "policy_intent_ref": (
                     "product_durability_practical_guidance"
                 ),
                 "policy_goal_family": "product_durability",
                 "policy_intent_kind": "practical_guidance",
                 "bounded_inference_policy": "review_required",
-                "evidence_uids": ["material"],
-                "premise_evidence_uids": ["material"],
-                "inference_policy_refs": [policy_ref],
-                "scope_qualifier": "ordinary_minor_accidental_impact",
-                "inference_risk_level": "medium",
-                "maximum_risk_level": "medium",
-                "inference_review_only": True,
-                "required_qualifiers": ["no_absolute_guarantee"],
+                "evidence_uids": [],
+                "premise_evidence_uids": [],
+                "inference_policy_refs": [],
+                "eligible_policy_options": [{
+                    "policy_ref": policy_ref,
+                    "trusted_domain_pack_ref": (
+                        "domain-policy:fixture_domain@1.0.0"
+                    ),
+                    "applicable_goal_ref": "claim-durability",
+                    "policy_intent_ref": (
+                        "product_durability_practical_guidance"
+                    ),
+                    "goal_family": "product_durability",
+                    "intent_kind": "practical_guidance",
+                    "premise_evidence_refs": ["material"],
+                    "premise_families": ["material_composition"],
+                    "allowed_scope": (
+                        "ordinary_minor_accidental_impact"
+                    ),
+                    "forbidden_claim_families": [
+                        "certification_report",
+                        "child_safety",
+                        "warranty",
+                    ],
+                    "maximum_risk": "medium",
+                    "requested_risk": "medium",
+                    "required_qualifiers": [
+                        "no_absolute_guarantee"
+                    ],
+                    "review_only": True,
+                    "option_provenance": {
+                        "policy_owner": "domain_policy_pack",
+                        "filter_owner": "claim_resolution",
+                        "premise_owner": "admitted_answer_context",
+                        "intent_narrowed": True,
+                    },
+                }],
             }],
         },
     }
@@ -229,6 +273,7 @@ def test_response_scoring_reports_trusted_policy_and_bounded_attribution():
         error_type="",
         latency_ms=25,
     )
+    summary = comparison._summarize([score])
 
     assert score["policy_intent_refs"] == [
         "product_durability_practical_guidance"
@@ -242,12 +287,33 @@ def test_response_scoring_reports_trusted_policy_and_bounded_attribution():
     assert score["bounded_inference_attribution_denominator"] == 1
     assert score["bounded_inference_premise_numerator"] == 1
     assert score["bounded_inference_scope_numerator"] == 1
+    assert score["eligible_policy_options_numerator"] == 1
+    assert score["eligible_policy_options_denominator"] == 1
+    assert score["policy_selection_numerator"] == 1
+    assert score["policy_selection_denominator"] == 1
+    assert score["selected_policy_validity_numerator"] == 1
+    assert score["selected_policy_premise_numerator"] == 1
+    assert score["selected_policy_scope_numerator"] == 1
+    assert score["inference_opportunity_missed_count"] == 0
     assert score["absolute_guarantee_supported_count"] == 0
+    assert summary["eligible_policy_options_coverage"] == {
+        "numerator": 1,
+        "denominator": 1,
+        "rate": 1.0,
+    }
+    assert summary["policy_selection_coverage"] == {
+        "numerator": 1,
+        "denominator": 1,
+        "rate": 1.0,
+    }
+    assert summary["selected_policy_validity"]["rate"] == 1.0
+    assert summary["selected_policy_premise_coverage"]["rate"] == 1.0
+    assert summary["selected_policy_scope_validity"]["rate"] == 1.0
 
 
 def test_response_scoring_rejects_missing_bounded_inference_premise():
     response = _bounded_policy_response()
-    response["minimal_decision_context"]["claim_resolutions"][0][
+    response["model_first_answer_composer"]["clauses"][0][
         "premise_evidence_uids"
     ] = []
 
@@ -316,7 +382,9 @@ def test_response_scoring_reports_composer_input_partition_metrics():
 def test_correctness_gate_rejects_supported_absolute_guarantee():
     response = _bounded_policy_response()
     resolution = response["minimal_decision_context"]["claim_resolutions"][0]
-    resolution["policy_intent_kind"] = "absolute_guarantee"
+    resolution["eligible_policy_options"][0][
+        "intent_kind"
+    ] = "absolute_guarantee"
     response["minimal_decision_context"]["bounded_inference_policies"][0][
         "intent_kind"
     ] = "absolute_guarantee"

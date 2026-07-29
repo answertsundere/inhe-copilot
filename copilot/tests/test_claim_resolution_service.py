@@ -61,6 +61,12 @@ def _bounded_goal(**overrides) -> dict:
     return value
 
 
+def _only_policy_option(result: dict) -> dict:
+    options = result["eligible_policy_options"]
+    assert len(options) == 1
+    return options[0]
+
+
 def test_explicit_dimension_claims_select_only_their_matching_attribute():
     results = _by_attribute(build_claim_resolutions(
         [_claim("width"), _claim("height")],
@@ -444,24 +450,41 @@ def test_policy_bounded_inference_uses_only_admitted_premises_and_is_order_stabl
     bounded = next(
         item for item in first if item["goal_ref"] == "goal-durability"
     )
-    assert bounded["status"] == "supported"
-    assert bounded["support_basis"] == "bounded_inference"
-    assert bounded["premise_evidence_uids"] == ["material-a", "material-b"]
-    assert bounded["evidence_uids"] == ["material-a", "material-b"]
-    assert bounded["inference_policy_refs"] == [
+    assert bounded["status"] == "unresolved"
+    assert bounded["support_basis"] == "none"
+    assert bounded["premise_evidence_uids"] == []
+    assert bounded["evidence_uids"] == []
+    assert bounded["inference_policy_refs"] == []
+    option = _only_policy_option(bounded)
+    assert option["policy_ref"] == (
         "domain-policy:fixture@1.0.0:"
         "intent:product_durability_practical_guidance"
+    )
+    assert option["premise_evidence_refs"] == [
+        "material-a",
+        "material-b",
     ]
-    assert bounded["scope_qualifier"] == "ordinary_minor_accidental_impact"
-    assert bounded["inference_risk_level"] == "medium"
-    assert bounded["maximum_risk_level"] == "medium"
-    assert bounded["inference_review_only"] is True
-    assert bounded["required_qualifiers"] == ["no_absolute_guarantee"]
-    assert bounded["prohibited_extensions"] == [
+    assert option["premise_families"] == ["material_composition"]
+    assert option["allowed_scope"] == "ordinary_minor_accidental_impact"
+    assert option["requested_risk"] == "medium"
+    assert option["maximum_risk"] == "medium"
+    assert option["review_only"] is True
+    assert option["required_qualifiers"] == ["no_absolute_guarantee"]
+    assert option["forbidden_claim_families"] == [
         "certification_report",
         "child_safety",
         "warranty",
     ]
+    assert option["applicable_goal_ref"] == "goal-durability"
+    assert option["trusted_domain_pack_ref"] == (
+        "domain-policy:fixture@1.0.0"
+    )
+    assert option["option_provenance"] == {
+        "filter_owner": "claim_resolution",
+        "intent_narrowed": True,
+        "policy_owner": "domain_policy_pack",
+        "premise_owner": "admitted_answer_context",
+    }
     assert bounded["requires_human_review"] is True
 
 
@@ -480,12 +503,15 @@ def test_policy_bounded_inference_resolves_canonical_unmapped_customer_goal():
 
     assert result["claim_type"] == ""
     assert result["claim_type_status"] == "unmapped"
-    assert result["status"] == "supported"
-    assert result["support_basis"] == "bounded_inference"
-    assert result["premise_evidence_uids"] == ["material"]
+    assert result["status"] == "unresolved"
+    assert result["support_basis"] == "none"
+    assert result["premise_evidence_uids"] == []
+    assert _only_policy_option(result)["premise_evidence_refs"] == [
+        "material"
+    ]
 
 
-def test_policy_bounded_inference_replaces_direct_support_for_practical_goal():
+def test_policy_options_do_not_replace_direct_support_for_practical_goal():
     policy = _bounded_policy(
         policy_intent_ref="product_weight_practical_guidance",
         goal_family="product_weight_and_moving",
@@ -511,10 +537,12 @@ def test_policy_bounded_inference_replaces_direct_support_for_practical_goal():
     )[0]
 
     assert result["status"] == "supported"
-    assert result["support_basis"] == "bounded_inference"
+    assert result["support_basis"] == "direct_evidence"
     assert result["evidence_uids"] == ["gross-weight"]
-    assert result["premise_evidence_uids"] == ["gross-weight"]
-    assert result["scope_qualifier"] == (
+    assert result["premise_evidence_uids"] == []
+    option = _only_policy_option(result)
+    assert option["premise_evidence_refs"] == ["gross-weight"]
+    assert option["allowed_scope"] == (
         "approximate_short_distance_moving_effort"
     )
 
@@ -600,12 +628,12 @@ def test_generic_policy_families_resolve_from_exact_admitted_premises(
         policy_ref_prefix="domain-policy:fixture@1.0.0",
     )[0]
 
-    assert result["status"] == "supported"
-    assert result["support_basis"] == "bounded_inference"
-    assert result["premise_evidence_uids"] == [
+    option = _only_policy_option(result)
+    assert result["support_basis"] in {"direct_evidence", "none"}
+    assert option["premise_evidence_refs"] == [
         f"premise-{premise_fact_family}"
     ]
-    assert result["inference_review_only"] is True
+    assert option["review_only"] is True
 
 
 @pytest.mark.parametrize(
@@ -636,7 +664,8 @@ def test_policy_bounded_inference_enforces_risk_contract(
 
     assert result["status"] == "unresolved"
     assert result["support_basis"] == "none"
-    assert result["reason"] == expected_reason
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == expected_reason
 
 
 @pytest.mark.parametrize(
@@ -664,7 +693,10 @@ def test_policy_bounded_inference_rejects_non_customer_fact_goals(
 
     assert result["status"] == "unresolved"
     assert result["support_basis"] == "none"
-    assert result["reason"] == "bounded_inference_goal_kind_prohibited"
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == (
+        "bounded_inference_goal_kind_prohibited"
+    )
 
 
 @pytest.mark.parametrize(
@@ -721,7 +753,8 @@ def test_policy_bounded_inference_fails_closed_when_contract_is_incomplete(
     assert result["status"] == "unresolved"
     assert result["support_basis"] == "none"
     assert result["evidence_uids"] == []
-    assert result["reason"] == expected_reason
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == expected_reason
 
 
 def test_policy_bounded_inference_never_resolves_high_risk_goal():
@@ -742,7 +775,10 @@ def test_policy_bounded_inference_never_resolves_high_risk_goal():
     )[0]
 
     assert result["status"] == "unresolved"
-    assert result["reason"] == "bounded_inference_high_risk_prohibited"
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == (
+        "bounded_inference_high_risk_prohibited"
+    )
 
 
 @pytest.mark.parametrize(
@@ -780,10 +816,11 @@ def test_policy_binding_requires_exact_trusted_intent_contract(
 
     assert result["status"] == "unresolved"
     assert result["support_basis"] == "none"
-    assert result["reason"] == expected_reason
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == expected_reason
 
 
-def test_policy_binding_without_nomination_stays_unresolved():
+def test_policy_binding_without_nomination_offers_safe_options_without_selecting():
     result = build_claim_resolutions(
         [_bounded_goal(
             policy_intent_ref="",
@@ -802,6 +839,48 @@ def test_policy_binding_without_nomination_stays_unresolved():
 
     assert result["status"] == "unresolved"
     assert result["reason"] == "no_admitted_direct_evidence"
+    option = _only_policy_option(result)
+    assert option["policy_intent_ref"] == (
+        "product_durability_practical_guidance"
+    )
+    assert option["option_provenance"]["intent_narrowed"] is False
+    assert result["inference_policy_refs"] == []
+    assert result["premise_evidence_uids"] == []
+
+
+def test_policy_binding_without_nomination_can_offer_multiple_safe_options():
+    alternate = _bounded_policy(
+        policy_intent_ref="material_daily_use_practical_guidance",
+        goal_family="material_daily_use",
+        allowed_scope="ordinary_daily_material_handling",
+    )
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            policy_intent_ref="",
+            policy_goal_family="",
+            policy_intent_kind="",
+        )],
+        direct_product_facts=[
+            _fact("material", "material", claim_type="material_composition")
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[alternate, _bounded_policy()],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert [
+        option["policy_intent_ref"]
+        for option in result["eligible_policy_options"]
+    ] == [
+        "material_daily_use_practical_guidance",
+        "product_durability_practical_guidance",
+    ]
+    assert all(
+        option["option_provenance"]["intent_narrowed"] is False
+        for option in result["eligible_policy_options"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -849,7 +928,8 @@ def test_non_practical_policy_intents_remain_unresolved(
 
     assert result["status"] == "unresolved"
     assert result["support_basis"] == "none"
-    assert result["reason"] == expected_reason
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == expected_reason
 
 
 def test_semantic_key_variation_cannot_change_policy_binding():
@@ -879,6 +959,7 @@ def test_semantic_key_variation_cannot_change_policy_binding():
         "evidence_uids",
         "premise_evidence_uids",
         "inference_policy_refs",
+        "eligible_policy_options",
         "scope_qualifier",
         "reason",
     ):

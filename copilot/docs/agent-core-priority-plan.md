@@ -106,10 +106,8 @@ immediate work is now:
 P1.2b adds a disabled bounded-low-risk inference contract to the existing
 owners. Domain Packs declare premise families, qualitative scope, risk ceiling,
 required qualifiers, prohibited extensions, and mandatory review. Claim
-Resolution alone binds those policies to admitted evidence; the existing
-Composer may only verbalize the resulting `allowed_inference` clause, while
-Deterministic Final and Unified Textual Audit retain enforcement. No graph
-node, service, model call, reply owner, or send authority was added.
+Resolution originally required an already nominated intent and therefore
+produced no bounded denominator in the representative gate.
 
 The single permitted provider preflight succeeded, but the four-case live gate
 stopped at `0/4`: all four requests completed with one selected evidence item,
@@ -118,6 +116,23 @@ produced a policy nomination or bounded-inference denominator; the comparison
 case additionally failed on an unknown goal reference. The 16-case and
 synthetic suites were therefore not started. This is a reviewable disabled
 checkpoint, not a qualified capability and not a real-accuracy result.
+
+P1.2c corrects that earliest ownership break without adding another reasoning
+owner. Claim Resolution now computes a deterministic
+`eligible_policy_options` intersection from the trusted Domain Pack, admitted
+direct premises, authoritative customer goal, risk ceiling, context
+capabilities, and conflict state. A trusted intent may narrow this set; a
+missing intent no longer forces the safe set to zero and never selects a
+policy. The Composer may choose zero or one offered option for each goal and
+must bind the selected policy, admitted premises, and exact scope in the
+clause. Deterministic Final revalidates the offered-set membership, Domain Pack
+identity, premises, scope, risk, review-only marker, qualifiers, and
+prohibitions. Unified Textual Audit remains the only textual audit.
+
+The path remains default-off, review-only, and non-sendable. Its live 4-case,
+16-case, and synthetic status must be recorded after the gated run; until then
+it is a disabled contract candidate, not a qualified capability or
+real-accuracy result.
 
 ## Priority Selection Rules
 
