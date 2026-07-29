@@ -203,12 +203,17 @@ faithfulness. Service, media, dependency, contextual, conflicting, and
 high-risk goals remain ineligible.
 
 This does not add a service, graph node, model call, reply owner, safety gate,
-or production flag. The single provider preflight succeeded, but the required
-four-case live gate stopped at `0/4` because no case produced a policy
-nomination or bounded-inference denominator; one comparison candidate also
-failed an unknown-goal reference check. The 16-case and synthetic gates were
-not run. The implementation is therefore a disabled, review-only contract
-checkpoint, not a qualified capability or production promotion.
+or production flag. P1.2c made one live representative request without a
+separate preflight or retry. Provider execution, one Composer call, goal
+coverage, direct-fact preservation, and both audits succeeded, but the formal
+context contained no bounded inference policies. Claim Resolution therefore
+reported `bounded_inference_policy_reference_missing` and produced an option
+denominator of `0/0`. The gate stopped before the remaining three cases, the
+16-case set, or synthetic benchmark. The implementation is a disabled,
+review-only contract checkpoint with status
+`bounded_inference_shadow_not_qualified`; the next earliest owner is existing
+Domain Pack owner-context propagation into Evidence Builder, not a new
+reasoning component or policy-intent generator.
 
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:

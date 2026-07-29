@@ -658,9 +658,23 @@ selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer
 notes, capability inventory, expected policy, and scoring rubric remain
 outside Agent, RAG, Composer, and Audit input. This remains a default-off,
-review-only Shadow candidate with `can_send=false`; live 4-case, 16-case, and
-synthetic results must be recorded after the gated run and cannot establish
-`real_customer_accuracy`.
+review-only Shadow candidate with `can_send=false`.
+
+The P1.2c live gate made exactly one Agent request and then stopped. That
+request returned HTTP 200; the Composer was accepted with one model call,
+authoritative goal coverage was `2/2`, direct-fact preservation was `1/1`,
+both final audits passed, and no high-risk, media, service, or send violation
+was observed. `eligible_policy_options` was still `0/0`. The persisted formal
+context showed a valid Turn Understanding result and an admitted material fact,
+but `bounded_inference_policies` was empty and each claim resolution reported
+`bounded_inference_policy_reference_missing`. This corrects the earlier
+inconclusive P1.2b attribution: the first live break is trusted Domain Pack
+owner-context propagation into Evidence Builder, before Claim Resolution can
+filter options. The other three representative cases, the 16-case gate, and
+synthetic benchmark were not run, and the failed item was not retried. Formal
+knowledge content and DML remained unchanged. The status is
+`bounded_inference_shadow_not_qualified`; this run cannot establish
+naturalness, business helpfulness, or `real_customer_accuracy`.
 
 ### Phase 0.8G fixed real-turn replay
 

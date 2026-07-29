@@ -129,10 +129,17 @@ clause. Deterministic Final revalidates the offered-set membership, Domain Pack
 identity, premises, scope, risk, review-only marker, qualifiers, and
 prohibitions. Unified Textual Audit remains the only textual audit.
 
-The path remains default-off, review-only, and non-sendable. Its live 4-case,
-16-case, and synthetic status must be recorded after the gated run; until then
-it is a disabled contract candidate, not a qualified capability or
-real-accuracy result.
+The path remains default-off, review-only, and non-sendable. The P1.2c live
+gate stopped after the first representative request: Provider execution,
+Composer acceptance, direct-fact preservation, goal coverage, and both audits
+succeeded, but `eligible_policy_options` remained `0/0`. Persisted context
+showed that the trusted Domain Pack was not propagated into
+`AdmittedAnswerContext`, so Claim Resolution had no bounded policies to filter.
+The other three representative cases, the 16-case gate, and synthetic
+benchmark were not run, and the failed case was not retried. The next earliest
+owner is the existing Answer Eligibility owner-context propagation into
+Evidence Builder; no new service or reasoning owner is warranted. Current
+status is `bounded_inference_shadow_not_qualified`, not a real-accuracy result.
 
 ## Priority Selection Rules
 

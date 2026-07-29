@@ -257,15 +257,19 @@ membership, Domain Pack identity and provenance, premises, scope, risk ceiling,
 review-only status, qualifiers, prohibitions, and conflicts. Unified Textual
 Audit checks the rendered text.
 
-The P1.2b live qualification did not pass: the one-call provider preflight was
-available, but the representative gate produced no policy nominations or
-bounded-inference denominator in four real-derived cases and stopped at
-`0/4`. One comparison candidate also had an unknown goal reference whose exact
-provider alias was not retained, so its attribution remains inconclusive.
-P1.2c changes no alias repair rule and will rerun the gated qualification
-without extra preflight, retry, or repair. The contract remains default-off,
-review-only, and unqualified until that run completes; production reply and
-`can_send` behavior are unchanged.
+The P1.2c live gate stopped after its first real-derived case, as required.
+The provider request returned HTTP 200, the single Composer call was accepted,
+both authoritative goals were rendered, the admitted direct fact was
+preserved, and deterministic and textual audits passed. The option denominator
+was nevertheless `0/0`: the persisted `AdmittedAnswerContext` contained no
+bounded inference policies, and both claim resolutions recorded
+`bounded_inference_policy_reference_missing`. The earliest observed break is
+therefore the trusted Domain Pack owner-context propagation into formal
+evidence convergence, not Provider execution or missing policy intent. The
+remaining representative cases, the 16-case gate, and synthetic benchmark
+were not run. No failed case was retried. The contract remains default-off,
+review-only, and not qualified; production reply and `can_send` behavior are
+unchanged.
 
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
