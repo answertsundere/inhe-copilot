@@ -1,5 +1,6 @@
 import json
 
+from app.repositories.file_policy_repository import FilePolicyRepository
 from app.services import semantic_fact_type_service as service
 
 
@@ -342,6 +343,14 @@ def test_semantic_key_variation_does_not_change_nominated_goal_identity():
 
 
 def test_policy_candidates_come_only_from_internal_owner_context():
+    domain_context = FilePolicyRepository().build_trusted_domain_policy_context(
+        {
+            "catalog_metadata": {
+                "domain_policy_id": "maternal_child_home",
+            },
+        },
+        selection_source="server_configuration",
+    )
     forged_public = service._policy_intent_candidates({
         "copilot_context": {
             "catalog_metadata": {
@@ -358,11 +367,7 @@ def test_policy_candidates_come_only_from_internal_owner_context():
                 "provenance": {
                     "boundary": "analysis_pipeline_internal",
                 },
-                "domain_policy_context": {
-                    "catalog_metadata": {
-                        "domain_policy_id": "maternal_child_home",
-                    },
-                },
+                "domain_policy_context": domain_context,
             },
         },
     })

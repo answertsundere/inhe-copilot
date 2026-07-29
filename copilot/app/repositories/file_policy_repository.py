@@ -2,6 +2,8 @@
 文件规则仓库 - 从 YAML 文件加载规则
 """
 
+import hashlib
+import json
 import os
 import re
 import yaml
@@ -121,6 +123,91 @@ class FilePolicyRepository(PolicyRepositoryBase):
     def resolve_domain_policy_pack(self, context: dict | None) -> dict:
         """Load a domain policy only from explicit structured metadata."""
         context = context if isinstance(context, dict) else {}
+        if context.get("schema_version") == "trusted-domain-policy-context/v1":
+            return self._resolve_trusted_domain_policy_context(context)
+        return self._resolve_domain_policy_selector(context)
+
+    def build_trusted_domain_policy_context(
+        self,
+        selector: dict | None,
+        *,
+        selection_source: str,
+        invalid_reason: str = "",
+    ) -> dict:
+        """Resolve one trusted selector into a non-factual control projection."""
+        selector = selector if isinstance(selector, dict) else {}
+        if selection_source not in {
+            "server_configuration",
+            "verified_server_mapping",
+            "evaluation_fixture",
+        }:
+            selection_source = "server_configuration"
+            invalid_reason = (
+                invalid_reason
+                or "trusted_domain_policy_selection_source_invalid"
+            )
+        binding_summary = {
+            "tenant": isinstance(selector.get("tenant_metadata"), dict),
+            "store": isinstance(selector.get("store_metadata"), dict),
+            "catalog": isinstance(selector.get("catalog_metadata"), dict),
+        }
+        if invalid_reason:
+            pack = self._domain_policy_result(
+                status="invalid",
+                reason=invalid_reason,
+            )
+        else:
+            pack = self._resolve_domain_policy_selector(selector)
+        status = {
+            "loaded": "selected",
+            "missing": "missing",
+            "invalid": "invalid",
+        }.get(str(pack.get("status") or ""), "invalid")
+        domain_id = str(pack.get("domain_id") or "")
+        return {
+            "schema_version": "trusted-domain-policy-context/v1",
+            "status": status,
+            "trusted_owner": "analysis_pipeline",
+            "selection_source": selection_source,
+            "pack_ref": (
+                str(pack.get("pack_ref") or "")
+                if status == "selected"
+                else ""
+            ),
+            "pack_schema_version": (
+                str(pack.get("schema_version") or "")
+                if status == "selected"
+                else ""
+            ),
+            "pack_content_sha256": (
+                str(pack.get("pack_content_sha256") or "")
+                if status == "selected"
+                else ""
+            ),
+            "domain_ref": self._domain_ref(domain_id),
+            "binding_summary": binding_summary,
+            "provenance": {
+                "boundary": "analysis_pipeline_internal",
+                "selector_owner": "file_policy_repository",
+            },
+            "selected_at_stage": "canonical_input",
+            "validation_reasons": sorted({
+                str(reason).strip()
+                for reason in pack.get("reason_codes") or []
+                if str(reason or "").strip()
+            }),
+            "used_for_evidence": False,
+            "used_for_fact_support": False,
+            "can_change_can_send": False,
+        }
+
+    def _resolve_domain_policy_selector(self, context: dict) -> dict:
+        selector_reason = self._domain_policy_selector_reason(context)
+        if selector_reason:
+            return self._domain_policy_result(
+                status="invalid",
+                reason=selector_reason,
+            )
         candidates = [
             (context.get("tenant_metadata") or {}).get("domain_policy_id")
             if isinstance(context.get("tenant_metadata"), dict) else None,
@@ -182,10 +269,21 @@ class FilePolicyRepository(PolicyRepositoryBase):
                 domain_id=domain_id,
                 reason=reason,
             )
+        content_sha256 = hashlib.sha256(
+            json.dumps(
+                data,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        version = str(data["version"]).strip()
         return {
             "schema_version": "domain-policy-pack/v1",
             "domain_id": domain_id,
-            "version": str(data["version"]).strip(),
+            "version": version,
+            "pack_ref": f"domain-policy:{domain_id}@{version}",
+            "pack_content_sha256": content_sha256,
             "status": "loaded",
             "reason_codes": [],
             "claim_policies": {
@@ -203,6 +301,170 @@ class FilePolicyRepository(PolicyRepositoryBase):
             ],
         }
 
+    def _resolve_trusted_domain_policy_context(self, context: dict) -> dict:
+        required = {
+            "schema_version",
+            "status",
+            "trusted_owner",
+            "selection_source",
+            "pack_ref",
+            "pack_schema_version",
+            "pack_content_sha256",
+            "domain_ref",
+            "binding_summary",
+            "provenance",
+            "selected_at_stage",
+            "validation_reasons",
+            "used_for_evidence",
+            "used_for_fact_support",
+            "can_change_can_send",
+        }
+        if set(context) != required:
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_context_schema_invalid",
+            )
+        if (
+            context.get("trusted_owner") != "analysis_pipeline"
+            or context.get("selection_source")
+            not in {
+                "server_configuration",
+                "verified_server_mapping",
+                "evaluation_fixture",
+            }
+            or context.get("provenance")
+            != {
+                "boundary": "analysis_pipeline_internal",
+                "selector_owner": "file_policy_repository",
+            }
+            or context.get("selected_at_stage") != "canonical_input"
+            or context.get("used_for_evidence") is not False
+            or context.get("used_for_fact_support") is not False
+            or context.get("can_change_can_send") is not False
+        ):
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_context_authority_invalid",
+            )
+        binding_summary = context.get("binding_summary")
+        if (
+            not isinstance(binding_summary, dict)
+            or set(binding_summary) != {"tenant", "store", "catalog"}
+            or any(not isinstance(value, bool) for value in binding_summary.values())
+        ):
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_binding_invalid",
+            )
+        domain_ref = context.get("domain_ref")
+        if domain_ref and not re.fullmatch(
+            r"domain-[0-9a-f]{20}",
+            str(domain_ref),
+        ):
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_domain_ref_invalid",
+            )
+        reasons = context.get("validation_reasons")
+        if (
+            not isinstance(reasons, list)
+            or reasons != sorted(set(reasons))
+            or any(not isinstance(reason, str) or not reason for reason in reasons)
+        ):
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_reasons_invalid",
+            )
+        status = context.get("status")
+        if status in {"missing", "invalid"}:
+            if any(
+                context.get(key)
+                for key in (
+                    "pack_ref",
+                    "pack_schema_version",
+                    "pack_content_sha256",
+                )
+            ):
+                return self._domain_policy_result(
+                    status="invalid",
+                    reason="trusted_domain_policy_unselected_pack_present",
+                )
+            return self._domain_policy_result(
+                status=status,
+                reason=(
+                    reasons[0]
+                    if reasons
+                    else f"trusted_domain_policy_context_{status}"
+                ),
+            )
+        if status != "selected" or not any(binding_summary.values()):
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_selection_invalid",
+            )
+        match = re.fullmatch(
+            r"domain-policy:([a-z0-9][a-z0-9_-]{0,63})@(\d+\.\d+\.\d+)",
+            str(context.get("pack_ref") or ""),
+        )
+        content_sha256 = str(context.get("pack_content_sha256") or "")
+        if (
+            match is None
+            or context.get("pack_schema_version") != "domain-policy-pack/v1"
+            or not re.fullmatch(r"[0-9a-f]{64}", content_sha256)
+            or reasons
+        ):
+            return self._domain_policy_result(
+                status="invalid",
+                reason="trusted_domain_policy_selection_invalid",
+            )
+        domain_id, version = match.groups()
+        if context.get("domain_ref") != self._domain_ref(domain_id):
+            return self._domain_policy_result(
+                status="invalid",
+                domain_id=domain_id,
+                reason="trusted_domain_policy_domain_ref_mismatch",
+            )
+        loaded = self._resolve_domain_policy_selector({
+            "catalog_metadata": {"domain_policy_id": domain_id},
+        })
+        if loaded.get("status") != "loaded":
+            return loaded
+        if (
+            loaded.get("version") != version
+            or loaded.get("pack_ref") != context.get("pack_ref")
+            or loaded.get("pack_content_sha256") != content_sha256
+        ):
+            return self._domain_policy_result(
+                status="invalid",
+                domain_id=domain_id,
+                reason="trusted_domain_policy_pack_mismatch",
+            )
+        return loaded
+
+    @staticmethod
+    def _domain_policy_selector_reason(context: dict) -> str:
+        if not context:
+            return ""
+        allowed = {"tenant_metadata", "store_metadata", "catalog_metadata"}
+        if not set(context).issubset(allowed):
+            return "domain_policy_selector_schema_invalid"
+        for value in context.values():
+            if (
+                not isinstance(value, dict)
+                or set(value) != {"domain_policy_id"}
+                or not isinstance(value.get("domain_policy_id"), str)
+            ):
+                return "domain_policy_selector_schema_invalid"
+        return ""
+
+    @staticmethod
+    def _domain_ref(domain_id: str) -> str:
+        if not domain_id:
+            return ""
+        return "domain-" + hashlib.sha256(
+            domain_id.encode("utf-8")
+        ).hexdigest()[:20]
+
     @staticmethod
     def _domain_policy_result(
         *,
@@ -214,6 +476,8 @@ class FilePolicyRepository(PolicyRepositoryBase):
             "schema_version": "domain-policy-pack/v1",
             "domain_id": domain_id,
             "version": "",
+            "pack_ref": "",
+            "pack_content_sha256": "",
             "status": status,
             "reason_codes": [reason],
             "claim_policies": {},

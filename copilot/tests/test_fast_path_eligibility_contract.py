@@ -14,6 +14,12 @@ from app.services.admitted_answer_context_service import (
     _structured_sha256,
     build_answer_eligibility_context,
 )
+from app.services.canonical_conversation_turn_service import (
+    canonical_current_customer_turn_uid,
+)
+from app.services.semantic_fact_type_service import (
+    GOAL_IDENTITY_SCHEMA_VERSION,
+)
 
 
 MESSAGE = "current customer question"
@@ -59,15 +65,19 @@ def _claim(
     attribute_key: str = "material",
     message: str = MESSAGE,
 ) -> dict:
+    source_digest = sha256(message.encode("utf-8")).hexdigest()
     return {
+        "schema_version": GOAL_IDENTITY_SCHEMA_VERSION,
         "goal_ref": "goal-current",
         "goal_kind": "customer_goal",
         "claim_type": claim_type,
         "attribute_key": attribute_key,
         "source": "current_customer_message",
+        "source_turn_uid": canonical_current_customer_turn_uid(message),
         "source_span_start": 0,
         "source_span_end": len(message),
-        "source_span_sha256": sha256(message.encode("utf-8")).hexdigest(),
+        "source_span_sha256": source_digest,
+        "source_text_sha256": source_digest,
         "owner": "turn_understanding_owner",
         "source_stage": "query_fact_type_classifier",
         "question": message,
@@ -207,9 +217,11 @@ def test_correct_digest_passes_and_other_message_digest_fails_closed(tmp_path):
     pack = _write_pack(tmp_path)
     accepted = _context(pack, [_fact()])
     invalid = _understanding()
-    invalid["requested_claims"][0]["source_span_sha256"] = sha256(
+    invalid_digest = sha256(
         b"other message"
     ).hexdigest()
+    invalid["requested_claims"][0]["source_span_sha256"] = invalid_digest
+    invalid["requested_claims"][0]["source_text_sha256"] = invalid_digest
     rejected = _context(pack, [_fact()], understanding=invalid)
 
     assert accepted["answer_eligibility_context"][

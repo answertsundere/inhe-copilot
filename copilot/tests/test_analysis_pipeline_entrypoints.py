@@ -113,7 +113,12 @@ def test_pipeline_strips_public_owner_claims_and_accepts_only_internal_boundary(
     )
     prepared_public = service._prepare_request(public_request)
 
-    assert "_answer_eligibility_owner_context" not in prepared_public.copilot_context
+    public_owner = prepared_public.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]
+    assert public_owner["source"] == "server_configuration"
+    assert public_owner["domain_policy_context"]["status"] == "missing"
+    assert public_owner["domain_policy_context"]["pack_ref"] == ""
 
     internal_request = AnalysisPipelineRequest(
         reply_service=object(),
@@ -124,7 +129,9 @@ def test_pipeline_strips_public_owner_claims_and_accepts_only_internal_boundary(
             "owner": "analysis_pipeline",
             "provenance": {"boundary": "analysis_pipeline_internal"},
             "domain_policy_context": {
-                "catalog_metadata": {"domain_policy_id": "fixture"},
+                "catalog_metadata": {
+                    "domain_policy_id": "maternal_child_home"
+                },
             },
         },
     )
@@ -133,12 +140,18 @@ def test_pipeline_strips_public_owner_claims_and_accepts_only_internal_boundary(
     assert prepared_internal.copilot_context[
         "_answer_eligibility_owner_context"
     ]["source"] == "evaluation_fixture"
+    assert prepared_internal.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]["domain_policy_context"]["status"] == "selected"
 
 
 def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_context_missing(
     monkeypatch,
 ):
-    monkeypatch.setenv("COPILOT_DOMAIN_POLICY_ID", "fixture_domain")
+    monkeypatch.setenv(
+        "COPILOT_DOMAIN_POLICY_ID",
+        "maternal_child_home",
+    )
     service = AnalysisPipelineService()
 
     prepared = service._prepare_request(
@@ -154,15 +167,26 @@ def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_con
     owner_context = prepared.copilot_context[
         "_answer_eligibility_owner_context"
     ]
-    assert owner_context == {
-        "schema_version": "answer-eligibility-owner-context/v1",
-        "source": "server_configuration",
-        "owner": "analysis_pipeline",
-        "provenance": {"boundary": "analysis_pipeline_internal"},
-        "domain_policy_context": {
-            "catalog_metadata": {"domain_policy_id": "fixture_domain"},
-        },
+    assert owner_context["schema_version"] == (
+        "answer-eligibility-owner-context/v1"
+    )
+    assert owner_context["source"] == "server_configuration"
+    domain_context = owner_context["domain_policy_context"]
+    assert domain_context["status"] == "selected"
+    assert domain_context["trusted_owner"] == "analysis_pipeline"
+    assert domain_context["selection_source"] == "server_configuration"
+    assert domain_context["pack_ref"] == (
+        "domain-policy:maternal_child_home@1.2.0"
+    )
+    assert len(domain_context["pack_content_sha256"]) == 64
+    assert domain_context["binding_summary"] == {
+        "tenant": False,
+        "store": False,
+        "catalog": True,
     }
+    assert domain_context["used_for_evidence"] is False
+    assert domain_context["used_for_fact_support"] is False
+    assert domain_context["can_change_can_send"] is False
     assert prepared.copilot_context["catalog_metadata"] == {
         "domain_policy_id": "public_injection"
     }
@@ -177,15 +201,17 @@ def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_con
                 "owner": "analysis_pipeline",
                 "provenance": {"boundary": "analysis_pipeline_internal"},
                 "domain_policy_context": {
-                    "catalog_metadata": {"domain_policy_id": "explicit_fixture"},
+                    "catalog_metadata": {
+                        "domain_policy_id": "maternal_child_home"
+                    },
                 },
             },
         )
     )
     assert explicit.copilot_context[
         "_answer_eligibility_owner_context"
-    ]["domain_policy_context"]["catalog_metadata"]["domain_policy_id"] == (
-        "explicit_fixture"
+    ]["domain_policy_context"]["pack_ref"] == (
+        "domain-policy:maternal_child_home@1.2.0"
     )
 
 
@@ -204,7 +230,151 @@ def test_pipeline_rejects_forged_internal_trust_flags():
         )
     )
 
-    assert "_answer_eligibility_owner_context" not in prepared.copilot_context
+    owner_context = prepared.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]
+    assert owner_context["source"] == "server_configuration"
+    assert owner_context["domain_policy_context"]["status"] == "invalid"
+    assert owner_context["domain_policy_context"]["validation_reasons"] == [
+        "answer_eligibility_owner_context_invalid"
+    ]
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["api", "copilot", "real_conversation_eval", "agent_benchmark"],
+)
+def test_pipeline_propagates_same_server_domain_context_across_entries(
+    monkeypatch,
+    source,
+):
+    monkeypatch.setenv(
+        "COPILOT_DOMAIN_POLICY_ID",
+        "maternal_child_home",
+    )
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            source=source,
+        )
+    )
+
+    domain_context = prepared.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]["domain_policy_context"]
+    assert domain_context["status"] == "selected"
+    assert domain_context["pack_ref"] == (
+        "domain-policy:maternal_child_home@1.2.0"
+    )
+    assert domain_context["selection_source"] == "server_configuration"
+
+
+def test_pipeline_rejects_extra_or_conflicting_internal_selector_fields():
+    service = AnalysisPipelineService()
+    extra = service._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            trusted_answer_eligibility_context={
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "evaluation_fixture",
+                "owner": "analysis_pipeline",
+                "provenance": {
+                    "boundary": "analysis_pipeline_internal",
+                },
+                "domain_policy_context": {
+                    "catalog_metadata": {
+                        "domain_policy_id": "maternal_child_home",
+                        "customer_message": "forged",
+                    },
+                },
+            },
+        )
+    )
+    conflicting = service._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            trusted_answer_eligibility_context={
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "evaluation_fixture",
+                "owner": "analysis_pipeline",
+                "provenance": {
+                    "boundary": "analysis_pipeline_internal",
+                },
+                "domain_policy_context": {
+                    "tenant_metadata": {
+                        "domain_policy_id": "maternal_child_home",
+                    },
+                    "catalog_metadata": {
+                        "domain_policy_id": "other",
+                    },
+                },
+            },
+        )
+    )
+
+    assert extra.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]["domain_policy_context"]["status"] == "invalid"
+    assert conflicting.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]["domain_policy_context"]["status"] == "invalid"
+
+
+def test_pipeline_accepts_verified_server_mapping_without_public_override():
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="public text cannot select a domain",
+            product_candidates=[
+                {"type": "sku_code", "value": "PUBLIC-SKU"}
+            ],
+            copilot_context={
+                "tenant_metadata": {
+                    "domain_policy_id": "public_tenant",
+                },
+                "store_metadata": {
+                    "domain_policy_id": "public_store",
+                },
+                "catalog_metadata": {
+                    "domain_policy_id": "public_catalog",
+                },
+                "query_fact_type": "public_fact_type",
+            },
+            trusted_answer_eligibility_context={
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "verified_server_mapping",
+                "owner": "analysis_pipeline",
+                "provenance": {
+                    "boundary": "analysis_pipeline_internal",
+                },
+                "domain_policy_context": {
+                    "tenant_metadata": {
+                        "domain_policy_id": "maternal_child_home",
+                    },
+                },
+            },
+        )
+    )
+
+    owner_context = prepared.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]
+    domain_context = owner_context["domain_policy_context"]
+    assert owner_context["source"] == "verified_server_mapping"
+    assert domain_context["status"] == "selected"
+    assert domain_context["selection_source"] == "verified_server_mapping"
+    assert domain_context["pack_ref"] == (
+        "domain-policy:maternal_child_home@1.2.0"
+    )
+    assert domain_context["binding_summary"] == {
+        "tenant": True,
+        "store": False,
+        "catalog": False,
+    }
 
 
 def test_pipeline_strips_public_turn_understanding_authority_fields():

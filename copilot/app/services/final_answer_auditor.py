@@ -72,6 +72,17 @@ _REDACTION_MARKERS = (
     "[LONG_ID_REDACTED:",
 )
 
+
+def _structured_sha256(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    return (
+        candidate
+        if len(candidate) == 64
+        and all(character in "0123456789abcdef" for character in candidate)
+        else ""
+    )
+
+
 _FACT_TOPIC = {
     "pinch_safety": "pinch_safety",
     "safety_small_parts": "small_parts_battery",
@@ -1410,6 +1421,18 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                     )[0]
                     or str(selected_option.get("intent_kind") or "")
                     != "practical_guidance"
+                    or not _structured_sha256(
+                        selected_option.get("pack_content_sha256")
+                    )
+                    or _structured_sha256(
+                        selected_option.get("pack_content_sha256")
+                    )
+                    != _structured_sha256(
+                        trusted_policy.get("pack_content_sha256")
+                    )
+                    or selected_option.get("used_for_evidence") is not False
+                    or selected_option.get("used_for_fact_support") is not False
+                    or selected_option.get("can_change_can_send") is not False
                     or str(
                         selected_option.get("policy_intent_ref") or ""
                     )

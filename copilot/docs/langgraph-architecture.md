@@ -133,6 +133,11 @@ not derive its fields and gains no node:
   `support_basis`.
 - a versioned Domain Policy Pack supplies policy data, while deterministic
   Claim/Safety code owns `risk_policy_status`.
+- the Analysis Pipeline selects one trusted Domain Policy control context and
+  Graph state carries it read-only; Evidence Builder reloads the Pack through
+  `FilePolicyRepository` and passes it beside, never inside, admitted facts.
+  Claim Resolution, Composer, and Final validate the same Pack reference and
+  content hash. LangGraph gains no selector, loader, evidence, or reply role.
 
 Minimal Decision Context only projects these results. It may not infer a
 missing status from customer text, an available-tool list, or model risk hints.

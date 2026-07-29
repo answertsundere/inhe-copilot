@@ -271,6 +271,19 @@ were not run. No failed case was retried. The contract remains default-off,
 review-only, and not qualified; production reply and `can_send` behavior are
 unchanged.
 
+P1.2d keeps Domain Policy in a separate control channel. The Analysis Pipeline
+owns one `trusted-domain-policy-context/v1`; it may select only from trusted
+deployment configuration, a verified server mapping, or an explicit isolated
+evaluation fixture. The context contains an anonymous binding summary plus
+Pack reference, schema, canonical content hash, and owner provenance. It never
+enters `selected_evidence`, never receives an evidence UID, and cannot support
+a fact or change delivery. `FilePolicyRepository` reloads and hash-checks the
+Pack before Claim Resolution can expose options. Minimal Decision Context,
+Composer, and Deterministic Final preserve and validate the same Pack identity.
+Missing, invalid, stale, or public-injected context fails closed to zero
+options without suppressing independently admitted direct facts. This remains
+a disabled, not-qualified Shadow contract; real-customer accuracy is unproven.
+
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
 reply, but must not become independent answer engines.

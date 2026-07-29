@@ -8,6 +8,8 @@ from app.services.final_answer_auditor import (
 )
 from app.services.customer_facing_safe_handoff_service import CUSTOMER_FACING_INTERNAL_REDLINE_TERMS
 
+_DOMAIN_PACK_HASH = "a" * 64
+
 
 class _FakeMessage:
     def __init__(self, content):
@@ -532,6 +534,7 @@ def _bounded_inference_audit_response() -> dict:
             "trusted_domain_pack_ref": (
                 "domain-policy:fixture_domain@1.0.0"
             ),
+            "pack_content_sha256": _DOMAIN_PACK_HASH,
             "applicable_goal_ref": "claim-durability",
             "policy_intent_ref": (
                 "product_durability_practical_guidance"
@@ -550,6 +553,9 @@ def _bounded_inference_audit_response() -> dict:
             "requested_risk": "medium",
             "required_qualifiers": ["no_absolute_guarantee"],
             "review_only": True,
+            "used_for_evidence": False,
+            "used_for_fact_support": False,
+            "can_change_can_send": False,
             "option_provenance": {
                 "policy_owner": "domain_policy_pack",
                 "filter_owner": "claim_resolution",
@@ -581,6 +587,7 @@ def _bounded_inference_audit_response() -> dict:
             }],
             "bounded_inference_policies": [{
                 "policy_ref": policy_ref,
+                "pack_content_sha256": _DOMAIN_PACK_HASH,
                 "policy_intent_ref": (
                     "product_durability_practical_guidance"
                 ),
@@ -596,6 +603,9 @@ def _bounded_inference_audit_response() -> dict:
                     "warranty",
                 ],
                 "review_only": True,
+                "used_for_evidence": False,
+                "used_for_fact_support": False,
+                "can_change_can_send": False,
             }],
         },
         "model_first_answer_composer": {
@@ -692,6 +702,8 @@ def test_final_auditor_rejects_policy_risk_limit_mutated_in_claim_and_clause():
         ("policy_intent_ref", "other_practical_guidance"),
         ("goal_family", "other_goal_family"),
         ("premise_families", ["gross_weight"]),
+        ("pack_content_sha256", "0" * 64),
+        ("used_for_evidence", True),
         ("review_only", False),
     ],
 )

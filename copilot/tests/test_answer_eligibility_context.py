@@ -22,8 +22,13 @@ from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
     build_minimal_decision_context,
 )
+from app.services.analysis_pipeline_service import (
+    AnalysisPipelineRequest,
+    AnalysisPipelineService,
+)
 from app.services.canonical_conversation_turn_service import (
     canonical_conversation_reference_status,
+    normalize_trusted_answer_eligibility_owner_context,
 )
 from app.services.semantic_fact_type_service import (
     GOAL_IDENTITY_SCHEMA_VERSION,
@@ -155,15 +160,19 @@ def test_domain_pack_selection_requires_explicit_metadata_and_valid_schema(tmp_p
     assert repository.resolve_domain_policy_pack({})["status"] == "missing"
     assert repository.resolve_domain_policy_pack(
         {"domain_policy_id": "maternal_child_home"}
-    )["status"] == "missing"
+    )["status"] == "invalid"
     assert repository.resolve_domain_policy_pack(
         {"customer_message": "maternal_child_home"}
-    )["status"] == "missing"
+    )["status"] == "invalid"
     loaded = repository.resolve_domain_policy_pack(
         {"catalog_metadata": {"domain_policy_id": "maternal_child_home"}}
     )
     assert loaded["status"] == "loaded"
     assert loaded["domain_id"] == "maternal_child_home"
+    assert loaded["pack_ref"] == (
+        "domain-policy:maternal_child_home@1.0.0"
+    )
+    assert len(loaded["pack_content_sha256"]) == 64
     assert loaded["claim_policies"]["material_composition"]["risk_level"] == "low"
 
     invalid_path = tmp_path / "domain_policy_packs" / "invalid.yaml"
@@ -174,6 +183,159 @@ def test_domain_pack_selection_requires_explicit_metadata_and_valid_schema(tmp_p
     assert repository.resolve_domain_policy_pack(
         {"catalog_metadata": {"domain_policy_id": "../outside"}}
     )["status"] == "invalid"
+
+
+def test_trusted_domain_policy_context_revalidates_pack_hash_and_authority(
+    tmp_path,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    repository = FilePolicyRepository(rules_dir=str(tmp_path))
+    selected = repository.build_trusted_domain_policy_context(
+        {"catalog_metadata": {"domain_policy_id": "test"}},
+        selection_source="evaluation_fixture",
+    )
+
+    assert selected["status"] == "selected"
+    assert selected["pack_ref"] == "domain-policy:test@1.0.0"
+    assert len(selected["pack_content_sha256"]) == 64
+    assert selected["binding_summary"] == {
+        "tenant": False,
+        "store": False,
+        "catalog": True,
+    }
+    assert repository.resolve_domain_policy_pack(selected)["status"] == (
+        "loaded"
+    )
+
+    mutated_hash = deepcopy(selected)
+    mutated_hash["pack_content_sha256"] = "0" * 64
+    mutated_owner = deepcopy(selected)
+    mutated_owner["trusted_owner"] = "client_request"
+    mutated_pack_schema = deepcopy(selected)
+    mutated_pack_schema["pack_schema_version"] = (
+        "domain-policy-pack/v999"
+    )
+    mutated_schema = deepcopy(selected)
+    mutated_schema["unexpected"] = True
+    mismatched_source = {
+        "schema_version": "answer-eligibility-owner-context/v1",
+        "source": "server_configuration",
+        "owner": "analysis_pipeline",
+        "provenance": {"boundary": "analysis_pipeline_internal"},
+        "domain_policy_context": selected,
+    }
+
+    assert repository.resolve_domain_policy_pack(
+        mutated_hash
+    )["reason_codes"] == ["trusted_domain_policy_pack_mismatch"]
+    assert repository.resolve_domain_policy_pack(
+        mutated_owner
+    )["reason_codes"] == [
+        "trusted_domain_policy_context_authority_invalid"
+    ]
+    assert repository.resolve_domain_policy_pack(
+        mutated_pack_schema
+    )["reason_codes"] == [
+        "trusted_domain_policy_selection_invalid"
+    ]
+    assert repository.resolve_domain_policy_pack(
+        mutated_schema
+    )["reason_codes"] == [
+        "trusted_domain_policy_context_schema_invalid"
+    ]
+    assert normalize_trusted_answer_eligibility_owner_context(
+        mismatched_source
+    ) == {}
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="medium",
+    )
+    assert repository.resolve_domain_policy_pack(
+        selected
+    )["reason_codes"] == ["trusted_domain_policy_pack_mismatch"]
+
+
+def test_trusted_domain_policy_context_missing_and_invalid_are_explicit(
+    tmp_path,
+):
+    repository = FilePolicyRepository(rules_dir=str(tmp_path))
+
+    missing = repository.build_trusted_domain_policy_context(
+        {},
+        selection_source="server_configuration",
+    )
+    invalid = repository.build_trusted_domain_policy_context(
+        {
+            "catalog_metadata": {
+                "domain_policy_id": "../outside",
+            },
+        },
+        selection_source="evaluation_fixture",
+    )
+
+    assert missing["status"] == "missing"
+    assert missing["validation_reasons"] == [
+        "domain_policy_id_missing"
+    ]
+    assert invalid["status"] == "invalid"
+    assert invalid["validation_reasons"] == [
+        "domain_policy_id_invalid"
+    ]
+    assert repository.resolve_domain_policy_pack(missing)["status"] == (
+        "missing"
+    )
+    assert repository.resolve_domain_policy_pack(invalid)["status"] == (
+        "invalid"
+    )
+
+
+def test_trusted_domain_policy_selection_is_order_stable_and_domain_specific(
+    tmp_path,
+):
+    _write_pack(
+        tmp_path,
+        domain_id="first",
+        claim_type="material_composition",
+        risk_level="low",
+    )
+    _write_pack(
+        tmp_path,
+        domain_id="second",
+        claim_type="material_composition",
+        risk_level="medium",
+    )
+    repository = FilePolicyRepository(rules_dir=str(tmp_path))
+    first_selector = {
+        "tenant_metadata": {"domain_policy_id": "first"},
+        "store_metadata": {"domain_policy_id": "first"},
+        "catalog_metadata": {"domain_policy_id": "first"},
+    }
+    reversed_selector = dict(reversed(list(first_selector.items())))
+
+    first = repository.build_trusted_domain_policy_context(
+        first_selector,
+        selection_source="verified_server_mapping",
+    )
+    reordered = repository.build_trusted_domain_policy_context(
+        reversed_selector,
+        selection_source="verified_server_mapping",
+    )
+    second = repository.build_trusted_domain_policy_context(
+        {"catalog_metadata": {"domain_policy_id": "second"}},
+        selection_source="evaluation_fixture",
+    )
+
+    assert first == reordered
+    assert first["pack_ref"] == "domain-policy:first@1.0.0"
+    assert second["pack_ref"] == "domain-policy:second@1.0.0"
+    assert first["pack_content_sha256"] != second["pack_content_sha256"]
 
 
 def test_domain_pack_rejects_unknown_version_and_extra_product_or_reply_data(tmp_path):
@@ -874,6 +1036,214 @@ def test_internal_trusted_owner_context_can_select_domain_pack(
     assert eligibility["domain_policy"]["status"] == "loaded"
     assert eligibility["conversation_reference_status"]["status"] == "resolved"
     assert eligibility["fast_path_preconditions_complete"] is True
+
+
+def test_pipeline_selected_domain_context_reaches_claim_resolution_without_evidence_pollution(
+    tmp_path,
+    monkeypatch,
+):
+    policy = {
+        "policy_intent_ref": "material_practical_guidance",
+        "goal_family": "material_daily_use",
+        "intent_kind": "practical_guidance",
+        "premise_fact_families": ["material_composition"],
+        "required_context_capabilities": ["product_category"],
+        "allowed_scope": "ordinary_wiping_and_storage",
+        "maximum_risk_level": "medium",
+        "required_qualifiers": ["no_performance_guarantee"],
+        "prohibited_claim_families": ["child_safety"],
+        "review_only": True,
+    }
+    _write_pack(
+        tmp_path,
+        domain_id="test",
+        claim_type="material_composition",
+        risk_level="low",
+        bounded_inference_policies=[policy],
+    )
+    repository_factory = lambda: FilePolicyRepository(
+        rules_dir=str(tmp_path)
+    )
+    monkeypatch.setenv(
+        "COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED",
+        "true",
+    )
+    monkeypatch.setattr(
+        "app.repositories.file_policy_repository.FilePolicyRepository",
+        repository_factory,
+    )
+    monkeypatch.setattr(
+        "app.agent.nodes.evidence_builder.FilePolicyRepository",
+        repository_factory,
+    )
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="current question",
+            trusted_answer_eligibility_context={
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "evaluation_fixture",
+                "owner": "analysis_pipeline",
+                "provenance": {
+                    "boundary": "analysis_pipeline_internal",
+                },
+                "domain_policy_context": {
+                    "catalog_metadata": {
+                        "domain_policy_id": "test",
+                    },
+                },
+            },
+        )
+    )
+    owner_context = prepared.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]
+
+    before = _formal_evidence_convergence(
+        {
+            "customer_message": "current question",
+            "suggested_reply": "existing formal reply",
+            "can_send": False,
+            "requires_human_review": True,
+            "reply_blocks": [{
+                "type": "text",
+                "content": "existing formal reply",
+            }],
+            "turn_understanding": _understanding(
+                "material_composition",
+                risk_level="medium",
+            ),
+            "slots": {"sku_code": "SKU-A"},
+            "product_context_pack": {
+                "structured_profile": {
+                    "source": "kb_product",
+                    "category": {
+                        "l1": "storage_product",
+                    },
+                },
+            },
+            "copilot_context": {},
+        },
+        product_facts=[_fact()],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+    result = _formal_evidence_convergence(
+        {
+            "customer_message": "current question",
+            "suggested_reply": "existing formal reply",
+            "can_send": False,
+            "requires_human_review": True,
+            "reply_blocks": [{
+                "type": "text",
+                "content": "existing formal reply",
+            }],
+            "turn_understanding": _understanding(
+                "material_composition",
+                risk_level="medium",
+            ),
+            "slots": {"sku_code": "SKU-A"},
+            "product_context_pack": {
+                "structured_profile": {
+                    "source": "kb_product",
+                    "category": {
+                        "l1": "storage_product",
+                    },
+                },
+            },
+            "copilot_context": {
+                "_answer_eligibility_owner_context": owner_context,
+            },
+        },
+        product_facts=[_fact()],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+    admitted = result["admitted_answer_context"]
+    minimal = result["minimal_decision_context"]
+    resolution = admitted["claim_resolutions"][0]
+    before_resolution = before[
+        "admitted_answer_context"
+    ]["claim_resolutions"][0]
+
+    assert before_resolution["eligible_policy_options"] == []
+    assert before_resolution["bounded_inference_rejection_reason"] == (
+        "bounded_inference_policy_reference_missing"
+    )
+    assert owner_context["domain_policy_context"]["status"] == "selected"
+    assert admitted["trusted_domain_policy_context"] == (
+        owner_context["domain_policy_context"]
+    )
+    assert minimal["trusted_domain_policy_context"] == (
+        owner_context["domain_policy_context"]
+    )
+    expected_pack_hash = owner_context[
+        "domain_policy_context"
+    ]["pack_content_sha256"]
+    assert admitted["answer_eligibility_context"][
+        "domain_policy"
+    ]["pack_content_sha256"] == expected_pack_hash
+    assert [item["evidence_uid"] for item in result["selected_evidence"]] == [
+        "fact-1"
+    ]
+    assert before["selected_evidence"] == result["selected_evidence"]
+    for field in (
+        "suggested_reply",
+        "can_send",
+        "requires_human_review",
+        "reply_blocks",
+    ):
+        assert field not in result
+        assert field not in before
+    assert admitted["direct_policy_facts"] == []
+    assert len(resolution["eligible_policy_options"]) == 1
+    option = resolution["eligible_policy_options"][0]
+    assert option["policy_intent_ref"] == "material_practical_guidance"
+    assert option["pack_content_sha256"] == expected_pack_hash
+    assert option["premise_evidence_refs"] == ["fact-1"]
+    assert option["used_for_evidence"] is False
+    assert option["used_for_fact_support"] is False
+    assert option["can_change_can_send"] is False
+    assert resolution["support_basis"] == "direct_evidence"
+    assert result["supervisor_candidate_preview"]["can_send"] is False
+    assert result["supervisor_candidate_preview"][
+        "requires_human_review"
+    ] is True
+
+    stale = deepcopy(owner_context)
+    stale["domain_policy_context"]["pack_content_sha256"] = "0" * 64
+    invalid_result = _formal_evidence_convergence(
+        {
+            "customer_message": "current question",
+            "turn_understanding": _understanding(
+                "material_composition",
+                risk_level="medium",
+            ),
+            "slots": {"sku_code": "SKU-A"},
+            "product_context_pack": {
+                "structured_profile": {
+                    "source": "kb_product",
+                    "category": {
+                        "l1": "storage_product",
+                    },
+                },
+            },
+            "copilot_context": {
+                "_answer_eligibility_owner_context": stale,
+            },
+        },
+        product_facts=[_fact()],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+    invalid_resolution = invalid_result[
+        "admitted_answer_context"
+    ]["claim_resolutions"][0]
+    assert invalid_resolution["eligible_policy_options"] == []
+    assert [
+        item["evidence_uid"]
+        for item in invalid_result["selected_evidence"]
+    ] == ["fact-1"]
 
 
 def test_query_fact_type_compatibility_claim_is_degraded_and_not_a_customer_goal():

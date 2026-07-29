@@ -590,6 +590,9 @@ def _bounded_inference_policy_projection(
             continue
         projections.append({
             "policy_ref": f"{prefix}:intent:{policy_intent_ref}",
+            "pack_content_sha256": _structured_sha256(
+                domain_policy_pack.get("pack_content_sha256")
+            ),
             "policy_intent_ref": policy_intent_ref,
             "goal_family": sanitize_text(
                 item.get("goal_family")
@@ -624,6 +627,9 @@ def _bounded_inference_policy_projection(
                 if sanitize_text(value)
             )),
             "review_only": item.get("review_only") is True,
+            "used_for_evidence": False,
+            "used_for_fact_support": False,
+            "can_change_can_send": False,
         })
     return sorted(
         projections,
@@ -1324,6 +1330,10 @@ def _domain_policy_projection(pack: dict[str, Any]) -> dict[str, Any]:
     return {
         "domain_id": sanitize_text(pack.get("domain_id")),
         "version": sanitize_text(pack.get("version")),
+        "pack_ref": sanitize_text(pack.get("pack_ref")),
+        "pack_content_sha256": _structured_sha256(
+            pack.get("pack_content_sha256")
+        ),
         "status": status,
     }
 
@@ -1535,6 +1545,7 @@ def build_answer_eligibility_context(
     product_identity: dict[str, Any],
     has_actions: bool,
     has_media: bool,
+    trusted_domain_policy_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble owner verdicts without routing or changing formal behavior."""
     goal_status = goal_understanding_eligibility_status(understanding)
@@ -1587,6 +1598,9 @@ def build_answer_eligibility_context(
     return sanitize_obj({
         "schema_version": "answer-eligibility-context/v1",
         "domain_policy": _domain_policy_projection(domain_policy_pack),
+        "trusted_domain_policy_context": _as_dict(
+            trusted_domain_policy_context
+        ),
         "goal_understanding_status": goal_status,
         "conversation_reference_status": reference_status,
         "tool_requirement_status": tool_status,
@@ -1614,6 +1628,9 @@ class AdmittedAnswerContextService:
         identity = resolved_product_identity_for_response(response, product_identity)
         understanding = _as_dict(understanding)
         eligibility_inputs = _as_dict(answer_eligibility_inputs)
+        trusted_domain_policy_context = _as_dict(
+            eligibility_inputs.get("trusted_domain_policy_context")
+        )
         domain_policy_pack = _as_dict(
             eligibility_inputs.get("domain_policy_pack")
         )
@@ -1690,9 +1707,7 @@ class AdmittedAnswerContextService:
             direct_policy_facts=direct_policy,
             conflicts=conflicts,
             claim_policies=_as_dict(domain_policy_pack.get("claim_policies")),
-            bounded_inference_policies=_as_list(
-                domain_policy_pack.get("bounded_inference_policies")
-            ),
+            bounded_inference_policies=bounded_inference_policies,
             context_capabilities=product_context_capabilities,
             policy_ref_prefix=(
                 f"domain-policy:{sanitize_text(domain_policy_pack.get('domain_id'))}"
@@ -1717,6 +1732,7 @@ class AdmittedAnswerContextService:
             product_identity=identity,
             has_actions=bool(actions),
             has_media=bool(media),
+            trusted_domain_policy_context=trusted_domain_policy_context,
         )
         requested_by_goal = {
             sanitize_text(item.get("goal_ref")): item
@@ -1765,6 +1781,9 @@ class AdmittedAnswerContextService:
             "product_identity": identity,
             "product_context_capabilities": product_context_capabilities,
             "bounded_inference_policies": bounded_inference_policies,
+            "trusted_domain_policy_context": (
+                trusted_domain_policy_context
+            ),
             "answer_eligibility_context": answer_eligibility_context,
             "read_only": True,
             "used_for_final_reply": False,
@@ -1896,6 +1915,9 @@ def build_minimal_decision_context(
         "schema_version": "minimal-decision-context-v1",
         "answer_eligibility_context": _as_dict(
             admitted_context.get("answer_eligibility_context")
+        ),
+        "trusted_domain_policy_context": _as_dict(
+            admitted_context.get("trusted_domain_policy_context")
         ),
         "customer_goal": _clip(project_text_for_external_model(customer_message), 300),
         "requested_claims": _as_list(admitted_context.get("requested_claims")),

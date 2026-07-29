@@ -11,6 +11,10 @@ from app.services.model_first_answer_composer_service import (
     ModelFirstAnswerComposerService,
 )
 
+_DOMAIN_PACK_HASH = hashlib.sha256(
+    b"fixture-domain-policy-pack"
+).hexdigest()
+
 
 def _resolution(
     claim_uid: str,
@@ -1612,6 +1616,7 @@ def _bounded_inference_response() -> dict:
                         "trusted_domain_pack_ref": (
                             "domain-policy:fixture_domain@1.0.0"
                         ),
+                        "pack_content_sha256": _DOMAIN_PACK_HASH,
                         "applicable_goal_ref": "goal-durability",
                         "policy_intent_ref": (
                             "product_durability_practical_guidance"
@@ -1634,6 +1639,9 @@ def _bounded_inference_response() -> dict:
                             "no_absolute_guarantee"
                         ],
                         "review_only": True,
+                        "used_for_evidence": False,
+                        "used_for_fact_support": False,
+                        "can_change_can_send": False,
                         "option_provenance": {
                             "policy_owner": "domain_policy_pack",
                             "filter_owner": "claim_resolution",
@@ -1655,6 +1663,7 @@ def _bounded_inference_response() -> dict:
             ],
             "bounded_inference_policies": [{
                 "policy_ref": policy_ref,
+                "pack_content_sha256": _DOMAIN_PACK_HASH,
                 "policy_intent_ref": (
                     "product_durability_practical_guidance"
                 ),
@@ -1670,7 +1679,34 @@ def _bounded_inference_response() -> dict:
                     "warranty",
                 ],
                 "review_only": True,
+                "used_for_evidence": False,
+                "used_for_fact_support": False,
+                "can_change_can_send": False,
             }],
+            "trusted_domain_policy_context": {
+                "schema_version": "trusted-domain-policy-context/v1",
+                "status": "selected",
+                "trusted_owner": "analysis_pipeline",
+                "selection_source": "evaluation_fixture",
+                "pack_ref": "domain-policy:fixture_domain@1.0.0",
+                "pack_schema_version": "domain-policy-pack/v1",
+                "pack_content_sha256": _DOMAIN_PACK_HASH,
+                "domain_ref": "domain-fixture",
+                "binding_summary": {
+                    "tenant": False,
+                    "store": False,
+                    "catalog": True,
+                },
+                "provenance": {
+                    "boundary": "analysis_pipeline_internal",
+                    "selector_owner": "file_policy_repository",
+                },
+                "selected_at_stage": "canonical_input",
+                "validation_reasons": [],
+                "used_for_evidence": False,
+                "used_for_fact_support": False,
+                "can_change_can_send": False,
+            },
             "answer_eligibility_context": {
                 "goal_understanding_status": {"status": "valid"},
             },
@@ -1945,6 +1981,22 @@ def test_composer_requires_policy_selection_schema_fields():
             lambda response: response["minimal_decision_context"][
                 "bounded_inference_policies"
             ][0].update({"maximum_risk_level": "low"}),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "trusted_domain_policy_context"
+            ].update({"pack_content_sha256": "0" * 64}),
+            lambda payload: None,
+            "composer_inference_policy_schema_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0]["eligible_policy_options"][0].update({
+                "pack_content_sha256": "0" * 64,
+            }),
             lambda payload: None,
             "composer_bounded_inference_contract_invalid",
         ),

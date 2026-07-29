@@ -141,6 +141,29 @@ owner is the existing Answer Eligibility owner-context propagation into
 Evidence Builder; no new service or reasoning owner is warranted. Current
 status is `bounded_inference_shadow_not_qualified`, not a real-accuracy result.
 
+P1.2d reuses that ownership chain and fixes the propagation boundary.
+`AnalysisPipelineService` resolves one server-owned
+`trusted-domain-policy-context/v1` from deployment configuration, a verified
+server mapping, or an isolated evaluation fixture. The projection carries an
+anonymous binding summary, Pack reference and canonical content hash, and has
+no evidence, fact-support, reply, or send authority. `FilePolicyRepository`
+remains the sole loader and revalidates the reference and hash before Evidence
+Builder passes the control context separately from admitted facts. Claim
+Resolution, Composer, and Deterministic Final cross-check the same Pack
+identity. Missing, invalid, stale, or public-injected context yields no options
+while already admitted direct facts remain usable. The path remains
+default-off and not qualified until its gated live sequence passes.
+
+The first P1.2d live request was not retried. Its Snapshot shows successful
+context selection, Pack hash preservation and reload, nine policies in Minimal
+Decision Context, one preserved direct fact, and no evidence pollution. The
+gate still produced zero options because upstream Understanding marked both
+goals high-risk and nominated an absolute guarantee for the unmapped durability
+goal; Claim Resolution correctly failed closed. The next earliest owner is
+goal-level risk/policy nomination, not Domain Context propagation. The
+remaining live and Synthetic gates are pending, so this is not a qualification
+or accuracy result.
+
 ## Priority Selection Rules
 
 When choosing the next task, apply these rules in order:

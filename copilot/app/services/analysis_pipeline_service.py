@@ -207,38 +207,76 @@ class AnalysisPipelineService:
                     "type": "public_turn_understanding_removed",
                     "fields": removed,
                 })
-        trusted_eligibility_context = (
+        raw_trusted_context = request.trusted_answer_eligibility_context
+        raw_trusted_context = (
+            raw_trusted_context
+            if isinstance(raw_trusted_context, dict)
+            else {}
+        )
+        normalized_owner_context = (
             normalize_trusted_answer_eligibility_owner_context(
-                request.trusted_answer_eligibility_context
+                raw_trusted_context
             )
         )
-        if not trusted_eligibility_context:
+        invalid_owner_reason = ""
+        if raw_trusted_context and not normalized_owner_context:
+            invalid_owner_reason = (
+                "answer_eligibility_owner_context_invalid"
+            )
+            owner_source = "server_configuration"
+            domain_selector: dict[str, Any] = {}
+        elif normalized_owner_context:
+            owner_source = str(
+                normalized_owner_context.get("source") or ""
+            )
+            domain_selector = dict(
+                normalized_owner_context.get("domain_policy_context")
+                or {}
+            )
+        else:
+            owner_source = "server_configuration"
             configured_domain_policy_id = str(
                 os.getenv("COPILOT_DOMAIN_POLICY_ID", "")
             ).strip()
-            if re.fullmatch(
-                r"[a-z0-9][a-z0-9_-]{0,63}",
-                configured_domain_policy_id,
-            ):
-                trusted_eligibility_context = (
-                    normalize_trusted_answer_eligibility_owner_context({
-                        "schema_version": "answer-eligibility-owner-context/v1",
-                        "source": "server_configuration",
-                        "owner": "analysis_pipeline",
-                        "provenance": {
-                            "boundary": "analysis_pipeline_internal",
-                        },
-                        "domain_policy_context": {
-                            "catalog_metadata": {
-                                "domain_policy_id": configured_domain_policy_id,
-                            },
-                        },
-                    })
-                )
-        if trusted_eligibility_context:
-            context["_answer_eligibility_owner_context"] = (
-                trusted_eligibility_context
+            domain_selector = (
+                {
+                    "catalog_metadata": {
+                        "domain_policy_id": configured_domain_policy_id,
+                    },
+                }
+                if configured_domain_policy_id
+                else {}
             )
+        from app.repositories.file_policy_repository import (
+            FilePolicyRepository,
+        )
+
+        trusted_domain_policy_context = (
+            FilePolicyRepository().build_trusted_domain_policy_context(
+                domain_selector,
+                selection_source=owner_source,
+                invalid_reason=invalid_owner_reason,
+            )
+        )
+        trusted_eligibility_context = {
+            "schema_version": "answer-eligibility-owner-context/v1",
+            "source": owner_source,
+            "owner": "analysis_pipeline",
+            "provenance": {
+                "boundary": "analysis_pipeline_internal",
+            },
+            "domain_policy_context": trusted_domain_policy_context,
+        }
+        reference_status = normalized_owner_context.get(
+            "conversation_reference_status"
+        )
+        if isinstance(reference_status, dict):
+            trusted_eligibility_context[
+                "conversation_reference_status"
+            ] = dict(reference_status)
+        context["_answer_eligibility_owner_context"] = (
+            trusted_eligibility_context
+        )
         strict_context = is_strict_evaluation_source(request.source, context)
         upstream_diagnostics = context.get("conversation_context_contract")
         upstream_diagnostics = dict(upstream_diagnostics) if isinstance(upstream_diagnostics, dict) else {}

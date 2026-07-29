@@ -625,6 +625,17 @@ def _formal_evidence_convergence(
     owner_context = normalize_trusted_answer_eligibility_owner_context(
         copilot_context.get("_answer_eligibility_owner_context")
     )
+    trusted_domain_policy_context = owner_context.get(
+        "domain_policy_context"
+    )
+    trusted_domain_policy_context = (
+        trusted_domain_policy_context
+        if isinstance(trusted_domain_policy_context, dict)
+        else {}
+    )
+    domain_policy_pack = FilePolicyRepository().resolve_domain_policy_pack(
+        trusted_domain_policy_context
+    )
     admitted = AdmittedAnswerContextService().build_for_response(
         response,
         product_identity=identity,
@@ -634,8 +645,9 @@ def _formal_evidence_convergence(
             or ""
         ),
         answer_eligibility_inputs={
-            "domain_policy_pack": FilePolicyRepository().resolve_domain_policy_pack(
-                owner_context.get("domain_policy_context")
+            "domain_policy_pack": domain_policy_pack,
+            "trusted_domain_policy_context": (
+                trusted_domain_policy_context
             ),
             "conversation_reference_status": canonical_conversation_reference_status(
                 owner_context

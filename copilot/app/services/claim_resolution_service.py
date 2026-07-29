@@ -41,6 +41,16 @@ _BOUNDED_INFERENCE_RISK_RANK = {
 }
 
 
+def _structured_sha256(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    return (
+        candidate
+        if len(candidate) == 64
+        and all(character in "0123456789abcdef" for character in candidate)
+        else ""
+    )
+
+
 def expand_claim_dependencies(requested_claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Add declared supporting claims without weakening their parent claims.
 
@@ -368,6 +378,9 @@ def _eligible_policy_options(
                 f"{policy_ref_prefix}:intent:{option_intent_ref}"
             ),
             "trusted_domain_pack_ref": policy_ref_prefix,
+            "pack_content_sha256": _structured_sha256(
+                policy.get("pack_content_sha256")
+            ),
             "applicable_goal_ref": (
                 sanitize_text(requested.get("goal_ref"))
                 or _claim_uid(requested)
@@ -393,6 +406,9 @@ def _eligible_policy_options(
                 "required_qualifiers",
             ),
             "review_only": True,
+            "used_for_evidence": False,
+            "used_for_fact_support": False,
+            "can_change_can_send": False,
             "option_provenance": {
                 "policy_owner": "domain_policy_pack",
                 "filter_owner": "claim_resolution",

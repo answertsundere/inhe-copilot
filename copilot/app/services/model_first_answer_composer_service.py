@@ -67,6 +67,16 @@ _PROCESS_LANGUAGE_TERMS = (
 )
 
 
+def _structured_sha256(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    return (
+        candidate
+        if len(candidate) == 64
+        and all(character in "0123456789abcdef" for character in candidate)
+        else ""
+    )
+
+
 class ModelFirstAnswerComposerService:
     """Compose one candidate reply without owning facts, safety, or delivery."""
 
@@ -915,6 +925,9 @@ class ModelFirstAnswerComposerService:
             trusted_domain_pack_ref = str(
                 item.get("trusted_domain_pack_ref") or ""
             ).strip()
+            pack_content_sha256 = _structured_sha256(
+                item.get("pack_content_sha256")
+            )
             provenance = item.get("option_provenance")
             if not isinstance(provenance, dict):
                 provenance = {}
@@ -941,6 +954,12 @@ class ModelFirstAnswerComposerService:
                 or item.get("review_only") is not True
                 or trusted_domain_pack_ref
                 != policy["trusted_domain_pack_ref"]
+                or not pack_content_sha256
+                or pack_content_sha256
+                != policy["pack_content_sha256"]
+                or item.get("used_for_evidence") is not False
+                or item.get("used_for_fact_support") is not False
+                or item.get("can_change_can_send") is not False
                 or provenance.get("policy_owner")
                 != "domain_policy_pack"
                 or provenance.get("filter_owner")
@@ -951,6 +970,7 @@ class ModelFirstAnswerComposerService:
                 return [], "composer_bounded_inference_contract_invalid"
             projected.append({
                 "policy_ref": policy_ref,
+                "pack_content_sha256": pack_content_sha256,
                 "goal_family": policy["goal_family"],
                 "intent_kind": policy["intent_kind"],
                 "premise_evidence_refs": premise_refs,
@@ -961,6 +981,9 @@ class ModelFirstAnswerComposerService:
                 "required_qualifiers": required_qualifiers,
                 "prohibited_claim_families": prohibited,
                 "review_only": True,
+                "used_for_evidence": False,
+                "used_for_fact_support": False,
+                "can_change_can_send": False,
                 "option_provenance": {
                     "trusted_domain_pack": True,
                     "admitted_premises": True,
@@ -1033,9 +1056,45 @@ class ModelFirstAnswerComposerService:
         dict[str, dict[str, Any]],
         str,
     ]:
+        raw_policies = minimal_context.get("bounded_inference_policies") or []
+        if not isinstance(raw_policies, list):
+            return [], {}, "composer_inference_policy_schema_invalid"
+        trusted_context = minimal_context.get(
+            "trusted_domain_policy_context"
+        )
+        trusted_context = (
+            trusted_context
+            if isinstance(trusted_context, dict)
+            else {}
+        )
+        trusted_pack_ref = str(
+            trusted_context.get("pack_ref") or ""
+        ).strip()
+        trusted_pack_hash = _structured_sha256(
+            trusted_context.get("pack_content_sha256")
+        )
+        if raw_policies and (
+            trusted_context.get("schema_version")
+            != "trusted-domain-policy-context/v1"
+            or trusted_context.get("status") != "selected"
+            or trusted_context.get("trusted_owner") != "analysis_pipeline"
+            or trusted_context.get("provenance")
+            != {
+                "boundary": "analysis_pipeline_internal",
+                "selector_owner": "file_policy_repository",
+            }
+            or trusted_context.get("selected_at_stage")
+            != "canonical_input"
+            or trusted_context.get("used_for_evidence") is not False
+            or trusted_context.get("used_for_fact_support") is not False
+            or trusted_context.get("can_change_can_send") is not False
+            or not trusted_pack_ref
+            or not trusted_pack_hash
+        ):
+            return [], {}, "composer_domain_policy_context_invalid"
         projected: list[dict[str, Any]] = []
         by_ref: dict[str, dict[str, Any]] = {}
-        for item in minimal_context.get("bounded_inference_policies") or []:
+        for item in raw_policies:
             if not isinstance(item, dict):
                 return [], {}, "composer_inference_policy_schema_invalid"
             policy_ref = str(item.get("policy_ref") or "").strip()
@@ -1068,6 +1127,9 @@ class ModelFirstAnswerComposerService:
                 if ":intent:" in policy_ref
                 else ""
             )
+            pack_content_sha256 = _structured_sha256(
+                item.get("pack_content_sha256")
+            )
             if (
                 not policy_ref
                 or policy_ref in by_ref
@@ -1078,9 +1140,15 @@ class ModelFirstAnswerComposerService:
                 or maximum_risk_level not in _INFERENCE_RISK_RANK
                 or not premise_fact_families
                 or not trusted_domain_pack_ref
+                or trusted_domain_pack_ref != trusted_pack_ref
+                or not pack_content_sha256
+                or pack_content_sha256 != trusted_pack_hash
                 or not required_qualifiers
                 or not prohibited_claim_families
                 or item.get("review_only") is not True
+                or item.get("used_for_evidence") is not False
+                or item.get("used_for_fact_support") is not False
+                or item.get("can_change_can_send") is not False
             ):
                 return [], {}, "composer_inference_policy_schema_invalid"
             projection = {
@@ -1089,12 +1157,16 @@ class ModelFirstAnswerComposerService:
                 "goal_family": goal_family,
                 "intent_kind": intent_kind,
                 "trusted_domain_pack_ref": trusted_domain_pack_ref,
+                "pack_content_sha256": pack_content_sha256,
                 "premise_fact_families": premise_fact_families,
                 "allowed_scope": allowed_scope,
                 "maximum_risk_level": maximum_risk_level,
                 "required_qualifiers": required_qualifiers,
                 "prohibited_claim_families": prohibited_claim_families,
                 "review_only": True,
+                "used_for_evidence": False,
+                "used_for_fact_support": False,
+                "can_change_can_send": False,
             }
             by_ref[policy_ref] = projection
             projected.append(projection)

@@ -144,7 +144,12 @@ def normalize_trusted_answer_eligibility_owner_context(
     provenance = provenance if isinstance(provenance, dict) else {}
     if (
         raw.get("schema_version") != "answer-eligibility-owner-context/v1"
-        or raw.get("source") not in {"server_configuration", "evaluation_fixture"}
+        or raw.get("source")
+        not in {
+            "server_configuration",
+            "verified_server_mapping",
+            "evaluation_fixture",
+        }
         or raw.get("owner") != "analysis_pipeline"
         or provenance != {"boundary": "analysis_pipeline_internal"}
     ):
@@ -157,18 +162,145 @@ def normalize_trusted_answer_eligibility_owner_context(
         "provenance": {"boundary": "analysis_pipeline_internal"},
     }
     domain_context = raw.get("domain_policy_context")
-    if isinstance(domain_context, dict):
-        allowed_domain_keys = {
-            "tenant_metadata",
-            "store_metadata",
-            "catalog_metadata",
-        }
-        if set(domain_context) <= allowed_domain_keys:
-            result["domain_policy_context"] = {
-                key: dict(item)
-                for key, item in domain_context.items()
-                if isinstance(item, dict)
+    if "domain_policy_context" in raw:
+        if not isinstance(domain_context, dict):
+            return {}
+        if domain_context.get("schema_version") == (
+            "trusted-domain-policy-context/v1"
+        ):
+            required_domain_keys = {
+                "schema_version",
+                "status",
+                "trusted_owner",
+                "selection_source",
+                "pack_ref",
+                "pack_schema_version",
+                "pack_content_sha256",
+                "domain_ref",
+                "binding_summary",
+                "provenance",
+                "selected_at_stage",
+                "validation_reasons",
+                "used_for_evidence",
+                "used_for_fact_support",
+                "can_change_can_send",
             }
+            binding_summary = domain_context.get("binding_summary")
+            validation_reasons = domain_context.get("validation_reasons")
+            if (
+                set(domain_context) != required_domain_keys
+                or domain_context.get("status")
+                not in {"selected", "missing", "invalid"}
+                or domain_context.get("trusted_owner") != "analysis_pipeline"
+                or domain_context.get("selection_source")
+                not in {
+                    "server_configuration",
+                    "verified_server_mapping",
+                    "evaluation_fixture",
+                }
+                or domain_context.get("selection_source") != raw.get("source")
+                or not isinstance(binding_summary, dict)
+                or set(binding_summary) != {"tenant", "store", "catalog"}
+                or any(
+                    not isinstance(item, bool)
+                    for item in binding_summary.values()
+                )
+                or domain_context.get("provenance")
+                != {
+                    "boundary": "analysis_pipeline_internal",
+                    "selector_owner": "file_policy_repository",
+                }
+                or domain_context.get("selected_at_stage")
+                != "canonical_input"
+                or not isinstance(validation_reasons, list)
+                or validation_reasons != sorted(set(validation_reasons))
+                or any(
+                    not isinstance(reason, str) or not reason
+                    for reason in validation_reasons
+                )
+                or domain_context.get("used_for_evidence") is not False
+                or domain_context.get("used_for_fact_support") is not False
+                or domain_context.get("can_change_can_send") is not False
+                or (
+                    bool(domain_context.get("domain_ref"))
+                    and not re.fullmatch(
+                        r"domain-[0-9a-f]{20}",
+                        str(domain_context.get("domain_ref") or ""),
+                    )
+                )
+            ):
+                return {}
+            if domain_context.get("status") == "selected":
+                if (
+                    not re.fullmatch(
+                        r"domain-policy:[a-z0-9][a-z0-9_-]{0,63}"
+                        r"@\d+\.\d+\.\d+",
+                        str(domain_context.get("pack_ref") or ""),
+                    )
+                    or domain_context.get("pack_schema_version")
+                    != "domain-policy-pack/v1"
+                    or not re.fullmatch(
+                        r"[0-9a-f]{64}",
+                        str(
+                            domain_context.get(
+                                "pack_content_sha256"
+                            )
+                            or ""
+                        ),
+                    )
+                    or not re.fullmatch(
+                        r"domain-[0-9a-f]{20}",
+                        str(domain_context.get("domain_ref") or ""),
+                    )
+                    or validation_reasons
+                    or not any(binding_summary.values())
+                ):
+                    return {}
+            elif any(
+                domain_context.get(key)
+                for key in (
+                    "pack_ref",
+                    "pack_schema_version",
+                    "pack_content_sha256",
+                )
+            ):
+                return {}
+            result["domain_policy_context"] = {
+                key: (
+                    dict(item)
+                    if isinstance(item, dict)
+                    else list(item)
+                    if isinstance(item, list)
+                    else item
+                )
+                for key, item in domain_context.items()
+            }
+        else:
+            if not domain_context:
+                result["domain_policy_context"] = {}
+                domain_context = None
+            if domain_context is None:
+                pass
+            else:
+                allowed_domain_keys = {
+                    "tenant_metadata",
+                    "store_metadata",
+                    "catalog_metadata",
+                }
+                if not set(domain_context) <= allowed_domain_keys:
+                    return {}
+                normalized_selector: dict[str, dict[str, str]] = {}
+                for key, item in domain_context.items():
+                    if (
+                        not isinstance(item, dict)
+                        or set(item) != {"domain_policy_id"}
+                        or not isinstance(item.get("domain_policy_id"), str)
+                    ):
+                        return {}
+                    normalized_selector[key] = {
+                        "domain_policy_id": item["domain_policy_id"]
+                    }
+                result["domain_policy_context"] = normalized_selector
     reference_status = raw.get("conversation_reference_status")
     if isinstance(reference_status, dict):
         allowed_reference_keys = {

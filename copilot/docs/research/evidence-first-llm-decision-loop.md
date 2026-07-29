@@ -676,6 +676,45 @@ knowledge content and DML remained unchanged. The status is
 `bounded_inference_shadow_not_qualified`; this run cannot establish
 naturalness, business helpfulness, or `real_customer_accuracy`.
 
+### P1.2d trusted Domain Policy context propagation
+
+The earliest P1.2c break was `AnalysisPipelineService._prepare_request`: the
+server-owned selector was absent from the isolated 5013 configuration, and
+public request context was deliberately not authoritative. P1.2d makes that
+boundary explicit. The Pipeline resolves one
+`trusted-domain-policy-context/v1` with `selected`, `missing`, or `invalid`
+status. It carries an anonymous tenant/store/catalog binding summary, Pack
+reference, schema and canonical content hash, provenance, and false
+evidence/fact/send authority. `FilePolicyRepository` remains the only Pack
+loader and rejects unknown, conflicting, traversing, stale, schema-mutated, or
+hash-mutated selectors.
+
+Evidence Builder passes this control context separately from selected and
+admitted evidence. Claim Resolution may generate `eligible_policy_options`
+only when the context is selected, the Pack revalidates, an authoritative
+customer goal exists, admitted premises align, risk is within policy, and no
+conflict or non-factual goal boundary applies. Composer and Deterministic Final
+cross-check the same Pack reference/hash and preserve the non-evidence markers.
+Missing or invalid context leaves direct supported facts intact but produces
+no options. Public Pack/tenant/store/catalog injection cannot acquire owner
+authority. The path remains default-off, review-only, non-sendable, and not
+qualified pending the one/four/sixteen live gates. `real_customer_accuracy`
+remains `null`.
+
+The first P1.2d live gate was consumed once and stopped before the remaining
+cases. Its persisted Snapshot confirms that propagation succeeded:
+`trusted_domain_policy_context.status=selected`, the exact Pack hash survived,
+the repository reloaded the Pack, nine bounded policies reached Minimal
+Decision Context, one direct fact stayed selected, and policy data did not
+enter evidence. Options were still zero because Turn Understanding marked both
+requested goals `high` risk and nominated an `absolute_guarantee` for the
+unmapped durability goal; Claim Resolution correctly returned
+`bounded_inference_high_risk_prohibited`. The failed item was not retried.
+P1.2d therefore proves the control-context boundary but remains
+`bounded_inference_shadow_not_qualified`; the next earliest owner is upstream
+goal-level risk/policy nomination, outside this phase, and the
+four/sixteen/Synthetic gates remain unrun.
+
 ### Phase 0.8G fixed real-turn replay
 
 Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely

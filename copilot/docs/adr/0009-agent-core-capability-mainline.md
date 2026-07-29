@@ -215,6 +215,20 @@ review-only contract checkpoint with status
 Domain Pack owner-context propagation into Evidence Builder, not a new
 reasoning component or policy-intent generator.
 
+P1.2d resolves that owner boundary without changing the mainline. The Analysis
+Pipeline creates one `trusted-domain-policy-context/v1` from a trusted
+deployment selector, verified server mapping, or explicit isolated evaluation
+fixture. The projection stores only anonymous binding presence, Pack reference,
+schema, canonical content hash, and owner provenance, with evidence,
+fact-support, and send authority fixed false. Public request context cannot
+select or override it. `FilePolicyRepository` remains the sole loader and
+revalidates the Pack reference and hash before Claim Resolution receives the
+control input beside admitted facts. Composer and Deterministic Final validate
+the same Pack identity. Missing, invalid, stale, or mismatched control context
+produces no eligible options and cannot alter direct-evidence support. No Graph
+node, service, model call, reply owner, safety gate, registry, or production
+flag is added.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 
