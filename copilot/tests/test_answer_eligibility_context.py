@@ -265,6 +265,7 @@ def test_domain_pack_loads_generic_bounded_inference_policies_across_domains(
         "premise_fact_families": ["material_composition"],
         "required_context_capabilities": ["product_category"],
         "allowed_scope": "ordinary_minor_accidental_impact",
+        "maximum_risk_level": "medium",
         "required_qualifiers": ["no_absolute_guarantee"],
         "prohibited_claim_families": [
             "certification_report",
@@ -313,6 +314,8 @@ def test_domain_pack_loads_generic_bounded_inference_policies_across_domains(
         {"review_only": False},
         {"goal_family": ""},
         {"intent_kind": "unknown_intent"},
+        {"maximum_risk_level": ""},
+        {"maximum_risk_level": "high"},
         {"premise_fact_families": ["material_composition", "material_composition"]},
         {"unexpected_field": "reply text"},
     ],
@@ -328,6 +331,7 @@ def test_domain_pack_rejects_invalid_bounded_inference_policy_schema(
         "premise_fact_families": ["material_composition"],
         "required_context_capabilities": ["product_category"],
         "allowed_scope": "ordinary_minor_accidental_impact",
+        "maximum_risk_level": "medium",
         "required_qualifiers": ["no_absolute_guarantee"],
         "prohibited_claim_families": ["certification_report"],
         "review_only": True,
@@ -346,6 +350,31 @@ def test_domain_pack_rejects_invalid_bounded_inference_policy_schema(
     )
 
     assert result["status"] == "invalid"
+
+
+def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
+    result = FilePolicyRepository().resolve_domain_policy_pack(
+        {"catalog_metadata": {"domain_policy_id": "maternal_child_home"}}
+    )
+
+    assert result["status"] == "loaded"
+    policies = result["bounded_inference_policies"]
+    policy_refs = {
+        item["policy_intent_ref"]
+        for item in policies
+    }
+    assert {
+        "product_dimensions_practical_guidance",
+        "product_weight_practical_guidance",
+        "variant_specification_practical_comparison",
+        "material_daily_use_practical_guidance",
+        "detachable_storage_practical_guidance",
+    } <= policy_refs
+    assert all(item["review_only"] is True for item in policies)
+    assert all(
+        item["maximum_risk_level"] in {"low", "medium"}
+        for item in policies
+    )
 
 
 def test_all_registered_tools_declare_freshness_class():

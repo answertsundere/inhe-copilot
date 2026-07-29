@@ -881,6 +881,15 @@ def _model_first_audit_context(
             "scope_qualifier": str(
                 item.get("scope_qualifier") or ""
             ).strip(),
+            "inference_risk_level": str(
+                item.get("inference_risk_level") or ""
+            ).strip(),
+            "maximum_risk_level": str(
+                item.get("maximum_risk_level") or ""
+            ).strip(),
+            "inference_review_only": (
+                item.get("inference_review_only") is True
+            ),
             "required_qualifiers": sorted({
                 str(value).strip()
                 for value in item.get("required_qualifiers") or []
@@ -941,6 +950,15 @@ def _model_first_audit_context(
             "scope_qualifier": str(
                 claim.get("scope_qualifier") or ""
             ).strip(),
+            "inference_risk_level": str(
+                claim.get("inference_risk_level") or ""
+            ).strip(),
+            "maximum_risk_level": str(
+                claim.get("maximum_risk_level") or ""
+            ).strip(),
+            "inference_review_only": (
+                claim.get("inference_review_only") is True
+            ),
             "required_qualifiers": sorted({
                 str(value).strip()
                 for value in claim.get("required_qualifiers") or []
@@ -1061,12 +1079,15 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
         if str(item.get("evidence_uid") or "")
     }
     minimal = _model_first_minimal_context(response)
-    trusted_policy_refs = {
-        str(item.get("policy_ref") or "").strip()
+    trusted_policies = {
+        str(item.get("policy_ref") or "").strip(): item
         for item in minimal.get("bounded_inference_policies") or []
-        if isinstance(item, dict)
-        and str(item.get("policy_ref") or "").strip()
+        if (
+            isinstance(item, dict)
+            and str(item.get("policy_ref") or "").strip()
+        )
     }
+    trusted_policy_refs = set(trusted_policies)
     resolution_rows = _model_first_claim_resolutions(response)
     covered_goal_refs = {
         str(value).strip()
@@ -1192,18 +1213,47 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                     for value in clause.get("prohibited_extensions") or []
                     if str(value)
                 })
+                inference_risk_level = str(
+                    claim.get("inference_risk_level") or ""
+                )
+                maximum_risk_level = str(
+                    claim.get("maximum_risk_level") or ""
+                )
+                trusted_policy = (
+                    trusted_policies.get(claim_policy_refs[0], {})
+                    if len(claim_policy_refs) == 1
+                    else {}
+                )
                 if (
                     clause.get("clause_kind") != "allowed_inference"
                     or not premise_evidence
                     or actual_evidence != premise_evidence
                     or expected_evidence != premise_evidence
                     or not claim_policy_refs
+                    or len(claim_policy_refs) != 1
                     or not trusted_policy_refs
                     or not set(claim_policy_refs).issubset(trusted_policy_refs)
+                    or maximum_risk_level
+                    != str(
+                        trusted_policy.get("maximum_risk_level")
+                        or ""
+                    )
                     or clause_policy_refs != claim_policy_refs
                     or not str(claim.get("scope_qualifier") or "")
                     or str(clause.get("scope_qualifier") or "")
                     != str(claim.get("scope_qualifier") or "")
+                    or inference_risk_level not in {"low", "medium"}
+                    or maximum_risk_level not in {"low", "medium"}
+                    or (
+                        inference_risk_level == "medium"
+                        and maximum_risk_level == "low"
+                    )
+                    or claim.get("inference_review_only") is not True
+                    or clause.get("inference_risk_level")
+                    != inference_risk_level
+                    or clause.get("maximum_risk_level")
+                    != maximum_risk_level
+                    or clause.get("inference_review_only") is not True
                     or not claim_qualifiers
                     or clause_qualifiers != claim_qualifiers
                     or not claim_prohibited

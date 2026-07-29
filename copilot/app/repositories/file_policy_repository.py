@@ -299,6 +299,7 @@ class FilePolicyRepository(PolicyRepositoryBase):
             "premise_fact_families",
             "required_context_capabilities",
             "allowed_scope",
+            "maximum_risk_level",
             "required_qualifiers",
             "prohibited_claim_families",
             "review_only",
@@ -349,6 +350,8 @@ class FilePolicyRepository(PolicyRepositoryBase):
                 str(policy.get("allowed_scope") or "")
             ):
                 return "domain_policy_bounded_inference_scope_invalid"
+            if policy.get("maximum_risk_level") not in {"low", "medium"}:
+                return "domain_policy_bounded_inference_risk_invalid"
             if policy.get("review_only") is not True:
                 return "domain_policy_bounded_inference_review_only_required"
         return ""

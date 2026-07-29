@@ -39,6 +39,7 @@ _ALLOWED_CLAUSE_KINDS = {
     "empathy_or_transition",
 }
 _UNRESOLVED_STATUSES = {"unresolved", "conflicting", "prohibited"}
+_INFERENCE_RISK_RANK = {"low": 0, "medium": 1}
 _NON_RENDERABLE_GOAL_KINDS = {
     "evidence_dependency",
     "service_action",
@@ -311,6 +312,24 @@ class ModelFirstAnswerComposerService:
                             "scope_qualifier"
                         )
                         or ""
+                    ),
+                    "inference_risk_level": str(
+                        goals_by_ref[str(clause["goal_ref"])].get(
+                            "inference_risk_level"
+                        )
+                        or ""
+                    ),
+                    "maximum_risk_level": str(
+                        goals_by_ref[str(clause["goal_ref"])].get(
+                            "maximum_risk_level"
+                        )
+                        or ""
+                    ),
+                    "inference_review_only": (
+                        goals_by_ref[str(clause["goal_ref"])].get(
+                            "inference_review_only"
+                        )
+                        is True
                     ),
                     "required_qualifiers": list(
                         goals_by_ref[str(clause["goal_ref"])].get(
@@ -630,14 +649,25 @@ class ModelFirstAnswerComposerService:
                 resolution.get("claim_type_status") or ""
             ).strip()
             status = str(resolution.get("status") or "").strip()
+            support_basis = str(
+                resolution.get("support_basis") or ""
+            ).strip()
             unmapped_customer_goal = (
                 not claim_type
                 and claim_type_status == "unmapped"
                 and str(resolution.get("goal_kind") or "").strip()
                 == "customer_goal"
-                and status == "unresolved"
-                and not resolution.get("evidence_uids")
-                and not resolution.get("inference_policy_refs")
+                and (
+                    (
+                        status == "unresolved"
+                        and not resolution.get("evidence_uids")
+                        and not resolution.get("inference_policy_refs")
+                    )
+                    or (
+                        status == "supported"
+                        and support_basis == "bounded_inference"
+                    )
+                )
             )
             if (
                 not claim_uid
@@ -665,11 +695,11 @@ class ModelFirstAnswerComposerService:
                     {},
                     "composer_supported_goal_evidence_missing",
                 )
-            support_basis = str(
-                resolution.get("support_basis") or ""
-            ).strip()
             required_policy_refs: list[str] = []
             scope_qualifier = ""
+            inference_risk_level = ""
+            maximum_risk_level = ""
+            inference_review_only = False
             required_qualifiers: list[str] = []
             prohibited_extensions: list[str] = []
             required_clause_kind = (
@@ -729,6 +759,15 @@ class ModelFirstAnswerComposerService:
                 scope_qualifier = str(
                     resolution.get("scope_qualifier") or ""
                 ).strip()
+                inference_risk_level = str(
+                    resolution.get("inference_risk_level") or ""
+                ).strip()
+                maximum_risk_level = str(
+                    resolution.get("maximum_risk_level") or ""
+                ).strip()
+                inference_review_only = (
+                    resolution.get("inference_review_only") is True
+                )
                 required_qualifiers = sorted({
                     str(item).strip()
                     for item in resolution.get("required_qualifiers") or []
@@ -744,6 +783,12 @@ class ModelFirstAnswerComposerService:
                     or selected_policy.get("review_only") is not True
                     or not scope_qualifier
                     or scope_qualifier != selected_policy["allowed_scope"]
+                    or inference_risk_level not in _INFERENCE_RISK_RANK
+                    or maximum_risk_level
+                    != selected_policy["maximum_risk_level"]
+                    or _INFERENCE_RISK_RANK[inference_risk_level]
+                    > _INFERENCE_RISK_RANK[maximum_risk_level]
+                    or not inference_review_only
                     or required_qualifiers
                     != selected_policy["required_qualifiers"]
                     or prohibited_extensions
@@ -774,6 +819,9 @@ class ModelFirstAnswerComposerService:
                 "required_evidence_refs": evidence_refs,
                 "required_inference_policy_refs": required_policy_refs,
                 "scope_qualifier": scope_qualifier,
+                "inference_risk_level": inference_risk_level,
+                "maximum_risk_level": maximum_risk_level,
+                "inference_review_only": inference_review_only,
                 "required_qualifiers": required_qualifiers,
                 "prohibited_extensions": prohibited_extensions,
             })
@@ -949,6 +997,9 @@ class ModelFirstAnswerComposerService:
             goal_family = str(item.get("goal_family") or "").strip()
             intent_kind = str(item.get("intent_kind") or "").strip()
             allowed_scope = str(item.get("allowed_scope") or "").strip()
+            maximum_risk_level = str(
+                item.get("maximum_risk_level") or ""
+            ).strip()
             required_qualifiers = sorted({
                 str(value).strip()
                 for value in item.get("required_qualifiers") or []
@@ -966,6 +1017,7 @@ class ModelFirstAnswerComposerService:
                 or not goal_family
                 or not intent_kind
                 or not allowed_scope
+                or maximum_risk_level not in _INFERENCE_RISK_RANK
                 or not required_qualifiers
                 or not prohibited_claim_families
                 or item.get("review_only") is not True
@@ -977,6 +1029,7 @@ class ModelFirstAnswerComposerService:
                 "goal_family": goal_family,
                 "intent_kind": intent_kind,
                 "allowed_scope": allowed_scope,
+                "maximum_risk_level": maximum_risk_level,
                 "required_qualifiers": required_qualifiers,
                 "prohibited_claim_families": prohibited_claim_families,
                 "review_only": True,

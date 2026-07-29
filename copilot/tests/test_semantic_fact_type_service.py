@@ -371,10 +371,15 @@ def test_policy_candidates_come_only_from_internal_owner_context():
     assert {
         item["policy_intent_ref"] for item in trusted
     } == {
+        "detachable_storage_practical_guidance",
+        "material_daily_use_practical_guidance",
+        "product_dimensions_practical_guidance",
         "product_durability_absolute_guarantee",
         "product_durability_practical_guidance",
         "product_durability_test_standard",
         "product_durability_warranty_liability",
+        "product_weight_practical_guidance",
+        "variant_specification_practical_comparison",
     }
 
 

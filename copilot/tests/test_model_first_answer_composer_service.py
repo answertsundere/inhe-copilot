@@ -23,10 +23,14 @@ def _resolution(
     premise_evidence_uids: list[str] | None = None,
     inference_policy_refs: list[str] | None = None,
     scope_qualifier: str = "",
+    inference_risk_level: str = "",
+    maximum_risk_level: str = "",
+    inference_review_only: bool = False,
     required_qualifiers: list[str] | None = None,
     prohibited_extensions: list[str] | None = None,
     goal_ref: str = "",
     goal_kind: str = "customer_goal",
+    claim_type_status: str = "mapped",
     supporting_only: bool = False,
     supporting_for_goal_ref: str = "",
 ) -> dict:
@@ -36,6 +40,7 @@ def _resolution(
         "goal_ref": resolved_goal_ref,
         "goal_kind": goal_kind,
         "claim_type": claim_type,
+        "claim_type_status": claim_type_status,
         "attribute_key": attribute_key,
         "status": status,
         "evidence_uids": list(evidence_uids or []),
@@ -43,6 +48,9 @@ def _resolution(
         "premise_evidence_uids": list(premise_evidence_uids or []),
         "inference_policy_refs": list(inference_policy_refs or []),
         "scope_qualifier": scope_qualifier,
+        "inference_risk_level": inference_risk_level,
+        "maximum_risk_level": maximum_risk_level,
+        "inference_review_only": inference_review_only,
         "required_qualifiers": list(required_qualifiers or []),
         "prohibited_extensions": list(prohibited_extensions or []),
         "supporting_only": supporting_only,
@@ -1550,8 +1558,9 @@ def _bounded_inference_response() -> dict:
                 ),
                 _goal(
                     "goal-durability",
-                    "unmapped_customer_goal",
+                    "",
                     attribute_key="drop_durability",
+                    claim_type_status="unmapped",
                 ),
             ],
             "admitted_evidence": [{
@@ -1563,14 +1572,18 @@ def _bounded_inference_response() -> dict:
             "claim_resolutions": [
                 _resolution(
                     "claim-durability",
-                    "unmapped_customer_goal",
+                    "",
                     "supported",
                     attribute_key="drop_durability",
+                    claim_type_status="unmapped",
                     evidence_uids=["ev-material"],
                     support_basis="bounded_inference",
                     premise_evidence_uids=["ev-material"],
                     inference_policy_refs=[policy_ref],
                     scope_qualifier="ordinary_minor_accidental_impact",
+                    inference_risk_level="medium",
+                    maximum_risk_level="medium",
+                    inference_review_only=True,
                     required_qualifiers=["no_absolute_guarantee"],
                     prohibited_extensions=[
                         "certification_report",
@@ -1595,6 +1608,7 @@ def _bounded_inference_response() -> dict:
                 "goal_family": "product_durability",
                 "intent_kind": "practical_guidance",
                 "allowed_scope": "ordinary_minor_accidental_impact",
+                "maximum_risk_level": "medium",
                 "required_qualifiers": ["no_absolute_guarantee"],
                 "prohibited_claim_families": [
                     "certification_report",
@@ -1650,6 +1664,9 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
         "intent:product_durability_practical_guidance"
     ]
     assert bounded["scope_qualifier"] == "ordinary_minor_accidental_impact"
+    assert bounded["inference_risk_level"] == "medium"
+    assert bounded["maximum_risk_level"] == "medium"
+    assert bounded["inference_review_only"] is True
     assert bounded["prohibited_extensions"] == [
         "certification_report",
         "child_safety",
@@ -1667,6 +1684,9 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
     assert prompt["allowed_low_risk_reasoning"] == [
         "ordinary_minor_accidental_impact"
     ]
+    assert inferred_goal["inference_risk_level"] == "medium"
+    assert inferred_goal["maximum_risk_level"] == "medium"
+    assert inferred_goal["inference_review_only"] is True
 
 
 @pytest.mark.parametrize(
@@ -1701,6 +1721,27 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
             }),
             lambda payload: None,
             "composer_unknown_inference_policy_reference",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0].update({"inference_review_only": False}),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0].update({"inference_risk_level": "high"}),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "bounded_inference_policies"
+            ][0].update({"maximum_risk_level": "low"}),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
         ),
     ],
 )

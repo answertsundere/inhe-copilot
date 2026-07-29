@@ -108,6 +108,25 @@ def _model_first_atomic_response(*, inference: bool = False):
                         else "目前无法确认能否保证摔不坏。"
                     ),
                     "evidence_uids": second_evidence,
+                    "inference_policy_refs": (
+                        ["domain-policy:household@v1:minor-drop-guidance"]
+                        if inference
+                        else []
+                    ),
+                    "scope_qualifier": (
+                        "ordinary_minor_accidental_drop"
+                        if inference
+                        else ""
+                    ),
+                    "inference_risk_level": "medium" if inference else "",
+                    "maximum_risk_level": "medium" if inference else "",
+                    "inference_review_only": inference,
+                    "required_qualifiers": (
+                        ["no_absolute_guarantee"] if inference else []
+                    ),
+                    "prohibited_extensions": (
+                        ["child_safety"] if inference else []
+                    ),
                 },
             ],
         },
@@ -144,8 +163,27 @@ def _model_first_atomic_response(*, inference: bool = False):
                         if inference
                         else ""
                     ),
+                    "inference_risk_level": "medium" if inference else "",
+                    "maximum_risk_level": "medium" if inference else "",
+                    "inference_review_only": inference,
+                    "required_qualifiers": (
+                        ["no_absolute_guarantee"] if inference else []
+                    ),
+                    "prohibited_extensions": (
+                        ["child_safety"] if inference else []
+                    ),
                 },
             ],
+            "bounded_inference_policies": (
+                [{
+                    "policy_ref": (
+                        "domain-policy:household@v1:minor-drop-guidance"
+                    ),
+                    "maximum_risk_level": "medium",
+                }]
+                if inference
+                else []
+            ),
         },
         "evidence_debug": {
             "query_fact_type": "material",

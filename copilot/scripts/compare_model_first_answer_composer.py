@@ -957,6 +957,11 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
             != str(policy.get("goal_family") or "").strip()
             or str(resolution.get("policy_intent_kind") or "").strip()
             != str(policy.get("intent_kind") or "").strip()
+            or str(resolution.get("maximum_risk_level") or "").strip()
+            != str(policy.get("maximum_risk_level") or "").strip()
+            or str(resolution.get("inference_risk_level") or "").strip()
+            not in {"low", "medium"}
+            or resolution.get("inference_review_only") is not True
         ):
             continue
         claim_uid = str(resolution.get("claim_uid") or "").strip()
@@ -1015,6 +1020,16 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         scope_ok = bool(
             scope_qualifier
             and required_qualifiers
+            and resolution.get("inference_review_only") is True
+            and clause.get("inference_review_only") is True
+            and str(clause.get("inference_risk_level") or "").strip()
+            == str(
+                resolution.get("inference_risk_level") or ""
+            ).strip()
+            and str(clause.get("maximum_risk_level") or "").strip()
+            == str(
+                resolution.get("maximum_risk_level") or ""
+            ).strip()
             and scope_qualifier
             == str(clause.get("scope_qualifier") or "").strip()
             and required_qualifiers

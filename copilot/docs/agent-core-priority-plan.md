@@ -103,6 +103,22 @@ immediate work is now:
    expansion, vision work, and platform adapters frozen unless P1 evidence
    makes one of them the earliest blocker.
 
+P1.2b adds a disabled bounded-low-risk inference contract to the existing
+owners. Domain Packs declare premise families, qualitative scope, risk ceiling,
+required qualifiers, prohibited extensions, and mandatory review. Claim
+Resolution alone binds those policies to admitted evidence; the existing
+Composer may only verbalize the resulting `allowed_inference` clause, while
+Deterministic Final and Unified Textual Audit retain enforcement. No graph
+node, service, model call, reply owner, or send authority was added.
+
+The single permitted provider preflight succeeded, but the four-case live gate
+stopped at `0/4`: all four requests completed with one selected evidence item,
+three Composer candidates were accepted and passed both audits, but no case
+produced a policy nomination or bounded-inference denominator; the comparison
+case additionally failed on an unknown goal reference. The 16-case and
+synthetic suites were therefore not started. This is a reviewable disabled
+checkpoint, not a qualified capability and not a real-accuracy result.
+
 ## Priority Selection Rules
 
 When choosing the next task, apply these rules in order:

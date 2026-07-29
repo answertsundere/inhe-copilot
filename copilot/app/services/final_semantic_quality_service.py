@@ -725,6 +725,15 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
             "scope_qualifier": str(
                 clause.get("scope_qualifier") or ""
             ).strip(),
+            "inference_risk_level": str(
+                clause.get("inference_risk_level") or ""
+            ).strip(),
+            "maximum_risk_level": str(
+                clause.get("maximum_risk_level") or ""
+            ).strip(),
+            "inference_review_only": (
+                clause.get("inference_review_only") is True
+            ),
             "prohibited_extensions": sorted({
                 str(item).strip()
                 for item in clause.get("prohibited_extensions") or []

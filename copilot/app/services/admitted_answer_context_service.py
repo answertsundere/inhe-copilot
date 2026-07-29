@@ -610,6 +610,9 @@ def _bounded_inference_policy_projection(
                 if sanitize_text(value)
             )),
             "allowed_scope": sanitize_text(item.get("allowed_scope")),
+            "maximum_risk_level": sanitize_text(
+                item.get("maximum_risk_level")
+            ).lower(),
             "required_qualifiers": sorted(_unique(
                 sanitize_text(value)
                 for value in _as_list(item.get("required_qualifiers"))

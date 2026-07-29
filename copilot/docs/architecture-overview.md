@@ -238,6 +238,23 @@ automatic send, retry, repair, or formal knowledge writes. This qualifies the
 feature-disabled Agent Core correctness slice. It does not establish real
 conversation quality or authorize production enablement.
 
+P1.2b extends that same disabled path with bounded low-risk inference metadata,
+without adding another reasoning service or model call. A trusted Domain Pack
+defines premise families, qualitative scope, maximum `low`/`medium` risk,
+required qualifiers, prohibited claim families, and mandatory review. Claim
+Resolution binds a nominated policy to admitted evidence and preserves premise
+UIDs; the Composer only renders the validated clause. Deterministic Final
+checks the policy, premise, scope, risk ceiling, review-only marker, and
+evidence references, while Unified Textual Audit checks the rendered text.
+
+The live qualification did not pass: the one-call provider preflight was
+available, but the representative gate produced no policy nominations or
+bounded-inference denominator in four real-derived cases and stopped at
+`0/4`. One comparison candidate also had an unknown goal reference. The
+16-case and synthetic qualification stages were not run. The contract remains
+default-off, review-only, and unqualified; production reply and `can_send`
+behavior are unchanged.
+
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
 reply, but must not become independent answer engines.

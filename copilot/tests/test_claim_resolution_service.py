@@ -31,6 +31,7 @@ def _bounded_policy(**overrides) -> dict:
         "premise_fact_families": ["material_composition"],
         "required_context_capabilities": ["product_category"],
         "allowed_scope": "ordinary_minor_accidental_impact",
+        "maximum_risk_level": "medium",
         "required_qualifiers": ["no_absolute_guarantee"],
         "prohibited_claim_families": [
             "certification_report",
@@ -452,6 +453,9 @@ def test_policy_bounded_inference_uses_only_admitted_premises_and_is_order_stabl
         "intent:product_durability_practical_guidance"
     ]
     assert bounded["scope_qualifier"] == "ordinary_minor_accidental_impact"
+    assert bounded["inference_risk_level"] == "medium"
+    assert bounded["maximum_risk_level"] == "medium"
+    assert bounded["inference_review_only"] is True
     assert bounded["required_qualifiers"] == ["no_absolute_guarantee"]
     assert bounded["prohibited_extensions"] == [
         "certification_report",
@@ -459,6 +463,208 @@ def test_policy_bounded_inference_uses_only_admitted_premises_and_is_order_stabl
         "warranty",
     ]
     assert bounded["requires_human_review"] is True
+
+
+def test_policy_bounded_inference_resolves_canonical_unmapped_customer_goal():
+    result = build_claim_resolutions(
+        [_bounded_goal(claim_type="", claim_type_status="unmapped")],
+        direct_product_facts=[
+            _fact("material", "material", claim_type="material_composition")
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[_bounded_policy()],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["claim_type"] == ""
+    assert result["claim_type_status"] == "unmapped"
+    assert result["status"] == "supported"
+    assert result["support_basis"] == "bounded_inference"
+    assert result["premise_evidence_uids"] == ["material"]
+
+
+def test_policy_bounded_inference_replaces_direct_support_for_practical_goal():
+    policy = _bounded_policy(
+        policy_intent_ref="product_weight_practical_guidance",
+        goal_family="product_weight_and_moving",
+        premise_fact_families=["gross_weight"],
+        allowed_scope="approximate_short_distance_moving_effort",
+    )
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            claim_type="gross_weight",
+            claim_type_status="mapped",
+            attribute_key="gross_weight",
+            policy_intent_ref="product_weight_practical_guidance",
+            policy_goal_family="product_weight_and_moving",
+        )],
+        direct_product_facts=[
+            _fact("gross-weight", "gross_weight", claim_type="gross_weight")
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[policy],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["support_basis"] == "bounded_inference"
+    assert result["evidence_uids"] == ["gross-weight"]
+    assert result["premise_evidence_uids"] == ["gross-weight"]
+    assert result["scope_qualifier"] == (
+        "approximate_short_distance_moving_effort"
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "claim_type",
+        "attribute_key",
+        "policy_intent_ref",
+        "goal_family",
+        "premise_fact_family",
+    ),
+    [
+        (
+            "space_fit",
+            "space_fit",
+            "product_dimensions_practical_guidance",
+            "product_dimensions_and_space",
+            "dimensions",
+        ),
+        (
+            "gross_weight",
+            "gross_weight",
+            "product_weight_practical_guidance",
+            "product_weight_and_moving",
+            "gross_weight",
+        ),
+        (
+            "variant_compare",
+            "variant_compare",
+            "variant_specification_practical_comparison",
+            "variant_specification_comparison",
+            "variant_compare",
+        ),
+        (
+            "cleaning_care",
+            "cleaning_care",
+            "material_daily_use_practical_guidance",
+            "material_daily_use",
+            "material_composition",
+        ),
+        (
+            "detachable",
+            "detachable",
+            "detachable_storage_practical_guidance",
+            "detachable_storage_convenience",
+            "detachable",
+        ),
+    ],
+)
+def test_generic_policy_families_resolve_from_exact_admitted_premises(
+    claim_type,
+    attribute_key,
+    policy_intent_ref,
+    goal_family,
+    premise_fact_family,
+):
+    policy = _bounded_policy(
+        policy_intent_ref=policy_intent_ref,
+        goal_family=goal_family,
+        premise_fact_families=[premise_fact_family],
+        allowed_scope=f"{goal_family}_scope",
+    )
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            claim_type=claim_type,
+            claim_type_status="mapped",
+            attribute_key=attribute_key,
+            policy_intent_ref=policy_intent_ref,
+            policy_goal_family=goal_family,
+        )],
+        direct_product_facts=[
+            _fact(
+                f"premise-{premise_fact_family}",
+                attribute_key,
+                claim_type=premise_fact_family,
+            )
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[policy],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["support_basis"] == "bounded_inference"
+    assert result["premise_evidence_uids"] == [
+        f"premise-{premise_fact_family}"
+    ]
+    assert result["inference_review_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("policy_maximum", "goal_risk", "expected_reason"),
+    [
+        ("low", "medium", "bounded_inference_risk_limit_exceeded"),
+        ("unknown", "low", "bounded_inference_risk_contract_invalid"),
+    ],
+)
+def test_policy_bounded_inference_enforces_risk_contract(
+    policy_maximum,
+    goal_risk,
+    expected_reason,
+):
+    result = build_claim_resolutions(
+        [_bounded_goal(risk_level=goal_risk)],
+        direct_product_facts=[
+            _fact("material", "material", claim_type="material_composition")
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[
+            _bounded_policy(maximum_risk_level=policy_maximum)
+        ],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["support_basis"] == "none"
+    assert result["reason"] == expected_reason
+
+
+@pytest.mark.parametrize(
+    "goal_overrides",
+    [
+        {"goal_kind": "service_action"},
+        {"goal_kind": "media_request"},
+        {"supporting_only": True},
+    ],
+)
+def test_policy_bounded_inference_rejects_non_customer_fact_goals(
+    goal_overrides,
+):
+    result = build_claim_resolutions(
+        [_bounded_goal(**goal_overrides)],
+        direct_product_facts=[
+            _fact("material", "material", claim_type="material_composition")
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[_bounded_policy()],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["support_basis"] == "none"
+    assert result["reason"] == "bounded_inference_goal_kind_prohibited"
 
 
 @pytest.mark.parametrize(

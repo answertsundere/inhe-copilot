@@ -731,6 +731,7 @@ def _bounded_inference_pack() -> dict:
             "premise_fact_families": ["material_composition"],
             "required_context_capabilities": ["product_category"],
             "allowed_scope": "ordinary_minor_accidental_impact",
+            "maximum_risk_level": "medium",
             "required_qualifiers": ["no_absolute_guarantee"],
             "prohibited_claim_families": [
                 "certification_report",

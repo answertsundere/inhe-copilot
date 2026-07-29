@@ -525,6 +525,9 @@ def _bounded_inference_audit_response() -> dict:
         "premise_evidence_uids": ["selected-material"],
         "inference_policy_refs": [policy_ref],
         "scope_qualifier": "ordinary_minor_accidental_impact",
+        "inference_risk_level": "medium",
+        "maximum_risk_level": "medium",
+        "inference_review_only": True,
         "required_qualifiers": ["no_absolute_guarantee"],
         "prohibited_extensions": [
             "certification_report",
@@ -555,6 +558,7 @@ def _bounded_inference_audit_response() -> dict:
             }],
             "bounded_inference_policies": [{
                 "policy_ref": policy_ref,
+                "maximum_risk_level": "medium",
             }],
         },
         "model_first_answer_composer": {
@@ -567,6 +571,9 @@ def _bounded_inference_audit_response() -> dict:
                 "evidence_uids": ["selected-material"],
                 "inference_policy_refs": [policy_ref],
                 "scope_qualifier": "ordinary_minor_accidental_impact",
+                "inference_risk_level": "medium",
+                "maximum_risk_level": "medium",
+                "inference_review_only": True,
                 "required_qualifiers": ["no_absolute_guarantee"],
                 "prohibited_extensions": [
                     "certification_report",
@@ -614,6 +621,9 @@ def test_final_auditor_rejects_bounded_inference_canonical_contract_mutations():
         ("inference_policy_refs", []),
         ("inference_policy_refs", ["domain-policy:unknown@1.0.0:intent:x"]),
         ("scope_qualifier", ""),
+        ("inference_risk_level", "high"),
+        ("maximum_risk_level", "low"),
+        ("inference_review_only", False),
         ("prohibited_extensions", []),
     ]
     for field, value in mutations:
@@ -623,6 +633,18 @@ def test_final_auditor_rejects_bounded_inference_canonical_contract_mutations():
         issues = _model_first_candidate_contract_issues(response)
 
         assert "model_first_candidate_bounded_inference_clause_invalid" in issues
+
+
+def test_final_auditor_rejects_policy_risk_limit_mutated_in_claim_and_clause():
+    response = _bounded_inference_audit_response()
+    claim = response["minimal_decision_context"]["claim_resolutions"][0]
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    claim["maximum_risk_level"] = "low"
+    clause["maximum_risk_level"] = "low"
+
+    issues = _model_first_candidate_contract_issues(response)
+
+    assert "model_first_candidate_bounded_inference_clause_invalid" in issues
 
 
 def test_atomic_final_auditor_rejects_bounded_inference_outside_scope(

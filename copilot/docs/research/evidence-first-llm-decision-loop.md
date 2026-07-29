@@ -597,6 +597,35 @@ Audit `2.372s/8.365s`. This qualifies P0 correctness while leaving real
 conversation quality, production enablement, and latency optimization to later
 gates.
 
+### P1.2b bounded low-risk inference checkpoint
+
+The implementation reuses the existing Domain Pack, Claim Resolution,
+Model-first Composer, Deterministic Final, and Unified Textual Audit. It adds no
+planner, inference service, graph node, model call, reply owner, or Python reply
+template. Policies carry only premise families, qualitative scope, risk
+ceiling, required qualifiers, prohibited claim families, and mandatory review.
+Claim Resolution emits admitted premise UIDs plus policy and risk metadata;
+the Composer may verbalize them but cannot establish facts or change delivery.
+
+Mutation coverage verifies unknown policies, invalid risk, missing premises,
+wrong product identity, conflicts, non-customer goal kinds, service/media
+entries, unsupported evidence, high-risk extensions, unknown references, and
+order variation. Gold target replies, reviewer notes, scores, and expected
+answers remain outside Agent input. The repository-external 16-case selection
+manifest contains only stable aliases, source positions and hashes, demand
+grouping, and domain/risk metadata.
+
+MiniMax-M3 completed the one-call preflight with no retry, repair, fallback, or
+send authority. The required four-case live stage then completed all HTTP
+requests and selected one evidence item per case. Three candidates were
+accepted and passed deterministic and textual audit, but all four lacked a
+policy nomination and bounded-inference denominator; the comparison case also
+failed with `composer_unknown_goal_reference`. The gate therefore stopped at
+`0/4`; 16-case and synthetic qualification were not run. Formal knowledge
+content was unchanged, DML was zero, and `can_send` remained false. This
+evidence qualifies the disabled contract implementation only, not naturalness,
+business usefulness, real-customer accuracy, or production use.
+
 ### Phase 0.8G fixed real-turn replay
 
 Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely

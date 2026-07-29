@@ -1,7 +1,106 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.1.0
+version: 1.2.0
 bounded_inference_policies:
+  - policy_intent_ref: product_dimensions_practical_guidance
+    goal_family: product_dimensions_and_space
+    intent_kind: practical_guidance
+    premise_fact_families:
+      - dimensions
+    required_context_capabilities:
+      - product_category
+    allowed_scope: qualitative_size_and_customer_space_comparison
+    maximum_risk_level: medium
+    required_qualifiers:
+      - use_confirmed_dimensions_only
+      - no_missing_axis_or_area_inference
+      - no_absolute_fit_guarantee
+    prohibited_claim_families:
+      - child_safety
+      - installation
+      - load_capacity
+      - packaging_dimension
+      - stability
+    review_only: true
+  - policy_intent_ref: product_weight_practical_guidance
+    goal_family: product_weight_and_moving
+    intent_kind: practical_guidance
+    premise_fact_families:
+      - gross_weight
+    required_context_capabilities:
+      - product_category
+    allowed_scope: approximate_short_distance_moving_effort
+    maximum_risk_level: medium
+    required_qualifiers:
+      - gross_weight_is_not_load_capacity
+      - approximate_only
+      - no_individual_ability_guarantee
+    prohibited_claim_families:
+      - child_safety
+      - load_capacity
+      - medical_or_injury_prevention
+      - stability
+    review_only: true
+  - policy_intent_ref: variant_specification_practical_comparison
+    goal_family: variant_specification_comparison
+    intent_kind: practical_guidance
+    premise_fact_families:
+      - variant_compare
+    required_context_capabilities:
+      - product_category
+    allowed_scope: compare_only_admitted_same_dimension_values
+    maximum_risk_level: medium
+    required_qualifiers:
+      - same_attribute_domain_only
+      - no_unconfirmed_use_case
+      - no_performance_guarantee
+    prohibited_claim_families:
+      - child_safety
+      - load_capacity
+      - stability
+      - warranty
+    review_only: true
+  - policy_intent_ref: material_daily_use_practical_guidance
+    goal_family: material_daily_use
+    intent_kind: practical_guidance
+    premise_fact_families:
+      - material_composition
+    required_context_capabilities:
+      - product_category
+    allowed_scope: ordinary_wiping_moving_and_storage
+    maximum_risk_level: medium
+    required_qualifiers:
+      - no_safety_or_performance_guarantee
+      - no_temperature_or_chemical_prescription
+      - no_absolute_durability_claim
+    prohibited_claim_families:
+      - certification_report
+      - child_safety
+      - fire_resistance
+      - food_grade
+      - heat_resistance
+      - moisture_resistance
+      - non_toxic_claim
+    review_only: true
+  - policy_intent_ref: detachable_storage_practical_guidance
+    goal_family: detachable_storage_convenience
+    intent_kind: practical_guidance
+    premise_fact_families:
+      - detachable
+    required_context_capabilities:
+      - product_category
+    allowed_scope: qualitative_storage_convenience_from_verified_detachability
+    maximum_risk_level: medium
+    required_qualifiers:
+      - verified_detachability_only
+      - no_installation_or_stability_inference
+      - no_space_saving_guarantee
+    prohibited_claim_families:
+      - child_safety
+      - installation
+      - load_capacity
+      - stability
+    review_only: true
   - policy_intent_ref: product_durability_practical_guidance
     goal_family: product_durability
     intent_kind: practical_guidance
@@ -10,6 +109,7 @@ bounded_inference_policies:
     required_context_capabilities:
       - product_category
     allowed_scope: ordinary_minor_accidental_impact
+    maximum_risk_level: medium
     required_qualifiers:
       - no_absolute_guarantee
       - avoid_high_or_repeated_impact
@@ -32,6 +132,7 @@ bounded_inference_policies:
     required_context_capabilities:
       - product_category
     allowed_scope: absolute_guarantee_disallowed
+    maximum_risk_level: medium
     required_qualifiers:
       - no_absolute_guarantee
     prohibited_claim_families:
@@ -52,6 +153,7 @@ bounded_inference_policies:
     required_context_capabilities:
       - product_category
     allowed_scope: direct_test_evidence_required
+    maximum_risk_level: medium
     required_qualifiers:
       - no_test_claim_without_direct_evidence
     prohibited_claim_families:
@@ -72,6 +174,7 @@ bounded_inference_policies:
     required_context_capabilities:
       - product_category
     allowed_scope: policy_or_service_evidence_required
+    maximum_risk_level: medium
     required_qualifiers:
       - no_warranty_or_liability_commitment
     prohibited_claim_families:

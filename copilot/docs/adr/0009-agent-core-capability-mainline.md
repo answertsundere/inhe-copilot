@@ -182,6 +182,25 @@ fixed-seed ordering with no formal knowledge DML. This is an eligibility
 precondition only: it adds no Composer, graph branch, model call, final-gate
 bypass, formal reply mutation, or `can_send` authority.
 
+P1.2b keeps bounded low-risk inference inside the same ownership chain. Domain
+Pack data defines eligible premise families, qualitative scope, maximum
+`low`/`medium` risk, required qualifiers, prohibited extensions, and mandatory
+human review. Claim Resolution owns premise and policy binding. The existing
+Composer owns language only. Deterministic Final validates policy provenance,
+premise evidence, scope, risk ceiling, and review-only metadata; Unified
+Textual Audit validates textual faithfulness. Canonical unmapped customer goals
+may participate only when current Turn Understanding explicitly nominates a
+trusted policy; service, media, dependency, and contextual entries remain
+ineligible.
+
+This does not add a service, graph node, model call, reply owner, safety gate,
+or production flag. The single provider preflight succeeded, but the required
+four-case live gate stopped at `0/4` because no case produced a policy
+nomination or bounded-inference denominator; one comparison candidate also
+failed an unknown-goal reference check. The 16-case and synthetic gates were
+not run. The implementation is therefore a disabled, review-only contract
+checkpoint, not a qualified capability or production promotion.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

@@ -35,6 +35,11 @@ CLAIM_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "food_grade": ("material_composition",),
 }
 
+_BOUNDED_INFERENCE_RISK_RANK = {
+    "low": 0,
+    "medium": 1,
+}
+
 
 def expand_claim_dependencies(requested_claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Add declared supporting claims without weakening their parent claims.
@@ -223,6 +228,12 @@ def _bounded_inference_resolution(
         return {"reason": "bounded_inference_policy_ambiguous"}
 
     policy = matching_policies[0]
+    if (
+        sanitize_text(requested.get("goal_kind")).lower()
+        != "customer_goal"
+        or requested.get("supporting_only") is True
+    ):
+        return {"reason": "bounded_inference_goal_kind_prohibited"}
     policy_goal_family = sanitize_text(
         requested.get("policy_goal_family")
     ).lower()
@@ -269,6 +280,24 @@ def _bounded_inference_resolution(
     if policy_intent_kind != "practical_guidance":
         return {"reason": "bounded_inference_intent_kind_unsupported"}
 
+    requested_risk = (
+        sanitize_text(requested.get("risk_level")).lower()
+        or "medium"
+    )
+    maximum_risk = sanitize_text(
+        policy.get("maximum_risk_level")
+    ).lower()
+    if (
+        requested_risk not in _BOUNDED_INFERENCE_RISK_RANK
+        or maximum_risk not in _BOUNDED_INFERENCE_RISK_RANK
+    ):
+        return {"reason": "bounded_inference_risk_contract_invalid"}
+    if (
+        _BOUNDED_INFERENCE_RISK_RANK[requested_risk]
+        > _BOUNDED_INFERENCE_RISK_RANK[maximum_risk]
+    ):
+        return {"reason": "bounded_inference_risk_limit_exceeded"}
+
     required_capabilities = _policy_values(
         policy,
         "required_context_capabilities",
@@ -308,6 +337,9 @@ def _bounded_inference_resolution(
             f"{policy_ref_prefix}:intent:{policy_intent_ref}"
         ],
         "scope_qualifier": sanitize_text(policy.get("allowed_scope")).lower(),
+        "inference_risk_level": requested_risk,
+        "maximum_risk_level": maximum_risk,
+        "inference_review_only": True,
         "required_qualifiers": _policy_values(
             policy,
             "required_qualifiers",
@@ -415,10 +447,19 @@ def build_claim_resolutions(
             reason = "no_admitted_direct_evidence"
             facts = []
         bounded: dict[str, Any] | None = None
+        policy_nominated = bool(
+            sanitize_text(requested.get("policy_intent_ref"))
+        )
         if (
-            not unmapped_customer_goal
-            and status == "unresolved"
-            and reason == "no_admitted_direct_evidence"
+            policy_nominated
+            and status in {"supported", "unresolved"}
+            and (
+                status == "supported"
+                or reason in {
+                    "no_admitted_direct_evidence",
+                    "unmapped_claim_type",
+                }
+            )
         ):
             bounded = _bounded_inference_resolution(
                 requested,
@@ -437,13 +478,15 @@ def build_claim_resolutions(
                 policy_ref_prefix=policy_ref_prefix,
             )
             if bounded:
-                reason = sanitize_text(bounded.get("reason"))
                 if bounded.get("facts"):
                     status = "supported"
+                    reason = sanitize_text(bounded.get("reason"))
                     facts = list(bounded["facts"])
                     policy_refs = list(
                         bounded.get("inference_policy_refs") or []
                     )
+                elif status == "unresolved":
+                    reason = sanitize_text(bounded.get("reason"))
         results.append({
             "claim_uid": _claim_uid(requested),
             "goal_ref": sanitize_text(requested.get("goal_ref")),
@@ -499,6 +542,30 @@ def build_claim_resolutions(
             "scope_qualifier": (
                 sanitize_text(bounded.get("scope_qualifier"))
                 if bounded and bounded.get("facts")
+                else ""
+            ),
+            "inference_risk_level": (
+                sanitize_text(bounded.get("inference_risk_level"))
+                if bounded and bounded.get("facts")
+                else ""
+            ),
+            "maximum_risk_level": (
+                sanitize_text(bounded.get("maximum_risk_level"))
+                if bounded and bounded.get("facts")
+                else ""
+            ),
+            "inference_review_only": bool(
+                bounded
+                and bounded.get("facts")
+                and bounded.get("inference_review_only") is True
+            ),
+            "bounded_inference_rejection_reason": (
+                sanitize_text(bounded.get("reason"))
+                if (
+                    bounded
+                    and not bounded.get("facts")
+                    and status == "supported"
+                )
                 else ""
             ),
             "required_qualifiers": (
