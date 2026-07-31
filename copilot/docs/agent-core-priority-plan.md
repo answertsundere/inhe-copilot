@@ -164,6 +164,64 @@ goal-level risk/policy nomination, not Domain Context propagation. The
 remaining live and Synthetic gates are pending, so this is not a qualification
 or accuracy result.
 
+P1.2e keeps the same owners and separates two semantics that P1.2d had coupled:
+the customer may request a prohibited absolute guarantee while the Agent may
+still offer a review-only practical explanation derived from an admitted
+premise and the trusted Pack. Claim Resolution retains one unresolved
+restricted boundary and separately exposes a low/medium answer strategy;
+Composer may select only from that offered set, and Final/Audit must preserve
+both risk levels and all premise/policy/scope/Pack attribution.
+
+The single P1.2e live request was not retried. The restricted boundary and risk
+separation each scored `1/1`, but Composer supplied a policy reference outside
+the goal-scoped offered set, so validation failed closed. The remaining three
+representative cases, Gold 16, and Synthetic benchmark were not started. A
+deterministic correction prevents an already-supported direct-fact goal with
+unrelated high request risk from receiving a practical option. Current status
+remains `bounded_inference_shadow_not_qualified`; no production flag or send
+authority is enabled.
+
+P1.2f removes the next Composer ambiguity without adding another owner. The
+existing Composer now receives only per-goal offered option projections with
+short request aliases. Exact server-side bindings preserve goal, policy,
+premise, scope, requested risk, answer-strategy risk, restricted boundary, and
+Pack identity for Final and Audit. Full Pack policy lists and canonical policy
+identifiers are not exposed to the Provider, and no output repair, retry, or
+guessing is allowed.
+
+The prior failed input is not eligible for Frozen 5x replay because the raw
+returned reference and exact historical prompt/schema/source hashes were not
+persisted and the source changed after the run. Deterministic projection,
+mutation, and related P1.2 tests pass; no new live Provider call was made.
+Frozen 5x and all later qualification gates remain pending, so the candidate
+is still default-off and not qualified.
+
+P1.2h adds no owner. The existing Composer derives `forbidden`, `optional`, or
+`required` selection completeness from the existing resolution status and
+goal-local offered options, while the model remains responsible for choosing
+the option and wording. Frozen Composer qualification passed `5/5` with one
+call per attempt and no retry, repair, or fallback. The first fresh full-chain
+case then stopped once, without rerun: the authoritative understanding
+contained only one of the two current-message goals, which removed the
+supported direct-fact clause before Composer. Later live and Synthetic gates
+remain unrun, so the candidate is still default-off and not qualified. The
+next owner must be proven at the authoritative goal-completeness boundary,
+not patched in Composer output.
+
+P1.2k.6i separates engineering preservation from model capability. The
+accumulated Domain Policy, Claim Resolution, Composer, Deterministic Final,
+and Unified Audit v2 contracts passed their deterministic, mutation,
+Pipeline, Replay, documentation, and versioned synthetic-safety gates and are
+saved as a default-off engineering checkpoint. The checkpoint does not satisfy
+the P1 customer-outcome gate and does not authorize deployment.
+
+The available MiniMax M3/M2.x models failed the frozen Unified Audit v2 model
+qualification. No currently approved replacement Audit Provider/model or
+role-level configuration is available, so the next Audit capability state is
+`approved_audit_provider_connection_required`. Fixed4, Gold16, and later
+bounded-inference qualification remain blocked; production flags stay off and
+`real_customer_accuracy=null`.
+
 ## Priority Selection Rules
 
 When choosing the next task, apply these rules in order:

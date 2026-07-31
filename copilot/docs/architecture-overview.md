@@ -284,6 +284,60 @@ Missing, invalid, stale, or public-injected context fails closed to zero
 options without suppressing independently admitted direct facts. This remains
 a disabled, not-qualified Shadow contract; real-customer accuracy is unproven.
 
+P1.2e preserves that path and separates requested-claim risk from
+answer-strategy risk. An absolute-guarantee request remains an unresolved
+restricted boundary while Claim Resolution may expose one same-goal,
+Pack-backed practical alternative at `low` or `medium` risk. Composer selection
+does not change the requested risk; Deterministic Final checks the goal,
+premise, policy, scope, risk ceiling, boundary, and Pack hash. High-risk
+requests without an eligible restricted boundary, test/liability requests,
+and already-supported direct facts cannot acquire this alternative.
+
+The single permitted P1.2e live case proved boundary and risk separation
+`1/1`, then failed closed when Composer returned a policy reference outside
+the offered set. It was not retried; the remaining representative, Gold, and
+Synthetic gates were not run. The candidate remains disabled and not
+qualified, with no change to formal reply ownership or `can_send`.
+
+P1.2f narrows the existing Composer input rather than adding a component. A
+single pre-call projection assigns deterministic option aliases under each
+renderable goal and retains the exact canonical goal/policy/premise/scope/risk
+and Pack binding only on the server. Prompt and Validator consume that same
+offered projection. The Provider cannot see the complete Domain Pack or
+canonical policy identifiers, and Validator performs only exact current-goal
+alias lookup. Canonical, unknown, stale, cross-goal, duplicate, and mutated
+references fail closed with no retry, repair, or inferred remapping.
+
+The old failure cannot be replayed as an exact Frozen input because its raw
+reference and prompt/schema/source hashes were not retained and source changed
+after the run. Deterministic and mutation coverage is green, but Frozen 5x and
+the business qualification gates remain unrun. The path therefore remains
+disabled, review-only, and not qualified.
+
+P1.2h keeps that projection and adds a tri-state completeness rule inside the
+same Composer owner. `required` means exactly one model-selected goal-local
+option, `optional` means zero or one, and `forbidden` means zero. The
+framework re-derives and validates the mode but never chooses an option or
+writes reply text. Frozen Composer replay passed `5/5`. The one permitted
+fresh full-chain case stopped because Turn Understanding exposed only one of
+two current-message goals; the supported direct-fact goal therefore never
+reached the Composer projection. No later qualification stage ran, and the
+path remains disabled, review-only, and not qualified.
+
+P1.2k.6i preserves the later canonical Decision Input, minimal Composer
+output, semantic-budget, Deterministic Final, and Unified Audit v2 engineering
+contracts as a disabled checkpoint. This is source-control preservation of
+verified owner boundaries, not a new architecture stage or a production
+promotion. The formal sequence remains Composer, Deterministic Final, one
+Unified Textual Audit, then Delivery Gate.
+
+No approved Audit Provider/model currently satisfies the frozen v2 schema and
+semantic matrix, and no role-level Audit model is configured as a production
+default. The v2 live capability is therefore provider-blocked. Composer,
+bounded inference, and Formal Evidence Convergence retain their existing
+default-off states; `can_send` ownership and production delivery are
+unchanged, and `real_customer_accuracy=null`.
+
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
 reply, but must not become independent answer engines.

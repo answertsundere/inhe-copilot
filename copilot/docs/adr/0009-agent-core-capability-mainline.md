@@ -229,6 +229,75 @@ produces no eligible options and cannot alter direct-evidence support. No Graph
 node, service, model call, reply owner, safety gate, registry, or production
 flag is added.
 
+P1.2e separates the risk of the requested assertion from the risk of an
+answer strategy. Claim Resolution keeps an absolute-guarantee, test, or
+liability request unresolved under one
+`restricted-request-boundary/v1`. Only an absolute-guarantee boundary may also
+offer a same-goal-family `practical_guidance` option whose admitted premise,
+Pack identity, scope, qualifiers, prohibitions, review-only marker, and
+`low`/`medium` answer-strategy risk are all deterministic. The request risk is
+not lowered, the boundary is not a second goal, and Domain Policy remains
+control data rather than evidence. Composer may select only an offered option;
+Deterministic Final and Unified Textual Audit preserve the boundary and
+attribution.
+
+The first P1.2e live case was consumed once and not retried. Request-boundary
+preservation and answer-strategy risk separation were both `1/1`, but the
+Composer returned a policy reference outside the goal-scoped offered set.
+Validation failed closed before Final and Unified Audit. A deterministic
+follow-up also removed an unrelated high-risk practical option from an
+already-supported direct-fact goal. The remaining 3, Gold 16, and Synthetic
+gates were not run. P1.2e therefore remains default-off and not qualified; it
+does not alter the production reply or delivery contract.
+
+P1.2f keeps those owners and narrows the existing Composer boundary. Before
+the single Composer call, each eligible option receives a deterministic,
+request-scoped alias bound to the authoritative goal, canonical policy,
+admitted premises, scope, both risk levels, and trusted Pack identity. The
+Composer sees only the alias and that goal's offered projection; canonical
+policy and Pack identifiers remain server-side. Validation accepts only an
+exact current-goal alias lookup and rejects canonical, unknown, stale,
+cross-goal, duplicate, or mutated references without retry or repair. The
+accepted clause restores canonical provenance for Deterministic Final and
+Unified Audit.
+
+The original P1.2e completion retained envelope, finish reason, length,
+latency, one-call, and error-path diagnostics, but not the raw returned
+reference or the exact prompt/schema/source hashes. Source changed after that
+run, so its full Composer input cannot be proven byte-identical. P1.2f
+therefore does not manufacture the required Frozen 5x result. Deterministic
+Composer and mutation tests pass, but Frozen 5x, the fixed four, Gold 16, and
+Synthetic gates remain unrun. Status remains
+`bounded_inference_shadow_not_qualified`.
+
+P1.2g later captured a fresh authoritative Composer capsule instead of
+reconstructing the historical completion. P1.2h derives one selection mode
+from the existing resolution and goal-local offered set: no option is
+`forbidden`, a fully supported goal with options is `optional`, and an
+unresolved/conflicting/prohibited goal with options is `required`. The model
+still chooses the option and wording; the existing Composer Validator only
+enforces zero-or-one completeness and exact binding. Frozen Composer replay
+passed `5/5`, including required selection and restricted-boundary
+preservation. The single permitted live full-chain request was not retried:
+Turn Understanding exposed only one of the two current-message goals, so the
+supported direct-fact goal disappeared before Composer projection. The fixed
+four, Gold 16, and Synthetic gates were not run. Status remains
+`bounded_inference_shadow_not_qualified`.
+
+P1.2k subsequently tightened the same disabled owners around a canonical
+Composer Decision Input, minimal output reconstruction, semantic-budget
+metadata, and Unified Audit v2. P1.2k.6i records these changes as an
+engineering checkpoint after deterministic, mutation, Pipeline, Replay, and
+synthetic-safety verification. The checkpoint adds no Graph node, reply owner,
+model call, retry, repair, fallback, send authority, or production flag.
+
+The currently configured MiniMax M3/M2.x candidates did not meet the frozen
+Unified Audit v2 structural and semantic qualification contract. No newly
+approved Audit Provider/model or role-level production configuration exists,
+so live Audit capability remains `provider_blocked`. The Composer and bounded
+inference remain default-off and review-only, production behavior is not
+promoted, and `real_customer_accuracy=null`.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

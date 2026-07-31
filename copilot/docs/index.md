@@ -45,7 +45,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   promotion gates, domain portability, and required task header.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/agent-core-candidate-change-ownership.md` - P0-R0 ownership and
-  disposition manifest for the 45-file feature-disabled Agent Core checkpoint.
+  disposition manifest for the 45-file feature-disabled Agent Core checkpoint,
+  plus the P1.2k.6i 25-file disabled bounded-inference/Audit checkpoint
+  addendum.
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
@@ -69,7 +71,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   and readiness boundary for public management routes.
 - `docs/adr/0009-agent-core-capability-mainline.md` - freezes evaluator and
   shadow expansion, restores one real-conversation Agent Core vertical slice as
-  the active mainline, and defines outcome-based promotion metrics.
+  the active mainline, defines outcome-based promotion metrics, and records the
+  default-off request-risk/answer-strategy boundary and goal-scoped Composer
+  option-reference plus tri-state selection-completeness contract for bounded
+  inference.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - LangGraph runtime responsibility, target

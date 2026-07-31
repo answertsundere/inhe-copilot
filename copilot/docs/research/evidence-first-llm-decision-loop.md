@@ -715,6 +715,112 @@ P1.2d therefore proves the control-context boundary but remains
 goal-level risk/policy nomination, outside this phase, and the
 four/sixteen/Synthetic gates remain unrun.
 
+### P1.2e requested risk and answer-strategy risk
+
+The first P1.2d failure did not prove that its `high` request classification
+was wrong. P1.2e instead keeps an absolute-guarantee request unresolved in one
+`restricted-request-boundary/v1` and allows Claim Resolution to offer a
+separate same-goal `practical_guidance` option. The option must cite admitted
+premises, a revalidated trusted Pack and hash, exact scope, qualifiers,
+prohibitions, mandatory review, and an answer-strategy risk no higher than the
+Pack's `low`/`medium` ceiling. It cannot replace the customer goal, evidence,
+or requested risk.
+
+Deterministic mutation tests reject missing or mismatched boundaries, high
+strategy risk, unknown/cross-goal policy and premise references, conflicts,
+unreviewed or identity-invalid evidence, public policy-context injection,
+high-risk claim families, service/media/dependency goals, and unsupported
+fact extensions. The existing comparison runner now reports separate
+numerator/denominator metrics for restricted-boundary preservation and
+answer-strategy risk separation.
+
+The one permitted live request returned HTTP 200 with one admitted direct
+fact, selected trusted context and matching Pack hash. Boundary preservation
+and risk separation were `1/1`; no high-risk, media, service, send, evidence
+pollution, or formal-knowledge DML issue occurred. Composer nevertheless
+returned a policy reference outside the goal-scoped offered set and was
+blocked before Final and Unified Audit. The failed case was not retried. A
+post-run deterministic correction stopped an unrelated high-risk practical
+option from being attached to the already-supported direct-fact goal. Because
+the remaining 3, Gold 16, and Synthetic gates did not run, the candidate is
+not qualified and no naturalness, business-helpfulness, or accuracy claim is
+allowed.
+
+### P1.2f goal-scoped Composer policy references
+
+The P1.2e prompt projected canonical eligible options inside each goal and
+also exposed a global union of the offered policies. Validator used the
+goal-local set, but those two prompt representations created an avoidable
+reference surface. P1.2f removes the global policy union and generates one
+deterministic request alias for every exact
+goal/policy/premise/scope/risk/Pack tuple before the Composer call. The public
+goal projection contains only the alias, admitted premise references, bounded
+scope, risk ceiling, qualifiers, prohibitions, boundary, and review marker.
+Canonical policy and Pack references never enter the Provider prompt.
+
+Prompt and Validator now share the same offered projection. A returned alias
+is accepted only by exact lookup in the current goal's offered set; the
+server-side binding restores canonical provenance for Final and Audit.
+Unknown, canonical, stale, cross-goal, duplicate, premise-mutated,
+scope-mutated, risk-mutated, and Pack-mutated references fail closed. The
+mapping is stable under input reordering, and the same canonical policy bound
+to different goals or admitted premises receives distinct aliases. No retry,
+repair, secondary model call, policy-name matching, or post-output guessing is
+used.
+
+The previous live report proves only that one unknown reference was rejected.
+It did not retain the raw returned value, full prompt, schema hash, or source
+hash, and the Composer source changed after the request. Exact historical
+input reconstruction is therefore impossible. Deterministic Composer and
+mutation tests are green, but the required Frozen 5x run was not attempted;
+the fixed four, Gold 16, and Synthetic gates consequently remain unrun. The
+status is `bounded_inference_shadow_not_qualified`, with production replies,
+evidence authority, and delivery unchanged.
+
+### P1.2h bounded option selection completeness
+
+P1.2h retains the P1.2f goal-scoped projection and derives one completeness
+mode from the existing resolution and offered set. `forbidden` allows no
+selection, `optional` allows zero or one model-selected option, and `required`
+requires exactly one model-selected option for an unresolved, conflicting, or
+prohibited customer goal that has a valid bounded alternative. The mode is
+not evidence and cannot change requested risk, safety, or delivery.
+
+Prompt and Validator share the same projection. The model chooses among
+multiple offered options and writes the customer-facing clause; Python only
+re-derives the mode and validates count, goal alias, premise, scope, risk,
+Pack binding, and restricted boundary. Deterministic and mutation coverage
+passed, followed by a `5/5` Frozen Composer replay with one call per attempt,
+required selection `5/5`, boundary preservation `5/5`, and zero unknown,
+duplicate, cross-goal, retry, repair, or fallback findings.
+
+The first fresh full-chain request was executed once and not retried. Option
+selection, policy validity, premise, scope, attribution, boundary, Final, and
+Unified Audit each passed. The authoritative Turn Understanding output,
+however, contained only one of the two current-message goals, so the admitted
+direct fact had no supported goal/clause denominator. The fixed four, Gold 16,
+and Synthetic gates were not run. This is a goal-completeness failure before
+Composer, and the status remains `bounded_inference_shadow_not_qualified`.
+
+### P1.2k.6i disabled engineering checkpoint
+
+The later P1.2k work keeps the same owners and adds a canonical
+`ComposerDecisionInput/v1`, minimal Composer output reconstruction,
+goal-scoped semantic-budget controls, and Unified Audit v2. P1.2k.6i audits
+the 25-file dirty set and saves only the deterministic engineering contracts.
+Direct, mutation, Pipeline, Replay, formal-knowledge guard, and versioned
+synthetic-safety checks pass. The feature flags remain off, the candidate is
+review-only, and no model capability or customer-accuracy claim follows.
+
+The frozen Audit qualification requires exact strict structure and stable
+semantic classification for both an allowed and a violating candidate. The
+available MiniMax M3, M2.7, M2.5, and M2.1 candidates did not satisfy that
+contract. No newly approved Provider/model is configured for the Audit role,
+so P1.2k.6i stops at `approved_audit_provider_connection_required`. It does
+not modify the frozen qualification input, retry a failed model, weaken the
+schema/validator, or continue to Composer After-5, fixed4, Gold16, or
+production enablement. `real_customer_accuracy` remains `null`.
+
 ### Phase 0.8G fixed real-turn replay
 
 Phase 0.8G removes the buyer simulator from the OFF/ON comparison. Nine uniquely

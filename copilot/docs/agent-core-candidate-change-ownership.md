@@ -90,3 +90,58 @@ qualification.
 
 P0-R0 does not enable feature flags, add model calls, change `can_send`, write
 formal knowledge, deploy a runtime, or claim real accuracy.
+
+## P1.2k.6i Disabled Checkpoint Addendum
+
+This addendum classifies the 25 files that were dirty before the P1.2k.6i
+checkpoint audit. It does not reclassify the earlier 45-file P0-R0 set. The
+categories below are the P1.2k.6i ownership categories: bounded-inference
+contracts (A), Composer contracts (B), Unified Audit contracts (C),
+safety/provenance hardening (D), tests (E), evaluation-only code (F), and
+documentation (G). No file was left unexplained in category H.
+
+`Default change` describes whether a file can affect the existing formal path
+while the Composer flag is off. `Rollback unit` identifies the smallest safe
+group; linked schema/validator files are not individually revertible. The
+checkpoint saves engineering contracts only. It does not qualify an Audit
+Provider, enable a feature, or establish customer accuracy.
+
+| File | Category | Purpose and source phase | Deterministic evidence | Default change | Unqualified Audit Provider dependency | Checkpoint | Hard-coded business sample | Rollback unit |
+|---|---|---|---|---|---|---|---|---|
+| `app/repositories/file_policy_repository.py` | A | Validate semantic-budget policy fields; P1.2k.6f | repository, admission, resolution, and mutation tests | No reply effect while candidate is off | No | Yes | No | A contract set |
+| `app/services/admitted_answer_context_service.py` | A | Project policy budget metadata outside evidence; P1.2k.6f | admission and eligibility tests | No reply effect while convergence/candidate are off | No | Yes | No | A contract set |
+| `app/services/claim_resolution_service.py` | A | Preserve restricted request risk and expose attributed bounded alternatives; P1.2e-P1.2k.6f | resolution and negative-matrix tests | No reply effect while candidate is off | No | Yes | No | A contract set |
+| `app/services/final_answer_auditor.py` | D | Revalidate canonical clause, boundary, policy, premise, scope, risk, and Pack identity; P1.2e-P1.2k.6f | deterministic Final and canonical-truth tests | Candidate branch only | No | Yes | No | A/D contract set |
+| `app/services/final_semantic_quality_service.py` | C | Unified Audit v2 strict checks, canonical findings, and semantic-budget validation; P1.2k.6e-P1.2k.6h | schema, mutation, polarity, attribution, and fake-provider tests | v2 branch requires accepted disabled candidate | Yes, for live capability only | Yes | No | C contract set |
+| `app/services/model_first_answer_composer_service.py` | B | Decision Input v1, minimal output, goal-local aliases, tri-state selection, canonical reconstruction, and presentation checks; P1.2f-P1.2k.6d | Composer, transport-equivalence, replay, and mutation tests | Composer remains off by default | No | Yes | No | A/B contract set |
+| `app/services/semantic_fact_type_service.py` | D | Preserve separately answerable current-turn goals at the existing Understanding owner; P1.2i | unit/mutation tests plus frozen Understanding `5/5` with zero retry/repair | Yes, formal provenance hardening; no new call or owner | No | Yes | No | D with its direct test |
+| `rules/domain_policy_packs/maternal_child_home.yaml` | A | Add conclusion, variability-factor, and advice-budget control data; P1.2k.6f | strict loader and negative-matrix tests | No reply effect while candidate is off | No | Yes | No product/SKU/reply text | A contract set |
+| `scripts/compare_model_first_answer_composer.py` | F | Report boundary, policy, semantic-budget, and outcome diagnostics; P1.2e-P1.2k.6f | evaluator tests and immutable-input checks | None; evaluation only | No | Yes | No production branch | F with its test |
+| `docs/adr/0009-agent-core-capability-mainline.md` | G | Record retained owners and disabled rollback boundary | docs governance | Documentation only | No | Yes | No | G documentation set |
+| `docs/agent-core-priority-plan.md` | G | Record stage gates, failures, and non-qualification | docs governance | Documentation only | No | Yes | No | G documentation set |
+| `docs/architecture-overview.md` | G | Record the unchanged owner sequence and disabled status | docs governance | Documentation only | No | Yes | No | G documentation set |
+| `docs/index.md` | G | Keep the sole durable index aligned | docs governance | Documentation only | No | Yes | No | G documentation set |
+| `docs/module-index.md` | G | Record current owner and authority boundaries | docs governance | Documentation only | No | Yes | No | G documentation set |
+| `docs/research/evidence-first-llm-decision-loop.md` | G | Preserve qualification evidence and Provider blocker | docs governance | Documentation only | No | Yes | No | G documentation set |
+| `tests/test_admitted_answer_context_service.py` | E | Policy projection and evidence-role isolation | self | Test only | No | Yes | Fixture only | A test set |
+| `tests/test_answer_eligibility_context.py` | E | Trusted context and fail-closed eligibility | self | Test only | No | Yes | Fixture only | A test set |
+| `tests/test_claim_resolution_service.py` | E | Risk separation, policy/premise attribution, and negative matrix | self | Test only | No | Yes | Fixture only | A test set |
+| `tests/test_compare_model_first_answer_composer.py` | E | Evaluator metric and immutable-input integrity | self | Test only | No | Yes | Fixture only | F test set |
+| `tests/test_final_answer_auditor.py` | E | Deterministic Final option/boundary/provenance validation | self | Test only | No | Yes | Fixture only | A/D test set |
+| `tests/test_final_answer_auditor_canonical_truth.py` | E | Canonical truth and continuity integrity | self | Test only | No | Yes | Fixture only | A/D test set |
+| `tests/test_final_semantic_quality_service.py` | E | Unified Audit v2 schema, mutation, finding, and attribution | self | Test only | No live Provider | Yes | Fixture only | C test set |
+| `tests/test_model_first_answer_composer_service.py` | E | Decision Input, minimal output, option selection, canonical reconstruction, and presentation mutations | self | Test only | No | Yes | Fixture only | B test set |
+| `tests/test_semantic_fact_type_service.py` | E | Independent multi-goal Understanding contract | self | Test only | No | Yes | Fixture only | D test set |
+| `tests/test_composer_decision_input_contract.py` | E | Decision Input privacy, shape, determinism, and Provider equivalence | self | Test only | No | Yes | Fixture only | B test set |
+
+P1.2k.6i also updates `tests/test_analysis_pipeline_entrypoints.py`, outside
+the original 25-file set, so the Pipeline test derives the expected Pack
+reference from the trusted repository instead of pinning the superseded
+`1.2.0` data version. That test-only alignment is part of the A checkpoint.
+
+The deterministic checkpoint gate covers 664 direct contract tests, 160
+Pipeline/Replay/Benchmark/docs tests, 86 formal-knowledge/evidence/safety
+tests, and the versioned synthetic Benchmark at `5/5` and `22/22`. The
+Composer and bounded-inference paths remain disabled, the v2 Audit branch has
+no approved live model, `can_send=true` remains zero in the synthetic runs,
+and `real_customer_accuracy=null`.
