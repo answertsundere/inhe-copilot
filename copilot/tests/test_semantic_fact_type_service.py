@@ -142,6 +142,43 @@ def test_llm_goal_understanding_preserves_multiple_customer_goals_and_dependency
     } == {"material_composition", "moisture_resistance"}
 
 
+def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
+    prompt = " ".join(service.SYSTEM_PROMPT.split())
+
+    assert "each independently answerable request as a separate goal" in prompt
+    assert "every explicit request is represented exactly once" in prompt
+    assert "must not replace or suppress a separate fact request" in prompt
+    assert "classification of one goal must not determine, merge, or erase another" in prompt
+
+
+def test_single_provider_goal_is_not_completed_from_legacy_fact_type(monkeypatch):
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    message = "first independent request and second independent request"
+    client = _FakeLLMClient(_complete_llm_payload(**{
+        "goals": [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material",
+            "attribute_key": "",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": "first independent request",
+        }],
+    }))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+
+    result = service.classify_query_fact_type_llm_first({
+        "customer_message": message,
+        "intent": "product_question",
+        "query_fact_type": "dimensions",
+    })
+
+    assert result["goal_understanding_status"] == "valid"
+    assert len(result["customer_goals"]) == 1
+    assert result["customer_goals"][0]["claim_type"] == "material"
+    assert result["secondary_fact_types"] == []
+
+
 def test_llm_goal_refs_are_deduplicated_and_input_order_independent():
     message = "material question and durability question"
     first = [

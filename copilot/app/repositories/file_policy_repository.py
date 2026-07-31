@@ -563,6 +563,9 @@ class FilePolicyRepository(PolicyRepositoryBase):
             "premise_fact_families",
             "required_context_capabilities",
             "allowed_scope",
+            "allowed_conclusion_family",
+            "allowed_variability_factor_families",
+            "advice_mode",
             "maximum_risk_level",
             "required_qualifiers",
             "prohibited_claim_families",
@@ -610,10 +613,34 @@ class FilePolicyRepository(PolicyRepositoryBase):
                     )
                 ):
                     return "domain_policy_bounded_inference_values_invalid"
+            variability_factors = policy.get(
+                "allowed_variability_factor_families"
+            )
+            if (
+                not isinstance(variability_factors, list)
+                or len(variability_factors)
+                != len(set(variability_factors))
+                or any(
+                    not isinstance(value, str)
+                    or not identifier_pattern.fullmatch(value)
+                    for value in variability_factors
+                )
+            ):
+                return "domain_policy_bounded_inference_factors_invalid"
             if not identifier_pattern.fullmatch(
                 str(policy.get("allowed_scope") or "")
             ):
                 return "domain_policy_bounded_inference_scope_invalid"
+            if not identifier_pattern.fullmatch(
+                str(policy.get("allowed_conclusion_family") or "")
+            ):
+                return "domain_policy_bounded_inference_conclusion_invalid"
+            if policy.get("advice_mode") not in {
+                "none",
+                "concise_care_only",
+                "safety_handoff_required",
+            }:
+                return "domain_policy_bounded_inference_advice_invalid"
             if policy.get("maximum_risk_level") not in {"low", "medium"}:
                 return "domain_policy_bounded_inference_risk_invalid"
             if policy.get("review_only") is not True:

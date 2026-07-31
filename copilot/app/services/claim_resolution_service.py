@@ -39,6 +39,27 @@ _BOUNDED_INFERENCE_RISK_RANK = {
     "low": 0,
     "medium": 1,
 }
+_REQUEST_CLAIM_RISK_LEVELS = {
+    "low",
+    "medium",
+    "high",
+    "critical",
+    "prohibited",
+}
+_RESTRICTED_REQUEST_INTENT_REASONS = {
+    "absolute_guarantee": "absolute_guarantee_prohibited",
+    "test_standard_request": "direct_test_evidence_required",
+    "warranty_or_liability_request": "policy_or_service_evidence_required",
+}
+_RESTRICTED_OPTION_REASONS = {
+    "absolute_guarantee": "bounded_inference_absolute_guarantee_prohibited",
+    "test_standard_request": (
+        "bounded_inference_direct_test_evidence_required"
+    ),
+    "warranty_or_liability_request": (
+        "bounded_inference_policy_or_service_evidence_required"
+    ),
+}
 
 
 def _structured_sha256(value: Any) -> str:
@@ -206,6 +227,97 @@ def _policy_values(policy: dict[str, Any], key: str) -> list[str]:
     })
 
 
+def _restricted_request_boundary(
+    requested: dict[str, Any],
+) -> dict[str, Any]:
+    requested_risk = (
+        sanitize_text(requested.get("risk_level")).lower()
+        or "medium"
+    )
+    intent_kind = sanitize_text(
+        requested.get("policy_intent_kind")
+    ).lower()
+    claim_families = _structured_claim_families(requested)
+    high_risk_families = sorted({
+        canonical
+        for family in claim_families
+        if (canonical := normalize_high_risk_claim_type(family))
+    })
+    if _claim_is_prohibited(requested):
+        reason = (
+            sanitize_text(requested.get("prohibition_reason"))
+            or "direct_handling_prohibited"
+        )
+        allows_alternative = False
+    elif intent_kind in _RESTRICTED_REQUEST_INTENT_REASONS:
+        reason = _RESTRICTED_REQUEST_INTENT_REASONS[intent_kind]
+        allows_alternative = intent_kind == "absolute_guarantee"
+    else:
+        return {}
+    return {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": reason,
+        "requested_claim_risk": requested_risk,
+        "policy_intent_ref": sanitize_text(
+            requested.get("policy_intent_ref")
+        ).lower(),
+        "policy_goal_family": sanitize_text(
+            requested.get("policy_goal_family")
+        ).lower(),
+        "policy_intent_kind": intent_kind,
+        "high_risk_claim_families": high_risk_families,
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": allows_alternative,
+    }
+
+
+def valid_restricted_request_boundary(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if set(value) != {
+        "schema_version",
+        "status",
+        "reason_code",
+        "requested_claim_risk",
+        "policy_intent_ref",
+        "policy_goal_family",
+        "policy_intent_kind",
+        "high_risk_claim_families",
+        "must_remain_unresolved",
+        "allows_bounded_alternative",
+    }:
+        return False
+    high_risk_families = value.get("high_risk_claim_families")
+    return bool(
+        value.get("schema_version") == "restricted-request-boundary/v1"
+        and value.get("status") == "prohibited"
+        and sanitize_text(value.get("reason_code"))
+        and value.get("requested_claim_risk")
+        in _REQUEST_CLAIM_RISK_LEVELS
+        and value.get("policy_intent_kind")
+        in (set(_RESTRICTED_REQUEST_INTENT_REASONS) | {""})
+        and isinstance(high_risk_families, list)
+        and len(high_risk_families)
+        == len(set(map(str, high_risk_families)))
+        and all(
+            normalize_high_risk_claim_type(item)
+            for item in high_risk_families
+        )
+        and value.get("must_remain_unresolved") is True
+        and isinstance(value.get("allows_bounded_alternative"), bool)
+        and (
+            value.get("allows_bounded_alternative") is False
+            or (
+                value.get("policy_intent_kind")
+                == "absolute_guarantee"
+                and sanitize_text(value.get("policy_intent_ref"))
+                and sanitize_text(value.get("policy_goal_family"))
+            )
+        )
+    )
+
+
 def _eligible_policy_options(
     requested: dict[str, Any],
     *,
@@ -218,6 +330,7 @@ def _eligible_policy_options(
     policy_intent_ref = sanitize_text(
         requested.get("policy_intent_ref")
     ).lower()
+    restricted_boundary = _restricted_request_boundary(requested)
     if (
         sanitize_text(requested.get("goal_kind")).lower()
         != "customer_goal"
@@ -226,19 +339,24 @@ def _eligible_policy_options(
         return [], "bounded_inference_goal_kind_prohibited"
 
     claim_families = _structured_claim_families(requested)
-    if (
-        any(normalize_high_risk_claim_type(value) for value in claim_families)
-        or sanitize_text(requested.get("risk_level")).lower()
-        in {"high", "critical", "prohibited"}
+    if any(
+        normalize_high_risk_claim_type(value)
+        for value in claim_families
     ):
         return [], "bounded_inference_high_risk_prohibited"
-
     requested_risk = (
         sanitize_text(requested.get("risk_level")).lower()
         or "medium"
     )
-    if requested_risk not in _BOUNDED_INFERENCE_RISK_RANK:
+    if requested_risk not in _REQUEST_CLAIM_RISK_LEVELS:
         return [], "bounded_inference_risk_contract_invalid"
+    if (
+        requested_risk in {"high", "critical", "prohibited"}
+        and not restricted_boundary.get(
+            "allows_bounded_alternative"
+        )
+    ):
+        return [], "bounded_inference_high_risk_prohibited"
     if not policy_ref_prefix:
         return [], "bounded_inference_policy_reference_missing"
 
@@ -251,6 +369,9 @@ def _eligible_policy_options(
             and sanitize_text(policy.get("policy_intent_ref"))
         ),
         key=lambda item: sanitize_text(item.get("policy_intent_ref")),
+    )
+    alternative_for_restricted_request = bool(
+        restricted_boundary.get("allows_bounded_alternative")
     )
     if policy_intent_ref:
         matching = [
@@ -281,13 +402,60 @@ def _eligible_policy_options(
             != sanitize_text(matching[0].get("intent_kind")).lower()
         ):
             return [], "bounded_inference_intent_kind_mismatch"
-        policies = matching
+        if alternative_for_restricted_request:
+            policies = [
+                policy
+                for policy in policies
+                if sanitize_text(policy.get("goal_family")).lower()
+                == policy_goal_family
+                and sanitize_text(policy.get("intent_kind")).lower()
+                == "practical_guidance"
+            ]
+            if not policies:
+                return [], "bounded_inference_absolute_guarantee_prohibited"
+        else:
+            policies = matching
+        if restricted_boundary and not restricted_boundary.get(
+            "allows_bounded_alternative"
+        ):
+            return [], _RESTRICTED_OPTION_REASONS.get(
+                policy_intent_kind,
+                "bounded_inference_high_risk_prohibited",
+            )
 
     options: list[dict[str, Any]] = []
     rejection_reason = ""
     for policy in policies:
         intent_kind = sanitize_text(policy.get("intent_kind")).lower()
-        if intent_kind == "absolute_guarantee":
+        allowed_conclusion_family = sanitize_text(
+            policy.get("allowed_conclusion_family")
+        ).lower()
+        allowed_variability_factor_families = _policy_values(
+            policy,
+            "allowed_variability_factor_families",
+        )
+        raw_variability_factors = policy.get(
+            "allowed_variability_factor_families"
+        )
+        advice_mode = sanitize_text(policy.get("advice_mode")).lower()
+        if (
+            not allowed_conclusion_family
+            or not isinstance(raw_variability_factors, list)
+            or len(raw_variability_factors)
+            != len(allowed_variability_factor_families)
+            or any(
+                not isinstance(value, str)
+                or not sanitize_text(value).strip()
+                for value in raw_variability_factors
+            )
+            or advice_mode not in {
+                "none",
+                "concise_care_only",
+                "safety_handoff_required",
+            }
+        ):
+            reason = "bounded_inference_semantic_budget_invalid"
+        elif intent_kind == "absolute_guarantee":
             reason = "bounded_inference_absolute_guarantee_prohibited"
         elif intent_kind == "test_standard_request":
             reason = "bounded_inference_direct_test_evidence_required"
@@ -314,8 +482,14 @@ def _eligible_policy_options(
                 or "bounded_inference_risk_contract_invalid"
             )
             continue
+        answer_strategy_risk = (
+            requested_risk
+            if requested_risk in _BOUNDED_INFERENCE_RISK_RANK
+            else maximum_risk
+        )
         if (
-            _BOUNDED_INFERENCE_RISK_RANK[requested_risk]
+            answer_strategy_risk not in _BOUNDED_INFERENCE_RISK_RANK
+            or _BOUNDED_INFERENCE_RISK_RANK[answer_strategy_risk]
             > _BOUNDED_INFERENCE_RISK_RANK[maximum_risk]
         ):
             rejection_reason = (
@@ -373,6 +547,19 @@ def _eligible_policy_options(
         option_intent_ref = sanitize_text(
             policy.get("policy_intent_ref")
         ).lower()
+        option_provenance = {
+            "policy_owner": "domain_policy_pack",
+            "filter_owner": "claim_resolution",
+            "premise_owner": "admitted_answer_context",
+            "intent_narrowed": (
+                bool(policy_intent_ref)
+                and not alternative_for_restricted_request
+            ),
+        }
+        if alternative_for_restricted_request:
+            option_provenance[
+                "alternative_for_restricted_request"
+            ] = True
         options.append({
             "policy_ref": (
                 f"{policy_ref_prefix}:intent:{option_intent_ref}"
@@ -395,12 +582,20 @@ def _eligible_policy_options(
             "allowed_scope": sanitize_text(
                 policy.get("allowed_scope")
             ).lower(),
+            "allowed_conclusion_family": allowed_conclusion_family,
+            "allowed_variability_factor_families": (
+                allowed_variability_factor_families
+            ),
+            "advice_mode": advice_mode,
             "forbidden_claim_families": _policy_values(
                 policy,
                 "prohibited_claim_families",
             ),
             "maximum_risk": maximum_risk,
             "requested_risk": requested_risk,
+            "requested_claim_risk": requested_risk,
+            "answer_strategy_risk": answer_strategy_risk,
+            "restricted_request_boundary": restricted_boundary,
             "required_qualifiers": _policy_values(
                 policy,
                 "required_qualifiers",
@@ -409,12 +604,7 @@ def _eligible_policy_options(
             "used_for_evidence": False,
             "used_for_fact_support": False,
             "can_change_can_send": False,
-            "option_provenance": {
-                "policy_owner": "domain_policy_pack",
-                "filter_owner": "claim_resolution",
-                "premise_owner": "admitted_answer_context",
-                "intent_narrowed": bool(policy_intent_ref),
-            },
+            "option_provenance": option_provenance,
         })
     return (
         sorted(options, key=lambda item: item["policy_ref"]),
@@ -493,6 +683,7 @@ def build_claim_resolutions(
             for fact in matching_conflicts
             if sanitize_text(fact.get("evidence_uid"))
         ]
+        restricted_boundary = _restricted_request_boundary(requested)
         if unmapped_customer_goal:
             status = "unresolved"
             reason = "unmapped_claim_type"
@@ -505,6 +696,10 @@ def build_claim_resolutions(
             status = "conflicting"
             reason = sanitize_text(matching_conflicts[0].get("reason")) or "conflicting_evidence"
             facts: list[dict[str, Any]] = []
+        elif restricted_boundary:
+            status = "unresolved"
+            reason = restricted_boundary["reason_code"]
+            facts = []
         elif fact_selection_reason:
             status = "unresolved"
             reason = fact_selection_reason
@@ -527,6 +722,7 @@ def build_claim_resolutions(
                     "no_admitted_direct_evidence",
                     "unmapped_claim_type",
                 }
+                or bool(restricted_boundary)
             )
         ):
             (
@@ -578,6 +774,11 @@ def build_claim_resolutions(
             "canonical_claim_family": _canonical_claim_type(claim_type),
             "canonical_attribute_key": requested_attribute,
             "status": status,
+            "requested_claim_risk": (
+                sanitize_text(requested.get("risk_level")).lower()
+                or "medium"
+            ),
+            "restricted_request_boundary": restricted_boundary,
             "evidence_uids": [
                 sanitize_text(fact.get("evidence_uid")) for fact in facts if sanitize_text(fact.get("evidence_uid"))
             ],
@@ -604,6 +805,9 @@ def build_claim_resolutions(
             ),
             "required_qualifiers": [],
             "prohibited_extensions": [],
+            "allowed_conclusion_family": "",
+            "allowed_variability_factor_families": [],
+            "advice_mode": "",
             "bounded_inference_policy": sanitize_text(
                 "review_required"
                 if eligible_policy_options

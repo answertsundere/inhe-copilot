@@ -31,6 +31,13 @@ def _bounded_policy(**overrides) -> dict:
         "premise_fact_families": ["material_composition"],
         "required_context_capabilities": ["product_category"],
         "allowed_scope": "ordinary_minor_accidental_impact",
+        "allowed_conclusion_family": "ordinary_minor_impact_tolerance",
+        "allowed_variability_factor_families": [
+            "contact_surface",
+            "impact_angle",
+            "impact_height",
+        ],
+        "advice_mode": "none",
         "maximum_risk_level": "medium",
         "required_qualifiers": ["no_absolute_guarantee"],
         "prohibited_claim_families": [
@@ -466,6 +473,15 @@ def test_policy_bounded_inference_uses_only_admitted_premises_and_is_order_stabl
     ]
     assert option["premise_families"] == ["material_composition"]
     assert option["allowed_scope"] == "ordinary_minor_accidental_impact"
+    assert option["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert option["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "impact_angle",
+        "impact_height",
+    ]
+    assert option["advice_mode"] == "none"
     assert option["requested_risk"] == "medium"
     assert option["maximum_risk"] == "medium"
     assert option["review_only"] is True
@@ -669,6 +685,49 @@ def test_policy_bounded_inference_enforces_risk_contract(
 
 
 @pytest.mark.parametrize(
+    "policy_mutation",
+    [
+        {"allowed_conclusion_family": ""},
+        {"allowed_variability_factor_families": None},
+        {
+            "allowed_variability_factor_families": [
+                "impact_height",
+                "impact_height",
+            ]
+        },
+        {"advice_mode": "free_form_advice"},
+    ],
+)
+def test_policy_bounded_inference_requires_complete_semantic_budget(
+    policy_mutation,
+):
+    result = build_claim_resolutions(
+        [_bounded_goal()],
+        direct_product_facts=[
+            _fact(
+                "material",
+                "material",
+                claim_type="material_composition",
+            )
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[
+            _bounded_policy(**policy_mutation)
+        ],
+        context_capabilities={
+            "product_category": {"available": True}
+        },
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == (
+        "bounded_inference_semantic_budget_invalid"
+    )
+
+
+@pytest.mark.parametrize(
     "goal_overrides",
     [
         {"goal_kind": "service_action"},
@@ -775,6 +834,155 @@ def test_policy_bounded_inference_never_resolves_high_risk_goal():
     )[0]
 
     assert result["status"] == "unresolved"
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == (
+        "bounded_inference_high_risk_prohibited"
+    )
+
+
+def test_absolute_guarantee_keeps_restricted_boundary_and_offers_safe_strategy():
+    absolute = _bounded_policy(
+        policy_intent_ref="product_durability_absolute_guarantee",
+        intent_kind="absolute_guarantee",
+        allowed_scope="absolute_guarantee_disallowed",
+    )
+    goal = _bounded_goal(
+        risk_level="high",
+        policy_intent_ref="product_durability_absolute_guarantee",
+        policy_intent_kind="absolute_guarantee",
+    )
+    kwargs = {
+        "direct_product_facts": [
+            _fact(
+                "material",
+                "material",
+                claim_type="material_composition",
+            )
+        ],
+        "direct_policy_facts": [],
+        "conflicts": [],
+        "context_capabilities": {
+            "product_category": {"available": True}
+        },
+        "policy_ref_prefix": "domain-policy:fixture@1.0.0",
+    }
+
+    first = build_claim_resolutions(
+        [goal],
+        bounded_inference_policies=[absolute, _bounded_policy()],
+        **kwargs,
+    )[0]
+    second = build_claim_resolutions(
+        [goal],
+        bounded_inference_policies=[_bounded_policy(), absolute],
+        **kwargs,
+    )[0]
+
+    assert first == second
+    assert first["status"] == "unresolved"
+    assert first["support_basis"] == "none"
+    assert first["evidence_uids"] == []
+    assert first["reason"] == "absolute_guarantee_prohibited"
+    assert first["requested_claim_risk"] == "high"
+    assert first["restricted_request_boundary"] == {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "absolute_guarantee_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": (
+            "product_durability_absolute_guarantee"
+        ),
+        "policy_goal_family": "product_durability",
+        "policy_intent_kind": "absolute_guarantee",
+        "high_risk_claim_families": [],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    option = _only_policy_option(first)
+    assert option["policy_intent_ref"] == (
+        "product_durability_practical_guidance"
+    )
+    assert option["intent_kind"] == "practical_guidance"
+    assert option["requested_risk"] == "high"
+    assert option["requested_claim_risk"] == "high"
+    assert option["answer_strategy_risk"] == "medium"
+    assert option["maximum_risk"] == "medium"
+    assert option["restricted_request_boundary"] == first[
+        "restricted_request_boundary"
+    ]
+    assert option["option_provenance"][
+        "alternative_for_restricted_request"
+    ] is True
+    assert option["option_provenance"]["intent_narrowed"] is False
+
+
+def test_high_risk_practical_request_without_boundary_has_no_option():
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            risk_level="high",
+            policy_intent_ref=(
+                "product_durability_practical_guidance"
+            ),
+            policy_intent_kind="practical_guidance",
+        )],
+        direct_product_facts=[
+            _fact(
+                "material",
+                "material",
+                claim_type="material_composition",
+            )
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[_bounded_policy()],
+        context_capabilities={
+            "product_category": {"available": True}
+        },
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["restricted_request_boundary"] == {}
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == (
+        "bounded_inference_high_risk_prohibited"
+    )
+
+
+def test_high_risk_supported_fact_is_preserved_without_strategy_option():
+    policy = _bounded_policy(
+        policy_intent_ref="product_weight_practical_guidance",
+        goal_family="product_weight_and_moving",
+        premise_fact_families=["gross_weight"],
+        allowed_scope="approximate_short_distance_moving_effort",
+    )
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            claim_type="gross_weight",
+            claim_type_status="mapped",
+            attribute_key="gross_weight",
+            risk_level="high",
+            policy_intent_ref="product_weight_practical_guidance",
+            policy_goal_family="product_weight_and_moving",
+        )],
+        direct_product_facts=[
+            _fact(
+                "gross-weight",
+                "gross_weight",
+                claim_type="gross_weight",
+            )
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[policy],
+        context_capabilities={
+            "product_category": {"available": True}
+        },
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["gross-weight"]
     assert result["eligible_policy_options"] == []
     assert result["bounded_inference_rejection_reason"] == (
         "bounded_inference_high_risk_prohibited"

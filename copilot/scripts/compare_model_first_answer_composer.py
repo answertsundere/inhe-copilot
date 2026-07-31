@@ -32,6 +32,9 @@ from app.services.formal_knowledge_database_guard_service import (  # noqa: E402
     formal_kb_audit_hmac_key,
 )
 from app.services.claim_polarity_service import contains_asserted_claim  # noqa: E402
+from app.services.claim_resolution_service import (  # noqa: E402
+    valid_restricted_request_boundary,
+)
 from app.services.fact_type_alias_service import (  # noqa: E402
     canonical_material_composition_claim_type,
 )
@@ -42,6 +45,12 @@ from app.services.no_evidence_reply_policy_service import (  # noqa: E402
 
 REPORT_SCHEMA_VERSION = "model-first-answer-comparison/v1"
 GOAL_TRUTH_SCHEMA_VERSION = "model-first-goal-truth/v1"
+_ANSWER_STRATEGY_RISK_RANK = {"low": 0, "medium": 1}
+_RESTRICTED_POLICY_INTENT_KINDS = {
+    "absolute_guarantee",
+    "test_standard_request",
+    "warranty_or_liability_request",
+}
 GOAL_FUNNEL_BREAKPOINTS = {
     "canonical_context_missing",
     "turn_understanding_goal_missing",
@@ -941,12 +950,18 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         item
         for item in resolutions
         if (
-            str(item.get("policy_intent_ref") or "").strip()
+            bool(item.get("eligible_policy_options"))
             or item.get("support_basis") == "bounded_inference"
-            or item.get("bounded_inference_policy") in {
-                "allowed",
-                "review_required",
-            }
+            and (
+                item.get("bounded_inference_policy")
+                in {"allowed", "review_required"}
+            )
+            or (
+                item.get("status") == "unresolved"
+                and str(
+                    item.get("policy_intent_ref") or ""
+                ).strip()
+            )
         )
     ]
     valid_claim_uids: set[str] = set()
@@ -956,6 +971,45 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         if len(candidates) != 1:
             continue
         policy = candidates[0]
+        restricted_boundary = _as_dict(
+            resolution.get("restricted_request_boundary")
+        )
+        if restricted_boundary:
+            if (
+                valid_restricted_request_boundary(restricted_boundary)
+                and resolution.get("status") == "unresolved"
+                and str(
+                    resolution.get("requested_claim_risk") or ""
+                ).strip()
+                == str(
+                    restricted_boundary.get("requested_claim_risk") or ""
+                ).strip()
+                and intent_ref
+                == str(
+                    restricted_boundary.get("policy_intent_ref") or ""
+                ).strip()
+                == str(policy.get("policy_intent_ref") or "").strip()
+                and str(
+                    resolution.get("policy_goal_family") or ""
+                ).strip()
+                == str(
+                    restricted_boundary.get("policy_goal_family") or ""
+                ).strip()
+                == str(policy.get("goal_family") or "").strip()
+                and str(
+                    resolution.get("policy_intent_kind") or ""
+                ).strip()
+                == str(
+                    restricted_boundary.get("policy_intent_kind") or ""
+                ).strip()
+                == str(policy.get("intent_kind") or "").strip()
+            ):
+                claim_uid = str(
+                    resolution.get("claim_uid") or ""
+                ).strip()
+                if claim_uid:
+                    valid_claim_uids.add(claim_uid)
+            continue
         matching_options = [
             option
             for option in _as_dict_list(
@@ -1114,6 +1168,37 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
     selected_attributed_count = 0
     selected_premise_count = 0
     selected_scope_count = 0
+    restricted_candidates = [
+        resolution
+        for resolution in resolutions
+        if (
+            str(
+                resolution.get("policy_intent_kind") or ""
+            ).strip()
+            in _RESTRICTED_POLICY_INTENT_KINDS
+            or bool(resolution.get("restricted_request_boundary"))
+        )
+    ]
+    restricted_boundary_preserved_count = sum(
+        bool(
+            valid_restricted_request_boundary(
+                resolution.get("restricted_request_boundary")
+            )
+            and resolution.get("status") == "unresolved"
+            and str(
+                resolution.get("requested_claim_risk") or ""
+            ).strip()
+            == str(
+                _as_dict(
+                    resolution.get("restricted_request_boundary")
+                ).get("requested_claim_risk")
+                or ""
+            ).strip()
+        )
+        for resolution in restricted_candidates
+    )
+    risk_separation_count = 0
+    risk_separation_total = 0
     for resolution in eligible:
         raw_options = _as_dict_list(
             resolution.get("eligible_policy_options")
@@ -1133,7 +1218,72 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
             requested_risk = str(
                 option.get("requested_risk") or ""
             ).strip()
+            requested_claim_risk = str(
+                option.get("requested_claim_risk")
+                or requested_risk
+            ).strip()
+            answer_strategy_risk = str(
+                option.get("answer_strategy_risk")
+                or requested_risk
+            ).strip()
             provenance = _as_dict(option.get("option_provenance"))
+            resolution_boundary = _as_dict(
+                resolution.get("restricted_request_boundary")
+            )
+            option_boundary = _as_dict(
+                option.get("restricted_request_boundary")
+            )
+            restricted_alternative = bool(
+                resolution_boundary
+                or option_boundary
+                or provenance.get(
+                    "alternative_for_restricted_request"
+                )
+            )
+            risk_separation_valid = bool(
+                restricted_alternative
+                and valid_restricted_request_boundary(
+                    resolution_boundary
+                )
+                and option_boundary == resolution_boundary
+                and requested_risk == requested_claim_risk
+                and requested_claim_risk
+                == str(
+                    resolution.get("requested_claim_risk") or ""
+                ).strip()
+                == str(
+                    resolution_boundary.get(
+                        "requested_claim_risk"
+                    )
+                    or ""
+                ).strip()
+                and requested_claim_risk
+                in {"high", "critical", "prohibited"}
+                and answer_strategy_risk
+                in _ANSWER_STRATEGY_RISK_RANK
+                and maximum_risk in _ANSWER_STRATEGY_RISK_RANK
+                and _ANSWER_STRATEGY_RISK_RANK[
+                    answer_strategy_risk
+                ]
+                <= _ANSWER_STRATEGY_RISK_RANK[maximum_risk]
+                and provenance.get(
+                    "alternative_for_restricted_request"
+                )
+                is True
+                and provenance.get("intent_narrowed") is False
+                and str(option.get("intent_kind") or "").strip()
+                == "practical_guidance"
+            )
+            if (
+                str(
+                    resolution.get("policy_intent_kind") or ""
+                ).strip()
+                in _RESTRICTED_POLICY_INTENT_KINDS
+                or restricted_alternative
+            ):
+                risk_separation_total += 1
+                if risk_separation_valid:
+                    risk_separation_count += 1
             valid = bool(
                 policy_ref
                 and policy
@@ -1158,10 +1308,11 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
                 == str(policy.get("allowed_scope") or "").strip()
                 and maximum_risk
                 == str(policy.get("maximum_risk_level") or "").strip()
-                and requested_risk in {"low", "medium"}
+                and requested_risk == requested_claim_risk
+                and answer_strategy_risk in {"low", "medium"}
                 and maximum_risk in {"low", "medium"}
                 and not (
-                    requested_risk == "medium"
+                    answer_strategy_risk == "medium"
                     and maximum_risk == "low"
                 )
                 and sorted(option.get("required_qualifiers") or [])
@@ -1178,6 +1329,15 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
                 and provenance.get("filter_owner") == "claim_resolution"
                 and provenance.get("premise_owner")
                 == "admitted_answer_context"
+                and (
+                    (
+                        not restricted_alternative
+                        and requested_claim_risk in {"low", "medium"}
+                        and not option_boundary
+                        and provenance.get("intent_narrowed") is True
+                    )
+                    or risk_separation_valid
+                )
                 and not resolution.get("conflicting_evidence_uids")
             )
             if valid and policy_ref not in valid_options:
@@ -1234,6 +1394,47 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
                 == str(
                     selected_option.get("allowed_scope") or ""
                 ).strip()
+                and (
+                    not selected_option.get(
+                        "restricted_request_boundary"
+                    )
+                    or (
+                        str(
+                            clause.get(
+                                "requested_claim_risk_level"
+                            )
+                            or ""
+                        ).strip()
+                        == str(
+                            selected_option.get(
+                                "requested_claim_risk"
+                            )
+                            or ""
+                        ).strip()
+                        and str(
+                            clause.get(
+                                "inference_risk_level"
+                            )
+                            or ""
+                        ).strip()
+                        == str(
+                            selected_option.get(
+                                "answer_strategy_risk"
+                            )
+                            or ""
+                        ).strip()
+                        and _as_dict(
+                            clause.get(
+                                "restricted_request_boundary"
+                            )
+                        )
+                        == _as_dict(
+                            selected_option.get(
+                                "restricted_request_boundary"
+                            )
+                        )
+                    )
+                )
             )
             if scope_valid:
                 selected_scope_count += 1
@@ -1313,6 +1514,18 @@ def _policy_contract_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
         ),
         "bounded_inference_scope_denominator": (
             len(bounded) + eligible_option_goal_count
+        ),
+        "restricted_boundary_preservation_numerator": (
+            restricted_boundary_preserved_count
+        ),
+        "restricted_boundary_preservation_denominator": len(
+            restricted_candidates
+        ),
+        "answer_strategy_risk_separation_numerator": (
+            risk_separation_count
+        ),
+        "answer_strategy_risk_separation_denominator": (
+            risk_separation_total
         ),
         "absolute_guarantee_supported_count": sum(
             item.get("policy_intent_kind") == "absolute_guarantee"
@@ -1554,6 +1767,22 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     scope_den = sum(
         int(row["bounded_inference_scope_denominator"]) for row in rows
     )
+    boundary_num = sum(
+        int(row["restricted_boundary_preservation_numerator"])
+        for row in rows
+    )
+    boundary_den = sum(
+        int(row["restricted_boundary_preservation_denominator"])
+        for row in rows
+    )
+    risk_separation_num = sum(
+        int(row["answer_strategy_risk_separation_numerator"])
+        for row in rows
+    )
+    risk_separation_den = sum(
+        int(row["answer_strategy_risk_separation_denominator"])
+        for row in rows
+    )
     partial_rows = [row for row in rows if row["partial_answer_expected"]]
     reply_counts = Counter(row["reply_sha256"] for row in rows if row["reply"])
     duplicate_rows = sum(count for count in reply_counts.values() if count > 1)
@@ -1718,6 +1947,20 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "denominator": scope_den,
             "rate": scope_num / scope_den if scope_den else None,
         },
+        "restricted_boundary_preservation": {
+            "numerator": boundary_num,
+            "denominator": boundary_den,
+            "rate": boundary_num / boundary_den if boundary_den else None,
+        },
+        "answer_strategy_risk_separation": {
+            "numerator": risk_separation_num,
+            "denominator": risk_separation_den,
+            "rate": (
+                risk_separation_num / risk_separation_den
+                if risk_separation_den
+                else None
+            ),
+        },
         "policy_intent_ref_counts": dict(sorted(Counter(
             intent_ref
             for row in rows
@@ -1850,6 +2093,14 @@ def _correctness_gate_blockers(
         ("bounded_inference_attribution", "bounded_inference_attribution_incomplete"),
         ("bounded_inference_premise_coverage", "bounded_inference_premise_incomplete"),
         ("bounded_inference_scope_coverage", "bounded_inference_scope_incomplete"),
+        (
+            "restricted_boundary_preservation",
+            "restricted_boundary_not_preserved",
+        ),
+        (
+            "answer_strategy_risk_separation",
+            "answer_strategy_risk_separation_invalid",
+        ),
     ):
         metric = on_summary.get(field) or {}
         if int(metric.get("denominator") or 0) and int(metric.get("numerator") or 0) != int(metric["denominator"]):

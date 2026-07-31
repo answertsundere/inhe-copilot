@@ -3,6 +3,7 @@ import pytest
 from app.services.final_answer_auditor import (
     _expected_topics,
     _is_visual_media_answer,
+    _model_first_audit_context,
     _model_first_candidate_contract_issues,
     audit_final_answer,
 )
@@ -544,6 +545,15 @@ def _bounded_inference_audit_response() -> dict:
             "premise_evidence_refs": ["selected-material"],
             "premise_families": ["material_composition"],
             "allowed_scope": "ordinary_minor_accidental_impact",
+            "allowed_conclusion_family": (
+                "ordinary_minor_impact_tolerance"
+            ),
+            "allowed_variability_factor_families": [
+                "contact_surface",
+                "impact_angle",
+                "impact_height",
+            ],
+            "advice_mode": "none",
             "forbidden_claim_families": [
                 "certification_report",
                 "child_safety",
@@ -595,6 +605,15 @@ def _bounded_inference_audit_response() -> dict:
                 "intent_kind": "practical_guidance",
                 "premise_fact_families": ["material_composition"],
                 "allowed_scope": "ordinary_minor_accidental_impact",
+                "allowed_conclusion_family": (
+                    "ordinary_minor_impact_tolerance"
+                ),
+                "allowed_variability_factor_families": [
+                    "contact_surface",
+                    "impact_angle",
+                    "impact_height",
+                ],
+                "advice_mode": "none",
                 "maximum_risk_level": "medium",
                 "required_qualifiers": ["no_absolute_guarantee"],
                 "prohibited_claim_families": [
@@ -622,6 +641,15 @@ def _bounded_inference_audit_response() -> dict:
                 "maximum_risk_level": "medium",
                 "inference_review_only": True,
                 "required_qualifiers": ["no_absolute_guarantee"],
+                "allowed_conclusion_family": (
+                    "ordinary_minor_impact_tolerance"
+                ),
+                "allowed_variability_factor_families": [
+                    "contact_surface",
+                    "impact_angle",
+                    "impact_height",
+                ],
+                "advice_mode": "none",
                 "prohibited_extensions": [
                     "certification_report",
                     "child_safety",
@@ -632,10 +660,156 @@ def _bounded_inference_audit_response() -> dict:
     }
 
 
+def _restricted_bounded_inference_audit_response() -> dict:
+    response = _bounded_inference_audit_response()
+    boundary = {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "absolute_guarantee_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": (
+            "product_durability_absolute_guarantee"
+        ),
+        "policy_goal_family": "product_durability",
+        "policy_intent_kind": "absolute_guarantee",
+        "high_risk_claim_families": [],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    claim = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]
+    claim["requested_claim_risk"] = "high"
+    claim["restricted_request_boundary"] = boundary
+    option = claim["eligible_policy_options"][0]
+    option["requested_risk"] = "high"
+    option["requested_claim_risk"] = "high"
+    option["answer_strategy_risk"] = "medium"
+    option["restricted_request_boundary"] = boundary
+    option["option_provenance"][
+        "alternative_for_restricted_request"
+    ] = True
+    option["option_provenance"]["intent_narrowed"] = False
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    clause["requested_claim_risk_level"] = "high"
+    clause["restricted_request_boundary"] = boundary
+    return response
+
+
 def test_final_auditor_accepts_canonical_policy_bounded_inference_contract():
     response = _bounded_inference_audit_response()
 
     assert _model_first_candidate_contract_issues(response) == []
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    assert clause["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert clause["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "impact_angle",
+        "impact_height",
+    ]
+    assert clause["advice_mode"] == "none"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda option, policy, clause: clause.update({
+            "allowed_conclusion_family": "unoffered_conclusion",
+        }),
+        lambda option, policy, clause: clause.update({
+            "allowed_variability_factor_families": [
+                "unoffered_factor"
+            ],
+        }),
+        lambda option, policy, clause: clause.update({
+            "advice_mode": "concise_care_only",
+        }),
+        lambda option, policy, clause: option.update({
+            "allowed_conclusion_family": "unoffered_conclusion",
+        }),
+        lambda option, policy, clause: policy.update({
+            "advice_mode": "concise_care_only",
+        }),
+    ],
+)
+def test_final_auditor_rejects_semantic_budget_binding_mutation(
+    mutation,
+):
+    response = _bounded_inference_audit_response()
+    minimal = response["minimal_decision_context"]
+    option = minimal["claim_resolutions"][0][
+        "eligible_policy_options"
+    ][0]
+    policy = minimal["bounded_inference_policies"][0]
+    clause = response["model_first_answer_composer"]["clauses"][0]
+
+    mutation(option, policy, clause)
+
+    assert _model_first_candidate_contract_issues(response) == [
+        "model_first_candidate_bounded_inference_clause_invalid"
+    ]
+
+
+def test_final_auditor_preserves_restricted_request_as_unresolved_truth():
+    response = _restricted_bounded_inference_audit_response()
+
+    assert _model_first_candidate_contract_issues(response) == []
+    truth = _model_first_audit_context(
+        response,
+        {},
+    )["canonical_truth"]
+    claim = truth["claim_resolutions"][0]
+    assert claim["status"] == "supported"
+    assert claim["requested_claim_status"] == "unresolved"
+    assert claim["answer_strategy_status"] == "supported"
+    assert claim["requested_claim_risk"] == "high"
+    assert claim["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+    assert truth["unresolved_or_prohibited_claims"] == [claim]
+    clause = truth["candidate_clauses"][0]
+    assert clause["requested_claim_risk_level"] == "high"
+    assert clause["inference_risk_level"] == "medium"
+    assert clause["restricted_request_boundary"] == claim[
+        "restricted_request_boundary"
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda claim, option, clause: clause.update({
+            "restricted_request_boundary": {},
+        }),
+        lambda claim, option, clause: option.update({
+            "restricted_request_boundary": {},
+        }),
+        lambda claim, option, clause: clause.update({
+            "requested_claim_risk_level": "medium",
+        }),
+        lambda claim, option, clause: option.update({
+            "answer_strategy_risk": "high",
+        }),
+        lambda claim, option, clause: claim.update({
+            "restricted_request_boundary": {},
+        }),
+    ],
+)
+def test_final_auditor_rejects_restricted_request_mutation(mutation):
+    response = _restricted_bounded_inference_audit_response()
+    claim = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]
+    option = claim["eligible_policy_options"][0]
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    mutation(claim, option, clause)
+
+    assert (
+        "model_first_candidate_bounded_inference_clause_invalid"
+        in _model_first_candidate_contract_issues(response)
+    )
 
 
 def test_final_auditor_exposes_policy_bounded_inference_as_canonical_truth(

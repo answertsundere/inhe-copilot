@@ -202,6 +202,15 @@ def _bounded_policy_response():
                 "intent_kind": "practical_guidance",
                 "premise_fact_families": ["material_composition"],
                 "allowed_scope": "ordinary_minor_accidental_impact",
+                "allowed_conclusion_family": (
+                    "ordinary_minor_impact_tolerance"
+                ),
+                "allowed_variability_factor_families": [
+                    "contact_surface",
+                    "impact_angle",
+                    "impact_height",
+                ],
+                "advice_mode": "none",
                 "maximum_risk_level": "medium",
                 "required_qualifiers": ["no_absolute_guarantee"],
                 "prohibited_claim_families": [
@@ -242,6 +251,15 @@ def _bounded_policy_response():
                     "allowed_scope": (
                         "ordinary_minor_accidental_impact"
                     ),
+                    "allowed_conclusion_family": (
+                        "ordinary_minor_impact_tolerance"
+                    ),
+                    "allowed_variability_factor_families": [
+                        "contact_surface",
+                        "impact_angle",
+                        "impact_height",
+                    ],
+                    "advice_mode": "none",
                     "forbidden_claim_families": [
                         "certification_report",
                         "child_safety",
@@ -263,6 +281,64 @@ def _bounded_policy_response():
             }],
         },
     }
+
+
+def _restricted_bounded_policy_response():
+    response = _bounded_policy_response()
+    practical_policy = response["minimal_decision_context"][
+        "bounded_inference_policies"
+    ][0]
+    absolute_intent_ref = "product_durability_absolute_guarantee"
+    absolute_policy = {
+        **practical_policy,
+        "policy_ref": (
+            "domain-policy:fixture_domain@1.0.0:"
+            f"intent:{absolute_intent_ref}"
+        ),
+        "policy_intent_ref": absolute_intent_ref,
+        "intent_kind": "absolute_guarantee",
+    }
+    response["minimal_decision_context"][
+        "bounded_inference_policies"
+    ].append(absolute_policy)
+    resolution = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]
+    boundary = {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "absolute_guarantee_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": absolute_intent_ref,
+        "policy_goal_family": "product_durability",
+        "policy_intent_kind": "absolute_guarantee",
+        "high_risk_claim_families": [],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    resolution.update({
+        "policy_intent_ref": absolute_intent_ref,
+        "policy_intent_kind": "absolute_guarantee",
+        "requested_claim_risk": "high",
+        "restricted_request_boundary": boundary,
+    })
+    option = resolution["eligible_policy_options"][0]
+    option.update({
+        "requested_risk": "high",
+        "requested_claim_risk": "high",
+        "answer_strategy_risk": "medium",
+        "restricted_request_boundary": boundary,
+    })
+    option["option_provenance"].update({
+        "intent_narrowed": False,
+        "alternative_for_restricted_request": True,
+    })
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    clause.update({
+        "requested_claim_risk_level": "high",
+        "restricted_request_boundary": boundary,
+    })
+    return response
 
 
 def test_response_scoring_reports_trusted_policy_and_bounded_attribution():
@@ -309,6 +385,85 @@ def test_response_scoring_reports_trusted_policy_and_bounded_attribution():
     assert summary["selected_policy_validity"]["rate"] == 1.0
     assert summary["selected_policy_premise_coverage"]["rate"] == 1.0
     assert summary["selected_policy_scope_validity"]["rate"] == 1.0
+
+
+def test_response_scoring_separates_restricted_request_and_answer_risk():
+    score = comparison._score_response(
+        _scenario(),
+        _restricted_bounded_policy_response(),
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+    summary = comparison._summarize([score])
+
+    assert score["policy_intent_kinds"] == ["absolute_guarantee"]
+    assert score["restricted_boundary_preservation_numerator"] == 1
+    assert score["restricted_boundary_preservation_denominator"] == 1
+    assert score["answer_strategy_risk_separation_numerator"] == 1
+    assert score["answer_strategy_risk_separation_denominator"] == 1
+    assert score["absolute_guarantee_supported_count"] == 0
+    assert summary["restricted_boundary_preservation"]["rate"] == 1.0
+    assert summary["answer_strategy_risk_separation"]["rate"] == 1.0
+    assert comparison._correctness_gate_blockers(
+        {"requires_human_review_count": 1},
+        summary,
+        scenario_count=1,
+    ) == []
+
+
+def test_response_scoring_rejects_restricted_boundary_and_risk_mutations():
+    mutations = (
+        (
+            "missing_resolution_boundary",
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0].pop("restricted_request_boundary"),
+            "restricted_boundary_not_preserved",
+        ),
+        (
+            "missing_option_boundary",
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0]["eligible_policy_options"][0].pop(
+                "restricted_request_boundary"
+            ),
+            "answer_strategy_risk_separation_invalid",
+        ),
+        (
+            "strategy_risk_exceeds_policy",
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0]["eligible_policy_options"][0].update({
+                "answer_strategy_risk": "high"
+            }),
+            "answer_strategy_risk_separation_invalid",
+        ),
+        (
+            "clause_loses_boundary",
+            lambda response: response[
+                "model_first_answer_composer"
+            ]["clauses"][0].pop("restricted_request_boundary"),
+            "selected_policy_scope_invalid",
+        ),
+    )
+    for _, mutate, blocker in mutations:
+        response = _restricted_bounded_policy_response()
+        mutate(response)
+        summary = comparison._summarize([
+            comparison._score_response(
+                _scenario(),
+                response,
+                status_code=200,
+                error_type="",
+                latency_ms=25,
+            )
+        ])
+        assert blocker in comparison._correctness_gate_blockers(
+            {"requires_human_review_count": 1},
+            summary,
+            scenario_count=1,
+        )
 
 
 def test_response_scoring_rejects_missing_bounded_inference_premise():

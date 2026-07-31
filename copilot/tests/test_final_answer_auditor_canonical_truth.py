@@ -46,11 +46,12 @@ class _Client:
 def _audit_json(
     *,
     goal_reviews=None,
+    semantic_budget_checks=None,
     global_finding_codes=None,
     **extra,
 ):
     payload = {
-        "schema_version": "unified-textual-audit-v1",
+        "schema_version": "unified-textual-audit-v2",
         "goal_reviews": goal_reviews if goal_reviews is not None else [
             {
                 "clause_ref": "clause_01",
@@ -67,6 +68,11 @@ def _audit_json(
                 "finding_codes": [],
             },
         ],
+        "semantic_budget_checks": (
+            semantic_budget_checks
+            if semantic_budget_checks is not None
+            else []
+        ),
         "global_finding_codes": (
             global_finding_codes
             if global_finding_codes is not None
@@ -244,9 +250,14 @@ def test_model_first_projection_separates_canonical_truth_and_continuity(monkeyp
                 "inference_policy_refs": [],
                 "scope_qualifier": "",
                 "inference_risk_level": "",
+                "requested_claim_risk_level": "",
+                "restricted_request_boundary": {},
                 "maximum_risk_level": "",
                 "inference_review_only": False,
                 "required_qualifiers": [],
+                "allowed_conclusion_family": "",
+                "allowed_variability_factor_families": [],
+                "advice_mode": "",
                 "prohibited_extensions": [],
         },
         {
@@ -260,9 +271,14 @@ def test_model_first_projection_separates_canonical_truth_and_continuity(monkeyp
                 "inference_policy_refs": [],
                 "scope_qualifier": "",
                 "inference_risk_level": "",
+                "requested_claim_risk_level": "",
+                "restricted_request_boundary": {},
                 "maximum_risk_level": "",
                 "inference_review_only": False,
                 "required_qualifiers": [],
+                "allowed_conclusion_family": "",
+                "allowed_variability_factor_families": [],
+                "advice_mode": "",
                 "prohibited_extensions": [],
         },
     ]

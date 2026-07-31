@@ -16,6 +16,9 @@ from typing import Any
 
 from app import config
 from app.services.customer_facing_safe_handoff_service import customer_facing_safe_handoff_reply
+from app.services.claim_resolution_service import (
+    valid_restricted_request_boundary,
+)
 from app.services.fact_type_alias_service import normalize_high_risk_claim_type
 from app.services.generic_service_rule_service import unsafe_promise_terms
 from app.services.media_asset_service import is_delivery_media_asset_eligible
@@ -904,6 +907,18 @@ def _model_first_audit_context(
                 if bounded_selected
                 else str(item.get("status") or "")
             ),
+            "requested_claim_status": str(item.get("status") or ""),
+            "answer_strategy_status": (
+                "supported"
+                if bounded_selected
+                else str(item.get("status") or "")
+            ),
+            "requested_claim_risk": str(
+                item.get("requested_claim_risk") or ""
+            ),
+            "restricted_request_boundary": dict(
+                item.get("restricted_request_boundary") or {}
+            ),
             "support_basis": (
                 "bounded_inference"
                 if bounded_selected
@@ -969,6 +984,37 @@ def _model_first_audit_context(
                 )
                 if str(value).strip()
             }),
+            "allowed_conclusion_family": str(
+                (
+                    selected_clause.get("allowed_conclusion_family")
+                    if bounded_selected
+                    else item.get("allowed_conclusion_family")
+                )
+                or ""
+            ).strip(),
+            "allowed_variability_factor_families": sorted([
+                str(value).strip()
+                for value in (
+                    selected_clause.get(
+                        "allowed_variability_factor_families"
+                    )
+                    or []
+                    if bounded_selected
+                    else item.get(
+                        "allowed_variability_factor_families"
+                    )
+                    or []
+                )
+                if str(value).strip()
+            ]),
+            "advice_mode": str(
+                (
+                    selected_clause.get("advice_mode")
+                    if bounded_selected
+                    else item.get("advice_mode")
+                )
+                or ""
+            ).strip(),
             "prohibited_extensions": sorted({
                 str(value).strip()
                 for value in (
@@ -1045,6 +1091,22 @@ def _model_first_audit_context(
                 )
                 or ""
             ).strip(),
+            "requested_claim_risk_level": str(
+                (
+                    clause.get("requested_claim_risk_level")
+                    if bounded_selected
+                    else claim.get("requested_claim_risk")
+                )
+                or ""
+            ).strip(),
+            "restricted_request_boundary": dict(
+                (
+                    clause.get("restricted_request_boundary")
+                    if bounded_selected
+                    else claim.get("restricted_request_boundary")
+                )
+                or {}
+            ),
             "maximum_risk_level": str(
                 (
                     clause.get("maximum_risk_level")
@@ -1070,6 +1132,37 @@ def _model_first_audit_context(
                 )
                 if str(value).strip()
             }),
+            "allowed_conclusion_family": str(
+                (
+                    clause.get("allowed_conclusion_family")
+                    if bounded_selected
+                    else claim.get("allowed_conclusion_family")
+                )
+                or ""
+            ).strip(),
+            "allowed_variability_factor_families": sorted([
+                str(value).strip()
+                for value in (
+                    clause.get(
+                        "allowed_variability_factor_families"
+                    )
+                    or []
+                    if bounded_selected
+                    else claim.get(
+                        "allowed_variability_factor_families"
+                    )
+                    or []
+                )
+                if str(value).strip()
+            ]),
+            "advice_mode": str(
+                (
+                    clause.get("advice_mode")
+                    if bounded_selected
+                    else claim.get("advice_mode")
+                )
+                or ""
+            ).strip(),
             "prohibited_extensions": sorted({
                 str(value).strip()
                 for value in (
@@ -1137,7 +1230,19 @@ def _model_first_audit_context(
     )
     unresolved = [
         item for item in canonical_claims
-        if item["status"] in {"unresolved", "conflicting", "prohibited"}
+        if (
+            item["status"] in {"unresolved", "conflicting", "prohibited"}
+            or (
+                isinstance(
+                    item.get("restricted_request_boundary"),
+                    dict,
+                )
+                and item["restricted_request_boundary"].get(
+                    "must_remain_unresolved"
+                )
+                is True
+            )
+        )
     ]
     return {
         "schema_version": _MODEL_FIRST_AUDIT_SCHEMA_VERSION,
@@ -1335,11 +1440,46 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                     or []
                     if str(value)
                 })
+                allowed_conclusion_family = str(
+                    selected_option.get("allowed_conclusion_family")
+                    or ""
+                )
+                option_variability_factors = selected_option.get(
+                    "allowed_variability_factor_families"
+                )
+                allowed_variability_factor_families = sorted([
+                    str(value)
+                    for value in option_variability_factors or []
+                    if str(value)
+                ])
+                advice_mode = str(
+                    selected_option.get("advice_mode") or ""
+                )
+                requested_claim_risk_level = str(
+                    selected_option.get("requested_claim_risk")
+                    or selected_option.get("requested_risk")
+                    or ""
+                )
                 inference_risk_level = str(
-                    selected_option.get("requested_risk") or ""
+                    selected_option.get("answer_strategy_risk")
+                    or (
+                        selected_option.get("requested_risk")
+                        if selected_option.get("requested_risk")
+                        in {"low", "medium"}
+                        else ""
+                    )
+                    or ""
                 )
                 maximum_risk_level = str(
                     selected_option.get("maximum_risk") or ""
+                )
+                restricted_boundary = selected_option.get(
+                    "restricted_request_boundary"
+                )
+                restricted_boundary = (
+                    restricted_boundary
+                    if isinstance(restricted_boundary, dict)
+                    else {}
                 )
                 scope_qualifier = str(
                     selected_option.get("allowed_scope") or ""
@@ -1376,11 +1516,34 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                     for value in clause.get("prohibited_extensions") or []
                     if str(value)
                 })
+                allowed_conclusion_family = str(
+                    claim.get("allowed_conclusion_family") or ""
+                )
+                option_variability_factors = claim.get(
+                    "allowed_variability_factor_families"
+                )
+                allowed_variability_factor_families = sorted([
+                    str(value)
+                    for value in option_variability_factors or []
+                    if str(value)
+                ])
+                advice_mode = str(claim.get("advice_mode") or "")
                 inference_risk_level = str(
                     claim.get("inference_risk_level") or ""
                 )
+                requested_claim_risk_level = str(
+                    claim.get("requested_claim_risk") or ""
+                )
                 maximum_risk_level = str(
                     claim.get("maximum_risk_level") or ""
+                )
+                restricted_boundary = claim.get(
+                    "restricted_request_boundary"
+                )
+                restricted_boundary = (
+                    restricted_boundary
+                    if isinstance(restricted_boundary, dict)
+                    else {}
                 )
                 scope_qualifier = str(
                     claim.get("scope_qualifier") or ""
@@ -1398,6 +1561,20 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 for value in clause.get("prohibited_extensions") or []
                 if str(value)
             })
+            clause_allowed_conclusion_family = str(
+                clause.get("allowed_conclusion_family") or ""
+            )
+            clause_variability_factors = clause.get(
+                "allowed_variability_factor_families"
+            )
+            clause_allowed_variability_factor_families = sorted([
+                str(value)
+                for value in clause_variability_factors or []
+                if str(value)
+            ])
+            clause_advice_mode = str(
+                clause.get("advice_mode") or ""
+            )
             trusted_policy = (
                 trusted_policies.get(claim_policy_refs[0], {})
                 if len(claim_policy_refs) == 1
@@ -1443,6 +1620,28 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                     != str(trusted_policy.get("goal_family") or "")
                     or str(selected_option.get("allowed_scope") or "")
                     != str(trusted_policy.get("allowed_scope") or "")
+                    or allowed_conclusion_family
+                    != str(
+                        trusted_policy.get(
+                            "allowed_conclusion_family"
+                        )
+                        or ""
+                    )
+                    or allowed_variability_factor_families
+                    != sorted(
+                        trusted_policy.get(
+                            "allowed_variability_factor_families"
+                        )
+                        or []
+                    )
+                    or not isinstance(
+                        option_variability_factors,
+                        list,
+                    )
+                    or option_variability_factors
+                    != allowed_variability_factor_families
+                    or advice_mode
+                    != str(trusted_policy.get("advice_mode") or "")
                     or sorted(
                         selected_option.get("premise_families") or []
                     )
@@ -1474,6 +1673,58 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                         selected_option.get("option_provenance") or {}
                     ).get("premise_owner")
                     != "admitted_answer_context"
+                    or str(
+                        selected_option.get("requested_risk") or ""
+                    )
+                    != requested_claim_risk_level
+                    or str(
+                        selected_option.get("requested_claim_risk")
+                        or selected_option.get("requested_risk")
+                        or ""
+                    )
+                    != requested_claim_risk_level
+                    or str(
+                        selected_option.get("answer_strategy_risk")
+                        or (
+                            selected_option.get("requested_risk")
+                            if selected_option.get("requested_risk")
+                            in {"low", "medium"}
+                            else ""
+                        )
+                        or ""
+                    )
+                    != inference_risk_level
+                    or restricted_boundary
+                    != (
+                        claim.get("restricted_request_boundary")
+                        if isinstance(
+                            claim.get("restricted_request_boundary"),
+                            dict,
+                        )
+                        else {}
+                    )
+                    or (
+                        bool(restricted_boundary)
+                        and (
+                            not valid_restricted_request_boundary(
+                                restricted_boundary
+                            )
+                            or restricted_boundary.get(
+                                "allows_bounded_alternative"
+                            )
+                            is not True
+                            or status != "unresolved"
+                            or (
+                                selected_option.get(
+                                    "option_provenance"
+                                )
+                                or {}
+                            ).get(
+                                "alternative_for_restricted_request"
+                            )
+                            is not True
+                        )
+                    )
                 )
             )
             if (
@@ -1502,11 +1753,48 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 or not review_only
                 or clause.get("inference_risk_level")
                 != inference_risk_level
+                or (
+                    bool(restricted_boundary)
+                    and clause.get("requested_claim_risk_level")
+                    != requested_claim_risk_level
+                )
+                or (
+                    not restricted_boundary
+                    and clause.get("requested_claim_risk_level")
+                    not in {
+                        None,
+                        "",
+                        requested_claim_risk_level,
+                    }
+                )
+                or (
+                    clause.get("restricted_request_boundary")
+                    if isinstance(
+                        clause.get("restricted_request_boundary"),
+                        dict,
+                    )
+                    else {}
+                )
+                != restricted_boundary
                 or clause.get("maximum_risk_level")
                 != maximum_risk_level
                 or clause.get("inference_review_only") is not True
                 or not claim_qualifiers
                 or clause_qualifiers != claim_qualifiers
+                or not allowed_conclusion_family
+                or clause_allowed_conclusion_family
+                != allowed_conclusion_family
+                or clause_allowed_variability_factor_families
+                != allowed_variability_factor_families
+                or not isinstance(clause_variability_factors, list)
+                or clause_variability_factors
+                != clause_allowed_variability_factor_families
+                or advice_mode not in {
+                    "none",
+                    "concise_care_only",
+                    "safety_handoff_required",
+                }
+                or clause_advice_mode != advice_mode
                 or not claim_prohibited
                 or clause_prohibited != claim_prohibited
                 or claim.get("conflicting_evidence_uids")
@@ -1521,6 +1809,9 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 or actual_evidence != expected_evidence
                 or clause.get("inference_policy_refs")
                 or clause.get("scope_qualifier")
+                or clause.get("allowed_conclusion_family")
+                or clause.get("allowed_variability_factor_families")
+                or clause.get("advice_mode")
             ):
                 issues.append("model_first_candidate_supported_clause_invalid")
         elif status in {"unresolved", "conflicting", "prohibited"}:
@@ -1529,6 +1820,9 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 or actual_evidence
                 or clause.get("inference_policy_refs")
                 or clause.get("scope_qualifier")
+                or clause.get("allowed_conclusion_family")
+                or clause.get("allowed_variability_factor_families")
+                or clause.get("advice_mode")
             ):
                 issues.append("model_first_candidate_unresolved_clause_invalid")
     return _dedupe(issues)

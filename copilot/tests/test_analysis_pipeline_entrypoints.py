@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 
+from app.repositories.file_policy_repository import FilePolicyRepository
 from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
 
 
@@ -16,6 +17,18 @@ _DECISION_FIELDS = (
     "reply_delivery",
     "recommended_assets",
 )
+
+
+def _current_domain_pack_ref() -> str:
+    pack = FilePolicyRepository().resolve_domain_policy_pack(
+        {
+            "catalog_metadata": {
+                "domain_policy_id": "maternal_child_home",
+            },
+        }
+    )
+    assert pack["status"] == "loaded"
+    return str(pack["pack_ref"])
 
 
 def _graph_response() -> dict:
@@ -175,9 +188,7 @@ def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_con
     assert domain_context["status"] == "selected"
     assert domain_context["trusted_owner"] == "analysis_pipeline"
     assert domain_context["selection_source"] == "server_configuration"
-    assert domain_context["pack_ref"] == (
-        "domain-policy:maternal_child_home@1.2.0"
-    )
+    assert domain_context["pack_ref"] == _current_domain_pack_ref()
     assert len(domain_context["pack_content_sha256"]) == 64
     assert domain_context["binding_summary"] == {
         "tenant": False,
@@ -210,9 +221,7 @@ def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_con
     )
     assert explicit.copilot_context[
         "_answer_eligibility_owner_context"
-    ]["domain_policy_context"]["pack_ref"] == (
-        "domain-policy:maternal_child_home@1.2.0"
-    )
+    ]["domain_policy_context"]["pack_ref"] == _current_domain_pack_ref()
 
 
 def test_pipeline_rejects_forged_internal_trust_flags():
@@ -265,9 +274,7 @@ def test_pipeline_propagates_same_server_domain_context_across_entries(
         "_answer_eligibility_owner_context"
     ]["domain_policy_context"]
     assert domain_context["status"] == "selected"
-    assert domain_context["pack_ref"] == (
-        "domain-policy:maternal_child_home@1.2.0"
-    )
+    assert domain_context["pack_ref"] == _current_domain_pack_ref()
     assert domain_context["selection_source"] == "server_configuration"
 
 
@@ -367,9 +374,7 @@ def test_pipeline_accepts_verified_server_mapping_without_public_override():
     assert owner_context["source"] == "verified_server_mapping"
     assert domain_context["status"] == "selected"
     assert domain_context["selection_source"] == "verified_server_mapping"
-    assert domain_context["pack_ref"] == (
-        "domain-policy:maternal_child_home@1.2.0"
-    )
+    assert domain_context["pack_ref"] == _current_domain_pack_ref()
     assert domain_context["binding_summary"] == {
         "tenant": True,
         "store": False,

@@ -8,6 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.model_first_answer_composer_service import (
+    COMPOSER_CLAUSE_FIELD_OWNERSHIP,
+    COMPOSER_RESPONSE_SCHEMA,
+    COMPOSER_RESPONSE_SCHEMA_VERSION,
     ModelFirstAnswerComposerService,
 )
 
@@ -78,6 +81,9 @@ def _goal(
     semantic_key: str = "",
     goal_summary: str = "",
     customer_goal_eligible: bool = True,
+    source_span_start: int = 0,
+    source_span_end: int = 8,
+    source_turn_uid: str = "turn-current",
 ) -> dict:
     digest = hashlib.sha256(goal_ref.encode("utf-8")).hexdigest()
     return {
@@ -90,11 +96,11 @@ def _goal(
         "semantic_key": semantic_key,
         "goal_summary": goal_summary,
         "source": "current_customer_message",
-        "source_span_start": 0,
-        "source_span_end": 8,
+        "source_span_start": source_span_start,
+        "source_span_end": source_span_end,
         "source_span_sha256": digest,
         "source_text_sha256": digest,
-        "source_turn_uid": "turn-current",
+        "source_turn_uid": source_turn_uid,
         "owner": "turn_understanding_owner",
         "source_stage": "query_fact_type_classifier",
         "supporting_only": supporting_only,
@@ -152,15 +158,15 @@ def _valid_payload() -> dict:
         "clauses": [
             {
                 "goal_ref": "goal_01",
-                "clause_kind": "unresolved",
                 "text": "儿童安全方面目前无法确认。",
                 "evidence_refs": [],
+                "selected_option_refs": [],
             },
             {
                 "goal_ref": "goal_02",
-                "clause_kind": "supported_fact",
                 "text": "商品宽度为80厘米。",
                 "evidence_refs": ["E1"],
+                "selected_option_refs": [],
             },
         ],
     }
@@ -171,9 +177,16 @@ def _with_policy_selection_fields(payload: dict) -> dict:
     for clause in normalized.get("clauses") or []:
         if not isinstance(clause, dict):
             continue
-        clause.setdefault("selected_policy_ref", "")
-        clause.setdefault("premise_evidence_refs", [])
-        clause.setdefault("inference_scope", "")
+        selected_policy_ref = str(
+            clause.pop("selected_policy_ref", "") or ""
+        ).strip()
+        clause.pop("clause_kind", None)
+        clause.pop("premise_evidence_refs", None)
+        clause.pop("inference_scope", None)
+        clause.setdefault(
+            "selected_option_refs",
+            [selected_policy_ref] if selected_policy_ref else [],
+        )
     return normalized
 
 
@@ -252,7 +265,7 @@ def test_composer_renders_one_clause_for_each_customer_goal():
     assert result["used_evidence_uids"] == ["ev-width"]
     assert result["unresolved_claim_types"] == ["child_safety"]
     assert updated["suggested_reply"] == (
-        "儿童安全方面目前无法确认。\n商品宽度为80厘米。"
+        "儿童安全方面目前无法确认。商品宽度为80厘米。"
     )
     assert updated["can_send"] is False
     assert updated["sendable_reply"] == ""
@@ -279,7 +292,346 @@ def test_composer_prompt_projects_canonical_clause_contract():
     assert goals["child_safety"]["required_evidence_refs"] == []
     assert goals["dimensions"]["required_clause_kind"] == "supported_fact"
     assert goals["dimensions"]["required_evidence_refs"] == ["E1"]
-    assert "不得补充原因、影响条件、发生概率" in client.messages[0]["content"]
+    assert (
+        "不补充原因、概率、性能、适用或使用建议"
+        in client.messages[0]["content"]
+    )
+
+
+def _presentation_response() -> dict:
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["customer_goal"] = "先问第一项，再问第二项"
+    context["requested_claims"] = [
+        _goal(
+            "goal-z-first",
+            "dimensions",
+            attribute_key="first",
+            source_span_start=0,
+            source_span_end=5,
+        ),
+        _goal(
+            "goal-a-second",
+            "material_composition",
+            attribute_key="second",
+            source_span_start=6,
+            source_span_end=11,
+        ),
+    ]
+    context["admitted_evidence"] = [
+        {
+            "evidence_uid": "ev-first",
+            "fact_type": "dimensions",
+            "attribute_key": "first",
+            "content": "第一项事实",
+        },
+        {
+            "evidence_uid": "ev-second",
+            "fact_type": "material_composition",
+            "attribute_key": "second",
+            "content": "第二项事实",
+        },
+    ]
+    context["claim_resolutions"] = [
+        _resolution(
+            "claim-z-first",
+            "dimensions",
+            "supported",
+            attribute_key="first",
+            evidence_uids=["ev-first"],
+            goal_ref="goal-z-first",
+        ),
+        _resolution(
+            "claim-a-second",
+            "material_composition",
+            "supported",
+            attribute_key="second",
+            evidence_uids=["ev-second"],
+            goal_ref="goal-a-second",
+        ),
+    ]
+    return response
+
+
+def _presentation_payload() -> dict:
+    return {
+        "clauses": [
+            {
+                "goal_ref": "goal_02",
+                "clause_kind": "supported_fact",
+                "text": "第一项事实。",
+                "evidence_refs": ["E1"],
+            },
+            {
+                "goal_ref": "goal_01",
+                "clause_kind": "supported_fact",
+                "text": "第二项事实。",
+                "evidence_refs": ["E2"],
+            },
+        ],
+    }
+
+
+def test_composer_uses_source_span_presentation_without_changing_aliases():
+    response = _presentation_response()
+
+    updated, result, client = _compose(
+        _presentation_payload(),
+        response,
+    )
+
+    assert result["status"] == "accepted"
+    prompt = json.loads(client.messages[1]["content"])
+    assert prompt["presentation_order"] == ["goal_02", "goal_01"]
+    goals = {
+        item["claim_type"]: item["goal_ref"]
+        for item in prompt["renderable_customer_goals"]
+    }
+    assert goals == {
+        "material_composition": "goal_01",
+        "dimensions": "goal_02",
+    }
+    assert result["covered_goal_refs"] == [
+        "claim-z-first",
+        "claim-a-second",
+    ]
+    assert updated["suggested_reply"] == "第一项事实。第二项事实。"
+    assert client.call_count == 1
+
+
+def test_composer_rejects_provider_clause_order_mismatch():
+    payload = _presentation_payload()
+    payload["clauses"].reverse()
+
+    updated, result, client = _compose(
+        payload,
+        _presentation_response(),
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_clause_presentation_order_invalid"
+    )
+    assert result["validation_diagnostics"]["category"] == (
+        "clause_presentation_order_invalid"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
+def test_presentation_projection_is_input_permutation_stable():
+    first = _presentation_response()
+    second = deepcopy(first)
+    minimal = second["minimal_decision_context"]
+    minimal["requested_claims"].reverse()
+    minimal["claim_resolutions"].reverse()
+    minimal["admitted_evidence"].reverse()
+
+    first_material, first_error = (
+        ModelFirstAnswerComposerService
+        .build_composer_decision_input(
+            first,
+            customer_message="先问第一项，再问第二项",
+        )
+    )
+    second_material, second_error = (
+        ModelFirstAnswerComposerService
+        .build_composer_decision_input(
+            second,
+            customer_message="先问第一项，再问第二项",
+        )
+    )
+    assert first_error == second_error == ""
+    first_provider, first_provider_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(first_material)
+    )
+    second_provider, second_provider_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(second_material)
+    )
+
+    assert first_provider_error == second_provider_error == ""
+    assert first_provider["customer_goals"] == second_provider[
+        "customer_goals"
+    ]
+    assert first_provider["offered_option_bindings"] == second_provider[
+        "offered_option_bindings"
+    ]
+    assert first_provider["partitions"]["presentation_order"] == [
+        "goal_02",
+        "goal_01",
+    ]
+    assert first_provider["partitions"]["presentation_order"] == (
+        second_provider["partitions"]["presentation_order"]
+    )
+
+
+def test_presentation_projection_uses_goal_ref_only_as_span_tie_breaker():
+    response = _presentation_response()
+    for claim in response["minimal_decision_context"]["requested_claims"]:
+        claim["source_span_start"] = 3
+        claim["source_span_end"] = 7
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="两个并列问题",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert material["partitions"]["presentation_order"] == [
+        "goal_01",
+        "goal_02",
+    ]
+
+
+def test_composer_rejects_cross_turn_customer_goal_provenance():
+    response = _presentation_response()
+    response["minimal_decision_context"]["requested_claims"][1][
+        "source_turn_uid"
+    ] = "turn-other"
+    client = _Client(_with_policy_selection_fields(_presentation_payload()))
+
+    updated, result = ModelFirstAnswerComposerService().compose(
+        response,
+        customer_message="先问第一项，再问第二项",
+        client=client,
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_customer_goal_source_turn_mismatch"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 0
+
+
+def test_high_risk_and_unowned_emergency_marker_do_not_reorder_goals():
+    response = _presentation_response()
+    context = response["minimal_decision_context"]
+    context["claim_resolutions"][1]["requested_claim_risk"] = "high"
+    context["requested_claims"][1]["requires_immediate_action"] = True
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="先问第一项，再问第二项",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert "requires_immediate_action" not in json.dumps(
+        decision_input,
+        ensure_ascii=False,
+    )
+    assert material["partitions"]["presentation_order"] == [
+        "goal_02",
+        "goal_01",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected_reason"),
+    (
+        (
+            lambda goal: goal.pop("source_span_start"),
+            "composer_goal_provenance_invalid",
+        ),
+        (
+            lambda goal: goal.__setitem__("source_span_start", True),
+            "composer_goal_provenance_invalid",
+        ),
+        (
+            lambda goal: goal.__setitem__("source_span_start", -1),
+            "composer_goal_provenance_invalid",
+        ),
+        (
+            lambda goal: goal.__setitem__("source_span_end", -1),
+            "composer_goal_provenance_invalid",
+        ),
+    ),
+)
+def test_composer_rejects_invalid_presentation_span(
+    mutate,
+    expected_reason,
+):
+    response = _presentation_response()
+    mutate(response["minimal_decision_context"]["requested_claims"][0])
+    client = _Client(_with_policy_selection_fields(_presentation_payload()))
+
+    updated, result = ModelFirstAnswerComposerService().compose(
+        response,
+        customer_message="依次确认三个并列事项",
+        client=client,
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == expected_reason
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 0
+
+
+def test_presentation_projection_supports_three_customer_goals():
+    response = _presentation_response()
+    context = response["minimal_decision_context"]
+    context["requested_claims"].append(
+        _goal(
+            "goal-m-middle",
+            "generic_fact",
+            attribute_key="middle",
+            source_span_start=3,
+            source_span_end=5,
+        )
+    )
+    context["admitted_evidence"].append({
+        "evidence_uid": "ev-middle",
+        "fact_type": "generic_fact",
+        "attribute_key": "middle",
+        "content": "中间事项",
+    })
+    context["claim_resolutions"].append(
+        _resolution(
+            "claim-m-middle",
+            "generic_fact",
+            "supported",
+            attribute_key="middle",
+            evidence_uids=["ev-middle"],
+            goal_ref="goal-m-middle",
+        )
+    )
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="依次确认三个并列事项",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert [
+        item["goal_ref"] for item in material["customer_goals"]
+    ] == ["goal_01", "goal_02", "goal_03"]
+    assert material["partitions"]["presentation_order"] == [
+        "goal_03",
+        "goal_02",
+        "goal_01",
+    ]
 
 
 def test_composer_preserves_unmapped_goal_as_unresolved_clause():
@@ -371,20 +723,8 @@ def test_composer_preserves_unmapped_goal_as_unresolved_clause():
             "composer_goal_clause_text_missing",
         ),
         (
-            lambda value: value["clauses"][0].update(
-                clause_kind="supported_fact",
-            ),
-            "composer_unresolved_goal_asserted",
-        ),
-        (
             lambda value: value["clauses"][1].update(evidence_refs=["E9"]),
             "composer_unknown_evidence_reference",
-        ),
-        (
-            lambda value: value["clauses"][1].update(
-                clause_kind="empathy_or_transition",
-            ),
-            "composer_supported_goal_clause_invalid",
         ),
         (
             lambda value: value["clauses"].append(deepcopy(value["clauses"][0])),
@@ -454,6 +794,550 @@ def test_composer_rejects_process_copy_instead_of_direct_answer():
     assert result["rejection_reason"] == "composer_process_language"
 
 
+@pytest.mark.parametrize(
+    ("text", "trigger_category"),
+    [
+        ("这个结论不能承诺。", "reply_policy_meta_language"),
+        ("当前缺少证据支持。", "evidence_process_language"),
+        ("这项需要人工审核。", "review_process_language"),
+        ("当前知识库没有记录。", "internal_knowledge_language"),
+        ("Final Gate 尚未通过。", "internal_system_language"),
+        ("需要查看 rAg 结果。", "internal_system_language"),
+        ("这项不直接说结论。", "reply_policy_meta_language"),
+    ],
+)
+def test_composer_attributes_customer_visible_internal_language(
+    text,
+    trigger_category,
+):
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = text
+
+    _, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == "composer_internal_language"
+    match = result["validation_diagnostics"]["language_match"]
+    assert match["detector_family"] == (
+        "customer_facing_internal_redline"
+    )
+    assert match["reason_code"] == (
+        "customer_visible_internal_language_detected"
+    )
+    assert match["trigger_category"] == trigger_category
+    assert match["clause_index"] == 0
+    assert match["goal_ref"] == "goal_01"
+    assert match["json_path"] == "$.clauses[0].text"
+    assert len(match["text_sha256"]) == 64
+    assert len(match["rule_sha256"]) == 64
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "trigger_category"),
+    [
+        ("我先核对，之后答复。", "deferred_process_language"),
+        ("请稍等\n我马上处理。", "deferred_process_language"),
+        ("这个问题需要转人工。", "handoff_process_language"),
+        ("资料显示该项可用。", "source_process_language"),
+        ("系统显示该项可用。", "source_process_language"),
+        ("公司资料写了这一点。", "source_process_language"),
+    ],
+)
+def test_composer_attributes_customer_visible_process_language(
+    text,
+    trigger_category,
+):
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = text
+
+    _, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == "composer_process_language"
+    match = result["validation_diagnostics"]["language_match"]
+    assert match["detector_family"] == "composer_process_language"
+    assert match["reason_code"] == (
+        "customer_visible_process_language_detected"
+    )
+    assert match["trigger_category"] == trigger_category
+    assert match["clause_index"] == 0
+    assert client.call_count == 1
+
+
+def test_composer_does_not_scan_internal_schema_metadata_as_reply_text():
+    response = _response()
+    goal = response["minimal_decision_context"]["requested_claims"][0]
+    goal["goal_summary"] = (
+        "evidence policy claim audit system prompt model"
+    )
+    goal["semantic_key"] = "allowed_inference_supported_fact"
+
+    _, result, client = _compose(_valid_payload(), response)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
+def test_composer_does_not_scan_internal_controlled_references_as_text():
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["requested_claims"][0]["goal_ref"] = (
+        "goal-z-RAG-policy-audit"
+    )
+    context["claim_resolutions"][0]["goal_ref"] = (
+        "goal-z-RAG-policy-audit"
+    )
+
+    _, result, client = _compose(_valid_payload(), response)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
+def test_composer_allows_normal_business_terms_in_customer_text():
+    payload = _valid_payload()
+    payload["clauses"][1]["text"] = (
+        "材料和规格以当前商品说明为依据。"
+    )
+
+    _, result, client = _compose(payload)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
+def test_composer_internal_language_rule_spanning_clause_boundary_is_preserved():
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = "当前知"
+    payload["clauses"][1]["text"] = "识库没有记录。"
+
+    _, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == "composer_internal_language"
+    match = result["validation_diagnostics"]["language_match"]
+    assert match["trigger_category"] == "internal_knowledge_language"
+    assert match["clause_index"] == 0
+    assert client.call_count == 1
+
+
+def test_composer_prompt_requires_customer_visible_expression_stability():
+    _, result, client = _compose(_valid_payload())
+
+    assert result["status"] == "accepted"
+    prompt = client.messages[0]["content"]
+    for required in (
+        "按客户提问顺序先回答已支持事实",
+        "自然、礼貌、简洁",
+        "避免重复主语、边界、法务声明",
+        "客户可见文字只放在 text",
+    ):
+        assert required in prompt
+    for prohibited in (
+        "ABS",
+        "硅胶",
+        "聚合物",
+        "跌落",
+        "摔不坏",
+        "GSC",
+    ):
+        assert prohibited not in prompt
+    assert client.call_count == 1
+
+
+def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
+    _, result, client = _compose(_valid_payload())
+
+    assert result["status"] == "accepted"
+    prompt = client.messages[0]["content"]
+    structural_priority = (
+        "每个 goal 先按 option_selection_mode 决定 option 选择"
+    )
+    required_rule = (
+        "该规则优先于 required_clause_kind"
+    )
+    customer_style = (
+        "多目标 clause 各自只回答对应 goal"
+    )
+    for required in (
+        structural_priority,
+        required_rule,
+        "即使 required_clause_kind=unresolved 也相同",
+        "required clause 的 text 同时表达所选 allowed_scope",
+        "must_remain_unresolved 只约束客户原始受限主张",
+        "未选择 option 时 evidence_refs 必须逐字复制 required_evidence_refs",
+        "required_clause_kind=unresolved 时结合 goal_summary",
+    ):
+        assert required in prompt
+    assert prompt.index(structural_priority) < prompt.index(required_rule)
+    assert prompt.index(required_rule) < prompt.index(customer_style)
+    assert client.call_count == 1
+
+
+def test_composer_response_schema_is_the_prompt_and_validator_field_owner():
+    service = ModelFirstAnswerComposerService
+    schema = COMPOSER_RESPONSE_SCHEMA
+    clause_schema = schema["properties"]["clauses"]["items"]
+    contract = service._schema_prompt_contract()
+    projection = service._output_contract_projection()
+    prompt = service._system_prompt()
+
+    assert schema["title"] == COMPOSER_RESPONSE_SCHEMA_VERSION
+    assert schema["additionalProperties"] is False
+    assert clause_schema["additionalProperties"] is False
+    assert set(contract["top_level_fields"]) == set(
+        schema["properties"]
+    )
+    assert set(contract["top_level_required"]) == set(
+        schema["required"]
+    )
+    assert set(contract["clause_fields"]) == set(
+        clause_schema["properties"]
+    )
+    assert set(contract["clause_required"]) == set(
+        clause_schema["required"]
+    )
+    assert set(contract["clause_fields"]) == {
+        "goal_ref",
+        "text",
+        "evidence_refs",
+        "selected_option_refs",
+    }
+    assert "clause_kind" not in clause_schema["properties"]
+    assert projection["response_schema_sha256"] == contract[
+        "schema_sha256"
+    ]
+    assert projection["prompt_schema_summary_sha256"] == contract[
+        "summary_sha256"
+    ]
+    assert contract["summary"] in prompt
+    assert prompt.count("clauses[*]字段=[") == 1
+    assert (
+        "每个 clause 只能包含 goal_ref、clause_kind"
+        not in prompt
+    )
+
+
+def test_composer_field_ownership_is_complete_and_non_overlapping():
+    ownership = COMPOSER_CLAUSE_FIELD_OWNERSHIP
+    model_owned = set(ownership["model_owned"])
+    server_owned = set(ownership["server_owned"])
+
+    assert ownership["mixed_or_not_proven"] == ()
+    assert not model_owned.intersection(server_owned)
+    assert {
+        "goal_ref",
+        "text",
+        "evidence_refs",
+        "selected_option_refs",
+        "presentation_order",
+    } == model_owned
+    assert {
+        "clause_kind",
+        "selected_policy_ref",
+        "premise_evidence_refs",
+        "inference_scope",
+        "requested_claim_risk",
+        "answer_strategy_risk",
+        "maximum_risk_level",
+        "allowed_conclusion_family",
+        "allowed_variability_factor_families",
+        "advice_mode",
+        "required_qualifiers",
+        "prohibited_claim_families",
+        "trusted_domain_pack_ref",
+        "pack_content_sha256",
+        "restricted_request_boundary",
+    } == server_owned
+
+
+def test_minimal_output_reconstructs_legacy_supported_unresolved_contract():
+    response = _response()
+    service = ModelFirstAnswerComposerService()
+    decision_input, decision_error = service.build_composer_decision_input(
+        response,
+        customer_message="尺寸和安全怎么样",
+    )
+    assert decision_error == ""
+    material, material_error = (
+        service.build_provider_material_from_decision_input(decision_input)
+    )
+    assert material_error == ""
+    goals = material["customer_goals"]
+    bindings = material["offered_option_bindings"]
+    payload = _valid_payload()
+
+    canonical, reason, diagnostics = (
+        ModelFirstAnswerComposerService
+        ._reconstruct_canonical_output_with_diagnostics(
+            payload,
+            known_refs={"E1"},
+            customer_goals=goals,
+            offered_option_bindings=bindings,
+        )
+    )
+
+    assert reason == ""
+    assert diagnostics["category"] == "canonical_reconstruction_accepted"
+    assert canonical == {
+        "clauses": [
+            {
+                "goal_ref": "goal_01",
+                "clause_kind": "unresolved",
+                "text": "儿童安全方面目前无法确认。",
+                "evidence_refs": [],
+                "selected_policy_ref": "",
+                "premise_evidence_refs": [],
+                "inference_scope": "",
+            },
+            {
+                "goal_ref": "goal_02",
+                "clause_kind": "supported_fact",
+                "text": "商品宽度为80厘米。",
+                "evidence_refs": ["E1"],
+                "selected_policy_ref": "",
+                "premise_evidence_refs": [],
+                "inference_scope": "",
+            },
+        ],
+    }
+
+
+def test_minimal_output_matches_legacy_allowed_inference_oracle():
+    response = _bounded_inference_response()
+    goals, bindings = _offered_projection(response)
+    legacy = _bounded_inference_payload(response)
+    legacy["clauses"][1].update({
+        "selected_policy_ref": "",
+        "premise_evidence_refs": [],
+        "inference_scope": "",
+    })
+    minimal = _with_policy_selection_fields(legacy)
+
+    canonical, reason, _ = (
+        ModelFirstAnswerComposerService
+        ._reconstruct_canonical_output_with_diagnostics(
+            minimal,
+            known_refs={"E1"},
+            customer_goals=goals,
+            offered_option_bindings=bindings,
+        )
+    )
+
+    assert reason == ""
+    assert canonical == legacy
+
+
+def test_minimal_output_matches_legacy_canonical_oracle_matrix():
+    partial_response = _response()
+    service = ModelFirstAnswerComposerService()
+    partial_input, partial_input_error = (
+        service.build_composer_decision_input(
+            partial_response,
+            customer_message="尺寸和安全怎么样",
+        )
+    )
+    assert partial_input_error == ""
+    partial_material, partial_material_error = (
+        service.build_provider_material_from_decision_input(
+            partial_input
+        )
+    )
+    assert partial_material_error == ""
+    partial_goals = partial_material["customer_goals"]
+    partial_bindings = partial_material["offered_option_bindings"]
+    partial_legacy = {
+        "clauses": [
+            {
+                "goal_ref": "goal_01",
+                "clause_kind": "unresolved",
+                "text": "儿童安全方面目前无法确认。",
+                "evidence_refs": [],
+                "selected_policy_ref": "",
+                "premise_evidence_refs": [],
+                "inference_scope": "",
+            },
+            {
+                "goal_ref": "goal_02",
+                "clause_kind": "supported_fact",
+                "text": "商品宽度为80厘米。",
+                "evidence_refs": ["E1"],
+                "selected_policy_ref": "",
+                "premise_evidence_refs": [],
+                "inference_scope": "",
+            },
+        ],
+    }
+
+    required_response = _bounded_inference_response()
+    required_goals, required_bindings = _offered_projection(
+        required_response
+    )
+    required_legacy = _bounded_inference_payload(required_response)
+    required_legacy["clauses"][1].update({
+        "selected_policy_ref": "",
+        "premise_evidence_refs": [],
+        "inference_scope": "",
+    })
+
+    optional_response = _bounded_inference_response()
+    _add_alternate_safe_option(
+        optional_response,
+        resolution_index=1,
+    )
+    optional_goals, optional_bindings = _offered_projection(
+        optional_response
+    )
+    optional_legacy = _bounded_inference_payload(optional_response)
+    optional_legacy["clauses"][1].update({
+        "selected_policy_ref": "",
+        "premise_evidence_refs": [],
+        "inference_scope": "",
+    })
+
+    cases = [
+        (
+            partial_legacy,
+            partial_goals,
+            partial_bindings,
+            {"E1"},
+        ),
+        (
+            required_legacy,
+            required_goals,
+            required_bindings,
+            {"E1"},
+        ),
+        (
+            optional_legacy,
+            optional_goals,
+            optional_bindings,
+            {"E1"},
+        ),
+    ]
+    for legacy, goals, bindings, known_refs in cases:
+        canonical, reason, _ = (
+            ModelFirstAnswerComposerService
+            ._reconstruct_canonical_output_with_diagnostics(
+                _with_policy_selection_fields(legacy),
+                known_refs=known_refs,
+                customer_goals=goals,
+                offered_option_bindings=bindings,
+            )
+        )
+
+        assert reason == ""
+        assert canonical == legacy
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value", "expected_reason"),
+    [
+        ("goal_ref", ["goal_01"], "composer_clause_schema_invalid"),
+        ("text", ["文本"], "composer_goal_clause_text_missing"),
+        ("evidence_refs", "E1", "composer_evidence_refs_invalid"),
+        (
+            "selected_option_refs",
+            "option_000000000000",
+            "composer_inference_policy_schema_invalid",
+        ),
+    ],
+)
+def test_minimal_output_rejects_scalar_array_shape_mutations(
+    field_name,
+    invalid_value,
+    expected_reason,
+):
+    payload = _valid_payload()
+    payload["clauses"][0][field_name] = invalid_value
+
+    _, result, _ = _compose(payload)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == expected_reason
+
+
+def test_schema_change_changes_derived_prompt_summary_hash():
+    original = ModelFirstAnswerComposerService._schema_prompt_contract()
+    mutated = deepcopy(COMPOSER_RESPONSE_SCHEMA)
+    clause_schema = mutated["properties"]["clauses"]["items"]
+    clause_schema["properties"]["new_diagnostic"] = {
+        "type": "string",
+    }
+    clause_schema["required"].append("new_diagnostic")
+
+    changed = ModelFirstAnswerComposerService._schema_prompt_contract(
+        mutated
+    )
+
+    assert changed["schema_sha256"] != original["schema_sha256"]
+    assert changed["summary_sha256"] != original["summary_sha256"]
+    assert "new_diagnostic:string" in changed["summary"]
+
+
+def test_composer_accepts_legal_minimal_response_schema_object():
+    reason, diagnostics = (
+        ModelFirstAnswerComposerService
+        ._validate_output_with_diagnostics(
+            {"clauses": []},
+            known_refs=set(),
+            customer_goals=[],
+            presentation_order=[],
+            response=_response(),
+        )
+    )
+
+    assert reason == ""
+    assert diagnostics["category"] == "accepted"
+
+
+@pytest.mark.parametrize(
+    ("target", "field_name", "field_value"),
+    [
+        ("top", "reasoning", "hidden"),
+        ("top", "explanation", "hidden"),
+        ("top", "diagnostics", {}),
+        ("top", "text", "misplaced"),
+        ("clause", "extra_scalar", "value"),
+        ("clause", "extra_object", {"value": "hidden"}),
+        ("clause", "extra_array", ["hidden"]),
+        ("clause", "reasoning", "hidden"),
+        ("clause", "explanation", "hidden"),
+        ("clause", "diagnostics", {}),
+        ("clause", "context_stats", {}),
+        ("clause", "selection_mode", "required"),
+        ("clause", "policy_metadata", {"risk": "low"}),
+        ("clause", "clauses", []),
+    ],
+)
+def test_composer_rejects_schema_metadata_echo_mutations(
+    target,
+    field_name,
+    field_value,
+):
+    payload = _valid_payload()
+    mutation_target = (
+        payload
+        if target == "top"
+        else payload["clauses"][0]
+    )
+    mutation_target[field_name] = field_value
+
+    updated, result, client = _compose(payload)
+
+    assert result["status"] == "provider_blocked"
+    assert result["validation_diagnostics"]["category"] == (
+        "extra_field"
+    )
+    assert result["provider_diagnostics"]["model_call_count"] == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+    assert result["provider_diagnostics"]["json_repair_count"] == 0
+    assert client.call_count == 1
+    assert updated["suggested_reply"] == "旧回复"
+
+
 def test_composer_excludes_supporting_only_dependency_from_customer_goals():
     response = _response()
     context = response["minimal_decision_context"]
@@ -512,6 +1396,7 @@ def test_composer_excludes_supporting_only_dependency_from_customer_goals():
         "resolution_status": "unresolved",
         "provenance_status": "valid",
     }]
+    assert prompt["presentation_order"] == ["goal_01"]
     assert updated["suggested_reply"] == "防潮表现目前无法确认。"
 
 
@@ -594,6 +1479,7 @@ def test_composer_dependency_evidence_is_bound_without_rendered_clause():
         "resolution_status": "supported",
         "provenance_status": "valid",
     }]
+    assert prompt["presentation_order"] == ["goal_01"]
 
 
 def test_composer_input_partition_is_deterministic_for_mixed_goal_kinds():
@@ -1352,22 +2238,6 @@ def test_composer_fenced_json_still_requires_strict_clause_schema(mutate):
             "$.clauses[0].goal_ref",
         ),
         (
-            lambda value: value["clauses"][0].update(
-                clause_kind="supported_fact"
-            ),
-            "composer_unresolved_goal_asserted",
-            "wrong_clause_kind",
-            "$.clauses[0].clause_kind",
-        ),
-        (
-            lambda value: value["clauses"][0].update(
-                clause_kind="not_a_clause_kind"
-            ),
-            "composer_clause_kind_invalid",
-            "wrong_clause_kind",
-            "$.clauses[0].clause_kind",
-        ),
-        (
             lambda value: value["clauses"][1].update(evidence_refs=["E9"]),
             "composer_unknown_evidence_reference",
             "unknown_evidence_ref",
@@ -1401,9 +2271,10 @@ def test_composer_reports_field_level_schema_diagnostics(
 
 @pytest.mark.parametrize(
     "clause_kind",
-    ["empathy_or_transition", "service_action"],
+    ["supported_fact", "unresolved", "allowed_inference",
+     "empathy_or_transition", "service_action"],
 )
-def test_composer_rejects_non_factual_clause_kinds_hiding_supported_fact(
+def test_composer_rejects_server_owned_clause_kind_in_model_output(
     clause_kind,
 ):
     payload = _valid_payload()
@@ -1412,10 +2283,13 @@ def test_composer_rejects_non_factual_clause_kinds_hiding_supported_fact(
         "text": "商品宽度为80厘米，相关动作已经完成。",
     })
 
-    _, result, _ = _compose(payload)
+    _, result, _ = _compose(
+        payload,
+        normalize_policy_fields=False,
+    )
 
-    assert result["rejection_reason"] == "composer_supported_goal_clause_invalid"
-    assert result["validation_diagnostics"]["category"] == "wrong_clause_kind"
+    assert result["rejection_reason"] == "composer_clause_schema_invalid"
+    assert result["validation_diagnostics"]["category"] == "extra_field"
 
 
 def test_composer_timeout_is_provider_error_without_retry_or_repair():
@@ -1628,6 +2502,15 @@ def _bounded_inference_response() -> dict:
                         "allowed_scope": (
                             "ordinary_minor_accidental_impact"
                         ),
+                        "allowed_conclusion_family": (
+                            "ordinary_minor_impact_tolerance"
+                        ),
+                        "allowed_variability_factor_families": [
+                            "contact_surface",
+                            "impact_angle",
+                            "impact_height",
+                        ],
+                        "advice_mode": "none",
                         "forbidden_claim_families": [
                             "certification_report",
                             "child_safety",
@@ -1671,6 +2554,15 @@ def _bounded_inference_response() -> dict:
                 "intent_kind": "practical_guidance",
                 "premise_fact_families": ["material_composition"],
                 "allowed_scope": "ordinary_minor_accidental_impact",
+                "allowed_conclusion_family": (
+                    "ordinary_minor_impact_tolerance"
+                ),
+                "allowed_variability_factor_families": [
+                    "contact_surface",
+                    "impact_angle",
+                    "impact_height",
+                ],
+                "advice_mode": "none",
                 "maximum_risk_level": "medium",
                 "required_qualifiers": ["no_absolute_guarantee"],
                 "prohibited_claim_families": [
@@ -1715,7 +2607,84 @@ def _bounded_inference_response() -> dict:
     }
 
 
-def _bounded_inference_payload() -> dict:
+def _offered_projection(
+    response: dict,
+) -> tuple[list[dict], dict[str, dict]]:
+    service = ModelFirstAnswerComposerService()
+    minimal = service._minimal_context(response)
+    _, uid_by_ref = service._project_evidence(minimal)
+    policies, policy_by_ref, policy_error = (
+        service._project_bounded_inference_policies(minimal)
+    )
+    assert policy_error == ""
+    assert policies
+    partitions, _, partition_error = (
+        service._partition_composer_inputs(
+            minimal,
+            uid_by_ref,
+            policy_by_ref,
+            actual_media_types=[],
+        )
+    )
+    assert partition_error == ""
+    goals, bindings, offered_error = (
+        service._build_goal_scoped_offered_projection(
+            partitions["renderable_customer_goals"]
+        )
+    )
+    assert offered_error == ""
+    return goals, bindings
+
+
+def _option_alias(
+    response: dict,
+    *,
+    goal_ref: str,
+    allowed_scope: str,
+) -> str:
+    goals, _ = _offered_projection(response)
+    goal = next(item for item in goals if item["goal_ref"] == goal_ref)
+    option = next(
+        item
+        for item in goal["eligible_policy_options"]
+        if item["allowed_scope"] == allowed_scope
+    )
+    return str(option["option_ref"])
+
+
+def _validate_with_offered_projection(
+    response: dict,
+    payload: dict,
+) -> tuple[str, dict]:
+    goals, bindings = _offered_projection(response)
+    known_refs = {
+        str(ref)
+        for goal in goals
+        for ref in (
+            list(goal.get("required_evidence_refs") or [])
+            + [
+                premise_ref
+                for option in goal.get("eligible_policy_options") or []
+                for premise_ref in (
+                    option.get("premise_evidence_refs") or []
+                )
+            ]
+        )
+        if str(ref)
+    }
+    return ModelFirstAnswerComposerService._validate_output_with_diagnostics(
+        _with_policy_selection_fields(payload),
+        known_refs=known_refs,
+        customer_goals=goals,
+        response=response,
+        offered_option_bindings=bindings,
+    )
+
+
+def _bounded_inference_payload(
+    response: dict | None = None,
+) -> dict:
+    source = response or _bounded_inference_response()
     return {
         "clauses": [
             {
@@ -1723,9 +2692,12 @@ def _bounded_inference_payload() -> dict:
                 "clause_kind": "allowed_inference",
                 "text": "日常轻微意外一般不用过度担心，但不能保证耐摔。",
                 "evidence_refs": ["E1"],
-                "selected_policy_ref": (
-                    "domain-policy:fixture_domain@1.0.0:"
-                    "intent:product_durability_practical_guidance"
+                "selected_policy_ref": _option_alias(
+                    source,
+                    goal_ref="goal_01",
+                    allowed_scope=(
+                        "ordinary_minor_accidental_impact"
+                    ),
                 ),
                 "premise_evidence_refs": ["E1"],
                 "inference_scope": "ordinary_minor_accidental_impact",
@@ -1738,6 +2710,38 @@ def _bounded_inference_payload() -> dict:
             },
         ],
     }
+
+
+def _with_restricted_request_strategy(response: dict) -> dict:
+    boundary = {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "absolute_guarantee_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": (
+            "product_durability_absolute_guarantee"
+        ),
+        "policy_goal_family": "product_durability",
+        "policy_intent_kind": "absolute_guarantee",
+        "high_risk_claim_families": [],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    resolution = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]
+    resolution["requested_claim_risk"] = "high"
+    resolution["restricted_request_boundary"] = boundary
+    option = resolution["eligible_policy_options"][0]
+    option["requested_risk"] = "high"
+    option["requested_claim_risk"] = "high"
+    option["answer_strategy_risk"] = "medium"
+    option["restricted_request_boundary"] = boundary
+    option["option_provenance"][
+        "alternative_for_restricted_request"
+    ] = True
+    option["option_provenance"]["intent_narrowed"] = False
+    return response
 
 
 def _add_alternate_safe_option(
@@ -1795,6 +2799,15 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
     assert bounded["scope_qualifier"] == "ordinary_minor_accidental_impact"
     assert bounded["inference_risk_level"] == "medium"
     assert bounded["maximum_risk_level"] == "medium"
+    assert bounded["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert bounded["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "impact_angle",
+        "impact_height",
+    ]
+    assert bounded["advice_mode"] == "none"
     assert bounded["inference_review_only"] is True
     assert bounded["prohibited_extensions"] == [
         "certification_report",
@@ -1806,23 +2819,176 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
         item for item in prompt["renderable_customer_goals"]
         if item["eligible_policy_options"]
     )
+    assert inferred_goal["option_selection_mode"] == "required"
+    assert {
+        item["option_selection_mode"]
+        for item in prompt["renderable_customer_goals"]
+        if not item["eligible_policy_options"]
+    } == {"forbidden"}
     assert [
-        item["policy_ref"]
+        item["option_ref"]
         for item in inferred_goal["eligible_policy_options"]
-    ] == [
-        "domain-policy:fixture_domain@1.0.0:"
-        "intent:product_durability_practical_guidance"
-    ]
-    assert prompt["allowed_low_risk_reasoning"] == [
-        "ordinary_minor_accidental_impact"
-    ]
+    ] == sorted(
+        item["option_ref"]
+        for item in inferred_goal["eligible_policy_options"]
+    )
+    assert "bounded_inference_policies" not in prompt
+    assert "allowed_low_risk_reasoning" not in prompt
+    assert "domain-policy:" not in client.messages[1]["content"]
     option = inferred_goal["eligible_policy_options"][0]
-    assert option["requested_risk"] == "medium"
+    assert option["requested_claim_risk"] == "medium"
     assert option["maximum_risk_level"] == "medium"
+    assert option["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert option["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "impact_angle",
+        "impact_height",
+    ]
+    assert option["advice_mode"] == "none"
     assert option["review_only"] is True
+    diagnostics = result["provider_diagnostics"]
+    for field in (
+        "system_prompt_sha256",
+        "prompt_payload_sha256",
+        "provider_input_sha256",
+        "offered_projection_sha256",
+        "output_contract_sha256",
+        "response_schema_sha256",
+        "prompt_schema_summary_sha256",
+    ):
+        assert len(diagnostics[field]) == 64
+    assert diagnostics["offered_goal_refs"] == ["goal_01", "goal_02"]
+    assert diagnostics["offered_option_refs"] == [
+        option["option_ref"]
+    ]
+    assert diagnostics["model_call_count"] == 1
+    assert diagnostics["retry_count"] == 0
+    assert diagnostics["repair_count"] == 0
 
 
-def test_composer_can_decline_an_eligible_policy_without_asserting_inference():
+def test_composer_accepts_bounded_strategy_without_erasing_request_boundary():
+    response = _with_restricted_request_strategy(
+        _bounded_inference_response()
+    )
+    updated, result, client = _compose(
+        _bounded_inference_payload(response),
+        response,
+    )
+
+    assert result["status"] == "accepted"
+    bounded = next(
+        item
+        for item in result["clauses"]
+        if item["clause_kind"] == "allowed_inference"
+    )
+    assert bounded["requested_claim_risk_level"] == "high"
+    assert bounded["inference_risk_level"] == "medium"
+    assert bounded["maximum_risk_level"] == "medium"
+    assert bounded["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+    prompt = json.loads(client.messages[1]["content"])
+    goal = next(
+        item
+        for item in prompt["renderable_customer_goals"]
+        if item["restricted_request_boundary"]
+    )
+    assert goal["resolution_status"] == "unresolved"
+    assert goal["requested_claim_risk"] == "high"
+    assert goal["eligible_policy_options"][0][
+        "answer_strategy_risk"
+    ] == "medium"
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+
+
+def test_composer_preserves_explicit_prohibition_without_strategy_option():
+    response = _with_restricted_request_strategy(
+        _bounded_inference_response()
+    )
+    resolution = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]
+    boundary = resolution["restricted_request_boundary"]
+    boundary.update({
+        "reason_code": "direct_handling_prohibited",
+        "policy_intent_ref": "",
+        "policy_goal_family": "",
+        "policy_intent_kind": "",
+        "allows_bounded_alternative": False,
+    })
+    resolution.update({
+        "status": "prohibited",
+        "reason": "direct_handling_prohibited",
+        "policy_intent_ref": "",
+        "policy_goal_family": "",
+        "policy_intent_kind": "",
+        "eligible_policy_options": [],
+    })
+    payload = _bounded_inference_payload()
+    payload["clauses"][0] = {
+        "goal_ref": "goal_01",
+        "clause_kind": "unresolved",
+        "text": "该项不能作肯定承诺。",
+        "evidence_refs": [],
+        "selected_policy_ref": "",
+        "premise_evidence_refs": [],
+        "inference_scope": "",
+    }
+
+    updated, result, _ = _compose(payload, response)
+
+    assert result["status"] == "accepted"
+    assert result["clauses"][0]["clause_kind"] == "unresolved"
+    assert result["clauses"][0]["restricted_request_boundary"] == {}
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda resolution, option: resolution.update({
+            "restricted_request_boundary": {},
+        }),
+        lambda resolution, option: option.update({
+            "restricted_request_boundary": {},
+        }),
+        lambda resolution, option: option.update({
+            "answer_strategy_risk": "high",
+        }),
+        lambda resolution, option: option.update({
+            "requested_claim_risk": "medium",
+        }),
+        lambda resolution, option: option[
+            "option_provenance"
+        ].update({
+            "alternative_for_restricted_request": False,
+        }),
+    ],
+)
+def test_composer_rejects_restricted_request_contract_mutation(mutation):
+    response = _with_restricted_request_strategy(
+        _bounded_inference_response()
+    )
+    resolution = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]
+    mutation(resolution, resolution["eligible_policy_options"][0])
+    original_reply = response["suggested_reply"]
+
+    updated, result, _ = _compose(
+        _bounded_inference_payload(),
+        response,
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert updated["suggested_reply"] == original_reply
+
+
+def test_composer_rejects_required_goal_without_policy_selection():
     payload = _bounded_inference_payload()
     payload["clauses"][0].update({
         "clause_kind": "unresolved",
@@ -1833,23 +2999,242 @@ def test_composer_can_decline_an_eligible_policy_without_asserting_inference():
         "inference_scope": "",
     })
 
-    updated, result, _ = _compose(
+    updated, result, client = _compose(
         payload,
         _bounded_inference_response(),
     )
 
-    assert result["status"] == "accepted"
-    assert all(
-        clause["inference_policy_refs"] == []
-        for clause in result["clauses"]
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_required_option_not_selected"
     )
-    assert "无法确认" in updated["suggested_reply"]
+    assert result["validation_diagnostics"]["category"] == (
+        "required_option_not_selected"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
+def test_composer_allows_optional_goal_to_select_zero_or_one_option():
+    response = _bounded_inference_response()
+    selected_policy_ref = _add_alternate_safe_option(
+        response,
+        resolution_index=1,
+    )
+    zero_selection_payload = _bounded_inference_payload(response)
+
+    _, zero_result, zero_client = _compose(
+        zero_selection_payload,
+        response,
+    )
+
+    assert zero_result["status"] == "accepted"
+    zero_prompt = json.loads(zero_client.messages[1]["content"])
+    optional_goal = next(
+        item
+        for item in zero_prompt["renderable_customer_goals"]
+        if item["option_selection_mode"] == "optional"
+    )
+    assert optional_goal["goal_ref"] == "goal_02"
+    assert len(optional_goal["eligible_policy_options"]) == 1
+
+    one_selection_payload = _bounded_inference_payload(response)
+    one_selection_payload["clauses"][1].update({
+        "clause_kind": "allowed_inference",
+        "text": "主体材质已确认，日常使用仍需避免反复冲击。",
+        "evidence_refs": ["E1"],
+        "selected_policy_ref": _option_alias(
+            response,
+            goal_ref="goal_02",
+            allowed_scope="ordinary_daily_material_handling",
+        ),
+        "premise_evidence_refs": ["E1"],
+        "inference_scope": "ordinary_daily_material_handling",
+    })
+
+    _, one_result, one_client = _compose(
+        one_selection_payload,
+        response,
+    )
+
+    assert one_result["status"] == "accepted"
+    assert {
+        tuple(item["inference_policy_refs"])
+        for item in one_result["clauses"]
+        if item["clause_kind"] == "allowed_inference"
+    } == {
+        (
+            "domain-policy:fixture_domain@1.0.0:"
+            "intent:product_durability_practical_guidance",
+        ),
+        (selected_policy_ref,),
+    }
+    assert one_client.call_count == 1
+
+
+def test_composer_accepts_forbidden_mode_with_zero_selection():
+    updated, result, client = _compose(_valid_payload(), _response())
+
+    assert result["status"] == "accepted"
+    prompt = json.loads(client.messages[1]["content"])
+    assert {
+        item["option_selection_mode"]
+        for item in prompt["renderable_customer_goals"]
+    } == {"forbidden"}
+    assert all(
+        not item["eligible_policy_options"]
+        for item in prompt["renderable_customer_goals"]
+    )
     assert updated["can_send"] is False
+
+
+def test_composer_forbids_option_selection_when_goal_has_no_offered_option():
+    payload = _valid_payload()
+    payload["clauses"][0].update({
+        "text": "该项可以作有界说明。",
+        "evidence_refs": [],
+        "selected_option_refs": ["option_000000000000"],
+    })
+
+    updated, result, client = _compose(payload, _response())
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_forbidden_option_selected"
+    assert result["validation_diagnostics"]["category"] == (
+        "forbidden_option_selected"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
+def test_composer_rejects_multiple_selections_for_one_required_goal():
+    response = _bounded_inference_response()
+    _add_alternate_safe_option(response)
+    payload = _bounded_inference_payload(response)
+    payload["clauses"].insert(1, deepcopy(payload["clauses"][0]))
+
+    updated, result, client = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_duplicate_goal_clause"
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
+def test_composer_rejects_two_option_refs_in_one_required_clause():
+    response = _bounded_inference_response()
+    _add_alternate_safe_option(response)
+    first_ref = _option_alias(
+        response,
+        goal_ref="goal_01",
+        allowed_scope="ordinary_minor_accidental_impact",
+    )
+    second_ref = _option_alias(
+        response,
+        goal_ref="goal_01",
+        allowed_scope="ordinary_daily_material_handling",
+    )
+    payload = _with_policy_selection_fields(
+        _bounded_inference_payload(response)
+    )
+    payload["clauses"][0]["selected_option_refs"] = [
+        first_ref,
+        second_ref,
+    ]
+
+    updated, result, client = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_option_selection_count_invalid"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
+def test_composer_rejects_multiple_selections_for_one_optional_goal():
+    response = _bounded_inference_response()
+    _add_alternate_safe_option(response, resolution_index=1)
+    payload = _bounded_inference_payload(response)
+    optional_clause = {
+        "goal_ref": "goal_02",
+        "clause_kind": "allowed_inference",
+        "text": "日常使用仍需避免反复冲击。",
+        "evidence_refs": ["E1"],
+        "selected_policy_ref": _option_alias(
+            response,
+            goal_ref="goal_02",
+            allowed_scope="ordinary_daily_material_handling",
+        ),
+        "premise_evidence_refs": ["E1"],
+        "inference_scope": "ordinary_daily_material_handling",
+    }
+    payload["clauses"][1] = deepcopy(optional_clause)
+    payload["clauses"].append(deepcopy(optional_clause))
+
+    updated, result, client = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_duplicate_goal_clause"
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
+def test_validator_rejects_mutated_option_selection_mode_without_provider():
+    response = _bounded_inference_response()
+    goals, bindings = _offered_projection(response)
+    goals[0]["option_selection_mode"] = "optional"
+    payload = _with_policy_selection_fields(
+        _bounded_inference_payload(response)
+    )
+    known_refs = {
+        str(ref)
+        for goal in goals
+        for ref in (
+            list(goal.get("required_evidence_refs") or [])
+            + [
+                premise_ref
+                for option in goal.get("eligible_policy_options") or []
+                for premise_ref in (
+                    option.get("premise_evidence_refs") or []
+                )
+            ]
+        )
+        if str(ref)
+    }
+
+    reason, diagnostics = (
+        ModelFirstAnswerComposerService._validate_output_with_diagnostics(
+            payload,
+            known_refs=known_refs,
+            customer_goals=goals,
+            response=response,
+            offered_option_bindings=bindings,
+        )
+    )
+
+    assert reason == "composer_offered_projection_invalid"
+    assert diagnostics["category"] == "offered_projection_invalid"
 
 
 def test_composer_selects_one_of_multiple_goal_scoped_safe_options():
     response = _bounded_inference_response()
-    selected_ref = _add_alternate_safe_option(response)
+    selected_policy_ref = _add_alternate_safe_option(response)
+    selected_ref = _option_alias(
+        response,
+        goal_ref="goal_01",
+        allowed_scope="ordinary_daily_material_handling",
+    )
     payload = _bounded_inference_payload()
     payload["clauses"][0].update({
         "selected_policy_ref": selected_ref,
@@ -1864,7 +3249,9 @@ def test_composer_selects_one_of_multiple_goal_scoped_safe_options():
         for clause in result["clauses"]
         if clause["clause_kind"] == "allowed_inference"
     )
-    assert selected["inference_policy_refs"] == [selected_ref]
+    assert selected["inference_policy_refs"] == [
+        selected_policy_ref
+    ]
     prompt = json.loads(client.messages[1]["content"])
     goal = next(
         item
@@ -1872,21 +3259,26 @@ def test_composer_selects_one_of_multiple_goal_scoped_safe_options():
         if len(item["eligible_policy_options"]) == 2
     )
     assert [
-        item["policy_ref"] for item in goal["eligible_policy_options"]
+        item["option_ref"] for item in goal["eligible_policy_options"]
     ] == sorted(
-        item["policy_ref"] for item in goal["eligible_policy_options"]
+        item["option_ref"] for item in goal["eligible_policy_options"]
     )
 
 
 def test_composer_rejects_policy_offered_only_to_another_goal():
     response = _bounded_inference_response()
-    other_goal_policy = _add_alternate_safe_option(
+    _add_alternate_safe_option(
         response,
         resolution_index=1,
     )
+    other_goal_option = _option_alias(
+        response,
+        goal_ref="goal_02",
+        allowed_scope="ordinary_daily_material_handling",
+    )
     payload = _bounded_inference_payload()
     payload["clauses"][0].update({
-        "selected_policy_ref": other_goal_policy,
+        "selected_policy_ref": other_goal_option,
         "inference_scope": "ordinary_daily_material_handling",
     })
 
@@ -1909,13 +3301,152 @@ def test_composer_rejects_duplicate_offered_policy_reference():
 
     assert result["status"] == "provider_blocked"
     assert result["rejection_reason"] == (
-        "composer_unknown_inference_policy_reference"
+        "composer_duplicate_offered_option"
     )
+
+
+def test_goal_scoped_option_projection_is_order_stable_and_private():
+    first = _bounded_inference_response()
+    _add_alternate_safe_option(first)
+    second = deepcopy(first)
+    minimal = second["minimal_decision_context"]
+    minimal["requested_claims"].reverse()
+    minimal["claim_resolutions"].reverse()
+    minimal["admitted_evidence"].reverse()
+    minimal["bounded_inference_policies"].reverse()
+
+    first_goals, first_bindings = _offered_projection(first)
+    second_goals, second_bindings = _offered_projection(second)
+
+    assert first_goals == second_goals
+    assert first_bindings == second_bindings
+    assert all(
+        ref.startswith("option_") and len(ref) == len("option_") + 12
+        for ref in first_bindings
+    )
+    serialized_goals = json.dumps(first_goals, ensure_ascii=False)
+    assert "domain-policy:" not in serialized_goals
+    assert _DOMAIN_PACK_HASH not in serialized_goals
+
+
+def test_same_policy_with_different_goal_premise_has_distinct_aliases():
+    response = _bounded_inference_response()
+    minimal = response["minimal_decision_context"]
+    minimal["admitted_evidence"].append({
+        "evidence_uid": "ev-material-two",
+        "fact_type": "material_composition",
+        "attribute_key": "material",
+        "content": "second admitted premise",
+    })
+    minimal["requested_claims"].append(
+        _goal(
+            "goal-durability-two",
+            "",
+            attribute_key="drop_durability_secondary",
+            claim_type_status="unmapped",
+        )
+    )
+    option = deepcopy(
+        minimal["claim_resolutions"][0]["eligible_policy_options"][0]
+    )
+    option["applicable_goal_ref"] = "goal-durability-two"
+    option["premise_evidence_refs"] = ["ev-material-two"]
+    minimal["claim_resolutions"].append(
+        _resolution(
+            "claim-durability-two",
+            "",
+            "unresolved",
+            attribute_key="drop_durability_secondary",
+            claim_type_status="unmapped",
+            eligible_policy_options=[option],
+        )
+    )
+
+    _, bindings = _offered_projection(response)
+    same_policy = [
+        binding
+        for binding in bindings.values()
+        if binding["policy_ref"].endswith(
+            "intent:product_durability_practical_guidance"
+        )
+    ]
+
+    assert len(same_policy) == 2
+    assert len({
+        binding["option_ref"] for binding in same_policy
+    }) == 2
+    assert {
+        tuple(binding["premise_evidence_uids"])
+        for binding in same_policy
+    } == {("ev-material",), ("ev-material-two",)}
+
+
+@pytest.mark.parametrize(
+    ("selected_ref_factory", "expected_reason"),
+    [
+        (
+            lambda response, bindings: next(
+                iter(bindings.values())
+            )["policy_ref"],
+            "composer_canonical_policy_reference_forbidden",
+        ),
+        (
+            lambda response, bindings: "option_000000000000",
+            "composer_unknown_inference_policy_reference",
+        ),
+    ],
+)
+def test_validator_rejects_non_offered_option_references_without_provider(
+    selected_ref_factory,
+    expected_reason,
+):
+    response = _bounded_inference_response()
+    _, bindings = _offered_projection(response)
+    payload = _bounded_inference_payload(response)
+    payload["clauses"][0]["selected_policy_ref"] = selected_ref_factory(
+        response,
+        bindings,
+    )
+
+    reason, diagnostics = _validate_with_offered_projection(
+        response,
+        payload,
+    )
+
+    assert reason == expected_reason
+    assert diagnostics["invalid_reference_sha256"]
+    assert "domain-policy:" not in json.dumps(
+        diagnostics,
+        ensure_ascii=False,
+    )
+
+
+def test_validator_rejects_stale_option_alias_without_provider():
+    original = _bounded_inference_response()
+    stale_alias = _option_alias(
+        original,
+        goal_ref="goal_01",
+        allowed_scope="ordinary_minor_accidental_impact",
+    )
+    updated = deepcopy(original)
+    minimal = updated["minimal_decision_context"]
+    option = minimal["claim_resolutions"][0][
+        "eligible_policy_options"
+    ][0]
+    policy = minimal["bounded_inference_policies"][0]
+    option["allowed_scope"] = "ordinary_minor_storage_handling"
+    policy["allowed_scope"] = "ordinary_minor_storage_handling"
+    payload = _bounded_inference_payload(original)
+    payload["clauses"][0]["selected_policy_ref"] = stale_alias
+
+    reason, _ = _validate_with_offered_projection(updated, payload)
+
+    assert reason == "composer_unknown_inference_policy_reference"
 
 
 def test_composer_requires_policy_selection_schema_fields():
     payload = _with_policy_selection_fields(_valid_payload())
-    payload["clauses"][0].pop("selected_policy_ref")
+    payload["clauses"][0].pop("selected_option_refs")
 
     _, result, _ = _compose(
         payload,
@@ -1941,9 +3472,9 @@ def test_composer_requires_policy_selection_schema_fields():
         (
             lambda response: None,
             lambda payload: payload["clauses"][0].update({
-                "clause_kind": "supported_fact",
+                "selected_option_refs": [],
             }),
-            "composer_unselected_policy_metadata_invalid",
+            "composer_required_option_not_selected",
         ),
         (
             lambda response: None,
@@ -1983,6 +3514,42 @@ def test_composer_requires_policy_selection_schema_fields():
             ][0].update({"maximum_risk_level": "low"}),
             lambda payload: None,
             "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0]["eligible_policy_options"][0].update({
+                "allowed_conclusion_family": "unoffered_conclusion",
+            }),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0]["eligible_policy_options"][0].update({
+                "allowed_variability_factor_families": [
+                    "unoffered_factor"
+                ],
+            }),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "claim_resolutions"
+            ][0]["eligible_policy_options"][0].update({
+                "advice_mode": "concise_care_only",
+            }),
+            lambda payload: None,
+            "composer_bounded_inference_contract_invalid",
+        ),
+        (
+            lambda response: response["minimal_decision_context"][
+                "bounded_inference_policies"
+            ][0].pop("allowed_conclusion_family"),
+            lambda payload: None,
+            "composer_inference_policy_schema_invalid",
         ),
         (
             lambda response: response["minimal_decision_context"][

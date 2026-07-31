@@ -613,6 +613,19 @@ def _bounded_inference_policy_projection(
                 if sanitize_text(value)
             )),
             "allowed_scope": sanitize_text(item.get("allowed_scope")),
+            "allowed_conclusion_family": sanitize_text(
+                item.get("allowed_conclusion_family")
+            ).lower(),
+            "allowed_variability_factor_families": sorted(_unique(
+                sanitize_text(value).lower()
+                for value in _as_list(
+                    item.get("allowed_variability_factor_families")
+                )
+                if sanitize_text(value)
+            )),
+            "advice_mode": sanitize_text(
+                item.get("advice_mode")
+            ).lower(),
             "maximum_risk_level": sanitize_text(
                 item.get("maximum_risk_level")
             ).lower(),

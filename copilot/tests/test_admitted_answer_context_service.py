@@ -731,6 +731,15 @@ def _bounded_inference_pack() -> dict:
             "premise_fact_families": ["material_composition"],
             "required_context_capabilities": ["product_category"],
             "allowed_scope": "ordinary_minor_accidental_impact",
+            "allowed_conclusion_family": (
+                "ordinary_minor_impact_tolerance"
+            ),
+            "allowed_variability_factor_families": [
+                "contact_surface",
+                "impact_angle",
+                "impact_height",
+            ],
+            "advice_mode": "none",
             "maximum_risk_level": "medium",
             "required_qualifiers": ["no_absolute_guarantee"],
             "prohibited_claim_families": [
@@ -803,6 +812,15 @@ def test_admitted_context_builds_policy_bounded_inference_from_trusted_context()
     assert by_goal["goal-durability"]["inference_policy_refs"] == []
     options = by_goal["goal-durability"]["eligible_policy_options"]
     assert len(options) == 1
+    assert options[0]["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert options[0]["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "impact_angle",
+        "impact_height",
+    ]
+    assert options[0]["advice_mode"] == "none"
     assert options[0]["premise_evidence_refs"] == [
         "fact-material"
     ]
