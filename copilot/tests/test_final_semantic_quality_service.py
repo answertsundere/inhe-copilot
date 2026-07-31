@@ -3,7 +3,11 @@ import json
 import pytest
 
 from app.services.final_semantic_quality_service import (
+    _atomic_semantic_contract,
+    _atomic_semantic_system_prompt,
     _canonicalize_finding_codes,
+    _semantic_budget_finding_codes,
+    _validated_semantic_budget_checks,
     apply_semantic_fit_result,
     audit_customer_reply_semantic_fit,
     finding_ownership_matrix,
@@ -121,6 +125,21 @@ def _model_first_atomic_response(*, inference: bool = False):
                     "inference_risk_level": "medium" if inference else "",
                     "maximum_risk_level": "medium" if inference else "",
                     "inference_review_only": inference,
+                    "allowed_conclusion_family": (
+                        "ordinary_minor_impact_tolerance"
+                        if inference
+                        else ""
+                    ),
+                    "allowed_variability_factor_families": (
+                        [
+                            "contact_surface",
+                            "impact_angle",
+                            "impact_height",
+                        ]
+                        if inference
+                        else []
+                    ),
+                    "advice_mode": "none" if inference else "",
                     "required_qualifiers": (
                         ["no_absolute_guarantee"] if inference else []
                     ),
@@ -172,6 +191,20 @@ def _model_first_atomic_response(*, inference: bool = False):
                     "prohibited_extensions": (
                         ["child_safety"] if inference else []
                     ),
+                    "eligible_policy_options": (
+                        [{
+                            "policy_ref": (
+                                "domain-policy:household@v1:"
+                                "minor-drop-guidance"
+                            ),
+                            "trusted_domain_pack_ref": (
+                                "domain-policy:household@v1"
+                            ),
+                            "pack_content_sha256": "a" * 64,
+                        }]
+                        if inference
+                        else []
+                    ),
                 },
             ],
             "bounded_inference_policies": (
@@ -210,16 +243,10 @@ def _model_first_atomic_response(*, inference: bool = False):
     }
 
 
-def _atomic_judge_payload(*, inference: bool = False):
-    from app.services.final_semantic_quality_service import (
-        _atomic_semantic_contract,
-    )
-
-    contract = _atomic_semantic_contract(
-        _model_first_atomic_response(inference=inference)
-    )
+def _atomic_judge_payload_for_response(response):
+    contract = _atomic_semantic_contract(response)
     return {
-        "schema_version": "unified-textual-audit-v1",
+        "schema_version": "unified-textual-audit-v2",
         "goal_reviews": [
             {
                 "goal_ref": item["goal_ref"],
@@ -230,14 +257,354 @@ def _atomic_judge_payload(*, inference: bool = False):
             }
             for item in contract
         ],
+        "semantic_budget_checks": [
+            {
+                "goal_ref": item["goal_ref"],
+                "clause_ref": item["clause_ref"],
+                "advice_status": "absent",
+                "variability_factor_status": "within_budget",
+                "restricted_boundary_status": (
+                    "preserved"
+                    if item["restricted_request_boundary"]
+                    else "not_applicable"
+                ),
+                "conclusion_status": "within_budget",
+            }
+            for item in contract
+            if item["semantic_budget_applicable"]
+        ],
         "global_finding_codes": [],
     }
 
 
+def _atomic_judge_payload(*, inference: bool = False):
+    return _atomic_judge_payload_for_response(
+        _model_first_atomic_response(inference=inference)
+    )
+
+
+def test_atomic_contract_exposes_restricted_request_boundary():
+    response = _model_first_atomic_response(inference=True)
+    boundary = {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "absolute_guarantee_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": "durability_absolute_guarantee",
+        "policy_goal_family": "product_durability",
+        "policy_intent_kind": "absolute_guarantee",
+        "high_risk_claim_families": [],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    resolution = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][1]
+    resolution.update({
+        "status": "unresolved",
+        "support_basis": "none",
+        "requested_claim_risk": "high",
+        "restricted_request_boundary": boundary,
+    })
+    clause = response["model_first_answer_composer"]["clauses"][1]
+    clause.update({
+        "requested_claim_risk_level": "high",
+        "restricted_request_boundary": boundary,
+    })
+
+    contract = _atomic_semantic_contract(response)
+    bounded = next(
+        item
+        for item in contract
+        if item["clause_kind"] == "allowed_inference"
+    )
+
+    assert bounded["requested_claim_risk_level"] == "high"
+    assert bounded["inference_risk_level"] == "medium"
+    assert bounded["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+
+
+def test_atomic_contract_exposes_canonical_semantic_budget():
+    contract = _atomic_semantic_contract(
+        _model_first_atomic_response(inference=True)
+    )
+    bounded = next(
+        item
+        for item in contract
+        if item["clause_kind"] == "allowed_inference"
+    )
+
+    assert bounded["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert bounded["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "impact_angle",
+        "impact_height",
+    ]
+    assert bounded["advice_mode"] == "none"
+    assert bounded["trusted_domain_pack_ref"] == (
+        "domain-policy:household@v1"
+    )
+    assert bounded["pack_content_sha256"] == "a" * 64
+
+
+def test_atomic_prompt_requires_independent_cumulative_budget_checks():
+    prompt = _atomic_semantic_system_prompt()
+
+    assert "semantic_budget_checks row in the same order" in prompt
+    assert "Natural paraphrases count by meaning" in prompt
+    assert "Determine each dimension independently" in prompt
+    assert "server derives all semantic-budget findings" in prompt
+    assert "trusted_domain_pack_ref" in prompt
+    assert "pack_content_sha256" in prompt
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda option: option.update({
+            "trusted_domain_pack_ref": "",
+        }),
+        lambda option: option.update({
+            "pack_content_sha256": "not-a-sha256",
+        }),
+        lambda option: option.update({
+            "policy_ref": "different-policy",
+        }),
+    ],
+)
+def test_atomic_contract_fails_closed_on_invalid_pack_identity(mutation):
+    response = _model_first_atomic_response(inference=True)
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][1]["eligible_policy_options"][0]
+    mutation(option)
+
+    assert _atomic_semantic_contract(response) == []
+
+
+def test_atomic_contract_rejects_conflicting_duplicate_pack_identity():
+    response = _model_first_atomic_response(inference=True)
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][1]["eligible_policy_options"][0]
+    response["minimal_decision_context"]["claim_resolutions"][0][
+        "eligible_policy_options"
+    ] = [{
+        **option,
+        "pack_content_sha256": "b" * 64,
+    }]
+
+    assert _atomic_semantic_contract(response) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda clause: clause.update({
+            "allowed_conclusion_family": "",
+        }),
+        lambda clause: clause.update({
+            "allowed_variability_factor_families": [
+                "impact_height",
+                "impact_height",
+            ],
+        }),
+        lambda clause: clause.update({
+            "advice_mode": "free_form_advice",
+        }),
+    ],
+)
+def test_atomic_contract_fails_closed_on_invalid_semantic_budget(
+    mutation,
+):
+    response = _model_first_atomic_response(inference=True)
+    clause = response["model_first_answer_composer"]["clauses"][1]
+    mutation(clause)
+
+    assert _atomic_semantic_contract(response) == []
+
+
+def _semantic_budget_target(
+    goal_ref,
+    clause_ref,
+    *,
+    advice_mode="none",
+    restricted_boundary=False,
+):
+    return {
+        "goal_ref": goal_ref,
+        "clause_ref": clause_ref,
+        "semantic_budget_applicable": True,
+        "advice_mode": advice_mode,
+        "restricted_request_boundary": (
+            {"must_remain_unresolved": True}
+            if restricted_boundary
+            else {}
+        ),
+    }
+
+
+def _semantic_budget_check(
+    goal_ref,
+    clause_ref,
+    *,
+    advice_status="absent",
+    variability_factor_status="within_budget",
+    restricted_boundary_status="not_applicable",
+    conclusion_status="within_budget",
+):
+    return {
+        "goal_ref": goal_ref,
+        "clause_ref": clause_ref,
+        "advice_status": advice_status,
+        "variability_factor_status": variability_factor_status,
+        "restricted_boundary_status": restricted_boundary_status,
+        "conclusion_status": conclusion_status,
+    }
+
+
+def test_semantic_budget_validator_accepts_zero_targets():
+    checks, findings, diagnostics = _validated_semantic_budget_checks(
+        [],
+        atomic_contract=[],
+    )
+
+    assert checks == []
+    assert findings == {}
+    assert diagnostics["category"] == "accepted"
+
+
+def test_semantic_budget_validator_accepts_multiple_targets_in_exact_order():
+    contract = [
+        _semantic_budget_target("goal-1", "clause-1"),
+        _semantic_budget_target(
+            "goal-2",
+            "clause-2",
+            advice_mode="concise_care_only",
+            restricted_boundary=True,
+        ),
+    ]
+    raw_checks = [
+        _semantic_budget_check("goal-1", "clause-1"),
+        _semantic_budget_check(
+            "goal-2",
+            "clause-2",
+            advice_status="authorized",
+            restricted_boundary_status="preserved",
+        ),
+    ]
+
+    checks, findings, diagnostics = _validated_semantic_budget_checks(
+        raw_checks,
+        atomic_contract=contract,
+    )
+
+    assert checks == raw_checks
+    assert findings == {
+        ("goal-1", "clause-1"): [],
+        ("goal-2", "clause-2"): [],
+    }
+    assert diagnostics["category"] == "accepted"
+
+
+@pytest.mark.parametrize(
+    "raw_checks",
+    [
+        [
+            _semantic_budget_check("goal-2", "clause-2"),
+            _semantic_budget_check("goal-1", "clause-1"),
+        ],
+        [
+            _semantic_budget_check("goal-1", "clause-1"),
+            _semantic_budget_check("goal-1", "clause-1"),
+        ],
+        [
+            _semantic_budget_check("goal-1", "clause-1"),
+            _semantic_budget_check("goal-1", "clause-2"),
+        ],
+    ],
+)
+def test_semantic_budget_validator_rejects_order_duplicate_and_cross_goal(
+    raw_checks,
+):
+    checks, findings, diagnostics = _validated_semantic_budget_checks(
+        raw_checks,
+        atomic_contract=[
+            _semantic_budget_target("goal-1", "clause-1"),
+            _semantic_budget_target("goal-2", "clause-2"),
+        ],
+    )
+
+    assert checks is None
+    assert findings == {}
+    assert diagnostics["category"] == (
+        "semantic_budget_check_order_or_reference_invalid"
+    )
+
+
+@pytest.mark.parametrize(
+    ("check", "expected_findings"),
+    [
+        (
+            _semantic_budget_check(
+                "goal",
+                "clause",
+                advice_status="unauthorized",
+            ),
+            ["advice_scope_exceeded"],
+        ),
+        (
+            _semantic_budget_check(
+                "goal",
+                "clause",
+                variability_factor_status="outside_budget",
+            ),
+            ["variability_factor_scope_exceeded"],
+        ),
+        (
+            _semantic_budget_check(
+                "goal",
+                "clause",
+                variability_factor_status="asserted_as_fact",
+            ),
+            ["variability_factor_asserted_as_fact"],
+        ),
+        (
+            _semantic_budget_check(
+                "goal",
+                "clause",
+                restricted_boundary_status="violated",
+            ),
+            ["restricted_boundary_violation"],
+        ),
+        (
+            _semantic_budget_check(
+                "goal",
+                "clause",
+                conclusion_status="outside_budget",
+            ),
+            ["inference_scope_exceeded"],
+        ),
+    ],
+)
+def test_semantic_budget_status_mapping_is_deterministic(
+    check,
+    expected_findings,
+):
+    assert _semantic_budget_finding_codes(check) == expected_findings
+
+
 def _mutated_atomic_payload(mutation):
-    payload = _atomic_judge_payload()
+    budget_mutation = mutation.startswith("budget_")
+    payload = _atomic_judge_payload(inference=budget_mutation)
     checks = payload["goal_reviews"]
     first = checks[0]
+    budget_checks = payload["semantic_budget_checks"]
+    budget_first = budget_checks[0] if budget_checks else None
     if mutation == "top_level_extra":
         payload["extra"] = True
     elif mutation == "top_level_missing":
@@ -252,6 +619,39 @@ def _mutated_atomic_payload(mutation):
         payload["global_finding_codes"] = ["semantic_mismatch", "semantic_mismatch"]
     elif mutation == "global_issue_invalid":
         payload["global_finding_codes"] = ["unknown_issue"]
+    elif mutation == "budget_checks_type":
+        payload["semantic_budget_checks"] = {}
+    elif mutation == "budget_missing_check":
+        budget_checks.pop()
+    elif mutation == "budget_extra_check":
+        budget_checks.append(dict(budget_first))
+    elif mutation == "budget_check_type":
+        budget_checks[0] = "invalid"
+    elif mutation == "budget_extra_field":
+        budget_first["extra"] = True
+    elif mutation == "budget_missing_field":
+        budget_first.pop("conclusion_status")
+    elif mutation == "budget_unknown_goal":
+        budget_first["goal_ref"] = "unknown-goal"
+    elif mutation == "budget_unknown_clause":
+        budget_first["clause_ref"] = "unknown-clause"
+    elif mutation == "budget_status_type":
+        budget_first["advice_status"] = True
+    elif mutation == "budget_status_enum":
+        budget_first["advice_status"] = "sometimes"
+    elif mutation == "budget_indeterminate":
+        budget_first["conclusion_status"] = "indeterminate"
+    elif mutation == "budget_boundary_applicability":
+        budget_first["restricted_boundary_status"] = "preserved"
+    elif mutation == "budget_advice_authorization":
+        budget_first["advice_status"] = "authorized"
+    elif mutation == "budget_finding_in_goal_review":
+        checks[1].update({
+            "textual_status": "rejected",
+            "finding_codes": ["advice_scope_exceeded"],
+        })
+    elif mutation == "budget_finding_in_global":
+        payload["global_finding_codes"] = ["advice_scope_exceeded"]
     elif mutation == "segment_type":
         checks[0] = "invalid"
     elif mutation == "segment_extra_field":
@@ -387,6 +787,33 @@ def test_model_first_semantic_fit_fails_closed_on_invalid_schema(
         ("goal_reviews_type", "goal_reviews_type_invalid"),
         ("global_finding_codes_type", "global_finding_codes_type_invalid"),
         ("global_issue_invalid", "global_issue_code_invalid"),
+        ("budget_checks_type", "semantic_budget_checks_type_invalid"),
+        ("budget_missing_check", "semantic_budget_check_count_invalid"),
+        ("budget_extra_check", "semantic_budget_check_count_invalid"),
+        ("budget_check_type", "semantic_budget_check_type_invalid"),
+        ("budget_extra_field", "semantic_budget_check_fields_invalid"),
+        ("budget_missing_field", "semantic_budget_check_fields_invalid"),
+        (
+            "budget_unknown_goal",
+            "semantic_budget_check_order_or_reference_invalid",
+        ),
+        (
+            "budget_unknown_clause",
+            "semantic_budget_check_order_or_reference_invalid",
+        ),
+        ("budget_status_type", "semantic_budget_status_invalid"),
+        ("budget_status_enum", "semantic_budget_status_invalid"),
+        ("budget_indeterminate", "semantic_budget_indeterminate"),
+        (
+            "budget_boundary_applicability",
+            "semantic_budget_boundary_applicability_invalid",
+        ),
+        (
+            "budget_advice_authorization",
+            "semantic_budget_advice_authorization_invalid",
+        ),
+        ("budget_finding_in_goal_review", "issue_code_invalid"),
+        ("budget_finding_in_global", "global_issue_code_invalid"),
         ("segment_type", "segment_type_invalid"),
         ("segment_extra_field", "segment_fields_invalid"),
         ("segment_missing_field", "segment_fields_invalid"),
@@ -414,7 +841,9 @@ def test_atomic_semantic_audit_mutations_fail_closed_with_exact_diagnostics(
     monkeypatch.setattr("app.llm.client.get_llm_client", lambda: client)
 
     result = audit_customer_reply_semantic_fit(
-        _model_first_atomic_response(),
+        _model_first_atomic_response(
+            inference=mutation.startswith("budget_")
+        ),
         customer_message="这款是什么材质，耐摔吗？",
     )
 
@@ -425,6 +854,22 @@ def test_atomic_semantic_audit_mutations_fail_closed_with_exact_diagnostics(
     assert result["provider_diagnostics"]["model_call_count"] == 1
     assert result["provider_diagnostics"]["retry_count"] == 0
     assert result["provider_diagnostics"]["repair_count"] == 0
+    if mutation in {
+        "budget_missing_check",
+        "budget_extra_check",
+        "budget_indeterminate",
+    }:
+        assert "raw_semantic_budget_checks" in result
+    if mutation == "budget_indeterminate":
+        assert result["raw_semantic_budget_checks"][0][
+            "conclusion_status"
+        ] == "indeterminate"
+    if mutation in {
+        "budget_extra_field",
+        "budget_missing_field",
+        "budget_status_enum",
+    }:
+        assert "raw_semantic_budget_checks" not in result
 
 
 @pytest.mark.parametrize(
@@ -467,7 +912,7 @@ def test_finding_ownership_matrix_covers_all_allowed_codes():
     matrix = finding_ownership_matrix()
 
     codes = [item["raw_finding_code"] for item in matrix]
-    assert len(codes) == len(set(codes)) == 21
+    assert len(codes) == len(set(codes)) == 25
     assert {
         "factual_fidelity",
         "unresolved_boundary",
@@ -476,6 +921,7 @@ def test_finding_ownership_matrix_covers_all_allowed_codes():
         "unsupported_completion",
         "relevance",
         "communication_quality",
+        "policy_semantic_budget",
     } == {item["canonical_family"] for item in matrix}
     assert all(item["blocking"] is True for item in matrix)
     by_code = {
@@ -888,7 +1334,7 @@ def test_atomic_semantic_audit_accepts_supported_and_unresolved_segments(
     assert client.call_count == 1
     assert result["passed"] is True
     assert result["issues"] == []
-    assert result["schema_version"] == "unified-textual-audit-v1"
+    assert result["schema_version"] == "unified-textual-audit-v2"
     assert len(result["goal_reviews"]) == 2
     assert all(
         item["textual_status"] == "accepted"
@@ -917,6 +1363,237 @@ def test_atomic_semantic_audit_accepts_policy_bounded_inference(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    (
+        "status_field",
+        "status_value",
+        "finding_code",
+        "boundary_required",
+    ),
+    [
+        ("advice_status", "unauthorized", "advice_scope_exceeded", False),
+        (
+            "restricted_boundary_status",
+            "violated",
+            "restricted_boundary_violation",
+            True,
+        ),
+        (
+            "variability_factor_status",
+            "asserted_as_fact",
+            "variability_factor_asserted_as_fact",
+            False,
+        ),
+        (
+            "variability_factor_status",
+            "outside_budget",
+            "variability_factor_scope_exceeded",
+            False,
+        ),
+        (
+            "conclusion_status",
+            "outside_budget",
+            "inference_scope_exceeded",
+            False,
+        ),
+    ],
+)
+def test_atomic_semantic_audit_preserves_budget_finding_attribution(
+    monkeypatch,
+    status_field,
+    status_value,
+    finding_code,
+    boundary_required,
+):
+    response = _model_first_atomic_response(inference=True)
+    if boundary_required:
+        boundary = {
+            "schema_version": "restricted-request-boundary/v1",
+            "status": "prohibited",
+            "reason_code": "absolute_guarantee_prohibited",
+            "requested_claim_risk": "high",
+            "policy_intent_ref": "durability_absolute_guarantee",
+            "policy_goal_family": "product_durability",
+            "policy_intent_kind": "absolute_guarantee",
+            "high_risk_claim_families": [],
+            "must_remain_unresolved": True,
+            "allows_bounded_alternative": True,
+        }
+        response["minimal_decision_context"]["claim_resolutions"][1].update({
+            "status": "unresolved",
+            "support_basis": "none",
+            "requested_claim_risk": "high",
+            "restricted_request_boundary": boundary,
+        })
+        response["model_first_answer_composer"]["clauses"][1].update({
+            "requested_claim_risk_level": "high",
+            "restricted_request_boundary": boundary,
+        })
+    payload = _atomic_judge_payload_for_response(response)
+    payload["semantic_budget_checks"][0][status_field] = status_value
+    client = _CountingClient(content=json.dumps(payload))
+    monkeypatch.setattr(
+        "app.llm.client.get_llm_client",
+        lambda: client,
+    )
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="当前商品的日常耐用边界是什么？",
+    )
+
+    assert client.call_count == 1
+    assert result["passed"] is False
+    assert result["issues"] == [finding_code]
+    finding = next(
+        item
+        for item in result["canonical_goal_findings"]
+        if item["primary_finding_code"]
+    )
+    assert finding["primary_finding_code"] == finding_code
+    assert result["semantic_budget_derivations"][0][
+        "canonical_finding_codes"
+    ] == [finding_code]
+    budget_check = result["semantic_budget_checks"][0]
+    budget_ref = (
+        budget_check["goal_ref"],
+        budget_check["clause_ref"],
+    )
+    raw_review = next(
+        item
+        for item in result["raw_goal_reviews"]
+        if (item["goal_ref"], item["clause_ref"]) == budget_ref
+    )
+    normalized_review = next(
+        item
+        for item in result["goal_reviews"]
+        if (item["goal_ref"], item["clause_ref"]) == budget_ref
+    )
+    assert raw_review["textual_status"] == "accepted"
+    assert normalized_review["textual_status"] == "rejected"
+
+
+def test_atomic_semantic_audit_preserves_independent_budget_findings(
+    monkeypatch,
+):
+    payload = _atomic_judge_payload(inference=True)
+    payload["semantic_budget_checks"][0].update({
+        "advice_status": "unauthorized",
+        "variability_factor_status": "outside_budget",
+    })
+    client = _CountingClient(content=json.dumps(payload))
+    monkeypatch.setattr(
+        "app.llm.client.get_llm_client",
+        lambda: client,
+    )
+
+    result = audit_customer_reply_semantic_fit(
+        _model_first_atomic_response(inference=True),
+        customer_message="当前商品的日常耐用边界是什么？",
+    )
+
+    assert client.call_count == 1
+    assert result["passed"] is False
+    assert result["issues"] == [
+        "advice_scope_exceeded",
+        "variability_factor_scope_exceeded",
+    ]
+    finding = next(
+        item
+        for item in result["canonical_goal_findings"]
+        if item["raw_finding_codes"]
+    )
+    assert finding["goal_ref"]
+    assert finding["clause_ref"]
+    assert finding["raw_finding_codes"] == [
+        "advice_scope_exceeded",
+        "variability_factor_scope_exceeded",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("finding_codes", "expected_passed"),
+    [
+        ([], True),
+        (
+            [
+                "advice_scope_exceeded",
+                "variability_factor_scope_exceeded",
+            ],
+            False,
+        ),
+    ],
+)
+def test_atomic_semantic_budget_contract_is_reusable_across_domain_packs(
+    monkeypatch,
+    finding_codes,
+    expected_passed,
+):
+    response = _model_first_atomic_response(inference=True)
+    policy_ref = "domain-policy:travel_goods@v2:ordinary-use-boundary"
+    pack_ref = "domain-policy:travel_goods@v2"
+    clause = response["model_first_answer_composer"]["clauses"][1]
+    clause["inference_policy_refs"] = [policy_ref]
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][1]["eligible_policy_options"][0]
+    option.update({
+        "policy_ref": policy_ref,
+        "trusted_domain_pack_ref": pack_ref,
+        "pack_content_sha256": "c" * 64,
+    })
+    contract = _atomic_semantic_contract(response)
+    payload = {
+        "schema_version": "unified-textual-audit-v2",
+        "goal_reviews": [
+            {
+                "goal_ref": item["goal_ref"],
+                "clause_ref": item["clause_ref"],
+                "clause_kind": item["clause_kind"],
+                "textual_status": "accepted",
+                "finding_codes": [],
+            }
+            for item in contract
+        ],
+        "semantic_budget_checks": [
+            {
+                "goal_ref": item["goal_ref"],
+                "clause_ref": item["clause_ref"],
+                "advice_status": (
+                    "unauthorized"
+                    if "advice_scope_exceeded" in finding_codes
+                    else "absent"
+                ),
+                "variability_factor_status": (
+                    "outside_budget"
+                    if "variability_factor_scope_exceeded"
+                    in finding_codes
+                    else "within_budget"
+                ),
+                "restricted_boundary_status": "not_applicable",
+                "conclusion_status": "within_budget",
+            }
+            for item in contract
+            if item["semantic_budget_applicable"]
+        ],
+        "global_finding_codes": [],
+    }
+    client = _CountingClient(content=json.dumps(payload))
+    monkeypatch.setattr(
+        "app.llm.client.get_llm_client",
+        lambda: client,
+    )
+
+    result = audit_customer_reply_semantic_fit(
+        response,
+        customer_message="请说明当前商品的一般使用边界。",
+    )
+
+    assert client.call_count == 1
+    assert result["passed"] is expected_passed
+    assert result["issues"] == sorted(finding_codes)
+
+
+@pytest.mark.parametrize(
     ("mutate", "expected_issue"),
     [
         (
@@ -936,9 +1613,9 @@ def test_atomic_semantic_audit_accepts_policy_bounded_inference(monkeypatch):
         (
             lambda payload: payload["goal_reviews"][1].update({
                 "textual_status": "rejected",
-                "finding_codes": ["inference_scope_exceeded"],
+                "finding_codes": ["unsupported_product_claim"],
             }),
-            "inference_scope_exceeded",
+            "unsupported_product_claim",
         ),
         (
             lambda payload: payload["goal_reviews"][1].update({

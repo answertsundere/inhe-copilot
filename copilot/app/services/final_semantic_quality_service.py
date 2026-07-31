@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from typing import Any
 
@@ -31,6 +32,7 @@ from app.services.no_evidence_reply_policy_service import apply_no_evidence_repl
 
 _LLM_SEMANTIC_ISSUE_CODES = {
     "accessory_availability_answered_with_installation",
+    "advice_scope_exceeded",
     "answered_space_fit_as_load_capacity",
     "gross_weight_answered_with_dimensions_or_capacity",
     "gross_weight_answered_with_load_capacity",
@@ -43,6 +45,7 @@ _LLM_SEMANTIC_ISSUE_CODES = {
     "omitted_customer_goal",
     "query_reply_mismatch",
     "repeated_generic_reply",
+    "restricted_boundary_violation",
     "semantic_mismatch",
     "structure_function_answered_with_scene_or_space",
     "unnecessary_handoff",
@@ -51,12 +54,19 @@ _LLM_SEMANTIC_ISSUE_CODES = {
     "unsupported_media_claim",
     "unsupported_product_claim",
     "unsupported_service_action_completion",
+    "variability_factor_asserted_as_fact",
+    "variability_factor_scope_exceeded",
 }
 _FINDING_ONTOLOGY_VERSION = "unified-textual-finding-ontology-v1"
 _FINDING_OWNERSHIP = {
     "accessory_availability_answered_with_installation": {
         "canonical_family": "relevance",
         "specificity": 90,
+        "role": "root",
+    },
+    "advice_scope_exceeded": {
+        "canonical_family": "policy_semantic_budget",
+        "specificity": 100,
         "role": "root",
     },
     "answered_space_fit_as_load_capacity": {
@@ -119,6 +129,11 @@ _FINDING_OWNERSHIP = {
         "specificity": 80,
         "role": "root",
     },
+    "restricted_boundary_violation": {
+        "canonical_family": "unresolved_boundary",
+        "specificity": 100,
+        "role": "root",
+    },
     "semantic_mismatch": {
         "canonical_family": "relevance",
         "specificity": 10,
@@ -163,6 +178,16 @@ _FINDING_OWNERSHIP = {
         "specificity": 100,
         "role": "root",
     },
+    "variability_factor_asserted_as_fact": {
+        "canonical_family": "policy_semantic_budget",
+        "specificity": 100,
+        "role": "root",
+    },
+    "variability_factor_scope_exceeded": {
+        "canonical_family": "policy_semantic_budget",
+        "specificity": 100,
+        "role": "root",
+    },
 }
 _FINDING_SECONDARY_OVERLAPS = {
     "unsupported_claim": {"semantic_mismatch"},
@@ -173,10 +198,21 @@ _FINDING_CONFLICTS = {
         "unnecessary_handoff",
     }),
 }
-_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v1"
+_SEMANTIC_BUDGET_FINDING_CODES = {
+    "advice_scope_exceeded",
+    "inference_scope_exceeded",
+    "restricted_boundary_violation",
+    "variability_factor_asserted_as_fact",
+    "variability_factor_scope_exceeded",
+}
+_NON_BUDGET_FINDING_CODES = (
+    _LLM_SEMANTIC_ISSUE_CODES - _SEMANTIC_BUDGET_FINDING_CODES
+)
+_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v2"
 _ATOMIC_SEMANTIC_OUTPUT_FIELDS = {
     "schema_version",
     "goal_reviews",
+    "semantic_budget_checks",
     "global_finding_codes",
 }
 _ATOMIC_SEGMENT_FIELDS = {
@@ -185,6 +221,38 @@ _ATOMIC_SEGMENT_FIELDS = {
     "clause_kind",
     "textual_status",
     "finding_codes",
+}
+_ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS = {
+    "goal_ref",
+    "clause_ref",
+    "advice_status",
+    "variability_factor_status",
+    "restricted_boundary_status",
+    "conclusion_status",
+}
+_ATOMIC_ADVICE_STATUSES = {
+    "absent",
+    "authorized",
+    "unauthorized",
+    "indeterminate",
+}
+_ATOMIC_VARIABILITY_FACTOR_STATUSES = {
+    "none",
+    "within_budget",
+    "outside_budget",
+    "asserted_as_fact",
+    "indeterminate",
+}
+_ATOMIC_RESTRICTED_BOUNDARY_STATUSES = {
+    "preserved",
+    "violated",
+    "not_applicable",
+    "indeterminate",
+}
+_ATOMIC_CONCLUSION_STATUSES = {
+    "within_budget",
+    "outside_budget",
+    "indeterminate",
 }
 _ATOMIC_EXPECTED_KINDS = {
     "supported_fact",
@@ -608,11 +676,24 @@ def _llm_semantic_fit_check(
                 atomic_contract=atomic_contract,
             )
             if atomic_result is None:
-                return _semantic_judge_failure(
+                failure = _semantic_judge_failure(
                     "semantic_judge_schema_invalid",
                     provider_diagnostics=provider_diagnostics,
                     validation_diagnostics=validation_diagnostics,
                 )
+                safe_raw_checks = (
+                    _safe_raw_semantic_budget_checks(
+                        parsed.get("semantic_budget_checks"),
+                        atomic_contract=atomic_contract,
+                    )
+                    if isinstance(parsed, dict)
+                    else None
+                )
+                if safe_raw_checks is not None:
+                    failure["raw_semantic_budget_checks"] = (
+                        safe_raw_checks
+                    )
+                return failure
             atomic_result["provider_diagnostics"] = provider_diagnostics
             atomic_result["validation_diagnostics"] = validation_diagnostics
             return atomic_result
@@ -658,18 +739,81 @@ def _atomic_semantic_system_prompt() -> str:
         "History can show what the customer already supplied, but historical agent text never proves a "
         "fact or completed action. A supported_fact clause must stay within cited evidence. An unresolved "
         "clause that directly says the requested proposition cannot be confirmed or guaranteed answers "
-        "the goal without asserting the fact. An allowed_inference clause must preserve every qualifier "
-        "and prohibited boundary. Reject omitted goals, unrelated answers, unsupported inference, use of "
+        "the goal without asserting the fact. For every unified_textual_contract item whose "
+        "semantic_budget_applicable is true, return exactly one semantic_budget_checks row in the same order. "
+        "All six fields are required and no extra fields are allowed. Determine each dimension independently "
+        "from clause_text and its supplied semantic budget. Natural paraphrases count by meaning, not literal "
+        "word overlap. advice_status is absent when there is no customer-directed advice, authorized only when "
+        "present advice is permitted by advice_mode, unauthorized when present advice exceeds advice_mode, and "
+        "indeterminate only when you cannot decide. A refusal or concise restricted-boundary statement is not "
+        "advice. variability_factor_status is none when no factor is used, within_budget when every used factor "
+        "belongs to allowed_variability_factor_families and remains a possible variable, outside_budget when "
+        "any used factor is outside that set, asserted_as_fact when a factor is stated as a verified product "
+        "fact or guarantee, and indeterminate only when undecidable. If allowed and unauthorized factors both "
+        "appear, choose outside_budget. restricted_boundary_status is preserved or violated when a "
+        "restricted_request_boundary exists, otherwise not_applicable; use indeterminate only when undecidable. "
+        "conclusion_status is within_budget only when every conclusion stays within allowed_conclusion_family "
+        "and required qualifiers, otherwise outside_budget; use indeterminate only when undecidable. "
+        "trusted_domain_pack_ref and pack_content_sha256 identify the governing budget but are not evidence. "
+        "Do not repeat policy, Pack, factor lists, findings, explanations, or candidate text in the check row. "
+        "The server derives all semantic-budget findings from these required statuses. Therefore never emit "
+        "semantic-budget finding codes in goal_reviews or global_finding_codes. Continue using goal_reviews and "
+        "global_finding_codes only for the supplied non-budget finding codes: omitted goals, unrelated answers, "
+        "unsupported inference outside the budget dimensions, use of "
         "history as truth, repeated requests for known information, unsupported service/media completion, "
         "internal language, and materially repetitive generic replies. "
         "Echo every goal_ref, clause_ref, and clause_kind exactly once. For each goal return textual_status "
         "accepted with an empty finding_codes list, or rejected with one or more allowed finding codes. "
-        "Return strict JSON with exactly schema_version, goal_reviews, global_finding_codes. "
-        "schema_version must be unified-textual-audit-v1. Each goal review must contain exactly goal_ref, "
+        "Return strict JSON with exactly schema_version, goal_reviews, semantic_budget_checks, "
+        "global_finding_codes. schema_version must be unified-textual-audit-v2. Each goal review must contain "
+        "exactly goal_ref, "
         "clause_ref, clause_kind, textual_status, finding_codes. Use only codes supplied in "
         "allowed_finding_codes. Do not return passed, verdict, reason, conclusion, analysis, markdown, "
         "self-correction, or extra fields."
     )
+
+
+def _atomic_policy_pack_identity_by_ref(
+    response: dict[str, Any],
+) -> dict[str, dict[str, str]]:
+    minimal = response.get("minimal_decision_context")
+    if not isinstance(minimal, dict):
+        return {}
+    projections: dict[str, dict[str, str]] = {}
+    for resolution in minimal.get("claim_resolutions") or []:
+        if not isinstance(resolution, dict):
+            continue
+        options = resolution.get("eligible_policy_options") or []
+        if not isinstance(options, list):
+            return {}
+        for option in options:
+            if not isinstance(option, dict):
+                return {}
+            policy_ref = str(option.get("policy_ref") or "").strip()
+            if not policy_ref:
+                return {}
+            pack_ref = str(
+                option.get("trusted_domain_pack_ref") or ""
+            ).strip()
+            pack_hash = str(
+                option.get("pack_content_sha256") or ""
+            ).strip().lower()
+            if (
+                not pack_ref
+                or not re.fullmatch(r"[0-9a-f]{64}", pack_hash)
+            ):
+                return {}
+            projection = {
+                "trusted_domain_pack_ref": pack_ref,
+                "pack_content_sha256": pack_hash,
+            }
+            if (
+                policy_ref in projections
+                and projections[policy_ref] != projection
+            ):
+                return {}
+            projections[policy_ref] = projection
+    return projections
 
 
 def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
@@ -688,6 +832,9 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
     )
     if not clauses:
         return []
+    pack_identity_by_policy_ref = _atomic_policy_pack_identity_by_ref(
+        response
+    )
     contract: list[dict[str, Any]] = []
     seen_goals: set[str] = set()
     seen_clauses: set[str] = set()
@@ -708,6 +855,34 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
         clause_kind = str(clause.get("expected_kind") or "").strip()
         if clause_kind not in _ATOMIC_EXPECTED_KINDS:
             return []
+        inference_policy_refs = sorted({
+            str(item).strip()
+            for item in clause.get("inference_policy_refs") or []
+            if str(item).strip()
+        })
+        variability_factors = clause.get(
+            "allowed_variability_factor_families"
+        )
+        if clause_kind == "allowed_inference" and (
+            len(inference_policy_refs) != 1
+            or inference_policy_refs[0] not in pack_identity_by_policy_ref
+            or not str(
+                clause.get("allowed_conclusion_family") or ""
+            ).strip()
+            or not isinstance(variability_factors, list)
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in variability_factors
+            )
+            or variability_factors
+            != sorted(set(variability_factors))
+            or clause.get("advice_mode") not in {
+                "none",
+                "concise_care_only",
+                "safety_handoff_required",
+            }
+        ):
+            return []
         contract.append({
             "goal_ref": goal_ref,
             "clause_ref": clause_ref,
@@ -717,29 +892,64 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
             "premise_evidence_refs": list(
                 clause.get("premise_evidence_refs") or []
             ),
-            "inference_policy_refs": sorted({
-                str(item).strip()
-                for item in clause.get("inference_policy_refs") or []
-                if str(item).strip()
-            }),
+            "inference_policy_refs": inference_policy_refs,
             "scope_qualifier": str(
                 clause.get("scope_qualifier") or ""
             ).strip(),
             "inference_risk_level": str(
                 clause.get("inference_risk_level") or ""
             ).strip(),
+            "requested_claim_risk_level": str(
+                clause.get("requested_claim_risk_level") or ""
+            ).strip(),
             "maximum_risk_level": str(
                 clause.get("maximum_risk_level") or ""
             ).strip(),
+            "restricted_request_boundary": dict(
+                clause.get("restricted_request_boundary") or {}
+            ),
             "inference_review_only": (
                 clause.get("inference_review_only") is True
             ),
+            "allowed_conclusion_family": str(
+                clause.get("allowed_conclusion_family") or ""
+            ).strip(),
+            "allowed_variability_factor_families": sorted({
+                str(item).strip()
+                for item in clause.get(
+                    "allowed_variability_factor_families"
+                )
+                or []
+                if str(item).strip()
+            }),
+            "advice_mode": str(
+                clause.get("advice_mode") or ""
+            ).strip(),
             "prohibited_extensions": sorted({
                 str(item).strip()
                 for item in clause.get("prohibited_extensions") or []
                 if str(item).strip()
             }),
-            "allowed_finding_codes": sorted(_LLM_SEMANTIC_ISSUE_CODES),
+            "trusted_domain_pack_ref": (
+                pack_identity_by_policy_ref[
+                    inference_policy_refs[0]
+                ]["trusted_domain_pack_ref"]
+                if clause_kind == "allowed_inference"
+                else ""
+            ),
+            "pack_content_sha256": (
+                pack_identity_by_policy_ref[
+                    inference_policy_refs[0]
+                ]["pack_content_sha256"]
+                if clause_kind == "allowed_inference"
+                else ""
+            ),
+            "semantic_budget_applicable": (
+                clause_kind == "allowed_inference"
+            ),
+            "allowed_finding_codes": sorted(
+                _NON_BUDGET_FINDING_CODES
+            ),
         })
     return contract
 
@@ -960,6 +1170,227 @@ def _canonical_goal_finding(
     }, ""
 
 
+def _semantic_budget_finding_codes(
+    check: dict[str, Any],
+) -> list[str]:
+    findings = []
+    if check["advice_status"] == "unauthorized":
+        findings.append("advice_scope_exceeded")
+    if check["variability_factor_status"] == "outside_budget":
+        findings.append("variability_factor_scope_exceeded")
+    elif check["variability_factor_status"] == "asserted_as_fact":
+        findings.append("variability_factor_asserted_as_fact")
+    if check["restricted_boundary_status"] == "violated":
+        findings.append("restricted_boundary_violation")
+    if check["conclusion_status"] == "outside_budget":
+        findings.append("inference_scope_exceeded")
+    return sorted(findings)
+
+
+def _safe_raw_semantic_budget_checks(
+    raw_checks: Any,
+    *,
+    atomic_contract: list[dict[str, Any]],
+) -> list[dict[str, str]] | None:
+    if not isinstance(raw_checks, list):
+        return None
+    expected_refs = {
+        (item["goal_ref"], item["clause_ref"])
+        for item in atomic_contract
+        if item.get("semantic_budget_applicable") is True
+    }
+    status_contracts = {
+        "advice_status": _ATOMIC_ADVICE_STATUSES,
+        "variability_factor_status": (
+            _ATOMIC_VARIABILITY_FACTOR_STATUSES
+        ),
+        "restricted_boundary_status": (
+            _ATOMIC_RESTRICTED_BOUNDARY_STATUSES
+        ),
+        "conclusion_status": _ATOMIC_CONCLUSION_STATUSES,
+    }
+    projected: list[dict[str, str]] = []
+    for check in raw_checks:
+        if (
+            not isinstance(check, dict)
+            or set(check) != _ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS
+            or not all(isinstance(value, str) for value in check.values())
+            or (
+                check["goal_ref"],
+                check["clause_ref"],
+            )
+            not in expected_refs
+            or any(
+                check[field] not in allowed
+                for field, allowed in status_contracts.items()
+            )
+        ):
+            return None
+        projected.append(dict(check))
+    return projected
+
+
+def _validated_semantic_budget_checks(
+    raw_checks: Any,
+    *,
+    atomic_contract: list[dict[str, Any]],
+) -> tuple[
+    list[dict[str, Any]] | None,
+    dict[tuple[str, str], list[str]],
+    dict[str, Any],
+]:
+    if not isinstance(raw_checks, list):
+        return None, {}, _semantic_validation_diagnostics(
+            "semantic_budget_checks_type_invalid",
+            json_path="$.semantic_budget_checks",
+            expected_type="array",
+            actual_type=type(raw_checks).__name__,
+        )
+    targets = [
+        item
+        for item in atomic_contract
+        if item.get("semantic_budget_applicable") is True
+    ]
+    if len(raw_checks) != len(targets):
+        return None, {}, _semantic_validation_diagnostics(
+            "semantic_budget_check_count_invalid",
+            json_path="$.semantic_budget_checks",
+            expected_type="one_check_per_applicable_clause",
+            actual_type="incomplete_or_extra_check_set",
+            missing_field_count=max(0, len(targets) - len(raw_checks)),
+            extra_field_count=max(0, len(raw_checks) - len(targets)),
+        )
+    normalized: list[dict[str, Any]] = []
+    derived_by_ref: dict[tuple[str, str], list[str]] = {}
+    for index, (check, target) in enumerate(
+        zip(raw_checks, targets, strict=True)
+    ):
+        path = f"$.semantic_budget_checks[{index}]"
+        if not isinstance(check, dict):
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_check_type_invalid",
+                json_path=path,
+                expected_type="object",
+                actual_type=type(check).__name__,
+            )
+        if set(check) != _ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS:
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_check_fields_invalid",
+                json_path=path,
+                expected_type="exact_semantic_budget_check_fields",
+                actual_type="object",
+                missing_field_count=len(
+                    _ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS - set(check)
+                ),
+                extra_field_count=len(
+                    set(check) - _ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS
+                ),
+            )
+        goal_ref = check.get("goal_ref")
+        clause_ref = check.get("clause_ref")
+        if (
+            not isinstance(goal_ref, str)
+            or not isinstance(clause_ref, str)
+            or goal_ref != target["goal_ref"]
+            or clause_ref != target["clause_ref"]
+        ):
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_check_order_or_reference_invalid",
+                json_path=path,
+                expected_type=(
+                    f"{target['goal_ref']}:{target['clause_ref']}"
+                ),
+                actual_type=f"{goal_ref}:{clause_ref}",
+            )
+        status_contracts = (
+            (
+                "advice_status",
+                _ATOMIC_ADVICE_STATUSES,
+            ),
+            (
+                "variability_factor_status",
+                _ATOMIC_VARIABILITY_FACTOR_STATUSES,
+            ),
+            (
+                "restricted_boundary_status",
+                _ATOMIC_RESTRICTED_BOUNDARY_STATUSES,
+            ),
+            (
+                "conclusion_status",
+                _ATOMIC_CONCLUSION_STATUSES,
+            ),
+        )
+        for field, allowed in status_contracts:
+            if check.get(field) not in allowed:
+                return None, {}, _semantic_validation_diagnostics(
+                    "semantic_budget_status_invalid",
+                    json_path=f"{path}.{field}",
+                    expected_type="allowed_semantic_budget_status",
+                    actual_type=str(check.get(field) or ""),
+                    invalid_enum_count=1,
+                )
+        if any(
+            check[field] == "indeterminate"
+            for field, _allowed in status_contracts
+        ):
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_indeterminate",
+                json_path=path,
+                expected_type="determinate_semantic_budget_vector",
+                actual_type="indeterminate",
+                invalid_enum_count=1,
+            )
+        boundary_applicable = bool(
+            target.get("restricted_request_boundary")
+        )
+        if (
+            boundary_applicable
+            and check["restricted_boundary_status"]
+            == "not_applicable"
+        ) or (
+            not boundary_applicable
+            and check["restricted_boundary_status"]
+            != "not_applicable"
+        ):
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_boundary_applicability_invalid",
+                json_path=f"{path}.restricted_boundary_status",
+                expected_type=(
+                    "preserved_or_violated"
+                    if boundary_applicable
+                    else "not_applicable"
+                ),
+                actual_type=check["restricted_boundary_status"],
+                invalid_enum_count=1,
+            )
+        if (
+            target.get("advice_mode") == "none"
+            and check["advice_status"] == "authorized"
+        ):
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_advice_authorization_invalid",
+                json_path=f"{path}.advice_status",
+                expected_type="absent_or_unauthorized",
+                actual_type="authorized",
+                invalid_enum_count=1,
+            )
+        current = dict(check)
+        normalized.append(current)
+        derived_by_ref[(goal_ref, clause_ref)] = (
+            _semantic_budget_finding_codes(current)
+        )
+    return (
+        normalized,
+        derived_by_ref,
+        _semantic_validation_diagnostics(
+            "accepted",
+            json_path="$.semantic_budget_checks",
+            expected_type="complete_semantic_budget_check_matrix",
+            actual_type="complete_semantic_budget_check_matrix",
+        ),
+    )
+
+
 def _atomic_semantic_result_with_diagnostics(
     parsed: Any,
     *,
@@ -989,6 +1420,9 @@ def _atomic_semantic_result_with_diagnostics(
             actual_type=type(parsed.get("schema_version")).__name__,
         )
     checks = parsed.get("goal_reviews")
+    raw_semantic_budget_checks = parsed.get(
+        "semantic_budget_checks"
+    )
     global_issues = parsed.get("global_finding_codes")
     if not isinstance(checks, list):
         return None, _semantic_validation_diagnostics(
@@ -1006,7 +1440,7 @@ def _atomic_semantic_result_with_diagnostics(
         )
     if any(
         not isinstance(item, str)
-        or item not in _LLM_SEMANTIC_ISSUE_CODES
+        or item not in _NON_BUDGET_FINDING_CODES
         for item in global_issues
     ):
         return None, _semantic_validation_diagnostics(
@@ -1084,7 +1518,7 @@ def _atomic_semantic_result_with_diagnostics(
             )
         if any(
             not isinstance(item, str)
-            or item not in _LLM_SEMANTIC_ISSUE_CODES
+            or item not in _NON_BUDGET_FINDING_CODES
             for item in issue_codes
         ):
             return None, _semantic_validation_diagnostics(
@@ -1118,12 +1552,54 @@ def _atomic_semantic_result_with_diagnostics(
             missing_field_count=len(set(expected) - set(observed)),
         )
 
-    normalized_checks = [
+    (
+        semantic_budget_checks,
+        budget_findings_by_ref,
+        budget_validation,
+    ) = _validated_semantic_budget_checks(
+        raw_semantic_budget_checks,
+        atomic_contract=atomic_contract,
+    )
+    if semantic_budget_checks is None:
+        return None, budget_validation
+
+    raw_goal_reviews = [
         observed[(item["goal_ref"], item["clause_ref"])]
         for item in atomic_contract
     ]
+    normalized_checks = []
+    checks_for_canonicalization = []
+    semantic_budget_derivations = []
+    for check in raw_goal_reviews:
+        key = (check["goal_ref"], check["clause_ref"])
+        derived = list(budget_findings_by_ref.get(key) or [])
+        combined_raw = [
+            *check["finding_codes"],
+            *derived,
+        ]
+        combined = sorted(set(combined_raw))
+        normalized_checks.append({
+            **check,
+            "textual_status": (
+                "rejected" if combined else "accepted"
+            ),
+            "finding_codes": combined,
+        })
+        checks_for_canonicalization.append({
+            **check,
+            "textual_status": (
+                "rejected" if combined_raw else "accepted"
+            ),
+            "finding_codes": combined_raw,
+        })
+        if key in budget_findings_by_ref:
+            semantic_budget_derivations.append({
+                "goal_ref": key[0],
+                "clause_ref": key[1],
+                "canonical_finding_codes": derived,
+            })
     canonical_goal_findings: list[dict[str, Any]] = []
-    for index, check in enumerate(normalized_checks):
+    for index, check in enumerate(checks_for_canonicalization):
         canonical, normalization_issue = _canonical_goal_finding(check)
         if canonical is None:
             return None, _semantic_validation_diagnostics(
@@ -1216,7 +1692,12 @@ def _atomic_semantic_result_with_diagnostics(
     )
     result.update({
         "schema_version": _ATOMIC_SEMANTIC_SCHEMA_VERSION,
+        "raw_goal_reviews": raw_goal_reviews,
         "goal_reviews": normalized_checks,
+        "semantic_budget_checks": semantic_budget_checks,
+        "semantic_budget_derivations": (
+            semantic_budget_derivations
+        ),
         "global_finding_codes": list(global_issues),
         "finding_ontology_version": _FINDING_ONTOLOGY_VERSION,
         "canonical_goal_findings": canonical_goal_findings,
@@ -1224,6 +1705,10 @@ def _atomic_semantic_result_with_diagnostics(
         "normalization_status": (
             "canonicalized"
             if any(
+                item["canonical_finding_codes"]
+                for item in semantic_budget_derivations
+            )
+            or any(
                 item["normalization_status"] != "unchanged"
                 and item["normalization_status"] != "no_findings"
                 for item in canonical_goal_findings
