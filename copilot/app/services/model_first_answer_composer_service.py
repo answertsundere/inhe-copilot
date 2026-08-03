@@ -27,6 +27,11 @@ COMPOSER_VERSION = "model-first-answer-composer-v6"
 COMPOSER_ENVELOPE_CONTRACT_VERSION = "bounded-json-envelope-v1"
 COMPOSER_DECISION_INPUT_SCHEMA = "composer-decision-input/v1"
 COMPOSER_DECISION_INPUT_OWNER = "model_first_answer_composer"
+COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA = (
+    "composer-decision-input-privacy-diagnostics/v1"
+)
+COMPOSER_PRIVACY_DIAGNOSTICS_OWNER = COMPOSER_DECISION_INPUT_OWNER
+COMPOSER_PRIVACY_DIAGNOSTICS_MAX_DIFFS = 32
 COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v2"
 COMPOSER_RESPONSE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -390,6 +395,96 @@ _DECISION_STRUCTURED_HASH_FIELDS = {
     "source_text_sha256",
     "pack_content_sha256",
 }
+_DIAGNOSTIC_GOAL_REFERENCE_FIELDS = {
+    "goal_ref",
+    "applicable_goal_ref",
+    "supporting_for_goal_ref",
+}
+_DIAGNOSTIC_CLAIM_REFERENCE_FIELDS = {"claim_uid"}
+_DIAGNOSTIC_EVIDENCE_REFERENCE_FIELDS = {
+    "evidence_uid",
+    "evidence_uids",
+    "premise_evidence_uids",
+    "premise_evidence_refs",
+}
+_DIAGNOSTIC_POLICY_REFERENCE_FIELDS = {
+    "policy_ref",
+    "policy_intent_ref",
+    "inference_policy_refs",
+}
+_DIAGNOSTIC_OPTION_REFERENCE_FIELDS = {
+    "option_ref",
+    "selected_option_refs",
+}
+_DIAGNOSTIC_PACK_REFERENCE_FIELDS = {
+    "trusted_domain_pack_ref",
+    "pack_ref",
+    "domain_ref",
+}
+_DIAGNOSTIC_OWNER_PROVENANCE_FIELDS = {
+    "owner",
+    "admission_owner",
+    "trusted_owner",
+    "source_stage",
+    "selected_at_stage",
+    "policy_owner",
+    "filter_owner",
+    "premise_owner",
+}
+_DIAGNOSTIC_FREE_TEXT_FIELDS = {
+    "customer_goal",
+    "content",
+    "value",
+    "original_value",
+    "goal_summary",
+    "text",
+}
+_DIAGNOSTIC_ENUM_FIELDS = {
+    "role",
+    "goal_kind",
+    "claim_type_status",
+    "claim_type",
+    "attribute_key",
+    "semantic_key",
+    "source",
+    "source_type",
+    "evidence_role",
+    "review_status",
+    "fact_review_status",
+    "gate_status",
+    "status",
+    "support_basis",
+    "scope_qualifier",
+    "inference_risk_level",
+    "maximum_risk_level",
+    "allowed_scope",
+    "allowed_conclusion_family",
+    "advice_mode",
+    "requested_claim_risk",
+    "answer_strategy_risk",
+    "namespace",
+    "source_container",
+}
+_DIAGNOSTIC_SAFE_PATH_FIELDS = frozenset().union(
+    _DECISION_INPUT_FIELDS,
+    _DECISION_GOAL_FIELDS,
+    _DECISION_RESOLUTION_FIELDS,
+    _DECISION_OPTION_FIELDS,
+    _DECISION_POLICY_FIELDS,
+    _DECISION_EVIDENCE_FIELDS,
+    _DECISION_RECENT_TURN_FIELDS,
+    _DECISION_SERVICE_ACTION_FIELDS,
+    _DECISION_MEDIA_FIELDS,
+    _DECISION_PRODUCT_SCOPE_FIELDS,
+    _DECISION_CONTEXT_STATS_FIELDS,
+    _DECISION_SAFETY_FIELDS,
+    _DECISION_TRUSTED_PACK_FIELDS,
+    _DECISION_RESTRICTED_BOUNDARY_FIELDS,
+    _DECISION_OPTION_PROVENANCE_FIELDS,
+    _DECISION_EVIDENCE_PROVENANCE_FIELDS,
+    _DECISION_IDENTITY_SCOPE_FIELDS,
+    {"provenance", "product_scope", "safety_constraints"},
+)
 _PROCESS_LANGUAGE_TERMS = (
     "帮您核对",
     "我先核对",
@@ -451,6 +546,497 @@ def _canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _ordered_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _diagnostic_json_type(value: Any) -> str:
+    if value is _DIAGNOSTIC_MISSING:
+        return "missing"
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "unknown"
+
+
+def _diagnostic_value_size(value: Any) -> int | None:
+    if isinstance(value, (str, list, dict)):
+        return len(value)
+    return None
+
+
+def _diagnostic_value_sha256(value: Any) -> str:
+    from app.services.formal_knowledge_database_guard_service import (
+        formal_kb_audit_hmac_key,
+    )
+    from app.services.high_quality_long_conversation_review_service import (
+        stable_evaluation_alias,
+    )
+
+    secret = formal_kb_audit_hmac_key()
+    if not secret:
+        raise ValueError("diagnostic_alias_key_required")
+    if value is _DIAGNOSTIC_MISSING:
+        serialized = "missing"
+    else:
+        try:
+            serialized = json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError):
+            serialized = f"type:{_diagnostic_json_type(value)}"
+    alias = stable_evaluation_alias(
+        "diagnostic_value",
+        serialized,
+        alias_secret=secret,
+    )
+    # Keep the existing fixed-width diagnostics schema after keyed aliasing.
+    return hashlib.sha256(alias.encode("ascii")).hexdigest()
+
+
+def _diagnostic_path_segment(value: Any) -> str:
+    text = str(value or "")
+    if (
+        text in _DIAGNOSTIC_SAFE_PATH_FIELDS
+        and len(text) <= 64
+    ):
+        return text
+    return _privacy_diagnostic_alias("key", text)
+
+
+def _diagnostic_field_role(
+    field_name: str,
+    first: Any,
+    second: Any,
+) -> str:
+    if field_name in _DIAGNOSTIC_GOAL_REFERENCE_FIELDS:
+        return "controlled_goal_ref"
+    if field_name in _DIAGNOSTIC_CLAIM_REFERENCE_FIELDS:
+        return "controlled_claim_ref"
+    if field_name in _DIAGNOSTIC_EVIDENCE_REFERENCE_FIELDS:
+        return "controlled_evidence_ref"
+    if field_name in _DIAGNOSTIC_POLICY_REFERENCE_FIELDS:
+        return "controlled_policy_ref"
+    if field_name in _DIAGNOSTIC_OPTION_REFERENCE_FIELDS:
+        return "controlled_option_ref"
+    if field_name in _DIAGNOSTIC_PACK_REFERENCE_FIELDS:
+        return "controlled_pack_ref"
+    if field_name in {"source_span_sha256", "source_text_sha256"}:
+        return "source_text_hash"
+    if field_name == "pack_content_sha256":
+        return "canonical_hash"
+    if field_name in _DIAGNOSTIC_OWNER_PROVENANCE_FIELDS:
+        return "owner_provenance"
+    if isinstance(first, dict) or isinstance(second, dict):
+        return "object_container"
+    if isinstance(first, list) or isinstance(second, list):
+        return "list_container"
+    if isinstance(first, bool) or isinstance(second, bool):
+        return "boolean"
+    if (
+        isinstance(first, int)
+        and not isinstance(first, bool)
+    ) or (
+        isinstance(second, int)
+        and not isinstance(second, bool)
+    ):
+        return "integer"
+    if field_name in _DIAGNOSTIC_FREE_TEXT_FIELDS:
+        return "free_text"
+    if field_name in _DIAGNOSTIC_ENUM_FIELDS:
+        return "enum"
+    return "unknown"
+
+
+def _diagnostic_reference_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list) and all(
+        isinstance(item, str) for item in value
+    ):
+        return list(value)
+    return []
+
+
+def _diagnostic_trusted_reference_class(
+    role: str,
+    first: Any,
+    *,
+    provenance_validated: bool,
+) -> str:
+    controlled_roles = {
+        "controlled_goal_ref",
+        "controlled_claim_ref",
+        "controlled_evidence_ref",
+        "controlled_policy_ref",
+        "controlled_option_ref",
+        "controlled_pack_ref",
+    }
+    if role in {"source_text_hash", "canonical_hash"}:
+        return (
+            role
+            if provenance_validated and bool(_structured_sha256(first))
+            else "untrusted_reference"
+        )
+    if role not in controlled_roles:
+        return "not_applicable"
+    values = _diagnostic_reference_values(first)
+    def valid_reference(item: str) -> bool:
+        candidate = item.strip()
+        local, separator, domain = candidate.partition("@")
+        email_shaped = bool(
+            separator and local and "." in domain
+        )
+        long_numeric = (
+            len(candidate) >= 12 and candidate.isdigit()
+        )
+        return bool(
+            candidate
+            and "[" not in candidate
+            and "]" not in candidate
+            and not email_shaped
+            and not long_numeric
+        )
+    valid = bool(values) and all(
+        valid_reference(item)
+        for item in values
+    )
+    return (
+        role
+        if provenance_validated and valid
+        else "untrusted_reference"
+    )
+
+
+def _diagnostic_projection_action(
+    category: str,
+    role: str,
+) -> str:
+    if category == "privacy_reprojection_changed":
+        return "privacy_reprojection_changed"
+    if category in {"missing_in_d1", "missing_in_d2", "object_key_changed"}:
+        return "structure_changed"
+    if category in {"array_length_changed", "array_order_changed"}:
+        return category
+    if category == "type_changed":
+        return "type_changed"
+    if category == "canonical_order_only":
+        return "canonical_order_only"
+    if role.startswith("controlled_") or role.endswith("_hash"):
+        return "controlled_value_changed"
+    return "serialization_changed"
+
+
+_DIAGNOSTIC_MISSING = object()
+
+
+def _privacy_diagnostic_base() -> dict[str, Any]:
+    return {
+        "schema_version": COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA,
+        "owner": COMPOSER_PRIVACY_DIAGNOSTICS_OWNER,
+        "request_alias": "",
+        "turn_alias": "",
+        "stage_reached": "initialized",
+        "decision_input_build_attempted": False,
+        "decision_input_build_completed": False,
+        "d1_generated": False,
+        "d2_generated": False,
+        "d1_ordered_sha256": "",
+        "d1_canonical_sha256": "",
+        "d2_ordered_sha256": "",
+        "d2_canonical_sha256": "",
+        "privacy_projection_equal": None,
+        "diff_total_count": 0,
+        "diff_retained_count": 0,
+        "diff_truncated_count": 0,
+        "diff_truncated": False,
+        "diff_category_counts": {},
+        "first_diff_path": "",
+        "retained_diff_paths": [],
+        "diffs": [],
+        "early_return_reason": "",
+        "provider_material_attempted": False,
+        "provider_material_completed": False,
+        "transport_attempted": False,
+        "transport_forwarded": False,
+        "diagnostic_error": "",
+        "used_for_final_reply": False,
+        "used_as_evidence": False,
+        "can_change_can_send": False,
+        "can_change_model_call_count": False,
+    }
+
+
+def _privacy_diagnostic_initialize(
+    sink: dict[str, Any] | None,
+) -> None:
+    if not isinstance(sink, dict):
+        return
+    try:
+        sink.clear()
+        sink.update(_privacy_diagnostic_base())
+    except Exception:
+        return
+
+
+def _privacy_diagnostic_update(
+    sink: dict[str, Any] | None,
+    **values: Any,
+) -> None:
+    if not isinstance(sink, dict):
+        return
+    try:
+        sink.update(deepcopy(values))
+    except Exception:
+        try:
+            sink["diagnostic_error"] = "diagnostics_sink_update_failed"
+        except Exception:
+            return
+
+
+def _privacy_diagnostic_finish(
+    sink: dict[str, Any] | None,
+    result: dict[str, Any],
+    *,
+    stage: str,
+) -> None:
+    _privacy_diagnostic_update(
+        sink,
+        stage_reached=stage,
+        early_return_reason=str(
+            result.get("rejection_reason") or ""
+        ),
+    )
+
+
+def _privacy_diagnostic_alias(kind: str, value: Any) -> str:
+    from app.services.formal_knowledge_database_guard_service import (
+        formal_kb_audit_hmac_key,
+    )
+    from app.services.high_quality_long_conversation_review_service import (
+        stable_evaluation_alias,
+    )
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    secret = formal_kb_audit_hmac_key()
+    if not secret:
+        raise ValueError("diagnostic_alias_key_required")
+    return stable_evaluation_alias(
+        kind,
+        text,
+        alias_secret=secret,
+    )
+
+
+def _privacy_diff_record(
+    *,
+    path: str,
+    field_name: str,
+    first: Any,
+    second: Any,
+    category: str,
+    provenance_validated: bool,
+) -> dict[str, Any]:
+    role = _diagnostic_field_role(field_name, first, second)
+    return {
+        "json_path": path,
+        "field_role": role,
+        "d1_type": _diagnostic_json_type(first),
+        "d2_type": _diagnostic_json_type(second),
+        "d1_length_or_count": _diagnostic_value_size(first),
+        "d2_length_or_count": _diagnostic_value_size(second),
+        "d1_value_sha256": _diagnostic_value_sha256(first),
+        "d2_value_sha256": _diagnostic_value_sha256(second),
+        "projection_action_category": _diagnostic_projection_action(
+            category,
+            role,
+        ),
+        "difference_category": category,
+        "trusted_reference_class": (
+            _diagnostic_trusted_reference_class(
+                role,
+                first,
+                provenance_validated=provenance_validated,
+            )
+        ),
+        "owner_provenance_validation_status": (
+            "validated_before_privacy_idempotence"
+            if provenance_validated
+            else "not_validated"
+        ),
+    }
+
+
+def _structured_privacy_diff(
+    first: Any,
+    second: Any,
+    *,
+    provenance_validated: bool,
+    max_retained: int = COMPOSER_PRIVACY_DIAGNOSTICS_MAX_DIFFS,
+) -> tuple[int, list[dict[str, Any]], dict[str, int]]:
+    retained: list[dict[str, Any]] = []
+    category_counts: dict[str, int] = {}
+    total = 0
+
+    def add(
+        path: str,
+        field_name: str,
+        left: Any,
+        right: Any,
+        category: str,
+    ) -> None:
+        nonlocal total
+        total += 1
+        category_counts[category] = category_counts.get(category, 0) + 1
+        if len(retained) >= max_retained:
+            return
+        retained.append(_privacy_diff_record(
+            path=path,
+            field_name=field_name,
+            first=left,
+            second=right,
+            category=category,
+            provenance_validated=provenance_validated,
+        ))
+
+    def compare(
+        left: Any,
+        right: Any,
+        path: str,
+        field_name: str,
+    ) -> None:
+        if left is _DIAGNOSTIC_MISSING:
+            add(path, field_name, left, right, "missing_in_d1")
+            return
+        if right is _DIAGNOSTIC_MISSING:
+            add(path, field_name, left, right, "missing_in_d2")
+            return
+        left_type = _diagnostic_json_type(left)
+        right_type = _diagnostic_json_type(right)
+        if left_type != right_type:
+            add(path, field_name, left, right, "type_changed")
+            return
+        if isinstance(left, dict):
+            if left == right:
+                if _ordered_json_sha256(left) != _ordered_json_sha256(right):
+                    add(
+                        path,
+                        field_name,
+                        left,
+                        right,
+                        "canonical_order_only",
+                    )
+                return
+            left_keys = list(left)
+            right_keys = list(right)
+            if set(left_keys) != set(right_keys):
+                add(path, field_name, left, right, "object_key_changed")
+            for key in left_keys:
+                segment = _diagnostic_path_segment(key)
+                compare(
+                    left[key],
+                    right.get(key, _DIAGNOSTIC_MISSING),
+                    f"{path}.{segment}",
+                    str(key),
+                )
+            for key in right_keys:
+                if key in left:
+                    continue
+                segment = _diagnostic_path_segment(key)
+                compare(
+                    _DIAGNOSTIC_MISSING,
+                    right[key],
+                    f"{path}.{segment}",
+                    str(key),
+                )
+            return
+        if isinstance(left, list):
+            if left == right:
+                return
+            if len(left) != len(right):
+                add(
+                    path,
+                    field_name,
+                    left,
+                    right,
+                    "array_length_changed",
+                )
+            elif sorted(
+                _diagnostic_value_sha256(item) for item in left
+            ) == sorted(
+                _diagnostic_value_sha256(item) for item in right
+            ):
+                add(
+                    path,
+                    field_name,
+                    left,
+                    right,
+                    "array_order_changed",
+                )
+                return
+            for index in range(max(len(left), len(right))):
+                compare(
+                    left[index]
+                    if index < len(left)
+                    else _DIAGNOSTIC_MISSING,
+                    right[index]
+                    if index < len(right)
+                    else _DIAGNOSTIC_MISSING,
+                    f"{path}[{index}]",
+                    field_name,
+                )
+            return
+        if left != right:
+            add(
+                path,
+                field_name,
+                left,
+                right,
+                "privacy_reprojection_changed"
+                if isinstance(left, str)
+                else "scalar_changed",
+            )
+            return
+        try:
+            if _ordered_json_sha256(left) != _ordered_json_sha256(right):
+                add(
+                    path,
+                    field_name,
+                    left,
+                    right,
+                    "serialization_changed",
+                )
+        except (TypeError, ValueError):
+            return
+
+    compare(first, second, "$", "")
+    return total, retained, category_counts
+
+
 class ModelFirstAnswerComposerService:
     """Compose one candidate reply without owning facts, safety, or delivery."""
 
@@ -461,22 +1047,39 @@ class ModelFirstAnswerComposerService:
         customer_message: str,
         copilot_context: dict[str, Any] | None = None,
         client: Any | None = None,
+        privacy_diagnostics_sink: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        diagnostics_enabled = isinstance(privacy_diagnostics_sink, dict)
+        if diagnostics_enabled:
+            _privacy_diagnostic_initialize(privacy_diagnostics_sink)
         original = deepcopy(response)
         source_context = self._minimal_context(original)
         result = self._base_result(source_context)
         if not source_context:
             result["rejection_reason"] = "minimal_decision_context_missing"
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="minimal_context_missing",
+                )
             return original, result
 
         decision_input, decision_error = (
             self.build_composer_decision_input(
                 original,
                 customer_message=customer_message,
+                privacy_diagnostics_sink=privacy_diagnostics_sink,
             )
         )
         if decision_error:
             result["rejection_reason"] = decision_error
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="decision_input_rejected",
+                )
             return original, result
         result["provider_diagnostics"].update({
             "decision_input_schema": COMPOSER_DECISION_INPUT_SCHEMA,
@@ -488,6 +1091,12 @@ class ModelFirstAnswerComposerService:
             "decision_input_used_as_evidence": False,
             "decision_input_can_change_can_send": False,
         })
+        if diagnostics_enabled:
+            _privacy_diagnostic_update(
+                privacy_diagnostics_sink,
+                provider_material_attempted=True,
+                stage_reached="provider_material_build",
+            )
         material, material_error = (
             self.build_provider_material_from_decision_input(
                 decision_input
@@ -495,7 +1104,19 @@ class ModelFirstAnswerComposerService:
         )
         if material_error:
             result["rejection_reason"] = material_error
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="provider_material_rejected",
+                )
             return original, result
+        if diagnostics_enabled:
+            _privacy_diagnostic_update(
+                privacy_diagnostics_sink,
+                provider_material_completed=True,
+                stage_reached="provider_material_completed",
+            )
         evidence = material["evidence"]
         uid_by_ref = material["uid_by_ref"]
         known_refs = set(uid_by_ref)
@@ -555,11 +1176,24 @@ class ModelFirstAnswerComposerService:
                 client = get_llm_client()
             if not getattr(client, "api_key", ""):
                 result["rejection_reason"] = "formal_llm_not_configured"
+                if diagnostics_enabled:
+                    _privacy_diagnostic_finish(
+                        privacy_diagnostics_sink,
+                        result,
+                        stage="transport_not_configured",
+                    )
                 return original, result
             result["provider_diagnostics"]["model_call_count"] = 1
             result["provider_diagnostics"]["model_name"] = str(
                 getattr(client, "model", "") or ""
             ).strip()
+            if diagnostics_enabled:
+                _privacy_diagnostic_update(
+                    privacy_diagnostics_sink,
+                    transport_attempted=True,
+                    transport_forwarded=False,
+                    stage_reached="transport_attempted",
+                )
             completion = client.create_chat_completion(
                 model=client.model,
                 messages=provider_messages,
@@ -568,6 +1202,12 @@ class ModelFirstAnswerComposerService:
                 response_format={"type": "json_object"},
                 _single_attempt_no_repair=True,
             )
+            if diagnostics_enabled:
+                _privacy_diagnostic_update(
+                    privacy_diagnostics_sink,
+                    transport_forwarded=True,
+                    stage_reached="transport_forwarded",
+                )
             choice = completion.choices[0] if completion.choices else None
             content = str(
                 getattr(getattr(choice, "message", None), "content", "") or ""
@@ -590,6 +1230,12 @@ class ModelFirstAnswerComposerService:
                     expected_type="complete_json_object",
                     actual_type=envelope,
                 )
+                if diagnostics_enabled:
+                    _privacy_diagnostic_finish(
+                        privacy_diagnostics_sink,
+                        result,
+                        stage="provider_response_rejected",
+                    )
                 return original, result
             if not content.strip():
                 result["rejection_reason"] = "composer_completion_empty"
@@ -599,6 +1245,12 @@ class ModelFirstAnswerComposerService:
                     expected_type="json_object",
                     actual_type="empty",
                 )
+                if diagnostics_enabled:
+                    _privacy_diagnostic_finish(
+                        privacy_diagnostics_sink,
+                        result,
+                        stage="provider_response_rejected",
+                    )
                 return original, result
             (
                 json_payload,
@@ -618,6 +1270,12 @@ class ModelFirstAnswerComposerService:
                     expected_type="raw_json_or_single_json_fence",
                     actual_type=envelope,
                 )
+                if diagnostics_enabled:
+                    _privacy_diagnostic_finish(
+                        privacy_diagnostics_sink,
+                        result,
+                        stage="provider_response_rejected",
+                    )
                 return original, result
             try:
                 parsed = json.loads(json_payload)
@@ -629,6 +1287,12 @@ class ModelFirstAnswerComposerService:
                     expected_type="complete_json_object",
                     actual_type=envelope,
                 )
+                if diagnostics_enabled:
+                    _privacy_diagnostic_finish(
+                        privacy_diagnostics_sink,
+                        result,
+                        stage="provider_response_rejected",
+                    )
                 return original, result
         except Exception as exc:
             result["provider_diagnostics"]["provider_latency_ms"] = int(
@@ -644,6 +1308,12 @@ class ModelFirstAnswerComposerService:
                 actual_type=type(exc).__name__,
             )
             result["rejection_reason"] = f"formal_llm_error:{type(exc).__name__}"
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="provider_error",
+                )
             return original, result
 
         validation_error, validation_diagnostics = (
@@ -671,6 +1341,12 @@ class ModelFirstAnswerComposerService:
                         minimal_context=source_context,
                     )
                 )
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="composer_output_rejected",
+                )
             return original, result
 
         result["input_eligibility"]["non_customer_goal_clause_count"] = 0
@@ -692,6 +1368,12 @@ class ModelFirstAnswerComposerService:
             updated.setdefault("evidence_debug", {})[
                 "model_first_answer_composer"
             ] = result
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="completed",
+                )
             return updated, result
 
         ordered_clauses = list(parsed["clauses"])
@@ -772,6 +1454,12 @@ class ModelFirstAnswerComposerService:
         )
         updated["model_first_answer_composer"] = result
         updated.setdefault("evidence_debug", {})["model_first_answer_composer"] = result
+        if diagnostics_enabled:
+            _privacy_diagnostic_finish(
+                privacy_diagnostics_sink,
+                result,
+                stage="completed",
+            )
         return updated, result
 
     @staticmethod
@@ -851,6 +1539,59 @@ class ModelFirstAnswerComposerService:
 
             return project_value_for_external_model(value)
         return value
+
+    @classmethod
+    def _record_decision_input_privacy_diagnostics(
+        cls,
+        sink: dict[str, Any] | None,
+        *,
+        d1: dict[str, Any],
+        d2: Any,
+        provenance_validated: bool,
+    ) -> None:
+        if not isinstance(sink, dict):
+            return
+        try:
+            total, retained, category_counts = (
+                _structured_privacy_diff(
+                    d1,
+                    d2,
+                    provenance_validated=provenance_validated,
+                )
+            )
+            paths = [str(item["json_path"]) for item in retained]
+            _privacy_diagnostic_update(
+                sink,
+                request_alias=_privacy_diagnostic_alias(
+                    "request",
+                    d1.get("request_ref"),
+                ),
+                turn_alias=_privacy_diagnostic_alias(
+                    "turn",
+                    d1.get("source_turn_ref"),
+                ),
+                stage_reached="privacy_idempotence_checked",
+                d1_generated=True,
+                d2_generated=isinstance(d2, dict),
+                d1_ordered_sha256=_ordered_json_sha256(d1),
+                d1_canonical_sha256=_canonical_json_sha256(d1),
+                d2_ordered_sha256=_ordered_json_sha256(d2),
+                d2_canonical_sha256=_canonical_json_sha256(d2),
+                privacy_projection_equal=(d1 == d2),
+                diff_total_count=total,
+                diff_retained_count=len(retained),
+                diff_truncated_count=max(total - len(retained), 0),
+                diff_truncated=total > len(retained),
+                diff_category_counts=category_counts,
+                first_diff_path=paths[0] if paths else "",
+                retained_diff_paths=paths,
+                diffs=retained,
+            )
+        except Exception:
+            _privacy_diagnostic_update(
+                sink,
+                diagnostic_error="privacy_diff_generation_failed",
+            )
 
     @classmethod
     def _decision_evidence_rows(
@@ -954,10 +1695,30 @@ class ModelFirstAnswerComposerService:
         response: dict[str, Any],
         *,
         customer_message: str,
+        privacy_diagnostics_sink: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], str]:
         """Build the privacy-safe, lossless pre-presentation contract."""
+        diagnostics_enabled = isinstance(privacy_diagnostics_sink, dict)
+        if (
+            diagnostics_enabled
+            and privacy_diagnostics_sink.get("schema_version")
+            != COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA
+        ):
+            _privacy_diagnostic_initialize(privacy_diagnostics_sink)
+        if diagnostics_enabled:
+            _privacy_diagnostic_update(
+                privacy_diagnostics_sink,
+                decision_input_build_attempted=True,
+                stage_reached="decision_input_build",
+            )
         minimal_context = cls._minimal_context(response)
         if not minimal_context:
+            if diagnostics_enabled:
+                _privacy_diagnostic_update(
+                    privacy_diagnostics_sink,
+                    stage_reached="minimal_context_missing",
+                    early_return_reason="minimal_decision_context_missing",
+                )
             return {}, "minimal_decision_context_missing"
 
         requested_claims = cls._allowlisted_rows(
@@ -1077,12 +1838,58 @@ class ModelFirstAnswerComposerService:
             decision_input
         )
         if not isinstance(projected, dict):
+            if diagnostics_enabled:
+                _privacy_diagnostic_update(
+                    privacy_diagnostics_sink,
+                    stage_reached="d1_generation_failed",
+                    early_return_reason=(
+                        "composer_decision_input_privacy_invalid"
+                    ),
+                )
             return {}, "composer_decision_input_privacy_invalid"
+        if diagnostics_enabled:
+            try:
+                request_alias = _privacy_diagnostic_alias(
+                    "request",
+                    projected.get("request_ref"),
+                )
+                turn_alias = _privacy_diagnostic_alias(
+                    "turn",
+                    projected.get("source_turn_ref"),
+                )
+            except Exception:
+                request_alias = ""
+                turn_alias = ""
+                _privacy_diagnostic_update(
+                    privacy_diagnostics_sink,
+                    diagnostic_error="diagnostic_alias_unavailable",
+                )
+            _privacy_diagnostic_update(
+                privacy_diagnostics_sink,
+                request_alias=request_alias,
+                turn_alias=turn_alias,
+                stage_reached="d1_generated",
+                d1_generated=True,
+                d1_ordered_sha256=_ordered_json_sha256(projected),
+                d1_canonical_sha256=_canonical_json_sha256(projected),
+            )
         validation_error = cls.validate_composer_decision_input(
-            projected
+            projected,
+            privacy_diagnostics_sink=privacy_diagnostics_sink,
         )
         if validation_error:
+            if diagnostics_enabled:
+                _privacy_diagnostic_update(
+                    privacy_diagnostics_sink,
+                    early_return_reason=validation_error,
+                )
             return {}, validation_error
+        if diagnostics_enabled:
+            _privacy_diagnostic_update(
+                privacy_diagnostics_sink,
+                decision_input_build_completed=True,
+                stage_reached="decision_input_build_completed",
+            )
         return projected, ""
 
     @staticmethod
@@ -1099,8 +1906,17 @@ class ModelFirstAnswerComposerService:
     def validate_composer_decision_input(
         cls,
         decision_input: Any,
+        *,
+        privacy_diagnostics_sink: dict[str, Any] | None = None,
     ) -> str:
         """Validate the replay boundary without inferring missing fields."""
+        diagnostics_enabled = isinstance(privacy_diagnostics_sink, dict)
+        if (
+            diagnostics_enabled
+            and privacy_diagnostics_sink.get("schema_version")
+            != COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA
+        ):
+            _privacy_diagnostic_initialize(privacy_diagnostics_sink)
         if (
             not isinstance(decision_input, dict)
             or set(decision_input) != _DECISION_INPUT_FIELDS
@@ -1289,12 +2105,18 @@ class ModelFirstAnswerComposerService:
                 ):
                     return "composer_decision_input_schema_invalid"
 
-        if (
-            _canonical_json_sha256(
-                cls._privacy_project_decision_value(
-                    decision_input
-                )
+        second_projection = cls._privacy_project_decision_value(
+            decision_input
+        )
+        if diagnostics_enabled:
+            cls._record_decision_input_privacy_diagnostics(
+                privacy_diagnostics_sink,
+                d1=decision_input,
+                d2=second_projection,
+                provenance_validated=True,
             )
+        if (
+            _canonical_json_sha256(second_projection)
             != _canonical_json_sha256(decision_input)
         ):
             return "composer_decision_input_privacy_invalid"

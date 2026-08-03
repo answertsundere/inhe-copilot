@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import os
 import re
+import time
+from collections.abc import MutableMapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
 
 PIPELINE_VERSION = "analysis-pipeline-v1"
+PIPELINE_COMPOSER_ENTRY_DIAGNOSTICS_SCHEMA = (
+    "analysis-pipeline-composer-entry-diagnostics/v1"
+)
+PIPELINE_COMPOSER_ENTRY_DIAGNOSTICS_OWNER = "analysis_pipeline"
 _FORMAL_DECISION_FIELDS = (
     "suggested_reply",
     "draft_reply",
@@ -53,6 +59,154 @@ _MEDIA_PROMISE_TERMS = (
 )
 
 
+def _diagnostic_alias(value: Any, *, prefix: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    from app.services.formal_knowledge_database_guard_service import (
+        formal_kb_audit_hmac_key,
+    )
+    from app.services.high_quality_long_conversation_review_service import (
+        stable_evaluation_alias,
+    )
+
+    secret = formal_kb_audit_hmac_key()
+    if not secret:
+        raise ValueError("diagnostic_alias_key_required")
+    return stable_evaluation_alias(
+        prefix,
+        text,
+        alias_secret=secret,
+    )
+
+
+def _composer_entry_diagnostic_base(
+    sink: MutableMapping[str, Any] | None,
+) -> dict[str, Any]:
+    request_alias = ""
+    case_alias = ""
+    diagnostics_error_code = ""
+    if isinstance(sink, MutableMapping):
+        try:
+            request_alias = _diagnostic_alias(
+                sink.get("request_alias"),
+                prefix="request",
+            )
+            case_alias = _diagnostic_alias(
+                sink.get("case_alias"),
+                prefix="case",
+            )
+        except Exception:
+            request_alias = ""
+            case_alias = ""
+            diagnostics_error_code = "diagnostic_alias_unavailable"
+    return {
+        "schema_version": PIPELINE_COMPOSER_ENTRY_DIAGNOSTICS_SCHEMA,
+        "owner": PIPELINE_COMPOSER_ENTRY_DIAGNOSTICS_OWNER,
+        "request_alias": request_alias,
+        "case_alias": case_alias,
+        "pipeline_entered": False,
+        "pipeline_completed": False,
+        "graph_completed": False,
+        "response_shape_valid": False,
+        "understanding_status": "not_observed",
+        "authoritative_customer_goal_count": 0,
+        "requested_claim_count": 0,
+        "claim_resolution_count": 0,
+        "selected_evidence_count": 0,
+        "admitted_evidence_count": 0,
+        "trusted_domain_pack_status": "not_observed",
+        "formal_evidence_convergence_enabled": False,
+        "model_first_answer_composer_enabled": False,
+        "bounded_inference_shadow_enabled": False,
+        "minimal_context_attempted": False,
+        "minimal_context_completed": False,
+        "renderable_customer_goal_count": 0,
+        "composer_service_available": False,
+        "composer_service_check_status": "not_checked",
+        "composer_entry_eligible": False,
+        "composer_invocation_attempted": False,
+        "composer_invocation_completed": False,
+        "exact_reason_code": "pipeline_not_started",
+        "downstream_stage": "not_started",
+        "diagnostics_error_code": diagnostics_error_code,
+        "pipeline_elapsed_ms": 0,
+        "used_for_final_reply": False,
+        "used_as_evidence": False,
+        "can_change_can_send": False,
+        "can_change_model_call_count": False,
+    }
+
+
+def _initialize_composer_entry_diagnostics(
+    sink: MutableMapping[str, Any] | None,
+) -> None:
+    if not isinstance(sink, MutableMapping):
+        return
+    try:
+        value = _composer_entry_diagnostic_base(sink)
+        sink.clear()
+        sink.update(value)
+    except Exception:
+        return
+
+
+def _update_composer_entry_diagnostics(
+    sink: MutableMapping[str, Any] | None,
+    **values: Any,
+) -> None:
+    if not isinstance(sink, MutableMapping):
+        return
+    try:
+        prepared = deepcopy(values)
+        if "exact_reason_code" in prepared:
+            current_reason = str(
+                sink.get("exact_reason_code") or ""
+            )
+            if current_reason not in {
+                "",
+                "pipeline_not_started",
+                "pipeline_entered",
+                "composer_invocation_attempted",
+            }:
+                prepared.pop("exact_reason_code", None)
+        sink.update(prepared)
+    except Exception:
+        try:
+            sink["diagnostics_error_code"] = (
+                "diagnostics_sink_update_failed"
+            )
+        except Exception:
+            return
+
+
+def _composer_entry_diagnostic_reason(
+    sink: MutableMapping[str, Any] | None,
+) -> str:
+    if not isinstance(sink, MutableMapping):
+        return ""
+    try:
+        return str(sink.get("exact_reason_code") or "")
+    except Exception:
+        return ""
+
+
+def _composer_entry_diagnostic_flag(
+    sink: MutableMapping[str, Any] | None,
+    key: str,
+) -> bool:
+    if not isinstance(sink, MutableMapping):
+        return False
+    try:
+        return sink.get(key) is True
+    except Exception:
+        return False
+
+
+def _diagnostic_rows(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value or [] if isinstance(item, dict)]
+
+
 @dataclass(frozen=True)
 class AnalysisPipelineRequest:
     customer_message: str
@@ -71,6 +225,16 @@ class AnalysisPipelineRequest:
     trusted_answer_eligibility_context: dict[str, Any] = field(
         default_factory=dict
     )
+    composer_entry_diagnostics_sink: MutableMapping[str, Any] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    composer_privacy_diagnostics_sink: MutableMapping[str, Any] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 class AnalysisPipelineService:
@@ -79,35 +243,141 @@ class AnalysisPipelineService:
     def run(self, request: AnalysisPipelineRequest) -> dict[str, Any]:
         from app.services.analysis_execution_service import execute_analysis
 
-        try:
-            prepared = self._prepare_request(request)
-        except Exception as exc:
-            from app.services.canonical_conversation_turn_service import ConversationContextContractError
-            if isinstance(exc, ConversationContextContractError):
-                return self._invalid_conversation_context_response(request, exc.reason)
-            raise
-        readiness = self._knowledge_readiness_for_request(prepared)
-        if readiness is not None and not readiness["ready"]:
-            return self._runtime_not_ready_response(prepared, readiness)
-        response = execute_analysis(
-            reply_service=prepared.reply_service,
-            customer_message=prepared.customer_message,
-            order_id=prepared.order_id,
-            tracking_no=prepared.tracking_no,
-            conversation_id=prepared.conversation_id,
-            product_name=prepared.product_name,
-            product_candidates=prepared.product_candidates,
-            copilot_context=prepared.copilot_context,
-            image_attachments=prepared.image_attachments,
-            source=prepared.source,
-            scenario=prepared.scenario,
-            final_orchestration=False,
-            response_post_processor=lambda graph_response: self._complete_response(
-                graph_response, prepared
-            ),
+        sink = (
+            request.composer_entry_diagnostics_sink
+            if isinstance(
+                request.composer_entry_diagnostics_sink,
+                MutableMapping,
+            )
+            else None
         )
+        started = time.perf_counter() if sink is not None else None
+        if sink is not None:
+            _initialize_composer_entry_diagnostics(sink)
+            _update_composer_entry_diagnostics(
+                sink,
+                pipeline_entered=True,
+                downstream_stage="canonical_input",
+                exact_reason_code="pipeline_entered",
+            )
+        try:
+            try:
+                prepared = self._prepare_request(request)
+            except Exception as exc:
+                from app.services.canonical_conversation_turn_service import ConversationContextContractError
+                if isinstance(exc, ConversationContextContractError):
+                    if sink is not None:
+                        _update_composer_entry_diagnostics(
+                            sink,
+                            pipeline_completed=True,
+                            exact_reason_code="canonical_conversation_invalid",
+                            downstream_stage="canonical_input_blocked",
+                        )
+                    return self._invalid_conversation_context_response(
+                        request,
+                        exc.reason,
+                    )
+                if sink is not None:
+                    _update_composer_entry_diagnostics(
+                        sink,
+                        exact_reason_code="pipeline_prepare_failed",
+                        downstream_stage="canonical_input_failed",
+                    )
+                raise
+            readiness = self._knowledge_readiness_for_request(prepared)
+            if readiness is not None and not readiness["ready"]:
+                if sink is not None:
+                    _update_composer_entry_diagnostics(
+                        sink,
+                        pipeline_completed=True,
+                        exact_reason_code="runtime_knowledge_not_ready",
+                        downstream_stage="runtime_readiness_blocked",
+                    )
+                return self._runtime_not_ready_response(prepared, readiness)
 
-        return response
+            def complete_graph_response(
+                graph_response: dict[str, Any],
+            ) -> dict[str, Any]:
+                if sink is not None:
+                    _update_composer_entry_diagnostics(
+                        sink,
+                        graph_completed=True,
+                        response_shape_valid=isinstance(graph_response, dict),
+                        downstream_stage="graph_completed",
+                        **(
+                            {}
+                            if isinstance(graph_response, dict)
+                            else {
+                                "exact_reason_code": (
+                                    "graph_response_shape_invalid"
+                                )
+                            }
+                        ),
+                    )
+                try:
+                    return self._complete_response(graph_response, prepared)
+                except Exception:
+                    if sink is not None:
+                        _update_composer_entry_diagnostics(
+                            sink,
+                            exact_reason_code="pipeline_post_processor_failed",
+                            downstream_stage="pipeline_post_processor_failed",
+                        )
+                    raise
+
+            try:
+                response = execute_analysis(
+                    reply_service=prepared.reply_service,
+                    customer_message=prepared.customer_message,
+                    order_id=prepared.order_id,
+                    tracking_no=prepared.tracking_no,
+                    conversation_id=prepared.conversation_id,
+                    product_name=prepared.product_name,
+                    product_candidates=prepared.product_candidates,
+                    copilot_context=prepared.copilot_context,
+                    image_attachments=prepared.image_attachments,
+                    source=prepared.source,
+                    scenario=prepared.scenario,
+                    final_orchestration=False,
+                    response_post_processor=complete_graph_response,
+                )
+            except Exception:
+                if (
+                    sink is not None
+                    and _composer_entry_diagnostic_reason(sink)
+                    != "pipeline_post_processor_failed"
+                ):
+                    _update_composer_entry_diagnostics(
+                        sink,
+                        exact_reason_code="graph_execution_failed",
+                        downstream_stage="graph_execution_failed",
+                    )
+                raise
+            if sink is not None:
+                if not _composer_entry_diagnostic_flag(
+                    sink,
+                    "graph_completed",
+                ):
+                    _update_composer_entry_diagnostics(
+                        sink,
+                        exact_reason_code="graph_completion_not_observed",
+                        downstream_stage="graph_completion_unknown",
+                    )
+                _update_composer_entry_diagnostics(
+                    sink,
+                    pipeline_completed=True,
+                    downstream_stage="pipeline_completed",
+                )
+            return response
+        finally:
+            if sink is not None and started is not None:
+                _update_composer_entry_diagnostics(
+                    sink,
+                    pipeline_elapsed_ms=max(
+                        0,
+                        int((time.perf_counter() - started) * 1000),
+                    ),
+                )
 
     @staticmethod
     def _knowledge_readiness_for_request(request: AnalysisPipelineRequest) -> dict[str, Any] | None:
@@ -360,6 +630,91 @@ class AnalysisPipelineService:
             "trace_steps": [{"node": "analysis_pipeline", "status": "blocked", "summary": "invalid canonical conversation context", "reason": reason}],
         }
 
+    @staticmethod
+    def _composer_entry_observation(
+        response: dict[str, Any],
+        request: AnalysisPipelineRequest,
+    ) -> dict[str, Any]:
+        debug = (
+            response.get("evidence_debug")
+            if isinstance(response.get("evidence_debug"), dict)
+            else {}
+        )
+        understanding = response.get("turn_understanding")
+        if not isinstance(understanding, dict):
+            understanding = debug.get("turn_understanding")
+        understanding = (
+            understanding if isinstance(understanding, dict) else {}
+        )
+        minimal = response.get("minimal_decision_context")
+        if not isinstance(minimal, dict):
+            minimal = debug.get("minimal_decision_context")
+        minimal = minimal if isinstance(minimal, dict) else {}
+        requested_claims = _diagnostic_rows(
+            minimal.get("requested_claims")
+        ) or _diagnostic_rows(understanding.get("requested_claims"))
+        selected_evidence = _diagnostic_rows(
+            response.get("selected_evidence")
+        ) or _diagnostic_rows(debug.get("selected_evidence"))
+        admitted_evidence = _diagnostic_rows(
+            minimal.get("admitted_evidence")
+            or minimal.get("admitted_direct_facts")
+        )
+        trusted_pack = minimal.get("trusted_domain_policy_context")
+        if not isinstance(trusted_pack, dict):
+            owner_context = (request.copilot_context or {}).get(
+                "_answer_eligibility_owner_context"
+            )
+            owner_context = (
+                owner_context if isinstance(owner_context, dict) else {}
+            )
+            trusted_pack = owner_context.get("domain_policy_context")
+        trusted_pack = trusted_pack if isinstance(trusted_pack, dict) else {}
+        trusted_status = str(trusted_pack.get("status") or "").strip().lower()
+        if trusted_status not in {
+            "selected",
+            "loaded",
+            "missing",
+            "invalid",
+            "blocked",
+            "not_selected",
+        }:
+            trusted_status = "unknown" if trusted_pack else "not_observed"
+        return {
+            "understanding_status": AnalysisPipelineService
+            ._turn_understanding_verdict(response)["status"],
+            "authoritative_customer_goal_count": len([
+                item
+                for item in _diagnostic_rows(
+                    understanding.get("customer_goals")
+                )
+                if str(item.get("goal_kind") or "customer_goal")
+                == "customer_goal"
+            ]),
+            "requested_claim_count": len(requested_claims),
+            "claim_resolution_count": len(
+                _diagnostic_rows(minimal.get("claim_resolutions"))
+            ),
+            "selected_evidence_count": len(selected_evidence),
+            "admitted_evidence_count": len(admitted_evidence),
+            "trusted_domain_pack_status": trusted_status,
+            "minimal_context_completed": bool(minimal),
+        }
+
+    @classmethod
+    def _update_composer_entry_observation(
+        cls,
+        response: dict[str, Any],
+        request: AnalysisPipelineRequest,
+    ) -> None:
+        sink = request.composer_entry_diagnostics_sink
+        if not isinstance(sink, MutableMapping):
+            return
+        _update_composer_entry_diagnostics(
+            sink,
+            **cls._composer_entry_observation(response, request),
+        )
+
     def _complete_response(
         self,
         response: dict[str, Any],
@@ -374,11 +729,24 @@ class AnalysisPipelineService:
                 response.setdefault(key, identity[key])
 
         understanding_verdict = self._turn_understanding_verdict(response)
+        diagnostics_enabled = isinstance(
+            request.composer_entry_diagnostics_sink,
+            MutableMapping,
+        )
+        if diagnostics_enabled:
+            self._update_composer_entry_observation(response, request)
         understanding_blocked = understanding_verdict["status"] in {
             "invalid",
             "degraded",
         }
         if understanding_blocked:
+            if diagnostics_enabled:
+                _update_composer_entry_diagnostics(
+                    request.composer_entry_diagnostics_sink,
+                    composer_entry_eligible=False,
+                    exact_reason_code="turn_understanding_not_authoritative",
+                    downstream_stage="turn_understanding_boundary",
+                )
             response = self._apply_invalid_understanding_boundary(
                 response,
                 understanding_verdict,
@@ -581,7 +949,36 @@ class AnalysisPipelineService:
         response: dict[str, Any],
         request: AnalysisPipelineRequest,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        if not self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
+        entry_sink = request.composer_entry_diagnostics_sink
+        entry_diagnostics_enabled = isinstance(
+            entry_sink,
+            MutableMapping,
+        )
+        composer_enabled = self._env_enabled(
+            "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"
+        )
+        convergence_enabled = self._env_enabled(
+            "COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED"
+        )
+        if entry_diagnostics_enabled:
+            _update_composer_entry_diagnostics(
+                entry_sink,
+                formal_evidence_convergence_enabled=convergence_enabled,
+                model_first_answer_composer_enabled=composer_enabled,
+                bounded_inference_shadow_enabled=self._env_enabled(
+                    "COPILOT_BOUNDED_INFERENCE_SHADOW_ENABLED"
+                ),
+                downstream_stage="composer_entry_gate",
+            )
+            self._update_composer_entry_observation(response, request)
+        if not composer_enabled:
+            if entry_diagnostics_enabled:
+                _update_composer_entry_diagnostics(
+                    entry_sink,
+                    composer_entry_eligible=False,
+                    exact_reason_code="composer_feature_disabled",
+                    downstream_stage="composer_skipped",
+                )
             return response, {
                 "stage": "model_first_answer_composer",
                 "status": "disabled",
@@ -596,7 +993,14 @@ class AnalysisPipelineService:
             str(response.get("reason_for_review") or ""),
             "model_first_candidate_review_only",
         )
-        if not self._env_enabled("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED"):
+        if not convergence_enabled:
+            if entry_diagnostics_enabled:
+                _update_composer_entry_diagnostics(
+                    entry_sink,
+                    composer_entry_eligible=False,
+                    exact_reason_code="formal_evidence_convergence_disabled",
+                    downstream_stage="composer_blocked",
+                )
             diagnostics = {
                 "version": "model-first-answer-composer-v1",
                 "status": "provider_blocked",
@@ -617,15 +1021,75 @@ class AnalysisPipelineService:
             }
 
         try:
-            from app.services.model_first_answer_composer_service import (
-                ModelFirstAnswerComposerService,
-            )
+            try:
+                from app.services.model_first_answer_composer_service import (
+                    ModelFirstAnswerComposerService,
+                )
+            except Exception:
+                if entry_diagnostics_enabled:
+                    _update_composer_entry_diagnostics(
+                        entry_sink,
+                        composer_service_available=False,
+                        composer_service_check_status="unavailable",
+                        composer_entry_eligible=False,
+                        exact_reason_code="composer_service_unavailable",
+                        downstream_stage="composer_import_failed",
+                    )
+                raise
 
+            if entry_diagnostics_enabled:
+                minimal_context = (
+                    ModelFirstAnswerComposerService._minimal_context(
+                        response
+                    )
+                )
+                _update_composer_entry_diagnostics(
+                    entry_sink,
+                    composer_service_available=True,
+                    composer_service_check_status="available",
+                    composer_entry_eligible=True,
+                    composer_invocation_attempted=True,
+                    minimal_context_attempted=True,
+                    minimal_context_completed=bool(minimal_context),
+                    exact_reason_code="composer_invocation_attempted",
+                    downstream_stage="composer_invocation",
+                )
             response, diagnostics = ModelFirstAnswerComposerService().compose(
                 response,
                 customer_message=request.delivery_message or request.customer_message,
                 copilot_context=request.copilot_context,
+                privacy_diagnostics_sink=(
+                    request.composer_privacy_diagnostics_sink
+                ),
             )
+            eligibility = diagnostics.get("input_eligibility")
+            eligibility = (
+                eligibility if isinstance(eligibility, dict) else {}
+            )
+            rejection_reason = str(
+                diagnostics.get("rejection_reason") or ""
+            ).strip()
+            if entry_diagnostics_enabled:
+                _update_composer_entry_diagnostics(
+                    entry_sink,
+                    composer_invocation_completed=True,
+                    renderable_customer_goal_count=int(
+                        eligibility.get(
+                            "renderable_customer_goal_count"
+                        )
+                        or 0
+                    ),
+                    exact_reason_code=(
+                        rejection_reason
+                        or "composer_invocation_completed"
+                    ),
+                    downstream_stage=(
+                        "composer_completed"
+                        if diagnostics.get("status") == "accepted"
+                        else "composer_blocked"
+                    ),
+                )
+                self._update_composer_entry_observation(response, request)
             response["can_send"] = False
             response["sendable_reply"] = ""
             response["requires_human_review"] = True
@@ -648,6 +1112,17 @@ class AnalysisPipelineService:
                 ),
             }
         except Exception as exc:
+            if (
+                entry_diagnostics_enabled
+                and _composer_entry_diagnostic_reason(entry_sink)
+                != "composer_service_unavailable"
+            ):
+                _update_composer_entry_diagnostics(
+                    entry_sink,
+                    composer_invocation_completed=False,
+                    exact_reason_code="composer_invocation_failed",
+                    downstream_stage="composer_failed",
+                )
             response.setdefault("evidence_debug", {})[
                 "model_first_answer_composer_error"
             ] = {"type": type(exc).__name__}

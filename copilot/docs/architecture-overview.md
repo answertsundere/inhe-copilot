@@ -338,6 +338,15 @@ bounded inference, and Formal Evidence Convergence retain their existing
 default-off states; `can_send` ownership and production delivery are
 unchanged, and `real_customer_accuracy=null`.
 
+Composer-entry attribution and Composer privacy diagnostics are explicit
+evaluation-only sinks and are disabled by default. A missing sink is a
+zero-work boundary: no diagnostic observation, traversal, keyed alias, hash,
+projection, or emission is performed. Enabling a sink may only add diagnostic
+work through the existing server-keyed HMAC/Base32 alias owner; provider
+payloads, model/tool/RAG/database call counts, reply state, and `can_send` must
+remain identical. These diagnostics have no evidence, reply, audit, routing,
+or delivery authority.
+
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
 reply, but must not become independent answer engines.
