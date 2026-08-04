@@ -415,6 +415,17 @@ This slice is not a production auto-send canary. It exists to prove that the
 Agent can answer supported parts, continue a conversation, and escalate only
 the unresolved part.
 
+The latest native P1.4 fixed-eight gate reached Composer acceptance `8/8` after
+closing Composer input-integrity and option-selection defects. Six cases
+reached Delivery; two remained fail-closed at Unified Audit because the current
+Provider did not satisfy the frozen audit schema. A separate prospective case
+proved that published structured-product material provenance now survives the
+formal RAG Repository, Filter, and Evidence Builder path: the material answer
+changed from unresolved to supported `PP/TPE`, while unsupported odor and
+boiling-water claims stayed unresolved. These are engineering and capability
+results only. The candidate remains default-off and review-only,
+`can_send=true` remains zero, and real-customer accuracy is still unknown.
+
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,
 protocol-stabilization budget, and the required architecture-drift check. It
@@ -506,7 +517,9 @@ may still be reported, but must not be renamed accuracy.
   message are rejected.
 - Real-customer accuracy is not established.
 - Existing synthetic benchmark success primarily proves safe fallback.
-- Product evidence coverage and provenance remain uneven.
+- Product evidence coverage remains uneven. Published structured-product
+  material provenance is now preserved across the formal RAG path, but broader
+  attribute and conversation coverage is not yet qualified.
 - Reply ownership still overlaps.
 - Durable platform adapters and HandoffTask are not implemented.
 - Latency is too high for a strong live-service experience.

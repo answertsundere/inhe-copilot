@@ -78,28 +78,37 @@ The following rules are non-negotiable:
 
 **Active priority: P1 - Gold Conversation Quality.**
 
-P0-R1 qualified the existing Agent Core vertical slice without changing its
-business logic. The current MiniMax-M3 `json_object` transport passed the
-bounded three-case protocol preflight with one call per input. The single
-fixed-eight run then reached execution, Composer, Deterministic Final Contract,
-and Unified Textual Audit `8/8`; customer-goal coverage was `14/14`, supported
-attribution `5/5`, unresolved declaration `9/9`, and eligible Partial Answer
-`4/4`. Unsupported evidence references and explicit high-risk/media/service
-claim violations, `can_send=true`, formal knowledge changes, DML, retry, and
-repair were all zero.
+P0-R1 qualified the existing Agent Core correctness slice. P1.4 then ran one
+native, non-intercepted fixed-eight comparison through the same formal
+Pipeline. After preserving trusted Composer control metadata and making
+bounded-option selection required only for semantically nominated restricted
+alternatives, Composer acceptance reached `8/8`. Six cases reached Delivery;
+two stopped fail-closed at Unified Audit because the current Provider violated
+the audit output schema. Pipeline p50/p95 were `26.432s/29.705s`, formal
+knowledge content and DML were unchanged, `can_send=true` remained zero, and
+all eight cases still required human review.
 
-This closes P0 correctness only. Formal Evidence Convergence and the
-Model-first Composer remain disabled by default, the candidate remains
-review-only, and no production promotion or real-accuracy claim follows. The
-immediate work is now:
+The same P1 gate identified a separate RAG evidence-plumbing defect: a
+published structured-product material chunk was retrieved but its formal
+source metadata was dropped before admission. Repository, Filter, and Evidence
+Builder now preserve the reviewed chunk's source type, review state, and
+confidence without relaxing the existing Evidence Gate. A single prospective
+blind case changed the material goal from unresolved/no evidence to
+supported/direct evidence and correctly answered `PP/TPE`; odor and boiling-
+water sterilization remained unresolved. This is a targeted capability proof,
+not a new fixed-eight result or real-accuracy claim.
 
-1. run the pinned high-quality long-conversation set through the same formal
-   Pipeline;
-2. score customer outcome, naturalness, continuity, and useful progress rather
-   than internal finding-code wording;
+Formal Evidence Convergence and the Model-first Composer remain disabled by
+default, the candidate remains review-only, and no production promotion or
+real-accuracy claim follows. The immediate work is now:
+
+1. connect an explicitly approved Unified Audit Provider/model that can satisfy
+   the frozen strict output contract without retry, repair, or fallback;
+2. score customer outcome, naturalness, continuity, RAG evidence coverage, and
+   useful progress rather than internal finding-code wording;
 3. preserve the P0 owner and safety boundaries while locating the earliest
-   quality gap; and
-4. keep new provider matrices, protocol validators, Fast Path work, frontend
+   remaining quality gap; and
+4. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
    expansion, vision work, and platform adapters frozen unless P1 evidence
    makes one of them the earliest blocker.
 
@@ -699,7 +708,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | Long-conversation assets exist, but no valid production-quality result | Run the pinned 26-case set and evaluate customer outcomes rather than internal finding codes |
+| P1 Gold Conversation Quality | active | Native fixed-eight Composer `8/8`; six reached Delivery, two fail-closed on current Unified Audit Provider schema; one prospective RAG material case restored published structured evidence and answered PP/TPE without widening unresolved claims; `real_accuracy=null` | Approve and qualify one strict-schema Audit Provider, then run the pinned Gold-quality conversation gate and human outcome review |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
