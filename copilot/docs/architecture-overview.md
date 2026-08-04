@@ -489,12 +489,16 @@ This slice is not a production auto-send canary. It exists to prove that the
 Agent can answer supported parts, continue a conversation, and escalate only
 the unresolved part.
 
-The latest native P1.4 fixed-eight gate ran without transport interception on
-clean commit `0c301046`. All eight requests completed, Composer accepted six,
-formal knowledge content and DML stayed unchanged, and all eight results
-remained review-only with `can_send=true` at zero. Pipeline p50/p95 were
-`51.554s/62.825s`. Expert post-run review rated two replies pass, three partial,
-and three fail; it did not create a real-accuracy result.
+The native P1.4 fixed-eight gate on clean commit `0c301046` completed all eight
+requests but expert review still rated three replies as failures. After the
+Turn Understanding owner correction, the comparable native gate on clean
+commit `7096269d` again completed `8/8` without transport interception.
+Composer acceptance improved from six to seven; formal knowledge content and
+DML stayed unchanged, and all eight results remained review-only with
+`can_send=true` at zero. Expert post-run review moved from
+`2 pass / 3 partial / 3 fail` to `2 pass / 6 partial / 0 fail`. This is a useful
+quality improvement, not a real-accuracy result. Pipeline p50/p95 were
+`45.958s/96.480s`, so latency is independently unqualified.
 
 The repeated earliest defect was upstream of reply composition. Turn
 Understanding sometimes demoted an explicit buyer request to an evidence
@@ -505,12 +509,15 @@ guarantee, or practical request is a `customer_goal`; `attribute_key` narrows
 the requested property rather than identifying the product; and direct factual
 requests remain separate from practical guidance. When the model returns a
 canonical customer goal without a policy intent, the server may project a goal
-family only when a trusted Domain Pack candidate has the exact same family.
-This data-driven fallback does not select a policy, reinterpret text, or map a
-FactType to a policy in Python. The frozen three-case, five-run qualification
-passed `15/15` with no retry, repair, or fallback. A fresh comparable native
-fixed-eight run is still required before this change can be called a customer-
-quality improvement.
+family only when a trusted Domain Pack candidate has the exact same family. It
+may also project an intent kind only when all trusted candidates in that exact
+family agree on one non-empty kind. Multiple intent kinds remain ambiguous and
+fail closed. This data-driven fallback does not select a policy, reinterpret
+text, or map a FactType to a policy in Python. The three-case understanding
+qualification passed `15/15`; after the full gate exposed the missing-kind
+path, the separate frozen moisture qualification passed `5/5`, each with no
+retry, repair, or fallback. Another full native gate is required before the
+kind projection is an end-to-end quality result.
 
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,

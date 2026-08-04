@@ -105,20 +105,24 @@ owner, and deterministic final safety. The active priority is now P1 Gold
 Conversation Quality through outcome-based long-conversation evaluation. Gold
 review remains an accuracy prerequisite, but building more review
 infrastructure is not the active development mainline.
-The native P1.4 fixed-eight gate on clean commit `0c301046` completed `8/8`
-without transport interception. Composer accepted `6/8`; formal knowledge and
-DML were unchanged, `can_send=true` stayed zero, and all eight results remained
-review-only. Post-run expert review rated two replies pass, three partial, and
-three fail. The common earliest quality gap was Turn Understanding ownership:
-explicit buyer goals could be demoted to evidence dependencies, product or
-component names could become attributes, and practical policy families could be
-lost before Claim Resolution. Turn Understanding now preserves explicit
-requests as customer goals and may derive only an exact canonical goal-family
-match from trusted Domain Pack candidates; it still does not select a policy.
-The frozen three-case, five-run qualification passed `15/15` with no retry,
-repair, or fallback. A fresh clean native Fixed-8 is the next quality gate.
-These results do not enable the disabled features or establish real-customer
-accuracy.
+The native P1.4 fixed-eight gate on clean commit `0c301046` completed `8/8` but
+expert review still found three failed replies. After the Turn Understanding
+role, attribute, and policy-family correction qualified `15/15`, a fresh native
+gate on `7096269d` again completed `8/8` without transport interception.
+Composer acceptance improved from `6/8` to `7/8`; formal knowledge and DML were
+unchanged, `can_send=true` stayed zero, and all eight results remained review-
+only. Expert review moved from `2 pass / 3 partial / 3 fail` to
+`2 pass / 6 partial / 0 fail`. Pipeline p50/p95 were `45.958s/96.480s`, so
+latency regressed and bulk-seat readiness remains blocked.
+
+The remaining bathroom-moisture gap exposed one incomplete data binding: an
+exact trusted policy family could be derived while its only non-empty intent
+kind remained absent, causing Claim Resolution to reject the option. The owner
+projection now derives that kind only when every trusted candidate in the exact
+family agrees on one value; ambiguous families remain empty and fail closed.
+The frozen five-run moisture qualification passed `5/5` with no retry, repair,
+or fallback. A fresh full native gate is still required. None of these results
+enable the disabled features or establish real-customer accuracy.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an

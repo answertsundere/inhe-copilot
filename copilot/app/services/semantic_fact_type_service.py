@@ -2020,6 +2020,7 @@ def _sanitize_customer_goals(
             diagnostics.append("customer_goal_policy_intent_kind_invalid")
             policy_intent_ref = ""
         derived_policy_goal_family = ""
+        derived_policy_intent_kind = ""
         if (
             not policy_intent_ref
             and selected_policy is None
@@ -2027,14 +2028,20 @@ def _sanitize_customer_goals(
             and claim_type_status == "canonical"
             and claim_type
         ):
-            exact_families = {
-                _bounded_text(candidate.get("goal_family"), 96).lower()
+            exact_family_candidates = [
+                candidate
                 for candidate in candidate_by_ref.values()
                 if _bounded_text(candidate.get("goal_family"), 96).lower()
                 == claim_type
-            }
-            if len(exact_families) == 1:
-                derived_policy_goal_family = next(iter(exact_families))
+            ]
+            if exact_family_candidates:
+                derived_policy_goal_family = claim_type
+                exact_intent_kinds = {
+                    _bounded_text(candidate.get("intent_kind"), 64).lower()
+                    for candidate in exact_family_candidates
+                }
+                if len(exact_intent_kinds) == 1 and "" not in exact_intent_kinds:
+                    derived_policy_intent_kind = next(iter(exact_intent_kinds))
         goal_summary = canonical_source_span_text(
             raw.get("source_text")
         )[:240]
@@ -2055,7 +2062,7 @@ def _sanitize_customer_goals(
             "policy_intent_kind": (
                 _bounded_text(selected_policy.get("intent_kind"), 64).lower()
                 if policy_intent_ref and isinstance(selected_policy, dict)
-                else ""
+                else derived_policy_intent_kind
             ),
             "goal_summary": goal_summary,
             "confidence": 1.0,

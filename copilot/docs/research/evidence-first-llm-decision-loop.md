@@ -692,6 +692,23 @@ inputs then passed five independent calls each (`15/15`) with valid provenance
 and zero retry, repair, or fallback. A fresh native Fixed-8 is required to
 measure whether that component result improves complete customer replies.
 
+That native run on clean commit `7096269d` completed `8/8` without transport
+interception. Composer acceptance improved from `6/8` to `7/8`; expert review
+moved from `2 pass / 3 partial / 3 fail` to `2 pass / 6 partial / 0 fail`, while
+formal knowledge, DML, and send authority remained unchanged. The recovered
+material, moisture, toxicity-boundary, and cleaning goals demonstrate an
+end-to-end quality improvement, but p50/p95 reached `45.958s/96.480s` and real
+customer accuracy remains unknown.
+
+One recovered canonical moisture goal still received no bounded option. The
+stored Claim Resolution showed the exact family but rejected it as
+`bounded_inference_intent_kind_mismatch`. The projection now retains a kind only
+when every trusted candidate in that exact family exposes one identical
+non-empty kind; a family containing multiple kinds remains ambiguous. This is
+still data selection, not text classification or policy selection. The frozen
+moisture input passed `5/5` with one call per attempt and no retry, repair, or
+fallback. A fresh full-chain run remains the promotion gate for this follow-up.
+
 The existing comparison runner now reports option coverage, policy selection,
 selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer

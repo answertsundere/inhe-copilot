@@ -179,6 +179,26 @@ with valid provenance and zero retry, repair, or fallback. This is a component
 qualification only; the next gate is a fresh clean native Fixed-8 through the
 same full Pipeline.
 
+The fresh gate on clean commit `7096269d` completed `8/8` with no transport
+interception or replacement requests. Composer acceptance improved from `6/8`
+to `7/8`; formal knowledge and DML were unchanged, `can_send=true` remained
+zero, and all eight cases remained review-only. Expert review moved from
+`2 pass / 3 partial / 3 fail` to `2 pass / 6 partial / 0 fail`, because the
+former generic-handoff cases now preserved supported material facts and their
+unresolved customer goals. Pipeline p50/p95 were `45.958s/96.480s`, so this is
+not a performance qualification or production promotion.
+
+The bathroom-moisture case exposed the next exact contract break. Turn
+Understanding correctly derived `policy_goal_family=moisture_resistance`, but
+left `policy_intent_kind` empty, so Claim Resolution rejected the otherwise
+eligible practical policy with `bounded_inference_intent_kind_mismatch`. The
+owner projection now copies the kind only when all trusted candidates in the
+exact family expose one identical non-empty kind. It still does not select a
+policy; multiple kinds remain ambiguous and fail closed. The frozen moisture
+input passed this contract `5/5` with one model call per attempt and no retry,
+repair, fallback, knowledge access, or send authority. A new native gate remains
+mandatory before declaring the full reply improved.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
@@ -792,7 +812,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | Native Fixed-8 on `0c301046` completed `8/8`, Composer `6/8`, no knowledge/DML/send change, and expert review `2 pass / 3 partial / 3 fail`; the earliest repeated gap was Turn Understanding role/attribute/policy-family ownership. Its frozen three-case `5x` qualification passed `15/15` with no retry/repair/fallback; `real_accuracy=null` | Run a fresh clean native Fixed-8, then select the next earliest business-quality owner before cognitive-consolidation shadow |
+| P1 Gold Conversation Quality | active | After Turn Understanding qualified `15/15`, native Fixed-8 on `7096269d` completed `8/8`, Composer `7/8`, no knowledge/DML/send change, and expert review improved to `2 pass / 6 partial / 0 fail`; p95 was still `96.480s`. The exact-family unique-intent-kind follow-up passed frozen moisture `5/5`; `real_accuracy=null` | Run one fresh full native gate for the intent-kind fix, then address method-scoped cleaning, RAG dependencies, relation reasoning, and latency by earliest measured owner |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

@@ -347,7 +347,7 @@ def test_policy_intent_nomination_is_bound_to_trusted_candidate():
     assert goals[0]["policy_intent_kind"] == "practical_guidance"
 
 
-def test_canonical_goal_derives_only_exact_trusted_policy_family():
+def test_canonical_goal_derives_only_exact_trusted_policy_family_and_kind():
     goal = {
         "goal_kind": "customer_goal",
         "claim_type_status": "canonical",
@@ -367,6 +367,40 @@ def test_canonical_goal_derives_only_exact_trusted_policy_family():
         [goal],
         message="moisture question",
         policy_intent_candidates=[exact],
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["policy_intent_ref"] == ""
+    assert goals[0]["policy_goal_family"] == "moisture_resistance"
+    assert goals[0]["policy_intent_kind"] == "practical_guidance"
+
+
+def test_canonical_goal_does_not_derive_ambiguous_policy_intent_kind():
+    goal = {
+        "goal_kind": "customer_goal",
+        "claim_type_status": "canonical",
+        "claim_type": "moisture_resistance",
+        "attribute_key": "",
+        "semantic_key": "",
+        "policy_intent_ref": "",
+        "source_text": "moisture question",
+    }
+    practical = {
+        **_policy_candidate(),
+        "policy_intent_ref": "moisture_exposure_practical_guidance",
+        "goal_family": "moisture_resistance",
+    }
+    guarantee = {
+        **practical,
+        "policy_intent_ref": "moisture_exposure_absolute_guarantee",
+        "intent_kind": "absolute_guarantee",
+    }
+
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [goal],
+        message="moisture question",
+        policy_intent_candidates=[practical, guarantee],
     )
 
     assert status == "valid"
@@ -401,6 +435,7 @@ def test_canonical_goal_does_not_derive_related_or_dependency_policy_family():
         assert status == "valid"
         assert diagnostics == []
         assert goals[0]["policy_goal_family"] == ""
+        assert goals[0]["policy_intent_kind"] == ""
 
 
 def test_unknown_or_unavailable_policy_intent_nomination_is_removed():
