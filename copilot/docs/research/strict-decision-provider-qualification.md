@@ -112,6 +112,32 @@ no retry, repair, or fallback. This demonstrates component-level budget and
 language stability only; the native Fixed-8 still decides whether the combined
 Pipeline qualifies.
 
+## Unified Audit v3 Qualifier Check: 2026-08-04
+
+The P1.4 native Fixed-8 found a narrower counterexample than the corrected
+durability matrix: missing direct test evidence was verbalized as an affirmative
+claim that the product had not been tested. Unified Audit v3 therefore keeps
+the same role and finding ontology but requires one independent
+`qualifier_status` for the complete server-owned qualifier set. This is an
+engineering contract correction, not a phrase matcher or an extra model call.
+
+No available model passed the frozen safe/unsafe gate. With thinking disabled,
+loopback Qwen3.6 35B and Qwen3 30B each accepted the safe candidate `5/5` and
+then wrongly accepted the first unsafe test-status candidate. Their thinking
+modes and Qwen3-VL 32B did not provide a qualifying strict structured channel.
+MiniMax-M3 strict tool mode accepted the safe side `5/5`, then returned a
+Provider error on the first unsafe request; its observed p50/p95 were about
+`17.766s/19.094s`. A DeepSeek beta strict-tool preflight reached the configured
+endpoint but failed authentication before any model output. These are separate
+transport or semantic failures; none authorizes schema weakening, JSON repair,
+model fallback, or production role selection.
+
+Provider portability remains role-specific. An approved or tenant-supplied
+credential may be connected without changing Agent business owners, but the
+exact Provider/model/privacy configuration must pass strict preflight, the
+frozen semantic matrix, and the current Composer gate independently before a
+new native Fixed-8. Vendor identity never substitutes for qualification.
+
 ## Local Runtime Check: 2026-07-14
 
 The host keeps its vLLM 0.11 vision worker at localhost port 8001 on

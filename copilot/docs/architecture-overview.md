@@ -560,6 +560,35 @@ evidence” into “the product has not been tested”, despite the policy's
 `no_test_claim` qualifier. The existing Unified Textual Audit is the next
 owner; production enablement and real-customer accuracy remain unqualified.
 
+Unified Textual Audit v3 keeps that owner and adds a required
+`qualifier_status` decision beside advice, variability, restricted-boundary,
+and conclusion decisions. Its atomic contract now includes the complete
+server-owned qualifier set, so a model cannot pass a clause merely by satisfying
+one qualifier while violating another. Composer separately receives the same
+general epistemic boundary: unavailable direct evidence does not establish
+that a test or event never occurred. The local strict Validator, one-call
+contract, deterministic Final, and Delivery Gate are unchanged.
+
+This closed the contract-projection gap but not the model-capability gate.
+Non-thinking Qwen models followed the schema yet missed the test-status
+distinction; available thinking and VL strict channels did not qualify;
+MiniMax-M3 stopped on the unsafe half and was too slow for the seat path; and
+the configured DeepSeek credential failed before a model result. A current
+Composer-only run removed the false no-test assertion in two accepted replies,
+then failed on internal language while still expanding factors beyond the
+offered policy budget. No new Fixed-8 ran. The current architecture status is
+therefore Provider-blocked P1 quality work, not a reason to add validators,
+reply owners, or graph nodes.
+
+Model replacement remains role-scoped and capability-driven. Tenants may later
+bring approved credentials for compatible providers, but each role still pins
+its own provider, model, retention/privacy posture, strict-structure capability,
+and qualification record. Stronger models should receive compact authoritative
+context and wider semantic freedom inside the same evidence and action
+boundaries. When stronger models can absorb adjacent semantic stages, node
+consolidation is allowed only after same-input parity proves that no durable
+state, tool, evidence, safety, or delivery owner is lost.
+
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,
 protocol-stabilization budget, and the required architecture-drift check. It

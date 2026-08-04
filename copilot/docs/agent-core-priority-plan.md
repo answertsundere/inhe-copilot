@@ -224,18 +224,43 @@ authoritative budget only established that direct test evidence was absent.
 The existing Unified Audit should reject this `no_test_claim` violation
 without adding a keyword classifier, reply repair, or product-specific rule.
 
+Unified Textual Audit v3 now projects the complete `required_qualifiers` set
+and requires an independent `qualifier_status` for every applicable clause.
+The local Validator remains strict and fail-closed. Composer also receives the
+general epistemic constraint that missing direct evidence is not proof that a
+test or event never occurred. These changes preserve the existing owners and
+add no model call, retry, repair, fallback, evidence, or send authority.
+
+The engineering contract passed its deterministic and adjacent regressions,
+but the model gates did not qualify. Non-thinking local Qwen3.6 35B and Qwen3
+30B each accepted the safe evidence-availability wording `5/5`, then accepted
+the first unsupported product test-status counterexample. Their thinking
+modes and the available Qwen3-VL 32B did not expose a usable strict structured
+channel. MiniMax-M3 strict tool use accepted the safe side `5/5` but failed at
+the first unsafe request and had about `17.766s/19.094s` p50/p95 latency. The
+configured DeepSeek credential failed authentication before a model result,
+so it has no capability result.
+
+The current-input Composer-only check then accepted two replies that no longer
+invented a product test history, but both extended variability factors beyond
+the offered budget and attempt three failed `composer_internal_language`.
+Because the Audit and Composer frozen prerequisites both failed, no replacement
+Fixed-8 was run. Repeated Prompt additions are not the next owner.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. close the `no_test_claim` factual-fidelity gap in the existing Unified Audit
-   owner and requalify the frozen safe/unsafe semantic pair before another
-   complete conversation gate;
-2. after the next complete gate is clean, run the documented cognitive-consolidation
+1. qualify one stronger, approved or BYOK model independently for the Unified
+   Audit and Composer roles against the frozen semantic and structure gates;
+   do not weaken the schema, Validator, evidence budget, or one-call contract;
+2. after both role gates pass, run one new native Fixed-8 through the same
+   formal Pipeline and judge the customer-visible replies;
+3. after the next complete gate is clean, run the documented cognitive-consolidation
    shadow comparison before deleting or merging any LangGraph node;
-3. preserve the P0 owner and safety boundaries while locating the earliest
+4. preserve the P0 owner and safety boundaries while locating the earliest
    remaining quality gap; and
-4. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
+5. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
    expansion, vision work, and platform adapters frozen unless P1 evidence
    makes one of them the earliest blocker.
 
@@ -836,7 +861,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, including both oral-safety cases passing. Knowledge/DML/send changes were zero and p50/p95 were `26.256s/36.480s`. One durability reply asserted an unsupported no-test status despite `no_test_claim`; `real_accuracy=null` | Requalify Unified Audit factual fidelity for `no_test_claim`, then run the next comparable full gate and continue by earliest measured quality owner |
+| P1 Gold Conversation Quality | active; Provider-blocked | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, knowledge/DML/send changes were zero, and p50/p95 were `26.256s/36.480s`. Unified Audit v3 now carries qualifier semantics and Composer preserves the missing-evidence boundary, but available Qwen/MiniMax candidates failed the frozen Audit gate, DeepSeek authentication failed before a result, and current Composer qualification stopped at `2/3` with budget expansion plus internal-language rejection. No new Fixed-8 ran; `real_accuracy=null` | Connect or approve a stronger role-scoped/BYOK model, pass both frozen Audit and Composer gates without relaxing contracts, then run one new native Fixed-8 |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

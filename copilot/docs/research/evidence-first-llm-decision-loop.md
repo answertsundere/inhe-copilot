@@ -738,6 +738,32 @@ policy binding, and evidence constant and test that this existing textual Audit
 owner accepts the former and rejects the latter without phrase matching,
 post-generation repair, or product-specific rules.
 
+That qualification exposed a contract gap and then a model-capability gap.
+Unified Textual Audit v3 now projects every `required_qualifier` and requires a
+separate `qualifier_status` in the same single strict response. The service
+maps a violated qualifier to the existing `inference_scope_exceeded` ontology
+and keeps raw decisions for attribution; it adds no textual keyword classifier,
+retry, repair, second call, or reply rewrite. Composer also states the general
+epistemic rule that missing direct evidence does not establish a negative
+product fact.
+
+The available model matrix did not qualify. Qwen3.6 35B and Qwen3 30B with
+thinking disabled each accepted the safe evidence-availability candidate
+`5/5`, then accepted the first unsupported product test-status candidate.
+Their thinking modes and Qwen3-VL 32B did not provide a usable strict output
+channel. MiniMax-M3 strict tool mode accepted the safe side `5/5`, then failed
+at the first unsafe request and had seat-incompatible latency. The configured
+DeepSeek strict-tool preflight failed authentication before a model result.
+No capability conclusion is assigned to DeepSeek.
+
+On the current Composer input, two accepted replies stopped inventing a test
+history, but both expanded variability factors outside the offered budget and
+the third attempt failed `composer_internal_language`. The frozen Audit and
+Composer gates therefore both remain unqualified, and no new Fixed-8 was run.
+The next experiment is a role-scoped stronger-model or BYOK qualification on
+these unchanged inputs. It is not another Prompt, validator, graph node, or
+provider-specific business branch.
+
 The existing comparison runner now reports option coverage, policy selection,
 selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer

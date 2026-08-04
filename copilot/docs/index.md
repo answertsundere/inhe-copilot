@@ -133,10 +133,23 @@ That gate ran once on clean commit `1ed24db5`: Composer, Deterministic Final,
 Unified Audit, and Delivery completed `8/8`, both oral-exposure cases passed
 expert review, formal knowledge/DML/send changes stayed zero, and Pipeline
 p50/p95 were `26.256s/36.480s`. Expert review was `2 pass / 4 partial / 0 fail /
-2 not scorable`. The next P1 owner is the existing Unified Audit distinction
-between missing direct test evidence and an unsupported affirmative product
-test-status claim; the result still does not establish real-customer accuracy
-or production readiness.
+2 not scorable`.
+
+The following P1 qualification closed the missing contract projection but did
+not qualify the current models. Unified Textual Audit v3 receives every
+`required_qualifier` and must report a separate `qualifier_status`; Composer
+also states the general epistemic rule that missing direct evidence is not a
+negative fact. Deterministic and adjacent tests passed, but local Qwen models
+that obeyed the strict schema still accepted the unsupported product test-
+status claim, thinking-mode strict channels were unavailable, MiniMax-M3 did
+not complete the unsafe qualification, and the configured DeepSeek credential
+failed authentication before a model result. A current Composer-only run
+accepted two replies without the false no-test statement, then failed on
+internal language and both accepted replies exceeded the offered variability-
+factor budget. No new Fixed-8 was run. The active P1 blocker is therefore
+role-scoped Audit and Composer Provider capability, not another graph or
+validator layer; `real_customer_accuracy=null` and production readiness remain
+unproved.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an
