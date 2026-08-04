@@ -921,6 +921,8 @@ def test_composer_prompt_requires_customer_visible_expression_stability():
         "自然、礼貌、简洁",
         "避免重复主语、边界、法务声明",
         "客户可见文字只放在 text",
+        "缺少直接依据只表示当前没有可引用的直接依据",
+        "不得把任何未知事实改写成否定事实",
     ):
         assert required in prompt
     for prohibited in (
