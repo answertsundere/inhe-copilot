@@ -3034,6 +3034,7 @@ class ModelFirstAnswerComposerService:
         *,
         resolution_status: str,
         option_count: int,
+        selection_required: bool = False,
     ) -> str:
         if option_count < 0:
             return ""
@@ -3042,7 +3043,11 @@ class ModelFirstAnswerComposerService:
         if resolution_status == "supported":
             return "optional"
         if resolution_status in _UNRESOLVED_STATUSES:
-            return "required"
+            return (
+                "required"
+                if selection_required
+                else "optional"
+            )
         return ""
 
     @staticmethod
@@ -3150,6 +3155,18 @@ class ModelFirstAnswerComposerService:
                     "can_change_can_send": (
                         option.get("can_change_can_send") is True
                     ),
+                    "selection_required": any((
+                        (
+                            option.get("option_provenance")
+                            or {}
+                        ).get("intent_narrowed") is True,
+                        (
+                            option.get("option_provenance")
+                            or {}
+                        ).get(
+                            "alternative_for_restricted_request"
+                        ) is True,
+                    )),
                 }
                 if (
                     not binding["policy_ref"]
@@ -3207,6 +3224,10 @@ class ModelFirstAnswerComposerService:
                         goal.get("resolution_status") or ""
                     ).strip(),
                     option_count=len(goal_options),
+                    selection_required=any(
+                        option.get("selection_required") is True
+                        for option in goal_options
+                    ),
                 )
             )
             if not option_selection_mode:
@@ -4042,6 +4063,13 @@ class ModelFirstAnswerComposerService:
                         goal.get("resolution_status") or ""
                     ).strip(),
                     option_count=len(goal_options),
+                    selection_required=any(
+                        (offered_option_bindings or {}).get(
+                            option_ref,
+                            {},
+                        ).get("selection_required") is True
+                        for option_ref in goal_options
+                    ),
                 )
             )
             if (
@@ -4448,6 +4476,13 @@ class ModelFirstAnswerComposerService:
                         goal.get("resolution_status") or ""
                     ).strip(),
                     option_count=len(goal_options),
+                    selection_required=any(
+                        (offered_option_bindings or {}).get(
+                            option_ref,
+                            {},
+                        ).get("selection_required") is True
+                        for option_ref in goal_options
+                    ),
                 )
             )
             if (

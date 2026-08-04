@@ -3017,6 +3017,35 @@ def test_composer_rejects_required_goal_without_policy_selection():
     assert result["provider_diagnostics"]["repair_count"] == 0
 
 
+def test_composer_allows_unresolved_goal_to_decline_unnarrowed_options():
+    response = _bounded_inference_response()
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]["eligible_policy_options"][0]
+    option["option_provenance"]["intent_narrowed"] = False
+    payload = _bounded_inference_payload(response)
+    payload["clauses"][0].update({
+        "clause_kind": "unresolved",
+        "text": "日常耐用表现目前无法确认。",
+        "evidence_refs": [],
+        "selected_policy_ref": "",
+        "premise_evidence_refs": [],
+        "inference_scope": "",
+    })
+
+    _, result, client = _compose(payload, response)
+
+    assert result["status"] == "accepted"
+    prompt = json.loads(client.messages[1]["content"])
+    inferred_goal = next(
+        item
+        for item in prompt["renderable_customer_goals"]
+        if item["eligible_policy_options"]
+    )
+    assert inferred_goal["option_selection_mode"] == "optional"
+    assert client.call_count == 1
+
+
 def test_composer_allows_optional_goal_to_select_zero_or_one_option():
     response = _bounded_inference_response()
     selected_policy_ref = _add_alternate_safe_option(
