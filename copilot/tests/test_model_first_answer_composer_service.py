@@ -159,13 +159,11 @@ def _valid_payload() -> dict:
             {
                 "goal_ref": "goal_01",
                 "text": "儿童安全方面目前无法确认。",
-                "evidence_refs": [],
                 "selected_option_refs": [],
             },
             {
                 "goal_ref": "goal_02",
                 "text": "商品宽度为80厘米。",
-                "evidence_refs": ["E1"],
                 "selected_option_refs": [],
             },
         ],
@@ -181,6 +179,7 @@ def _with_policy_selection_fields(payload: dict) -> dict:
             clause.pop("selected_policy_ref", "") or ""
         ).strip()
         clause.pop("clause_kind", None)
+        clause.pop("evidence_refs", None)
         clause.pop("premise_evidence_refs", None)
         clause.pop("inference_scope", None)
         clause.setdefault(
@@ -723,22 +722,12 @@ def test_composer_preserves_unmapped_goal_as_unresolved_clause():
             "composer_goal_clause_text_missing",
         ),
         (
-            lambda value: value["clauses"][1].update(evidence_refs=["E9"]),
-            "composer_unknown_evidence_reference",
-        ),
-        (
             lambda value: value["clauses"].append(deepcopy(value["clauses"][0])),
             "composer_duplicate_goal_clause",
         ),
         (
             lambda value: value["clauses"][0].update(goal_ref="goal_09"),
             "composer_unknown_goal_reference",
-        ),
-        (
-            lambda value: value["clauses"][1].update(
-                evidence_refs=["E1", "E1"],
-            ),
-            "composer_duplicate_evidence_reference",
         ),
         (
             lambda value: value["clauses"][0].update(extra="not-allowed"),
@@ -758,22 +747,22 @@ def test_composer_rejects_goal_clause_contract_mutations(mutate, reason):
     assert client.call_count == 1
 
 
-def test_composer_rejects_supported_fact_omission():
+def test_composer_restores_supported_evidence_without_model_echo():
     payload = _valid_payload()
-    payload["clauses"][1]["evidence_refs"] = []
 
     _, result, _ = _compose(payload)
 
-    assert result["rejection_reason"] == "composer_supported_claim_omitted"
+    assert result["status"] == "accepted"
+    assert result["clauses"][1]["evidence_uids"] == ["ev-width"]
 
 
-def test_composer_rejects_evidence_on_unresolved_goal():
+def test_composer_rejects_model_owned_evidence_field():
     payload = _valid_payload()
     payload["clauses"][0]["evidence_refs"] = ["E1"]
 
-    _, result, _ = _compose(payload)
+    _, result, _ = _compose(payload, normalize_policy_fields=False)
 
-    assert result["rejection_reason"] == "composer_unresolved_goal_evidence_invalid"
+    assert result["rejection_reason"] == "composer_clause_schema_invalid"
 
 
 def test_composer_rejects_media_promise_without_actual_block():
@@ -966,7 +955,7 @@ def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
         "即使 required_clause_kind=unresolved 也相同",
         "required clause 的 text 同时表达所选 allowed_scope",
         "must_remain_unresolved 只约束客户原始受限主张",
-        "未选择 option 时 evidence_refs 必须逐字复制 required_evidence_refs",
+        "模型不得输出 evidence_refs",
         "required_clause_kind=unresolved 时结合 goal_summary",
     ):
         assert required in prompt
@@ -1001,7 +990,6 @@ def test_composer_response_schema_is_the_prompt_and_validator_field_owner():
     assert set(contract["clause_fields"]) == {
         "goal_ref",
         "text",
-        "evidence_refs",
         "selected_option_refs",
     }
     assert "clause_kind" not in clause_schema["properties"]
@@ -1029,12 +1017,12 @@ def test_composer_field_ownership_is_complete_and_non_overlapping():
     assert {
         "goal_ref",
         "text",
-        "evidence_refs",
         "selected_option_refs",
         "presentation_order",
     } == model_owned
     assert {
         "clause_kind",
+        "evidence_refs",
         "selected_policy_ref",
         "premise_evidence_refs",
         "inference_scope",
@@ -1236,7 +1224,6 @@ def test_minimal_output_matches_legacy_canonical_oracle_matrix():
     [
         ("goal_ref", ["goal_01"], "composer_clause_schema_invalid"),
         ("text", ["文本"], "composer_goal_clause_text_missing"),
-        ("evidence_refs", "E1", "composer_evidence_refs_invalid"),
         (
             "selected_option_refs",
             "option_000000000000",
@@ -2240,12 +2227,6 @@ def test_composer_fenced_json_still_requires_strict_clause_schema(mutate):
             "composer_unknown_goal_reference",
             "unknown_goal_ref",
             "$.clauses[0].goal_ref",
-        ),
-        (
-            lambda value: value["clauses"][1].update(evidence_refs=["E9"]),
-            "composer_unknown_evidence_reference",
-            "unknown_evidence_ref",
-            "$.clauses[1].evidence_refs",
         ),
     ],
 )
@@ -3504,13 +3485,6 @@ def test_composer_requires_policy_selection_schema_fields():
                 "selected_option_refs": [],
             }),
             "composer_required_option_not_selected",
-        ),
-        (
-            lambda response: None,
-            lambda payload: payload["clauses"][0].update({
-                "evidence_refs": [],
-            }),
-            "composer_bounded_inference_premise_omitted",
         ),
         (
             lambda response: response["minimal_decision_context"].update({

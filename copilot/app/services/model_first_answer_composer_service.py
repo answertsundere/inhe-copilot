@@ -32,7 +32,7 @@ COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA = (
 )
 COMPOSER_PRIVACY_DIAGNOSTICS_OWNER = COMPOSER_DECISION_INPUT_OWNER
 COMPOSER_PRIVACY_DIAGNOSTICS_MAX_DIFFS = 32
-COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v2"
+COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v3"
 COMPOSER_RESPONSE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": COMPOSER_RESPONSE_SCHEMA_VERSION,
@@ -47,7 +47,6 @@ COMPOSER_RESPONSE_SCHEMA = {
                 "required": [
                     "goal_ref",
                     "text",
-                    "evidence_refs",
                     "selected_option_refs",
                 ],
                 "additionalProperties": False,
@@ -59,14 +58,6 @@ COMPOSER_RESPONSE_SCHEMA = {
                     "text": {
                         "type": "string",
                         "minLength": 1,
-                    },
-                    "evidence_refs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "minLength": 1,
-                        },
-                        "uniqueItems": True,
                     },
                     "selected_option_refs": {
                         "type": "array",
@@ -123,12 +114,12 @@ COMPOSER_CLAUSE_FIELD_OWNERSHIP = {
     "model_owned": (
         "goal_ref",
         "text",
-        "evidence_refs",
         "selected_option_refs",
         "presentation_order",
     ),
     "server_owned": (
         "clause_kind",
+        "evidence_refs",
         "selected_policy_ref",
         "premise_evidence_refs",
         "inference_scope",
@@ -3712,6 +3703,9 @@ class ModelFirstAnswerComposerService:
             "selected_option_refs_semantics": (
                 "zero_or_one_goal_scoped_request_option_alias"
             ),
+            "evidence_refs_semantics": (
+                "server_restored_from_resolution_or_selected_option"
+            ),
             "canonical_clause_metadata_owner": "server",
             "field_ownership": {
                 key: list(value)
@@ -3753,9 +3747,9 @@ class ModelFirstAnswerComposerService:
             "不表示整个 clause 必须使用 unresolved，也不禁止表达所选有界帮助。"
             "optional 的 selected_option_refs 可以为空或只含一个 option_ref；"
             "forbidden 的 selected_option_refs 必须为空数组。"
-            "未选择 option 时 evidence_refs 必须逐字复制 required_evidence_refs。"
             "选择 option 时 selected_option_refs 必须只含同一 goal 的 option_ref，"
-            "evidence_refs 必须与该 option 的 premise_evidence_refs 完全相同；"
+            "evidence_refs 由服务器根据 resolution 或所选 option 的 premise 恢复，"
+            "模型不得输出 evidence_refs，只需选择 option 并组织 text；"
             "不得输出内部 policy ID、"
             "跨 goal 引用或新增 option、premise、scope。"
             "若 goal 带 restricted_request_boundary，所选有界说明必须保留该请求边界，"
@@ -3963,7 +3957,6 @@ class ModelFirstAnswerComposerService:
                 )
             goal_ref = goal_ref_value.strip()
             text = text_value.strip()
-            evidence_refs = clause.get("evidence_refs")
             selected_option_refs = clause.get("selected_option_refs")
             if goal_ref not in goals_by_ref:
                 if goal_ref in (non_renderable_goal_refs or set()):
@@ -3989,19 +3982,6 @@ class ModelFirstAnswerComposerService:
                     expected_type="unique_goal_ref",
                     actual_type="duplicate_string",
                 )
-            if not isinstance(evidence_refs, list) or any(
-                not isinstance(item, str) or not item.strip()
-                for item in evidence_refs
-            ):
-                return {}, "composer_evidence_refs_invalid", ModelFirstAnswerComposerService._diagnostics(
-                    "clause_schema_invalid",
-                    parsed=parsed,
-                    json_path=f"{path}.evidence_refs",
-                    expected_type="array_of_non_empty_strings",
-                    actual_type=ModelFirstAnswerComposerService._type_name(
-                        evidence_refs
-                    ),
-                )
             if not isinstance(selected_option_refs, list) or any(
                 not isinstance(item, str) or not item.strip()
                 for item in selected_option_refs
@@ -4015,26 +3995,9 @@ class ModelFirstAnswerComposerService:
                         selected_option_refs
                     ),
                 )
-            refs = [str(item).strip() for item in evidence_refs]
             option_refs = [
                 str(item).strip() for item in selected_option_refs
             ]
-            if len(refs) != len(set(refs)):
-                return {}, "composer_duplicate_evidence_reference", ModelFirstAnswerComposerService._diagnostics(
-                    "unknown_evidence_ref",
-                    parsed=parsed,
-                    json_path=f"{path}.evidence_refs",
-                    expected_type="unique_known_evidence_refs",
-                    actual_type="array_with_duplicates",
-                )
-            if not set(refs).issubset(known_refs):
-                return {}, "composer_unknown_evidence_reference", ModelFirstAnswerComposerService._diagnostics(
-                    "unknown_evidence_ref",
-                    parsed=parsed,
-                    json_path=f"{path}.evidence_refs",
-                    expected_type="known_evidence_refs",
-                    actual_type="array",
-                )
             if len(option_refs) != len(set(option_refs)):
                 return {}, "composer_duplicate_inference_option_reference", ModelFirstAnswerComposerService._diagnostics(
                     "duplicate_policy_ref",
@@ -4151,13 +4114,16 @@ class ModelFirstAnswerComposerService:
                 option_premises = list(
                     option.get("premise_evidence_refs") or []
                 )
-                if refs != option_premises:
-                    return {}, "composer_bounded_inference_premise_omitted", ModelFirstAnswerComposerService._diagnostics(
-                        "unknown_evidence_ref",
+                if (
+                    not option_premises
+                    or not set(option_premises).issubset(known_refs)
+                ):
+                    return {}, "composer_offered_projection_invalid", ModelFirstAnswerComposerService._diagnostics(
+                        "offered_projection_invalid",
                         parsed=parsed,
-                        json_path=f"{path}.evidence_refs",
-                        expected_type="exact_option_premise_evidence_refs",
-                        actual_type="array",
+                        json_path=f"{path}.selected_option_refs",
+                        expected_type="option_with_known_server_premises",
+                        actual_type="projection_mismatch",
                     )
                 canonical_clause = {
                     "goal_ref": goal_ref,
@@ -4180,13 +4146,16 @@ class ModelFirstAnswerComposerService:
                 )
             elif goal["resolution_status"] == "supported":
                 required_refs = list(goal["required_evidence_refs"])
-                if refs != required_refs:
-                    return {}, "composer_supported_claim_omitted", ModelFirstAnswerComposerService._diagnostics(
-                        "unknown_evidence_ref",
+                if (
+                    not required_refs
+                    or not set(required_refs).issubset(known_refs)
+                ):
+                    return {}, "composer_offered_projection_invalid", ModelFirstAnswerComposerService._diagnostics(
+                        "offered_projection_invalid",
                         parsed=parsed,
-                        json_path=f"{path}.evidence_refs",
-                        expected_type="exact_required_evidence_refs",
-                        actual_type="array",
+                        json_path=f"{path}.goal_ref",
+                        expected_type="supported_goal_with_known_evidence",
+                        actual_type="projection_mismatch",
                     )
                 canonical_clause = {
                     "goal_ref": goal_ref,
@@ -4198,14 +4167,6 @@ class ModelFirstAnswerComposerService:
                     "inference_scope": "",
                 }
             else:
-                if refs:
-                    return {}, "composer_unresolved_goal_evidence_invalid", ModelFirstAnswerComposerService._diagnostics(
-                        "unknown_evidence_ref",
-                        parsed=parsed,
-                        json_path=f"{path}.evidence_refs",
-                        expected_type="empty_array",
-                        actual_type="non_empty_array",
-                    )
                 canonical_clause = {
                     "goal_ref": goal_ref,
                     "clause_kind": "unresolved",

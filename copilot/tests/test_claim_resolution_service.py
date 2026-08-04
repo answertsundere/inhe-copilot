@@ -1075,12 +1075,12 @@ def test_policy_binding_requires_exact_trusted_intent_contract(
     assert result["bounded_inference_rejection_reason"] == expected_reason
 
 
-def test_policy_binding_without_nomination_offers_safe_options_without_selecting():
+def test_policy_binding_without_intent_ref_uses_owner_goal_family_only():
     result = build_claim_resolutions(
         [_bounded_goal(
             policy_intent_ref="",
-            policy_goal_family="",
-            policy_intent_kind="",
+            policy_goal_family="product_durability",
+            policy_intent_kind="practical_guidance",
         )],
         direct_product_facts=[
             _fact("material", "material", claim_type="material_composition")
@@ -1103,7 +1103,7 @@ def test_policy_binding_without_nomination_offers_safe_options_without_selecting
     assert result["premise_evidence_uids"] == []
 
 
-def test_policy_binding_without_nomination_can_offer_multiple_safe_options():
+def test_policy_binding_without_intent_ref_excludes_other_goal_families():
     alternate = _bounded_policy(
         policy_intent_ref="material_daily_use_practical_guidance",
         goal_family="material_daily_use",
@@ -1112,8 +1112,8 @@ def test_policy_binding_without_nomination_can_offer_multiple_safe_options():
     result = build_claim_resolutions(
         [_bounded_goal(
             policy_intent_ref="",
-            policy_goal_family="",
-            policy_intent_kind="",
+            policy_goal_family="product_durability",
+            policy_intent_kind="practical_guidance",
         )],
         direct_product_facts=[
             _fact("material", "material", claim_type="material_composition")
@@ -1129,12 +1129,34 @@ def test_policy_binding_without_nomination_can_offer_multiple_safe_options():
         option["policy_intent_ref"]
         for option in result["eligible_policy_options"]
     ] == [
-        "material_daily_use_practical_guidance",
         "product_durability_practical_guidance",
     ]
     assert all(
         option["option_provenance"]["intent_narrowed"] is False
         for option in result["eligible_policy_options"]
+    )
+
+
+def test_policy_binding_without_owner_goal_family_offers_no_options():
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            policy_intent_ref="",
+            policy_goal_family="",
+            policy_intent_kind="",
+        )],
+        direct_product_facts=[
+            _fact("material", "material", claim_type="material_composition")
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[_bounded_policy()],
+        context_capabilities={"product_category": {"available": True}},
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == (
+        "bounded_inference_policy_goal_family_missing"
     )
 
 

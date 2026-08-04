@@ -247,12 +247,15 @@ denominator remained zero.
 P1.2c keeps the same owners but separates deterministic eligibility from
 semantic choice. A trusted Domain Pack defines premise families, qualitative
 scope, maximum `low`/`medium` risk, required qualifiers, prohibited claim
-families, and mandatory review. Claim Resolution projects every policy in the
-safe deterministic intersection as `eligible_policy_options`; a trusted intent
-may narrow the set but missing intent does not select or authorize inference.
-For each authoritative customer goal, the Composer chooses zero or one offered
-policy and returns its policy reference, admitted premise references, and
-exact scope with the clause. Deterministic Final checks offered-set
+families, and mandatory review. Claim Resolution projects only policies in the
+safe deterministic intersection for the same owner-stamped goal family as
+`eligible_policy_options`; a trusted exact intent may narrow that set further.
+Missing goal-family authority produces no options and cannot authorize
+inference. For each authoritative customer goal, the Composer chooses zero or
+one offered policy and returns only the goal reference, customer text, and
+selected option alias. The server restores required evidence and premise
+references from the already validated resolution or option binding.
+Deterministic Final checks offered-set
 membership, Domain Pack identity and provenance, premises, scope, risk ceiling,
 review-only status, qualifiers, prohibitions, and conflicts. Unified Textual
 Audit checks the rendered text.
@@ -363,8 +366,9 @@ guidance inside declared factor families. They do not establish chemical
 compatibility, waterproofing, sterilization, safety, or certification facts.
 Claim Resolution does not expose optional policies on an already-supported
 goal unless Turn Understanding explicitly nominated that same practical
-intent; unresolved goals may still receive the safe offered set for Composer
-selection. This keeps useful model reasoning on the actual unresolved goal
+intent; unresolved goals receive only the safe offered set for their
+owner-stamped goal family. A goal without that family receives no option. This
+keeps useful model reasoning on the actual unresolved goal
 without allowing a direct material answer to acquire unrelated care advice.
 The existing Composer, Deterministic Final, and Unified Audit chain passed the
 cleaning and moisture component matrix `5/5 + 5/5`; full Pipeline qualification
@@ -381,6 +385,16 @@ a candidate reply. This prevents an empty clause set from being audited against
 an empty atomic contract while retaining the existing legacy owner for
 non-renderable turns. The Fixed-8 also retained one separate Composer premise
 reference failure, so the overall P1 quality gate remains open.
+
+The follow-up Composer contract removes another transport-only burden. The
+model output is now three fields per clause: `goal_ref`, `text`, and
+`selected_option_refs`. Supported evidence and selected-option premises are
+not model choices, so the server restores them deterministically from the
+validated resolution or binding. A frozen three-goal case passed Composer,
+Deterministic Final, and Unified Audit `5/5` after Claim Resolution also limited
+unnominated options to the same trusted goal family. This reduces schema work
+without reducing model ownership of interpretation, option selection, or
+customer wording.
 
 Model portability is role-scoped rather than a global model switch. Turn
 Understanding, Composer, Unified Audit, embedding, and VLM roles may evolve at

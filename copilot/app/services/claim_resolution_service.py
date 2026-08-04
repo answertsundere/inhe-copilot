@@ -422,6 +422,27 @@ def _eligible_policy_options(
                 policy_intent_kind,
                 "bounded_inference_high_risk_prohibited",
             )
+    else:
+        policy_goal_family = sanitize_text(
+            requested.get("policy_goal_family")
+        ).lower()
+        policy_intent_kind = sanitize_text(
+            requested.get("policy_intent_kind")
+        ).lower()
+        if not policy_goal_family:
+            return [], "bounded_inference_policy_goal_family_missing"
+        if policy_intent_kind != "practical_guidance":
+            return [], "bounded_inference_intent_kind_mismatch"
+        policies = [
+            policy
+            for policy in policies
+            if sanitize_text(policy.get("goal_family")).lower()
+            == policy_goal_family
+            and sanitize_text(policy.get("intent_kind")).lower()
+            == policy_intent_kind
+        ]
+        if not policies:
+            return [], "bounded_inference_goal_family_mismatch"
 
     options: list[dict[str, Any]] = []
     rejection_reason = ""

@@ -70,10 +70,12 @@ the span position and hash, not another copy of customer text. Missing or
 invalid goal structure is observable and fails closed for that goal.
 
 The model-first composer projects customer goals and admitted evidence to
-anonymous stable references. Its strict output is one clause per customer goal:
-`goal_ref`, `clause_kind`, `text`, and `evidence_refs`. Supported clauses must
-cite exactly their admitted evidence; unresolved, conflicting, or prohibited
-goals must return an unresolved clause without evidence. Supporting-only
+anonymous stable references. Its strict model output is one clause per customer
+goal with only `goal_ref`, `text`, and `selected_option_refs`. Clause kind,
+supported evidence, selected policy, premise evidence, scope, risk, and Pack
+identity are server-owned and restored from the validated resolution or option
+binding. Unresolved, conflicting, or prohibited goals therefore receive no
+evidence unless an allowed option supplies its fixed premise. Supporting-only
 evidence dependencies are not customer goals. The application validates the
 complete goal set and renders the verified clauses in stable order without
 adding fallback wording. This remains one model call and review-only; it cannot
@@ -194,8 +196,9 @@ semantic selection. Claim Resolution owns the deterministic intersection of
 trusted Domain Pack policies, admitted direct premises, authoritative goal,
 risk, context capabilities, and conflict state. It emits goal-scoped
 `eligible_policy_options` and does not select one. A valid trusted intent may
-narrow the set; a missing intent leaves the safe set available without
-authorizing inference. The existing Composer owns the zero-or-one selection
+narrow the set; without an exact intent, only policies in the same
+owner-stamped goal family remain available. Missing goal-family authority
+produces no options. The existing Composer owns the zero-or-one selection
 and language. Deterministic Final validates the selected policy against the
 offered set, policy provenance, premises, scope, risk ceiling, review-only
 metadata, qualifiers, and prohibitions; Unified Textual Audit validates textual
@@ -288,8 +291,9 @@ four, Gold 16, and Synthetic gates were not run. Status remains
 P1 later tightened eligibility without changing that ownership: an
 already-supported goal with no explicit policy nomination is direct-only and
 does not receive unrelated options merely because it shares a premise family.
-Unresolved goals may still receive the safe offered set, and an explicitly
-nominated supported practical goal may still receive its exact option. This
+Unresolved goals may still receive the safe same-goal-family offered set, and
+an explicitly nominated supported practical goal may still receive its exact
+option. This
 prevents optional advice on a completed fact goal while preserving model-led
 selection on the customer's actual unresolved request.
 

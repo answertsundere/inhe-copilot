@@ -124,9 +124,10 @@ admitted material premise. It permits concise mild-cleaning, spot-test,
 prompt-drying, ventilation, and splash-versus-immersion guidance while
 retaining chemical-compatibility, waterproof, sterilization, safety, and
 certification prohibitions. A fully supported goal without an explicit policy
-nomination now remains direct-only; unresolved goals still receive the safe
-offered set and an explicitly nominated supported practical goal may still
-receive its exact option. The existing Composer, Deterministic Final, and
+nomination now remains direct-only; unresolved goals receive only the safe
+offered set for their owner-stamped goal family, and an explicitly nominated
+supported practical goal may still receive its exact option. The existing
+Composer, Deterministic Final, and
 loopback Unified Audit passed cleaning `5/5` plus moisture `5/5` with one call
 per role, no retry/repair/fallback, stable policy attribution, and no send
 authority. This is a component qualification; the new native Fixed-8 remains
@@ -142,12 +143,25 @@ Composer model calls and keeps them on the legacy orchestration path. Second,
 one real three-goal turn selected a bounded option but omitted its admitted
 premise reference, which the existing Validator correctly rejected.
 
+The premise failure is now closed without adding repair. Since evidence and
+premise references are already fixed by the validated resolution or selected
+option, Composer no longer echoes them in model output; the server restores
+them deterministically. Claim Resolution also refuses to offer policies when
+the authoritative goal has no goal-family binding, instead of exposing every
+policy that happens to share a material premise. The exact frozen three-goal
+case passed Composer, Deterministic Final, and Unified Audit `5/5`, with one
+call per role and zero retry/repair/fallback. Its wording remains safe but the
+high-temperature cleaning answer is not yet at the approved gold target, so a
+fresh Fixed-8 is not the immediate next action.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. qualify the frozen three-goal premise-selection contract without changing
-   its facts, option binding, Validator, retry, repair, or fallback behavior;
+1. add and qualify a general review-only high-temperature-cleaning boundary
+   that can say not to use boiling water when temperature and sterilization
+   support are absent, without asserting deformation, heat resistance, or
+   disinfection effectiveness;
 2. run one new pinned complete conversation gate with the qualified loopback
    Unified Audit role and score customer outcome, naturalness, continuity, RAG
    evidence coverage, and useful progress rather than internal finding-code
@@ -177,11 +191,11 @@ checkpoint, not a qualified capability and not a real-accuracy result.
 P1.2c corrects that earliest ownership break without adding another reasoning
 owner. Claim Resolution now computes a deterministic
 `eligible_policy_options` intersection from the trusted Domain Pack, admitted
-direct premises, authoritative customer goal, risk ceiling, context
-capabilities, and conflict state. A trusted intent may narrow this set; a
-missing intent no longer forces the safe set to zero and never selects a
-policy. The Composer may choose zero or one offered option for each goal and
-must bind the selected policy, admitted premises, and exact scope in the
+direct premises, authoritative customer goal family, risk ceiling, context
+capabilities, and conflict state. A trusted exact intent may narrow this set;
+missing goal-family authority forces the set to zero and never selects a
+policy. The Composer may choose zero or one offered option for each goal; the
+server restores the selected policy, admitted premises, and exact scope in the
 clause. Deterministic Final revalidates the offered-set membership, Domain Pack
 identity, premises, scope, risk, review-only marker, qualifiers, and
 prohibitions. Unified Textual Audit remains the only textual audit.

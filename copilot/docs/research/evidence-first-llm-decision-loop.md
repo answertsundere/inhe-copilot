@@ -647,8 +647,9 @@ trusted Domain Pack + admitted direct premises + authoritative goal
 
 Each option retains the trusted pack reference, applicable goal, premise UIDs
 and families, allowed scope, forbidden claim families, maximum/requested risk,
-required qualifiers, review-only status, and owner provenance. Missing trusted
-intent no longer empties the safe set; a valid intent may only narrow it.
+required qualifiers, review-only status, and owner provenance. Missing exact
+intent may leave same-goal-family options available, but missing owner-stamped
+goal family empties the set; a valid exact intent may only narrow it.
 Unknown or public-injected intent, missing/conflicting premise, high risk,
 service/media/dependency/context goals, wrong goal/policy/evidence references,
 and policy metadata mutations fail closed.
