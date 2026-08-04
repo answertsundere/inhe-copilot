@@ -202,10 +202,13 @@ For each goal:
 - practical_guidance is for an explicit action, method, handling, care, fit, or
   use or suitability question. Do not nominate practical_guidance for a direct
   factual identity or value request such as asking what something is or how much
-  it is. When an explicit action, method, handling, care, fit, use, or suitability
-  question has one directly matching supplied practical-guidance candidate,
-  nominate that candidate instead of leaving a known practical intent blank,
-  whether its claim type is canonical or unmapped.
+  it is. Asking for a known fact as a fallback when media or a service action is
+  unavailable is still a direct factual request; that conditional fallback does
+  not create a practical-guidance intent. When an explicit action, method,
+  handling, care, fit, use, or suitability question has one directly matching
+  supplied practical-guidance candidate, nominate that candidate instead of
+  leaving a known practical intent blank, whether its claim type is canonical or
+  unmapped.
 - source_text is the smallest continuous exact substring that expresses this
   one goal and occurs exactly once in the current customer_message. Copy it
   verbatim without normalization. Distinct goals must not reuse the same exact
