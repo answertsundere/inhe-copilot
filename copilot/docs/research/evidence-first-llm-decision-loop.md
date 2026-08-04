@@ -709,6 +709,23 @@ still data selection, not text classification or policy selection. The frozen
 moisture input passed `5/5` with one call per attempt and no retry, repair, or
 fallback. A fresh full-chain run remains the promotion gate for this follow-up.
 
+`maternal_child_home@1.6.3` adds a distinct no-factual-premise exception only
+for `safety_handoff_required`. The exception does not make Domain Policy
+evidence and does not answer a toxicity, ingestion-safety, certification, or
+child-safety question. It preserves the high-risk request as unresolved and
+allows the same authoritative goal to carry only risk-reduction actions:
+interrupt oral contact, inspect damage or missing fragments, and seek medical
+help after ingestion or symptoms. Claim Resolution records the goal as premise
+owner, Composer selects and words the option, and Deterministic Final verifies
+the Pack, scope, risk, boundary, and empty evidence binding. Unified Audit is
+given an authoritative restricted-boundary applicability bit while retaining
+semantic judgment over the customer text. Oral-safety-only and
+material-plus-oral-safety cases passed the chain `3/3` each. Four original
+responses were reused and only two missing live attempts were made after an
+evaluation denominator stopped counting supporting-only material dependencies
+as customer goals. This remains review-only and default-off pending a fresh
+Fixed-8.
+
 The existing comparison runner now reports option coverage, policy selection,
 selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer

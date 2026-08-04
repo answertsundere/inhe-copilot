@@ -382,6 +382,24 @@ decisions for explicit advice, assertions, conclusions, and mechanically empty
 restricted boundaries; `indeterminate` remains fail-closed for genuinely
 ambiguous language. Full Pipeline qualification remains pending.
 
+Version `1.6.3` adds one reviewed oral-exposure safety-handling policy without
+turning product material into toxicity or ingestion-safety evidence. A current
+authoritative customer goal in the high-risk bite/toxicity family remains
+`prohibited` and `must_remain_unresolved`; Claim Resolution may expose one
+goal-owned `safety_handoff_required` alternative with no factual premise only
+for stopping oral contact, inspecting damage or missing fragments, and seeking
+medical help after ingestion or symptoms. The option carries the trusted Pack
+identity, remains medium-risk and review-only, and cannot assert non-toxicity,
+food-grade status, certification, child safety, or product safety. Composer may
+word that alternative, while Deterministic Final restores and validates its
+server-owned binding. Unified Audit receives an authoritative boolean stating
+whether the restricted boundary applies and still judges whether the wording
+preserves it. Two representative oral-exposure cases, including one compound
+material-plus-safety turn, passed this complete chain three times each (`6/6`)
+with exactly two new live calls after an evaluator-only denominator correction,
+zero retry/repair/fallback, no formal-knowledge change, and no send authority.
+This is a component qualification; a fresh native Fixed-8 remains required.
+
 The subsequent native Fixed-8 exposed a separate orchestration boundary. Some
 turns legitimately contain only dependency, service, media, or context goals
 and therefore have no renderable `customer_goal`. In that case the Composer is
@@ -518,6 +536,17 @@ qualification passed `15/15`; after the full gate exposed the missing-kind
 path, the separate frozen moisture qualification passed `5/5`, each with no
 retry, repair, or fallback. Another full native gate is required before the
 kind projection is an end-to-end quality result.
+
+The next component gate closed the recurring oral-exposure handling gap. The
+trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
+only immediate risk-reduction steps owned by the same authoritative customer
+goal. The material-plus-oral-safety and oral-safety-only cases passed
+Composer, Deterministic Final, and Unified Audit `3/3` each. The run reused four
+frozen HTTP responses and made only the two missing calls; a former duplicate
+material count was an evaluator error caused by including a supporting-only
+dependency in the customer-goal denominator. No Agent output was changed to
+correct that denominator. The next result must come from one fresh native
+Fixed-8, not from another component fixture.
 
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,

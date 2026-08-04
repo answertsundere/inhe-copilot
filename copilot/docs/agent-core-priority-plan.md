@@ -199,14 +199,27 @@ input passed this contract `5/5` with one model call per attempt and no retry,
 repair, fallback, knowledge access, or send authority. A new native gate remains
 mandatory before declaring the full reply improved.
 
+The subsequent customer-outcome owner was oral-exposure safety handling. The
+Pack now keeps the requested toxicity or ingestion-safety fact high-risk and
+unresolved while offering only a review-only practical response: stop oral
+contact, inspect for damage or fragments, and seek medical help after ingestion
+or symptoms. It does not infer product safety from material and does not use
+Domain Policy as evidence. The oral-safety-only and compound
+material-plus-oral-safety cases passed Composer, Deterministic Final, and
+Unified Audit three times each (`6/6`). Four frozen responses were retained;
+only the two missing attempts were called after correcting an evaluator
+denominator that had counted a supporting-only dependency as a second customer
+material goal. Formal knowledge and DML were unchanged and send authority
+remained zero. This closes the component gate, not the full conversation gate.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
 1. run one fresh pinned complete conversation gate after the qualified Turn
-   Understanding change and score customer outcome, naturalness, continuity,
-   RAG evidence coverage, and useful progress rather than internal finding-code
-   wording;
+   Understanding and oral-exposure handling changes, and score customer
+   outcome, naturalness, continuity, RAG evidence coverage, and useful progress
+   rather than internal finding-code wording;
 2. after that gate is complete, run the documented cognitive-consolidation
    shadow comparison before deleting or merging any LangGraph node;
 3. preserve the P0 owner and safety boundaries while locating the earliest
@@ -812,7 +825,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | After Turn Understanding qualified `15/15`, native Fixed-8 on `7096269d` completed `8/8`, Composer `7/8`, no knowledge/DML/send change, and expert review improved to `2 pass / 6 partial / 0 fail`; p95 was still `96.480s`. The exact-family unique-intent-kind follow-up passed frozen moisture `5/5`; `real_accuracy=null` | Run one fresh full native gate for the intent-kind fix, then address method-scoped cleaning, RAG dependencies, relation reasoning, and latency by earliest measured owner |
+| P1 Gold Conversation Quality | active | After Turn Understanding qualified `15/15`, native Fixed-8 on `7096269d` completed `8/8`, Composer `7/8`, no knowledge/DML/send change, and expert review improved to `2 pass / 6 partial / 0 fail`; p95 was still `96.480s`. Moisture passed `5/5`; oral-safety-only plus material-and-oral-safety passed `3/3` each with unresolved high-risk facts, bounded handling, and zero knowledge/DML/send change. `real_accuracy=null` | Run one fresh full native Fixed-8 for the qualified component changes, then address the earliest measured customer-quality or latency owner |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

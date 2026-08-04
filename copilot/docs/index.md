@@ -123,6 +123,12 @@ family agrees on one value; ambiguous families remain empty and fail closed.
 The frozen five-run moisture qualification passed `5/5` with no retry, repair,
 or fallback. A fresh full native gate is still required. None of these results
 enable the disabled features or establish real-customer accuracy.
+The next oral-exposure component keeps toxicity and ingestion safety unresolved
+while allowing only goal-owned, review-only risk handling with no factual
+premise. Oral-safety-only and material-plus-oral-safety cases passed the full
+Composer, Deterministic Final, and Unified Audit chain `3/3` each; formal
+knowledge, DML, and send authority remained unchanged. This is still a
+component result, and the next gate is one fresh native Fixed-8.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an
