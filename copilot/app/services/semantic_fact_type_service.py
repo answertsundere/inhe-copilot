@@ -163,7 +163,9 @@ Treat each independently answerable request as a separate goal. Enumerate the
 requests before classifying them, and then silently verify that every explicit
 request is represented exactly once in the output. A restrictive, high-risk,
 guarantee, service, or media request must not replace or suppress a separate
-fact request from the same buyer turn.
+fact request from the same buyer turn. A conditional fallback between explicit
+media or service and factual requests changes their precedence, not the number
+of goals; preserve both requests separately.
 
 Return exactly one JSON object with the single top-level field "goals". Do not
 return Markdown, explanations, owner fields, versions, status summaries,

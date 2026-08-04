@@ -162,6 +162,7 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "It may be empty only when this is a direct factual identity/value request" in prompt
     assert "as a fallback when media or a service action is unavailable" in prompt
     assert "does not create a practical-guidance intent" in prompt
+    assert "changes their precedence, not the number of goals" in prompt
     assert "action, method, handling, care, fit, use, or suitability" in prompt
     assert "whether its claim type is canonical or unmapped" in prompt
 
