@@ -726,6 +726,18 @@ evaluation denominator stopped counting supporting-only material dependencies
 as customer goals. This remains review-only and default-off pending a fresh
 Fixed-8.
 
+The fresh native Fixed-8 on `1ed24db5` completed the complete formal chain
+`8/8`; the two oral-exposure replies passed expert review, while formal
+knowledge, DML, and send authority remained unchanged. The next counterexample
+is a semantic-budget distinction rather than a new policy family: “no direct
+test evidence is available” is an evidence-availability boundary, whereas
+“the product has not been tested” is an affirmative product test-status claim.
+The durability policy already carries `no_test_claim`, but Unified Audit passed
+the latter wording. The next qualification must therefore hold the candidate,
+policy binding, and evidence constant and test that this existing textual Audit
+owner accepts the former and rejects the latter without phrase matching,
+post-generation repair, or product-specific rules.
+
 The existing comparison runner now reports option coverage, policy selection,
 selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer

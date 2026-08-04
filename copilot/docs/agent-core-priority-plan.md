@@ -212,15 +212,26 @@ denominator that had counted a supporting-only dependency as a second customer
 material goal. Formal knowledge and DML were unchanged and send authority
 remained zero. This closes the component gate, not the full conversation gate.
 
+The required native Fixed-8 then ran once on clean commit `1ed24db5` with no
+transport interception or replacement requests. Composer, Deterministic Final,
+Unified Audit, and Delivery all completed `8/8`; formal knowledge, DML, and
+send authority were unchanged. Expert review rated `2 pass / 4 partial / 0
+fail / 2 not scorable`, with both oral-exposure cases now passing. Pipeline
+p50/p95 improved to `26.256s/36.480s`, although seat-scale latency remains
+unqualified. The earliest new defect is textual factual fidelity: a durability
+reply asserted that the product had not undergone impact testing when the
+authoritative budget only established that direct test evidence was absent.
+The existing Unified Audit should reject this `no_test_claim` violation
+without adding a keyword classifier, reply repair, or product-specific rule.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. run one fresh pinned complete conversation gate after the qualified Turn
-   Understanding and oral-exposure handling changes, and score customer
-   outcome, naturalness, continuity, RAG evidence coverage, and useful progress
-   rather than internal finding-code wording;
-2. after that gate is complete, run the documented cognitive-consolidation
+1. close the `no_test_claim` factual-fidelity gap in the existing Unified Audit
+   owner and requalify the frozen safe/unsafe semantic pair before another
+   complete conversation gate;
+2. after the next complete gate is clean, run the documented cognitive-consolidation
    shadow comparison before deleting or merging any LangGraph node;
 3. preserve the P0 owner and safety boundaries while locating the earliest
    remaining quality gap; and
@@ -825,7 +836,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | After Turn Understanding qualified `15/15`, native Fixed-8 on `7096269d` completed `8/8`, Composer `7/8`, no knowledge/DML/send change, and expert review improved to `2 pass / 6 partial / 0 fail`; p95 was still `96.480s`. Moisture passed `5/5`; oral-safety-only plus material-and-oral-safety passed `3/3` each with unresolved high-risk facts, bounded handling, and zero knowledge/DML/send change. `real_accuracy=null` | Run one fresh full native Fixed-8 for the qualified component changes, then address the earliest measured customer-quality or latency owner |
+| P1 Gold Conversation Quality | active | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, including both oral-safety cases passing. Knowledge/DML/send changes were zero and p50/p95 were `26.256s/36.480s`. One durability reply asserted an unsupported no-test status despite `no_test_claim`; `real_accuracy=null` | Requalify Unified Audit factual fidelity for `no_test_claim`, then run the next comparable full gate and continue by earliest measured quality owner |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

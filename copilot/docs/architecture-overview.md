@@ -548,6 +548,18 @@ dependency in the customer-goal denominator. No Agent output was changed to
 correct that denominator. The next result must come from one fresh native
 Fixed-8, not from another component fixture.
 
+That fresh native Fixed-8 ran once on clean commit `1ed24db5`. All eight
+requests reached Composer, Deterministic Final, Unified Audit, and Delivery;
+there were no replacement requests, formal-knowledge changes, DML attempts, or
+send-authority changes. The oral-exposure-only and material-plus-oral-exposure
+replies now include useful bounded handling. Expert review improved those two
+cases to pass and rated the full set `2 pass / 4 partial / 0 fail / 2 not
+scorable`. Pipeline p50/p95 were `26.256s/36.480s`. The run also exposed one
+remaining factual-fidelity gap: the durability reply changed “no direct test
+evidence” into “the product has not been tested”, despite the policy's
+`no_test_claim` qualifier. The existing Unified Textual Audit is the next
+owner; production enablement and real-customer accuracy remain unqualified.
+
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,
 protocol-stabilization budget, and the required architecture-drift check. It
