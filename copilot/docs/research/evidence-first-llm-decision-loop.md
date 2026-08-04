@@ -654,6 +654,24 @@ Unknown or public-injected intent, missing/conflicting premise, high risk,
 service/media/dependency/context goals, wrong goal/policy/evidence references,
 and policy metadata mutations fail closed.
 
+`maternal_child_home@1.6.1` keeps one `cleaning_care` reasoning budget rather
+than routing chemical and temperature questions through separate Python
+branches. The model interprets the requested cleaning method. When heat
+tolerance and sterilization support are absent, it may advise against boiling
+water or another unverified high-temperature treatment and recommend mild
+cleaning, but it may not claim deformation, heat resistance, sterilization
+effectiveness, chemical compatibility, or product safety.
+
+The expanded frozen high-temperature input passed Composer, Deterministic
+Final, and Unified Audit `5/5` with one call per model role and no retry,
+repair, or fallback. A separate loopback Audit qualification accepted the safe
+budget case `5/5` and rejected an explicit prohibited heat-resistance and
+sterilization counterexample `5/5`. The generic Audit instruction treats
+explicit advice, factors, assertions, conclusions, and mechanically empty
+restricted boundaries as determinate comparisons; `indeterminate` remains a
+fail-closed result only for genuinely ambiguous language. This qualifies the
+component contract for the next native Fixed-8, not for production sending.
+
 The existing comparison runner now reports option coverage, policy selection,
 selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer

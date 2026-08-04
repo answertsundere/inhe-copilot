@@ -231,6 +231,23 @@ def test_unsafe_promise_terms_ignore_safe_negation_and_uncertainty():
     from app.services.generic_service_rule_service import unsafe_promise_terms
 
     assert unsafe_promise_terms("这不代表绝对安全，也不能确认是否0甲醛。") == []
+    assert unsafe_promise_terms(
+        "是否完全无味，目前没有相关资料可以确认。"
+    ) == []
+    assert unsafe_promise_terms(
+        "是否完全无味，现有资料无法确认。"
+    ) == []
+    assert unsafe_promise_terms(
+        "目前暂无法为您确认是否完全无味。"
+    ) == []
+
+
+def test_unsafe_promise_terms_keep_affirmative_claim_with_unrelated_caveat():
+    from app.services.generic_service_rule_service import unsafe_promise_terms
+
+    assert unsafe_promise_terms(
+        "这款完全无味，目前没有补充资料。"
+    ) == ["完全无味"]
 
 
 def test_validate_rule_rejects_unsafe_customer_promise():

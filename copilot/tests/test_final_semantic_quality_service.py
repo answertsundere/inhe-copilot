@@ -386,6 +386,10 @@ def test_atomic_prompt_requires_independent_cumulative_budget_checks():
     assert "mechanically keyed by the supplied restricted_request_boundary" in prompt
     assert "return not_applicable regardless of caveats" in prompt
     assert "Do not infer a restricted boundary from wording alone" in prompt
+    assert "fail-closed last resort for genuinely ambiguous language" in prompt
+    assert "not an alternative to performing a supplied comparison" in prompt
+    assert "semantically within prohibited_extensions is outside_budget" in prompt
+    assert "always mechanically not_applicable" in prompt
 
 
 @pytest.mark.parametrize(

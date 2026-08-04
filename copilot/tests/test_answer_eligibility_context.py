@@ -588,12 +588,32 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
     )
     assert cleaning["goal_family"] == "cleaning_care"
     assert cleaning["advice_mode"] == "concise_care_only"
+    assert cleaning["allowed_scope"] == (
+        "conservative_routine_and_unverified_high_temperature_cleaning"
+    )
+    assert cleaning["allowed_conclusion_family"] == (
+        "conservative_material_cleaning_and_temperature_boundary"
+    )
     assert cleaning["allowed_variability_factor_families"] == [
         "cleaning_agent_strength",
         "component_material",
         "contact_duration",
         "surface_finish",
+        "water_temperature",
     ]
+    assert {
+        "do_not_spot_test_high_temperature_treatment",
+        "do_not_use_boiling_water_until_temperature_support_verified",
+        "no_heat_resistance_claim",
+        "no_sterilization_effectiveness_claim",
+        "prefer_mild_cleaning_until_temperature_support_verified",
+        "spot_test_cleaning_agent_before_broad_use",
+    } <= set(cleaning["required_qualifiers"])
+    assert {
+        "disinfection_effectiveness",
+        "heat_resistance",
+        "sterilization",
+    } <= set(cleaning["prohibited_claim_families"])
     moisture = next(
         item
         for item in policies

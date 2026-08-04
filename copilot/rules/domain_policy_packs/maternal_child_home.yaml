@@ -1,6 +1,6 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.5.0
+version: 1.6.1
 bounded_inference_policies:
   - policy_intent_ref: product_dimensions_practical_guidance
     goal_family: product_dimensions_and_space
@@ -101,20 +101,25 @@ bounded_inference_policies:
       - material_composition
     required_context_capabilities:
       - product_category
-    allowed_scope: conservative_routine_cleaning_from_verified_material
-    allowed_conclusion_family: conservative_material_cleaning_guidance
+    allowed_scope: conservative_routine_and_unverified_high_temperature_cleaning
+    allowed_conclusion_family: conservative_material_cleaning_and_temperature_boundary
     allowed_variability_factor_families:
       - cleaning_agent_strength
       - component_material
       - contact_duration
       - surface_finish
+      - water_temperature
     advice_mode: concise_care_only
     maximum_risk_level: medium
     required_qualifiers:
       - avoid_prolonged_chemical_contact
+      - do_not_spot_test_high_temperature_treatment
+      - do_not_use_boiling_water_until_temperature_support_verified
       - no_chemical_compatibility_guarantee
-      - prefer_mild_cleaning
-      - spot_test_before_broad_use
+      - no_heat_resistance_claim
+      - no_sterilization_effectiveness_claim
+      - prefer_mild_cleaning_until_temperature_support_verified
+      - spot_test_cleaning_agent_before_broad_use
     prohibited_claim_families:
       - child_safety
       - disinfection_effectiveness

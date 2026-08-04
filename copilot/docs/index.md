@@ -109,11 +109,15 @@ The historical native P1.4 fixed-eight gates remain incomplete. A prospective
 formal-RAG case restored a published structured-product material fact without
 widening unresolved claims, and the isolated loopback Unified Audit role later
 qualified against the corrected semantic matrix. Domain Pack
-`maternal_child_home@1.5.0` now adds reviewed cleaning-care and
-incidental-moisture budgets, and the existing Composer, Deterministic Final,
-and Audit chain passed both live-shaped component inputs `5/5 + 5/5`. The next
-gate is one clean native Fixed-8; these component results do not enable the
-disabled features or establish real-customer accuracy.
+`maternal_child_home@1.6.1` now adds reviewed cleaning-care including an
+unverified-high-temperature boundary, plus incidental-moisture budgets. The
+earlier Composer, Deterministic Final, and Audit chain passed both live-shaped
+component inputs `5/5 + 5/5`. The expanded high-temperature cleaning case then
+passed the full Composer, Deterministic Final, and Unified Audit chain `5/5`,
+and the loopback Audit role separately accepted the safe budget case `5/5` and
+rejected its prohibited counterexample `5/5`. One clean native Fixed-8 is now
+the next quality gate. These results do not enable the disabled features or
+establish real-customer accuracy.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an

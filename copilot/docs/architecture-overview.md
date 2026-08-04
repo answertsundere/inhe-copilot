@@ -358,12 +358,14 @@ attribution. This qualifies that exact local Audit role for isolated P1
 evaluation only; it does not enable production, Composer, bounded inference,
 or `can_send`, and `real_customer_accuracy=null`.
 
-Version `1.5.0` adds the same reviewed control boundary for ordinary cleaning
-care and incidental moisture exposure. Both policies require an admitted
-material-composition premise, remain `review_only`, and permit only concise
-care, spot-test, prompt-drying, ventilation, and splash-versus-immersion
-guidance inside declared factor families. They do not establish chemical
-compatibility, waterproofing, sterilization, safety, or certification facts.
+Version `1.6.1` adds the same reviewed control boundary for ordinary cleaning,
+unverified high-temperature treatment, and incidental moisture exposure. The
+policies require an admitted material-composition premise, remain
+`review_only`, and permit only concise care, spot-test, prompt-drying,
+ventilation, splash-versus-immersion guidance, and a direct recommendation
+against unverified boiling-water or other high-temperature treatment. They do
+not establish chemical compatibility, heat resistance, deformation,
+waterproofing, sterilization effectiveness, safety, or certification facts.
 Claim Resolution does not expose optional policies on an already-supported
 goal unless Turn Understanding explicitly nominated that same practical
 intent; unresolved goals receive only the safe offered set for their
@@ -371,8 +373,14 @@ owner-stamped goal family. A goal without that family receives no option. This
 keeps useful model reasoning on the actual unresolved goal
 without allowing a direct material answer to acquire unrelated care advice.
 The existing Composer, Deterministic Final, and Unified Audit chain passed the
-cleaning and moisture component matrix `5/5 + 5/5`; full Pipeline qualification
-remains pending.
+cleaning and moisture component matrix `5/5 + 5/5`. The expanded
+high-temperature cleaning input subsequently passed Composer, Deterministic
+Final, and Unified Audit `5/5`, while the same loopback Audit role accepted its
+safe semantic budget `5/5` and rejected a prohibited heat-resistance and
+sterilization counterexample `5/5`. The Audit prompt requires determinate
+decisions for explicit advice, assertions, conclusions, and mechanically empty
+restricted boundaries; `indeterminate` remains fail-closed for genuinely
+ambiguous language. Full Pipeline qualification remains pending.
 
 The subsequent native Fixed-8 exposed a separate orchestration boundary. Some
 turns legitimately contain only dependency, service, media, or context goals

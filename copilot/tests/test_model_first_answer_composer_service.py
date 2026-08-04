@@ -954,6 +954,8 @@ def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
         required_rule,
         "即使 required_clause_kind=unresolved 也相同",
         "required clause 的 text 同时表达所选 allowed_scope",
+        "required_qualifiers 中每一项都是必须显式表达的语义义务",
+        "以 do_not_ 开头的 qualifier 必须直接说明暂不采取对应动作",
         "must_remain_unresolved 只约束客户原始受限主张",
         "模型不得输出 evidence_refs",
         "required_clause_kind=unresolved 时结合 goal_summary",

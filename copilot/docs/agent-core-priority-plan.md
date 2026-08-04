@@ -118,7 +118,7 @@ qualifies that exact role for the next isolated Fixed-8 only; it does not enable
 production or change `can_send`.
 
 A later native Fixed-8 exposed two ordinary-care gaps rather than a need for a
-new reasoning service. Domain Pack `maternal_child_home@1.5.0` therefore adds
+new reasoning service. Domain Pack `maternal_child_home@1.6.1` therefore adds
 review-only cleaning-care and incidental-moisture budgets grounded in an
 admitted material premise. It permits concise mild-cleaning, spot-test,
 prompt-drying, ventilation, and splash-versus-immersion guidance while
@@ -150,27 +150,26 @@ them deterministically. Claim Resolution also refuses to offer policies when
 the authoritative goal has no goal-family binding, instead of exposing every
 policy that happens to share a material premise. The exact frozen three-goal
 case passed Composer, Deterministic Final, and Unified Audit `5/5`, with one
-call per role and zero retry/repair/fallback. Its wording remains safe but the
-high-temperature cleaning answer is not yet at the approved gold target, so a
-fresh Fixed-8 is not the immediate next action.
+call per role and zero retry/repair/fallback. The expanded high-temperature
+case then passed the same full chain `5/5`; the loopback Audit role separately
+accepted the safe semantic budget `5/5` and rejected its prohibited
+heat-resistance and sterilization counterexample `5/5`, with one call per
+attempt and zero retry/repair/fallback. The cleaning-care component gate is
+therefore closed for the next isolated conversation run.
 
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. add and qualify a general review-only high-temperature-cleaning boundary
-   that can say not to use boiling water when temperature and sterilization
-   support are absent, without asserting deformation, heat resistance, or
-   disinfection effectiveness;
-2. run one new pinned complete conversation gate with the qualified loopback
+1. run one new pinned complete conversation gate with the qualified loopback
    Unified Audit role and score customer outcome, naturalness, continuity, RAG
    evidence coverage, and useful progress rather than internal finding-code
    wording;
-3. after that gate is complete, run the documented cognitive-consolidation
+2. after that gate is complete, run the documented cognitive-consolidation
    shadow comparison before deleting or merging any LangGraph node;
-4. preserve the P0 owner and safety boundaries while locating the earliest
+3. preserve the P0 owner and safety boundaries while locating the earliest
    remaining quality gap; and
-5. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
+4. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
    expansion, vision work, and platform adapters frozen unless P1 evidence
    makes one of them the earliest blocker.
 
@@ -771,7 +770,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | Historical native Fixed-8 remains incomplete; RAG material provenance restored; Domain Pack `1.5.0` covers reviewed durability, cleaning-care, and incidental-moisture guidance; loopback `Qwen3.6:35b` passed the recalibrated Audit matrix, and the existing Composer/Final/Audit chain passed cleaning `5/5` plus moisture `5/5`; `real_accuracy=null` | Run the pinned native Fixed-8 on the clean component-qualified candidate, then score human outcome and proceed to cognitive-consolidation shadow only if complete |
+| P1 Gold Conversation Quality | active | Historical native Fixed-8 remains incomplete; RAG material provenance restored; Domain Pack `1.6.1` covers reviewed durability, cleaning-care including an unverified-high-temperature boundary, and incidental-moisture guidance; the expanded high-temperature full chain passed `5/5`, and loopback `Qwen3.6:35b` passed its safe/unsafe Audit matrix `5/5 + 5/5`; `real_accuracy=null` | Run the pinned native Fixed-8 and score human outcome before cognitive-consolidation shadow |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
