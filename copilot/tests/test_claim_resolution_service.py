@@ -585,9 +585,9 @@ def test_supported_goal_without_policy_nomination_stays_direct_only():
         bounded_inference_policies=[
             _bounded_policy(),
             _bounded_policy(
-                policy_intent_ref="cleaning_care_practical_guidance",
+                policy_intent_ref="cleaning_chemical_contact_practical_guidance",
                 goal_family="cleaning_care",
-                allowed_scope="conservative_material_cleaning_guidance",
+                allowed_scope="unverified_chemical_cleaning_boundary",
             ),
         ],
         context_capabilities={
@@ -601,6 +601,59 @@ def test_supported_goal_without_policy_nomination_stays_direct_only():
     assert result["evidence_uids"] == ["material"]
     assert result["eligible_policy_options"] == []
     assert result["bounded_inference_rejection_reason"] == ""
+
+
+def test_cleaning_goal_without_exact_intent_offers_method_specific_options():
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            claim_type="cleaning_care",
+            attribute_key="cleaning_care",
+            semantic_key="",
+            policy_intent_ref="",
+            policy_goal_family="cleaning_care",
+            policy_intent_kind="practical_guidance",
+            goal_summary="了解当前清洁方式的保守边界",
+        )],
+        direct_product_facts=[
+            _fact(
+                "material",
+                "material",
+                claim_type="material_composition",
+            )
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[
+            _bounded_policy(
+                policy_intent_ref=(
+                    "cleaning_chemical_contact_practical_guidance"
+                ),
+                goal_family="cleaning_care",
+                allowed_scope="unverified_chemical_cleaning_boundary",
+            ),
+            _bounded_policy(
+                policy_intent_ref=(
+                    "cleaning_high_temperature_practical_guidance"
+                ),
+                goal_family="cleaning_care",
+                allowed_scope=(
+                    "unverified_high_temperature_cleaning_boundary"
+                ),
+            ),
+        ],
+        context_capabilities={
+            "product_category": {"available": True},
+        },
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert [
+        option["policy_intent_ref"]
+        for option in result["eligible_policy_options"]
+    ] == [
+        "cleaning_chemical_contact_practical_guidance",
+        "cleaning_high_temperature_practical_guidance",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -636,7 +689,14 @@ def test_supported_goal_without_policy_nomination_stays_direct_only():
         (
             "cleaning_care",
             "cleaning_care",
-            "cleaning_care_practical_guidance",
+            "cleaning_chemical_contact_practical_guidance",
+            "cleaning_care",
+            "material_composition",
+        ),
+        (
+            "cleaning_care",
+            "cleaning_care",
+            "cleaning_high_temperature_practical_guidance",
             "cleaning_care",
             "material_composition",
         ),

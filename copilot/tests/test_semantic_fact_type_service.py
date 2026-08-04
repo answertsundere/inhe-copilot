@@ -523,7 +523,8 @@ def test_policy_candidates_come_only_from_internal_owner_context():
     assert {
         item["policy_intent_ref"] for item in trusted
     } == {
-        "cleaning_care_practical_guidance",
+        "cleaning_chemical_contact_practical_guidance",
+        "cleaning_high_temperature_practical_guidance",
         "detachable_storage_practical_guidance",
         "material_daily_use_practical_guidance",
         "moisture_exposure_practical_guidance",

@@ -550,7 +550,8 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
         for item in policies
     }
     assert {
-        "cleaning_care_practical_guidance",
+        "cleaning_chemical_contact_practical_guidance",
+        "cleaning_high_temperature_practical_guidance",
         "product_dimensions_practical_guidance",
         "product_weight_practical_guidance",
         "variant_specification_practical_comparison",
@@ -580,25 +581,22 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
     assert durability["advice_mode"] == "concise_care_only"
     assert "no_absolute_guarantee" in durability["required_qualifiers"]
     assert "child_safety" in durability["prohibited_claim_families"]
-    cleaning = next(
+    cleaning_heat = next(
         item
         for item in policies
         if item["policy_intent_ref"]
-        == "cleaning_care_practical_guidance"
+        == "cleaning_high_temperature_practical_guidance"
     )
-    assert cleaning["goal_family"] == "cleaning_care"
-    assert cleaning["advice_mode"] == "concise_care_only"
-    assert cleaning["allowed_scope"] == (
-        "conservative_routine_and_unverified_high_temperature_cleaning"
+    assert cleaning_heat["goal_family"] == "cleaning_care"
+    assert cleaning_heat["advice_mode"] == "concise_care_only"
+    assert cleaning_heat["allowed_scope"] == (
+        "unverified_high_temperature_cleaning_boundary"
     )
-    assert cleaning["allowed_conclusion_family"] == (
-        "conservative_material_cleaning_and_temperature_boundary"
+    assert cleaning_heat["allowed_conclusion_family"] == (
+        "conservative_temperature_cleaning_boundary"
     )
-    assert cleaning["allowed_variability_factor_families"] == [
-        "cleaning_agent_strength",
+    assert cleaning_heat["allowed_variability_factor_families"] == [
         "component_material",
-        "contact_duration",
-        "surface_finish",
         "water_temperature",
     ]
     assert {
@@ -607,13 +605,34 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
         "no_heat_resistance_claim",
         "no_sterilization_effectiveness_claim",
         "prefer_mild_cleaning_until_temperature_support_verified",
-        "spot_test_cleaning_agent_before_broad_use",
-    } <= set(cleaning["required_qualifiers"])
+    } <= set(cleaning_heat["required_qualifiers"])
     assert {
         "disinfection_effectiveness",
         "heat_resistance",
         "sterilization",
-    } <= set(cleaning["prohibited_claim_families"])
+    } <= set(cleaning_heat["prohibited_claim_families"])
+    cleaning_chemical = next(
+        item
+        for item in policies
+        if item["policy_intent_ref"]
+        == "cleaning_chemical_contact_practical_guidance"
+    )
+    assert cleaning_chemical["goal_family"] == "cleaning_care"
+    assert cleaning_chemical["allowed_scope"] == (
+        "unverified_chemical_cleaning_boundary"
+    )
+    assert cleaning_chemical["allowed_variability_factor_families"] == [
+        "cleaning_agent_strength",
+        "component_material",
+        "contact_duration",
+        "surface_finish",
+    ]
+    assert {
+        "avoid_prolonged_chemical_contact",
+        "no_chemical_compatibility_guarantee",
+        "prefer_mild_cleaning_until_chemical_support_verified",
+        "spot_test_cleaning_agent_before_broad_use",
+    } <= set(cleaning_chemical["required_qualifiers"])
     moisture = next(
         item
         for item in policies
