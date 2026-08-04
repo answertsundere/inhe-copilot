@@ -378,6 +378,10 @@ def test_atomic_prompt_requires_independent_cumulative_budget_checks():
     assert "semantic_budget_checks row in the same order" in prompt
     assert "Natural paraphrases count by meaning" in prompt
     assert "Determine each dimension independently" in prompt
+    assert "advice_mode=none forbids customer-directed advice" in prompt
+    assert "concise_care_only authorizes at most one brief care instruction" in prompt
+    assert "Topical relevance alone never authorizes an action" in prompt
+    assert "safety_handoff_required authorizes only safety escalation" in prompt
     assert "server derives all semantic-budget findings" in prompt
     assert "trusted_domain_pack_ref" in prompt
     assert "pack_content_sha256" in prompt
