@@ -90,6 +90,36 @@ class TestHybridSearchScoring:
         assert "rerank_score" in r
         assert "mismatch_reason" in r
 
+    def test_hybrid_preserves_formal_chunk_material_provenance(self):
+        from app.db import SessionLocal
+        from app.models.knowledge_base import KnowledgeChunk
+
+        db = SessionLocal()
+        try:
+            chunk = db.query(KnowledgeChunk).filter(
+                KnowledgeChunk.entry_id == self.entry1.id
+            ).first()
+            chunk_id = chunk.id
+            chunk.fact_review_status = "published"
+            chunk.fact_source_type = "structured_product_profile"
+            chunk.source_confidence = 0.0
+            db.commit()
+        finally:
+            db.close()
+
+        results = KnowledgeChunkRepository.search_hybrid(
+            query="书架材质",
+            source_types=["product_facts"],
+            top_k=20,
+            min_score=0.0,
+        )
+        result = next(row for row in results if row["chunk_id"] == chunk_id)
+
+        assert result["fact_review_status"] == "published"
+        assert result["fact_source_type"] == "structured_product_profile"
+        assert result["material_provenance"] == "structured_product_profile"
+        assert result["source_confidence"] == 0.0
+
     def test_text_score_non_negative(self):
         """text_score 应该 >= 0"""
         results = KnowledgeChunkRepository.search_hybrid(

@@ -30,3 +30,32 @@ def test_published_product_material_placeholder_never_becomes_verified_fact(monk
     assert facts == []
     assert verified == []
     assert unknowns[0]["material_admission_reason"] == "material_source_untrusted"
+
+
+def test_published_rag_material_preserves_formal_chunk_provenance():
+    result = evidence_builder_module.evidence_builder(
+        {
+            "intent": "product_question",
+            "query_fact_type": "material",
+            "knowledge_evidence": [
+                {
+                    "entry_id": 7083,
+                    "chunk_id": 8150,
+                    "title": "Basin material",
+                    "source_type": "product_facts",
+                    "chunk_text": "Material: PP, TPE.",
+                    "evidence_fact_type": "material",
+                    "evidence_allowed_for_direct_answer": True,
+                    "evidence_allowed_for_exact_answer": True,
+                    "entry_status": "published",
+                    "fact_review_status": "published",
+                    "material_provenance": "structured_product_profile",
+                    "reference_only": False,
+                }
+            ],
+        }
+    )
+
+    fact = result["evidence"]["product_facts"][0]
+    assert fact["material_provenance"] == "structured_product_profile"
+    assert fact["evidence_allowed_for_direct_answer"] is True

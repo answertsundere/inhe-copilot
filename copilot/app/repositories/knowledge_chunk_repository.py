@@ -332,6 +332,12 @@ class KnowledgeChunkRepository:
                         "metadata": c.get_metadata(),
                     }),
                     "metadata": c.get_metadata(),
+                    "fact_review_status": c.fact_review_status or "",
+                    "fact_source_type": c.fact_source_type or "",
+                    "material_provenance": c.fact_source_type or "",
+                    "source_confidence": float(
+                        c.source_confidence if c.source_confidence is not None else 0.5
+                    ),
                     "entry_status": getattr(c.entry, "status", "unknown"),
                     "index_status": getattr(c.entry, "index_status", "unknown"),
                     "entry_risk_level": getattr(c.entry, "risk_level", "low"),

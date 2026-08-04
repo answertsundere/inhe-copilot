@@ -273,6 +273,8 @@ class TestEvidenceFilterNewFields:
                     "intent": "general",
                     "chunk_text": "material fact",
                     "metadata": {"auto_reply_allowed": True, "fact_type": "material"},
+                    "fact_source_type": "structured_product_profile",
+                    "material_provenance": "structured_product_profile",
                     "entry_status": "published",
                     "entry_risk_level": "low",
                     "source_sheet": "",
@@ -294,6 +296,7 @@ class TestEvidenceFilterNewFields:
         assert evidence[0]["gate_reasons"] == []
         assert evidence[0]["direct_answer_allowed"] is True
         assert evidence[0]["requires_human_review"] is False
+        assert evidence[0]["material_provenance"] == "structured_product_profile"
 
     def test_odor_query_can_use_material_fact_when_text_mentions_no_odor(self):
         from app.agent.nodes.evidence_filter_node import evidence_filter_node

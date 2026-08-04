@@ -323,6 +323,8 @@ def evidence_filter_node(state: dict) -> dict:
             "sku_scope": f.get("sku_scope", []),
             "index_status": f.get("index_status", "unknown"),
             "fact_review_status": f.get("fact_review_status", ""),
+            "fact_source_type": f.get("fact_source_type", ""),
+            "material_provenance": f.get("material_provenance", ""),
             "confidence": f["confidence"],
             "reference_only": f["reference_only"],
             "needs_human_review": f["needs_human_review"],

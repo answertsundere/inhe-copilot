@@ -894,6 +894,7 @@ def evidence_builder(state: dict) -> dict:
             "query_fact_type": query_fact_type,
             "evidence_fact_type": evidence_fact_type,
             "evidence_allowed_for_exact_answer": ke.get("evidence_allowed_for_exact_answer", True),
+            "material_provenance": ke.get("material_provenance", ""),
         }
         base = _enrich_evidence_item(base, text, entry_status, fact_review_status, st)
         if ke.get("evidence_allowed_for_direct_answer") is False and not odor_material_bridge:
@@ -1091,6 +1092,7 @@ def evidence_builder(state: dict) -> dict:
                     "scope_match": chunk.get("scope_score", 0) >= 0,
                     "query_fact_type": query_fact_type,
                     "evidence_fact_type": evidence_fact_type,
+                    "material_provenance": chunk.get("material_provenance", ""),
                     "evidence_allowed_for_exact_answer": chunk.get(
                         "evidence_allowed_for_exact_answer",
                         not chunk.get("mismatch_reason", ""),
