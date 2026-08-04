@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.fact_type_alias_service import (
+    canonical_material_composition_claim_type,
+)
+
 
 FACT_TYPE_LABELS = {
     "material_composition": "\u6750\u8d28",
@@ -674,6 +678,12 @@ def fact_type_matches(query_fact_type: str, evidence_fact_type: str) -> bool:
     if not evidence_fact_type:
         return False
     if query_fact_type == evidence_fact_type:
+        return True
+    if (
+        canonical_material_composition_claim_type(query_fact_type)
+        == canonical_material_composition_claim_type(evidence_fact_type)
+        == "material_composition"
+    ):
         return True
     compatible = {
         "space_fit": {"dimensions"},

@@ -140,7 +140,11 @@ def test_product_context_pack_reads_sku_from_product_candidates(product_context_
     assert "\u4e0d\u9700\u8981\u6253\u5b54" in pack["facts"][0]["chunk_text"]
 
 
-def test_product_context_pack_uses_resolved_platform_item_id_for_structured_facts(product_context_db):
+@pytest.mark.parametrize("query_fact_type", ["material", "material_composition"])
+def test_product_context_pack_uses_resolved_platform_item_id_for_structured_facts(
+    product_context_db,
+    query_fact_type,
+):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack
 
@@ -177,14 +181,14 @@ def test_product_context_pack_uses_resolved_platform_item_id_for_structured_fact
         },
         query="what material",
         allowed_source_types=["product_facts"],
-        query_fact_type="material",
+        query_fact_type=query_fact_type,
     )
 
     product_first = pack["product_first_evidence_pack"]
     assert product_first["resolved_product_identity"]["i_id"] == "YH91K01"
     assert product_first["identity_confidence"] >= 0.95
     assert product_first["product_structured_facts"]
-    assert product_first["product_structured_facts"][0]["fact_type"] == "material"
+    assert product_first["product_structured_facts"][0]["fact_type"] == query_fact_type
     assert product_first["evidence_pack_trace"]["product_identity_resolution"]["match_reason"] == "exact_platform_item_id_hash_match"
 
 

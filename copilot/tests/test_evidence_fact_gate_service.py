@@ -98,6 +98,45 @@ def test_gate_allows_reviewed_material_with_explicit_field_provenance():
     assert result["gate_status"] == "allowed"
 
 
+def test_gate_allows_canonical_material_composition_query_for_material_evidence():
+    item = {
+        "source_type": "product_facts",
+        "score": 0.82,
+        "rerank_score": 0.82,
+        "query_fact_type": "material_composition",
+        "evidence_fact_type": "material",
+        "entry_status": "published",
+        "evidence_allowed_for_exact_answer": True,
+        "chunk_text": "Material: rubberwood.",
+        "material_provenance": "structured_product_record",
+    }
+
+    result = evaluate_evidence_item(item, {})
+
+    assert result["direct_answer_allowed"] is True
+    assert result["gate_status"] == "allowed"
+
+
+def test_gate_does_not_widen_material_composition_to_material_safety():
+    item = {
+        "source_type": "product_facts",
+        "score": 0.82,
+        "rerank_score": 0.82,
+        "query_fact_type": "material_safety",
+        "evidence_fact_type": "material",
+        "entry_status": "published",
+        "evidence_allowed_for_exact_answer": True,
+        "chunk_text": "Material: rubberwood.",
+        "material_provenance": "structured_product_record",
+    }
+
+    result = evaluate_evidence_item(item, {})
+
+    assert result["direct_answer_allowed"] is False
+    assert result["gate_status"] == "blocked"
+    assert "wrong_fact_type" in result["gate_reasons"]
+
+
 def test_gate_allows_installation_evidence_with_convenience_warning():
     item = {
         "source_type": "installation_guide",

@@ -21,6 +21,10 @@ def _profile(material, source=""):
 def test_clean_composition_with_structured_or_rag_provenance_is_eligible():
     assert build_product_spec_evidence_candidates(_profile("PP"), requested_fact_type="material")
     assert build_product_spec_evidence_candidates(
+        _profile("PP"),
+        requested_fact_type="material_composition",
+    )
+    assert build_product_spec_evidence_candidates(
         _profile("PP", "rag_fact:knowledge_entry:17"),
         requested_fact_type="material",
     )

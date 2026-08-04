@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.fact_type_alias_service import (
+    canonical_material_composition_claim_type,
+)
+
 
 BLOCKED_DIRECT_FACT_TYPES = {
     "certification_report",
@@ -98,15 +102,24 @@ def build_product_spec_evidence_candidates(
     if not profile or not requested or requested in BLOCKED_DIRECT_FACT_TYPES:
         return []
 
-    values = _pick_values(profile, requested)
+    field_fact_type = (
+        "material"
+        if canonical_material_composition_claim_type(requested)
+        == "material_composition"
+        else requested
+    )
+    values = _pick_values(profile, field_fact_type)
     if not values:
         return []
 
-    if requested == "material" and material_direct_answer_block_reason(profile, values):
+    if (
+        field_fact_type == "material"
+        and material_direct_answer_block_reason(profile, values)
+    ):
         return []
 
     value_text = _format_values(values)
-    customer_text = _customer_text(requested, value_text)
+    customer_text = _customer_text(field_fact_type, value_text)
     product_id = profile.get("product_id")
     source_field_keys = [key for key, _value in values]
     sku_list = [
@@ -130,7 +143,7 @@ def build_product_spec_evidence_candidates(
         "value": value_text,
         "customer_text": customer_text,
         "verification_status": "verified",
-        "material_provenance": structured_field_source_kind(profile, "material") if requested == "material" else "",
+        "material_provenance": structured_field_source_kind(profile, "material") if field_fact_type == "material" else "",
         "source_confidence": 0.85,
         "can_direct_answer": True,
         "needs_human_review": False,
