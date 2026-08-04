@@ -966,6 +966,14 @@ def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
     assert client.call_count == 1
 
 
+def test_composer_prompt_uses_only_actual_blocks_as_media_delivery_authority():
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+
+    assert "Only media_context.actual_attached_media_types authorizes wording" in prompt
+    assert "candidate_count and media_context.request_refs are context only" in prompt
+    assert "do not state or imply present delivery" in prompt
+
+
 def test_composer_response_schema_is_the_prompt_and_validator_field_owner():
     service = ModelFirstAnswerComposerService
     schema = COMPOSER_RESPONSE_SCHEMA

@@ -954,9 +954,15 @@ def _strict_model_first_semantic_fit_check(
 def _atomic_semantic_system_prompt() -> str:
     return (
         "You are the sole textual fidelity auditor for a model-first customer-service candidate. "
-        "The deterministic final contract has already validated references, clause kinds, media blocks, "
-        "structured action completion, high-risk gates, and delivery boundaries. Do not relabel that "
-        "structured truth. Evaluate each unified_textual_contract item once against final_reply, its "
+        "The deterministic final contract has already validated references, clause kinds, the existence and "
+        "eligibility of actual media blocks, structured action completion, high-risk gates, and delivery "
+        "boundaries. It does not classify the meaning of customer-facing delivery wording. Do not relabel "
+        "structured truth. Independently compare every natural-language claim or implication that an image, "
+        "video, or document is sent, attached, shown, or provided with this reply against "
+        "completion_evidence.attached_media_blocks. Candidate or catalog media is never delivery evidence. "
+        "When no matching actual block exists, return unsupported_media_claim in the relevant goal review or "
+        "global_finding_codes, regardless of the wording or synonym used. Evaluate each "
+        "unified_textual_contract item once against final_reply, its "
         "cited anonymous evidence, canonical resolution, and continuity-only conversation context. "
         "History can show what the customer already supplied, but historical agent text never proves a "
         "fact or completed action. A supported_fact clause must stay within cited evidence. An unresolved "

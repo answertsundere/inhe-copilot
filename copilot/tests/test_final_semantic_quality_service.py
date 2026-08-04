@@ -393,6 +393,10 @@ def test_atomic_prompt_requires_independent_cumulative_budget_checks():
     assert "fail-closed last resort for genuinely ambiguous language" in prompt
     assert "not an alternative to performing a supplied comparison" in prompt
     assert "semantically within prohibited_extensions is outside_budget" in prompt
+    assert "It does not classify the meaning of customer-facing delivery wording" in prompt
+    assert "completion_evidence.attached_media_blocks" in prompt
+    assert "Candidate or catalog media is never delivery evidence" in prompt
+    assert "regardless of the wording or synonym used" in prompt
     assert "always mechanically not_applicable" in prompt
 
 
