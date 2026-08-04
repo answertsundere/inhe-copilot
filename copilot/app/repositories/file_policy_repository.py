@@ -596,7 +596,6 @@ class FilePolicyRepository(PolicyRepositoryBase):
             }:
                 return "domain_policy_intent_kind_invalid"
             for key in (
-                "premise_fact_families",
                 "required_context_capabilities",
                 "required_qualifiers",
                 "prohibited_claim_families",
@@ -613,6 +612,22 @@ class FilePolicyRepository(PolicyRepositoryBase):
                     )
                 ):
                     return "domain_policy_bounded_inference_values_invalid"
+            premise_families = policy.get("premise_fact_families")
+            if (
+                not isinstance(premise_families, list)
+                or len(premise_families) != len(set(premise_families))
+                or any(
+                    not isinstance(value, str)
+                    or not identifier_pattern.fullmatch(value)
+                    for value in premise_families
+                )
+                or (
+                    not premise_families
+                    and policy.get("advice_mode")
+                    != "safety_handoff_required"
+                )
+            ):
+                return "domain_policy_bounded_inference_values_invalid"
             variability_factors = policy.get(
                 "allowed_variability_factor_families"
             )

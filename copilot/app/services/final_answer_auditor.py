@@ -1580,6 +1580,13 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                 if len(claim_policy_refs) == 1
                 else {}
             )
+            policy_uses_authoritative_goal = (
+                advice_mode == "safety_handoff_required"
+                and not premise_evidence
+                and not (
+                    trusted_policy.get("premise_fact_families") or []
+                )
+            )
             option_contract_invalid = bool(
                 selected_option
                 and (
@@ -1672,7 +1679,11 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
                     or (
                         selected_option.get("option_provenance") or {}
                     ).get("premise_owner")
-                    != "admitted_answer_context"
+                    != (
+                        "authoritative_customer_goal"
+                        if policy_uses_authoritative_goal
+                        else "admitted_answer_context"
+                    )
                     or str(
                         selected_option.get("requested_risk") or ""
                     )
@@ -1730,7 +1741,14 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
             if (
                 status not in {"supported", "unresolved"}
                 or clause.get("clause_kind") != "allowed_inference"
-                or not premise_evidence
+                or (
+                    not policy_uses_authoritative_goal
+                    and not premise_evidence
+                )
+                or (
+                    policy_uses_authoritative_goal
+                    and bool(premise_evidence)
+                )
                 or actual_evidence != premise_evidence
                 or not claim_policy_refs
                 or len(claim_policy_refs) != 1

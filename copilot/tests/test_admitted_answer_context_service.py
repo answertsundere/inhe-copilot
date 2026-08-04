@@ -848,6 +848,91 @@ def test_admitted_context_builds_policy_bounded_inference_from_trusted_context()
     )
 
 
+def test_admitted_context_keeps_oral_safety_handling_out_of_evidence():
+    pack = _bounded_inference_pack()
+    pack["bounded_inference_policies"] = [{
+        "policy_intent_ref": "oral_exposure_safety_handling",
+        "goal_family": "bite_or_toxicity",
+        "intent_kind": "practical_guidance",
+        "premise_fact_families": [],
+        "required_context_capabilities": ["product_category"],
+        "allowed_scope": "interrupt_exposure_inspect_and_escalate_if_needed",
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "allowed_variability_factor_families": [],
+        "advice_mode": "safety_handoff_required",
+        "maximum_risk_level": "medium",
+        "required_qualifiers": [
+            "stop_further_oral_contact",
+            "inspect_for_damage_or_missing_fragments",
+            "seek_medical_help_if_ingested_or_symptomatic",
+            "no_toxicity_or_ingestion_safety_conclusion",
+        ],
+        "prohibited_claim_families": [
+            "bite_or_toxicity",
+            "child_safety",
+            "material_safety",
+            "non_toxic_claim",
+        ],
+        "review_only": True,
+    }]
+    understanding = {
+        "requested_claims": [{
+            "goal_ref": "goal-oral-safety",
+            "goal_kind": "customer_goal",
+            "claim_type": "bite_or_toxicity",
+            "claim_type_status": "mapped",
+            "attribute_key": "bite_or_toxicity",
+            "semantic_key": "bite_or_toxicity",
+            "policy_intent_ref": "",
+            "policy_goal_family": "bite_or_toxicity",
+            "policy_intent_kind": "practical_guidance",
+            "goal_summary": "understand oral exposure safety handling",
+            "risk_level": "high",
+        }],
+    }
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [],
+            "product_context_pack": {
+                "structured_profile": {
+                    "source": "kb_product",
+                    "category": {
+                        "l1": "fixture category",
+                        "l2": "",
+                        "l3": "",
+                    },
+                },
+            },
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+        answer_eligibility_inputs={"domain_policy_pack": pack},
+    )
+
+    resolution = context["claim_resolutions"][0]
+    assert resolution["status"] == "unresolved"
+    assert resolution["evidence_uids"] == []
+    assert resolution["premise_evidence_uids"] == []
+    assert resolution["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+    option = resolution["eligible_policy_options"][0]
+    assert option["premise_evidence_refs"] == []
+    assert option["advice_mode"] == "safety_handoff_required"
+    assert option["option_provenance"]["premise_owner"] == (
+        "authoritative_customer_goal"
+    )
+    assert context["direct_product_facts"] == []
+    minimal = build_minimal_decision_context(
+        context,
+        customer_message="oral exposure question",
+    )
+    assert minimal["admitted_evidence"] == []
+    assert minimal["claim_resolutions"][0][
+        "eligible_policy_options"
+    ][0]["premise_evidence_refs"] == []
+
+
 @pytest.mark.parametrize(
     ("evidence_overrides", "include_category", "include_pack"),
     [

@@ -2598,6 +2598,110 @@ def _bounded_inference_response() -> dict:
     }
 
 
+def _oral_safety_response() -> dict:
+    response = _bounded_inference_response()
+    minimal = response["minimal_decision_context"]
+    goal = minimal["requested_claims"][1]
+    goal.update({
+        "claim_type": "bite_or_toxicity",
+        "claim_type_status": "mapped",
+        "attribute_key": "bite_or_toxicity",
+        "semantic_key": "bite_or_toxicity",
+        "goal_summary": "handle possible oral exposure without claiming safety",
+        "risk_level": "high",
+        "policy_intent_ref": "",
+        "policy_goal_family": "bite_or_toxicity",
+        "policy_intent_kind": "practical_guidance",
+    })
+    minimal["requested_claims"] = [goal]
+    minimal["admitted_evidence"] = []
+
+    resolution = minimal["claim_resolutions"][0]
+    boundary = {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "high_risk_factual_claim_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": "",
+        "policy_goal_family": "bite_or_toxicity",
+        "policy_intent_kind": "practical_guidance",
+        "high_risk_claim_families": ["bite_or_toxicity"],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    policy_ref = (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:oral_exposure_safety_handling"
+    )
+    option = resolution["eligible_policy_options"][0]
+    option.update({
+        "policy_ref": policy_ref,
+        "applicable_goal_ref": goal["goal_ref"],
+        "policy_intent_ref": "oral_exposure_safety_handling",
+        "goal_family": "bite_or_toxicity",
+        "premise_evidence_refs": [],
+        "premise_families": [],
+        "allowed_scope": "interrupt_exposure_inspect_and_escalate_if_needed",
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "allowed_variability_factor_families": [],
+        "advice_mode": "safety_handoff_required",
+        "forbidden_claim_families": [
+            "bite_or_toxicity",
+            "child_safety",
+            "material_safety",
+            "non_toxic_claim",
+        ],
+        "requested_risk": "high",
+        "requested_claim_risk": "high",
+        "answer_strategy_risk": "medium",
+        "required_qualifiers": [
+            "stop_further_oral_contact",
+            "inspect_for_damage_or_missing_fragments",
+            "seek_medical_help_if_ingested_or_symptomatic",
+            "no_toxicity_or_ingestion_safety_conclusion",
+        ],
+        "restricted_request_boundary": boundary,
+        "option_provenance": {
+            "policy_owner": "domain_policy_pack",
+            "filter_owner": "claim_resolution",
+            "premise_owner": "authoritative_customer_goal",
+            "intent_narrowed": False,
+            "alternative_for_restricted_request": True,
+        },
+    })
+    resolution.update({
+        "goal_ref": goal["goal_ref"],
+        "claim_type": "bite_or_toxicity",
+        "claim_type_status": "mapped",
+        "attribute_key": "bite_or_toxicity",
+        "status": "unresolved",
+        "reason": "high_risk_factual_claim_prohibited",
+        "requested_claim_risk": "high",
+        "evidence_uids": [],
+        "premise_evidence_uids": [],
+        "restricted_request_boundary": boundary,
+        "eligible_policy_options": [option],
+    })
+    minimal["claim_resolutions"] = [resolution]
+    policy = minimal["bounded_inference_policies"][0]
+    policy.update({
+        "policy_ref": policy_ref,
+        "policy_intent_ref": "oral_exposure_safety_handling",
+        "goal_family": "bite_or_toxicity",
+        "premise_fact_families": [],
+        "allowed_scope": "interrupt_exposure_inspect_and_escalate_if_needed",
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "allowed_variability_factor_families": [],
+        "advice_mode": "safety_handoff_required",
+        "required_qualifiers": list(option["required_qualifiers"]),
+        "prohibited_claim_families": list(
+            option["forbidden_claim_families"]
+        ),
+    })
+    minimal["bounded_inference_policies"] = [policy]
+    return response
+
+
 def _offered_projection(
     response: dict,
 ) -> tuple[list[dict], dict[str, dict]]:
@@ -2857,6 +2961,51 @@ def test_composer_accepts_policy_bounded_inference_with_canonical_attribution():
     assert diagnostics["model_call_count"] == 1
     assert diagnostics["retry_count"] == 0
     assert diagnostics["repair_count"] == 0
+
+
+def test_composer_accepts_goal_owned_oral_safety_handling_without_evidence():
+    response = _oral_safety_response()
+    option_ref = _option_alias(
+        response,
+        goal_ref="goal_01",
+        allowed_scope="interrupt_exposure_inspect_and_escalate_if_needed",
+    )
+    updated, result, client = _compose(
+        {
+            "clauses": [{
+                "goal_ref": "goal_01",
+                "text": (
+                    "先别让孩子继续咬，看看有没有破损或缺口；如果有误吞或不舒服，及时就医。"
+                    "单凭现有信息不能判断它入口是否安全。"
+                ),
+                "selected_option_refs": [option_ref],
+            }],
+        },
+        response,
+    )
+
+    assert result["status"] == "accepted"
+    assert client.call_count == 1
+    clause = result["clauses"][0]
+    assert clause["clause_kind"] == "allowed_inference"
+    assert clause["evidence_uids"] == []
+    assert clause["premise_evidence_uids"] == []
+    assert clause["advice_mode"] == "safety_handoff_required"
+    assert clause["requested_claim_risk_level"] == "high"
+    assert clause["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+    assert clause["inference_policy_refs"] == [
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:oral_exposure_safety_handling"
+    ]
+    assert updated["can_send"] is False
+    prompt = json.loads(client.messages[1]["content"])
+    goal = prompt["renderable_customer_goals"][0]
+    assert goal["option_selection_mode"] == "required"
+    assert goal["eligible_policy_options"][0][
+        "premise_evidence_refs"
+    ] == []
 
 
 def test_composer_accepts_bounded_strategy_without_erasing_request_boundary():

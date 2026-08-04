@@ -981,8 +981,10 @@ def _atomic_semantic_system_prompt() -> str:
         "frequency, duration, or additional action not semantically required by required_qualifiers or the "
         "scope_qualifier is unauthorized, even when it concerns the same care topic. If one authorized action "
         "and one extra action both appear, return unauthorized. "
-        "safety_handoff_required authorizes only safety escalation or stop-use guidance required by the supplied "
-        "boundary, never a product-safety conclusion. variability_factor_status is none when no factor is used, "
+        "safety_handoff_required authorizes only risk-mitigation and escalation actions explicitly required by "
+        "required_qualifiers, such as stopping further exposure, checking damage or possible ingestion, and "
+        "seeking medical help when the supplied trigger applies. It never authorizes a product-safety, non-toxic, "
+        "food-grade, or no-poisoning conclusion. variability_factor_status is none when no factor is used, "
         "within_budget when every used factor "
         "belongs to allowed_variability_factor_families and remains a possible variable, outside_budget when "
         "any used factor is outside that set, asserted_as_fact when a factor is stated as a verified product "
@@ -990,9 +992,10 @@ def _atomic_semantic_system_prompt() -> str:
         "An allowed factor may be mentioned as a possible source of variability; the allowed-factor list does "
         "not authorize presenting that factor or its effect as established truth. If allowed and unauthorized "
         "factors both appear, choose outside_budget. restricted_boundary_status is mechanically keyed by the "
-        "supplied restricted_request_boundary: when that object is empty, return not_applicable regardless of "
-        "caveats or refusal language in clause_text; when it is non-empty, return preserved or violated. Do not "
-        "infer a restricted boundary from wording alone; use indeterminate only when an applicable boundary "
+        "authoritative restricted_boundary_applicable boolean supplied with each clause. When it is false, "
+        "return not_applicable regardless of caveats or refusal language in clause_text; when it is true, return "
+        "preserved or violated. Do not infer boundary applicability from wording alone; use indeterminate only "
+        "when an applicable boundary "
         "cannot be judged. "
         "conclusion_status is within_budget only when every conclusion stays within allowed_conclusion_family "
         "and required qualifiers, otherwise outside_budget; use indeterminate only when undecidable. "
@@ -1155,6 +1158,9 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
                 clause.get("maximum_risk_level") or ""
             ).strip(),
             "restricted_request_boundary": dict(
+                clause.get("restricted_request_boundary") or {}
+            ),
+            "restricted_boundary_applicable": bool(
                 clause.get("restricted_request_boundary") or {}
             ),
             "inference_review_only": (
@@ -1589,8 +1595,8 @@ def _validated_semantic_budget_checks(
                 actual_type="indeterminate",
                 invalid_enum_count=1,
             )
-        boundary_applicable = bool(
-            target.get("restricted_request_boundary")
+        boundary_applicable = (
+            target.get("restricted_boundary_applicable") is True
         )
         if (
             boundary_applicable

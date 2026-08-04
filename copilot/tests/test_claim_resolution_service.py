@@ -947,6 +947,80 @@ def test_policy_bounded_inference_never_resolves_high_risk_goal():
     )
 
 
+def test_oral_exposure_goal_offers_only_goal_owned_safety_handling():
+    policy = _bounded_policy(
+        policy_intent_ref="oral_exposure_safety_handling",
+        goal_family="bite_or_toxicity",
+        premise_fact_families=[],
+        allowed_scope="interrupt_exposure_inspect_and_escalate_if_needed",
+        allowed_conclusion_family="general_oral_exposure_risk_mitigation",
+        allowed_variability_factor_families=[],
+        advice_mode="safety_handoff_required",
+        required_qualifiers=[
+            "stop_further_oral_contact",
+            "inspect_for_damage_or_missing_fragments",
+            "seek_medical_help_if_ingested_or_symptomatic",
+            "no_toxicity_or_ingestion_safety_conclusion",
+        ],
+        prohibited_claim_families=[
+            "bite_or_toxicity",
+            "child_safety",
+            "material_safety",
+            "non_toxic_claim",
+        ],
+    )
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            claim_type="bite_or_toxicity",
+            claim_type_status="mapped",
+            attribute_key="bite_or_toxicity",
+            semantic_key="bite_or_toxicity",
+            risk_level="low",
+            policy_intent_ref="",
+            policy_goal_family="bite_or_toxicity",
+            policy_intent_kind="practical_guidance",
+        )],
+        direct_product_facts=[],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[policy],
+        context_capabilities={
+            "product_category": {"available": True},
+        },
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["reason"] == "high_risk_factual_claim_prohibited"
+    assert result["requested_claim_risk"] == "high"
+    assert result["evidence_uids"] == []
+    assert result["premise_evidence_uids"] == []
+    assert result["restricted_request_boundary"] == {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "high_risk_factual_claim_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": "",
+        "policy_goal_family": "bite_or_toxicity",
+        "policy_intent_kind": "practical_guidance",
+        "high_risk_claim_families": ["bite_or_toxicity"],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    option = _only_policy_option(result)
+    assert option["premise_evidence_refs"] == []
+    assert option["premise_families"] == []
+    assert option["advice_mode"] == "safety_handoff_required"
+    assert option["requested_claim_risk"] == "high"
+    assert option["answer_strategy_risk"] == "medium"
+    assert option["option_provenance"]["premise_owner"] == (
+        "authoritative_customer_goal"
+    )
+    assert option["option_provenance"][
+        "alternative_for_restricted_request"
+    ] is True
+
+
 def test_absolute_guarantee_keeps_restricted_boundary_and_offers_safe_strategy():
     absolute = _bounded_policy(
         policy_intent_ref="product_durability_absolute_guarantee",

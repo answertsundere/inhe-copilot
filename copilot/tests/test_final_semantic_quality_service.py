@@ -345,6 +345,7 @@ def test_atomic_contract_exposes_restricted_request_boundary():
     assert bounded["restricted_request_boundary"][
         "must_remain_unresolved"
     ] is True
+    assert bounded["restricted_boundary_applicable"] is True
 
 
 def test_atomic_contract_exposes_canonical_semantic_budget():
@@ -381,15 +382,19 @@ def test_atomic_prompt_requires_independent_cumulative_budget_checks():
     assert "advice_mode=none forbids customer-directed advice" in prompt
     assert "concise_care_only authorizes at most one brief care instruction" in prompt
     assert "Topical relevance alone never authorizes an action" in prompt
-    assert "safety_handoff_required authorizes only safety escalation" in prompt
+    assert (
+        "safety_handoff_required authorizes only risk-mitigation"
+        in prompt
+    )
+    assert "checking damage or possible ingestion" in prompt
     assert "server derives all semantic-budget findings" in prompt
     assert "trusted_domain_pack_ref" in prompt
     assert "pack_content_sha256" in prompt
     assert "material property, causal explanation" in prompt
     assert "does not authorize presenting that factor" in prompt
-    assert "mechanically keyed by the supplied restricted_request_boundary" in prompt
+    assert "authoritative restricted_boundary_applicable boolean" in prompt
     assert "return not_applicable regardless of caveats" in prompt
-    assert "Do not infer a restricted boundary from wording alone" in prompt
+    assert "Do not infer boundary applicability from wording alone" in prompt
     assert "fail-closed last resort for genuinely ambiguous language" in prompt
     assert "not an alternative to performing a supplied comparison" in prompt
     assert "semantically within prohibited_extensions is outside_budget" in prompt
@@ -478,6 +483,7 @@ def _semantic_budget_target(
         "clause_ref": clause_ref,
         "semantic_budget_applicable": True,
         "advice_mode": advice_mode,
+        "restricted_boundary_applicable": restricted_boundary,
         "restricted_request_boundary": (
             {"must_remain_unresolved": True}
             if restricted_boundary

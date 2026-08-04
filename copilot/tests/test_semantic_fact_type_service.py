@@ -528,6 +528,7 @@ def test_policy_candidates_come_only_from_internal_owner_context():
         "detachable_storage_practical_guidance",
         "material_daily_use_practical_guidance",
         "moisture_exposure_practical_guidance",
+        "oral_exposure_safety_handling",
         "product_dimensions_practical_guidance",
         "product_durability_absolute_guarantee",
         "product_durability_practical_guidance",

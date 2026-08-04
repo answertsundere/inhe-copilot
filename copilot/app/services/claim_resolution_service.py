@@ -216,6 +216,18 @@ def _structured_claim_families(requested: dict[str, Any]) -> set[str]:
     }
 
 
+def _requested_claim_risk(requested: dict[str, Any]) -> str:
+    if any(
+        normalize_high_risk_claim_type(value)
+        for value in _structured_claim_families(requested)
+    ):
+        return "high"
+    return (
+        sanitize_text(requested.get("risk_level")).lower()
+        or "medium"
+    )
+
+
 def _policy_values(policy: dict[str, Any], key: str) -> list[str]:
     values = policy.get(key)
     if not isinstance(values, list):
@@ -230,10 +242,6 @@ def _policy_values(policy: dict[str, Any], key: str) -> list[str]:
 def _restricted_request_boundary(
     requested: dict[str, Any],
 ) -> dict[str, Any]:
-    requested_risk = (
-        sanitize_text(requested.get("risk_level")).lower()
-        or "medium"
-    )
     intent_kind = sanitize_text(
         requested.get("policy_intent_kind")
     ).lower()
@@ -243,6 +251,7 @@ def _restricted_request_boundary(
         for family in claim_families
         if (canonical := normalize_high_risk_claim_type(family))
     })
+    requested_risk = _requested_claim_risk(requested)
     if _claim_is_prohibited(requested):
         reason = (
             sanitize_text(requested.get("prohibition_reason"))
@@ -252,6 +261,13 @@ def _restricted_request_boundary(
     elif intent_kind in _RESTRICTED_REQUEST_INTENT_REASONS:
         reason = _RESTRICTED_REQUEST_INTENT_REASONS[intent_kind]
         allows_alternative = intent_kind == "absolute_guarantee"
+    elif (
+        high_risk_families
+        and intent_kind == "practical_guidance"
+        and sanitize_text(requested.get("policy_goal_family"))
+    ):
+        reason = "high_risk_factual_claim_prohibited"
+        allows_alternative = True
     else:
         return {}
     return {
@@ -296,7 +312,10 @@ def valid_restricted_request_boundary(value: Any) -> bool:
         and value.get("requested_claim_risk")
         in _REQUEST_CLAIM_RISK_LEVELS
         and value.get("policy_intent_kind")
-        in (set(_RESTRICTED_REQUEST_INTENT_REASONS) | {""})
+        in (
+            set(_RESTRICTED_REQUEST_INTENT_REASONS)
+            | {"", "practical_guidance"}
+        )
         and isinstance(high_risk_families, list)
         and len(high_risk_families)
         == len(set(map(str, high_risk_families)))
@@ -309,10 +328,18 @@ def valid_restricted_request_boundary(value: Any) -> bool:
         and (
             value.get("allows_bounded_alternative") is False
             or (
-                value.get("policy_intent_kind")
-                == "absolute_guarantee"
-                and sanitize_text(value.get("policy_intent_ref"))
-                and sanitize_text(value.get("policy_goal_family"))
+                (
+                    value.get("policy_intent_kind")
+                    == "absolute_guarantee"
+                    and sanitize_text(value.get("policy_intent_ref"))
+                    and sanitize_text(value.get("policy_goal_family"))
+                )
+                or (
+                    value.get("policy_intent_kind")
+                    == "practical_guidance"
+                    and bool(high_risk_families)
+                    and sanitize_text(value.get("policy_goal_family"))
+                )
             )
         )
     )
@@ -339,15 +366,12 @@ def _eligible_policy_options(
         return [], "bounded_inference_goal_kind_prohibited"
 
     claim_families = _structured_claim_families(requested)
-    if any(
-        normalize_high_risk_claim_type(value)
+    high_risk_families = {
+        canonical
         for value in claim_families
-    ):
-        return [], "bounded_inference_high_risk_prohibited"
-    requested_risk = (
-        sanitize_text(requested.get("risk_level")).lower()
-        or "medium"
-    )
+        if (canonical := normalize_high_risk_claim_type(value))
+    }
+    requested_risk = _requested_claim_risk(requested)
     if requested_risk not in _REQUEST_CLAIM_RISK_LEVELS:
         return [], "bounded_inference_risk_contract_invalid"
     if (
@@ -459,6 +483,9 @@ def _eligible_policy_options(
             "allowed_variability_factor_families"
         )
         advice_mode = sanitize_text(policy.get("advice_mode")).lower()
+        prohibited_intersection = claim_families.intersection(
+            _policy_values(policy, "prohibited_claim_families")
+        )
         if (
             not allowed_conclusion_family
             or not isinstance(raw_variability_factors, list)
@@ -484,8 +511,11 @@ def _eligible_policy_options(
             reason = "bounded_inference_policy_or_service_evidence_required"
         elif intent_kind != "practical_guidance":
             reason = "bounded_inference_intent_kind_unsupported"
-        elif claim_families.intersection(
-            _policy_values(policy, "prohibited_claim_families")
+        elif high_risk_families and advice_mode != "safety_handoff_required":
+            reason = "bounded_inference_high_risk_prohibited"
+        elif prohibited_intersection and not (
+            advice_mode == "safety_handoff_required"
+            and prohibited_intersection.issubset(high_risk_families)
         ):
             reason = "bounded_inference_prohibited_extension"
         else:
@@ -557,7 +587,14 @@ def _eligible_policy_options(
             for item in premise_facts
             if sanitize_text(item.get("evidence_uid"))
         }
-        if premise_reason or not premise_by_uid:
+        policy_uses_authoritative_goal = (
+            advice_mode == "safety_handoff_required"
+            and not premise_families
+        )
+        if (
+            premise_reason
+            or (not premise_by_uid and not policy_uses_authoritative_goal)
+        ):
             rejection_reason = (
                 rejection_reason
                 or premise_reason
@@ -571,7 +608,11 @@ def _eligible_policy_options(
         option_provenance = {
             "policy_owner": "domain_policy_pack",
             "filter_owner": "claim_resolution",
-            "premise_owner": "admitted_answer_context",
+            "premise_owner": (
+                "authoritative_customer_goal"
+                if policy_uses_authoritative_goal
+                else "admitted_answer_context"
+            ),
             "intent_narrowed": (
                 bool(policy_intent_ref)
                 and not alternative_for_restricted_request
@@ -804,10 +845,7 @@ def build_claim_resolutions(
             "canonical_claim_family": _canonical_claim_type(claim_type),
             "canonical_attribute_key": requested_attribute,
             "status": status,
-            "requested_claim_risk": (
-                sanitize_text(requested.get("risk_level")).lower()
-                or "medium"
-            ),
+            "requested_claim_risk": _requested_claim_risk(requested),
             "restricted_request_boundary": restricted_boundary,
             "evidence_uids": [
                 sanitize_text(fact.get("evidence_uid")) for fact in facts if sanitize_text(fact.get("evidence_uid"))

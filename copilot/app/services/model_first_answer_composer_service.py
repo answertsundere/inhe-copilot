@@ -2863,6 +2863,11 @@ class ModelFirstAnswerComposerService:
             advice_mode = str(
                 item.get("advice_mode") or ""
             ).strip()
+            policy_uses_authoritative_goal = (
+                advice_mode == "safety_handoff_required"
+                and not premise_uids
+                and not premise_families
+            )
             requested_risk = str(
                 item.get("requested_risk") or ""
             ).strip()
@@ -2909,9 +2914,15 @@ class ModelFirstAnswerComposerService:
             if not isinstance(provenance, dict):
                 provenance = {}
             if (
-                not premise_uids
-                or len(premise_refs) != len(premise_uids)
-                or not premise_families
+                len(premise_refs) != len(premise_uids)
+                or (
+                    not policy_uses_authoritative_goal
+                    and (not premise_uids or not premise_families)
+                )
+                or (
+                    policy_uses_authoritative_goal
+                    and (premise_uids or premise_families)
+                )
                 or premise_families != policy["premise_fact_families"]
                 or str(item.get("policy_intent_ref") or "").strip()
                 != policy["policy_intent_ref"]
@@ -2949,7 +2960,11 @@ class ModelFirstAnswerComposerService:
                 or provenance.get("filter_owner")
                 != "claim_resolution"
                 or provenance.get("premise_owner")
-                != "admitted_answer_context"
+                != (
+                    "authoritative_customer_goal"
+                    if policy_uses_authoritative_goal
+                    else "admitted_answer_context"
+                )
                 or restricted_boundary != resolution_boundary
                 or (
                     bool(restricted_boundary)
@@ -3009,7 +3024,12 @@ class ModelFirstAnswerComposerService:
                 "can_change_can_send": False,
                 "option_provenance": {
                     "trusted_domain_pack": True,
-                    "admitted_premises": True,
+                    "admitted_premises": (
+                        not policy_uses_authoritative_goal
+                    ),
+                    "authoritative_customer_goal": (
+                        policy_uses_authoritative_goal
+                    ),
                     "intent_narrowed": (
                         provenance.get("intent_narrowed") is True
                     ),
@@ -3162,10 +3182,20 @@ class ModelFirstAnswerComposerService:
                         ) is True,
                     )),
                 }
+                policy_uses_authoritative_goal = (
+                    binding["advice_mode"] == "safety_handoff_required"
+                    and not binding["premise_evidence_refs"]
+                    and not binding["premise_evidence_uids"]
+                )
                 if (
                     not binding["policy_ref"]
-                    or not binding["premise_evidence_refs"]
-                    or not binding["premise_evidence_uids"]
+                    or (
+                        not policy_uses_authoritative_goal
+                        and (
+                            not binding["premise_evidence_refs"]
+                            or not binding["premise_evidence_uids"]
+                        )
+                    )
                     or len(binding["premise_evidence_refs"])
                     != len(binding["premise_evidence_uids"])
                     or not binding["allowed_scope"]
@@ -3457,7 +3487,10 @@ class ModelFirstAnswerComposerService:
                     "safety_handoff_required",
                 }
                 or maximum_risk_level not in _INFERENCE_RISK_RANK
-                or not premise_fact_families
+                or (
+                    not premise_fact_families
+                    and advice_mode != "safety_handoff_required"
+                )
                 or not trusted_domain_pack_ref
                 or trusted_domain_pack_ref != trusted_pack_ref
                 or not pack_content_sha256
@@ -3731,6 +3764,10 @@ class ModelFirstAnswerComposerService:
             "present delivery, attachment, display, availability in the reply, or a future send. "
             "media_context.candidate_count and media_context.request_refs are context only and never authorize "
             "customer-facing delivery wording."
+            "When advice_mode=safety_handoff_required, express only the risk-mitigation actions required by "
+            "required_qualifiers, such as stopping further exposure, checking for damage or missing fragments, "
+            "and seeking medical help when ingestion or symptoms make that necessary. Never turn those actions "
+            "into a claim that the product is safe, non-toxic, food-grade, or harmless if swallowed."
             f"{schema_summary}"
             "renderable_customer_goals 中每个 goal_ref 必须恰好返回一个 clause，"
             "按 presentation_order 排列，不得遗漏、重复、新增、缩写或改写 goal_ref。"
@@ -4122,8 +4159,18 @@ class ModelFirstAnswerComposerService:
                 option_premises = list(
                     option.get("premise_evidence_refs") or []
                 )
+                policy_uses_authoritative_goal = (
+                    option.get("advice_mode")
+                    == "safety_handoff_required"
+                    and not option_premises
+                    and binding.get("advice_mode")
+                    == "safety_handoff_required"
+                )
                 if (
-                    not option_premises
+                    (
+                        not option_premises
+                        and not policy_uses_authoritative_goal
+                    )
                     or not set(option_premises).issubset(known_refs)
                 ):
                     return {}, "composer_offered_projection_invalid", ModelFirstAnswerComposerService._diagnostics(

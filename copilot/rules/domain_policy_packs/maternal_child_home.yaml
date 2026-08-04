@@ -1,6 +1,6 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.6.2
+version: 1.6.3
 bounded_inference_policies:
   - policy_intent_ref: product_dimensions_practical_guidance
     goal_family: product_dimensions_and_space
@@ -92,6 +92,30 @@ bounded_inference_policies:
       - food_grade
       - heat_resistance
       - moisture_resistance
+      - non_toxic_claim
+    review_only: true
+  - policy_intent_ref: oral_exposure_safety_handling
+    goal_family: bite_or_toxicity
+    intent_kind: practical_guidance
+    premise_fact_families: []
+    required_context_capabilities:
+      - product_category
+    allowed_scope: interrupt_exposure_inspect_and_escalate_if_needed
+    allowed_conclusion_family: general_oral_exposure_risk_mitigation
+    allowed_variability_factor_families: []
+    advice_mode: safety_handoff_required
+    maximum_risk_level: medium
+    required_qualifiers:
+      - stop_further_oral_contact
+      - inspect_for_damage_or_missing_fragments
+      - seek_medical_help_if_ingested_or_symptomatic
+      - no_toxicity_or_ingestion_safety_conclusion
+    prohibited_claim_families:
+      - bite_or_toxicity
+      - certification_report
+      - child_safety
+      - food_grade
+      - material_safety
       - non_toxic_claim
     review_only: true
   - policy_intent_ref: cleaning_high_temperature_practical_guidance

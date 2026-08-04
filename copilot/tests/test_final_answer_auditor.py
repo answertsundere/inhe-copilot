@@ -696,6 +696,107 @@ def _restricted_bounded_inference_audit_response() -> dict:
     return response
 
 
+def _oral_safety_audit_response() -> dict:
+    response = _bounded_inference_audit_response()
+    policy_ref = (
+        "domain-policy:fixture_domain@1.0.0:"
+        "intent:oral_exposure_safety_handling"
+    )
+    boundary = {
+        "schema_version": "restricted-request-boundary/v1",
+        "status": "prohibited",
+        "reason_code": "high_risk_factual_claim_prohibited",
+        "requested_claim_risk": "high",
+        "policy_intent_ref": "",
+        "policy_goal_family": "bite_or_toxicity",
+        "policy_intent_kind": "practical_guidance",
+        "high_risk_claim_families": ["bite_or_toxicity"],
+        "must_remain_unresolved": True,
+        "allows_bounded_alternative": True,
+    }
+    qualifiers = [
+        "stop_further_oral_contact",
+        "inspect_for_damage_or_missing_fragments",
+        "seek_medical_help_if_ingested_or_symptomatic",
+        "no_toxicity_or_ingestion_safety_conclusion",
+    ]
+    prohibited = [
+        "bite_or_toxicity",
+        "child_safety",
+        "material_safety",
+        "non_toxic_claim",
+    ]
+    response["selected_evidence"] = []
+    minimal = response["minimal_decision_context"]
+    minimal["requested_claims"] = [{
+        "claim_type": "bite_or_toxicity",
+        "attribute_key": "bite_or_toxicity",
+    }]
+    minimal["admitted_evidence"] = []
+    claim = minimal["claim_resolutions"][0]
+    option = claim["eligible_policy_options"][0]
+    option.update({
+        "policy_ref": policy_ref,
+        "policy_intent_ref": "oral_exposure_safety_handling",
+        "goal_family": "bite_or_toxicity",
+        "premise_evidence_refs": [],
+        "premise_families": [],
+        "allowed_scope": "interrupt_exposure_inspect_and_escalate_if_needed",
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "allowed_variability_factor_families": [],
+        "advice_mode": "safety_handoff_required",
+        "forbidden_claim_families": prohibited,
+        "requested_risk": "high",
+        "requested_claim_risk": "high",
+        "answer_strategy_risk": "medium",
+        "required_qualifiers": qualifiers,
+        "restricted_request_boundary": boundary,
+        "option_provenance": {
+            "policy_owner": "domain_policy_pack",
+            "filter_owner": "claim_resolution",
+            "premise_owner": "authoritative_customer_goal",
+            "intent_narrowed": False,
+            "alternative_for_restricted_request": True,
+        },
+    })
+    claim.update({
+        "claim_type": "bite_or_toxicity",
+        "attribute_key": "bite_or_toxicity",
+        "requested_claim_risk": "high",
+        "evidence_uids": [],
+        "premise_evidence_uids": [],
+        "restricted_request_boundary": boundary,
+        "eligible_policy_options": [option],
+    })
+    policy = minimal["bounded_inference_policies"][0]
+    policy.update({
+        "policy_ref": policy_ref,
+        "policy_intent_ref": "oral_exposure_safety_handling",
+        "goal_family": "bite_or_toxicity",
+        "premise_fact_families": [],
+        "allowed_scope": "interrupt_exposure_inspect_and_escalate_if_needed",
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "allowed_variability_factor_families": [],
+        "advice_mode": "safety_handoff_required",
+        "required_qualifiers": qualifiers,
+        "prohibited_claim_families": prohibited,
+    })
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    clause.update({
+        "evidence_uids": [],
+        "inference_policy_refs": [policy_ref],
+        "scope_qualifier": "interrupt_exposure_inspect_and_escalate_if_needed",
+        "requested_claim_risk_level": "high",
+        "restricted_request_boundary": boundary,
+        "required_qualifiers": qualifiers,
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "allowed_variability_factor_families": [],
+        "advice_mode": "safety_handoff_required",
+        "prohibited_extensions": prohibited,
+    })
+    return response
+
+
 def test_final_auditor_accepts_canonical_policy_bounded_inference_contract():
     response = _bounded_inference_audit_response()
 
@@ -710,6 +811,44 @@ def test_final_auditor_accepts_canonical_policy_bounded_inference_contract():
         "impact_height",
     ]
     assert clause["advice_mode"] == "none"
+
+
+def test_final_auditor_accepts_goal_owned_safety_handling_without_evidence():
+    response = _oral_safety_audit_response()
+
+    assert _model_first_candidate_contract_issues(response) == []
+
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]["eligible_policy_options"][0]
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    assert option["option_provenance"]["premise_owner"] == (
+        "authoritative_customer_goal"
+    )
+    assert clause["evidence_uids"] == []
+    assert clause["advice_mode"] == "safety_handoff_required"
+    assert clause["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+
+
+@pytest.mark.parametrize("mutation", ["wrong_owner", "invented_evidence"])
+def test_final_auditor_rejects_invalid_goal_owned_safety_handling(mutation):
+    response = _oral_safety_audit_response()
+    option = response["minimal_decision_context"][
+        "claim_resolutions"
+    ][0]["eligible_policy_options"][0]
+    clause = response["model_first_answer_composer"]["clauses"][0]
+    if mutation == "wrong_owner":
+        option["option_provenance"]["premise_owner"] = (
+            "admitted_answer_context"
+        )
+    else:
+        clause["evidence_uids"] = ["invented-evidence"]
+
+    assert "model_first_candidate_bounded_inference_clause_invalid" in (
+        _model_first_candidate_contract_issues(response)
+    )
 
 
 @pytest.mark.parametrize(

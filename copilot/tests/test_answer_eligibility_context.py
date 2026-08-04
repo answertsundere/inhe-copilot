@@ -495,6 +495,7 @@ def test_domain_pack_loads_generic_bounded_inference_policies_across_domains(
         {"allowed_conclusion_family": ""},
         {"allowed_variability_factor_families": ["impact_height", "impact_height"]},
         {"advice_mode": "free_form_advice"},
+        {"premise_fact_families": []},
         {"premise_fact_families": ["material_composition", "material_composition"]},
         {"unexpected_field": "reply text"},
     ],
@@ -557,6 +558,7 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
         "variant_specification_practical_comparison",
         "material_daily_use_practical_guidance",
         "moisture_exposure_practical_guidance",
+        "oral_exposure_safety_handling",
         "detachable_storage_practical_guidance",
     } <= policy_refs
     assert all(item["review_only"] is True for item in policies)
@@ -611,6 +613,29 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
         "heat_resistance",
         "sterilization",
     } <= set(cleaning_heat["prohibited_claim_families"])
+    oral_safety = next(
+        item
+        for item in policies
+        if item["policy_intent_ref"] == "oral_exposure_safety_handling"
+    )
+    assert oral_safety["goal_family"] == "bite_or_toxicity"
+    assert oral_safety["premise_fact_families"] == []
+    assert oral_safety["advice_mode"] == "safety_handoff_required"
+    assert oral_safety["allowed_scope"] == (
+        "interrupt_exposure_inspect_and_escalate_if_needed"
+    )
+    assert {
+        "stop_further_oral_contact",
+        "inspect_for_damage_or_missing_fragments",
+        "seek_medical_help_if_ingested_or_symptomatic",
+        "no_toxicity_or_ingestion_safety_conclusion",
+    } <= set(oral_safety["required_qualifiers"])
+    assert {
+        "bite_or_toxicity",
+        "child_safety",
+        "material_safety",
+        "non_toxic_claim",
+    } <= set(oral_safety["prohibited_claim_families"])
     cleaning_chemical = next(
         item
         for item in policies
