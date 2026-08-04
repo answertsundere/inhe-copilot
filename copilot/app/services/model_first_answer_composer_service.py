@@ -1174,6 +1174,30 @@ class ModelFirstAnswerComposerService:
             ),
         })
 
+        if not customer_goals:
+            result["provider_diagnostics"][
+                "decision_input_used_for_final_reply"
+            ] = False
+            result.update({
+                "status": "accepted",
+                "rejection_reason": "",
+                "candidate_reply": "",
+                "used_for_final_reply": False,
+                "composition_applicable": False,
+            })
+            updated = deepcopy(original)
+            updated["model_first_answer_composer"] = result
+            updated.setdefault("evidence_debug", {})[
+                "model_first_answer_composer"
+            ] = result
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="composition_not_applicable",
+                )
+            return updated, result
+
         started = time.perf_counter()
         try:
             if client is None:
@@ -1361,27 +1385,6 @@ class ModelFirstAnswerComposerService:
             "denominator": len(customer_goals),
             "rate": 1.0 if customer_goals else None,
         }
-        if not customer_goals:
-            result.update({
-                "status": "accepted",
-                "rejection_reason": "",
-                "candidate_reply": "",
-                "used_for_final_reply": False,
-                "composition_applicable": False,
-            })
-            updated = deepcopy(original)
-            updated["model_first_answer_composer"] = result
-            updated.setdefault("evidence_debug", {})[
-                "model_first_answer_composer"
-            ] = result
-            if diagnostics_enabled:
-                _privacy_diagnostic_finish(
-                    privacy_diagnostics_sink,
-                    result,
-                    stage="completed",
-                )
-            return updated, result
-
         ordered_clauses = list(parsed["clauses"])
         reply = "".join(
             str(item["text"]).strip() for item in ordered_clauses

@@ -802,6 +802,64 @@ def test_model_first_candidate_skips_semantic_polish_and_stays_review_only(
     assert result["reply_blocks"][0]["content"] == result["suggested_reply"]
 
 
+def test_model_first_noop_keeps_legacy_orchestration(monkeypatch):
+    def fail_model_first(*_args, **_kwargs):
+        raise AssertionError("non-applicable composition is not a candidate")
+
+    def fake_final(response, **_kwargs):
+        response["final_answer_audit"] = {
+            "passed": True,
+            "mode": "fake",
+            "issues": [],
+        }
+        return response
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_orchestrate_model_first_response",
+        fail_model_first,
+    )
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_final)
+    monkeypatch.setattr(
+        orchestrator,
+        "polish_customer_reply",
+        lambda response, **_kwargs: response,
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "_optional_llm_language_polish",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_customer_reply_semantic_fit",
+        lambda *_args, **_kwargs: {
+            "passed": True,
+            "issues": [],
+            "mode": "fake",
+        },
+    )
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "legacy reply",
+            "can_send": False,
+            "requires_human_review": True,
+            "model_first_answer_composer": {
+                "status": "accepted",
+                "composition_applicable": False,
+                "used_for_final_reply": False,
+            },
+        },
+        customer_message="request a service action",
+    )
+
+    assert result["suggested_reply"] == "legacy reply"
+    assert result["final_response_pipeline"].get("mode") != (
+        "model_first_candidate"
+    )
+
+
 def test_model_first_final_failure_skips_unified_audit_without_rewrite(
     monkeypatch,
 ):

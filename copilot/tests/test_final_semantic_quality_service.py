@@ -9,12 +9,29 @@ from app.services.final_semantic_quality_service import (
     _atomic_semantic_json_schema,
     _atomic_semantic_system_prompt,
     _canonicalize_finding_codes,
+    _is_model_first_candidate,
     _semantic_budget_finding_codes,
     _validated_semantic_budget_checks,
     apply_semantic_fit_result,
     audit_customer_reply_semantic_fit,
     finding_ownership_matrix,
 )
+
+
+def test_model_first_detection_requires_candidate_reply_ownership():
+    assert _is_model_first_candidate({
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "used_for_final_reply": True,
+        },
+    }) is True
+    assert _is_model_first_candidate({
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "used_for_final_reply": False,
+            "composition_applicable": False,
+        },
+    }) is False
 
 
 class _FakeMessage:
@@ -97,6 +114,7 @@ def _model_first_atomic_response(*, inference: bool = False):
         "can_send": False,
         "model_first_answer_composer": {
             "status": "accepted",
+            "used_for_final_reply": True,
             "clauses": [
                 {
                     "clause_ref": "C1",
@@ -1790,7 +1808,10 @@ def test_model_first_semantic_failure_keeps_delivery_fail_closed():
         "sendable_reply": "stale",
         "can_send": True,
         "requires_human_review": False,
-        "model_first_answer_composer": {"status": "accepted"},
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "used_for_final_reply": True,
+        },
     }
     result = {
         "checked": True,

@@ -370,6 +370,18 @@ The existing Composer, Deterministic Final, and Unified Audit chain passed the
 cleaning and moisture component matrix `5/5 + 5/5`; full Pipeline qualification
 remains pending.
 
+The subsequent native Fixed-8 exposed a separate orchestration boundary. Some
+turns legitimately contain only dependency, service, media, or context goals
+and therefore have no renderable `customer_goal`. In that case the Composer is
+not applicable: it performs no Provider call, marks
+`composition_applicable=false` and `used_for_final_reply=false`, and preserves
+the existing reply. Final orchestration and Unified Textual Audit enter the
+model-first path only when `used_for_final_reply=true`; an accepted no-op is not
+a candidate reply. This prevents an empty clause set from being audited against
+an empty atomic contract while retaining the existing legacy owner for
+non-renderable turns. The Fixed-8 also retained one separate Composer premise
+reference failure, so the overall P1 quality gate remains open.
+
 Model portability is role-scoped rather than a global model switch. Turn
 Understanding, Composer, Unified Audit, embedding, and VLM roles may evolve at
 different rates and must keep separate credentials, model identity,

@@ -2119,7 +2119,11 @@ def _semantic_validation_diagnostics(
 
 def _is_model_first_candidate(response: dict[str, Any]) -> bool:
     composer = response.get("model_first_answer_composer")
-    return isinstance(composer, dict) and composer.get("status") == "accepted"
+    return bool(
+        isinstance(composer, dict)
+        and composer.get("status") == "accepted"
+        and composer.get("used_for_final_reply") is True
+    )
 
 
 def _model_first_unified_audit_payload(

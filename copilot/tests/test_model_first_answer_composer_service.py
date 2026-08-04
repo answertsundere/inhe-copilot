@@ -1752,9 +1752,13 @@ def test_composer_degraded_compatibility_claim_is_accepted_noop():
         "non_customer_goal_clause_count"
     ] == 0
     assert result["used_for_final_reply"] is False
+    assert result["provider_diagnostics"]["model_call_count"] == 0
+    assert result["provider_diagnostics"][
+        "decision_input_used_for_final_reply"
+    ] is False
     assert updated["suggested_reply"] == "旧回复"
     assert updated["can_send"] is True
-    assert client.call_count == 1
+    assert client.call_count == 0
 
 
 def test_composer_input_partition_does_not_modify_existing_audit_contracts():
@@ -2374,23 +2378,24 @@ def test_composer_rejects_media_delivery_without_explicit_media_goal():
     assert result["media_claim_diagnostics"]["goal_is_media_request"] is False
 
 
-def test_composer_rejects_media_request_clause_without_attached_block():
+def test_composer_skips_provider_for_media_only_request_without_block():
     response = _media_goal_response()
 
-    _, result, _ = _compose(
+    updated, result, client = _compose(
         _media_goal_payload("尺寸图已发，请查看。"),
         response,
     )
 
-    assert result["rejection_reason"] == (
-        "composer_non_renderable_goal_reference"
-    )
-    assert result["validation_diagnostics"]["category"] == (
-        "non_renderable_goal_ref"
-    )
+    assert result["status"] == "accepted"
+    assert result["composition_applicable"] is False
+    assert result["used_for_final_reply"] is False
+    assert result["clauses"] == []
+    assert result["provider_diagnostics"]["model_call_count"] == 0
+    assert client.call_count == 0
+    assert updated["suggested_reply"] == response["suggested_reply"]
 
 
-def test_composer_rejects_identity_mismatched_attached_media():
+def test_composer_skips_provider_for_media_only_request_with_wrong_identity():
     response = _media_goal_response()
     response["reply_blocks"].append({
         "type": "image",
@@ -2401,17 +2406,20 @@ def test_composer_rejects_identity_mismatched_attached_media():
         "sku_code": "different-sku",
     })
 
-    _, result, _ = _compose(
+    updated, result, client = _compose(
         _media_goal_payload("尺寸图已发，请查看。"),
         response,
     )
 
-    assert result["rejection_reason"] == (
-        "composer_non_renderable_goal_reference"
-    )
+    assert result["status"] == "accepted"
+    assert result["composition_applicable"] is False
+    assert result["used_for_final_reply"] is False
+    assert result["provider_diagnostics"]["model_call_count"] == 0
+    assert client.call_count == 0
+    assert updated["suggested_reply"] == response["suggested_reply"]
 
 
-def test_composer_does_not_render_media_request_as_fact_with_eligible_block():
+def test_composer_skips_provider_for_media_only_request_with_eligible_block():
     response = _media_goal_response()
     response["reply_blocks"].append({
         "type": "image",
@@ -2427,23 +2435,15 @@ def test_composer_does_not_render_media_request_as_fact_with_eligible_block():
         response,
     )
 
-    assert result["status"] == "provider_blocked"
-    assert result["rejection_reason"] == (
-        "composer_non_renderable_goal_reference"
-    )
+    assert result["status"] == "accepted"
+    assert result["composition_applicable"] is False
+    assert result["used_for_final_reply"] is False
+    assert result["clauses"] == []
     assert updated["can_send"] is True
-    assert result["provider_diagnostics"]["model_call_count"] == 1
+    assert result["provider_diagnostics"]["model_call_count"] == 0
     assert result["provider_diagnostics"]["retry_count"] == 0
     assert result["provider_diagnostics"]["repair_count"] == 0
-    prompt = json.loads(client.messages[1]["content"])
-    assert prompt["renderable_customer_goals"] == []
-    assert prompt["media_context"]["request_refs"] == [{
-        "goal_ref": "non_renderable_01",
-        "goal_kind": "media_request",
-        "status": "unresolved",
-        "renderable": False,
-    }]
-    assert prompt["media_context"]["actual_attached_media_types"] == ["image"]
+    assert client.call_count == 0
 
 
 def _bounded_inference_response() -> dict:

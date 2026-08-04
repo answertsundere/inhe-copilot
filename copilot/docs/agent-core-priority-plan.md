@@ -132,20 +132,31 @@ per role, no retry/repair/fallback, stable policy attribution, and no send
 authority. This is a component qualification; the new native Fixed-8 remains
 the next gate.
 
+That native Fixed-8 has now run once on clean commit `eca4ca40`: all eight
+requests completed, formal knowledge and DML stayed unchanged, and all eight
+remained review-only. It exposed two different blockers. First, turns with zero
+renderable customer goals were incorrectly treated as accepted model-first
+candidates and sent through an empty deterministic/textual audit contract. The
+general contract now makes those turns no-op Composer requests with zero
+Composer model calls and keeps them on the legacy orchestration path. Second,
+one real three-goal turn selected a bounded option but omitted its admitted
+premise reference, which the existing Validator correctly rejected.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. run the pinned complete conversation gate on the clean `1.5.0` candidate
-   with the qualified loopback
-   Unified Audit role and score customer outcome,
-   naturalness, continuity, RAG evidence coverage, and
-   useful progress rather than internal finding-code wording;
-2. after that gate is complete, run the documented cognitive-consolidation
+1. qualify the frozen three-goal premise-selection contract without changing
+   its facts, option binding, Validator, retry, repair, or fallback behavior;
+2. run one new pinned complete conversation gate with the qualified loopback
+   Unified Audit role and score customer outcome, naturalness, continuity, RAG
+   evidence coverage, and useful progress rather than internal finding-code
+   wording;
+3. after that gate is complete, run the documented cognitive-consolidation
    shadow comparison before deleting or merging any LangGraph node;
-3. preserve the P0 owner and safety boundaries while locating the earliest
+4. preserve the P0 owner and safety boundaries while locating the earliest
    remaining quality gap; and
-4. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
+5. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
    expansion, vision work, and platform adapters frozen unless P1 evidence
    makes one of them the earliest blocker.
 

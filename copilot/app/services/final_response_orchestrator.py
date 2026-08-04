@@ -70,6 +70,9 @@ def orchestrate_final_response(
     if (
         (response.get("model_first_answer_composer") or {}).get("status")
         == "accepted"
+        and (response.get("model_first_answer_composer") or {}).get(
+            "used_for_final_reply"
+        ) is True
     ):
         return _orchestrate_model_first_response(
             response,
