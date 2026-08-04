@@ -370,6 +370,11 @@ _DECISION_IDENTITY_SCOPE_FIELDS = {
     "namespace",
     "scope_ref",
 }
+_DECISION_IDENTITY_SCOPE_NAMESPACES = {
+    "sku_code",
+    "i_id",
+    "product_id",
+}
 _DECISION_CONTROLLED_REFERENCE_FIELDS = {
     "request_ref",
     "source_turn_ref",
@@ -389,6 +394,7 @@ _DECISION_CONTROLLED_REFERENCE_FIELDS = {
     "inference_policy_refs",
     "origin_ref",
     "scope_ref",
+    "namespace",
 }
 _DECISION_STRUCTURED_HASH_FIELDS = {
     "source_span_sha256",
@@ -2058,9 +2064,11 @@ class ModelFirstAnswerComposerService:
                     )
                     or set(scope)
                     != _DECISION_IDENTITY_SCOPE_FIELDS
-                    or not str(
+                    or str(
                         scope.get("namespace") or ""
-                    ).strip()
+                    ).strip() not in (
+                        _DECISION_IDENTITY_SCOPE_NAMESPACES
+                    )
                     or not str(
                         scope.get("scope_ref") or ""
                     ).startswith("scope-")

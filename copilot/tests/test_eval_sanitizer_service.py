@@ -39,6 +39,29 @@ def test_sanitize_obj_preserves_business_semantics_across_fields():
 
 
 @pytest.mark.parametrize(
+    "field_name",
+    ["source_span_sha256", "source_text_sha256"],
+)
+def test_sanitize_obj_preserves_valid_source_hashes(field_name):
+    digest = (
+        "dc9f309018368364d395ccef7588ca9d1c20236c4e5f7b70b8802fc9e9caf02d"
+    )
+
+    assert sanitize_obj({field_name: digest})[field_name] == digest
+
+
+def test_sanitize_obj_does_not_trust_malformed_source_hash():
+    malformed = "13800138000-not-a-source-hash"
+
+    projected = sanitize_obj({"source_span_sha256": malformed})[
+        "source_span_sha256"
+    ]
+
+    assert malformed not in projected
+    assert "13800138000" not in projected
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "收货地址：北京市朝阳区幸福路12号",

@@ -348,6 +348,56 @@ def test_decision_input_privacy_projection_is_idempotent():
     ) == decision_input
 
 
+@pytest.mark.parametrize(
+    "namespace",
+    ["sku_code", "i_id", "product_id"],
+)
+def test_decision_input_preserves_valid_identity_scope_namespace(
+    namespace,
+):
+    response = _response()
+    evidence = response["minimal_decision_context"][
+        "admitted_evidence"
+    ][0]
+    evidence["product_identity_scope"] = [{
+        "namespace": namespace,
+        "value": "PRIVATE-PRODUCT-IDENTITY",
+    }]
+
+    decision_input = _decision_input(response)
+    scope = decision_input["admitted_evidence"][0][
+        "identity_scope_refs"
+    ][0]
+
+    assert scope["namespace"] == namespace
+    assert scope["scope_ref"].startswith("scope-")
+    assert "PRIVATE-PRODUCT-IDENTITY" not in json.dumps(
+        decision_input,
+        ensure_ascii=False,
+    )
+    assert (
+        ModelFirstAnswerComposerService
+        ._privacy_project_decision_value(decision_input)
+    ) == decision_input
+
+
+def test_decision_input_rejects_unknown_identity_scope_namespace():
+    decision_input = _decision_input()
+    decision_input["admitted_evidence"][0][
+        "identity_scope_refs"
+    ] = [{
+        "namespace": "customer_supplied_namespace",
+        "scope_ref": "scope-safe-alias",
+    }]
+
+    reason = (
+        ModelFirstAnswerComposerService
+        .validate_composer_decision_input(decision_input)
+    )
+
+    assert reason == "composer_evidence_provenance_invalid"
+
+
 def test_decision_input_preserves_controlled_refs_and_hashes():
     decision_input = _decision_input(_bounded_inference_response())
     option = decision_input["claim_resolutions"][0][

@@ -40,6 +40,11 @@ _SAFE_INTERNAL_ID_KEYS = {
     "turn_uid",
     "conversation_uid",
 }
+_SAFE_STRUCTURED_SHA256_KEYS = {
+    "source_span_sha256",
+    "source_text_sha256",
+}
+_SHA256_RE = re.compile(r"[0-9a-fA-F]{64}")
 _PRODUCT_TITLE_KEYS = {
     "product_name",
     "product_title",
@@ -150,6 +155,11 @@ def sanitize_obj(value):
                 sanitized[key_text] = "[SECRET_REDACTED]"
             elif key_lower in _SAFE_INTERNAL_ID_KEYS:
                 sanitized[key_text] = str(item or "")
+            elif (
+                key_lower in _SAFE_STRUCTURED_SHA256_KEYS
+                and _SHA256_RE.fullmatch(str(item or ""))
+            ):
+                sanitized[key_text] = str(item)
             elif (
                 key_lower in _PRODUCT_TITLE_KEYS
                 or (title_like_candidate and key_lower in {"value", "title", "name"})
