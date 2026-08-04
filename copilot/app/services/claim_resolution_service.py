@@ -714,10 +714,19 @@ def build_claim_resolutions(
             facts = []
         eligible_policy_options: list[dict[str, Any]] = []
         option_rejection_reason = ""
+        has_explicit_policy_nomination = bool(
+            sanitize_text(requested.get("policy_intent_ref"))
+        )
         if (
             status in {"supported", "unresolved"}
             and (
-                status == "supported"
+                (
+                    status == "supported"
+                    and (
+                        has_explicit_policy_nomination
+                        or not policy_ref_prefix
+                    )
+                )
                 or reason in {
                     "no_admitted_direct_evidence",
                     "unmapped_claim_type",

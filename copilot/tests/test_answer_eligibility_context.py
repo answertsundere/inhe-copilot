@@ -92,6 +92,9 @@ def _understanding(
     *,
     status: str = "valid",
     risk_level: str = "low",
+    policy_intent_ref: str = "",
+    policy_goal_family: str = "",
+    policy_intent_kind: str = "",
 ) -> dict:
     source_text = "current question"
     source_digest = sha256(source_text.encode("utf-8")).hexdigest()
@@ -110,7 +113,9 @@ def _understanding(
                 "claim_type": claim_type,
                 "attribute_key": "material" if claim_type == "material_composition" else "",
                 "semantic_key": "",
-                "policy_intent_ref": "",
+                "policy_intent_ref": policy_intent_ref,
+                "policy_goal_family": policy_goal_family,
+                "policy_intent_kind": policy_intent_kind,
                 "source": "current_customer_message",
                 "source_span_start": 0,
                 "source_span_end": len(source_text),
@@ -545,10 +550,12 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
         for item in policies
     }
     assert {
+        "cleaning_care_practical_guidance",
         "product_dimensions_practical_guidance",
         "product_weight_practical_guidance",
         "variant_specification_practical_comparison",
         "material_daily_use_practical_guidance",
+        "moisture_exposure_practical_guidance",
         "detachable_storage_practical_guidance",
     } <= policy_refs
     assert all(item["review_only"] is True for item in policies)
@@ -573,6 +580,29 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
     assert durability["advice_mode"] == "concise_care_only"
     assert "no_absolute_guarantee" in durability["required_qualifiers"]
     assert "child_safety" in durability["prohibited_claim_families"]
+    cleaning = next(
+        item
+        for item in policies
+        if item["policy_intent_ref"]
+        == "cleaning_care_practical_guidance"
+    )
+    assert cleaning["goal_family"] == "cleaning_care"
+    assert cleaning["advice_mode"] == "concise_care_only"
+    assert cleaning["allowed_variability_factor_families"] == [
+        "cleaning_agent_strength",
+        "component_material",
+        "contact_duration",
+        "surface_finish",
+    ]
+    moisture = next(
+        item
+        for item in policies
+        if item["policy_intent_ref"]
+        == "moisture_exposure_practical_guidance"
+    )
+    assert moisture["goal_family"] == "moisture_resistance"
+    assert moisture["advice_mode"] == "concise_care_only"
+    assert "no_waterproof_guarantee" in moisture["required_qualifiers"]
 
 
 def test_all_registered_tools_declare_freshness_class():
@@ -1148,10 +1178,13 @@ def test_pipeline_selected_domain_context_reaches_claim_resolution_without_evide
                 "type": "text",
                 "content": "existing formal reply",
             }],
-            "turn_understanding": _understanding(
-                "material_composition",
-                risk_level="medium",
-            ),
+                "turn_understanding": _understanding(
+                    "material_composition",
+                    risk_level="medium",
+                    policy_intent_ref="material_practical_guidance",
+                    policy_goal_family="material_daily_use",
+                    policy_intent_kind="practical_guidance",
+                ),
             "slots": {"sku_code": "SKU-A"},
             "product_context_pack": {
                 "structured_profile": {
@@ -1177,10 +1210,13 @@ def test_pipeline_selected_domain_context_reaches_claim_resolution_without_evide
                 "type": "text",
                 "content": "existing formal reply",
             }],
-            "turn_understanding": _understanding(
-                "material_composition",
-                risk_level="medium",
-            ),
+                "turn_understanding": _understanding(
+                    "material_composition",
+                    risk_level="medium",
+                    policy_intent_ref="material_practical_guidance",
+                    policy_goal_family="material_daily_use",
+                    policy_intent_kind="practical_guidance",
+                ),
             "slots": {"sku_code": "SKU-A"},
             "product_context_pack": {
                 "structured_profile": {
@@ -1257,6 +1293,9 @@ def test_pipeline_selected_domain_context_reaches_claim_resolution_without_evide
             "turn_understanding": _understanding(
                 "material_composition",
                 risk_level="medium",
+                policy_intent_ref="material_practical_guidance",
+                policy_goal_family="material_daily_use",
+                policy_intent_kind="practical_guidance",
             ),
             "slots": {"sku_code": "SKU-A"},
             "product_context_pack": {

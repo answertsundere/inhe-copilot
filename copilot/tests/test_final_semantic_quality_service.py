@@ -363,6 +363,11 @@ def test_atomic_prompt_requires_independent_cumulative_budget_checks():
     assert "server derives all semantic-budget findings" in prompt
     assert "trusted_domain_pack_ref" in prompt
     assert "pack_content_sha256" in prompt
+    assert "material property, causal explanation" in prompt
+    assert "does not authorize presenting that factor" in prompt
+    assert "mechanically keyed by the supplied restricted_request_boundary" in prompt
+    assert "return not_applicable regardless of caveats" in prompt
+    assert "Do not infer a restricted boundary from wording alone" in prompt
 
 
 @pytest.mark.parametrize(

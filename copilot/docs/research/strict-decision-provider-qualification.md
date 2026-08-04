@@ -103,6 +103,15 @@ Fixed-8 evaluation. It is not a production enablement, and it does not justify
 JSON-object fallback, output repair, a second Audit call, or any change to
 `can_send`.
 
+`maternal_child_home@1.5.0` adds two further reviewed semantic budgets for
+ordinary cleaning care and incidental moisture exposure. The same loopback
+role first passed a safe/unsafe cleaning and moisture matrix `20/20`, then the
+existing Composer, Deterministic Final, and Unified Audit chain passed each
+live-shaped care input `5/5`. Every role invocation remained single-shot with
+no retry, repair, or fallback. This demonstrates component-level budget and
+language stability only; the native Fixed-8 still decides whether the combined
+Pipeline qualifies.
+
 ## Local Runtime Check: 2026-07-14
 
 The host keeps its vLLM 0.11 vision worker at localhost port 8001 on

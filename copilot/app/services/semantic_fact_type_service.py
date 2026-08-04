@@ -176,15 +176,22 @@ For each goal:
   explicitly asks for that fact.
 - claim_type_status is canonical only for an exact semantic match to one
   canonical_fact_type_candidates fact_type_id. Then claim_type is that ID.
-- Otherwise claim_type_status is unmapped and claim_type is empty.
+- Otherwise claim_type_status is unmapped and claim_type is empty. Preserve a
+  specific requested property or performance condition as unmapped when no
+  exact candidate exists; do not collapse it into a broader related action or
+  use-case candidate.
 - Match claim type and policy intent independently for each enumerated goal;
   the classification of one goal must not determine, merge, or erase another.
-- semantic_key is optional, non-authoritative metadata. If included, it is
-  either empty or a concise lowercase ASCII identifier. Omit it when no stable
-  semantic hint is available. Never invent a placeholder.
+- semantic_key is optional, non-authoritative metadata. For a canonical goal,
+  omit semantic_key or return it as an empty string because claim_type already
+  carries the identity. Only an unmapped goal may use a concise lowercase ASCII
+  semantic_key. Omit it when no stable semantic hint is available. Never invent
+  a placeholder.
 - attribute_key is an optional semantic attribute candidate.
 - policy_intent_ref is empty or exactly one supplied policy_intent_candidates
-  ID. It is a nomination, not an authorization.
+  ID. Nominate it only when its goal_family and allowed_scope directly match
+  this goal; do not substitute a merely related policy. It is a nomination,
+  not an authorization.
 - source_text is the smallest continuous exact substring that expresses this
   one goal and occurs exactly once in the current customer_message. Copy it
   verbatim without normalization. Distinct goals must not reuse the same exact

@@ -149,6 +149,12 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "every explicit request is represented exactly once" in prompt
     assert "must not replace or suppress a separate fact request" in prompt
     assert "classification of one goal must not determine, merge, or erase another" in prompt
+    assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
+    assert "Only an unmapped goal may use" in prompt
+    assert "goal_family and allowed_scope directly match" in prompt
+    assert "do not substitute a merely related policy" in prompt
+    assert "Preserve a specific requested property or performance condition as unmapped" in prompt
+    assert "do not collapse it into a broader related action" in prompt
 
 
 def test_single_provider_goal_is_not_completed_from_legacy_fact_type(monkeypatch):
@@ -413,8 +419,10 @@ def test_policy_candidates_come_only_from_internal_owner_context():
     assert {
         item["policy_intent_ref"] for item in trusted
     } == {
+        "cleaning_care_practical_guidance",
         "detachable_storage_practical_guidance",
         "material_daily_use_practical_guidance",
+        "moisture_exposure_practical_guidance",
         "product_dimensions_practical_guidance",
         "product_durability_absolute_guarantee",
         "product_durability_practical_guidance",

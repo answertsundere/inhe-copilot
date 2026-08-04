@@ -105,12 +105,15 @@ owner, and deterministic final safety. The active priority is now P1 Gold
 Conversation Quality through outcome-based long-conversation evaluation. Gold
 review remains an accuracy prerequisite, but building more review
 infrastructure is not the active development mainline.
-The latest native P1.4 fixed-eight gate reached Composer `8/8`; six cases
-reached Delivery and two remained fail-closed at the current Unified Audit
-Provider schema boundary. A prospective formal-RAG case also restored a
-published structured-product material fact without widening unresolved claims.
-These results do not enable the disabled features, qualify an Audit Provider,
-or establish real-customer accuracy.
+The historical native P1.4 fixed-eight gates remain incomplete. A prospective
+formal-RAG case restored a published structured-product material fact without
+widening unresolved claims, and the isolated loopback Unified Audit role later
+qualified against the corrected semantic matrix. Domain Pack
+`maternal_child_home@1.5.0` now adds reviewed cleaning-care and
+incidental-moisture budgets, and the existing Composer, Deterministic Final,
+and Audit chain passed both live-shaped component inputs `5/5 + 5/5`. The next
+gate is one clean native Fixed-8; these component results do not enable the
+disabled features or establish real-customer accuracy.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an

@@ -108,7 +108,7 @@ now preserves the same provider-neutral schema and local Validator.
 P1.4F found that the previous negative Audit fixture was itself too strict: it
 treated ordinary impact variables and a brief care suggestion as unsafe even
 though those are required for the approved humanlike answer. Domain Pack
-`maternal_child_home@1.4.0` now permits height, angle, surface, severity,
+`maternal_child_home@1.4.0` permits height, angle, surface, severity,
 frequency, and handling-pattern variability plus one concise care suggestion,
 while retaining the absolute-guarantee, test, child-safety, warranty, and other
 unsupported-claim prohibitions. With a truly unsafe absolute-guarantee
@@ -117,11 +117,27 @@ strict call per attempt, no retry/repair/fallback, and stable attribution. This
 qualifies that exact role for the next isolated Fixed-8 only; it does not enable
 production or change `can_send`.
 
+A later native Fixed-8 exposed two ordinary-care gaps rather than a need for a
+new reasoning service. Domain Pack `maternal_child_home@1.5.0` therefore adds
+review-only cleaning-care and incidental-moisture budgets grounded in an
+admitted material premise. It permits concise mild-cleaning, spot-test,
+prompt-drying, ventilation, and splash-versus-immersion guidance while
+retaining chemical-compatibility, waterproof, sterilization, safety, and
+certification prohibitions. A fully supported goal without an explicit policy
+nomination now remains direct-only; unresolved goals still receive the safe
+offered set and an explicitly nominated supported practical goal may still
+receive its exact option. The existing Composer, Deterministic Final, and
+loopback Unified Audit passed cleaning `5/5` plus moisture `5/5` with one call
+per role, no retry/repair/fallback, stable policy attribution, and no send
+authority. This is a component qualification; the new native Fixed-8 remains
+the next gate.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. rerun the pinned complete conversation gate with the qualified loopback
+1. run the pinned complete conversation gate on the clean `1.5.0` candidate
+   with the qualified loopback
    Unified Audit role and score customer outcome,
    naturalness, continuity, RAG evidence coverage, and
    useful progress rather than internal finding-code wording;
@@ -730,7 +746,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | Native fixed-eight Composer `8/8`; historical Delivery `6/8`; RAG material provenance restored; Domain Pack `1.4.0` aligns bounded durability guidance with the approved humanlike target; loopback `Qwen3.6:35b` passed recalibrated Unified Audit safe/unsafe `5+5`; `real_accuracy=null` | Run the pinned native Fixed-8 with the qualified local Audit role, then score human outcome and proceed to cognitive-consolidation shadow only if complete |
+| P1 Gold Conversation Quality | active | Historical native Fixed-8 remains incomplete; RAG material provenance restored; Domain Pack `1.5.0` covers reviewed durability, cleaning-care, and incidental-moisture guidance; loopback `Qwen3.6:35b` passed the recalibrated Audit matrix, and the existing Composer/Final/Audit chain passed cleaning `5/5` plus moisture `5/5`; `real_accuracy=null` | Run the pinned native Fixed-8 on the clean component-qualified candidate, then score human outcome and proceed to cognitive-consolidation shadow only if complete |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

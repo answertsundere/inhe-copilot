@@ -563,6 +563,46 @@ def test_policy_options_do_not_replace_direct_support_for_practical_goal():
     )
 
 
+def test_supported_goal_without_policy_nomination_stays_direct_only():
+    result = build_claim_resolutions(
+        [_bounded_goal(
+            claim_type="material_composition",
+            claim_type_status="mapped",
+            attribute_key="material",
+            policy_intent_ref="",
+            policy_goal_family="",
+            policy_intent_kind="",
+        )],
+        direct_product_facts=[
+            _fact(
+                "material",
+                "material",
+                claim_type="material_composition",
+            )
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+        bounded_inference_policies=[
+            _bounded_policy(),
+            _bounded_policy(
+                policy_intent_ref="cleaning_care_practical_guidance",
+                goal_family="cleaning_care",
+                allowed_scope="conservative_material_cleaning_guidance",
+            ),
+        ],
+        context_capabilities={
+            "product_category": {"available": True},
+        },
+        policy_ref_prefix="domain-policy:fixture@1.0.0",
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["support_basis"] == "direct_evidence"
+    assert result["evidence_uids"] == ["material"]
+    assert result["eligible_policy_options"] == []
+    assert result["bounded_inference_rejection_reason"] == ""
+
+
 @pytest.mark.parametrize(
     (
         "claim_type",
@@ -596,8 +636,15 @@ def test_policy_options_do_not_replace_direct_support_for_practical_goal():
         (
             "cleaning_care",
             "cleaning_care",
-            "material_daily_use_practical_guidance",
-            "material_daily_use",
+            "cleaning_care_practical_guidance",
+            "cleaning_care",
+            "material_composition",
+        ),
+        (
+            "moisture_resistance",
+            "moisture_resistance",
+            "moisture_exposure_practical_guidance",
+            "moisture_resistance",
             "material_composition",
         ),
         (

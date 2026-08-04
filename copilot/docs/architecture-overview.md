@@ -355,6 +355,21 @@ attribution. This qualifies that exact local Audit role for isolated P1
 evaluation only; it does not enable production, Composer, bounded inference,
 or `can_send`, and `real_customer_accuracy=null`.
 
+Version `1.5.0` adds the same reviewed control boundary for ordinary cleaning
+care and incidental moisture exposure. Both policies require an admitted
+material-composition premise, remain `review_only`, and permit only concise
+care, spot-test, prompt-drying, ventilation, and splash-versus-immersion
+guidance inside declared factor families. They do not establish chemical
+compatibility, waterproofing, sterilization, safety, or certification facts.
+Claim Resolution does not expose optional policies on an already-supported
+goal unless Turn Understanding explicitly nominated that same practical
+intent; unresolved goals may still receive the safe offered set for Composer
+selection. This keeps useful model reasoning on the actual unresolved goal
+without allowing a direct material answer to acquire unrelated care advice.
+The existing Composer, Deterministic Final, and Unified Audit chain passed the
+cleaning and moisture component matrix `5/5 + 5/5`; full Pipeline qualification
+remains pending.
+
 Model portability is role-scoped rather than a global model switch. Turn
 Understanding, Composer, Unified Audit, embedding, and VLM roles may evolve at
 different rates and must keep separate credentials, model identity,
@@ -451,7 +466,7 @@ boiling-water claims stayed unresolved. These are engineering and capability
 results only. The candidate remains default-off and review-only,
 `can_send=true` remains zero, and real-customer accuracy is still unknown.
 The next comparable fixed-eight run must use the qualified loopback Audit role
-and Domain Pack `1.4.0`; the historical six-of-eight result remains the Before
+and Domain Pack `1.5.0`; the historical result remains the Before
 baseline until that run completes.
 
 `docs/agent-core-priority-plan.md` is the operational delivery contract for

@@ -273,7 +273,8 @@ Synthetic gates remain unrun. Status remains
 P1.2g later captured a fresh authoritative Composer capsule instead of
 reconstructing the historical completion. P1.2h derives one selection mode
 from the existing resolution and goal-local offered set: no option is
-`forbidden`, a fully supported goal with options is `optional`, and an
+`forbidden`, a fully supported goal with an explicitly nominated option is
+`optional`, and an
 unresolved/conflicting/prohibited goal with options is `required`. The model
 still chooses the option and wording; the existing Composer Validator only
 enforces zero-or-one completeness and exact binding. Frozen Composer replay
@@ -283,6 +284,14 @@ Turn Understanding exposed only one of the two current-message goals, so the
 supported direct-fact goal disappeared before Composer projection. The fixed
 four, Gold 16, and Synthetic gates were not run. Status remains
 `bounded_inference_shadow_not_qualified`.
+
+P1 later tightened eligibility without changing that ownership: an
+already-supported goal with no explicit policy nomination is direct-only and
+does not receive unrelated options merely because it shares a premise family.
+Unresolved goals may still receive the safe offered set, and an explicitly
+nominated supported practical goal may still receive its exact option. This
+prevents optional advice on a completed fact goal while preserving model-led
+selection on the customer's actual unresolved request.
 
 P1.2k subsequently tightened the same disabled owners around a canonical
 Composer Decision Input, minimal output reconstruction, semantic-budget
