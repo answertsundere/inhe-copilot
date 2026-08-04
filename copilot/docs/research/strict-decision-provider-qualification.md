@@ -2,10 +2,10 @@
 
 ## Purpose
 
-The Evidence-First Decision Loop is a shadow diagnostic. Its provider must be
-qualified independently from the formal customer-reply model before any live
-shadow request runs. A provider that merely returns parseable JSON is not
-qualified.
+Strict model roles, including the Evidence-First Decision Loop and Unified
+Textual Audit, must be qualified independently from the formal customer-reply
+model before any live request runs. A provider that merely returns parseable
+JSON is not qualified.
 
 ## Research Findings
 
@@ -55,6 +55,31 @@ repeatability checks pass and a local operator explicitly sets
 `COPILOT_DECISION_LLM_QUALIFIED=true` for that exact configuration. Qualification
 never sets this switch and never changes formal reply, evidence, delivery, or
 `can_send` behavior.
+
+## Unified Audit Provider Check: 2026-08-04
+
+The independent Unified Audit role was checked against the frozen
+`unified-textual-audit-v2` Candidate 1/2 matrix without customer or Gold data.
+MiniMax-M3 accepted one strict tool preflight. Its generic strict transport then
+used the full 800-token completion budget and failed local top-level validation.
+Reusing the project's MiniMax compatibility controls (positive minimum
+temperature, separated reasoning, optional M3 thinking disablement, and a 1600
+token ceiling) produced one fully valid diagnostic response, but the first new
+frozen Candidate 1 attempt returned a normal completion instead of the forced
+tool call. The run stopped immediately. MiniMax-M3 therefore remains
+unqualified for Unified Audit even though its provider-specific request shape
+is now represented in the shared strict transport.
+
+DeepSeek officially documents beta strict tool schemas at the `/beta` endpoint
+and excludes `minItems` and `maxItems` for arrays. A preflight projected only
+unsupported provider-schema keywords while leaving the local Validator
+unchanged, but the existing project credential failed authentication before a
+model result. No DeepSeek model was qualified and no production role was
+switched. [DeepSeek strict tool calls](https://api-docs.deepseek.com/guides/tool_calls)
+
+These outcomes leave `approved_audit_provider_connection_required` as the
+active external dependency. They do not justify JSON-object fallback, output
+repair, a second Audit call, or production enablement.
 
 ## Local Runtime Check: 2026-07-14
 

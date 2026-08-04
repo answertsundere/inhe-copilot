@@ -103,6 +103,13 @@ the existing one-shot strict structured-output transport. It cannot inherit the
 formal Agent/Composer or decision-shadow model, and missing or unqualified
 configuration fails before a request with no fallback. This is an engineering
 connection boundary only; no Audit Provider/model has passed the frozen gate.
+The existing MiniMax-M3 connection passed a single strict-tool preflight after
+its wire compatibility was restored, but the first new frozen Candidate 1
+attempt omitted the forced tool call and stopped the run. The existing DeepSeek
+credential failed authentication at the official beta strict endpoint before
+producing a model result. Both remain unqualified; a usable approved strict
+Audit connection is still required before Fixed-8 can be treated as a complete
+conversation gate.
 
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or

@@ -142,6 +142,80 @@ def test_non_thinking_mode_is_an_explicit_provider_option():
     assert provider.metadata()["disable_thinking"] is True
 
 
+def test_minimax_strict_transport_uses_reasoning_safe_request_options():
+    client = _Client(_result())
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="openai_compatible",
+            api_base="https://api.minimaxi.com/v1",
+            disable_thinking=True,
+        ),
+        client_factory=lambda **_: client,
+    )
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="x",
+        payload={},
+        max_tokens=800,
+    )
+
+    request = client.calls[0]
+    assert request["temperature"] == 0.1
+    assert request["max_tokens"] == 1600
+    assert request["extra_body"] == {
+        "reasoning_split": True,
+        "thinking": {"type": "disabled"},
+    }
+
+
+def test_minimax_provider_name_applies_output_budget_without_disabling_thinking():
+    client = _Client(_result())
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="minimax",
+            api_base="https://gateway.example.invalid/v1",
+            disable_thinking=False,
+        ),
+        client_factory=lambda **_: client,
+    )
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="x",
+        payload={},
+        max_tokens=2000,
+    )
+
+    request = client.calls[0]
+    assert request["temperature"] == 0.1
+    assert request["max_tokens"] == 2000
+    assert request["extra_body"] == {"reasoning_split": True}
+
+
+def test_generic_strict_transport_preserves_requested_output_budget():
+    client = _Client(_result())
+    provider = StrictDecisionProviderService(
+        config=_config(disable_thinking=False),
+        client_factory=lambda **_: client,
+    )
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="x",
+        payload={},
+        max_tokens=37,
+    )
+
+    request = client.calls[0]
+    assert request["temperature"] == 0
+    assert request["max_tokens"] == 37
+    assert "extra_body" not in request
+
+
 def test_unqualified_provider_cannot_run_shadow_but_can_be_qualified():
     client = _Client(_result())
     provider = StrictDecisionProviderService(config=_config(qualified=False), client_factory=lambda **_: client)

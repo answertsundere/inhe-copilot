@@ -337,6 +337,11 @@ Audit role configuration that can issue exactly one native strict-schema or
 strict-tool request through the existing strict transport. It never inherits
 the Composer/formal Agent or decision-shadow credentials, and a missing,
 unsupported, or unqualified role fails before a model call without fallback.
+The transport retains provider-neutral schema and validation ownership while
+applying documented wire compatibility at the provider boundary. For MiniMax,
+that means a legal positive temperature, separated reasoning, optional
+thinking disablement, and enough output budget for the structured call; these
+options do not relax the strict schema or local Validator.
 This wiring does not qualify or enable a Provider. The v2 live capability is
 therefore still provider-blocked. Composer, bounded inference, and Formal
 Evidence Convergence retain their existing default-off states; `can_send`

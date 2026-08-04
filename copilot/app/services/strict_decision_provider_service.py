@@ -139,6 +139,42 @@ def _bounded_timeout(value: str) -> int:
         return 20
 
 
+def _provider_family(config: StrictDecisionProviderConfig) -> str:
+    provider_name = str(config.provider_name or "").strip().lower()
+    try:
+        hostname = (urlsplit(config.api_base).hostname or "").lower()
+    except ValueError:
+        hostname = ""
+    if (
+        "minimax" in provider_name
+        or hostname == "api.minimaxi.com"
+        or hostname.endswith(".minimaxi.com")
+        or hostname == "api.minimax.io"
+        or hostname.endswith(".minimax.io")
+    ):
+        return "minimax"
+    return "generic"
+
+
+def _provider_request_options(
+    config: StrictDecisionProviderConfig,
+    *,
+    max_tokens: int,
+) -> tuple[float, int, dict[str, Any]]:
+    if _provider_family(config) == "minimax":
+        extra_body: dict[str, Any] = {"reasoning_split": True}
+        if config.disable_thinking:
+            extra_body["thinking"] = {"type": "disabled"}
+        return 0.1, max(max_tokens, 1600), {"extra_body": extra_body}
+    if config.disable_thinking:
+        return 0, max_tokens, {
+            "extra_body": {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+        }
+    return 0, max_tokens, {}
+
+
 def _safe_error_category(exc: Exception) -> str:
     name = type(exc).__name__.lower()
     detail = sanitize_text(str(exc)).lower()
@@ -200,9 +236,12 @@ class StrictDecisionProviderService:
     ) -> dict[str, Any]:
         self._require_ready(allow_unqualified=allow_unqualified)
         started = time.perf_counter()
-        provider_options: dict[str, Any] = {}
-        if self.config.disable_thinking:
-            provider_options["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        temperature, output_tokens, provider_options = (
+            _provider_request_options(
+                self.config,
+                max_tokens=max_tokens,
+            )
+        )
         try:
             if self.config.capability == "strict_json_schema":
                 result = self.client.chat.completions.create(
@@ -211,8 +250,8 @@ class StrictDecisionProviderService:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                     ],
-                    temperature=0,
-                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    max_tokens=output_tokens,
                     response_format={
                         "type": "json_schema",
                         "json_schema": {"name": name, "strict": True, "schema": schema},
@@ -230,8 +269,8 @@ class StrictDecisionProviderService:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                     ],
-                    temperature=0,
-                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    max_tokens=output_tokens,
                     tools=[{
                         "type": "function",
                         "function": {"name": name, "strict": True, "parameters": schema},
