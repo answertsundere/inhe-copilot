@@ -213,7 +213,7 @@ _SEMANTIC_BUDGET_FINDING_CODES = {
 _NON_BUDGET_FINDING_CODES = (
     _LLM_SEMANTIC_ISSUE_CODES - _SEMANTIC_BUDGET_FINDING_CODES
 )
-_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v2"
+_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v3"
 _ATOMIC_SEMANTIC_OUTPUT_FIELDS = {
     "schema_version",
     "goal_reviews",
@@ -233,6 +233,7 @@ _ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS = {
     "advice_status",
     "variability_factor_status",
     "restricted_boundary_status",
+    "qualifier_status",
     "conclusion_status",
 }
 _ATOMIC_ADVICE_STATUSES = {
@@ -257,6 +258,11 @@ _ATOMIC_RESTRICTED_BOUNDARY_STATUSES = {
 _ATOMIC_CONCLUSION_STATUSES = {
     "within_budget",
     "outside_budget",
+    "indeterminate",
+}
+_ATOMIC_QUALIFIER_STATUSES = {
+    "satisfied",
+    "violated",
     "indeterminate",
 }
 _ATOMIC_EXPECTED_KINDS = {
@@ -330,6 +336,10 @@ def _atomic_semantic_json_schema(
             "restricted_boundary_status": {
                 "type": "string",
                 "enum": sorted(_ATOMIC_RESTRICTED_BOUNDARY_STATUSES),
+            },
+            "qualifier_status": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_QUALIFIER_STATUSES),
             },
             "conclusion_status": {
                 "type": "string",
@@ -873,7 +883,7 @@ def _strict_model_first_semantic_fit_check(
     )
     try:
         parsed = provider.request(
-            name="unified_textual_audit_v2",
+            name="unified_textual_audit_v3",
             schema=_atomic_semantic_json_schema(atomic_contract),
             system_prompt=_atomic_semantic_system_prompt(),
             payload=payload,
@@ -969,7 +979,7 @@ def _atomic_semantic_system_prompt() -> str:
         "clause that directly says the requested proposition cannot be confirmed or guaranteed answers "
         "the goal without asserting the fact. For every unified_textual_contract item whose "
         "semantic_budget_applicable is true, return exactly one semantic_budget_checks row in the same order. "
-        "All six fields are required and no extra fields are allowed. Determine each dimension independently "
+        "All seven fields are required and no extra fields are allowed. Determine each dimension independently "
         "from clause_text and its supplied semantic budget. Natural paraphrases count by meaning, not literal "
         "word overlap. advice_status is absent when there is no customer-directed advice, authorized only when "
         "present advice is permitted by advice_mode, unauthorized when present advice exceeds advice_mode, and "
@@ -997,8 +1007,16 @@ def _atomic_semantic_system_prompt() -> str:
         "preserved or violated. Do not infer boundary applicability from wording alone; use indeterminate only "
         "when an applicable boundary "
         "cannot be judged. "
-        "conclusion_status is within_budget only when every conclusion stays within allowed_conclusion_family "
-        "and required qualifiers, otherwise outside_budget; use indeterminate only when undecidable. "
+        "qualifier_status is satisfied only when the clause obeys every item in required_qualifiers, violated "
+        "when any required qualifier is contradicted or exceeded, and indeterminate only when the supplied "
+        "clause cannot be compared with the qualifier list. Judge the whole qualifier set cumulatively; one "
+        "satisfied qualifier never cancels another violated qualifier. conclusion_status is within_budget only "
+        "when every conclusion stays within allowed_conclusion_family, otherwise outside_budget; use "
+        "indeterminate only when undecidable. "
+        "A no_test_claim or no_test_claim_without_direct_evidence qualifier permits saying that direct test "
+        "evidence or a verified test basis is unavailable. It does not permit asserting that the product was "
+        "never tested, passed or failed a test, or meets a test standard; those are product test-status "
+        "conclusions and must be outside_budget without admitted direct test evidence. "
         "Indeterminate is a fail-closed last resort for genuinely ambiguous language, not an alternative to "
         "performing a supplied comparison. Never use indeterminate when the clause contains an explicit "
         "customer-directed action, an explicit factor or product assertion, or an explicit conclusion that "
@@ -1017,7 +1035,7 @@ def _atomic_semantic_system_prompt() -> str:
         "Echo every goal_ref, clause_ref, and clause_kind exactly once. For each goal return textual_status "
         "accepted with an empty finding_codes list, or rejected with one or more allowed finding codes. "
         "Return strict JSON with exactly schema_version, goal_reviews, semantic_budget_checks, "
-        "global_finding_codes. schema_version must be unified-textual-audit-v2. Each goal review must contain "
+        "global_finding_codes. schema_version must be unified-textual-audit-v3. Each goal review must contain "
         "exactly goal_ref, "
         "clause_ref, clause_kind, textual_status, finding_codes. Use only codes supplied in "
         "allowed_finding_codes. Do not return passed, verdict, reason, conclusion, analysis, markdown, "
@@ -1115,6 +1133,7 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
         variability_factors = clause.get(
             "allowed_variability_factor_families"
         )
+        required_qualifiers = clause.get("required_qualifiers")
         if clause_kind == "allowed_inference" and (
             len(inference_policy_refs) != 1
             or inference_policy_refs[0] not in pack_identity_by_policy_ref
@@ -1128,6 +1147,14 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
             )
             or variability_factors
             != sorted(set(variability_factors))
+            or not isinstance(required_qualifiers, list)
+            or not required_qualifiers
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in required_qualifiers
+            )
+            or required_qualifiers
+            != sorted(set(required_qualifiers))
             or clause.get("advice_mode") not in {
                 "none",
                 "concise_care_only",
@@ -1175,6 +1202,11 @@ def _atomic_semantic_contract(response: dict[str, Any]) -> list[dict[str, Any]]:
                     "allowed_variability_factor_families"
                 )
                 or []
+                if str(item).strip()
+            }),
+            "required_qualifiers": sorted({
+                str(item).strip()
+                for item in clause.get("required_qualifiers") or []
                 if str(item).strip()
             }),
             "advice_mode": str(
@@ -1437,9 +1469,11 @@ def _semantic_budget_finding_codes(
         findings.append("variability_factor_asserted_as_fact")
     if check["restricted_boundary_status"] == "violated":
         findings.append("restricted_boundary_violation")
+    if check["qualifier_status"] == "violated":
+        findings.append("inference_scope_exceeded")
     if check["conclusion_status"] == "outside_budget":
         findings.append("inference_scope_exceeded")
-    return sorted(findings)
+    return sorted(set(findings))
 
 
 def _safe_raw_semantic_budget_checks(
@@ -1462,6 +1496,7 @@ def _safe_raw_semantic_budget_checks(
         "restricted_boundary_status": (
             _ATOMIC_RESTRICTED_BOUNDARY_STATUSES
         ),
+        "qualifier_status": _ATOMIC_QUALIFIER_STATUSES,
         "conclusion_status": _ATOMIC_CONCLUSION_STATUSES,
     }
     projected: list[dict[str, str]] = []
@@ -1569,6 +1604,10 @@ def _validated_semantic_budget_checks(
             (
                 "restricted_boundary_status",
                 _ATOMIC_RESTRICTED_BOUNDARY_STATUSES,
+            ),
+            (
+                "qualifier_status",
+                _ATOMIC_QUALIFIER_STATUSES,
             ),
             (
                 "conclusion_status",

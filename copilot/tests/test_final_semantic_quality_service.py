@@ -267,7 +267,7 @@ def _model_first_atomic_response(*, inference: bool = False):
 def _atomic_judge_payload_for_response(response):
     contract = _atomic_semantic_contract(response)
     return {
-        "schema_version": "unified-textual-audit-v2",
+        "schema_version": "unified-textual-audit-v3",
         "goal_reviews": [
             {
                 "goal_ref": item["goal_ref"],
@@ -289,6 +289,7 @@ def _atomic_judge_payload_for_response(response):
                     if item["restricted_request_boundary"]
                     else "not_applicable"
                 ),
+                "qualifier_status": "satisfied",
                 "conclusion_status": "within_budget",
             }
             for item in contract
@@ -366,6 +367,9 @@ def test_atomic_contract_exposes_canonical_semantic_budget():
         "impact_angle",
         "impact_height",
     ]
+    assert bounded["required_qualifiers"] == [
+        "no_absolute_guarantee",
+    ]
     assert bounded["advice_mode"] == "none"
     assert bounded["trusted_domain_pack_ref"] == (
         "domain-policy:household@v1"
@@ -395,9 +399,13 @@ def test_atomic_prompt_requires_independent_cumulative_budget_checks():
     assert "authoritative restricted_boundary_applicable boolean" in prompt
     assert "return not_applicable regardless of caveats" in prompt
     assert "Do not infer boundary applicability from wording alone" in prompt
+    assert "qualifier_status is satisfied only when" in prompt
+    assert "Judge the whole qualifier set cumulatively" in prompt
     assert "fail-closed last resort for genuinely ambiguous language" in prompt
     assert "not an alternative to performing a supplied comparison" in prompt
     assert "semantically within prohibited_extensions is outside_budget" in prompt
+    assert "no_test_claim or no_test_claim_without_direct_evidence" in prompt
+    assert "does not permit asserting that the product was never tested" in prompt
     assert "It does not classify the meaning of customer-facing delivery wording" in prompt
     assert "completion_evidence.attached_media_blocks" in prompt
     assert "Candidate or catalog media is never delivery evidence" in prompt
@@ -459,6 +467,9 @@ def test_atomic_contract_rejects_conflicting_duplicate_pack_identity():
         lambda clause: clause.update({
             "advice_mode": "free_form_advice",
         }),
+        lambda clause: clause.update({
+            "required_qualifiers": [],
+        }),
     ],
 )
 def test_atomic_contract_fails_closed_on_invalid_semantic_budget(
@@ -499,6 +510,7 @@ def _semantic_budget_check(
     advice_status="absent",
     variability_factor_status="within_budget",
     restricted_boundary_status="not_applicable",
+    qualifier_status="satisfied",
     conclusion_status="within_budget",
 ):
     return {
@@ -507,6 +519,7 @@ def _semantic_budget_check(
         "advice_status": advice_status,
         "variability_factor_status": variability_factor_status,
         "restricted_boundary_status": restricted_boundary_status,
+        "qualifier_status": qualifier_status,
         "conclusion_status": conclusion_status,
     }
 
@@ -629,6 +642,14 @@ def test_semantic_budget_validator_rejects_order_duplicate_and_cross_goal(
             _semantic_budget_check(
                 "goal",
                 "clause",
+                qualifier_status="violated",
+            ),
+            ["inference_scope_exceeded"],
+        ),
+        (
+            _semantic_budget_check(
+                "goal",
+                "clause",
                 conclusion_status="outside_budget",
             ),
             ["inference_scope_exceeded"],
@@ -640,6 +661,46 @@ def test_semantic_budget_status_mapping_is_deterministic(
     expected_findings,
 ):
     assert _semantic_budget_finding_codes(check) == expected_findings
+
+
+def test_semantic_budget_qualifier_and_conclusion_violation_deduplicate():
+    check = _semantic_budget_check(
+        "goal",
+        "clause",
+        qualifier_status="violated",
+        conclusion_status="outside_budget",
+    )
+
+    assert _semantic_budget_finding_codes(check) == [
+        "inference_scope_exceeded"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("qualifier_status", "expected_category"),
+    [
+        ("unknown", "semantic_budget_status_invalid"),
+        ("indeterminate", "semantic_budget_indeterminate"),
+    ],
+)
+def test_semantic_budget_validator_rejects_invalid_qualifier_status(
+    qualifier_status,
+    expected_category,
+):
+    checks, findings, diagnostics = _validated_semantic_budget_checks(
+        [
+            _semantic_budget_check(
+                "goal",
+                "clause",
+                qualifier_status=qualifier_status,
+            )
+        ],
+        atomic_contract=[_semantic_budget_target("goal", "clause")],
+    )
+
+    assert checks is None
+    assert findings == {}
+    assert diagnostics["category"] == expected_category
 
 
 def _mutated_atomic_payload(mutation):
@@ -1378,7 +1439,7 @@ def test_atomic_semantic_audit_accepts_supported_and_unresolved_segments(
     assert client.call_count == 1
     assert result["passed"] is True
     assert result["issues"] == []
-    assert result["schema_version"] == "unified-textual-audit-v2"
+    assert result["schema_version"] == "unified-textual-audit-v3"
     assert len(result["goal_reviews"]) == 2
     assert all(
         item["textual_status"] == "accepted"
@@ -1436,6 +1497,12 @@ def test_atomic_semantic_audit_accepts_policy_bounded_inference(monkeypatch):
         (
             "conclusion_status",
             "outside_budget",
+            "inference_scope_exceeded",
+            False,
+        ),
+        (
+            "qualifier_status",
+            "violated",
             "inference_scope_exceeded",
             False,
         ),
@@ -1587,7 +1654,7 @@ def test_atomic_semantic_budget_contract_is_reusable_across_domain_packs(
     })
     contract = _atomic_semantic_contract(response)
     payload = {
-        "schema_version": "unified-textual-audit-v2",
+        "schema_version": "unified-textual-audit-v3",
         "goal_reviews": [
             {
                 "goal_ref": item["goal_ref"],
@@ -1614,6 +1681,7 @@ def test_atomic_semantic_budget_contract_is_reusable_across_domain_packs(
                     else "within_budget"
                 ),
                 "restricted_boundary_status": "not_applicable",
+                "qualifier_status": "satisfied",
                 "conclusion_status": "within_budget",
             }
             for item in contract
@@ -2400,6 +2468,14 @@ def test_atomic_semantic_json_schema_has_exact_contract_cardinality():
     assert schema["properties"]["semantic_budget_checks"]["items"][
         "additionalProperties"
     ] is False
+    budget_properties = schema["properties"]["semantic_budget_checks"][
+        "items"
+    ]["properties"]
+    assert budget_properties["qualifier_status"]["enum"] == [
+        "indeterminate",
+        "satisfied",
+        "violated",
+    ]
 
 
 def test_strict_unified_audit_uses_independent_provider_once(monkeypatch):
@@ -2431,7 +2507,7 @@ def test_strict_unified_audit_uses_independent_provider_once(monkeypatch):
     assert result["passed"] is True
     assert len(provider.calls) == 1
     request = provider.calls[0]
-    assert request["name"] == "unified_textual_audit_v2"
+    assert request["name"] == "unified_textual_audit_v3"
     assert request["allow_unqualified"] is False
     assert request["schema"]["additionalProperties"] is False
     assert raw_customer_value not in json.dumps(
