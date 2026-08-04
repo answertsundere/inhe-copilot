@@ -18,10 +18,11 @@ def _raw_goal(
     semantic_key: str,
     start: int | None = None,
     claim_type: str = "",
+    goal_kind: str = "customer_goal",
 ) -> dict:
     canonical = bool(claim_type)
     return {
-        "goal_kind": "customer_goal",
+        "goal_kind": goal_kind,
         "claim_type_status": "canonical" if canonical else "unmapped",
         "claim_type": claim_type,
         "attribute_key": "",
@@ -47,13 +48,6 @@ def _raw_goal(
             "space fit request",
             "dimensions",
             "space_fit_advice",
-        ),
-        (
-            "installation request and media request",
-            "installation request",
-            "media request",
-            "installation",
-            "media_request",
         ),
     ],
 )
@@ -98,6 +92,72 @@ def test_distinct_atomic_spans_create_two_authoritative_claims(
     assert len(goals) == 2
     assert len({goal["goal_ref"] for goal in goals}) == 2
     assert len(understanding["requested_claims"]) == 2
+
+
+def test_media_request_stays_separate_from_factual_fallback():
+    message = "send the dimension image or state the dimensions"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [
+            _raw_goal(
+                message,
+                "send the dimension image",
+                semantic_key="dimension_image_request",
+                goal_kind="media_request",
+            ),
+            _raw_goal(
+                message,
+                "state the dimensions",
+                semantic_key="",
+                claim_type="dimensions",
+            ),
+        ],
+        message=message,
+    )
+
+    understanding = _turn_understanding_from_result(
+        {"customer_message": message},
+        {
+            "query_fact_type": "dimensions",
+            "risk_hint": "medium",
+            "secondary_fact_types": [],
+            "customer_goals": goals,
+            "goal_understanding_status": status,
+            "goal_understanding_diagnostics": diagnostics,
+        },
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert [goal["goal_kind"] for goal in goals] == [
+        "media_request",
+        "customer_goal",
+    ]
+    assert len(understanding["customer_goals"]) == 2
+    assert len(understanding["requested_claims"]) == 1
+    assert understanding["requested_claims"][0]["claim_type"] == "dimensions"
+
+
+def test_media_request_cannot_be_promoted_to_canonical_fact():
+    message = "send the dimension image"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [
+            _raw_goal(
+                message,
+                message,
+                semantic_key="",
+                claim_type="dimensions",
+                goal_kind="media_request",
+            ),
+        ],
+        message=message,
+    )
+
+    assert status == "degraded"
+    assert diagnostics == ["media_request_canonical_claim_forbidden"]
+    assert len(goals) == 1
+    assert goals[0]["goal_kind"] == "media_request"
+    assert goals[0]["claim_type_status"] == "unmapped"
+    assert goals[0]["claim_type"] == ""
 
 
 def test_identical_whole_sentence_provenance_is_rejected():

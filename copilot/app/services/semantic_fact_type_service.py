@@ -41,6 +41,7 @@ HIGH_RISK_BOUNDARY_TYPES = {
 ALLOWED_GOAL_KINDS = {
     "customer_goal",
     "evidence_dependency",
+    "media_request",
     "service_action",
     "contextual_constraint",
 }
@@ -173,12 +174,16 @@ counts, offsets, hashes, goal references, confidence, or diagnostics.
 
 For each goal:
 - goal_kind is exactly one of customer_goal, evidence_dependency,
-  service_action, or contextual_constraint.
+  media_request, service_action, or contextual_constraint.
 - Every explicit product question, requested fact, requested property,
   suitability question, comparison, guarantee request, or request for practical
   advice is a customer_goal. A fact needed only to support another answer is
   evidence_dependency, but an explicit buyer request must never be relabeled as
   evidence_dependency merely because its answer may depend on another fact.
+- An explicit request to receive an image, video, diagram, or other media is a
+  media_request, not a customer_goal. Keep a separate factual customer_goal when
+  the buyer also asks for the underlying fact. A media_request is unmapped and
+  cannot nominate a policy intent.
 - claim_type_status is canonical only for an exact semantic match to one
   canonical_fact_type_candidates fact_type_id. Then claim_type is that ID.
 - Otherwise claim_type_status is unmapped and claim_type is empty. Preserve a
@@ -1924,6 +1929,8 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
             return "canonical_with_semantic_key"
         if goal_kind == "service_action":
             return "service_action_canonical_claim_forbidden"
+        if goal_kind == "media_request":
+            return "media_request_canonical_claim_forbidden"
         return ""
 
     if claim_type:

@@ -148,6 +148,9 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "each independently answerable request as a separate goal" in prompt
     assert "every explicit request is represented exactly once" in prompt
     assert "must not replace or suppress a separate fact request" in prompt
+    assert "media_request, service_action, or contextual_constraint" in prompt
+    assert "media_request, not a customer_goal" in prompt
+    assert "Keep a separate factual customer_goal" in prompt
     assert "classification of one goal must not determine, merge, or erase another" in prompt
     assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
     assert "Only an unmapped goal may use" in prompt
