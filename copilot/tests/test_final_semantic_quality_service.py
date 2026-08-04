@@ -2,8 +2,11 @@ import json
 
 import pytest
 
+from app import config
+from app.services import final_semantic_quality_service as semantic_service
 from app.services.final_semantic_quality_service import (
     _atomic_semantic_contract,
+    _atomic_semantic_json_schema,
     _atomic_semantic_system_prompt,
     _canonicalize_finding_codes,
     _semantic_budget_finding_codes,
@@ -2253,3 +2256,231 @@ def test_semantic_payload_preserves_model_first_review_and_reasoning_contract():
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "material-direct" not in serialized
     assert "model_first_candidate_contract" not in payload
+
+
+def _configure_strict_unified_audit(monkeypatch, *, qualified=True):
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_STRICT_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_PROVIDER",
+        "strict-audit-test",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_API_BASE",
+        "https://audit.example.invalid/v1",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_API_KEY",
+        "audit-secret",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_MODEL",
+        "audit-model",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_CAPABILITY",
+        "strict_json_schema",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_TIMEOUT_SECONDS",
+        9,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_QUALIFIED",
+        qualified,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_DISABLE_THINKING",
+        False,
+    )
+
+
+class _StrictAuditProvider:
+    def __init__(self, parsed):
+        self.parsed = parsed
+        self.calls = []
+        self.last_latency_ms = 12.7
+
+    def metadata(self):
+        return {
+            "provider_name": "strict-audit-test",
+            "host_fingerprint": "123456789abc",
+            "model_name": "audit-model",
+            "capability": "strict_json_schema",
+            "configured": True,
+            "qualified": True,
+        }
+
+    def request(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.parsed
+
+
+def test_atomic_semantic_json_schema_has_exact_contract_cardinality():
+    contract = _atomic_semantic_contract(
+        _model_first_atomic_response(inference=True)
+    )
+
+    schema = _atomic_semantic_json_schema(contract)
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {
+        "schema_version",
+        "goal_reviews",
+        "semantic_budget_checks",
+        "global_finding_codes",
+    }
+    assert schema["properties"]["goal_reviews"]["minItems"] == 2
+    assert schema["properties"]["goal_reviews"]["maxItems"] == 2
+    assert schema["properties"]["semantic_budget_checks"][
+        "minItems"
+    ] == 1
+    assert schema["properties"]["semantic_budget_checks"][
+        "maxItems"
+    ] == 1
+    assert schema["properties"]["goal_reviews"]["items"][
+        "additionalProperties"
+    ] is False
+    assert schema["properties"]["semantic_budget_checks"]["items"][
+        "additionalProperties"
+    ] is False
+
+
+def test_strict_unified_audit_uses_independent_provider_once(monkeypatch):
+    _configure_strict_unified_audit(monkeypatch)
+    provider = _StrictAuditProvider(
+        _atomic_judge_payload(inference=True)
+    )
+    monkeypatch.setattr(
+        semantic_service,
+        "StrictDecisionProviderService",
+        lambda config: provider,
+    )
+    monkeypatch.setattr(
+        "app.llm.client.get_llm_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("formal LLM role must not be used")
+        ),
+    )
+    raw_customer_value = "buyer-private@example.com"
+
+    result = audit_customer_reply_semantic_fit(
+        _model_first_atomic_response(inference=True),
+        customer_message=(
+            "杩欐鏄粈涔堟潗璐紝鏃ュ父磕碰鎬庝箞鏍凤紵 "
+            + raw_customer_value
+        ),
+    )
+
+    assert result["passed"] is True
+    assert len(provider.calls) == 1
+    request = provider.calls[0]
+    assert request["name"] == "unified_textual_audit_v2"
+    assert request["allow_unqualified"] is False
+    assert request["schema"]["additionalProperties"] is False
+    assert raw_customer_value not in json.dumps(
+        request["payload"],
+        ensure_ascii=False,
+    )
+    diagnostics = result["provider_diagnostics"]
+    assert diagnostics["provider_role"] == "unified_textual_audit"
+    assert diagnostics["model_call_count"] == 1
+    assert diagnostics["retry_count"] == 0
+    assert diagnostics["repair_count"] == 0
+    assert "audit-secret" not in str(diagnostics)
+    assert "audit.example.invalid" not in str(diagnostics)
+
+
+def test_strict_unified_audit_unqualified_fails_without_formal_fallback(
+    monkeypatch,
+):
+    _configure_strict_unified_audit(monkeypatch, qualified=False)
+    monkeypatch.setattr(
+        "app.llm.client.get_llm_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("formal LLM role must not be used")
+        ),
+    )
+
+    result = audit_customer_reply_semantic_fit(
+        _model_first_atomic_response(),
+        customer_message="杩欐鏄粈涔堟潗璐紵",
+    )
+
+    assert result["passed"] is False
+    assert result["issues"] == ["semantic_judge_unavailable"]
+    assert result["provider_diagnostics"]["model_call_count"] == 0
+    assert result["provider_diagnostics"][
+        "provider_error_type"
+    ] == "provider_not_qualified"
+    assert result["validation_diagnostics"][
+        "category"
+    ] == "strict_provider_error"
+
+
+def test_strict_unified_audit_keeps_local_validator_authoritative(
+    monkeypatch,
+):
+    _configure_strict_unified_audit(monkeypatch)
+    parsed = _atomic_judge_payload()
+    parsed["goal_reviews"][0]["goal_ref"] = "goal-durability"
+    provider = _StrictAuditProvider(parsed)
+    monkeypatch.setattr(
+        semantic_service,
+        "StrictDecisionProviderService",
+        lambda config: provider,
+    )
+
+    result = audit_customer_reply_semantic_fit(
+        _model_first_atomic_response(),
+        customer_message="杩欐鏄粈涔堟潗璐紵",
+    )
+
+    assert len(provider.calls) == 1
+    assert result["passed"] is False
+    assert result["issues"] == ["semantic_judge_schema_invalid"]
+    assert result["validation_diagnostics"]["category"] in {
+        "duplicate_segment_reference",
+        "unknown_segment_reference",
+    }
+
+
+def test_default_model_first_audit_keeps_legacy_transport(monkeypatch):
+    monkeypatch.setattr(config, "COPILOT_FINAL_AUDIT_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_STRICT_ENABLED",
+        False,
+    )
+    client = _CountingClient(content=json.dumps(_atomic_judge_payload()))
+    monkeypatch.setattr("app.llm.client.get_llm_client", lambda: client)
+    monkeypatch.setattr(
+        semantic_service,
+        "StrictDecisionProviderService",
+        lambda config: (_ for _ in ()).throw(
+            AssertionError("strict Audit role must remain disabled")
+        ),
+    )
+
+    result = audit_customer_reply_semantic_fit(
+        _model_first_atomic_response(),
+        customer_message="杩欐鏄粈涔堟潗璐紵",
+    )
+
+    assert result["passed"] is True
+    assert client.call_count == 1
+    assert client.last_kwargs["response_format"] == {
+        "type": "json_object"
+    }

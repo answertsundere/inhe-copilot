@@ -53,6 +53,72 @@ def test_formal_llm_config_is_not_reused_when_decision_provider_missing(monkeypa
         provider.request(name="x", schema={}, system_prompt="x", payload={}, max_tokens=1)
 
 
+def test_unified_audit_config_is_independent_from_formal_and_decision_roles(
+    monkeypatch,
+):
+    monkeypatch.setattr(config, "LLM_API_KEY", "formal-secret")
+    monkeypatch.setattr(
+        config,
+        "COPILOT_DECISION_LLM_API_KEY",
+        "decision-secret",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_PROVIDER",
+        "audit-provider",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_API_BASE",
+        "https://audit.example.invalid/v1",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_API_KEY",
+        "audit-secret",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_MODEL",
+        "audit-model",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_CAPABILITY",
+        "strict_json_schema",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_TIMEOUT_SECONDS",
+        17,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_QUALIFIED",
+        True,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_DISABLE_THINKING",
+        True,
+    )
+
+    audit = StrictDecisionProviderConfig.from_unified_audit_environment()
+
+    assert audit.provider_name == "audit-provider"
+    assert audit.api_base == "https://audit.example.invalid/v1"
+    assert audit.api_key == "audit-secret"
+    assert audit.model == "audit-model"
+    assert audit.capability == "strict_json_schema"
+    assert audit.timeout_seconds == 17
+    assert audit.qualified is True
+    assert audit.disable_thinking is True
+    assert audit.api_key not in {
+        config.LLM_API_KEY,
+        config.COPILOT_DECISION_LLM_API_KEY,
+    }
+
+
 def test_strict_json_schema_request_never_uses_json_object():
     client = _Client(_result())
     provider = StrictDecisionProviderService(config=_config(), client_factory=lambda **_: client)

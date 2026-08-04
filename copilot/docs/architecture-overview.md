@@ -332,11 +332,24 @@ promotion. The formal sequence remains Composer, Deterministic Final, one
 Unified Textual Audit, then Delivery Gate.
 
 No approved Audit Provider/model currently satisfies the frozen v2 schema and
-semantic matrix, and no role-level Audit model is configured as a production
-default. The v2 live capability is therefore provider-blocked. Composer,
-bounded inference, and Formal Evidence Convergence retain their existing
-default-off states; `can_send` ownership and production delivery are
-unchanged, and `real_customer_accuracy=null`.
+semantic matrix. The application now has an independent, default-off Unified
+Audit role configuration that can issue exactly one native strict-schema or
+strict-tool request through the existing strict transport. It never inherits
+the Composer/formal Agent or decision-shadow credentials, and a missing,
+unsupported, or unqualified role fails before a model call without fallback.
+This wiring does not qualify or enable a Provider. The v2 live capability is
+therefore still provider-blocked. Composer, bounded inference, and Formal
+Evidence Convergence retain their existing default-off states; `can_send`
+ownership and production delivery are unchanged, and
+`real_customer_accuracy=null`.
+
+Model portability is role-scoped rather than a global model switch. Turn
+Understanding, Composer, Unified Audit, embedding, and VLM roles may evolve at
+different rates and must keep separate credentials, model identity,
+capability declaration, and qualification evidence. A stronger model receives
+the widest compact business context and may perform holistic interpretation,
+goal decomposition, option selection, and natural wording. It still cannot
+grant itself evidence, action, media, tenant, or delivery authority.
 
 Composer-entry attribution and Composer privacy diagnostics are explicit
 evaluation-only sinks and are disabled by default. A missing sink is a

@@ -32,6 +32,37 @@ COPILOT_DECISION_LLM_DISABLE_THINKING = os.environ.get(
     "COPILOT_DECISION_LLM_DISABLE_THINKING", "false"
 ).lower() in ("1", "true", "yes", "on")
 
+# Unified Textual Audit has an independent, explicit strict-output role. It
+# must never silently inherit the Composer/formal reply model or the decision
+# shadow credentials.
+COPILOT_UNIFIED_AUDIT_STRICT_ENABLED = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_STRICT_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+COPILOT_UNIFIED_AUDIT_PROVIDER = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_PROVIDER", ""
+)
+COPILOT_UNIFIED_AUDIT_API_BASE = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_API_BASE", ""
+)
+COPILOT_UNIFIED_AUDIT_API_KEY = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_API_KEY", ""
+)
+COPILOT_UNIFIED_AUDIT_MODEL = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_MODEL", ""
+)
+COPILOT_UNIFIED_AUDIT_CAPABILITY = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_CAPABILITY", "unsupported"
+)
+COPILOT_UNIFIED_AUDIT_TIMEOUT_SECONDS = int(
+    os.environ.get("COPILOT_UNIFIED_AUDIT_TIMEOUT_SECONDS", "20")
+)
+COPILOT_UNIFIED_AUDIT_QUALIFIED = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_QUALIFIED", "false"
+).lower() in ("1", "true", "yes", "on")
+COPILOT_UNIFIED_AUDIT_DISABLE_THINKING = os.environ.get(
+    "COPILOT_UNIFIED_AUDIT_DISABLE_THINKING", "false"
+).lower() in ("1", "true", "yes", "on")
+
 # ============ 客户图片 VLM 配置 ============
 COPILOT_VLM_ENABLED = os.environ.get("COPILOT_VLM_ENABLED", "false").lower() in ("1", "true", "yes", "on")
 COPILOT_VLM_API_BASE = os.environ.get(

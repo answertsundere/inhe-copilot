@@ -98,17 +98,27 @@ supported/direct evidence and correctly answered `PP/TPE`; odor and boiling-
 water sterilization remained unresolved. This is a targeted capability proof,
 not a new fixed-eight result or real-accuracy claim.
 
+The Unified Audit role now has independent default-off configuration and reuses
+the existing one-shot strict structured-output transport. It cannot inherit the
+formal Agent/Composer or decision-shadow model, and missing or unqualified
+configuration fails before a request with no fallback. This is an engineering
+connection boundary only; no Audit Provider/model has passed the frozen gate.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. connect an explicitly approved Unified Audit Provider/model that can satisfy
-   the frozen strict output contract without retry, repair, or fallback;
-2. score customer outcome, naturalness, continuity, RAG evidence coverage, and
+1. connect and qualify an explicitly approved Unified Audit Provider/model
+   through the independent role configuration, satisfying the frozen strict
+   output contract without retry, repair, or fallback;
+2. rerun the pinned complete conversation gate and score customer outcome,
+   naturalness, continuity, RAG evidence coverage, and
    useful progress rather than internal finding-code wording;
-3. preserve the P0 owner and safety boundaries while locating the earliest
+3. after that gate is complete, run the documented cognitive-consolidation
+   shadow comparison before deleting or merging any LangGraph node;
+4. preserve the P0 owner and safety boundaries while locating the earliest
    remaining quality gap; and
-4. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
+5. keep unapproved provider matrices, protocol validators, Fast Path work, frontend
    expansion, vision work, and platform adapters frozen unless P1 evidence
    makes one of them the earliest blocker.
 

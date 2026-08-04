@@ -28,6 +28,11 @@ from app.services.model_first_answer_composer_service import (
     ModelFirstAnswerComposerService,
 )
 from app.services.no_evidence_reply_policy_service import apply_no_evidence_reply_policy
+from app.services.strict_decision_provider_service import (
+    StrictDecisionProviderConfig,
+    StrictDecisionProviderError,
+    StrictDecisionProviderService,
+)
 
 
 _LLM_SEMANTIC_ISSUE_CODES = {
@@ -259,6 +264,107 @@ _ATOMIC_EXPECTED_KINDS = {
     "unresolved",
     "allowed_inference",
 }
+
+
+def _atomic_semantic_json_schema(
+    atomic_contract: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the provider schema; local validation remains authoritative."""
+    goal_refs = sorted({item["goal_ref"] for item in atomic_contract})
+    clause_refs = sorted({item["clause_ref"] for item in atomic_contract})
+    budget_targets = [
+        item
+        for item in atomic_contract
+        if item.get("semantic_budget_applicable") is True
+    ]
+    budget_goal_refs = sorted({
+        item["goal_ref"] for item in budget_targets
+    }) or goal_refs
+    budget_clause_refs = sorted({
+        item["clause_ref"] for item in budget_targets
+    }) or clause_refs
+    finding_codes = sorted(_NON_BUDGET_FINDING_CODES)
+    goal_review = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": sorted(_ATOMIC_SEGMENT_FIELDS),
+        "properties": {
+            "goal_ref": {"type": "string", "enum": goal_refs},
+            "clause_ref": {"type": "string", "enum": clause_refs},
+            "clause_kind": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_EXPECTED_KINDS),
+            },
+            "textual_status": {
+                "type": "string",
+                "enum": ["accepted", "rejected"],
+            },
+            "finding_codes": {
+                "type": "array",
+                "items": {"type": "string", "enum": finding_codes},
+                "uniqueItems": True,
+            },
+        },
+    }
+    budget_check = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": sorted(_ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS),
+        "properties": {
+            "goal_ref": {
+                "type": "string",
+                "enum": budget_goal_refs,
+            },
+            "clause_ref": {
+                "type": "string",
+                "enum": budget_clause_refs,
+            },
+            "advice_status": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_ADVICE_STATUSES),
+            },
+            "variability_factor_status": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_VARIABILITY_FACTOR_STATUSES),
+            },
+            "restricted_boundary_status": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_RESTRICTED_BOUNDARY_STATUSES),
+            },
+            "conclusion_status": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_CONCLUSION_STATUSES),
+            },
+        },
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": sorted(_ATOMIC_SEMANTIC_OUTPUT_FIELDS),
+        "properties": {
+            "schema_version": {
+                "type": "string",
+                "const": _ATOMIC_SEMANTIC_SCHEMA_VERSION,
+            },
+            "goal_reviews": {
+                "type": "array",
+                "items": goal_review,
+                "minItems": len(atomic_contract),
+                "maxItems": len(atomic_contract),
+            },
+            "semantic_budget_checks": {
+                "type": "array",
+                "items": budget_check,
+                "minItems": len(budget_targets),
+                "maxItems": len(budget_targets),
+            },
+            "global_finding_codes": {
+                "type": "array",
+                "items": {"type": "string", "enum": finding_codes},
+                "uniqueItems": True,
+            },
+        },
+    }
 
 
 def audit_customer_reply_semantic_fit(
@@ -546,6 +652,15 @@ def _llm_semantic_fit_check(
     if not config.COPILOT_FINAL_AUDIT_LLM_ENABLED:
         return None
     model_first_candidate = _is_model_first_candidate(response)
+    if (
+        model_first_candidate
+        and config.COPILOT_UNIFIED_AUDIT_STRICT_ENABLED
+    ):
+        return _strict_model_first_semantic_fit_check(
+            response,
+            customer_message=customer_message,
+            copilot_context=copilot_context,
+        )
     try:
         from app.llm.client import get_llm_client
 
@@ -727,6 +842,113 @@ def _llm_semantic_fit_check(
                 ),
             )
         return _result(True, [], f"LLM semantic fit unavailable: {type(exc).__name__}", "deterministic")
+
+
+def _strict_model_first_semantic_fit_check(
+    response: dict[str, Any],
+    *,
+    customer_message: str,
+    copilot_context: dict[str, Any],
+) -> dict[str, Any]:
+    atomic_contract = _atomic_semantic_contract(response)
+    if not atomic_contract:
+        return _semantic_judge_failure(
+            "semantic_judge_schema_invalid",
+            validation_diagnostics=_semantic_validation_diagnostics(
+                "atomic_contract_missing",
+                json_path="$.unified_textual_contract",
+                expected_type="non_empty_atomic_contract",
+                actual_type="empty",
+            ),
+        )
+
+    payload = _semantic_payload(
+        response,
+        customer_message,
+        copilot_context,
+    )
+    payload["unified_textual_contract"] = atomic_contract
+    provider = StrictDecisionProviderService(
+        config=StrictDecisionProviderConfig.from_unified_audit_environment()
+    )
+    try:
+        parsed = provider.request(
+            name="unified_textual_audit_v2",
+            schema=_atomic_semantic_json_schema(atomic_contract),
+            system_prompt=_atomic_semantic_system_prompt(),
+            payload=payload,
+            max_tokens=800,
+            allow_unqualified=False,
+        )
+    except StrictDecisionProviderError as exc:
+        category = str(exc) or "provider_request_failed"
+        model_call_count = (
+            0
+            if category in {
+                "provider_not_configured",
+                "provider_not_qualified",
+                "strict_capability_not_supported",
+            }
+            else 1
+        )
+        return _semantic_judge_failure(
+            "semantic_judge_unavailable",
+            provider_diagnostics=_strict_semantic_provider_diagnostics(
+                provider,
+                error_type=category,
+                model_call_count=model_call_count,
+            ),
+            validation_diagnostics=_semantic_validation_diagnostics(
+                "strict_provider_error",
+                json_path="$",
+                expected_type="strict_semantic_response",
+                actual_type=category,
+            ),
+        )
+    except Exception as exc:
+        return _semantic_judge_failure(
+            "semantic_judge_unavailable",
+            provider_diagnostics=_strict_semantic_provider_diagnostics(
+                provider,
+                error_type=type(exc).__name__,
+                model_call_count=1,
+            ),
+            validation_diagnostics=_semantic_validation_diagnostics(
+                "strict_provider_error",
+                json_path="$",
+                expected_type="strict_semantic_response",
+                actual_type=type(exc).__name__,
+            ),
+        )
+
+    provider_diagnostics = _strict_semantic_provider_diagnostics(
+        provider,
+        parsed=parsed,
+        model_call_count=1,
+    )
+    atomic_result, validation_diagnostics = (
+        _atomic_semantic_result_with_diagnostics(
+            parsed,
+            atomic_contract=atomic_contract,
+        )
+    )
+    if atomic_result is None:
+        failure = _semantic_judge_failure(
+            "semantic_judge_schema_invalid",
+            provider_diagnostics=provider_diagnostics,
+            validation_diagnostics=validation_diagnostics,
+        )
+        safe_raw_checks = _safe_raw_semantic_budget_checks(
+            parsed.get("semantic_budget_checks"),
+            atomic_contract=atomic_contract,
+        )
+        if safe_raw_checks is not None:
+            failure["raw_semantic_budget_checks"] = safe_raw_checks
+        return failure
+
+    atomic_result["provider_diagnostics"] = provider_diagnostics
+    atomic_result["validation_diagnostics"] = validation_diagnostics
+    return atomic_result
 
 
 def _atomic_semantic_system_prompt() -> str:
@@ -1810,6 +2032,62 @@ def _semantic_provider_failure_diagnostics(exc: Exception) -> dict[str, Any]:
         "json_repair_count": 0,
         "envelope_contract_version": COMPOSER_ENVELOPE_CONTRACT_VERSION,
         "envelope_unwrap_count": 0,
+    }
+
+
+def _strict_semantic_provider_diagnostics(
+    provider: StrictDecisionProviderService,
+    *,
+    parsed: dict[str, Any] | None = None,
+    error_type: str = "",
+    model_call_count: int,
+) -> dict[str, Any]:
+    metadata = provider.metadata()
+    canonical_response = (
+        json.dumps(
+            parsed,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if parsed is not None
+        else ""
+    )
+    latency = provider.last_latency_ms
+    return {
+        "response_envelope": (
+            "native_strict_object"
+            if parsed is not None
+            else "provider_error"
+        ),
+        "response_length": len(canonical_response),
+        "response_sha256": (
+            hashlib.sha256(
+                canonical_response.encode("utf-8")
+            ).hexdigest()
+            if canonical_response
+            else ""
+        ),
+        "finish_reason": (
+            "strict_schema_completed" if parsed is not None else ""
+        ),
+        "provider_latency_ms": (
+            max(0, int(latency)) if latency is not None else None
+        ),
+        "provider_error_type": error_type,
+        "model_call_count": model_call_count,
+        "retry_count": 0,
+        "repair_count": 0,
+        "json_repair_count": 0,
+        "envelope_contract_version": "native-strict-output/v1",
+        "envelope_unwrap_count": 0,
+        "provider_role": "unified_textual_audit",
+        "provider_name": metadata["provider_name"],
+        "host_fingerprint": metadata["host_fingerprint"],
+        "model_name": metadata["model_name"],
+        "capability": metadata["capability"],
+        "configured": metadata["configured"],
+        "qualified": metadata["qualified"],
     }
 
 

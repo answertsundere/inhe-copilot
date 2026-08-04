@@ -1,4 +1,4 @@
-"""Independent, fail-closed structured-output transport for decision shadow."""
+"""Independent, fail-closed structured-output transport for model roles."""
 
 from __future__ import annotations
 
@@ -85,6 +85,29 @@ class StrictDecisionProviderConfig:
             timeout_seconds=_bounded_timeout(str(config.COPILOT_DECISION_LLM_TIMEOUT_SECONDS)),
             qualified=bool(config.COPILOT_DECISION_LLM_QUALIFIED),
             disable_thinking=bool(config.COPILOT_DECISION_LLM_DISABLE_THINKING),
+        )
+
+    @classmethod
+    def from_unified_audit_environment(cls) -> "StrictDecisionProviderConfig":
+        return cls(
+            provider_name=sanitize_text(
+                config.COPILOT_UNIFIED_AUDIT_PROVIDER
+            ),
+            api_base=sanitize_text(
+                config.COPILOT_UNIFIED_AUDIT_API_BASE
+            ),
+            api_key=config.COPILOT_UNIFIED_AUDIT_API_KEY,
+            model=sanitize_text(config.COPILOT_UNIFIED_AUDIT_MODEL),
+            capability=sanitize_text(
+                config.COPILOT_UNIFIED_AUDIT_CAPABILITY
+            ).lower(),
+            timeout_seconds=_bounded_timeout(
+                str(config.COPILOT_UNIFIED_AUDIT_TIMEOUT_SECONDS)
+            ),
+            qualified=bool(config.COPILOT_UNIFIED_AUDIT_QUALIFIED),
+            disable_thinking=bool(
+                config.COPILOT_UNIFIED_AUDIT_DISABLE_THINKING
+            ),
         )
 
     def capability_status(self) -> str:

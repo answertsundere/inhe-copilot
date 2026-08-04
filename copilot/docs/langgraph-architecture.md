@@ -82,6 +82,41 @@ observability. Pure pass-through nodes, duplicate classifiers, and repeated
 reply rewriters are consolidation candidates only after behavior-equivalence
 tests exist.
 
+## Cognitive Consolidation Experiment
+
+Stronger models may reduce the number of cognitive stages, but node count is
+not the optimization target. The project will compare three pinned execution
+arms after the current Unified Audit and complete-conversation gate are
+available:
+
+1. **Current formal baseline.** Preserve the existing graph and record every
+   model/tool call, state owner, latency, goal, evidence, action, candidate, and
+   final delivery result.
+2. **Unified cognition shadow.** One model decision proposes atomic customer
+   goals, conversation interpretation, read-tool needs, and a response plan in
+   one strict output. Existing identity, tool authorization, evidence
+   admission, Claim Resolution, Composer, and delivery owners remain
+   authoritative. The proposal is shadow-only and cannot route or reply.
+3. **Thin macro graph candidate.** Only after the shadow output equals or
+   improves complete customer outcomes may redundant cognitive and
+   pass-through nodes be consolidated. Durable tool execution, pause/resume,
+   retries, side effects, evidence admission, and delivery remain separate
+   responsibilities even when they share a macro stage.
+
+All arms use the same canonical conversations, Provider role identities,
+knowledge snapshot, feature flags, tool fixtures, and post-run human review.
+The scorecard includes goal recall/precision, continuity, evidence precision
+and coverage, supported and unresolved claim rendering, action completion,
+unsafe claims, unnecessary handoff, naturalness, commercial helpfulness,
+schema/error rate, model/tool calls, tokens, and p50/p95 latency. Gold labels
+are loaded only after Agent calls.
+
+Promotion requires better or equal complete customer outcomes, no safety or
+delivery regression, no new reply owner, and a measurable reduction in calls,
+tokens, latency, or duplicate state. A lower node count without those outcomes
+is a failed experiment. Phrase dictionaries and local reconstruction of
+customer meaning cannot be used to make the consolidated arm pass.
+
 ## State Contract Direction
 
 The graph state should reference typed domain objects rather than accumulate
