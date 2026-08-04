@@ -157,13 +157,35 @@ heat-resistance and sterilization counterexample `5/5`, with one call per
 attempt and zero retry/repair/fallback. The cleaning-care component gate is
 therefore closed for the next isolated conversation run.
 
+That next native Fixed-8 ran once on clean commit `0c301046`, with no transport
+interception or replacement run. Execution was `8/8`, Composer acceptance was
+`6/8`, formal knowledge and DML stayed unchanged, `can_send=true` remained
+zero, and all eight results required human review. Pipeline p50/p95 were
+`51.554s/62.825s`. Expert post-run review rated two replies pass, three partial,
+and three fail. The recurring earliest quality owner was Turn Understanding,
+not the downstream Composer or Audit: explicit material or suitability goals
+could be marked as dependencies, product identity could leak into
+`attribute_key`, and a matching practical policy family could be omitted.
+
+The general Turn Understanding contract now keeps every explicit buyer request
+as a customer goal, reserves attributes for the requested property, and
+separates direct facts from practical guidance. A canonical customer goal with
+no selected intent may inherit only an exact goal-family match from the trusted
+Domain Pack candidate set. The server does not select a policy or infer a
+family from customer keywords, related FactTypes, product names, or fixture
+values. The frozen bathroom-moisture, material-plus-toxicity, and material-plus-
+cleaning inputs each passed five independent understanding calls (`15/15`)
+with valid provenance and zero retry, repair, or fallback. This is a component
+qualification only; the next gate is a fresh clean native Fixed-8 through the
+same full Pipeline.
+
 Formal Evidence Convergence and the Model-first Composer remain disabled by
 default, the candidate remains review-only, and no production promotion or
 real-accuracy claim follows. The immediate work is now:
 
-1. run one new pinned complete conversation gate with the qualified loopback
-   Unified Audit role and score customer outcome, naturalness, continuity, RAG
-   evidence coverage, and useful progress rather than internal finding-code
+1. run one fresh pinned complete conversation gate after the qualified Turn
+   Understanding change and score customer outcome, naturalness, continuity,
+   RAG evidence coverage, and useful progress rather than internal finding-code
    wording;
 2. after that gate is complete, run the documented cognitive-consolidation
    shadow comparison before deleting or merging any LangGraph node;
@@ -770,7 +792,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active | Historical native Fixed-8 remains incomplete; RAG material provenance restored; Domain Pack `1.6.1` covers reviewed durability, cleaning-care including an unverified-high-temperature boundary, and incidental-moisture guidance; the expanded high-temperature full chain passed `5/5`, and loopback `Qwen3.6:35b` passed its safe/unsafe Audit matrix `5/5 + 5/5`; `real_accuracy=null` | Run the pinned native Fixed-8 and score human outcome before cognitive-consolidation shadow |
+| P1 Gold Conversation Quality | active | Native Fixed-8 on `0c301046` completed `8/8`, Composer `6/8`, no knowledge/DML/send change, and expert review `2 pass / 3 partial / 3 fail`; the earliest repeated gap was Turn Understanding role/attribute/policy-family ownership. Its frozen three-case `5x` qualification passed `15/15` with no retry/repair/fallback; `real_accuracy=null` | Run a fresh clean native Fixed-8, then select the next earliest business-quality owner before cognitive-consolidation shadow |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

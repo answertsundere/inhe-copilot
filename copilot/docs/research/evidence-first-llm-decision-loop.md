@@ -672,6 +672,26 @@ restricted boundaries as determinate comparisons; `indeterminate` remains a
 fail-closed result only for genuinely ambiguous language. This qualifies the
 component contract for the next native Fixed-8, not for production sending.
 
+The following clean native Fixed-8 on commit `0c301046` completed all eight
+requests without transport interception. Composer accepted six; formal
+knowledge and DML were unchanged, `can_send=true` remained zero, and all eight
+results stayed review-only. Expert post-run review rated two replies pass,
+three partial, and three fail. The recurrent first divergence was in Turn
+Understanding: explicit customer requests could be demoted to evidence
+dependencies, product identity could be emitted as an attribute, and an exact
+practical policy family could be lost before Claim Resolution.
+
+The corrective contract remains model-led. The prompt makes explicit requests
+atomic customer goals and distinguishes requested attributes from products or
+components. The service does not infer intent from words or choose a policy.
+It may project `policy_goal_family` only for a canonical customer goal whose
+claim type exactly equals a goal family present in the already trusted Domain
+Pack candidate set. Related families and supporting dependencies do not
+qualify. Frozen moisture, material-plus-toxicity, and material-plus-cleaning
+inputs then passed five independent calls each (`15/15`) with valid provenance
+and zero retry, repair, or fallback. A fresh native Fixed-8 is required to
+measure whether that component result improves complete customer replies.
+
 The existing comparison runner now reports option coverage, policy selection,
 selected-policy validity, premise attribution, scope validity, and missed
 inference opportunities separately. Gold replies, alternate replies, reviewer

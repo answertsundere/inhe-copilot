@@ -489,19 +489,28 @@ This slice is not a production auto-send canary. It exists to prove that the
 Agent can answer supported parts, continue a conversation, and escalate only
 the unresolved part.
 
-The latest native P1.4 fixed-eight gate reached Composer acceptance `8/8` after
-closing Composer input-integrity and option-selection defects. Six cases
-reached Delivery; two remained fail-closed at Unified Audit because the current
-Provider did not satisfy the frozen audit schema. A separate prospective case
-proved that published structured-product material provenance now survives the
-formal RAG Repository, Filter, and Evidence Builder path: the material answer
-changed from unresolved to supported `PP/TPE`, while unsupported odor and
-boiling-water claims stayed unresolved. These are engineering and capability
-results only. The candidate remains default-off and review-only,
-`can_send=true` remains zero, and real-customer accuracy is still unknown.
-The next comparable fixed-eight run must use the qualified loopback Audit role
-and Domain Pack `1.5.0`; the historical result remains the Before
-baseline until that run completes.
+The latest native P1.4 fixed-eight gate ran without transport interception on
+clean commit `0c301046`. All eight requests completed, Composer accepted six,
+formal knowledge content and DML stayed unchanged, and all eight results
+remained review-only with `can_send=true` at zero. Pipeline p50/p95 were
+`51.554s/62.825s`. Expert post-run review rated two replies pass, three partial,
+and three fail; it did not create a real-accuracy result.
+
+The repeated earliest defect was upstream of reply composition. Turn
+Understanding sometimes demoted an explicit buyer request to an evidence
+dependency, used a product or component as an attribute, or omitted the
+practical policy family needed by Claim Resolution. Its owner contract now
+states that every explicit product fact, property, suitability, comparison,
+guarantee, or practical request is a `customer_goal`; `attribute_key` narrows
+the requested property rather than identifying the product; and direct factual
+requests remain separate from practical guidance. When the model returns a
+canonical customer goal without a policy intent, the server may project a goal
+family only when a trusted Domain Pack candidate has the exact same family.
+This data-driven fallback does not select a policy, reinterpret text, or map a
+FactType to a policy in Python. The frozen three-case, five-run qualification
+passed `15/15` with no retry, repair, or fallback. A fresh comparable native
+fixed-eight run is still required before this change can be called a customer-
+quality improvement.
 
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,

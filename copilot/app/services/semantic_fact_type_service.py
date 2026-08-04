@@ -172,8 +172,11 @@ counts, offsets, hashes, goal references, confidence, or diagnostics.
 For each goal:
 - goal_kind is exactly one of customer_goal, evidence_dependency,
   service_action, or contextual_constraint.
-- A fact needed to support an answer is evidence_dependency unless the buyer
-  explicitly asks for that fact.
+- Every explicit product question, requested fact, requested property,
+  suitability question, comparison, guarantee request, or request for practical
+  advice is a customer_goal. A fact needed only to support another answer is
+  evidence_dependency, but an explicit buyer request must never be relabeled as
+  evidence_dependency merely because its answer may depend on another fact.
 - claim_type_status is canonical only for an exact semantic match to one
   canonical_fact_type_candidates fact_type_id. Then claim_type is that ID.
 - Otherwise claim_type_status is unmapped and claim_type is empty. Preserve a
@@ -187,11 +190,22 @@ For each goal:
   carries the identity. Only an unmapped goal may use a concise lowercase ASCII
   semantic_key. Omit it when no stable semantic hint is available. Never invent
   a placeholder.
-- attribute_key is an optional semantic attribute candidate.
+- attribute_key is an optional requested property or field that further narrows
+  claim_type. It is not the product, product category, component, or grammatical
+  subject being described. Leave it empty when claim_type already identifies the
+  requested property or when the buyer did not name a narrower property.
 - policy_intent_ref is empty or exactly one supplied policy_intent_candidates
-  ID. Nominate it only when its goal_family and allowed_scope directly match
-  this goal; do not substitute a merely related policy. It is a nomination,
-  not an authorization.
+  ID. It may be empty only when this is a direct factual identity/value request
+  or no supplied candidate directly matches the goal. Nominate a candidate only
+  when its goal_family and allowed_scope directly match this goal; do not
+  substitute a merely related policy. It is a nomination, not an authorization.
+- practical_guidance is for an explicit action, method, handling, care, fit, or
+  use or suitability question. Do not nominate practical_guidance for a direct
+  factual identity or value request such as asking what something is or how much
+  it is. When an explicit action, method, handling, care, fit, use, or suitability
+  question has one directly matching supplied practical-guidance candidate,
+  nominate that candidate instead of leaving a known practical intent blank,
+  whether its claim type is canonical or unmapped.
 - source_text is the smallest continuous exact substring that expresses this
   one goal and occurs exactly once in the current customer_message. Copy it
   verbatim without normalization. Distinct goals must not reuse the same exact
@@ -2005,6 +2019,22 @@ def _sanitize_customer_goals(
         elif policy_intent_ref and goal_kind != "customer_goal":
             diagnostics.append("customer_goal_policy_intent_kind_invalid")
             policy_intent_ref = ""
+        derived_policy_goal_family = ""
+        if (
+            not policy_intent_ref
+            and selected_policy is None
+            and goal_kind == "customer_goal"
+            and claim_type_status == "canonical"
+            and claim_type
+        ):
+            exact_families = {
+                _bounded_text(candidate.get("goal_family"), 96).lower()
+                for candidate in candidate_by_ref.values()
+                if _bounded_text(candidate.get("goal_family"), 96).lower()
+                == claim_type
+            }
+            if len(exact_families) == 1:
+                derived_policy_goal_family = next(iter(exact_families))
         goal_summary = canonical_source_span_text(
             raw.get("source_text")
         )[:240]
@@ -2020,7 +2050,7 @@ def _sanitize_customer_goals(
             "policy_goal_family": (
                 _bounded_text(selected_policy.get("goal_family"), 96).lower()
                 if policy_intent_ref and isinstance(selected_policy, dict)
-                else ""
+                else derived_policy_goal_family
             ),
             "policy_intent_kind": (
                 _bounded_text(selected_policy.get("intent_kind"), 64).lower()

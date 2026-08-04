@@ -105,19 +105,20 @@ owner, and deterministic final safety. The active priority is now P1 Gold
 Conversation Quality through outcome-based long-conversation evaluation. Gold
 review remains an accuracy prerequisite, but building more review
 infrastructure is not the active development mainline.
-The historical native P1.4 fixed-eight gates remain incomplete. A prospective
-formal-RAG case restored a published structured-product material fact without
-widening unresolved claims, and the isolated loopback Unified Audit role later
-qualified against the corrected semantic matrix. Domain Pack
-`maternal_child_home@1.6.1` now adds reviewed cleaning-care including an
-unverified-high-temperature boundary, plus incidental-moisture budgets. The
-earlier Composer, Deterministic Final, and Audit chain passed both live-shaped
-component inputs `5/5 + 5/5`. The expanded high-temperature cleaning case then
-passed the full Composer, Deterministic Final, and Unified Audit chain `5/5`,
-and the loopback Audit role separately accepted the safe budget case `5/5` and
-rejected its prohibited counterexample `5/5`. One clean native Fixed-8 is now
-the next quality gate. These results do not enable the disabled features or
-establish real-customer accuracy.
+The native P1.4 fixed-eight gate on clean commit `0c301046` completed `8/8`
+without transport interception. Composer accepted `6/8`; formal knowledge and
+DML were unchanged, `can_send=true` stayed zero, and all eight results remained
+review-only. Post-run expert review rated two replies pass, three partial, and
+three fail. The common earliest quality gap was Turn Understanding ownership:
+explicit buyer goals could be demoted to evidence dependencies, product or
+component names could become attributes, and practical policy families could be
+lost before Claim Resolution. Turn Understanding now preserves explicit
+requests as customer goals and may derive only an exact canonical goal-family
+match from trusted Domain Pack candidates; it still does not select a policy.
+The frozen three-case, five-run qualification passed `15/15` with no retry,
+repair, or fallback. A fresh clean native Fixed-8 is the next quality gate.
+These results do not enable the disabled features or establish real-customer
+accuracy.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an

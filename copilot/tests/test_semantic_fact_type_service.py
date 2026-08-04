@@ -155,6 +155,13 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "do not substitute a merely related policy" in prompt
     assert "Preserve a specific requested property or performance condition as unmapped" in prompt
     assert "do not collapse it into a broader related action" in prompt
+    assert "an explicit buyer request must never be relabeled" in prompt
+    assert "not the product, product category, component" in prompt
+    assert "Leave it empty when claim_type already identifies" in prompt
+    assert "Do not nominate practical_guidance for a direct factual identity" in prompt
+    assert "It may be empty only when this is a direct factual identity/value request" in prompt
+    assert "action, method, handling, care, fit, use, or suitability" in prompt
+    assert "whether its claim type is canonical or unmapped" in prompt
 
 
 def test_single_provider_goal_is_not_completed_from_legacy_fact_type(monkeypatch):
@@ -338,6 +345,62 @@ def test_policy_intent_nomination_is_bound_to_trusted_candidate():
     )
     assert goals[0]["policy_goal_family"] == "product_durability"
     assert goals[0]["policy_intent_kind"] == "practical_guidance"
+
+
+def test_canonical_goal_derives_only_exact_trusted_policy_family():
+    goal = {
+        "goal_kind": "customer_goal",
+        "claim_type_status": "canonical",
+        "claim_type": "moisture_resistance",
+        "attribute_key": "",
+        "semantic_key": "",
+        "policy_intent_ref": "",
+        "source_text": "moisture question",
+    }
+    exact = {
+        **_policy_candidate(),
+        "policy_intent_ref": "moisture_exposure_practical_guidance",
+        "goal_family": "moisture_resistance",
+    }
+
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [goal],
+        message="moisture question",
+        policy_intent_candidates=[exact],
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["policy_intent_ref"] == ""
+    assert goals[0]["policy_goal_family"] == "moisture_resistance"
+    assert goals[0]["policy_intent_kind"] == ""
+
+
+def test_canonical_goal_does_not_derive_related_or_dependency_policy_family():
+    candidate = {
+        **_policy_candidate(),
+        "policy_intent_ref": "material_daily_use_practical_guidance",
+        "goal_family": "material_daily_use",
+    }
+    base_goal = {
+        "claim_type_status": "canonical",
+        "claim_type": "material",
+        "attribute_key": "",
+        "semantic_key": "",
+        "policy_intent_ref": "",
+        "source_text": "material question",
+    }
+
+    for goal_kind in ("customer_goal", "evidence_dependency"):
+        goals, status, diagnostics = service._sanitize_customer_goals(
+            [{**base_goal, "goal_kind": goal_kind}],
+            message="material question",
+            policy_intent_candidates=[candidate],
+        )
+
+        assert status == "valid"
+        assert diagnostics == []
+        assert goals[0]["policy_goal_family"] == ""
 
 
 def test_unknown_or_unavailable_policy_intent_nomination_is_removed():
