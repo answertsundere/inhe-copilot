@@ -556,6 +556,23 @@ def test_maternal_child_home_pack_exposes_review_only_bounded_policies():
         item["maximum_risk_level"] in {"low", "medium"}
         for item in policies
     )
+    durability = next(
+        item
+        for item in policies
+        if item["policy_intent_ref"]
+        == "product_durability_practical_guidance"
+    )
+    assert durability["allowed_variability_factor_families"] == [
+        "contact_surface",
+        "handling_pattern",
+        "impact_angle",
+        "impact_frequency",
+        "impact_height",
+        "impact_severity",
+    ]
+    assert durability["advice_mode"] == "concise_care_only"
+    assert "no_absolute_guarantee" in durability["required_qualifiers"]
+    assert "child_safety" in durability["prohibited_claim_families"]
 
 
 def test_all_registered_tools_declare_freshness_class():

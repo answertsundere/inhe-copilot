@@ -7,6 +7,7 @@ from app.services.strict_decision_provider_service import (
     StrictDecisionProviderConfig,
     StrictDecisionProviderError,
     StrictDecisionProviderService,
+    _ollama_native_request,
     safe_provider_identity,
 )
 
@@ -214,6 +215,172 @@ def test_generic_strict_transport_preserves_requested_output_budget():
     assert request["temperature"] == 0
     assert request["max_tokens"] == 37
     assert "extra_body" not in request
+
+
+def test_ollama_native_transport_uses_schema_without_openai_compatibility():
+    calls = []
+
+    def native_request(**kwargs):
+        calls.append(kwargs)
+        return {
+            "done_reason": "stop",
+            "message": {"content": '{"ok": true}'},
+        }
+
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="ollama_native",
+            api_base="http://127.0.0.1:11434/v1",
+            model="local-model",
+            disable_thinking=True,
+        ),
+        client_factory=lambda **_: pytest.fail(
+            "OpenAI-compatible client must not be used"
+        ),
+        native_request=native_request,
+    )
+
+    assert provider.request(
+        name="sample",
+        schema={"type": "object", "additionalProperties": False},
+        system_prompt="system",
+        payload={"candidate": "safe"},
+        max_tokens=41,
+    ) == {"ok": True}
+
+    assert len(calls) == 1
+    request = calls[0]
+    assert request["api_base"] == "http://127.0.0.1:11434/v1"
+    assert request["timeout_seconds"] == 3
+    assert request["payload"] == {
+        "model": "local-model",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": '{"candidate": "safe"}'},
+        ],
+        "stream": False,
+        "format": {"type": "object", "additionalProperties": False},
+        "think": False,
+        "options": {"temperature": 0, "num_predict": 1600},
+    }
+
+
+def test_ollama_native_transport_can_keep_thinking_enabled():
+    calls = []
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="ollama",
+            api_base="http://localhost:11434/api",
+            disable_thinking=False,
+        ),
+        native_request=lambda **kwargs: (
+            calls.append(kwargs)
+            or {
+                "done_reason": "stop",
+                "message": {"content": '{"ok": true}'},
+            }
+        ),
+    )
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="system",
+        payload={},
+        max_tokens=12,
+    )
+
+    assert calls[0]["payload"]["think"] is True
+
+
+def test_ollama_native_transport_preserves_larger_output_budget():
+    calls = []
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="ollama_native",
+            api_base="http://127.0.0.1:11434/api",
+        ),
+        native_request=lambda **kwargs: (
+            calls.append(kwargs)
+            or {
+                "done_reason": "stop",
+                "message": {"content": '{"ok": true}'},
+            }
+        ),
+    )
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="system",
+        payload={},
+        max_tokens=2400,
+    )
+
+    assert calls[0]["payload"]["options"]["num_predict"] == 2400
+
+
+def test_ollama_native_transport_rejects_non_schema_capability_before_call():
+    calls = []
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="ollama_native",
+            api_base="http://127.0.0.1:11434/api",
+            capability="tool_call_schema",
+        ),
+        native_request=lambda **kwargs: calls.append(kwargs),
+    )
+
+    with pytest.raises(
+        StrictDecisionProviderError,
+        match="strict_capability_not_supported",
+    ):
+        provider.request(
+            name="sample",
+            schema={},
+            system_prompt="system",
+            payload={},
+            max_tokens=1,
+        )
+
+    assert calls == []
+
+
+def test_ollama_native_transport_fails_closed_on_truncation():
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="ollama_native",
+            api_base="http://127.0.0.1:11434/api",
+        ),
+        native_request=lambda **_: {
+            "done_reason": "length",
+            "message": {"content": '{"ok":'},
+        },
+    )
+
+    with pytest.raises(
+        StrictDecisionProviderError,
+        match="structured_output_truncated",
+    ):
+        provider.request(
+            name="sample",
+            schema={},
+            system_prompt="system",
+            payload={},
+            max_tokens=1,
+        )
+
+
+def test_ollama_native_transport_rejects_non_local_origin_before_network():
+    with pytest.raises(
+        StrictDecisionProviderError,
+        match="provider_origin_not_allowed",
+    ):
+        _ollama_native_request(
+            api_base="https://remote.example.invalid/api",
+            payload={},
+            timeout_seconds=1,
+        )
 
 
 def test_unqualified_provider_cannot_run_shadow_but_can_be_qualified():

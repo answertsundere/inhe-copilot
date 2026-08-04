@@ -331,22 +331,29 @@ verified owner boundaries, not a new architecture stage or a production
 promotion. The formal sequence remains Composer, Deterministic Final, one
 Unified Textual Audit, then Delivery Gate.
 
-No approved Audit Provider/model currently satisfies the frozen v2 schema and
-semantic matrix. The application now has an independent, default-off Unified
-Audit role configuration that can issue exactly one native strict-schema or
-strict-tool request through the existing strict transport. It never inherits
-the Composer/formal Agent or decision-shadow credentials, and a missing,
+The application has an independent, default-off Unified Audit role
+configuration that can issue exactly one native strict-schema or strict-tool
+request through the existing strict transport. It never inherits the
+Composer/formal Agent or decision-shadow credentials, and a missing,
 unsupported, or unqualified role fails before a model call without fallback.
 The transport retains provider-neutral schema and validation ownership while
-applying documented wire compatibility at the provider boundary. For MiniMax,
-that means a legal positive temperature, separated reasoning, optional
-thinking disablement, and enough output budget for the structured call; these
-options do not relax the strict schema or local Validator.
-This wiring does not qualify or enable a Provider. The v2 live capability is
-therefore still provider-blocked. Composer, bounded inference, and Formal
-Evidence Convergence retain their existing default-off states; `can_send`
-ownership and production delivery are unchanged, and
-`real_customer_accuracy=null`.
+applying documented wire compatibility at the provider boundary. MiniMax uses
+its compatible reasoning and output-budget options; loopback Ollama uses the
+native `/api/chat` JSON Schema contract. Neither transport relaxes the local
+strict Validator.
+
+P1.4F also corrected an over-restrictive durability policy rather than
+training the Auditor to reject useful common sense. `maternal_child_home`
+version `1.4.0` permits bounded discussion of impact height, angle, surface,
+severity, frequency, and handling pattern plus at most one concise care
+suggestion. It still prohibits absolute durability guarantees, test claims,
+child-safety claims, warranties, and other unsupported extensions. Under this
+reviewed budget, loopback `Qwen3.6:35b` passed the frozen safe/unsafe Audit
+matrix `5/5 + 5/5`: it accepted the qualified practical answer and rejected a
+true absolute-guarantee/unsafe-use counterexample with stable clause
+attribution. This qualifies that exact local Audit role for isolated P1
+evaluation only; it does not enable production, Composer, bounded inference,
+or `can_send`, and `real_customer_accuracy=null`.
 
 Model portability is role-scoped rather than a global model switch. Turn
 Understanding, Composer, Unified Audit, embedding, and VLM roles may evolve at
@@ -443,6 +450,9 @@ changed from unresolved to supported `PP/TPE`, while unsupported odor and
 boiling-water claims stayed unresolved. These are engineering and capability
 results only. The candidate remains default-off and review-only,
 `can_send=true` remains zero, and real-customer accuracy is still unknown.
+The next comparable fixed-eight run must use the qualified loopback Audit role
+and Domain Pack `1.4.0`; the historical six-of-eight result remains the Before
+baseline until that run completes.
 
 `docs/agent-core-priority-plan.md` is the operational delivery contract for
 this mainline. It defines the active priority, stage exit gates, frozen work,

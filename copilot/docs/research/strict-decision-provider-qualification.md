@@ -77,9 +77,31 @@ unchanged, but the existing project credential failed authentication before a
 model result. No DeepSeek model was qualified and no production role was
 switched. [DeepSeek strict tool calls](https://api-docs.deepseek.com/guides/tool_calls)
 
-These outcomes leave `approved_audit_provider_connection_required` as the
-active external dependency. They do not justify JSON-object fallback, output
-repair, a second Audit call, or production enablement.
+Initial loopback candidates then used Ollama's native `/api/chat` JSON Schema
+format through the same role boundary. Gemma4 12B, Qwen3-VL 8B/32B, Qwen3 30B,
+and Qwen3.6 35B either failed structure or the old semantic matrix. Enabling
+Qwen3.6 thinking exhausted a 3200-token output budget, so longer hidden
+reasoning was not treated as automatic quality.
+
+Review of the old negative fixture found a policy error rather than a model
+capability requirement: the candidate mentioned ordinary impact variables and
+one conservative care suggestion, both consistent with the product owner's
+approved humanlike answer, while the Pack simultaneously required an
+avoid-high-or-repeated-impact qualifier and declared `advice_mode=none`.
+`maternal_child_home@1.4.0` resolves that contradiction by allowing impact
+height, angle, surface, severity, frequency, handling pattern, and one concise
+care suggestion. Absolute guarantees, tests, child-safety claims, warranties,
+and unsupported extensions remain prohibited.
+
+Under the corrected budget, loopback `Qwen3.6:35b` with native JSON Schema,
+thinking disabled, temperature zero, and the existing local Validator accepted
+the bounded candidate `5/5` and rejected a true absolute-guarantee/unsafe-use
+candidate `5/5`. Every attempt used one call with no retry, repair, or fallback;
+the decision vectors and clause attribution were stable, with provider p50/p95
+about `2.775s/3.749s`. This exact local role is qualified for isolated P1
+Fixed-8 evaluation. It is not a production enablement, and it does not justify
+JSON-object fallback, output repair, a second Audit call, or any change to
+`can_send`.
 
 ## Local Runtime Check: 2026-07-14
 

@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 from openai import OpenAI
 
@@ -153,7 +154,37 @@ def _provider_family(config: StrictDecisionProviderConfig) -> str:
         or hostname.endswith(".minimax.io")
     ):
         return "minimax"
+    if provider_name in {"ollama", "ollama_native"}:
+        return "ollama_native"
     return "generic"
+
+
+def _ollama_native_request(
+    *,
+    api_base: str,
+    payload: dict[str, Any],
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    parsed = urlsplit(str(api_base or "").strip())
+    if not parsed.scheme or not parsed.netloc:
+        raise StrictDecisionProviderError("provider_not_configured")
+    if (parsed.hostname or "").lower() not in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }:
+        raise StrictDecisionProviderError("provider_origin_not_allowed")
+    request = Request(
+        f"{parsed.scheme}://{parsed.netloc}/api/chat",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=timeout_seconds) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    if not isinstance(result, dict):
+        raise StrictDecisionProviderError("structured_output_not_object")
+    return result
 
 
 def _provider_request_options(
@@ -161,11 +192,14 @@ def _provider_request_options(
     *,
     max_tokens: int,
 ) -> tuple[float, int, dict[str, Any]]:
-    if _provider_family(config) == "minimax":
+    provider_family = _provider_family(config)
+    if provider_family == "minimax":
         extra_body: dict[str, Any] = {"reasoning_split": True}
         if config.disable_thinking:
             extra_body["thinking"] = {"type": "disabled"}
         return 0.1, max(max_tokens, 1600), {"extra_body": extra_body}
+    if provider_family == "ollama_native":
+        return 0, max(max_tokens, 1600), {}
     if config.disable_thinking:
         return 0, max_tokens, {
             "extra_body": {
@@ -196,9 +230,11 @@ class StrictDecisionProviderService:
         self,
         config: StrictDecisionProviderConfig | None = None,
         client_factory: Callable[..., Any] = OpenAI,
+        native_request: Callable[..., dict[str, Any]] = _ollama_native_request,
     ):
         self.config = config or StrictDecisionProviderConfig.from_environment()
         self._client_factory = client_factory
+        self._native_request = native_request
         self._client: Any | None = None
 
     def metadata(self) -> dict[str, Any]:
@@ -243,7 +279,46 @@ class StrictDecisionProviderService:
             )
         )
         try:
-            if self.config.capability == "strict_json_schema":
+            if _provider_family(self.config) == "ollama_native":
+                if self.config.capability != "strict_json_schema":
+                    raise StrictDecisionProviderError(
+                        "strict_capability_not_supported"
+                    )
+                result = self._native_request(
+                    api_base=self.config.api_base,
+                    payload={
+                        "model": self.config.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {
+                                "role": "user",
+                                "content": json.dumps(
+                                    payload,
+                                    ensure_ascii=False,
+                                ),
+                            },
+                        ],
+                        "stream": False,
+                        "format": schema,
+                        "think": not self.config.disable_thinking,
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": output_tokens,
+                        },
+                    },
+                    timeout_seconds=self.config.timeout_seconds,
+                )
+                if sanitize_text(result.get("done_reason")) == "length":
+                    raise StrictDecisionProviderError(
+                        "structured_output_truncated"
+                    )
+                message = result.get("message")
+                if not isinstance(message, dict):
+                    raise StrictDecisionProviderError(
+                        "empty_structured_output"
+                    )
+                raw = sanitize_text(message.get("content"))
+            elif self.config.capability == "strict_json_schema":
                 result = self.client.chat.completions.create(
                     model=self.config.model,
                     messages=[
