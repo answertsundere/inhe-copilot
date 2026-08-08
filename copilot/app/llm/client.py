@@ -9,10 +9,15 @@ from urllib.parse import urlparse
 
 from openai import OpenAI
 
+from app import config
 from app.config import LLM_API_BASE, LLM_API_KEY, LLM_MODEL
 from .schemas import validate_llm_output, FallbackReplyOutput
 
 logger = logging.getLogger(__name__)
+
+
+class ComposerRoleConfigurationError(RuntimeError):
+    """Raised when an explicit Composer role override is incomplete or unqualified."""
 
 
 # 降级回复模板（不依赖 LLM 输出）
@@ -31,16 +36,24 @@ class LLMClient:
         api_key: str = "",
         api_base: str = "",
         model: str = "",
+        timeout_seconds: int | None = None,
     ):
         self.api_key = api_key or LLM_API_KEY
         self.api_base = api_base or LLM_API_BASE
         self.model = model or LLM_MODEL
+        self.timeout_seconds = timeout_seconds
         self._client = None
 
     @property
     def client(self) -> OpenAI:
         if self._client is None:
-            self._client = OpenAI(api_key=self.api_key, base_url=self.api_base)
+            kwargs = {
+                "api_key": self.api_key,
+                "base_url": self.api_base,
+            }
+            if self.timeout_seconds is not None:
+                kwargs["timeout"] = self.timeout_seconds
+            self._client = OpenAI(**kwargs)
         return self._client
 
     @property
@@ -323,3 +336,33 @@ def get_llm_client() -> LLMClient:
     if _client is None:
         _client = LLMClient()
     return _client
+
+
+def get_composer_llm_client() -> LLMClient:
+    """Return the qualified Composer override or the unchanged formal client."""
+    values = {
+        "api_key": str(config.COPILOT_COMPOSER_LLM_API_KEY or "").strip(),
+        "api_base": str(config.COPILOT_COMPOSER_LLM_API_BASE or "").strip(),
+        "model": str(config.COPILOT_COMPOSER_LLM_MODEL or "").strip(),
+    }
+    override_requested = any(values.values())
+    if not override_requested:
+        return get_llm_client()
+    if not all(values.values()):
+        raise ComposerRoleConfigurationError(
+            "composer_role_provider_incomplete"
+        )
+    if not config.COPILOT_COMPOSER_LLM_QUALIFIED:
+        raise ComposerRoleConfigurationError(
+            "composer_role_provider_not_qualified"
+        )
+    timeout_seconds = max(
+        1,
+        min(int(config.COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS), 120),
+    )
+    return LLMClient(
+        api_key=values["api_key"],
+        api_base=values["api_base"],
+        model=values["model"],
+        timeout_seconds=timeout_seconds,
+    )

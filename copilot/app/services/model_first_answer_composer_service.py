@@ -1192,9 +1192,9 @@ class ModelFirstAnswerComposerService:
         started = time.perf_counter()
         try:
             if client is None:
-                from app.llm.client import get_llm_client
+                from app.llm.client import get_composer_llm_client
 
-                client = get_llm_client()
+                client = get_composer_llm_client()
             if not getattr(client, "api_key", ""):
                 result["rejection_reason"] = "formal_llm_not_configured"
                 if diagnostics_enabled:
@@ -1328,7 +1328,14 @@ class ModelFirstAnswerComposerService:
                 expected_type="completion",
                 actual_type=type(exc).__name__,
             )
-            result["rejection_reason"] = f"formal_llm_error:{type(exc).__name__}"
+            from app.llm.client import ComposerRoleConfigurationError
+
+            if isinstance(exc, ComposerRoleConfigurationError):
+                result["rejection_reason"] = str(exc)
+            else:
+                result["rejection_reason"] = (
+                    f"formal_llm_error:{type(exc).__name__}"
+                )
             if diagnostics_enabled:
                 _privacy_diagnostic_finish(
                     privacy_diagnostics_sink,

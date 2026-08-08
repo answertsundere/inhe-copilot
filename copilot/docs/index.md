@@ -173,8 +173,8 @@ explicit plan update applies.
   supervisor-candidate promotion gates.
 - `docs/research/strict-decision-provider-qualification.md` - strict provider
   capability classes, isolated configuration, and read-only qualification
-  contracts, including the Unified Audit v3 role qualifier for approved or
-  tenant/BYOK configurations.
+  contracts, including role-isolated Composer and Unified Audit qualification
+  for approved or tenant/BYOK configurations.
 - `docs/research/real-customer-service-accuracy-evaluation.md` - privacy-safe,
   read-only Gold Set with structured de-identified conversation turns,
   independent output scanning, human claim-label audit storage, formal-pipeline

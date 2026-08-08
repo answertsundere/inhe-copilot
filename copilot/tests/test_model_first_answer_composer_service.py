@@ -278,6 +278,34 @@ def test_composer_renders_one_clause_for_each_customer_goal():
     assert "private-sku" not in client.messages[1]["content"]
 
 
+def test_composer_fails_closed_when_explicit_role_override_is_unqualified(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.llm.client import ComposerRoleConfigurationError
+    import app.llm.client as llm_client
+
+    def _raise_unqualified():
+        raise ComposerRoleConfigurationError(
+            "composer_role_provider_not_qualified"
+        )
+
+    monkeypatch.setattr(llm_client, "get_composer_llm_client", _raise_unqualified)
+    monkeypatch.setattr(
+        llm_client,
+        "get_llm_client",
+        lambda: (_ for _ in ()).throw(AssertionError("formal_fallback_used")),
+    )
+
+    updated, result = ModelFirstAnswerComposerService().compose(
+        _response(),
+        customer_message="尺寸和安全怎么样",
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_role_provider_not_qualified"
+    assert updated["suggested_reply"] == _response()["suggested_reply"]
+
+
 def test_composer_prompt_projects_canonical_clause_contract():
     _, result, client = _compose(_valid_payload())
 

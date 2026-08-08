@@ -223,6 +223,13 @@ kinds, duplicate goal references, invalid provenance, and unbound dependencies
 fail closed. The model must return exactly one clause for each renderable
 customer goal and no clause for any other partition.
 
+The Composer uses the formal LLM by default. A deployment may instead supply a
+complete, separately qualified COPILOT_COMPOSER_LLM role override. This changes
+only reply composition: it does not change Understanding, routing, retrieval,
+evidence admission, Audit, safety, delivery, or can_send. An incomplete or
+unqualified override blocks the candidate before any Provider call rather than
+falling back to a different model.
+
 The P0.2d fixed-eight diagnostic qualified this Composer input boundary:
 customer-goal clause coverage was 15/15 and no non-customer goal was rendered
 as fact. Final and semantic audit gates remained incomplete, so the candidate

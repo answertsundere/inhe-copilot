@@ -148,6 +148,15 @@ knowledge, generates a customer reply, or changes `can_send`. The same command
 works for an approved hosted provider or a compatible tenant/BYOK provider;
 each exact role identity still needs its own report.
 
+The Composer role has the same deployment-level isolation through
+COPILOT_COMPOSER_LLM. It preserves the current formal LLM when the override is
+absent, but an explicit override must contain API base, key, model, timeout,
+and a completed Composer qualification marker. An incomplete or unqualified
+override blocks before its first Provider request and never falls back to the
+formal model. This keeps a future DeepSeek or tenant/BYOK experiment scoped to
+reply composition while the existing exact input, local Validator, and
+evidence/delivery contracts remain unchanged.
+
 ## Local Runtime Check: 2026-07-14
 
 The host keeps its vLLM 0.11 vision worker at localhost port 8001 on
