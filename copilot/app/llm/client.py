@@ -101,6 +101,12 @@ class LLMClient:
             if is_m3:
                 extra_body.setdefault("thinking", {"type": "disabled"})
             request["extra_body"] = extra_body
+        elif self.provider_name == "deepseek":
+            # DeepSeek V4 enables hidden reasoning by default. Composer emits a
+            # bounded JSON contract, so reserve its output budget for that contract.
+            extra_body = dict(request.get("extra_body") or {})
+            extra_body.setdefault("thinking", {"type": "disabled"})
+            request["extra_body"] = extra_body
 
         if single_attempt_no_repair:
             return self.client.chat.completions.create(**request)

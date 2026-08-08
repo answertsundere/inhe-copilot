@@ -77,6 +77,25 @@ unchanged, but the existing project credential failed authentication before a
 model result. No DeepSeek model was qualified and no production role was
 switched. [DeepSeek strict tool calls](https://api-docs.deepseek.com/guides/tool_calls)
 
+DeepSeek V4 enables thinking by default. The bounded Composer JSON request
+explicitly disables thinking at the existing provider-compatibility boundary so
+the configured completion budget is reserved for the validated reply contract.
+This is a transport setting, not a reduction of the model's evidence, context,
+or reasoning authority elsewhere in the Pipeline. [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode)
+The independent DeepSeek strict-tool Audit request uses that same official
+non-thinking parameter; it never receives a local-model-specific transport
+option.
+
+DeepSeek V4 Flash passed the isolated Composer five-run contract with the
+non-thinking JSON transport: all five responses preserved the direct fact,
+selected the required bounded option, and retained the restricted boundary in
+one request without retry, repair, or fallback. It remains disabled until a
+secure deployment configuration supplies the matching non-secret
+qualification fingerprint. The same model must not serve as the independent
+Unified Audit role: it accepted all five safe audit fixtures but also accepted
+the first unsupported test-status counterexample. Its strict-tool transport is
+working, but its Audit semantic qualification is not.
+
 Initial loopback candidates then used Ollama's native `/api/chat` JSON Schema
 format through the same role boundary. Gemma4 12B, Qwen3-VL 8B/32B, Qwen3 30B,
 and Qwen3.6 35B either failed structure or the old semantic matrix. Enabling

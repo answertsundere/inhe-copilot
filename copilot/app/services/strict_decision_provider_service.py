@@ -203,6 +203,12 @@ def _provider_family(config: StrictDecisionProviderConfig) -> str:
         return "minimax"
     if provider_name in {"ollama", "ollama_native"}:
         return "ollama_native"
+    if (
+        provider_name == "deepseek"
+        or hostname == "api.deepseek.com"
+        or hostname.endswith(".deepseek.com")
+    ):
+        return "deepseek"
     return "generic"
 
 
@@ -247,6 +253,8 @@ def _provider_request_options(
         return 0.1, max(max_tokens, 1600), {"extra_body": extra_body}
     if provider_family == "ollama_native":
         return 0, max(max_tokens, 1600), {}
+    if provider_family == "deepseek" and config.disable_thinking:
+        return 0, max_tokens, {"extra_body": {"thinking": {"type": "disabled"}}}
     if config.disable_thinking:
         return 0, max_tokens, {
             "extra_body": {

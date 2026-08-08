@@ -165,6 +165,44 @@ def test_non_thinking_mode_is_an_explicit_provider_option():
     assert provider.metadata()["disable_thinking"] is True
 
 
+def test_deepseek_non_thinking_mode_uses_its_official_transport_option():
+    tool_call = SimpleNamespace(
+        function=SimpleNamespace(name="sample", arguments='{"ok": true}')
+    )
+    client = _Client(
+        SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="", tool_calls=[tool_call]),
+                    finish_reason="stop",
+                )
+            ]
+        )
+    )
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="deepseek",
+            api_base="https://api.deepseek.com/beta",
+            capability="tool_call_schema",
+            disable_thinking=True,
+        ),
+        client_factory=lambda **_: client,
+    )
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="x",
+        payload={},
+        max_tokens=37,
+    )
+
+    request = client.calls[0]
+    assert request["temperature"] == 0
+    assert request["max_tokens"] == 37
+    assert request["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
 def test_minimax_strict_transport_uses_reasoning_safe_request_options():
     client = _Client(_result())
     provider = StrictDecisionProviderService(

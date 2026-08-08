@@ -152,7 +152,7 @@ def test_minimax_does_not_retry_truncated_json():
 
     assert len(completions.calls) == 1
 
-def test_non_minimax_transport_is_not_rewritten():
+def test_deepseek_transport_disables_default_thinking_without_changing_budget():
     client, completions = _client(
         "https://api.deepseek.com/v1",
         _response(content='{"suggested_reply":"ok"}'),
@@ -167,6 +167,26 @@ def test_non_minimax_transport_is_not_rewritten():
 
     request = completions.calls[0]
     assert client.provider_name == "deepseek"
+    assert request["temperature"] == 0
+    assert request["max_tokens"] == 300
+    assert request["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_other_transport_is_not_rewritten():
+    client, completions = _client(
+        "https://api.example.test/v1",
+        _response(content='{"suggested_reply":"ok"}'),
+    )
+
+    client.create_chat_completion(
+        model="generic-model",
+        messages=[{"role": "user", "content": "hello"}],
+        temperature=0,
+        max_tokens=300,
+    )
+
+    request = completions.calls[0]
+    assert client.provider_name == "api"
     assert request["temperature"] == 0
     assert request["max_tokens"] == 300
     assert "extra_body" not in request
