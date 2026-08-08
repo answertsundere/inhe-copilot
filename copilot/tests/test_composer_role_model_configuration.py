@@ -12,6 +12,7 @@ _COMPOSER_FIELDS = (
     "COPILOT_COMPOSER_LLM_MODEL",
     "COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS",
     "COPILOT_COMPOSER_LLM_QUALIFIED",
+    "COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT",
 )
 
 
@@ -23,6 +24,7 @@ def _set_override(
     model: str = "",
     timeout_seconds: int = 30,
     qualified: bool = False,
+    qualification_fingerprint: str = "",
 ) -> None:
     values = {
         "COPILOT_COMPOSER_LLM_API_BASE": api_base,
@@ -30,6 +32,7 @@ def _set_override(
         "COPILOT_COMPOSER_LLM_MODEL": model,
         "COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS": timeout_seconds,
         "COPILOT_COMPOSER_LLM_QUALIFIED": qualified,
+        "COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT": qualification_fingerprint,
     }
     for field in _COMPOSER_FIELDS:
         monkeypatch.setattr(config, field, values[field])
@@ -48,6 +51,11 @@ def test_composer_role_uses_the_unchanged_formal_client_without_override(
 def test_composer_role_uses_only_a_complete_qualified_override(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    fingerprint = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        timeout_seconds=45,
+    )
     _set_override(
         monkeypatch,
         api_base="https://api.deepseek.com/v1",
@@ -55,6 +63,7 @@ def test_composer_role_uses_only_a_complete_qualified_override(
         model="deepseek-chat",
         timeout_seconds=45,
         qualified=True,
+        qualification_fingerprint=fingerprint,
     )
 
     client = llm_client.get_composer_llm_client()
@@ -132,6 +141,11 @@ def test_composer_qualification_can_use_a_complete_unqualified_override(
 def test_composer_role_bounds_its_override_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    fingerprint = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        timeout_seconds=120,
+    )
     _set_override(
         monkeypatch,
         api_base="https://api.deepseek.com/v1",
@@ -139,6 +153,49 @@ def test_composer_role_bounds_its_override_timeout(
         model="deepseek-chat",
         timeout_seconds=999,
         qualified=True,
+        qualification_fingerprint=fingerprint,
     )
 
     assert llm_client.get_composer_llm_client().timeout_seconds == 120
+
+
+def test_composer_role_rejects_a_qualified_override_without_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _set_override(
+        monkeypatch,
+        api_base="https://api.deepseek.com/v1",
+        api_key="test-composer-key",
+        model="deepseek-chat",
+        qualified=True,
+    )
+
+    with pytest.raises(
+        llm_client.ComposerRoleConfigurationError,
+        match="composer_role_qualification_fingerprint_missing",
+    ):
+        llm_client.get_composer_llm_client()
+
+
+def test_composer_role_rejects_a_changed_model_after_qualification(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fingerprint = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        timeout_seconds=30,
+    )
+    _set_override(
+        monkeypatch,
+        api_base="https://api.deepseek.com/v1",
+        api_key="test-composer-key",
+        model="another-model",
+        qualified=True,
+        qualification_fingerprint=fingerprint,
+    )
+
+    with pytest.raises(
+        llm_client.ComposerRoleConfigurationError,
+        match="composer_role_configuration_changed",
+    ):
+        llm_client.get_composer_llm_client()

@@ -62,6 +62,7 @@ def test_role_qualification_accepts_five_single_call_attempts():
     assert report["status"] == "qualified"
     assert report["attempted"] == 5
     assert report["provider_call_count"] == 5
+    assert len(report["qualification_fingerprint"]) == 64
     assert len(client.calls) == 5
     assert all(record["qualified"] for record in report["records"])
     assert report["can_change_can_send"] is False

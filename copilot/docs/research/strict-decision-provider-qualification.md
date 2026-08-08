@@ -165,6 +165,10 @@ Composer Provider call and preserve presentation order, direct-fact rendering,
 the required option, and the restricted boundary. Any first failure stops the
 run. The command records only hashes and structural projections, never raw
 customer text or credentials, and never sets `COPILOT_COMPOSER_LLM_QUALIFIED`.
+Its passing report emits a non-secret `qualification_fingerprint`; production
+requires that fingerprint alongside `COPILOT_COMPOSER_LLM_QUALIFIED=true`.
+Changing the base URL, model, or effective timeout causes Composer to block
+before the first Provider request until the exact new role is qualified.
 
 ## Local Runtime Check: 2026-07-14
 

@@ -31,6 +31,7 @@ from app.api.runtime_routes import _source_tree_sha256  # noqa: E402
 from app import config  # noqa: E402
 from app.llm.client import (  # noqa: E402
     ComposerRoleConfigurationError,
+    composer_role_configuration_fingerprint,
     get_composer_llm_client,
 )
 from app.services.model_first_answer_composer_service import (  # noqa: E402
@@ -417,6 +418,11 @@ def run_qualification(
         }, 2
 
     fixture = qualification_response()
+    qualification_fingerprint = composer_role_configuration_fingerprint(
+        api_base=str(role_client.api_base or ""),
+        model=str(role_client.model or ""),
+        timeout_seconds=int(getattr(role_client, "timeout_seconds", 30) or 30),
+    )
     records: list[dict[str, Any]] = []
     hard_stop_reason = ""
     for attempt in range(1, repeat + 1):
@@ -439,6 +445,7 @@ def run_qualification(
         "status": "qualified" if qualified else "not_qualified",
         "source_tree_sha256": _source_tree_sha256(),
         "provider": metadata,
+        "qualification_fingerprint": qualification_fingerprint,
         "fixture_sha256": _canonical_hash(qualification_response()),
         "attempted": len(records),
         "provider_call_count": sum(int(item["provider_call_count"]) for item in records),

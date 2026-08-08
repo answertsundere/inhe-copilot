@@ -4,6 +4,7 @@ LLM 客户端 - 封装模型调用逻辑，含安全降级
 
 import json
 import logging
+import hashlib
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -18,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 class ComposerRoleConfigurationError(RuntimeError):
     """Raised when an explicit Composer role override is incomplete or unqualified."""
+
+
+COMPOSER_ROLE_QUALIFICATION_CONTRACT = "composer-role-qualification/v1"
 
 
 # 降级回复模板（不依赖 LLM 输出）
@@ -338,6 +342,28 @@ def get_llm_client() -> LLMClient:
     return _client
 
 
+def composer_role_configuration_fingerprint(
+    *,
+    api_base: str,
+    model: str,
+    timeout_seconds: int,
+) -> str:
+    """Bind a Composer qualification to its non-secret transport settings."""
+    payload = {
+        "contract": COMPOSER_ROLE_QUALIFICATION_CONTRACT,
+        "api_base_sha256": hashlib.sha256(
+            str(api_base or "").strip().encode("utf-8")
+        ).hexdigest(),
+        "model": str(model or "").strip(),
+        "timeout_seconds": int(timeout_seconds),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
 def get_composer_llm_client(
     *,
     allow_unqualified: bool = False,
@@ -366,6 +392,23 @@ def get_composer_llm_client(
         1,
         min(int(config.COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS), 120),
     )
+    if not allow_unqualified:
+        expected_fingerprint = str(
+            config.COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT or ""
+        ).strip()
+        if not expected_fingerprint:
+            raise ComposerRoleConfigurationError(
+                "composer_role_qualification_fingerprint_missing"
+            )
+        actual_fingerprint = composer_role_configuration_fingerprint(
+            api_base=values["api_base"],
+            model=values["model"],
+            timeout_seconds=timeout_seconds,
+        )
+        if actual_fingerprint != expected_fingerprint:
+            raise ComposerRoleConfigurationError(
+                "composer_role_configuration_changed"
+            )
     return LLMClient(
         api_key=values["api_key"],
         api_base=values["api_base"],
