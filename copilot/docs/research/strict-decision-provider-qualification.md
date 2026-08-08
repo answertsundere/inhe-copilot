@@ -84,7 +84,9 @@ This is a transport setting, not a reduction of the model's evidence, context,
 or reasoning authority elsewhere in the Pipeline. [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode)
 The independent DeepSeek strict-tool Audit request uses that same official
 non-thinking parameter; it never receives a local-model-specific transport
-option.
+option. DeepSeek V4 Pro with thinking enabled rejected the first strict-tool
+qualification schema before model output, so that mode is not a supported Audit
+candidate under the current schema contract.
 
 DeepSeek V4 Flash passed the isolated Composer five-run contract with the
 non-thinking JSON transport: all five responses preserved the direct fact,
