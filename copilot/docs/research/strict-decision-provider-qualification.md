@@ -138,6 +138,16 @@ exact Provider/model/privacy configuration must pass strict preflight, the
 frozen semantic matrix, and the current Composer gate independently before a
 new native Fixed-8. Vendor identity never substitutes for qualification.
 
+`scripts/qualify_unified_audit_role.py` is the reusable, read-only command for
+that Audit-side `5+5` gate. It reads only `COPILOT_UNIFIED_AUDIT_*`, invokes the
+existing strict role transport with `allow_unqualified=true` only inside the
+qualification process, and writes a report with safe provider metadata, hashes,
+validation categories, and latency. It never sets
+`COPILOT_UNIFIED_AUDIT_QUALIFIED`, changes a feature flag, reads formal
+knowledge, generates a customer reply, or changes `can_send`. The same command
+works for an approved hosted provider or a compatible tenant/BYOK provider;
+each exact role identity still needs its own report.
+
 ## Local Runtime Check: 2026-07-14
 
 The host keeps its vLLM 0.11 vision worker at localhost port 8001 on
