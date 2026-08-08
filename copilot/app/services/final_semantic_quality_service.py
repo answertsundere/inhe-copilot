@@ -213,7 +213,7 @@ _SEMANTIC_BUDGET_FINDING_CODES = {
 _NON_BUDGET_FINDING_CODES = (
     _LLM_SEMANTIC_ISSUE_CODES - _SEMANTIC_BUDGET_FINDING_CODES
 )
-_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v3"
+_ATOMIC_SEMANTIC_SCHEMA_VERSION = "unified-textual-audit-v4"
 _ATOMIC_SEMANTIC_OUTPUT_FIELDS = {
     "schema_version",
     "goal_reviews",
@@ -234,6 +234,7 @@ _ATOMIC_SEMANTIC_BUDGET_CHECK_FIELDS = {
     "variability_factor_status",
     "restricted_boundary_status",
     "qualifier_status",
+    "prohibited_extension_status",
     "conclusion_status",
 }
 _ATOMIC_ADVICE_STATUSES = {
@@ -263,6 +264,12 @@ _ATOMIC_CONCLUSION_STATUSES = {
 _ATOMIC_QUALIFIER_STATUSES = {
     "satisfied",
     "violated",
+    "indeterminate",
+}
+_ATOMIC_PROHIBITED_EXTENSION_STATUSES = {
+    "not_applicable",
+    "absent",
+    "present",
     "indeterminate",
 }
 _ATOMIC_EXPECTED_KINDS = {
@@ -340,6 +347,10 @@ def _atomic_semantic_json_schema(
             "qualifier_status": {
                 "type": "string",
                 "enum": sorted(_ATOMIC_QUALIFIER_STATUSES),
+            },
+            "prohibited_extension_status": {
+                "type": "string",
+                "enum": sorted(_ATOMIC_PROHIBITED_EXTENSION_STATUSES),
             },
             "conclusion_status": {
                 "type": "string",
@@ -883,7 +894,7 @@ def _strict_model_first_semantic_fit_check(
     )
     try:
         parsed = provider.request(
-            name="unified_textual_audit_v3",
+            name="unified_textual_audit_v4",
             schema=_atomic_semantic_json_schema(atomic_contract),
             system_prompt=_atomic_semantic_system_prompt(),
             payload=payload,
@@ -981,7 +992,7 @@ def _atomic_semantic_system_prompt() -> str:
         "clause that directly says the requested proposition cannot be confirmed or guaranteed answers "
         "the goal without asserting the fact. For every unified_textual_contract item whose "
         "semantic_budget_applicable is true, return exactly one semantic_budget_checks row in the same order. "
-        "All seven fields are required and no extra fields are allowed. Determine each dimension independently "
+        "All eight fields are required and no extra fields are allowed. Determine each dimension independently "
         "from clause_text and its supplied semantic budget. Natural paraphrases count by meaning, not literal "
         "word overlap. advice_status is absent when there is no customer-directed advice, authorized only when "
         "present advice is permitted by advice_mode, unauthorized when present advice exceeds advice_mode, and "
@@ -1015,6 +1026,13 @@ def _atomic_semantic_system_prompt() -> str:
         "satisfied qualifier never cancels another violated qualifier. conclusion_status is within_budget only "
         "when every conclusion stays within allowed_conclusion_family, otherwise outside_budget; use "
         "indeterminate only when undecidable. "
+        "prohibited_extension_status is not_applicable exactly when prohibited_extensions is empty. When "
+        "prohibited_extensions is nonempty, return absent when clause_text makes no semantic claim within any "
+        "listed prohibited extension family, and present when it does. Judge meaning rather than literal word "
+        "overlap; ordinary paraphrases of a prohibited product-status, safety, certification, test, or other "
+        "listed-family claim count as present. This status is independent from qualifier_status and "
+        "conclusion_status. Return indeterminate only when a supplied prohibited family genuinely cannot be "
+        "compared with clause_text. "
         "A no_test_claim or no_test_claim_without_direct_evidence qualifier permits saying that direct test "
         "evidence or a verified test basis is unavailable. It does not permit asserting that the product was "
         "never tested, passed or failed a test, or meets a test standard; those are product test-status "
@@ -1037,7 +1055,7 @@ def _atomic_semantic_system_prompt() -> str:
         "Echo every goal_ref, clause_ref, and clause_kind exactly once. For each goal return textual_status "
         "accepted with an empty finding_codes list, or rejected with one or more allowed finding codes. "
         "Return strict JSON with exactly schema_version, goal_reviews, semantic_budget_checks, "
-        "global_finding_codes. schema_version must be unified-textual-audit-v3. Each goal review must contain "
+        "global_finding_codes. schema_version must be unified-textual-audit-v4. Each goal review must contain "
         "exactly goal_ref, "
         "clause_ref, clause_kind, textual_status, finding_codes. Use only codes supplied in "
         "allowed_finding_codes. Do not return passed, verdict, reason, conclusion, analysis, markdown, "
@@ -1473,6 +1491,8 @@ def _semantic_budget_finding_codes(
         findings.append("restricted_boundary_violation")
     if check["qualifier_status"] == "violated":
         findings.append("inference_scope_exceeded")
+    if check["prohibited_extension_status"] == "present":
+        findings.append("inference_scope_exceeded")
     if check["conclusion_status"] == "outside_budget":
         findings.append("inference_scope_exceeded")
     return sorted(set(findings))
@@ -1499,6 +1519,9 @@ def _safe_raw_semantic_budget_checks(
             _ATOMIC_RESTRICTED_BOUNDARY_STATUSES
         ),
         "qualifier_status": _ATOMIC_QUALIFIER_STATUSES,
+        "prohibited_extension_status": (
+            _ATOMIC_PROHIBITED_EXTENSION_STATUSES
+        ),
         "conclusion_status": _ATOMIC_CONCLUSION_STATUSES,
     }
     projected: list[dict[str, str]] = []
@@ -1612,6 +1635,10 @@ def _validated_semantic_budget_checks(
                 _ATOMIC_QUALIFIER_STATUSES,
             ),
             (
+                "prohibited_extension_status",
+                _ATOMIC_PROHIBITED_EXTENSION_STATUSES,
+            ),
+            (
                 "conclusion_status",
                 _ATOMIC_CONCLUSION_STATUSES,
             ),
@@ -1668,6 +1695,25 @@ def _validated_semantic_budget_checks(
                 json_path=f"{path}.advice_status",
                 expected_type="absent_or_unauthorized",
                 actual_type="authorized",
+                invalid_enum_count=1,
+            )
+        prohibited_extensions = target.get("prohibited_extensions") or []
+        if (
+            prohibited_extensions
+            and check["prohibited_extension_status"] == "not_applicable"
+        ) or (
+            not prohibited_extensions
+            and check["prohibited_extension_status"] != "not_applicable"
+        ):
+            return None, {}, _semantic_validation_diagnostics(
+                "semantic_budget_prohibited_extension_applicability_invalid",
+                json_path=f"{path}.prohibited_extension_status",
+                expected_type=(
+                    "absent_or_present"
+                    if prohibited_extensions
+                    else "not_applicable"
+                ),
+                actual_type=check["prohibited_extension_status"],
                 invalid_enum_count=1,
             )
         current = dict(check)

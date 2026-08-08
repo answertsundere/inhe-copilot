@@ -51,7 +51,7 @@ def _audit_json(
     **extra,
 ):
     payload = {
-        "schema_version": "unified-textual-audit-v2",
+        "schema_version": "unified-textual-audit-v4",
         "goal_reviews": goal_reviews if goal_reviews is not None else [
             {
                 "clause_ref": "clause_01",
@@ -126,6 +126,7 @@ def _response():
     }
     composer = {
         "status": "accepted",
+        "used_for_final_reply": True,
         "clauses": [
             {
                 "clause_ref": "C1",

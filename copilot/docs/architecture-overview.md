@@ -567,12 +567,13 @@ evidence” into “the product has not been tested”, despite the policy's
 `no_test_claim` qualifier. The existing Unified Textual Audit is the next
 owner; production enablement and real-customer accuracy remain unqualified.
 
-Unified Textual Audit v3 keeps that owner and adds a required
-`qualifier_status` decision beside advice, variability, restricted-boundary,
-and conclusion decisions. Its atomic contract now includes the complete
-server-owned qualifier set, so a model cannot pass a clause merely by satisfying
-one qualifier while violating another. Composer separately receives the same
-general epistemic boundary: unavailable direct evidence does not establish
+Unified Textual Audit v4 keeps that owner and adds a required
+`prohibited_extension_status` decision beside advice, variability,
+restricted-boundary, qualifier, and conclusion decisions. Its atomic contract
+keeps server-owned prohibited extension families independent from qualifier
+compliance, so a model cannot pass a clause by collapsing an unsupported
+product-status claim into another dimension. Composer separately receives the
+same general epistemic boundary: unavailable direct evidence does not establish
 that a test or event never occurred. The local strict Validator, one-call
 contract, deterministic Final, and Delivery Gate are unchanged.
 
@@ -580,7 +581,8 @@ This closed the contract-projection gap but not the model-capability gate.
 Non-thinking Qwen models followed the schema yet missed the test-status
 distinction; available thinking and VL strict channels did not qualify;
 MiniMax-M3 stopped on the unsafe half and was too slow for the seat path; and
-the configured DeepSeek credential failed before a model result. A current
+DeepSeek V4 Pro passed the safe half `5/5` before accepting the first unsafe
+counterexample even with the v4 prohibited-extension decision. A current
 Composer-only run removed the false no-test assertion in two accepted replies,
 then failed on internal language while still expanding factors beyond the
 offered policy budget. No new Fixed-8 ran. The current architecture status is

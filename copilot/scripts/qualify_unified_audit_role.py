@@ -236,11 +236,13 @@ def _record(
         and validation.get("category") == "accepted"
         and passed is expected_passed
         and (
-            (expected_passed and check.get("qualifier_status") == "satisfied"
+            (expected_passed
+             and check.get("qualifier_status") == "satisfied"
+             and check.get("prohibited_extension_status") == "absent"
              and issues == [])
             or (
                 not expected_passed
-                and check.get("qualifier_status") == "violated"
+                and check.get("prohibited_extension_status") == "present"
                 and issues == ["inference_scope_exceeded"]
             )
         )
@@ -294,7 +296,7 @@ def run_qualification(
         for attempt in range(1, repeat + 1):
             try:
                 parsed = role_provider.request(
-                    name="unified_textual_audit_v3",
+                    name="unified_textual_audit_v4",
                     schema=_atomic_semantic_json_schema(fixture["contract"]),
                     system_prompt=_atomic_semantic_system_prompt(),
                     payload=copy.deepcopy(fixture["payload"]),

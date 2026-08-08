@@ -137,13 +137,14 @@ p50/p95 were `26.256s/36.480s`. Expert review was `2 pass / 4 partial / 0 fail /
 
 The following P1 qualification closed the missing contract projection but did
 not qualify the current models. Unified Textual Audit v3 receives every
-`required_qualifier` and must report a separate `qualifier_status`; Composer
-also states the general epistemic rule that missing direct evidence is not a
-negative fact. Deterministic and adjacent tests passed, but local Qwen models
-that obeyed the strict schema still accepted the unsupported product test-
-status claim, thinking-mode strict channels were unavailable, MiniMax-M3 did
-not complete the unsafe qualification, and the configured DeepSeek credential
-failed authentication before a model result. A current Composer-only run
+`required_qualifier` and `prohibited_extension` in separate Audit dimensions;
+Composer also states the general epistemic rule that missing direct evidence is
+not a negative fact. Deterministic and adjacent tests passed, but local Qwen
+models that obeyed the strict schema still accepted the unsupported product
+test-status claim, thinking-mode strict channels were unavailable, MiniMax-M3
+did not complete the unsafe qualification, and DeepSeek V4 Pro passed the safe
+half `5/5` then accepted the first unsafe counterexample under the v4 contract.
+A current Composer-only run
 accepted two replies without the false no-test statement, then failed on
 internal language and both accepted replies exceeded the offered variability-
 factor budget. No new Fixed-8 was run. The active P1 blocker is therefore

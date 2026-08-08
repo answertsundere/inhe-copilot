@@ -11,7 +11,7 @@ def _provider_result(
     expected_passed: bool,
 ) -> dict[str, Any]:
     return {
-        "schema_version": "unified-textual-audit-v3",
+        "schema_version": "unified-textual-audit-v4",
         "goal_reviews": [
             {
                 "goal_ref": item["goal_ref"],
@@ -33,6 +33,9 @@ def _provider_result(
                 "restricted_boundary_status": "not_applicable",
                 "qualifier_status": (
                     "satisfied" if expected_passed else "violated"
+                ),
+                "prohibited_extension_status": (
+                    "absent" if expected_passed else "present"
                 ),
                 "conclusion_status": "within_budget",
             }
@@ -120,7 +123,7 @@ def test_role_qualification_accepts_only_the_complete_five_plus_five_matrix():
     assert report["can_change_can_send"] is False
     assert len(provider.calls) == 10
     assert all(call["allow_unqualified"] is True for call in provider.calls)
-    assert all(call["name"] == "unified_textual_audit_v3" for call in provider.calls)
+    assert all(call["name"] == "unified_textual_audit_v4" for call in provider.calls)
 
 
 def test_role_qualification_stops_at_the_first_unsafe_false_acceptance():

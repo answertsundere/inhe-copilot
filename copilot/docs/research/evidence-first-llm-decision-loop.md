@@ -739,22 +739,25 @@ owner accepts the former and rejects the latter without phrase matching,
 post-generation repair, or product-specific rules.
 
 That qualification exposed a contract gap and then a model-capability gap.
-Unified Textual Audit v3 now projects every `required_qualifier` and requires a
-separate `qualifier_status` in the same single strict response. The service
-maps a violated qualifier to the existing `inference_scope_exceeded` ontology
-and keeps raw decisions for attribution; it adds no textual keyword classifier,
-retry, repair, second call, or reply rewrite. Composer also states the general
-epistemic rule that missing direct evidence does not establish a negative
-product fact.
+Unified Textual Audit v4 now projects every `required_qualifier` and every
+`prohibited_extension` separately. Its single strict response includes both
+`qualifier_status` and `prohibited_extension_status`; the latter is a
+model-owned semantic comparison rather than a textual matcher. The service
+maps a present prohibited extension to the existing `inference_scope_exceeded`
+ontology and keeps raw decisions for attribution; it adds no retry, repair,
+second call, or reply rewrite. Composer also states the general epistemic rule
+that missing direct evidence does not establish a negative product fact.
 
 The available model matrix did not qualify. Qwen3.6 35B and Qwen3 30B with
 thinking disabled each accepted the safe evidence-availability candidate
 `5/5`, then accepted the first unsupported product test-status candidate.
 Their thinking modes and Qwen3-VL 32B did not provide a usable strict output
 channel. MiniMax-M3 strict tool mode accepted the safe side `5/5`, then failed
-at the first unsafe request and had seat-incompatible latency. The configured
-DeepSeek strict-tool preflight failed authentication before a model result.
-No capability conclusion is assigned to DeepSeek.
+at the first unsafe request and had seat-incompatible latency. DeepSeek V4 Pro
+then passed the v4 safe side `5/5` with thinking disabled, but accepted the
+first unsupported product test-status counterexample and returned
+`prohibited_extension_status=absent`. It is therefore not qualified for the
+independent Audit role.
 
 On the current Composer input, two accepted replies stopped inventing a test
 history, but both expanded variability factors outside the offered budget and

@@ -224,12 +224,15 @@ authoritative budget only established that direct test evidence was absent.
 The existing Unified Audit should reject this `no_test_claim` violation
 without adding a keyword classifier, reply repair, or product-specific rule.
 
-Unified Textual Audit v3 now projects the complete `required_qualifiers` set
-and requires an independent `qualifier_status` for every applicable clause.
-The local Validator remains strict and fail-closed. Composer also receives the
-general epistemic constraint that missing direct evidence is not proof that a
-test or event never occurred. These changes preserve the existing owners and
-add no model call, retry, repair, fallback, evidence, or send authority.
+Unified Textual Audit v4 now projects the complete `required_qualifiers` set
+and `prohibited_extensions` separately. Every applicable clause must return
+independent `qualifier_status` and `prohibited_extension_status` decisions;
+the latter is a semantic comparison against the governing policy families, not
+a Python keyword match. The local Validator remains strict and fail-closed.
+Composer also receives the general epistemic constraint that missing direct
+evidence is not proof that a test or event never occurred. These changes
+preserve the existing owners and add no model call, retry, repair, fallback,
+evidence, or send authority.
 
 The engineering contract passed its deterministic and adjacent regressions,
 but the model gates did not qualify. Non-thinking local Qwen3.6 35B and Qwen3
@@ -237,9 +240,10 @@ but the model gates did not qualify. Non-thinking local Qwen3.6 35B and Qwen3
 the first unsupported product test-status counterexample. Their thinking
 modes and the available Qwen3-VL 32B did not expose a usable strict structured
 channel. MiniMax-M3 strict tool use accepted the safe side `5/5` but failed at
-the first unsafe request and had about `17.766s/19.094s` p50/p95 latency. The
-configured DeepSeek credential failed authentication before a model result,
-so it has no capability result.
+the first unsafe request and had about `17.766s/19.094s` p50/p95 latency.
+DeepSeek V4 Pro passed the safe half `5/5`, then accepted the first unsafe
+test-status counterexample under the v4 prohibited-extension contract, so it
+is not qualified for the Audit role.
 
 The current-input Composer-only check then accepted two replies that no longer
 invented a product test history, but both extended variability factors beyond
@@ -861,7 +865,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; Provider-blocked | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, knowledge/DML/send changes were zero, and p50/p95 were `26.256s/36.480s`. Unified Audit v3 now carries qualifier semantics and Composer preserves the missing-evidence boundary, but available Qwen/MiniMax candidates failed the frozen Audit gate, DeepSeek authentication failed before a result, and current Composer qualification stopped at `2/3` with budget expansion plus internal-language rejection. No new Fixed-8 ran; `real_accuracy=null` | Connect or approve a stronger role-scoped/BYOK model, pass both frozen Audit and Composer gates without relaxing contracts, then run one new native Fixed-8 |
+| P1 Gold Conversation Quality | active; Provider-blocked | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, knowledge/DML/send changes were zero, and p50/p95 were `26.256s/36.480s`. Unified Audit v4 separates qualifier and prohibited-extension semantics, but Qwen/MiniMax candidates failed the frozen Audit gate and DeepSeek V4 Pro passed the safe half `5/5` then accepted the first unsafe counterexample. Current Composer qualification stopped at `2/3` with budget expansion plus internal-language rejection. No new Fixed-8 ran; `real_accuracy=null` | Connect or approve a stronger role-scoped/BYOK model, pass both frozen Audit and Composer gates without relaxing contracts, then run one new native Fixed-8 |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
