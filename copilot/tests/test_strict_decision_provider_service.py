@@ -8,6 +8,7 @@ from app.services.strict_decision_provider_service import (
     StrictDecisionProviderError,
     StrictDecisionProviderService,
     _ollama_native_request,
+    qualification_configuration_fingerprint,
     safe_provider_identity,
 )
 
@@ -98,6 +99,25 @@ def test_unified_audit_config_is_independent_from_formal_and_decision_roles(
         "COPILOT_UNIFIED_AUDIT_QUALIFIED",
         True,
     )
+    fingerprint = qualification_configuration_fingerprint(
+        StrictDecisionProviderConfig(
+            provider_name="audit-provider",
+            api_base="https://audit.example.invalid/v1",
+            api_key="audit-secret",
+            model="audit-model",
+            capability="strict_json_schema",
+            timeout_seconds=17,
+            qualified=True,
+            disable_thinking=True,
+            qualification_fingerprint_required=True,
+            role_name="unified_audit",
+        )
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_QUALIFICATION_FINGERPRINT",
+        fingerprint,
+    )
     monkeypatch.setattr(
         config,
         "COPILOT_UNIFIED_AUDIT_DISABLE_THINKING",
@@ -113,6 +133,8 @@ def test_unified_audit_config_is_independent_from_formal_and_decision_roles(
     assert audit.capability == "strict_json_schema"
     assert audit.timeout_seconds == 17
     assert audit.qualified is True
+    assert audit.qualification_fingerprint == fingerprint
+    assert audit.qualification_status() == "qualified"
     assert audit.disable_thinking is True
     assert audit.api_key not in {
         config.LLM_API_KEY,
@@ -389,6 +411,41 @@ def test_unqualified_provider_cannot_run_shadow_but_can_be_qualified():
     with pytest.raises(StrictDecisionProviderError, match="provider_not_qualified"):
         provider.request(name="sample", schema={}, system_prompt="x", payload={}, max_tokens=1)
     assert provider.request(name="sample", schema={}, system_prompt="x", payload={}, max_tokens=1, allow_unqualified=True) == {"ok": True}
+
+
+def test_fingerprint_required_role_blocks_a_changed_model_before_network():
+    client = _Client(_result())
+    baseline = _config(
+        qualification_fingerprint_required=True,
+        role_name="unified_audit",
+    )
+    qualified = StrictDecisionProviderConfig(
+        **{
+            **baseline.__dict__,
+            "qualification_fingerprint": qualification_configuration_fingerprint(
+                baseline
+            ),
+            "model": "changed-model",
+        }
+    )
+    provider = StrictDecisionProviderService(
+        config=qualified,
+        client_factory=lambda **_: client,
+    )
+
+    with pytest.raises(
+        StrictDecisionProviderError,
+        match="provider_configuration_changed",
+    ):
+        provider.request(
+            name="sample",
+            schema={},
+            system_prompt="x",
+            payload={},
+            max_tokens=1,
+        )
+
+    assert client.calls == []
 
 
 def test_strict_tool_call_transport_requires_one_named_strict_call():

@@ -897,6 +897,8 @@ def _strict_model_first_semantic_fit_check(
             if category in {
                 "provider_not_configured",
                 "provider_not_qualified",
+                "qualification_fingerprint_missing",
+                "provider_configuration_changed",
                 "strict_capability_not_supported",
             }
             else 1

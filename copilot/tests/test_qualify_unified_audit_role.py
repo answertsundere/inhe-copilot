@@ -81,6 +81,9 @@ class _FakeProvider:
             expected_passed=False if unsafe and not self.accept_unsafe else True,
         )
 
+    def qualification_fingerprint(self) -> str:
+        return "f" * 64
+
 
 def test_fixtures_are_synthetic_and_hold_the_same_qualifier_contract():
     fixtures = qualification.qualification_fixtures()
@@ -109,6 +112,7 @@ def test_role_qualification_accepts_only_the_complete_five_plus_five_matrix():
     assert report["status"] == "qualified"
     assert report["attempted"] == 10
     assert report["provider_call_count"] == 10
+    assert report["qualification_fingerprint"] == "f" * 64
     assert report["retry_count"] == 0
     assert report["repair_count"] == 0
     assert report["formal_knowledge_read_count"] == 0

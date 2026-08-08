@@ -335,11 +335,20 @@ def run_qualification(
         if isinstance(item["provider_latency_ms"], (int, float))
     ]
     qualified = len(records) == 10 and all(item["qualified"] for item in records)
+    qualification_fingerprint = ""
+    fingerprint_method = getattr(
+        role_provider,
+        "qualification_fingerprint",
+        None,
+    )
+    if callable(fingerprint_method):
+        qualification_fingerprint = str(fingerprint_method() or "")
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
         "status": "qualified" if qualified else "not_qualified",
         "source_tree_sha256": _source_tree_sha256(),
         "provider": metadata,
+        "qualification_fingerprint": qualification_fingerprint,
         "fixture_sha256": _canonical_hash([
             {
                 "cohort": item["cohort"],

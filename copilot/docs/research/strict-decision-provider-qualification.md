@@ -148,6 +148,13 @@ knowledge, generates a customer reply, or changes `can_send`. The same command
 works for an approved hosted provider or a compatible tenant/BYOK provider;
 each exact role identity still needs its own report.
 
+A passing Unified Audit report emits a non-secret qualification fingerprint.
+`COPILOT_UNIFIED_AUDIT_QUALIFIED=true` is insufficient by itself: production
+also requires the report fingerprint to match the configured provider, base,
+model, strict capability, timeout, and thinking setting. A mismatch blocks
+before the first Audit request. This binding applies only to the independent
+Unified Audit role; it does not retroactively alter decision-shadow roles.
+
 The Composer role has the same deployment-level isolation through
 COPILOT_COMPOSER_LLM. It preserves the current formal LLM when the override is
 absent, but an explicit override must contain API base, key, model, timeout,

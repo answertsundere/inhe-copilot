@@ -24,6 +24,28 @@ class StrictDecisionProviderError(RuntimeError):
     """Safe error categories only; configuration values must not escape."""
 
 
+def qualification_configuration_fingerprint(
+    config: "StrictDecisionProviderConfig",
+) -> str:
+    """Return a non-secret identity for one qualified strict-output role."""
+    payload = {
+        "role_name": config.role_name,
+        "api_base_sha256": hashlib.sha256(
+            str(config.api_base or "").strip().encode("utf-8")
+        ).hexdigest(),
+        "provider_name": str(config.provider_name or "").strip(),
+        "model": str(config.model or "").strip(),
+        "capability": str(config.capability or "").strip(),
+        "timeout_seconds": int(config.timeout_seconds),
+        "disable_thinking": bool(config.disable_thinking),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
 def _canonical_provider_origin(api_base: str) -> str:
     """Return a comparison-only origin without retaining path or credentials."""
     raw = str(api_base or "").strip()
@@ -74,6 +96,9 @@ class StrictDecisionProviderConfig:
     timeout_seconds: int
     qualified: bool
     disable_thinking: bool = False
+    qualification_fingerprint: str = ""
+    qualification_fingerprint_required: bool = False
+    role_name: str = "decision"
 
     @classmethod
     def from_environment(cls) -> "StrictDecisionProviderConfig":
@@ -109,6 +134,12 @@ class StrictDecisionProviderConfig:
             disable_thinking=bool(
                 config.COPILOT_UNIFIED_AUDIT_DISABLE_THINKING
             ),
+            qualification_fingerprint=str(
+                config.COPILOT_UNIFIED_AUDIT_QUALIFICATION_FINGERPRINT
+                or ""
+            ).strip(),
+            qualification_fingerprint_required=True,
+            role_name="unified_audit",
         )
 
     def capability_status(self) -> str:
@@ -129,8 +160,24 @@ class StrictDecisionProviderConfig:
             "capability": self.capability,
             "configured": self.capability_status() == "configured",
             "qualified": self.qualified,
+            "qualification_status": self.qualification_status(),
             "disable_thinking": self.disable_thinking,
         }
+
+    def qualification_status(self) -> str:
+        if self.capability_status() != "configured":
+            return self.capability_status()
+        if not self.qualified:
+            return "provider_not_qualified"
+        if not self.qualification_fingerprint_required:
+            return "qualified"
+        if not self.qualification_fingerprint:
+            return "qualification_fingerprint_missing"
+        if self.qualification_fingerprint != qualification_configuration_fingerprint(
+            self
+        ):
+            return "provider_configuration_changed"
+        return "qualified"
 
 
 def _bounded_timeout(value: str) -> int:
@@ -241,14 +288,19 @@ class StrictDecisionProviderService:
         return self.config.safe_metadata()
 
     def ready_for_shadow(self) -> bool:
-        return self.config.capability_status() == "configured" and self.config.qualified
+        return self.config.qualification_status() == "qualified"
+
+    def qualification_fingerprint(self) -> str:
+        return qualification_configuration_fingerprint(self.config)
 
     def _require_ready(self, *, allow_unqualified: bool) -> None:
         status = self.config.capability_status()
         if status != "configured":
             raise StrictDecisionProviderError(status)
-        if not allow_unqualified and not self.config.qualified:
-            raise StrictDecisionProviderError("provider_not_qualified")
+        if not allow_unqualified:
+            qualification_status = self.config.qualification_status()
+            if qualification_status != "qualified":
+                raise StrictDecisionProviderError(qualification_status)
 
     @property
     def client(self) -> Any:
