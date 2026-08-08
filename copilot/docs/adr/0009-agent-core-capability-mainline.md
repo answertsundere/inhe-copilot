@@ -311,6 +311,22 @@ so live Audit capability remains `provider_blocked`. The Composer and bounded
 inference remain default-off and review-only, production behavior is not
 promoted, and `real_customer_accuracy=null`.
 
+P1 interprets that blocker by release track, without changing the owner chain.
+For **Supervisor Assist**, the existing Composer remains the sole candidate
+reply owner; Deterministic Final continues to validate facts, safety, media,
+service actions, and delivery prerequisites; every candidate is forced to
+`requires_human_review=true` and `can_send=false`; and a human seat remains the
+final confirmation before any action. In that track, an independent Unified
+Audit that is unavailable, unqualified, or rejects a candidate is quality
+evidence for supervisor review. It cannot approve a candidate, bypass
+Deterministic Final, rewrite the reply, or grant delivery authority.
+
+For **Autonomous Send**, the independent Unified Audit remains mandatory in
+addition to real-accuracy, Safety, and Delivery qualification. This ADR does
+not enable automation, change a feature flag, add a Graph node, create another
+reply owner, or add a fallback path. The same formal Pipeline and Delivery Gate
+continue to serve both tracks.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

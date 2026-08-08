@@ -105,6 +105,16 @@ configuration fails before a request with no fallback. MiniMax and the existing
 DeepSeek credential remain unqualified. A loopback Ollama native-schema adapter
 now preserves the same provider-neutral schema and local Validator.
 
+P1 has two deliberately separate release tracks. **Supervisor Assist** may run
+the existing Composer candidate through Deterministic Final and expose only a
+review-only draft to a human seat: every such result keeps
+`requires_human_review=true`, `can_send=false`, and no delivery authority. An
+unqualified Unified Audit is recorded as advisory quality evidence in this
+track; it cannot approve, rewrite, or send a candidate. **Autonomous Send**
+remains blocked until an independent Unified Audit role, real-accuracy evidence,
+Safety, and Delivery are all qualified. This distinction does not create a new
+reply owner or a second Pipeline.
+
 P1.4F found that the previous negative Audit fixture was itself too strict: it
 treated ordinary impact variables and a brief care suggestion as unsafe even
 though those are required for the approved humanlike answer. Domain Pack
@@ -547,6 +557,16 @@ owner from the capsule.
 - full-path p95: at most `25s`, with a documented path toward the P3 target; and
 - `real_accuracy=null` whenever approved labels remain insufficient.
 
+**Release-track boundary**
+
+- Supervisor Assist development and human review require the existing Composer,
+  Deterministic Final, and review-only Delivery boundary. A deterministic Final
+  failure remains blocked; an unavailable or unqualified Unified Audit is
+  reported as advisory quality evidence and never grants delivery authority.
+- Autonomous Send additionally requires a qualified independent Unified Audit,
+  approved real-accuracy evidence, Safety and Delivery qualification, and a
+  separately approved low-risk rollout. P1 does not enable it.
+
 These thresholds may be tightened after the first valid baseline. They may not
 be lowered during a run to create a pass.
 
@@ -865,7 +885,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; Provider-blocked | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, knowledge/DML/send changes were zero, and p50/p95 were `26.256s/36.480s`. Unified Audit v4 separates qualifier and prohibited-extension semantics, but Qwen/MiniMax candidates failed the frozen Audit gate and DeepSeek V4 Pro passed the safe half `5/5` then accepted the first unsafe counterexample. Current Composer qualification stopped at `2/3` with budget expansion plus internal-language rejection. No new Fixed-8 ran; `real_accuracy=null` | Connect or approve a stronger role-scoped/BYOK model, pass both frozen Audit and Composer gates without relaxing contracts, then run one new native Fixed-8 |
+| P1 Gold Conversation Quality | active; Supervisor Assist baseline pending; Autonomous Send provider-blocked | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, knowledge/DML/send changes were zero, and p50/p95 were `26.256s/36.480s`. Unified Audit v4 separates qualifier and prohibited-extension semantics, but Qwen/MiniMax candidates failed the frozen Audit gate and DeepSeek V4 Pro passed the safe half `5/5` then accepted the first unsafe counterexample. Current Composer qualification stopped at `2/3` with budget expansion plus internal-language rejection. The role blocks Autonomous Send, not a deterministic-Final-protected, review-only Supervisor Assist baseline; `real_accuracy=null` | Run one native review-only Fixed-8 when the approved Composer credential is available; use its earliest business-quality owner for P1. Keep Autonomous Send blocked until independent Audit, real accuracy, Safety, and Delivery qualify |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

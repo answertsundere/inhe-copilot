@@ -631,7 +631,12 @@ real-conversation result.
 
 ### 2. Supervisor-Assist Canary
 
-- Expose the qualified candidate to real service staff.
+- Expose a Deterministic-Final-accepted, review-only Composer candidate to real
+  service staff.
+- Keep `requires_human_review=true` and `can_send=false` for every candidate;
+  a human seat remains the only confirmation before any channel action.
+- Treat a missing or unqualified independent Unified Audit as advisory quality
+  evidence for this track. It cannot approve, rewrite, or deliver a reply.
 - Record accept, edit, reject, handoff, and handling-time outcomes.
 - Promote only when supported-claim correctness and unnecessary handoff improve
   without safety or latency regression.
@@ -651,7 +656,8 @@ real-conversation result.
 ### 5. Low-Risk Automation
 
 - Consider `can_send=true` only for explicitly bounded domains after real
-  supervisor-assist evidence, reliable tools, and channel delivery tests.
+  supervisor-assist evidence, a qualified independent Unified Audit, reliable
+  tools, and channel delivery tests.
 
 ## Scorecard
 

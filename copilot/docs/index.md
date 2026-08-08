@@ -149,8 +149,11 @@ accepted two replies without the false no-test statement, then failed on
 internal language and both accepted replies exceeded the offered variability-
 factor budget. No new Fixed-8 was run. The active P1 blocker is therefore
 role-scoped Audit and Composer Provider capability, not another graph or
-validator layer; `real_customer_accuracy=null` and production readiness remain
-unproved.
+validator layer. P1 now separates a deterministic-Final-protected,
+review-only Supervisor Assist baseline from Autonomous Send: an unqualified
+independent Audit remains advisory quality evidence for the former, while the
+latter still requires Audit, real-accuracy, Safety, and Delivery qualification.
+`real_customer_accuracy=null` and production readiness remain unproved.
 The canonical answer-eligibility projection is diagnostic only, and Fast Path
 remains disabled. The priority plan is mandatory: work outside its current
 active stage is frozen unless a documented production/security exception or an
