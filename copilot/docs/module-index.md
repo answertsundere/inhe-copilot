@@ -72,6 +72,7 @@ evaluation owner only; no Fast Path or Composer module has been added.
 | Real-derived capability slice | existing real-derived export and vertical-slice scripts | Proves evidence plumbing/capability, not customer accuracy |
 | P1 Gold conversation baseline | `scripts/run_p1_gold_conversation_baseline.py`, `app/services/high_quality_long_conversation_review_service.py` | Development diagnostic only; validates server-owned goal provenance, aliases control references, writes split privacy-checked reports and an atomic projection-failure capsule containing shapes/hashes only, and cannot claim real accuracy or change Agent output |
 | Composer attribution diagnostics | opt-in sinks in `app/services/analysis_pipeline_service.py` and `app/services/model_first_answer_composer_service.py` | Evaluation-only and default-off; sink absence is zero-work, persisted references use the existing server-keyed HMAC/Base32 alias owner, and diagnostics cannot change provider payloads, calls, replies, evidence, audit, or `can_send` |
+| Composer role qualification | `scripts/qualify_model_first_composer_role.py` | Evaluation-only five-run synthetic gate for an explicit `COPILOT_COMPOSER_LLM_*` model; one Provider call per run, no retry/repair/fallback, no role enablement or delivery authority |
 
 ## Frozen Shadow And Experimental Modules
 

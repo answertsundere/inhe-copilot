@@ -338,7 +338,10 @@ def get_llm_client() -> LLMClient:
     return _client
 
 
-def get_composer_llm_client() -> LLMClient:
+def get_composer_llm_client(
+    *,
+    allow_unqualified: bool = False,
+) -> LLMClient:
     """Return the qualified Composer override or the unchanged formal client."""
     values = {
         "api_key": str(config.COPILOT_COMPOSER_LLM_API_KEY or "").strip(),
@@ -352,7 +355,10 @@ def get_composer_llm_client() -> LLMClient:
         raise ComposerRoleConfigurationError(
             "composer_role_provider_incomplete"
         )
-    if not config.COPILOT_COMPOSER_LLM_QUALIFIED:
+    if (
+        not config.COPILOT_COMPOSER_LLM_QUALIFIED
+        and not allow_unqualified
+    ):
         raise ComposerRoleConfigurationError(
             "composer_role_provider_not_qualified"
         )

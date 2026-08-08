@@ -157,6 +157,15 @@ formal model. This keeps a future DeepSeek or tenant/BYOK experiment scoped to
 reply composition while the existing exact input, local Validator, and
 evidence/delivery contracts remain unchanged.
 
+`scripts/qualify_model_first_composer_role.py` is the corresponding read-only
+Composer gate. It reads only the explicit `COPILOT_COMPOSER_LLM_*` override and
+uses `allow_unqualified=true` solely while running five identical synthetic
+fact-plus-bounded-inference requests. Each request must make exactly one
+Composer Provider call and preserve presentation order, direct-fact rendering,
+the required option, and the restricted boundary. Any first failure stops the
+run. The command records only hashes and structural projections, never raw
+customer text or credentials, and never sets `COPILOT_COMPOSER_LLM_QUALIFIED`.
+
 ## Local Runtime Check: 2026-07-14
 
 The host keeps its vLLM 0.11 vision worker at localhost port 8001 on

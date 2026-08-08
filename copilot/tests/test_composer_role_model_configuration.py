@@ -113,6 +113,22 @@ def test_composer_role_rejects_unqualified_override(
         llm_client.get_composer_llm_client()
 
 
+def test_composer_qualification_can_use_a_complete_unqualified_override(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _set_override(
+        monkeypatch,
+        api_base="https://api.deepseek.com/v1",
+        api_key="test-composer-key",
+        model="deepseek-chat",
+        qualified=False,
+    )
+
+    client = llm_client.get_composer_llm_client(allow_unqualified=True)
+
+    assert client.provider_name == "deepseek"
+
+
 def test_composer_role_bounds_its_override_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ):
