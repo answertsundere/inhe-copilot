@@ -115,6 +115,19 @@ remains blocked until an independent Unified Audit role, real-accuracy evidence,
 Safety, and Delivery are all qualified. This distinction does not create a new
 reply owner or a second Pipeline.
 
+The first native Supervisor Assist Fixed-8 on clean commit `451be614` closed
+that pending baseline. The current DeepSeek V4 Flash Composer role first passed
+its frozen qualification `5/5`, then the formal HTTP Pipeline accepted all
+eight candidates and Deterministic Final passed `8/8`. Unified Audit remained
+explicitly unqualified and made zero model calls; every candidate stayed
+`requires_human_review=true` and `can_send=false`. Formal knowledge and DML did
+not change, and Pipeline p50/p95 were `10.688s/11.925s`. Post-run expert review
+was `3 pass / 3 partial / 1 fail / 1 not scorable`. The only clear factual
+failure followed an authoritative goal that collapsed gross weight and load
+capacity into an unmapped claim before Claim Resolution. P1 therefore returns
+to Turn Understanding atomic-goal completeness and canonicalization; it does
+not add another Auditor, Graph node, or Validator. `real_accuracy=null`.
+
 P1.4F found that the previous negative Audit fixture was itself too strict: it
 treated ordinary impact variables and a brief care suggestion as unsafe even
 though those are required for the approved humanlike answer. Domain Pack
@@ -885,7 +898,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; Supervisor Assist baseline pending; Autonomous Send provider-blocked | Native Fixed-8 on `1ed24db5` completed Composer/Final/Audit/Delivery `8/8`; expert review was `2 pass / 4 partial / 0 fail / 2 not scorable`, knowledge/DML/send changes were zero, and p50/p95 were `26.256s/36.480s`. Unified Audit v4 separates qualifier and prohibited-extension semantics, but Qwen/MiniMax candidates failed the frozen Audit gate and DeepSeek V4 Pro passed the safe half `5/5` then accepted the first unsafe counterexample. Current Composer qualification stopped at `2/3` with budget expansion plus internal-language rejection. The role blocks Autonomous Send, not a deterministic-Final-protected, review-only Supervisor Assist baseline; `real_accuracy=null` | Run one native review-only Fixed-8 when the approved Composer credential is available; use its earliest business-quality owner for P1. Keep Autonomous Send blocked until independent Audit, real accuracy, Safety, and Delivery qualify |
+| P1 Gold Conversation Quality | active; Supervisor Assist baseline complete but quality not qualified; Autonomous Send provider-blocked | On clean `451be614`, current DeepSeek V4 Flash Composer qualification passed `5/5`; native Fixed-8 execution/Composer/Deterministic Final were `8/8`, Audit stayed explicitly unqualified with zero calls, knowledge/DML/send changes were zero, and p50/p95 were `10.688s/11.925s`. Expert review was `3 pass / 3 partial / 1 fail / 1 not scorable`. The one clear factual failure followed an unmapped gross-weight/load-capacity goal; a context-carried material goal was also lost. `real_accuracy=null` | Fix Turn Understanding atomic-goal completeness and canonicalization generically, then rerun the same blind Fixed-8. Keep Autonomous Send blocked until independent Audit, real accuracy, Safety, and Delivery qualify |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

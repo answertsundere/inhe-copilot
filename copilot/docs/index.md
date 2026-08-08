@@ -144,12 +144,17 @@ models that obeyed the strict schema still accepted the unsupported product
 test-status claim, thinking-mode strict channels were unavailable, MiniMax-M3
 did not complete the unsafe qualification, and DeepSeek V4 Pro passed the safe
 half `5/5` then accepted the first unsafe counterexample under the v4 contract.
-A current Composer-only run
-accepted two replies without the false no-test statement, then failed on
-internal language and both accepted replies exceeded the offered variability-
-factor budget. No new Fixed-8 was run. The active P1 blocker is therefore
-role-scoped Audit and Composer Provider capability, not another graph or
-validator layer. P1 now separates a deterministic-Final-protected,
+A current Composer-only run later qualified DeepSeek V4 Flash `5/5` on the
+current transport. The following native Fixed-8 on clean commit `451be614`
+completed execution, Composer, and Deterministic Final `8/8`; Unified Audit
+remained explicitly unqualified with zero calls, all eight results stayed
+human-review-only, formal knowledge/DML/send changes were zero, and Pipeline
+p50/p95 were `10.688s/11.925s`. Expert review was
+`3 pass / 3 partial / 1 fail / 1 not scorable`. The earliest repeated business
+gap is now Turn Understanding atomic-goal completeness and canonicalization,
+including a lost context-carried material goal and a collapsed gross-weight/
+load-capacity comparison. P1 does not need another graph or validator layer.
+P1 separates a deterministic-Final-protected,
 review-only Supervisor Assist baseline from Autonomous Send: an unqualified
 independent Audit remains advisory quality evidence for the former, while the
 latter still requires Audit, real-accuracy, Safety, and Delivery qualification.
