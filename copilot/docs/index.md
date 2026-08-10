@@ -51,6 +51,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/superpowers/specs/2026-08-10-conversation-reconstructed-fixed8-design.md`
   - 已批准的八案例 P1 对话重建工程基线设计；来源可追溯，但不得宣称真实客户
     准确率，也不能替代尚未恢复的原始 Fixed-8 资产。
+- `docs/superpowers/plans/2026-08-10-conversation-reconstructed-fixed8.md`
+  - 上述重建基线的 TDD 实施计划，限定数据合同、标签隔离、原生 Pipeline
+    运行、回归验证和恢复检查点。
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
