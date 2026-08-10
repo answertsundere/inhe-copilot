@@ -328,11 +328,20 @@ def _partial_answer_contract_violations(
     claim_resolutions: list[dict[str, Any]],
 ) -> list[str]:
     """Ensure the model renders every supported claim and preserves every pending one."""
-    expected = {
-        sanitize_text(item.get("claim_type")): item
-        for item in claim_resolutions
-        if sanitize_text(item.get("claim_type"))
-    }
+    expected: dict[str, dict[str, Any]] = {}
+    for item in claim_resolutions:
+        claim_type = sanitize_text(item.get("claim_type"))
+        if not claim_type:
+            continue
+        provider_fields = {
+            field: item[field]
+            for field in ClaimResolution.model_fields
+            if field in item
+        }
+        try:
+            expected[claim_type] = ClaimResolution.model_validate(provider_fields).model_dump()
+        except Exception:
+            return ["canonical_claim_resolution_invalid"]
     submitted = {
         sanitize_text(item.get("claim_type")): item
         for item in proposal.get("claim_resolutions") or []

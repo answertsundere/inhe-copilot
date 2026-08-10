@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.services.agent_decision_proposal_service import AgentDecisionProposalService, _safe_error_reason
+from app.services.agent_decision_proposal_service import (
+    AgentDecisionProposalService,
+    ClaimResolution,
+    _safe_error_reason,
+)
 from app.services.claim_resolution_service import build_claim_resolutions
 
 
@@ -67,6 +71,14 @@ def _stub_tool_execution(monkeypatch, service):
     monkeypatch.setattr(service, "_execute_shadow_tool_plan", lambda **kwargs: _tool_execution())
 
 
+def _provider_claim_resolution(resolution):
+    """Project server-owned resolution metadata into the Provider schema."""
+    return {
+        field: resolution[field]
+        for field in ClaimResolution.model_fields
+    }
+
+
 def _proposal():
     proposal = {
         "understanding": _understanding(),
@@ -129,7 +141,7 @@ def _proposal():
         "used_for_final_reply": False,
         "can_change_can_send": False,
     }
-    proposal["claim_resolutions"] = build_claim_resolutions(
+    resolutions = build_claim_resolutions(
         _understanding()["requested_claims"],
         direct_product_facts=[{
             "evidence_uid": "fact-material",
@@ -139,6 +151,10 @@ def _proposal():
         direct_policy_facts=[],
         conflicts=[],
     )
+    proposal["claim_resolutions"] = [
+        _provider_claim_resolution(resolution)
+        for resolution in resolutions
+    ]
     return proposal
 
 
