@@ -135,8 +135,14 @@ authority. The semantic call can receive an opaque alias and typed identity
 metadata, and the server accepts a continuation only when the new current-turn
 goal exactly matches the existing open goal. No candidate, review, or feedback
 path can complete a goal. Deterministic and full-suite regression checks passed
-for this checkpoint; a qualified Provider matrix and fresh blind Fixed-8 are
-still required before P1 quality status can change.
+for this checkpoint. The explicit Composer role then requalified on the
+recovered source with DeepSeek V4 Flash `5/5`, one Provider call per attempt,
+and zero retry, repair, fallback, formal-knowledge DML, or send authority.
+The remaining gate is a fresh blind Fixed-8, not another component fixture. Its
+immutable dataset, manifest, query-only knowledge snapshot, and runtime binding
+are absent from the recovered source, local Git history, and recovery inventory.
+Until the exact asset bundle is restored and its hashes validate, P1 quality and
+`real_customer_accuracy` remain unqualified.
 
 P1.4F found that the previous negative Audit fixture was itself too strict: it
 treated ordinary impact variables and a brief care suggestion as unsafe even
@@ -908,7 +914,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; Supervisor Assist baseline complete but quality not qualified; Autonomous Send provider-blocked | On clean `451be614`, current DeepSeek V4 Flash Composer qualification passed `5/5`; native Fixed-8 execution/Composer/Deterministic Final were `8/8`, Audit stayed explicitly unqualified with zero calls, knowledge/DML/send changes were zero, and p50/p95 were `10.688s/11.925s`. Expert review was `3 pass / 3 partial / 1 fail / 1 not scorable`. The one clear factual failure followed an unmapped gross-weight/load-capacity goal; a context-carried material goal was also lost. `real_accuracy=null` | Fix Turn Understanding atomic-goal completeness and canonicalization generically, then rerun the same blind Fixed-8. Keep Autonomous Send blocked until independent Audit, real accuracy, Safety, and Delivery qualify |
+| P1 Gold Conversation Quality | active; recovered Fixed-8 assets blocked; Autonomous Send provider-blocked | The recovered P1.4i deterministic contract passes, and DeepSeek V4 Flash Composer requalified `5/5` with one call per attempt, no retry/repair/fallback, zero formal-knowledge DML, and no send authority. The required immutable Fixed-8 dataset, manifest, query-only knowledge snapshot, and runtime binding are absent from the recovered source, local Git history, and recovery inventory. `real_accuracy=null` | Restore the exact versioned Fixed-8 asset bundle, validate all hashes, then rerun the same blind gate. Keep Autonomous Send blocked until independent Audit, real accuracy, Safety, and Delivery qualify |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

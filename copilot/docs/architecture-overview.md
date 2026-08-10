@@ -551,9 +551,13 @@ conversation HMAC reference. The single Turn Understanding call sees an
 opaque alias and type metadata only; a current-span goal may continue one
 exactly matching open goal, but cannot resurrect or close it. Public context
 cannot supply lifecycle state, and no candidate, review, or feedback path is a
-completion receipt. Deterministic contract tests passed, but no qualified
-Provider run or fresh native Fixed-8 has occurred after this checkpoint, so
-P1 quality and `real_customer_accuracy` remain unqualified.
+completion receipt. Deterministic contract tests passed, and the explicit
+DeepSeek V4 Flash Composer role requalified `5/5` on the recovered source with
+one Provider call per attempt and zero retry, repair, fallback, knowledge DML,
+or send authority. No fresh native Fixed-8 has occurred: the immutable
+dataset, manifest, query-only knowledge snapshot, and runtime binding are not
+present in the recovered source, local Git history, or recovery inventory.
+P1 quality and `real_customer_accuracy` therefore remain unqualified.
 
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing

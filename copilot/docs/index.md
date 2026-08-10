@@ -157,9 +157,12 @@ load-capacity comparison. P1 does not need another graph or validator layer.
 The recovered P1.4i checkpoint keeps this work inside the existing Pipeline:
 its optional HMAC-addressed open-goal projection is default-disabled, sends
 only opaque typed aliases to the existing semantic call, and cannot change
-evidence, reply ownership, delivery, or `can_send`. It has deterministic
-regression evidence only; a qualified Provider run and a fresh blind Fixed-8
-remain required before any P1 quality claim.
+evidence, reply ownership, delivery, or `can_send`. The explicit DeepSeek V4
+Flash Composer role now requalified `5/5` on the recovered source with one
+call per attempt, no retry/repair/fallback, zero knowledge DML, and no send
+authority. A fresh blind Fixed-8 remains required before any P1 quality claim,
+but its exact versioned dataset, manifest, query-only snapshot, and runtime
+binding must first be restored; no replacement synthetic fixture may stand in.
 P1 separates a deterministic-Final-protected,
 review-only Supervisor Assist baseline from Autonomous Send: an unqualified
 independent Audit remains advisory quality evidence for the former, while the
