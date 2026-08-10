@@ -48,6 +48,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   disposition manifest for the 45-file feature-disabled Agent Core checkpoint,
   plus the P1.2k.6i 25-file disabled bounded-inference/Audit checkpoint
   addendum.
+- `docs/superpowers/specs/2026-08-10-conversation-reconstructed-fixed8-design.md`
+  - approved design for a provenance-explicit eight-case reconstructed P1
+    engineering baseline; it cannot claim real-customer accuracy or replace the
+    missing original Fixed-8 assets.
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
