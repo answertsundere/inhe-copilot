@@ -100,7 +100,7 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
                 *diagnostics,
                 "requested_claim_count_mismatch",
             ]))
-    return {
+    turn_understanding = {
         "schema_version": "turn-understanding/v2",
         "owner": "turn_understanding_owner",
         "source_stage": "query_fact_type_classifier",
@@ -111,6 +111,22 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
         "goal_understanding_diagnostics": diagnostics,
         "requested_claims": requested_claims,
     }
+    lifecycle = result.get("conversation_goal_lifecycle")
+    if (
+        status == "valid"
+        and isinstance(lifecycle, dict)
+        and lifecycle.get("schema_version") == "conversation-goal-lifecycle/v1"
+        and isinstance(lifecycle.get("continuations"), list)
+    ):
+        turn_understanding["conversation_goal_lifecycle"] = {
+            "schema_version": "conversation-goal-lifecycle/v1",
+            "continuations": [
+                dict(item)
+                for item in lifecycle["continuations"]
+                if isinstance(item, dict)
+            ],
+        }
+    return turn_understanding
 
 
 def query_fact_type_classifier(state: dict) -> dict:

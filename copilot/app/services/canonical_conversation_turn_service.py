@@ -53,6 +53,22 @@ _STRICT_EVALUATION_SOURCES = frozenset({
     "real_accuracy_baseline",
     "tier_d_long_conversation_simulation",
 })
+_CONVERSATION_GOAL_LIFECYCLE_SCHEMA_VERSION = "conversation-goal-lifecycle/v1"
+_CONVERSATION_GOAL_OPEN_FIELDS = frozenset({
+    "goal_alias",
+    "goal_ref",
+    "conversation_ref",
+    "goal_kind",
+    "claim_type_status",
+    "claim_type",
+    "attribute_key",
+    "semantic_key",
+    "policy_intent_ref",
+    "policy_goal_family",
+    "policy_intent_kind",
+    "source_turn_uid",
+    "source_span_sha256",
+})
 
 
 @dataclass(frozen=True)
@@ -120,6 +136,72 @@ def canonical_conversation_reference_status(
     }
 
 
+def normalize_conversation_goal_open_candidates(value: Any) -> list[dict[str, str]]:
+    """Validate the internal, privacy-minimal projection of unfinished goals."""
+    if not isinstance(value, list) or len(value) > 12:
+        return []
+    aliases: set[str] = set()
+    normalized: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != _CONVERSATION_GOAL_OPEN_FIELDS:
+            return []
+        normalized_item = {
+            key: str(item.get(key) or "").strip()
+            for key in _CONVERSATION_GOAL_OPEN_FIELDS
+        }
+        if (
+            not re.fullmatch(r"open-goal-[0-9a-f]{24}", normalized_item["goal_alias"])
+            or not re.fullmatch(r"goal-[0-9a-f]{16}", normalized_item["goal_ref"])
+            or not re.fullmatch(r"conversation-[0-9a-f]{32}", normalized_item["conversation_ref"])
+            or not re.fullmatch(r"turn-[0-9a-f]{20}", normalized_item["source_turn_uid"])
+            or not re.fullmatch(r"[0-9a-f]{64}", normalized_item["source_span_sha256"])
+            or normalized_item["goal_kind"] != "customer_goal"
+            or normalized_item["claim_type_status"] not in {"canonical", "unmapped"}
+            or normalized_item["goal_alias"] in aliases
+        ):
+            return []
+        if normalized_item["claim_type_status"] == "canonical":
+            if (
+                not normalized_item["claim_type"]
+                or normalized_item["semantic_key"]
+            ):
+                return []
+        elif normalized_item["claim_type"]:
+            return []
+        aliases.add(normalized_item["goal_alias"])
+        normalized.append(normalized_item)
+    return sorted(normalized, key=lambda item: item["goal_alias"])
+
+
+def normalize_trusted_conversation_goal_lifecycle_context(
+    value: Any,
+) -> dict[str, Any]:
+    """Accept only the Pipeline-owned lifecycle projection for one conversation."""
+    if not isinstance(value, dict) or set(value) != {
+        "schema_version", "owner", "conversation_ref", "open_goals"
+    }:
+        return {}
+    if (
+        value.get("schema_version") != _CONVERSATION_GOAL_LIFECYCLE_SCHEMA_VERSION
+        or value.get("owner") != "analysis_pipeline"
+    ):
+        return {}
+    conversation_ref = str(value.get("conversation_ref") or "").strip()
+    if not re.fullmatch(r"conversation-[0-9a-f]{32}", conversation_ref):
+        return {}
+    open_goals = normalize_conversation_goal_open_candidates(value.get("open_goals"))
+    if len(open_goals) != len(value.get("open_goals") or []):
+        return {}
+    if any(goal["conversation_ref"] != conversation_ref for goal in open_goals):
+        return {}
+    return {
+        "schema_version": _CONVERSATION_GOAL_LIFECYCLE_SCHEMA_VERSION,
+        "owner": "analysis_pipeline",
+        "conversation_ref": conversation_ref,
+        "open_goals": open_goals,
+    }
+
+
 def normalize_trusted_answer_eligibility_owner_context(
     value: Any,
 ) -> dict[str, Any]:
@@ -137,6 +219,7 @@ def normalize_trusted_answer_eligibility_owner_context(
         "provenance",
         "domain_policy_context",
         "conversation_reference_status",
+        "conversation_goal_lifecycle",
     }
     if set(raw) - allowed_top_level:
         return {}
@@ -311,6 +394,13 @@ def normalize_trusted_answer_eligibility_owner_context(
         }
         if set(reference_status) <= allowed_reference_keys:
             result["conversation_reference_status"] = dict(reference_status)
+    if "conversation_goal_lifecycle" in raw:
+        lifecycle = normalize_trusted_conversation_goal_lifecycle_context(
+            raw.get("conversation_goal_lifecycle")
+        )
+        if not lifecycle:
+            return {}
+        result["conversation_goal_lifecycle"] = lifecycle
     return result
 
 

@@ -69,6 +69,18 @@ verified span of the current customer turn; downstream diagnostics retain only
 the span position and hash, not another copy of customer text. Missing or
 invalid goal structure is observable and fails closed for that goal.
 
+When a deployment explicitly configures the conversation-goal lifecycle HMAC,
+the existing Pipeline may retain open, owner-stamped customer-goal metadata in
+its Trace store. The semantic call receives only an opaque alias plus typed
+identity metadata, never historical customer text, conversation identity,
+goal reference, or source provenance. It may nominate an alias only while
+creating a new goal from the current customer span; server code then requires
+an exact identity match before recording a successor. Public context cannot
+inject lifecycle state. Candidate generation, supervisor review, and feedback
+cannot close a goal: closure requires a separate trusted delivery receipt.
+The lifecycle is disabled without its runtime HMAC and has no reply, evidence,
+or `can_send` authority.
+
 The model-first composer projects customer goals and admitted evidence to
 anonymous stable references. Its strict model output is one clause per customer
 goal with only `goal_ref`, `text`, and `selected_option_refs`. Clause kind,

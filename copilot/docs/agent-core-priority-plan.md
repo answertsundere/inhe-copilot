@@ -128,6 +128,16 @@ capacity into an unmapped claim before Claim Resolution. P1 therefore returns
 to Turn Understanding atomic-goal completeness and canonicalization; it does
 not add another Auditor, Graph node, or Validator. `real_accuracy=null`.
 
+The recovered P1.4i checkpoint adds only the existing Pipeline's
+default-disabled, HMAC-addressed projection of open owner-stamped goals. It
+does not add a Graph node, model call, reply owner, evidence source, or send
+authority. The semantic call can receive an opaque alias and typed identity
+metadata, and the server accepts a continuation only when the new current-turn
+goal exactly matches the existing open goal. No candidate, review, or feedback
+path can complete a goal. Deterministic and full-suite regression checks passed
+for this checkpoint; a qualified Provider matrix and fresh blind Fixed-8 are
+still required before P1 quality status can change.
+
 P1.4F found that the previous negative Audit fixture was itself too strict: it
 treated ordinary impact variables and a brief care suggestion as unsafe even
 though those are required for the approved humanlike answer. Domain Pack

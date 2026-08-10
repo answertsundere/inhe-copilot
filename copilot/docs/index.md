@@ -154,6 +154,12 @@ p50/p95 were `10.688s/11.925s`. Expert review was
 gap is now Turn Understanding atomic-goal completeness and canonicalization,
 including a lost context-carried material goal and a collapsed gross-weight/
 load-capacity comparison. P1 does not need another graph or validator layer.
+The recovered P1.4i checkpoint keeps this work inside the existing Pipeline:
+its optional HMAC-addressed open-goal projection is default-disabled, sends
+only opaque typed aliases to the existing semantic call, and cannot change
+evidence, reply ownership, delivery, or `can_send`. It has deterministic
+regression evidence only; a qualified Provider run and a fresh blind Fixed-8
+remain required before any P1 quality claim.
 P1 separates a deterministic-Final-protected,
 review-only Supervisor Assist baseline from Autonomous Send: an unqualified
 independent Audit remains advisory quality evidence for the former, while the

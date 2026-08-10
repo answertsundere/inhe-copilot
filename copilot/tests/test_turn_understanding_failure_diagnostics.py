@@ -158,18 +158,21 @@ def test_minimal_provider_schema_keeps_server_owned_fields_out():
         "semantic_key",
         "policy_intent_ref",
         "source_text",
+        "continued_from",
     }
     assert set(goal_schema["required"]) == (
-        set(goal_schema["properties"]) - {"semantic_key"}
+        set(goal_schema["properties"]) - {"semantic_key", "continued_from"}
     )
     assert goal_schema["additionalProperties"] is False
     for server_field in {
         "owner",
         "schema_version",
         "goal_ref",
+        "conversation_ref",
         "source_turn_uid",
         "source_span_start",
         "source_span_end",
+        "source_span_sha256",
         "source_text_sha256",
         "confidence",
         "status",
@@ -183,13 +186,16 @@ def test_minimal_prompt_does_not_request_server_owned_output_fields():
 
     assert '"goals"' in prompt
     assert '"source_text"' in prompt
+    assert '"continued_from"' in prompt
     for forbidden_output in {
         '"owner"',
         '"schema_version"',
         '"goal_ref"',
+        '"conversation_ref"',
         '"source_turn_uid"',
         '"source_span_start"',
         '"source_span_end"',
+        '"source_span_sha256"',
         '"source_text_sha256"',
         '"confidence"',
         '"diagnostics"',

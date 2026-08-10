@@ -167,3 +167,33 @@ class AnalysisSnapshot(Base):
     used_fact_tools_json = Column(Text, nullable=False, default="")
     copilot_context_json = Column(Text, nullable=False, default="{}")
     created_at = Column(String(32), nullable=False, default=utcnow)
+
+
+class ConversationGoalLifecycleEvent(Base):
+    """Privacy-minimal journal for server-owned conversation-goal state."""
+
+    __tablename__ = "conversation_goal_lifecycle_events"
+
+    sequence_no = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(64), unique=True, nullable=False, index=True)
+    conversation_ref = Column(String(96), nullable=False, index=True)
+    goal_ref = Column(String(96), nullable=False, index=True)
+    successor_goal_ref = Column(String(96), nullable=False, default="")
+    state = Column(String(16), nullable=False, index=True)
+    goal_metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(String(32), nullable=False, default=utcnow)
+
+    __table_args__ = (
+        Index(
+            "ix_conversation_goal_lifecycle_current",
+            "conversation_ref",
+            "sequence_no",
+        ),
+    )
+
+    def get_goal_metadata(self) -> dict:
+        try:
+            value = json.loads(self.goal_metadata_json)
+        except Exception:
+            return {}
+        return value if isinstance(value, dict) else {}

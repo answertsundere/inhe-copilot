@@ -544,6 +544,17 @@ path, the separate frozen moisture qualification passed `5/5`, each with no
 retry, repair, or fallback. Another full native gate is required before the
 kind projection is an end-to-end quality result.
 
+The recovered P1.4i implementation now has a default-disabled conversation
+goal lifecycle checkpoint. With an explicitly configured HMAC, the existing
+Pipeline stores only typed, owner-stamped open-goal metadata under a
+conversation HMAC reference. The single Turn Understanding call sees an
+opaque alias and type metadata only; a current-span goal may continue one
+exactly matching open goal, but cannot resurrect or close it. Public context
+cannot supply lifecycle state, and no candidate, review, or feedback path is a
+completion receipt. Deterministic contract tests passed, but no qualified
+Provider run or fresh native Fixed-8 has occurred after this checkpoint, so
+P1 quality and `real_customer_accuracy` remain unqualified.
+
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
 only immediate risk-reduction steps owned by the same authoritative customer

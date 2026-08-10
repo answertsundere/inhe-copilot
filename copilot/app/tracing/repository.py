@@ -4,9 +4,12 @@ Trace Repository — SQLite persistence for traces, spans, and snapshots.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -29,6 +32,24 @@ _SessionLocal = None
 _lock = threading.Lock()
 TRACE_SQLITE_BUSY_TIMEOUT_SECONDS = 0.2
 TRACE_SQLITE_BUSY_TIMEOUT_MS = 200
+CONVERSATION_GOAL_LIFECYCLE_HMAC_ENV = (
+    "COPILOT_CONVERSATION_GOAL_LIFECYCLE_HMAC_KEY"
+)
+_GOAL_LIFECYCLE_SCHEMA_VERSION = "conversation-goal-lifecycle/v1"
+_GOAL_LIFECYCLE_STATES = frozenset({"open", "completed", "superseded"})
+_GOAL_LIFECYCLE_METADATA_FIELDS = frozenset({
+    "goal_ref",
+    "goal_kind",
+    "claim_type_status",
+    "claim_type",
+    "attribute_key",
+    "semantic_key",
+    "policy_intent_ref",
+    "policy_goal_family",
+    "policy_intent_kind",
+    "source_turn_uid",
+    "source_span_sha256",
+})
 
 
 def _get_engine():
@@ -69,6 +90,411 @@ def init_trace_tables():
 def get_session() -> Session:
     _get_engine()
     return _SessionLocal()
+
+
+def _goal_lifecycle_hmac_key() -> bytes:
+    value = os.environ.get(CONVERSATION_GOAL_LIFECYCLE_HMAC_ENV, "")
+    return value.encode("utf-8") if isinstance(value, str) and value else b""
+
+
+def _goal_lifecycle_hmac(key: bytes, namespace: str, value: str) -> str:
+    return hmac.new(
+        key,
+        f"{namespace}\x00{value}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _conversation_goal_lifecycle_identity(
+    conversation_id: object,
+) -> tuple[bytes, str]:
+    key = _goal_lifecycle_hmac_key()
+    raw = str(conversation_id or "").strip()
+    if not key or not raw or raw == "default" or len(raw) > 512:
+        return b"", ""
+    return key, "conversation-" + _goal_lifecycle_hmac(
+        key, "conversation", raw
+    )[:32]
+
+
+def _goal_lifecycle_metadata(goal: object) -> dict[str, str]:
+    if not isinstance(goal, dict):
+        return {}
+    if (
+        goal.get("goal_kind") != "customer_goal"
+        or goal.get("source") != "current_customer_message"
+        or goal.get("owner") != "turn_understanding_owner"
+        or goal.get("source_stage") != "semantic_fact_type_service"
+    ):
+        return {}
+    metadata = {
+        field: str(goal.get(field) or "").strip()
+        for field in _GOAL_LIFECYCLE_METADATA_FIELDS
+    }
+    if (
+        not re.fullmatch(r"goal-[0-9a-f]{16}", metadata["goal_ref"])
+        or metadata["claim_type_status"] not in {"canonical", "unmapped"}
+        or not re.fullmatch(r"turn-[0-9a-f]{20}", metadata["source_turn_uid"])
+        or not re.fullmatch(
+            r"[0-9a-f]{64}", metadata["source_span_sha256"]
+        )
+    ):
+        return {}
+    if metadata["claim_type_status"] == "canonical":
+        if not metadata["claim_type"] or metadata["semantic_key"]:
+            return {}
+    elif metadata["claim_type"]:
+        return {}
+    return metadata
+
+
+def _goal_lifecycle_alias(
+    key: bytes,
+    conversation_ref: str,
+    goal_ref: str,
+) -> str:
+    return "open-goal-" + _goal_lifecycle_hmac(
+        key,
+        conversation_ref,
+        goal_ref,
+    )[:24]
+
+
+def _goal_lifecycle_event_id(
+    key: bytes,
+    *,
+    conversation_ref: str,
+    goal_ref: str,
+    state: str,
+    successor_goal_ref: str = "",
+) -> str:
+    canonical = json.dumps(
+        {
+            "conversation_ref": conversation_ref,
+            "goal_ref": goal_ref,
+            "state": state,
+            "successor_goal_ref": successor_goal_ref,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "goal-event-" + _goal_lifecycle_hmac(
+        key, "event", canonical
+    )[:32]
+
+
+def _goal_lifecycle_current_states(
+    rows: list[object],
+) -> tuple[dict[str, dict[str, object]], bool]:
+    states: dict[str, dict[str, object]] = {}
+    for row in rows:
+        state = str(getattr(row, "state", "") or "").strip()
+        goal_ref = str(getattr(row, "goal_ref", "") or "").strip()
+        successor_goal_ref = str(
+            getattr(row, "successor_goal_ref", "") or ""
+        ).strip()
+        getter = getattr(row, "get_goal_metadata", None)
+        metadata = getter() if callable(getter) else {}
+        if (
+            state not in _GOAL_LIFECYCLE_STATES
+            or set(metadata) != _GOAL_LIFECYCLE_METADATA_FIELDS
+            or metadata.get("goal_ref") != goal_ref
+        ):
+            return {}, False
+        current = states.get(goal_ref)
+        if state == "open":
+            if current:
+                return {}, False
+        elif (
+            not current
+            or current.get("state") != "open"
+            or current.get("metadata") != metadata
+            or (state == "completed" and successor_goal_ref)
+            or (
+                state == "superseded"
+                and (
+                    not successor_goal_ref
+                    or successor_goal_ref == goal_ref
+                )
+            )
+        ):
+            return {}, False
+        states[goal_ref] = {"state": state, "metadata": metadata}
+    return states, True
+
+
+def _goal_lifecycle_rows(session: Session, conversation_ref: str) -> list[object]:
+    from app.tracing.models import ConversationGoalLifecycleEvent
+
+    return (
+        session.query(ConversationGoalLifecycleEvent)
+        .filter_by(conversation_ref=conversation_ref)
+        .order_by(ConversationGoalLifecycleEvent.sequence_no.asc())
+        .all()
+    )
+
+
+def load_conversation_goal_lifecycle_context(
+    conversation_id: object,
+) -> tuple[dict[str, object], str]:
+    """Load HMAC-addressed open goals without exposing conversation content."""
+    key, conversation_ref = _conversation_goal_lifecycle_identity(conversation_id)
+    if not key:
+        return {}, "disabled"
+    try:
+        init_trace_tables()
+        session = get_session()
+        try:
+            states, valid = _goal_lifecycle_current_states(
+                _goal_lifecycle_rows(session, conversation_ref)
+            )
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.warning("conversation goal lifecycle load failed: %s", type(exc).__name__)
+        return {}, "degraded"
+    if not valid:
+        return {}, "invalid"
+    open_goals = [
+        {
+            "goal_alias": _goal_lifecycle_alias(key, conversation_ref, goal_ref),
+            "conversation_ref": conversation_ref,
+            **dict(item["metadata"]),
+        }
+        for goal_ref, item in states.items()
+        if item["state"] == "open"
+    ]
+    return {
+        "schema_version": _GOAL_LIFECYCLE_SCHEMA_VERSION,
+        "owner": "analysis_pipeline",
+        "conversation_ref": conversation_ref,
+        "open_goals": sorted(open_goals, key=lambda item: item["goal_alias"]),
+    }, "loaded"
+
+
+def complete_conversation_goal_lifecycle(
+    conversation_id: object,
+    goal_ref: object,
+    goal_alias: object,
+) -> dict[str, object]:
+    """Close one open goal after a trusted delivery integration proves it sent.
+
+    This repository function intentionally has no caller in candidate generation,
+    feedback, or supervisor review. Those surfaces are not delivery receipts.
+    """
+    key, conversation_ref = _conversation_goal_lifecycle_identity(conversation_id)
+    normalized_goal_ref = str(goal_ref or "").strip()
+    normalized_goal_alias = str(goal_alias or "").strip()
+    if not key:
+        return {"status": "disabled", "write_count": 0}
+    if (
+        not re.fullmatch(r"goal-[0-9a-f]{16}", normalized_goal_ref)
+        or not hmac.compare_digest(
+            normalized_goal_alias,
+            _goal_lifecycle_alias(key, conversation_ref, normalized_goal_ref),
+        )
+    ):
+        return {"status": "invalid", "write_count": 0}
+
+    from app.tracing.models import ConversationGoalLifecycleEvent, utcnow
+
+    try:
+        init_trace_tables()
+        session = get_session()
+        try:
+            existing_rows = _goal_lifecycle_rows(session, conversation_ref)
+            states, valid = _goal_lifecycle_current_states(existing_rows)
+            if not valid:
+                return {"status": "invalid", "write_count": 0}
+            current = states.get(normalized_goal_ref)
+            event_id = _goal_lifecycle_event_id(
+                key,
+                conversation_ref=conversation_ref,
+                goal_ref=normalized_goal_ref,
+                state="completed",
+            )
+            existing_event_ids = {str(row.event_id) for row in existing_rows}
+            if (
+                current
+                and current.get("state") == "completed"
+                and event_id in existing_event_ids
+            ):
+                return {"status": "recorded", "write_count": 0}
+            if not current or current.get("state") != "open":
+                return {"status": "invalid", "write_count": 0}
+            session.add(ConversationGoalLifecycleEvent(
+                event_id=event_id,
+                conversation_ref=conversation_ref,
+                goal_ref=normalized_goal_ref,
+                successor_goal_ref="",
+                state="completed",
+                goal_metadata_json=json.dumps(
+                    current["metadata"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                created_at=utcnow(),
+            ))
+            session.commit()
+            return {"status": "recorded", "write_count": 1}
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.warning("conversation goal lifecycle completion failed: %s", type(exc).__name__)
+        return {"status": "degraded", "write_count": 0}
+
+
+def record_conversation_goal_lifecycle(
+    conversation_id: object,
+    goals: object,
+    continuations: object = None,
+) -> dict[str, object]:
+    """Append verified goal state without writing formal knowledge or replies."""
+    key, conversation_ref = _conversation_goal_lifecycle_identity(conversation_id)
+    if not key:
+        return {"status": "disabled", "write_count": 0}
+    if not isinstance(goals, list):
+        return {"status": "invalid", "write_count": 0}
+    metadata_by_ref: dict[str, dict[str, str]] = {}
+    for goal in goals:
+        metadata = _goal_lifecycle_metadata(goal)
+        if not metadata or metadata["goal_ref"] in metadata_by_ref:
+            return {"status": "invalid", "write_count": 0}
+        metadata_by_ref[metadata["goal_ref"]] = metadata
+
+    continuation_by_goal: dict[str, dict[str, str]] = {}
+    if continuations is not None:
+        if not isinstance(continuations, list):
+            return {"status": "invalid", "write_count": 0}
+        for item in continuations:
+            if not isinstance(item, dict) or set(item) != {
+                "goal_ref",
+                "continued_from_goal_ref",
+                "continued_from_alias",
+                "origin_source_turn_uid",
+                "origin_source_span_sha256",
+            }:
+                return {"status": "invalid", "write_count": 0}
+            goal_ref = str(item.get("goal_ref") or "").strip()
+            predecessor = str(item.get("continued_from_goal_ref") or "").strip()
+            if (
+                goal_ref not in metadata_by_ref
+                or not re.fullmatch(r"goal-[0-9a-f]{16}", predecessor)
+                or predecessor == goal_ref
+                or goal_ref in continuation_by_goal
+                or predecessor in {
+                    value["continued_from_goal_ref"]
+                    for value in continuation_by_goal.values()
+                }
+            ):
+                return {"status": "invalid", "write_count": 0}
+            continuation_by_goal[goal_ref] = {
+                key: str(item[key] or "").strip()
+                for key in item
+            }
+
+    from app.tracing.models import ConversationGoalLifecycleEvent, utcnow
+
+    try:
+        init_trace_tables()
+        session = get_session()
+        try:
+            existing_rows = _goal_lifecycle_rows(session, conversation_ref)
+            states, valid = _goal_lifecycle_current_states(existing_rows)
+            if not valid:
+                return {"status": "invalid", "write_count": 0}
+            existing_event_ids = {str(row.event_id) for row in existing_rows}
+            for goal_ref, metadata in metadata_by_ref.items():
+                current = states.get(goal_ref)
+                if current and (
+                    current.get("state") != "open"
+                    or current.get("metadata") != metadata
+                ):
+                    return {"status": "invalid", "write_count": 0}
+            for goal_ref, continuation in continuation_by_goal.items():
+                predecessor = continuation["continued_from_goal_ref"]
+                predecessor_state = states.get(predecessor)
+                if not predecessor_state or predecessor_state.get("state") != "open":
+                    return {"status": "invalid", "write_count": 0}
+                predecessor_metadata = predecessor_state["metadata"]
+                if (
+                    continuation["continued_from_alias"]
+                    != _goal_lifecycle_alias(key, conversation_ref, predecessor)
+                    or continuation["origin_source_turn_uid"]
+                    != predecessor_metadata["source_turn_uid"]
+                    or continuation["origin_source_span_sha256"]
+                    != predecessor_metadata["source_span_sha256"]
+                ):
+                    return {"status": "invalid", "write_count": 0}
+
+            write_count = 0
+            for goal_ref in sorted(metadata_by_ref):
+                continuation = continuation_by_goal.get(goal_ref)
+                predecessor = (
+                    continuation["continued_from_goal_ref"]
+                    if continuation else ""
+                )
+                if predecessor:
+                    predecessor_metadata = states[predecessor]["metadata"]
+                    event_id = _goal_lifecycle_event_id(
+                        key,
+                        conversation_ref=conversation_ref,
+                        goal_ref=predecessor,
+                        state="superseded",
+                        successor_goal_ref=goal_ref,
+                    )
+                    if event_id not in existing_event_ids:
+                        session.add(ConversationGoalLifecycleEvent(
+                            event_id=event_id,
+                            conversation_ref=conversation_ref,
+                            goal_ref=predecessor,
+                            successor_goal_ref=goal_ref,
+                            state="superseded",
+                            goal_metadata_json=json.dumps(
+                                predecessor_metadata,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            created_at=utcnow(),
+                        ))
+                        existing_event_ids.add(event_id)
+                        write_count += 1
+                event_id = _goal_lifecycle_event_id(
+                    key,
+                    conversation_ref=conversation_ref,
+                    goal_ref=goal_ref,
+                    state="open",
+                    successor_goal_ref=predecessor,
+                )
+                if event_id not in existing_event_ids:
+                    session.add(ConversationGoalLifecycleEvent(
+                        event_id=event_id,
+                        conversation_ref=conversation_ref,
+                        goal_ref=goal_ref,
+                        successor_goal_ref=predecessor,
+                        state="open",
+                        goal_metadata_json=json.dumps(
+                            metadata_by_ref[goal_ref],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        created_at=utcnow(),
+                    ))
+                    existing_event_ids.add(event_id)
+                    write_count += 1
+            session.commit()
+            return {"status": "recorded", "write_count": write_count}
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.warning("conversation goal lifecycle write failed: %s", type(exc).__name__)
+        return {"status": "degraded", "write_count": 0}
 
 
 # ========== Trace Run CRUD ==========
