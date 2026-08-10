@@ -376,6 +376,31 @@ def _validate_reconstructed_dataset_contract(
         )
 
 
+def _validate_reconstructed_delivery_boundary(
+    observations: list[dict[str, Any]],
+    *,
+    contract: DatasetContract,
+) -> None:
+    if contract.source_class != "conversation_reconstructed":
+        return
+    deliveries = [
+        _dict(item.get("delivery"))
+        for item in observations
+        if isinstance(item, dict)
+    ]
+    if any(delivery.get("can_send") is True for delivery in deliveries):
+        raise P1BaselineIntegrityError(
+            "reconstructed_can_send_forbidden"
+        )
+    if any(
+        delivery.get("requires_human_review") is not True
+        for delivery in deliveries
+    ):
+        raise P1BaselineIntegrityError(
+            "reconstructed_human_review_required"
+        )
+
+
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -2497,6 +2522,10 @@ def _finalize_from_checkpoint(
         output_dir=output_dir,
         checkpoint=checkpoint,
     )
+    _validate_reconstructed_delivery_boundary(
+        observations,
+        contract=contract,
+    )
     capsules, capsule_files = _load_checkpoint_capsules(
         output_dir=output_dir,
         checkpoint=checkpoint,
@@ -3159,6 +3188,10 @@ def run(args: argparse.Namespace) -> int:
                 response=response,
                 scored=scored,
                 alias_secret=alias_secret,
+            )
+            _validate_reconstructed_delivery_boundary(
+                [observation],
+                contract=contract,
             )
             if observation.get("case_alias") != case_uid_alias:
                 raise P1BaselineIntegrityError(

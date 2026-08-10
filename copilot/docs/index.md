@@ -54,6 +54,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/superpowers/plans/2026-08-10-conversation-reconstructed-fixed8.md`
   - 上述重建基线的 TDD 实施计划，限定数据合同、标签隔离、原生 Pipeline
     运行、回归验证和恢复检查点。
+  - 当前实现已完成版本化 8 条/40 回合 fixture、独立 manifest、不可变
+    `DatasetContract`、评测字段隔离和 query-only 预检；尚未运行当前源码
+    5013，因此真实准确率和优化结论继续为空。
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.

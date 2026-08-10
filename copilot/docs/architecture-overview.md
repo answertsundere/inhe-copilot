@@ -474,6 +474,21 @@ by default. P0 qualification is a reviewable correctness checkpoint, not
 production qualification; the active priority is now P1 Gold Conversation
 Quality.
 
+### 恢复后的对话评测边界
+
+恢复工作不复制或猜测遗失的 Fixed-8。版本化
+`p1-conversation-reconstructed-v1` 通过现有 P1 baseline Owner 和同一正式
+Analysis Pipeline 运行，不新增 Graph、Composer、Auditor 或 Delivery 路径。
+评测标签只存在于 `api_request_template` 外；runner 在发起请求前拒绝任何
+`expected_contract`、`prohibited_outcomes`、`reconstruction_alias` 或
+`source_class` 注入。prepare、checkpoint、summary 和 finalize 全程绑定同一
+不可变 `DatasetContract`。
+
+重建模式始终是人工复核轨道：出现任意 `can_send=true` 或
+`requires_human_review=false` 都使运行无效。它目前只完成 8 条数据、40 个
+历史回合、隐私 0、query-only 快照和正式知识 DML 0 的确定性预检；由于当前
+源码的 5013 canary 尚未启动，不能宣称回答质量、提速或真实准确率已经验证。
+
 ### Final Safety And Delivery
 
 Final safety and delivery remain deterministic application responsibilities.

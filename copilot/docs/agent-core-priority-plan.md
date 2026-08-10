@@ -78,6 +78,21 @@ The following rules are non-negotiable:
 
 **Active priority: P1 - Gold Conversation Quality.**
 
+### 当前恢复状态（2026-08-11）
+
+原始 Fixed-8 数据集、清单和运行绑定仍未恢复，不能伪造其身份或沿用其
+历史得分。当前新增的 `p1-conversation-reconstructed-v1` 是独立的匿名工程
+回归集，固定包含 8 条场景和 40 个历史回合，覆盖身份连续性、材质与高风险
+边界、多事实尺寸、包装/商品作用域、媒体承诺、售后动作、长上下文延续和
+绝对保证边界。
+
+该重建集已经通过 schema、隐私、哈希、Agent payload 标签隔离和 query-only
+知识快照预检；正式知识 DML 为 0。当前 5011/5012 均不是本分支运行版本，
+5013 尚未启动，因此尚未产生本版本的原生 8 条模型基线。任何报告必须保持
+`real_customer_accuracy=null`、`optimization_unverified=true` 和
+`original_fixed8_restored=false`。这不会阻止继续修复工程质量，但不得用于
+生产晋升或自动发送资格。
+
 P0-R1 qualified the existing Agent Core correctness slice. P1.4 then ran one
 native, non-intercepted fixed-eight comparison through the same formal
 Pipeline. After preserving trusted Composer control metadata and making

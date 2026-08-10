@@ -166,6 +166,31 @@ def test_reconstructed_checkpoint_and_summary_keep_evidence_class_explicit():
 
 
 @pytest.mark.parametrize(
+    ("delivery", "reason"),
+    [
+        (
+            {"can_send": True, "requires_human_review": True},
+            "reconstructed_can_send_forbidden",
+        ),
+        (
+            {"can_send": False, "requires_human_review": False},
+            "reconstructed_human_review_required",
+        ),
+    ],
+)
+def test_reconstructed_delivery_boundary_fails_closed(delivery, reason):
+    contract = p1_baseline._resolve_dataset_contract(
+        "conversation-reconstructed-v1"
+    )
+
+    with pytest.raises(P1BaselineIntegrityError, match=reason):
+        p1_baseline._validate_reconstructed_delivery_boundary(
+            [{"delivery": delivery}],
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
     ("mutator", "reason"),
     [
         (
