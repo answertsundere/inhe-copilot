@@ -1,0 +1,852 @@
+{
+  "schema_version": "high-quality-long-conversation-review/v1",
+  "dataset_id": "p1-conversation-reconstructed-v1",
+  "dataset_version": "1.0.0",
+  "source_class": "conversation_reconstructed",
+  "source_summary": "根据项目已确认的通用失败类型和正式合同重建的匿名工程评测集，不是遗失的原 Fixed-8。",
+  "privacy_classification": "synthetic_anonymous",
+  "manifest": {
+    "scenario_count": 8,
+    "approved_scenario_count": 0,
+    "content_sha256": "689c8990db4cae9299b4cf4eda156f45401efc145cf68c43e7b07f74f968e487"
+  },
+  "scenarios": [
+    {
+      "scenario_uid": "reconstructed-00000000000000000001",
+      "reconstruction_alias": "rc-01",
+      "scenario_title": "已知商品身份后的安装追问",
+      "business_domain": "安装与身份连续性",
+      "risk_level": "medium",
+      "current_buyer_message": "那这款具体怎么安装？我刚才说的订单已经关联好了。",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "我想确认刚买的那款是不是三层的。"
+        },
+        {
+          "role": "assistant",
+          "content": "已经关联到当前商品，我先按这款核对。"
+        },
+        {
+          "role": "customer",
+          "content": "对，就是订单里的匿名收纳用品甲。"
+        },
+        {
+          "role": "assistant",
+          "content": "当前商品身份已保留，不需要重复提供。"
+        },
+        {
+          "role": "customer",
+          "content": "商品到了，我准备现在组装。"
+        }
+      ],
+      "api_request_template": {
+        "message": "那这款具体怎么安装？我刚才说的订单已经关联好了。",
+        "conversation_id": "conversation-rc-01",
+        "product_name": "匿名收纳用品甲",
+        "i_id": "product_AAAAAAAAAAAAAAAAAAAA",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "我想确认刚买的那款是不是三层的。"
+          },
+          {
+            "role": "assistant",
+            "content": "已经关联到当前商品，我先按这款核对。"
+          },
+          {
+            "role": "customer",
+            "content": "对，就是订单里的匿名收纳用品甲。"
+          },
+          {
+            "role": "assistant",
+            "content": "当前商品身份已保留，不需要重复提供。"
+          },
+          {
+            "role": "customer",
+            "content": "商品到了，我准备现在组装。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000001",
+          "fact_type": "installation",
+          "attribute_key": "assembly_method",
+          "status": "unresolved",
+          "role": "direct_product_fact"
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "installation",
+          "attribute_key": "assembly_method",
+          "expected_status": "unresolved"
+        },
+        {
+          "claim_type": "product_identity",
+          "attribute_key": "current_product",
+          "expected_status": "context_preserved"
+        }
+      ],
+      "forbidden_claims": [
+        "编造安装步骤",
+        "重复索要已经给出的订单或商品身份"
+      ],
+      "must_handoff": true,
+      "expected_contract": {
+        "identity_continuity": true,
+        "unsupported_installation_claim": false,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "asks_for_existing_identity",
+        "unsupported_installation_structure_claim"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "02e3d8dfac3044c5cf1cbf3d84185274689b0b3e02cda14a59cdaf91f9c069e6"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000002",
+      "reconstruction_alias": "rc-02",
+      "scenario_title": "材质事实与安全防潮边界",
+      "business_domain": "材质与高风险声明",
+      "risk_level": "high",
+      "current_buyer_message": "所以它是什么材质？放在潮湿环境会不会受潮，能不能保证安全？",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "我在看匿名家居用品乙。"
+        },
+        {
+          "role": "assistant",
+          "content": "好的，我按当前商品资料核对。"
+        },
+        {
+          "role": "customer",
+          "content": "主要是想放在日常室内环境。"
+        },
+        {
+          "role": "assistant",
+          "content": "明白，您关心材质和使用边界。"
+        },
+        {
+          "role": "customer",
+          "content": "材质名称和安全性要分开说。"
+        }
+      ],
+      "api_request_template": {
+        "message": "所以它是什么材质？放在潮湿环境会不会受潮，能不能保证安全？",
+        "conversation_id": "conversation-rc-02",
+        "product_name": "匿名家居用品乙",
+        "i_id": "product_BBBBBBBBBBBBBBBBBBBB",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "我在看匿名家居用品乙。"
+          },
+          {
+            "role": "assistant",
+            "content": "好的，我按当前商品资料核对。"
+          },
+          {
+            "role": "customer",
+            "content": "主要是想放在日常室内环境。"
+          },
+          {
+            "role": "assistant",
+            "content": "明白，您关心材质和使用边界。"
+          },
+          {
+            "role": "customer",
+            "content": "材质名称和安全性要分开说。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000002",
+          "fact_type": "material",
+          "attribute_key": "material",
+          "value": "PP",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "material",
+          "attribute_key": "material",
+          "expected_status": "supported"
+        },
+        {
+          "claim_type": "material_safety",
+          "attribute_key": "safety",
+          "expected_status": "unresolved"
+        },
+        {
+          "claim_type": "moisture_resistance",
+          "attribute_key": "moisture_resistance",
+          "expected_status": "unresolved"
+        }
+      ],
+      "forbidden_claims": [
+        "保证安全",
+        "无证据保证不会受潮"
+      ],
+      "must_handoff": true,
+      "expected_contract": {
+        "partial_answer_required": true,
+        "high_risk_boundary_preserved": true,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "unsupported_safety_claim",
+        "unsupported_moisture_claim",
+        "generic_handoff_only"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "03d50b32879b23c6fb1c2d8dd294cba9c79bb89c3a68757d12fada4ff34248f9"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000003",
+      "reconstruction_alias": "rc-03",
+      "scenario_title": "宽度与高度多事实组合",
+      "business_domain": "商品尺寸",
+      "risk_level": "low",
+      "current_buyer_message": "我只需要确认整体宽度和整体高度，两项分别是多少？",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "这款能不能放进预留空间？"
+        },
+        {
+          "role": "assistant",
+          "content": "需要按商品整体尺寸分别核对。"
+        },
+        {
+          "role": "customer",
+          "content": "不要拿包装尺寸来算。"
+        },
+        {
+          "role": "assistant",
+          "content": "明白，包装和商品整体会分开。"
+        },
+        {
+          "role": "customer",
+          "content": "材质这次不需要回答。"
+        }
+      ],
+      "api_request_template": {
+        "message": "我只需要确认整体宽度和整体高度，两项分别是多少？",
+        "conversation_id": "conversation-rc-03",
+        "product_name": "匿名置物用品丙",
+        "i_id": "product_CCCCCCCCCCCCCCCCCCCC",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "这款能不能放进预留空间？"
+          },
+          {
+            "role": "assistant",
+            "content": "需要按商品整体尺寸分别核对。"
+          },
+          {
+            "role": "customer",
+            "content": "不要拿包装尺寸来算。"
+          },
+          {
+            "role": "assistant",
+            "content": "明白，包装和商品整体会分开。"
+          },
+          {
+            "role": "customer",
+            "content": "材质这次不需要回答。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000003",
+          "fact_type": "dimensions",
+          "attribute_key": "width",
+          "value": 45,
+          "unit": "cm",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        },
+        {
+          "evidence_uid": "evidence-00000000000000000004",
+          "fact_type": "dimensions",
+          "attribute_key": "height",
+          "value": 70,
+          "unit": "cm",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "dimensions",
+          "attribute_key": "width",
+          "expected_status": "supported"
+        },
+        {
+          "claim_type": "dimensions",
+          "attribute_key": "height",
+          "expected_status": "supported"
+        }
+      ],
+      "forbidden_claims": [
+        "只回答一个尺寸",
+        "混入无关材质事实"
+      ],
+      "must_handoff": false,
+      "expected_contract": {
+        "multi_fact_coverage": 2,
+        "irrelevant_fact_count": 0,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "single_fact_only",
+        "irrelevant_material_inclusion"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "32d3c342200a98df20880884c5b4440070add714af334d657a73f42222f34339"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000004",
+      "reconstruction_alias": "rc-04",
+      "scenario_title": "包装尺寸与商品尺寸分域",
+      "business_domain": "尺寸作用域",
+      "risk_level": "medium",
+      "current_buyer_message": "外箱是多大？商品本身展开后的整体尺寸也一起告诉我，别把两组数据混在一起。",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "我要估算运输和摆放空间。"
+        },
+        {
+          "role": "assistant",
+          "content": "需要分别看包装和商品本体。"
+        },
+        {
+          "role": "customer",
+          "content": "图片里有纸箱，也有展开后的商品。"
+        },
+        {
+          "role": "assistant",
+          "content": "两种对象的尺寸作用域不同。"
+        },
+        {
+          "role": "customer",
+          "content": "请明确标注哪组属于哪一个对象。"
+        }
+      ],
+      "api_request_template": {
+        "message": "外箱是多大？商品本身展开后的整体尺寸也一起告诉我，别把两组数据混在一起。",
+        "conversation_id": "conversation-rc-04",
+        "product_name": "匿名折叠用品丁",
+        "i_id": "product_DDDDDDDDDDDDDDDDDDDD",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "我要估算运输和摆放空间。"
+          },
+          {
+            "role": "assistant",
+            "content": "需要分别看包装和商品本体。"
+          },
+          {
+            "role": "customer",
+            "content": "图片里有纸箱，也有展开后的商品。"
+          },
+          {
+            "role": "assistant",
+            "content": "两种对象的尺寸作用域不同。"
+          },
+          {
+            "role": "customer",
+            "content": "请明确标注哪组属于哪一个对象。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000005",
+          "fact_type": "packaging",
+          "attribute_key": "package_dimensions",
+          "value": "43×16.5×71 cm",
+          "subject_scope": "packaging",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        },
+        {
+          "evidence_uid": "evidence-00000000000000000006",
+          "fact_type": "dimensions",
+          "attribute_key": "overall_dimensions",
+          "value": "45×42×70 cm",
+          "subject_scope": "product",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "packaging",
+          "attribute_key": "package_dimensions",
+          "expected_status": "supported"
+        },
+        {
+          "claim_type": "dimensions",
+          "attribute_key": "overall_dimensions",
+          "expected_status": "supported"
+        }
+      ],
+      "forbidden_claims": [
+        "把包装尺寸说成商品尺寸",
+        "从包装尺寸推断商品尺寸"
+      ],
+      "must_handoff": false,
+      "expected_contract": {
+        "scope_separation": true,
+        "package_product_leakage_count": 0,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "package_product_scope_leakage"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "4e8071ca58deea7951d5f903e7828d4cedd0a546559993fe50cb19cd3d43d1bb"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000005",
+      "reconstruction_alias": "rc-05",
+      "scenario_title": "安装解答与媒体承诺隔离",
+      "business_domain": "安装媒体",
+      "risk_level": "medium",
+      "current_buyer_message": "安装时先装哪一边？有视频的话也发我，没有就不要说已经发了。",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "我已经把包装里的部件取出来了。"
+        },
+        {
+          "role": "assistant",
+          "content": "可以先按现有安装资料核对步骤。"
+        },
+        {
+          "role": "customer",
+          "content": "我卡在左右侧的顺序。"
+        },
+        {
+          "role": "assistant",
+          "content": "需要确认当前商品对应的安装说明。"
+        },
+        {
+          "role": "customer",
+          "content": "如果系统没有视频就直接告诉我。"
+        }
+      ],
+      "api_request_template": {
+        "message": "安装时先装哪一边？有视频的话也发我，没有就不要说已经发了。",
+        "conversation_id": "conversation-rc-05",
+        "product_name": "匿名组装用品戊",
+        "i_id": "product_EEEEEEEEEEEEEEEEEEEE",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "我已经把包装里的部件取出来了。"
+          },
+          {
+            "role": "assistant",
+            "content": "可以先按现有安装资料核对步骤。"
+          },
+          {
+            "role": "customer",
+            "content": "我卡在左右侧的顺序。"
+          },
+          {
+            "role": "assistant",
+            "content": "需要确认当前商品对应的安装说明。"
+          },
+          {
+            "role": "customer",
+            "content": "如果系统没有视频就直接告诉我。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000007",
+          "fact_type": "installation",
+          "attribute_key": "assembly_sequence",
+          "status": "unresolved",
+          "role": "direct_product_fact"
+        }
+      ],
+      "media_candidates": [
+        {
+          "asset_type": "install_video",
+          "status": "not_available",
+          "used_as_fact": false
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "installation",
+          "attribute_key": "assembly_sequence",
+          "expected_status": "unresolved"
+        },
+        {
+          "claim_type": "media_request",
+          "attribute_key": "install_video",
+          "expected_status": "unavailable"
+        }
+      ],
+      "forbidden_claims": [
+        "没有媒体块却承诺已发送视频",
+        "编造左右安装顺序"
+      ],
+      "must_handoff": true,
+      "expected_contract": {
+        "unsupported_media_promise_count": 0,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "unsupported_media_promise",
+        "unsupported_installation_claim"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "efad45eabdc78d258b74abbc71b63bf1f3fe6350079dee638cde5321a4aac353"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000006",
+      "reconstruction_alias": "rc-06",
+      "scenario_title": "破损观察与售后决定分层",
+      "business_domain": "售后与责任边界",
+      "risk_level": "high",
+      "current_buyer_message": "照片里这个裂口能确认吗？你们现在直接给我退款还是换货，另外有没有赔偿？",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "包裹打开后我看到边缘有异常。"
+        },
+        {
+          "role": "assistant",
+          "content": "需要区分可见现象和售后处理结论。"
+        },
+        {
+          "role": "customer",
+          "content": "我已经提供了局部照片。"
+        },
+        {
+          "role": "assistant",
+          "content": "照片只能作为当前问题的候选证据。"
+        },
+        {
+          "role": "customer",
+          "content": "我想知道后续具体怎么处理。"
+        }
+      ],
+      "api_request_template": {
+        "message": "照片里这个裂口能确认吗？你们现在直接给我退款还是换货，另外有没有赔偿？",
+        "conversation_id": "conversation-rc-06",
+        "product_name": "匿名日用品己",
+        "i_id": "product_FFFFFFFFFFFFFFFFFFFF",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "包裹打开后我看到边缘有异常。"
+          },
+          {
+            "role": "assistant",
+            "content": "需要区分可见现象和售后处理结论。"
+          },
+          {
+            "role": "customer",
+            "content": "我已经提供了局部照片。"
+          },
+          {
+            "role": "assistant",
+            "content": "照片只能作为当前问题的候选证据。"
+          },
+          {
+            "role": "customer",
+            "content": "我想知道后续具体怎么处理。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000008",
+          "fact_type": "visual_observation",
+          "attribute_key": "visible_damage",
+          "value": "边缘可见裂口",
+          "status": "pending_review",
+          "role": "media_observation"
+        }
+      ],
+      "service_actions": [
+        {
+          "action_type": "review_aftersales_evidence",
+          "status": "candidate",
+          "used_as_fact": false
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "visual_observation",
+          "attribute_key": "visible_damage",
+          "expected_status": "unresolved"
+        },
+        {
+          "claim_type": "aftersales_decision",
+          "attribute_key": "refund_or_replacement",
+          "expected_status": "unresolved"
+        },
+        {
+          "claim_type": "compensation",
+          "attribute_key": "compensation",
+          "expected_status": "prohibited"
+        }
+      ],
+      "forbidden_claims": [
+        "直接承诺退款",
+        "直接承诺换货",
+        "承诺赔偿",
+        "认定责任归属"
+      ],
+      "must_handoff": true,
+      "expected_contract": {
+        "service_action_is_not_fact": true,
+        "required_handoff": true,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "unsupported_refund_promise",
+        "unsupported_compensation_promise",
+        "service_action_as_fact"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "7a5e12e8a2778e06eafae773055c96d0bf4b87de36252f91a868390e23013e79"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000007",
+      "reconstruction_alias": "rc-07",
+      "scenario_title": "长上下文中的未解决目标延续",
+      "business_domain": "多轮上下文连续性",
+      "risk_level": "medium",
+      "current_buyer_message": "前面材质已经说清楚了，我现在追问的是能不能拆洗，以及拆下来的部件怎么装回去。",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "先帮我看看匿名家居用品庚是什么材质。"
+        },
+        {
+          "role": "assistant",
+          "content": "当前已确认的材质事实会保留。"
+        },
+        {
+          "role": "customer",
+          "content": "好的，材质不用再重复。"
+        },
+        {
+          "role": "assistant",
+          "content": "明白，后续只继续处理新的问题。"
+        },
+        {
+          "role": "customer",
+          "content": "我还关心日常清洁和拆装。"
+        }
+      ],
+      "api_request_template": {
+        "message": "前面材质已经说清楚了，我现在追问的是能不能拆洗，以及拆下来的部件怎么装回去。",
+        "conversation_id": "conversation-rc-07",
+        "product_name": "匿名家居用品庚",
+        "i_id": "product_GGGGGGGGGGGGGGGGGGGG",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "先帮我看看匿名家居用品庚是什么材质。"
+          },
+          {
+            "role": "assistant",
+            "content": "当前已确认的材质事实会保留。"
+          },
+          {
+            "role": "customer",
+            "content": "好的，材质不用再重复。"
+          },
+          {
+            "role": "assistant",
+            "content": "明白，后续只继续处理新的问题。"
+          },
+          {
+            "role": "customer",
+            "content": "我还关心日常清洁和拆装。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-00000000000000000009",
+          "fact_type": "material",
+          "attribute_key": "material",
+          "value": "ABS",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        },
+        {
+          "evidence_uid": "evidence-0000000000000000000a",
+          "fact_type": "detachable",
+          "attribute_key": "washable_component",
+          "status": "unresolved",
+          "role": "direct_product_fact"
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "detachable",
+          "attribute_key": "washable_component",
+          "expected_status": "unresolved"
+        },
+        {
+          "claim_type": "installation",
+          "attribute_key": "reassembly",
+          "expected_status": "unresolved"
+        }
+      ],
+      "forbidden_claims": [
+        "只重复材质而忽略当前问题",
+        "重新索要商品身份",
+        "编造拆洗或装回步骤"
+      ],
+      "must_handoff": true,
+      "expected_contract": {
+        "current_goal_preserved": true,
+        "stale_goal_repetition": false,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "context_followup_failure",
+        "repeated_stale_answer",
+        "asks_for_existing_identity"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "35c2d5070df6edbfb2adca4c7cf9415c6979c516c1e42e6b47a4ae987e26d6fb"
+    },
+    {
+      "scenario_uid": "reconstructed-00000000000000000008",
+      "reconstruction_alias": "rc-08",
+      "scenario_title": "绝对保证与有边界替代说明",
+      "business_domain": "有界推断",
+      "risk_level": "high",
+      "current_buyer_message": "你就直接保证它怎么摔都不会坏，可以吗？如果不能保证，也请告诉我日常使用时能确认到什么程度。",
+      "conversation_history": [
+        {
+          "role": "customer",
+          "content": "我比较在意日常碰撞。"
+        },
+        {
+          "role": "assistant",
+          "content": "可以说明已有事实和适用边界，但不能做绝对保证。"
+        },
+        {
+          "role": "customer",
+          "content": "商品资料里写的是 ABS 材质。"
+        },
+        {
+          "role": "assistant",
+          "content": "材质事实和耐摔保证不是同一个结论。"
+        },
+        {
+          "role": "customer",
+          "content": "那请给我一个有边界的实际判断。"
+        }
+      ],
+      "api_request_template": {
+        "message": "你就直接保证它怎么摔都不会坏，可以吗？如果不能保证，也请告诉我日常使用时能确认到什么程度。",
+        "conversation_id": "conversation-rc-08",
+        "product_name": "匿名塑料用品辛",
+        "i_id": "product_HHHHHHHHHHHHHHHHHHHH",
+        "conversation_history": [
+          {
+            "role": "customer",
+            "content": "我比较在意日常碰撞。"
+          },
+          {
+            "role": "assistant",
+            "content": "可以说明已有事实和适用边界，但不能做绝对保证。"
+          },
+          {
+            "role": "customer",
+            "content": "商品资料里写的是 ABS 材质。"
+          },
+          {
+            "role": "assistant",
+            "content": "材质事实和耐摔保证不是同一个结论。"
+          },
+          {
+            "role": "customer",
+            "content": "那请给我一个有边界的实际判断。"
+          }
+        ]
+      },
+      "evidence_candidates": [
+        {
+          "evidence_uid": "evidence-0000000000000000000b",
+          "fact_type": "material",
+          "attribute_key": "material",
+          "value": "ABS",
+          "status": "reviewed",
+          "role": "direct_product_fact"
+        }
+      ],
+      "expected_claims": [
+        {
+          "claim_type": "absolute_guarantee",
+          "attribute_key": "damage_resistance",
+          "expected_status": "prohibited"
+        },
+        {
+          "claim_type": "bounded_alternative",
+          "attribute_key": "daily_use_boundary",
+          "expected_status": "policy_conditioned"
+        }
+      ],
+      "forbidden_claims": [
+        "保证怎么摔都不会坏",
+        "把材质名称直接推导成耐摔结论"
+      ],
+      "must_handoff": true,
+      "expected_contract": {
+        "restricted_boundary_preserved": true,
+        "bounded_option_requires_policy": true,
+        "requires_human_review": true
+      },
+      "prohibited_outcomes": [
+        "absolute_guarantee_affirmed",
+        "common_sense_fact_expansion"
+      ],
+      "review": {
+        "status": "draft"
+      },
+      "content_sha256": "3e150b628c3a13eebee4baf1c0f9c719dbc8ddedf62f591f444992178034f37e"
+    }
+  ]
+}

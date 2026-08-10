@@ -68,9 +68,13 @@ _DATASET_CONTRACTS = {
         dataset_id="p1-conversation-reconstructed-v1",
         dataset_version="1.0.0",
         case_count=8,
-        history_turn_count=0,
-        dataset_sha256="",
-        manifest_file_sha256="",
+        history_turn_count=40,
+        dataset_sha256=(
+            "689c8990db4cae9299b4cf4eda156f45401efc145cf68c43e7b07f74f968e487"
+        ),
+        manifest_file_sha256=(
+            "f242158f1aba67ae32a95ccfc82c880ad3b2965453b4058f7589884531faccc3"
+        ),
         source_class="conversation_reconstructed",
     ),
 }
@@ -249,6 +253,101 @@ _CLAIM_REF_RE = re.compile(r"^claim-[A-Za-z0-9._:-]{1,128}$")
 
 class P1BaselineIntegrityError(RuntimeError):
     pass
+
+
+def _validate_reconstructed_dataset_contract(
+    dataset: dict[str, Any],
+    manifest: dict[str, Any],
+) -> None:
+    """Keep reconstructed evidence distinct from real or recovered Gold data."""
+    findings: list[str] = []
+    scenarios = dataset.get("scenarios")
+    rows = scenarios if isinstance(scenarios, list) else []
+    expected_aliases = [f"rc-{index:02d}" for index in range(1, 9)]
+    aliases = [
+        str(row.get("reconstruction_alias") or "")
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+    if (
+        dataset.get("source_class") != "conversation_reconstructed"
+        or manifest.get("source_class") != "conversation_reconstructed"
+    ):
+        findings.append("reconstructed_source_class_mismatch")
+    if len(rows) != 8 or int(manifest.get("scenario_count") or 0) != 8:
+        findings.append("reconstructed_scenario_count_mismatch")
+    if aliases != expected_aliases:
+        findings.append("reconstructed_alias_sequence_mismatch")
+    if manifest.get("real_customer_accuracy") is not None:
+        findings.append("reconstructed_accuracy_claim_forbidden")
+    if manifest.get("original_fixed8_restored") is not False:
+        findings.append("reconstructed_original_equivalence_forbidden")
+    if manifest.get("optimization_unverified") is not True:
+        findings.append("reconstructed_optimization_claim_forbidden")
+
+    privacy = manifest.get("privacy_declaration")
+    privacy = privacy if isinstance(privacy, dict) else {}
+    if (
+        privacy.get("classification") != "synthetic_anonymous"
+        or privacy.get("contains_real_customer_pii") is not False
+        or privacy.get("contains_real_order_or_sku") is not False
+        or privacy.get("scan_passed") is not True
+    ):
+        findings.append("reconstructed_privacy_declaration_invalid")
+
+    if (
+        manifest.get("dataset_id") != dataset.get("dataset_id")
+        or manifest.get("dataset_version") != dataset.get("dataset_version")
+        or manifest.get("content_sha256")
+        != _dict(dataset.get("manifest")).get("content_sha256")
+    ):
+        findings.append("reconstructed_manifest_identity_mismatch")
+
+    scenario_hashes = manifest.get("scenario_hashes")
+    scenario_hashes = (
+        scenario_hashes if isinstance(scenario_hashes, dict) else {}
+    )
+    expected_hashes = {
+        str(row.get("reconstruction_alias") or ""): str(
+            row.get("content_sha256") or ""
+        )
+        for row in rows
+        if isinstance(row, dict)
+    }
+    if scenario_hashes != expected_hashes:
+        findings.append("reconstructed_scenario_hash_manifest_mismatch")
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        history = row.get("conversation_history")
+        request_template = row.get("api_request_template")
+        request_template = (
+            request_template if isinstance(request_template, dict) else {}
+        )
+        if (
+            not isinstance(history, list)
+            or history != request_template.get("conversation_history")
+            or row.get("current_buyer_message")
+            != request_template.get("message")
+        ):
+            findings.append("reconstructed_conversation_projection_mismatch")
+            break
+        if any(
+            not isinstance(turn, dict)
+            or turn.get("role") not in {"customer", "assistant"}
+            or not str(turn.get("content") or "").strip()
+            for turn in history
+        ):
+            findings.append("reconstructed_conversation_turn_invalid")
+            break
+
+    if findings:
+        raise P1BaselineIntegrityError(
+            "reconstructed_dataset_contract_blocked:"
+            + ",".join(sorted(set(findings)))
+        )
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -1893,6 +1992,8 @@ def _preflight_dataset(
     dataset, validation = load_and_validate_review_dataset(dataset_path)
     inventory = build_review_inventory(dataset)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if contract.source_class == "conversation_reconstructed":
+        _validate_reconstructed_dataset_contract(dataset, manifest)
     findings = []
     if validation.get("validation_status") != "passed":
         findings.append("dataset_validation_failed")
@@ -1917,6 +2018,11 @@ def _preflight_dataset(
         findings.append("manifest_content_hash_mismatch")
     if _sha256_file(manifest_path) != contract.manifest_file_sha256:
         findings.append("manifest_file_hash_mismatch")
+    if (
+        contract.source_class == "conversation_reconstructed"
+        and manifest.get("dataset_file_sha256") != _sha256_file(dataset_path)
+    ):
+        findings.append("dataset_file_hash_mismatch")
     if findings:
         raise P1BaselineIntegrityError(
             "p1_dataset_preflight_blocked:"

@@ -1,0 +1,44 @@
+{
+  "schema_version": "p1-conversation-reconstructed-manifest/v1",
+  "dataset_id": "p1-conversation-reconstructed-v1",
+  "dataset_version": "1.0.0",
+  "source_class": "conversation_reconstructed",
+  "scenario_count": 8,
+  "conversation_history_turn_count": 40,
+  "category_counts": {
+    "安装与身份连续性": 1,
+    "材质与高风险声明": 1,
+    "商品尺寸": 1,
+    "尺寸作用域": 1,
+    "安装媒体": 1,
+    "售后与责任边界": 1,
+    "多轮上下文连续性": 1,
+    "有界推断": 1
+  },
+  "dataset_file_sha256": "52f9b02590d23de2891fa3c3265d6b6e4dcb8b98e199be2a003183cf386d01e2",
+  "content_sha256": "689c8990db4cae9299b4cf4eda156f45401efc145cf68c43e7b07f74f968e487",
+  "scenario_hashes": {
+    "rc-01": "02e3d8dfac3044c5cf1cbf3d84185274689b0b3e02cda14a59cdaf91f9c069e6",
+    "rc-02": "03d50b32879b23c6fb1c2d8dd294cba9c79bb89c3a68757d12fada4ff34248f9",
+    "rc-03": "32d3c342200a98df20880884c5b4440070add714af334d657a73f42222f34339",
+    "rc-04": "4e8071ca58deea7951d5f903e7828d4cedd0a546559993fe50cb19cd3d43d1bb",
+    "rc-05": "efad45eabdc78d258b74abbc71b63bf1f3fe6350079dee638cde5321a4aac353",
+    "rc-06": "7a5e12e8a2778e06eafae773055c96d0bf4b87de36252f91a868390e23013e79",
+    "rc-07": "35c2d5070df6edbfb2adca4c7cf9415c6979c516c1e42e6b47a4ae987e26d6fb",
+    "rc-08": "3e150b628c3a13eebee4baf1c0f9c719dbc8ddedf62f591f444992178034f37e"
+  },
+  "privacy_declaration": {
+    "classification": "synthetic_anonymous",
+    "contains_real_customer_pii": false,
+    "contains_real_order_or_sku": false,
+    "scan_passed": true
+  },
+  "real_customer_accuracy": null,
+  "optimization_unverified": true,
+  "original_fixed8_restored": false,
+  "limitations": [
+    "不是遗失的原 Fixed-8",
+    "不是主管批准的真实 Gold 数据",
+    "不能用于声明真实客户准确率"
+  ]
+}
