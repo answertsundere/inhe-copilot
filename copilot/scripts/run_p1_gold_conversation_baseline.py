@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -35,6 +36,51 @@ EXPECTED_DATASET_SHA256 = (
 EXPECTED_MANIFEST_FILE_SHA256 = (
     "af78ec3e75831d154faea34b5d2650cf6cc9234ab7d216d25e6afba1759a8aa3"
 )
+
+
+@dataclass(frozen=True)
+class DatasetContract:
+    contract_name: str
+    dataset_id: str
+    dataset_version: str
+    case_count: int
+    history_turn_count: int
+    dataset_sha256: str
+    manifest_file_sha256: str
+    source_class: str
+    real_customer_accuracy: None = None
+    original_fixed8_restored: bool = False
+
+
+_DATASET_CONTRACTS = {
+    "legacy-real-derived-v4": DatasetContract(
+        contract_name="legacy-real-derived-v4",
+        dataset_id=EXPECTED_DATASET_ID,
+        dataset_version=EXPECTED_DATASET_VERSION,
+        case_count=EXPECTED_CASE_COUNT,
+        history_turn_count=EXPECTED_HISTORY_TURN_COUNT,
+        dataset_sha256=EXPECTED_DATASET_SHA256,
+        manifest_file_sha256=EXPECTED_MANIFEST_FILE_SHA256,
+        source_class="real_derived_draft",
+    ),
+    "conversation-reconstructed-v1": DatasetContract(
+        contract_name="conversation-reconstructed-v1",
+        dataset_id="p1-conversation-reconstructed-v1",
+        dataset_version="1.0.0",
+        case_count=8,
+        history_turn_count=0,
+        dataset_sha256="",
+        manifest_file_sha256="",
+        source_class="conversation_reconstructed",
+    ),
+}
+
+
+def _resolve_dataset_contract(name: str) -> DatasetContract:
+    contract = _DATASET_CONTRACTS.get(str(name or "").strip())
+    if contract is None:
+        raise P1BaselineIntegrityError("dataset_contract_unknown")
+    return contract
 _PROHIBITED_REPORT_KEYS = {
     "api_key",
     "authorization",
@@ -1836,6 +1882,8 @@ def _checkpoint_payload(
 def _preflight_dataset(
     dataset_path: Path,
     manifest_path: Path,
+    *,
+    contract: DatasetContract,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     from app.services.high_quality_long_conversation_review_service import (
         build_review_inventory,
@@ -1848,26 +1896,26 @@ def _preflight_dataset(
     findings = []
     if validation.get("validation_status") != "passed":
         findings.append("dataset_validation_failed")
-    if dataset.get("dataset_id") != EXPECTED_DATASET_ID:
+    if dataset.get("dataset_id") != contract.dataset_id:
         findings.append("dataset_id_mismatch")
-    if dataset.get("dataset_version") != EXPECTED_DATASET_VERSION:
+    if dataset.get("dataset_version") != contract.dataset_version:
         findings.append("dataset_version_mismatch")
-    if inventory.get("scenario_count") != EXPECTED_CASE_COUNT:
+    if inventory.get("scenario_count") != contract.case_count:
         findings.append("scenario_count_mismatch")
     if (
         inventory.get("conversation_history_turn_count")
-        != EXPECTED_HISTORY_TURN_COUNT
+        != contract.history_turn_count
     ):
         findings.append("history_turn_count_mismatch")
     if inventory.get("target_missing_count"):
         findings.append("target_turn_missing")
     if inventory.get("privacy_finding_count"):
         findings.append("dataset_privacy_failed")
-    if validation.get("computed_content_sha256") != EXPECTED_DATASET_SHA256:
+    if validation.get("computed_content_sha256") != contract.dataset_sha256:
         findings.append("dataset_hash_mismatch")
-    if manifest.get("content_sha256") != EXPECTED_DATASET_SHA256:
+    if manifest.get("content_sha256") != contract.dataset_sha256:
         findings.append("manifest_content_hash_mismatch")
-    if _sha256_file(manifest_path) != EXPECTED_MANIFEST_FILE_SHA256:
+    if _sha256_file(manifest_path) != contract.manifest_file_sha256:
         findings.append("manifest_file_hash_mismatch")
     if findings:
         raise P1BaselineIntegrityError(
@@ -2599,9 +2647,11 @@ def prepare(args: argparse.Namespace) -> int:
             "baseline_output_directory_not_empty"
         )
     output_dir.mkdir(parents=True, exist_ok=True)
+    contract = _resolve_dataset_contract(args.dataset_contract)
     dataset, _inventory, _manifest = _preflight_dataset(
         Path(args.dataset),
         Path(args.dataset_manifest),
+        contract=contract,
     )
     if not _dicts(dataset.get("scenarios")):
         raise P1BaselineIntegrityError("dataset_scenarios_missing")
@@ -2817,9 +2867,11 @@ def run(args: argparse.Namespace) -> int:
         raise P1BaselineIntegrityError(
             "fresh_agent_run_required"
         )
+    contract = _resolve_dataset_contract(args.dataset_contract)
     dataset, _inventory, _source_manifest = _preflight_dataset(
         Path(args.dataset),
         Path(args.dataset_manifest),
+        contract=contract,
     )
     pre_run_manifest_path = Path(
         args.pre_run_manifest
@@ -3012,6 +3064,7 @@ def run(args: argparse.Namespace) -> int:
         _preflight_dataset(
             Path(args.dataset),
             Path(args.dataset_manifest),
+            contract=contract,
         )
     except Exception as exc:
         if not integrity_stop_reason:
@@ -3082,6 +3135,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset")
     parser.add_argument("--dataset-manifest")
+    parser.add_argument(
+        "--dataset-contract",
+        default="legacy-real-derived-v4",
+    )
     parser.add_argument("--analyze-url")
     parser.add_argument("--output-dir")
     parser.add_argument("--expected-commit")
