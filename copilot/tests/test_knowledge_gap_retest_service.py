@@ -274,20 +274,22 @@ def test_knowledge_gap_retest_only_replays_related_turns(monkeypatch):
     assert called_turns == ["turn_gap_2"]
 
 
-def test_knowledge_gap_retest_api_permissions_preview_and_apply(monkeypatch):
+def test_knowledge_gap_retest_api_permissions_preview_and_apply(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_task(session_factory)
     monkeypatch.setattr(RealConversationReplayService, "_call_agent", _passing_agent)
 
+    set_admin_test_principal("operator")
     assert client.post(
         "/api/eval/knowledge-gaps/kgap_retest_1/retest",
         json={"apply": True},
-        headers={"X-User-Role": "operator"},
+        headers={"X-User-Role": "admin"},
     ).status_code == 403
 
+    set_admin_test_principal("supervisor")
     preview = client.post(
         "/api/eval/knowledge-gaps/kgap_retest_1/retest-preview",
-        headers={"X-User-Role": "supervisor"},
+        headers={"X-User-Role": "operator"},
     )
     assert preview.status_code == 200
     assert preview.get_json()["sample_count"] == 2
@@ -297,10 +299,11 @@ def test_knowledge_gap_retest_api_permissions_preview_and_apply(monkeypatch):
     finally:
         db.close()
 
+    set_admin_test_principal("admin")
     retest = client.post(
         "/api/eval/knowledge-gaps/kgap_retest_1/retest",
         json={"apply": True},
-        headers={"X-User-Role": "admin", "X-User-Name": "lead"},
+        headers={"X-User-Role": "operator", "X-User-Name": "spoofed"},
     )
     assert retest.status_code == 200
     data = retest.get_json()

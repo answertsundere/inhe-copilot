@@ -34,10 +34,32 @@ def _load(fixture_path: str, manifest_path: str) -> dict[str, Any]:
 def _seed_fixture_database(fixture: dict[str, Any], database: Path) -> None:
     if database.name.lower() == "knowledge_base.db":
         raise ValueError("refusing_to_write_knowledge_base")
+    if "app.db" in sys.modules:
+        # The application DB module binds its engine at import time. Reusing a
+        # previously bound engine here could redirect fixture writes elsewhere.
+        raise RuntimeError("fixture_work_database_binding_too_late")
     if database.exists():
         database.unlink()
     os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = str(database)
-    from app.db import Base, SessionLocal, engine
+    # This process never opens the source formal DB. The explicit --work-db is
+    # a disposable fixture database, so inherited formal query-only mode must
+    # not make it read-only before it is populated.
+    os.environ["COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY"] = "false"
+    # Fixture validation imports other application modules before this point,
+    # which can load app.config while app.db remains unbound. Keep that cached
+    # configuration aligned with the explicit disposable database.
+    import app.config as config_module
+    config_module.KNOWLEDGE_DB_PATH = str(database)
+    import app.db as db_module
+
+    if Path(db_module.KNOWLEDGE_DB_PATH).resolve() != database:
+        raise RuntimeError("fixture_work_database_binding_mismatch")
+    if db_module.KNOWLEDGE_DB_QUERY_ONLY:
+        raise RuntimeError("fixture_work_database_unexpected_query_only")
+
+    Base = db_module.Base
+    SessionLocal = db_module.SessionLocal
+    engine = db_module.engine
     from app.models import kb_tables, knowledge_base  # noqa: F401
     from app.models.kb_tables import KBProduct
 

@@ -49,7 +49,10 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Minimal Decision Context | Existing context builder | Projection only; cannot replace owner output, change formal reply fields, or change `can_send` |
 
 Phase 1.10.1 qualifies this projection with the frozen 30-positive/40-negative
-dataset in three deterministic orderings. The qualification script is an
+dataset in three deterministic orderings. Its fixture uses the same canonical
+goal-identity projection as the formal query classifier, and the manifest pins
+both fixture content and evaluator-source hashes so a contract upgrade cannot
+silently leave stale qualification data behind. The qualification script is an
 evaluation owner only; no Fast Path or Composer module has been added.
 
 ## Operations And Future Channels

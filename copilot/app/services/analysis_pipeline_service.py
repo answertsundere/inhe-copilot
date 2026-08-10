@@ -735,11 +735,12 @@ class AnalysisPipelineService:
         )
         if diagnostics_enabled:
             self._update_composer_entry_observation(response, request)
-        understanding_blocked = understanding_verdict["status"] in {
+        understanding_restricted = understanding_verdict["status"] in {
             "invalid",
             "degraded",
         }
-        if understanding_blocked:
+        understanding_invalid = understanding_verdict["status"] == "invalid"
+        if understanding_restricted:
             if diagnostics_enabled:
                 _update_composer_entry_diagnostics(
                     request.composer_entry_diagnostics_sink,
@@ -750,7 +751,7 @@ class AnalysisPipelineService:
             response = self._apply_invalid_understanding_boundary(
                 response,
                 understanding_verdict,
-                clear_candidate_reply=True,
+                clear_candidate_reply=understanding_invalid,
             )
             stages.extend([
                 {
@@ -788,7 +789,7 @@ class AnalysisPipelineService:
                 customer_message=request.delivery_message or request.customer_message,
                 copilot_context=request.copilot_context,
             )
-            if understanding_blocked:
+            if understanding_restricted:
                 response = self._apply_invalid_understanding_boundary(
                     response,
                     understanding_verdict,

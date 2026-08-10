@@ -248,20 +248,22 @@ def test_pre_publish_retest_passed_locks_payload_fingerprint(monkeypatch):
         db.close()
 
 
-def test_pre_publish_retest_api_permissions_preview_and_apply(monkeypatch):
+def test_pre_publish_retest_api_permissions_preview_and_apply(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_queue(session_factory)
     monkeypatch.setattr(RealConversationReplayService, "_call_agent", _passing_agent)
 
+    set_admin_test_principal("operator")
     forbidden = client.post(
         "/api/eval/knowledge-gap-publish-queue/kgpub_prepub_1/pre-publish-retest",
-        headers={"X-User-Role": "operator"},
+        headers={"X-User-Role": "admin"},
     )
     assert forbidden.status_code == 403
 
+    set_admin_test_principal("supervisor")
     preview = client.post(
         "/api/eval/knowledge-gap-publish-queue/kgpub_prepub_1/pre-publish-retest-preview",
-        headers={"X-User-Role": "supervisor"},
+        headers={"X-User-Role": "operator"},
     )
     assert preview.status_code == 200
     assert preview.get_json()["sample_count"] == 2
@@ -271,9 +273,10 @@ def test_pre_publish_retest_api_permissions_preview_and_apply(monkeypatch):
     finally:
         db.close()
 
+    set_admin_test_principal("admin")
     retest = client.post(
         "/api/eval/knowledge-gap-publish-queue/kgpub_prepub_1/pre-publish-retest",
-        headers={"X-User-Role": "admin", "X-User-Name": "lead"},
+        headers={"X-User-Role": "operator", "X-User-Name": "spoofed"},
     )
     assert retest.status_code == 200
     assert retest.get_json()["queue_item"]["approved_to_publish"] is True

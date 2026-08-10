@@ -78,6 +78,36 @@ def test_order_identifier_from_graph_prevents_reasking_for_order_context():
     assert updated.get("can_send") is not True
 
 
+def test_no_evidence_policy_clears_stale_direct_answer_diagnostics():
+    response = {
+        "suggested_reply": "The material is PP.",
+        "query_fact_type": "cleaning_care",
+        "requires_human_review": False,
+        "evidence_debug": {
+            "query_fact_type": "cleaning_care",
+            "selected_evidence": [{"fact_type": "material", "attribute_key": "material"}],
+            "evidence_sufficient": True,
+            "direct_answer_supported": True,
+            "answer_relevance_passed": True,
+        },
+    }
+    context = {
+        "turn_understanding": {
+            "turn_actionability": "actionable_question",
+            "query_fact_type": "cleaning_care",
+        },
+        "product_name": "demo product",
+    }
+
+    updated = apply_no_evidence_reply_policy(response, context)
+
+    assert updated["generation_mode"] == "no_evidence_reply_policy"
+    assert updated["requires_human_review"] is True
+    assert updated["evidence_debug"]["evidence_sufficient"] is False
+    assert updated["evidence_debug"]["direct_answer_supported"] is False
+    assert updated["evidence_debug"]["answer_relevance_passed"] is False
+
+
 def test_installation_with_sendable_asset_can_reference_delivery():
     result = _policy(
         query_fact_type="installation",

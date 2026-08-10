@@ -108,8 +108,77 @@ def _extract_claims(reply: str, terms: set) -> list[dict]:
                 start = max(0, m.start() - 10)
                 end = min(len(reply), m.end() + 10)
                 context = reply[start:end]
-                claims.append({"term": term, "context": context})
+                claims.append({
+                    "term": term,
+                    "context": context,
+                    "start": m.start(),
+                    "end": m.end(),
+                })
     return claims
+
+
+_CUSTOMER_ATTRIBUTION_MARKERS = (
+    "\u60a8\u53cd\u9988", "\u60a8\u63d0\u5230", "\u60a8\u8868\u793a", "\u60a8\u8bf4",
+    "\u60a8\u63cf\u8ff0", "\u6839\u636e\u60a8\u7684\u53cd\u9988", "\u6839\u636e\u60a8\u63d0\u4f9b\u7684\u4fe1\u606f",
+)
+_CUSTOMER_REPORT_NEGATIONS = ("\u4e0d", "\u6ca1", "\u672a", "\u975e")
+_HYPOTHETICAL_CONTEXT_MARKERS = ("\u5982\u679c", "\u5047\u5982", "\u82e5", "\u4f8b\u5982", "\u6bd4\u5982")
+
+
+def _logistics_status_predicate(term: str) -> str:
+    """Normalize aspect markers without changing the logistics-status predicate."""
+    return str(term or "").replace("\u5df2", "").replace("\u6b63\u5728", "").replace("\u4e2d", "").strip()
+
+
+def _customer_reports_logistics_status(message: str, term: str) -> bool:
+    predicate = _logistics_status_predicate(term)
+    if not predicate:
+        return False
+
+    for match in re.finditer(re.escape(predicate), message or ""):
+        prefix = (message or "")[max(0, match.start() - 3):match.start()]
+        if not any(marker in prefix for marker in _CUSTOMER_REPORT_NEGATIONS):
+            return True
+    return False
+
+
+def _is_customer_attributed_logistics_context(state: dict, claim: dict) -> bool:
+    """Return true only when a reply explicitly attributes the status to the buyer."""
+    reply = str(state.get("suggested_reply") or "")
+    message = str(state.get("normalized_message") or state.get("customer_message") or "")
+    start = int(claim.get("start") or 0)
+    sentence_start = max(
+        reply.rfind("\u3002", 0, start),
+        reply.rfind("\uff01", 0, start),
+        reply.rfind("\uff1f", 0, start),
+        reply.rfind("\n", 0, start),
+    ) + 1
+    prefix = reply[sentence_start:start]
+    return (
+        any(marker in prefix for marker in _CUSTOMER_ATTRIBUTION_MARKERS)
+        and _customer_reports_logistics_status(message, str(claim.get("term") or ""))
+    )
+
+
+def _is_hypothetical_logistics_context(reply: str, claim: dict) -> bool:
+    """A conditional/example status describes a possible case, not the current order."""
+    start = int(claim.get("start") or 0)
+    sentence_start = max(
+        reply.rfind("\u3002", 0, start),
+        reply.rfind("\uff01", 0, start),
+        reply.rfind("\uff1f", 0, start),
+        reply.rfind("\n", 0, start),
+    ) + 1
+    prefix = reply[sentence_start:start]
+    return any(marker in prefix for marker in _HYPOTHETICAL_CONTEXT_MARKERS)
+
+
+def _is_nonassertive_logistics_context(state: dict, claim: dict) -> bool:
+    reply = str(state.get("suggested_reply") or "")
+    return (
+        _is_customer_attributed_logistics_context(state, claim)
+        or _is_hypothetical_logistics_context(reply, claim)
+    )
 
 
 def _extract_numbers_with_units(text: str) -> list[dict]:
@@ -253,8 +322,9 @@ def _check_number_consistency(reply: str, evidence_text: str) -> list[dict]:
     return unsupported
 
 
-def _check_unsupported_facts_when_no_evidence(reply: str) -> list[dict]:
+def _check_unsupported_facts_when_no_evidence(state: dict) -> list[dict]:
     """无证据时，检查回复中是否出现具体事实声明。"""
+    reply = state.get("suggested_reply", "") or ""
     unsupported = []
 
     # 检查商品事实
@@ -269,6 +339,8 @@ def _check_unsupported_facts_when_no_evidence(reply: str) -> list[dict]:
     # 检查物流状态（仅具体状态声明，排除一般性物流解释措辞）
     logistics_claims = _extract_claims(reply, _LOGISTICS_STATUS_TERMS)
     for claim in logistics_claims:
+        if _is_nonassertive_logistics_context(state, claim):
+            continue
         unsupported.append({
             "claim": claim["context"],
             "fact_type": "logistics_fact",
@@ -469,7 +541,7 @@ def validate_reply_grounding(state: dict) -> dict:
 
     if not evidence_text:
         # 无证据时：严格拦截任何具体事实声明
-        unsupported_claims = _check_unsupported_facts_when_no_evidence(reply)
+        unsupported_claims = _check_unsupported_facts_when_no_evidence(state)
     else:
         # 有证据时：检查一致性
         # 1. 商品事实 grounding
@@ -487,6 +559,12 @@ def validate_reply_grounding(state: dict) -> dict:
         # 2. 物流状态 grounding
         logistics_claims = _extract_claims(reply, _LOGISTICS_STATUS_TERMS)
         for claim in logistics_claims:
+            if _is_nonassertive_logistics_context(state, claim):
+                supported_claims.append({
+                    "claim": claim["context"],
+                    "fact_type": "customer_reported_logistics_context",
+                })
+                continue
             if claim["term"] in evidence_text:
                 supported_claims.append({"claim": claim["context"], "fact_type": "logistics_fact"})
             else:

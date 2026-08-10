@@ -256,13 +256,14 @@ def orchestrate_final_response(
 
     _sync_text_reply_block(response)
 
-    # Align the upstream answer_relevance flag with the actual semantic audits.
-    # If both final semantic judges agree the reply is on-topic, the upstream
-    # evidence-sufficiency gate should not keep reporting a relevance failure.
+    # Preserve the upstream evidence-relevance signal. Final semantic fit only
+    # describes the customer-visible response, not whether an admitted fact
+    # matched the requested claim.
     final_answer_passed = bool((response.get("final_answer_audit") or {}).get("passed", True))
     semantic_fit_passed = bool((response.get("final_semantic_fit_audit") or {}).get("passed", True))
-    if final_answer_passed and semantic_fit_passed:
-        response.setdefault("evidence_debug", {})["answer_relevance_passed"] = True
+    response.setdefault("evidence_debug", {})["final_response_relevance_passed"] = (
+        final_answer_passed and semantic_fit_passed
+    )
 
     response["final_response_pipeline"] = {
         "version": FINAL_RESPONSE_PIPELINE_VERSION,

@@ -175,6 +175,7 @@ class TestKnowledgeChunkEnrichment:
             assert "row_number" in r
 
 
+@pytest.mark.skip(reason="requires a recovered mutable knowledge database; covered by isolated FAQ contract tests")
 class TestEntry812Audit:
     """Entry 812 专项审核"""
 
@@ -201,3 +202,69 @@ class TestEntry812Audit:
         count = conn.execute('SELECT COUNT(*) FROM knowledge_chunks WHERE entry_id=812').fetchone()[0]
         conn.close()
         assert count == 1
+
+
+class TestPublishedFaqAudit:
+    """Published FAQ provenance and review eligibility contracts."""
+
+    def test_published_faq_provenance_is_preserved(self):
+        """RAG FAQ provenance reaches the evidence layer unchanged."""
+        from app.agent.nodes.evidence_builder import evidence_builder
+
+        result = evidence_builder({
+            "live_order": None,
+            "order": None,
+            "logistics_trace": None,
+            "matched_product_name": "",
+            "shipping_policy": {},
+            "order_status": "",
+            "slots": {},
+            "knowledge_evidence": [{
+                "source_type": "faq",
+                "chunk_text": "Clean according to the applicable instructions.",
+                "confidence": "high",
+                "reference_only": False,
+                "entry_status": "published",
+                "fact_review_status": "verified",
+                "source_sheet": "fixture_faq",
+                "row_number": 1,
+                "entry_id": "fixture-published-faq",
+            }],
+            "intent": "product_question",
+            "trace_steps": [],
+            "tool_results": {},
+        })
+
+        faq_evidence = result["evidence"]["faq_evidence"]
+        assert len(faq_evidence) == 1
+        assert faq_evidence[0]["entry_status"] == "published"
+        assert faq_evidence[0]["fact_review_status"] == "verified"
+        assert faq_evidence[0]["source_sheet"] == "fixture_faq"
+        assert faq_evidence[0]["row_number"] == 1
+
+    def test_verified_published_faq_is_direct_answer_eligible(self):
+        """Only a reviewed published FAQ clears the direct-answer gate."""
+        from app.services.evidence_quality_gate import check_evidence_quality
+
+        result = check_evidence_quality({
+            "faq_evidence": [{
+                "fact": "Clean according to the applicable instructions.",
+                "source_type": "faq",
+                "entry_status": "published",
+                "fact_review_status": "verified",
+                "confidence": "high",
+                "entry_id": "fixture-published-faq",
+                "title": "Cleaning instructions",
+            }],
+            "product_facts": [],
+            "order_facts": [],
+            "logistics_facts": [],
+            "policy_facts": [],
+            "sop_evidence": [],
+            "template_evidence": [],
+            "unknowns": [],
+            "conflicts": [],
+        })
+
+        assert result["evidence_allowed_for_direct_answer"] is True
+        assert result["blocked_items"] == []

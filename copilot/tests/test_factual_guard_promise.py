@@ -102,6 +102,31 @@ class TestSafePhrasesNotBlocked:
         result = _run_guard("亲，我们已确保质量合格。")
         assert len(result["guard_warnings"]) == 0
 
+    def test_delivery_not_received_rewrite_never_invents_signed_status_from_order_presence(self):
+        state = {
+            "suggested_reply": "\u4eb2\uff0c\u60a8\u7684\u5305\u88f9\u5df2\u7b7e\u6536\u3002",
+            "intent": "delivery_not_received",
+            "order": {"items": [{"name": "\u5546\u54c1A"}]},
+            "live_order": None,
+            "logistics_trace": None,
+            "evidence": {
+                "order_facts": [],
+                "logistics_facts": [],
+                "product_facts": [],
+                "policy_facts": [],
+                "sop_evidence": [],
+                "unknowns": [],
+                "conflicts": [],
+            },
+            "answer_mode": "human_review",
+            "slots": {"order_id": "order-ref"},
+            "trace_steps": [],
+        }
+
+        result = factual_guard(state)
+
+        assert "\u5df2\u7b7e\u6536" not in result["suggested_reply"]
+
     def test_normal_arrange_safe(self):
         """一般会按店铺规则安排 → 不拦截"""
         result = _run_guard("亲，一般会按店铺规则安排发货。")

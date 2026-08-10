@@ -61,6 +61,62 @@ class TestGroundingValidationService:
         assert result["passed"] is False
         assert any(c["fact_type"] == "logistics_fact" for c in result["unsupported_claims"])
 
+    def test_customer_attributed_logistics_status_is_context_not_agent_fact(self):
+        state = {
+            "customer_message": "\u7269\u6d41\u663e\u793a\u5df2\u7b7e\u6536\uff0c\u4f46\u6211\u6ca1\u6536\u5230\u3002",
+            "suggested_reply": (
+                "\u4eb2\uff0c\u60a8\u53cd\u9988\u7269\u6d41\u663e\u793a\u5df2\u7b7e\u6536\u4f46\u672a\u6536\u5230\uff0c"
+                "\u5efa\u8bae\u5148\u6838\u5b9e\u5bb6\u4eba\u3001\u95e8\u536b\u6216\u9a7f\u7ad9\u662f\u5426\u4ee3\u6536\u3002"
+            ),
+            "intent": "delivery_not_received",
+            "evidence": {
+                "sop_evidence": [{"fact": "\u7b7e\u6536\u4e89\u8bae\u53ef\u6838\u5b9e\u4ee3\u6536\u60c5\u51b5\u5e76\u8fdb\u884c\u4eba\u5de5\u590d\u6838\u3002"}],
+            },
+            "filtered_evidence": [],
+            "knowledge_evidence": [],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert result["passed"] is True
+        assert not any(c["fact_type"] == "logistics_fact" for c in result["unsupported_claims"])
+
+    def test_unattributed_logistics_status_still_requires_evidence(self):
+        state = {
+            "customer_message": "\u7269\u6d41\u663e\u793a\u5df2\u7b7e\u6536\uff0c\u4f46\u6211\u6ca1\u6536\u5230\u3002",
+            "suggested_reply": "\u4eb2\uff0c\u60a8\u7684\u5305\u88f9\u5df2\u7b7e\u6536\uff0c\u8bf7\u7b49\u5f85\u67e5\u8be2\u3002",
+            "intent": "delivery_not_received",
+            "evidence": {
+                "sop_evidence": [{"fact": "\u7b7e\u6536\u4e89\u8bae\u53ef\u6838\u5b9e\u4ee3\u6536\u60c5\u51b5\u5e76\u8fdb\u884c\u4eba\u5de5\u590d\u6838\u3002"}],
+            },
+            "filtered_evidence": [],
+            "knowledge_evidence": [],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert result["passed"] is False
+        assert any(c["fact_type"] == "logistics_fact" for c in result["unsupported_claims"])
+
+    def test_conditional_logistics_status_is_not_current_order_fact(self):
+        state = {
+            "suggested_reply": (
+                "\u5982\u679c\u6838\u5bf9\u540e\u53d1\u73b0\u72b6\u6001\u5f02\u5e38\uff0c"
+                "\u4f8b\u5982\u663e\u793a\u5df2\u7b7e\u6536\uff0c\u8bf7\u5148\u6838\u5b9e\u662f\u5426\u4ee3\u6536\u3002"
+            ),
+            "intent": "delivery_not_received",
+            "evidence": {
+                "sop_evidence": [{"fact": "\u7b7e\u6536\u4e89\u8bae\u53ef\u6838\u5b9e\u4ee3\u6536\u60c5\u51b5\u5e76\u8fdb\u884c\u4eba\u5de5\u590d\u6838\u3002"}],
+            },
+            "filtered_evidence": [],
+            "knowledge_evidence": [],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert result["passed"] is True
+        assert not any(c["fact_type"] == "logistics_fact" for c in result["unsupported_claims"])
+
     def test_passes_when_logistics_status_in_evidence(self):
         state = {
             "suggested_reply": "亲，您的包裹已签收。",

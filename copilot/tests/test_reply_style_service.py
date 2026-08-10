@@ -1,4 +1,10 @@
-from app.main import create_app
+import json
+import uuid
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from app.services.reply_style_service import beautify_customer_reply
 
 
@@ -33,17 +39,98 @@ def test_beautify_does_not_repeat_greeting_after_emoji():
     assert styled.count("\u4eb2\uff5e") == 1
 
 
-def test_api_reply_style_keeps_grounded_material_facts():
-    app = create_app()
-    client = app.test_client()
-    result = client.post("/ask/api/analyze", json={
+@pytest.fixture()
+def grounded_material_client(tmp_path, monkeypatch):
+    """Provide one published material fact without relying on recovered KB rows."""
+    import app.config as config_module
+    import app.db as db_module
+    import app.main as main_module
+    from app.models.kb_tables import KBProduct, KBQA
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+
+    db_path = tmp_path / "reply_style_material.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(config_module, "KNOWLEDGE_DB_PATH", str(db_path))
+    monkeypatch.setattr(main_module, "KNOWLEDGE_DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    for service_name in (
+        "_order_repo", "_product_repo", "_knowledge_repo", "_policy_repo",
+        "_product_knowledge_repo", "_risk_service", "_context_builder",
+        "_output_guard", "_reply_service", "_feedback_service", "_review_queue_service",
+        "_reply_template_repo", "_sop_repo", "_data_quality_service", "_quality_check_service",
+    ):
+        monkeypatch.setattr(main_module, service_name, None)
+    db_module.Base.metadata.create_all(bind=engine)
+
+    sku_code = "FIXTURE_REPLY_STYLE_MATERIAL"
+    product_name = "Fixture Material Product"
+    db = session_factory()
+    try:
+        product = KBProduct(
+            i_id="FIXTURE_REPLY_STYLE_IID",
+            product_name=product_name,
+            sku_list_json=json.dumps([{"sku_code": sku_code}]),
+            specs_json=json.dumps({"material": "\u51b7\u8f67\u94a2\u7ba1\u548c\u73af\u4fddPP"}, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        db.add(KBQA(
+            question="What is the material?",
+            answer="The material is cold-rolled steel tubing and PP.",
+            product_id=product.id,
+            intent="product_question",
+            status="published",
+            auto_reply=True,
+        ))
+        entry = KnowledgeEntry(
+            source_type="faq",
+            title="Fixture material specification",
+            content="\u8fd9\u6b3e\u5546\u54c1\u7684\u6750\u8d28\u662f\u51b7\u8f67\u94a2\u7ba1\u548c\u73af\u4fddPP\u3002",
+            intent="product_question",
+            product_scope_json=json.dumps([product_name]),
+            risk_level="low",
+            status="published",
+            index_status="ready",
+            fact_type="material",
+            fact_review_status="verified",
+        )
+        db.add(entry)
+        db.flush()
+        db.add(KnowledgeChunk(
+            entry_id=entry.id,
+            chunk_text=entry.content,
+            source_type="faq",
+            intent="product_question",
+            product_scope_json=json.dumps([product_name]),
+            metadata_json=json.dumps({"fact_type": "material"}),
+            fact_review_status="verified",
+            fact_source_type="faq",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    app = main_module.create_app()
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client, sku_code
+
+
+def test_api_reply_style_keeps_grounded_material_facts(grounded_material_client):
+    client, sku_code = grounded_material_client
+    response = client.post("/ask/api/analyze", json={
         "message": "\u8fd9\u4e2a\u4ec0\u4e48\u6750\u8d28\uff1f",
-        "conversation_id": "test_reply_style_material",
-        "sku_code": "YH06K53B05S13",
+        "conversation_id": f"test_reply_style_material_{uuid.uuid4().hex}",
+        "sku_code": sku_code,
         "product_candidates": [
-            {"value": "YH06K53B05S13", "type": "sku_id_candidate", "verified": True},
+            {"value": sku_code, "type": "sku_id_candidate", "verified": True},
         ],
-    }).get_json()
+    })
+    assert response.status_code == 200
+    result = response.get_json()
 
     reply = result["suggested_reply"]
     assert "\n" in reply

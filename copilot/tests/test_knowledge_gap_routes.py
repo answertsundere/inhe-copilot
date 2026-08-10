@@ -61,18 +61,20 @@ def _seed_run(session_factory):
         db.close()
 
 
-def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch):
+def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_run(session_factory)
 
-    assert client.get("/api/eval/knowledge-gaps", headers={"X-User-Role": "operator"}).status_code == 200
+    set_admin_test_principal("operator")
+    assert client.get("/api/eval/knowledge-gaps", headers={"X-User-Role": "admin"}).status_code == 200
     forbidden = client.post(
         "/api/eval/knowledge-gaps/generate",
         json={"run_uid": "kgap_route_run"},
-        headers={"X-User-Role": "operator"},
+        headers={"X-User-Role": "admin"},
     )
     assert forbidden.status_code == 403
 
+    set_admin_test_principal("supervisor")
     generated = client.post(
         "/api/eval/knowledge-gaps/generate",
         json={"run_uid": "kgap_route_run"},
@@ -175,6 +177,7 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     assert mark_ready.status_code == 400
     assert "not ready" in mark_ready.get_json()["error"]
 
+    set_admin_test_principal("operator")
     forbidden_review = client.post(
         f"/api/eval/knowledge-gaps/{task_uid}/draft/{forced_draft.get_json()['draft']['draft_uid']}/review",
         json={"decision": "approve_for_queue"},
@@ -182,6 +185,7 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
     )
     assert forbidden_review.status_code == 403
 
+    set_admin_test_principal("supervisor")
     approve_for_queue = client.post(
         f"/api/eval/knowledge-gaps/{task_uid}/draft/{forced_draft.get_json()['draft']['draft_uid']}/review",
         json={
@@ -267,9 +271,10 @@ def test_knowledge_gap_routes_operator_read_and_supervisor_generate(monkeypatch)
         db.close()
 
 
-def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
+def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_run(session_factory)
+    set_admin_test_principal("supervisor")
     generated = client.post(
         "/api/eval/knowledge-gaps/generate",
         json={"run_uid": "kgap_route_run"},
@@ -285,6 +290,7 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
     assert update.status_code == 200
     assert update.get_json()["task"]["suggested_owner"] == "media_lead"
 
+    set_admin_test_principal("operator")
     forbidden_triage = client.patch(
         f"/api/eval/knowledge-gaps/{task_uid}/triage",
         json={"review_decision": "upload_media_asset"},
@@ -292,6 +298,7 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
     )
     assert forbidden_triage.status_code == 403
 
+    set_admin_test_principal("supervisor")
     triage = client.patch(
         f"/api/eval/knowledge-gaps/{task_uid}/triage",
         json={
@@ -361,7 +368,7 @@ def test_knowledge_gap_routes_update_approve_reject_verify(monkeypatch):
         db.close()
 
 
-def test_knowledge_gap_mark_ready_allows_verified_product_field_draft(monkeypatch):
+def test_knowledge_gap_mark_ready_allows_verified_product_field_draft(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     db = session_factory()
     try:
@@ -386,6 +393,7 @@ def test_knowledge_gap_mark_ready_allows_verified_product_field_draft(monkeypatc
     finally:
         db.close()
 
+    set_admin_test_principal("supervisor")
     draft = client.post(
         "/api/eval/knowledge-gaps/kgap_verified_product/draft",
         headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
@@ -401,6 +409,7 @@ def test_knowledge_gap_mark_ready_allows_verified_product_field_draft(monkeypatc
     assert mark_ready.get_json()["task"]["status"] == "pending_review"
     assert mark_ready.get_json()["draft"]["review_status"] == "ready_for_review"
 
+    set_admin_test_principal("operator")
     forbidden = client.post(
         "/api/eval/knowledge-gaps/kgap_verified_product/draft/mark-ready",
         headers={"X-User-Role": "operator"},
@@ -514,7 +523,7 @@ def test_publish_queue_routes_hide_and_block_superseded_items(monkeypatch):
     assert exported.status_code == 400
 
 
-def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monkeypatch):
+def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     payload = {
         "product_identity": {"item_id": "item-001", "sku_code": "sku-001"},
@@ -547,12 +556,14 @@ def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monke
     finally:
         db.close()
 
+    set_admin_test_principal("supervisor")
     supervisor = client.post(
         "/api/eval/knowledge-gap-publish-queue/kgpub_route_gate/simulate-publish",
         headers={"X-User-Role": "supervisor", "X-User-Name": "lead"},
     )
     assert supervisor.status_code == 403
 
+    set_admin_test_principal("admin")
     admin = client.post(
         "/api/eval/knowledge-gap-publish-queue/kgpub_route_gate/simulate-publish",
         headers={"X-User-Role": "admin", "X-User-Name": "admin"},
@@ -585,15 +596,17 @@ def test_publish_simulation_route_requires_admin_and_adds_audit_to_preview(monke
         db.close()
 
 
-def test_publish_capabilities_route_is_supervisor_readable(monkeypatch):
+def test_publish_capabilities_route_is_supervisor_readable(monkeypatch, set_admin_test_principal):
     client, _session_factory = _make_client(monkeypatch)
 
+    set_admin_test_principal("operator")
     operator = client.get(
         "/api/eval/knowledge-gap-publish-capabilities",
         headers={"X-User-Role": "operator"},
     )
     assert operator.status_code == 403
 
+    set_admin_test_principal("supervisor")
     supervisor = client.get(
         "/api/eval/knowledge-gap-publish-capabilities",
         headers={"X-User-Role": "supervisor"},

@@ -27,12 +27,19 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.repositories.file_policy_repository import FilePolicyRepository
+from app.services.canonical_conversation_turn_service import (
+    canonical_current_customer_turn_uid,
+)
 from app.services.admitted_answer_context_service import AdmittedAnswerContextService
 from app.services.formal_knowledge_database_guard_service import (
     fingerprint_formal_knowledge_tables,
 )
 from app.services.real_derived_evidence_fixture_service import (
     validate_real_derived_fixture,
+)
+from app.services.semantic_fact_type_service import (
+    GOAL_IDENTITY_SCHEMA_VERSION,
+    _goal_ref,
 )
 
 
@@ -43,7 +50,7 @@ EVALUATOR_SCHEMA_VERSION = "risk-tier-fast-path-evaluator/v1"
 SHUFFLE_SEED = 1101
 BASELINE_COMMIT = "2ceac9c204a5a878e3d2bac1db0b7091ca7256da"
 FROZEN_DATASET_SHA256 = (
-    "977489193e0a1041389a4cc923910cfb7af86d69e3bf259b909390f8fa0cb152"
+    "59583cf0806435a9f74559f0af4b5daadb731132335bf79b622c01d14b3021bf"
 )
 DOMAIN_POLICY_ID = "maternal_child_home"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -110,23 +117,35 @@ def _claim_for_message(
     message: str,
     claim_type: str,
     attribute_key: str,
-    goal_ref: str,
     risk_level: str = "low",
 ) -> dict[str, Any]:
-    return {
-        "goal_ref": goal_ref,
+    """Build the same canonical goal projection consumed by eligibility."""
+    source_digest = hashlib.sha256(message.encode("utf-8")).hexdigest()
+    claim = {
+        "schema_version": GOAL_IDENTITY_SCHEMA_VERSION,
         "goal_kind": "customer_goal",
+        "claim_type_status": "canonical",
         "claim_type": claim_type,
+        "claim_type_exact_match": True,
         "attribute_key": attribute_key,
+        "semantic_key": "",
+        "policy_intent_ref": "",
+        "policy_goal_family": "",
+        "policy_intent_kind": "",
+        "goal_summary": message,
         "source": "current_customer_message",
         "source_span_start": 0,
         "source_span_end": len(message),
-        "source_span_sha256": hashlib.sha256(message.encode("utf-8")).hexdigest(),
+        "source_span_sha256": source_digest,
+        "source_text_sha256": source_digest,
+        "source_turn_uid": canonical_current_customer_turn_uid(message),
         "owner": "turn_understanding_owner",
         "source_stage": "query_fact_type_classifier",
         "question": message,
         "risk_level": risk_level,
     }
+    claim["goal_ref"] = _goal_ref(claim)
+    return claim
 
 
 def _candidate_from_fact(
@@ -158,8 +177,6 @@ def _positive_request(
     fact: dict[str, Any],
     message: str,
 ) -> dict[str, Any]:
-    goal_seed = f"{index}|{fact['evidence_uid']}"
-    goal_ref = f"goal-{hashlib.sha256(goal_seed.encode()).hexdigest()[:20]}"
     return {
         "customer_message": message,
         "product_identity": dict(identity),
@@ -174,7 +191,6 @@ def _positive_request(
                     message=message,
                     claim_type=str(fact["fact_type"]),
                     attribute_key=str(fact.get("attribute_key") or ""),
-                    goal_ref=goal_ref,
                 )
             ],
         },

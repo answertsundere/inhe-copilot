@@ -38,7 +38,7 @@ def isolated_kb(monkeypatch):
     return session_factory
 
 
-def test_odor_query_uses_generic_rule_and_does_not_answer_with_load_capacity(isolated_kb):
+def test_odor_query_records_generic_rule_but_requires_direct_evidence_for_customer_reply(isolated_kb):
     from app.main import create_app, get_reply_service
     from app.models.kb_tables import KBProduct
     from app.services.analysis_execution_service import execute_analysis
@@ -81,16 +81,17 @@ def test_odor_query_uses_generic_rule_and_does_not_answer_with_load_capacity(iso
     reply = result.get("suggested_reply") or ""
 
     assert debug.get("query_fact_type") == "odor"
-    assert result.get("requires_human_review") is False
+    # A generic care rule supplies a safe boundary, not product-specific odor
+    # evidence. It remains review-only and must not be rendered as a fact.
+    assert result.get("requires_human_review") is True
     assert (result.get("generic_service_rule_used") or {}).get("rule_key") == "odor_new_product_ventilation_v1"
     assert (debug.get("generic_service_rule_used") or {}).get("rule_key") == "odor_new_product_ventilation_v1"
+    assert result.get("answer_mode") == "no_evidence_controlled_reply"
     assert "\u627f\u91cd" not in reply
     assert "15-30kg" not in reply
-    assert "\u901a\u98ce" in reply
-    assert display_name in reply
 
 
-def test_space_fit_query_uses_generic_rule_and_does_not_answer_with_load_capacity(isolated_kb):
+def test_space_fit_query_does_not_substitute_load_capacity_for_dimensions(isolated_kb):
     from app.main import create_app, get_reply_service
     from app.models.kb_tables import KBProduct
     from app.services.analysis_execution_service import execute_analysis
@@ -133,9 +134,9 @@ def test_space_fit_query_uses_generic_rule_and_does_not_answer_with_load_capacit
     reply = result.get("suggested_reply") or ""
 
     assert debug.get("query_fact_type") == "space_fit"
-    assert result.get("requires_human_review") is False
-    assert (result.get("generic_service_rule_used") or {}).get("rule_key") == "space_fit_measure_before_buy_v1"
+    # There is no product-specific dimensions evidence, so the response stays
+    # review-only rather than treating load capacity as a space-fit answer.
+    assert result.get("requires_human_review") is True
+    assert result.get("answer_mode") == "no_evidence_controlled_reply"
     assert "\u627f\u91cd" not in reply
     assert "15-30kg" not in reply
-    assert "\u9884\u7559\u4f4d\u7f6e" in reply or "\u5bbd" in reply
-    assert display_name in reply

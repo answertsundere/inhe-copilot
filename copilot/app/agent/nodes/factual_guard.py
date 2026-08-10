@@ -418,6 +418,7 @@ def _rewrite_safe_reply(state: dict, original_reply: str) -> str:
     intent = state.get("intent", "")
     answer_mode = state.get("answer_mode", "")
     order = state.get("live_order") or state.get("order")
+    logistics_trace = state.get("logistics_trace") or {}
     slots = state.get("slots", {}) or {}
     order_status = state.get("order_status", "")
     has_order_id = has_order_identifier(state)
@@ -429,7 +430,12 @@ def _rewrite_safe_reply(state: dict, original_reply: str) -> str:
             "\n建议您先确认一下：家人、门卫或邻居是否已代为签收？"
             "也可以查看一下门口、快递柜或驿站是否有包裹。"
         )
-        if order:
+        if (
+            order
+            and isinstance(logistics_trace, dict)
+            and logistics_trace.get("confirmed_delivered")
+            and not logistics_trace.get("low_confidence")
+        ):
             items = order.get("items", [])
             names = [i.get("name", "").strip() for i in items if i.get("name", "").strip()]
             item_names = "、".join(names[:3]) or "您购买的商品"

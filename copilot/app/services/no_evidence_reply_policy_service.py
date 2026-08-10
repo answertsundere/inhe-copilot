@@ -791,6 +791,11 @@ def apply_no_evidence_reply_policy(result: dict[str, Any], copilot_context: dict
 
     debug = dict(response.get("evidence_debug") or {})
     debug["answer_mode"] = "no_evidence_controlled_reply"
+    # This policy replaces a direct factual answer with a review-only handoff.
+    # Earlier retrieval diagnostics may describe a different, incompatible fact.
+    debug["evidence_sufficient"] = False
+    debug["direct_answer_supported"] = False
+    debug["answer_relevance_passed"] = False
     if inputs.get("query_fact_type"):
         debug["query_fact_type"] = inputs["query_fact_type"]
         debug["required_fact_types"] = [inputs["query_fact_type"]]

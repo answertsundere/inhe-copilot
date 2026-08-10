@@ -543,23 +543,36 @@ class TestBuildResponseEvidenceDebug:
 # ── Entry 812 专项验收 ──
 
 
-class TestEntry812Acceptance:
-    """Entry 812 专项验收"""
+class TestFaqReviewLifecycle:
+    """FAQ 审核状态与直接回答资格。"""
 
-    def test_entry_812_is_published_ready_with_material_content(self):
-        """Entry 812 已完成小批量审核发布，并保留材质/清洗内容"""
-        import sqlite3
-        conn = sqlite3.connect('data/knowledge_base.db')
-        conn.row_factory = sqlite3.Row
-        row = conn.execute('SELECT * FROM knowledge_entries WHERE id=812').fetchone()
-        conn.close()
+    def test_published_low_risk_faq_without_explicit_review_remains_direct_answer_eligible(self):
+        """Published low-risk FAQ follows the published-entry eligibility contract."""
+        from app.services.evidence_quality_gate import check_evidence_quality
 
-        assert row is not None
-        assert row['status'] == 'published'
-        assert row['index_status'] == 'ready'
-        assert row['source_type'] == 'faq'
-        assert row['fact_review_status'] is None
-        assert '填充' in row['content'] or '记忆棉' in row['content']
+        result = check_evidence_quality({
+            "faq_evidence": [{
+                "fact": "商品清洁方式请以对应说明为准。",
+                "source_type": "faq",
+                "entry_status": "published",
+                "index_status": "ready",
+                "fact_review_status": None,
+                "confidence": "high",
+                "entry_id": "fixture-published-faq",
+                "title": "清洁说明",
+            }],
+            "product_facts": [],
+            "order_facts": [],
+            "logistics_facts": [],
+            "policy_facts": [],
+            "sop_evidence": [],
+            "template_evidence": [],
+            "unknowns": [],
+            "conflicts": [],
+        })
+
+        assert result["evidence_allowed_for_direct_answer"] is True
+        assert result["blocked_items"] == []
 
     def test_entry_812_fact_review_status_not_verified(self):
         """Entry 812 fact_review_status 不是 verified → 不允许直接输出'记忆棉/填充棉'"""

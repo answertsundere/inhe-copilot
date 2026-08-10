@@ -714,6 +714,56 @@ def test_invalid_understanding_skips_media_and_composer_even_with_evidence(
     assert stages["model_first_answer_composer"]["status"] == "blocked"
 
 
+def test_degraded_understanding_preserves_existing_review_only_reply(
+    pipeline_harness,
+    monkeypatch,
+):
+    import app.services.analysis_execution_service as execution
+    import app.services.media_asset_service as media
+
+    calls = {"composer": 0, "media": 0}
+
+    def fake_execute_analysis(**kwargs):
+        graph_response = deepcopy(_graph_response())
+        graph_response["evidence_debug"].update({
+            "turn_understanding": {
+                "goal_understanding_status": "degraded",
+                "goal_understanding_diagnostics": [
+                    "llm_goal_understanding_unavailable",
+                ],
+                "requested_claims": [],
+            },
+        })
+        return kwargs["response_post_processor"](graph_response)
+
+    def fail_compose(*_args, **_kwargs):
+        calls["composer"] += 1
+        raise AssertionError("composer must not be called")
+
+    def fail_media(*_args, **_kwargs):
+        calls["media"] += 1
+        raise AssertionError("media selection must not be called")
+
+    monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(
+        "app.services.model_first_answer_composer_service."
+        "ModelFirstAnswerComposerService.compose",
+        fail_compose,
+    )
+    monkeypatch.setattr(media, "recommend_for_analyze_response", fail_media)
+
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert calls == {"composer": 0, "media": 0}
+    assert response["suggested_reply"] == _graph_response()["suggested_reply"]
+    assert response["draft_reply"] == ""
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["sendable_reply"] == ""
+    assert response["recommended_assets"] == []
+    assert response["turn_understanding_boundary"]["status"] == "degraded"
+
+
 def test_disabled_decision_shadow_reports_provider_block_without_a_candidate_reply(pipeline_harness, monkeypatch):
     monkeypatch.delenv("COPILOT_LLM_DECISION_SHADOW_ENABLED", raising=False)
 

@@ -1,85 +1,90 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+
+def _review_only_response() -> dict:
+    return {
+        "suggested_reply": "candidate reply",
+        "intent": "product_question",
+        "risk_level": "low",
+        "requires_human_review": True,
+        "can_send": False,
+        "evidence_debug": {},
+        "execution_debug": {},
+        "trace_steps": [],
+    }
 
 
 def test_copilot_context_promotes_sidecar_product_candidate(monkeypatch):
     from app.main import create_app
     import app.api.copilot_routes as routes
+    from app.services.analysis_pipeline_service import AnalysisPipelineService
 
     calls = {}
-    product = "ID 1046558780232 英禾喂养多功能收纳柜玩具柜"
+    product = "candidate product title 1046558780232"
 
-    class FakeReplyService:
-        def analyze(self, message, order_id="", tracking_no="", conversation_id="default", **kwargs):
-            calls["message"] = message
-            calls["product_name"] = kwargs.get("product_name", "")
-            calls["product_candidates"] = kwargs.get("product_candidates", [])
-            calls["copilot_context"] = kwargs.get("copilot_context", {})
-            return SimpleNamespace(to_dict=lambda: {
-                "suggested_reply": "ok",
-                "intent": "product_question",
-                "risk_level": "low",
-                "requires_human_review": False,
-                "evidence_debug": {},
-                "trace_steps": [],
-            })
+    def fake_run(_self, analysis_request):
+        calls["request"] = analysis_request
+        return _review_only_response()
 
-    monkeypatch.setattr(routes, "get_reply_service", lambda: FakeReplyService())
+    monkeypatch.setattr(routes, "get_reply_service", lambda: object())
+    monkeypatch.setattr(AnalysisPipelineService, "run", fake_run)
     app = create_app()
     app.config["TESTING"] = True
 
     with app.test_client() as client:
-        resp = client.post("/api/copilot/context", json={
-            "window_title": "千牛接待",
-            "customer_message": "我没找到，怎么让他自动感应",
+        response = client.post("/api/copilot/context", json={
+            "window_title": "support sidecar",
+            "customer_message": "how do I enable automatic sensing",
             "conversation_history": [
-                {"role": "customer", "text": "这个感应灯"},
-                {"role": "customer", "text": "为什么只能手动摁呢"},
-                {"role": "customer", "text": "我没找到，怎么让他自动感应"},
+                {"role": "customer", "text": "this sensing light"},
+                {"role": "customer", "text": "why is it manual only"},
+                {"role": "customer", "text": "how do I enable automatic sensing"},
             ],
             "product_candidates": [
-                {"value": product, "source": "uia_sidebar", "confidence": 0.9, "verified": True}
+                {
+                    "value": product,
+                    "source": "uia_sidebar",
+                    "confidence": 0.9,
+                    "verified": True,
+                }
             ],
         })
 
-    assert resp.status_code == 200
-    data = resp.get_json()
+    assert response.status_code == 200
+    data = response.get_json()
+    request = calls["request"]
     assert data["context_echo"]["product_name"] == product
     assert data["evidence_debug"]["copilot_context"]["product_name"] == product
     assert data["evidence_debug"]["product_candidates"][0]["value"] == product
-    assert calls["product_name"] == product
-    assert calls["product_candidates"][0]["value"] == product
-    assert product in calls["message"]
+    assert request.product_name == product
+    assert request.product_candidates[0]["value"] == product
+    assert request.customer_message == "how do I enable automatic sensing"
+    assert product not in request.customer_message
+    assert [turn["content"] for turn in request.copilot_context["conversation_history"]] == [
+        "this sensing light",
+        "why is it manual only",
+    ]
 
 
 def test_copilot_context_promotes_platform_trade_candidate(monkeypatch):
     from app.main import create_app
     import app.api.copilot_routes as routes
+    from app.services.analysis_pipeline_service import AnalysisPipelineService
 
     calls = {}
 
-    class FakeReplyService:
-        def analyze(self, message, order_id="", tracking_no="", conversation_id="default", **kwargs):
-            calls["message"] = message
-            calls["order_id"] = order_id
-            calls["copilot_context"] = kwargs.get("copilot_context", {})
-            return SimpleNamespace(to_dict=lambda: {
-                "suggested_reply": "ok",
-                "intent": "logistics_eta",
-                "risk_level": "low",
-                "requires_human_review": False,
-                "evidence_debug": {},
-                "trace_steps": [],
-            })
+    def fake_run(_self, analysis_request):
+        calls["request"] = analysis_request
+        return _review_only_response()
 
-    monkeypatch.setattr(routes, "get_reply_service", lambda: FakeReplyService())
+    monkeypatch.setattr(routes, "get_reply_service", lambda: object())
+    monkeypatch.setattr(AnalysisPipelineService, "run", fake_run)
     app = create_app()
     app.config["TESTING"] = True
 
     with app.test_client() as client:
-        resp = client.post("/api/copilot/context", json={
-            "customer_message": "我的快递什么时候到",
+        response = client.post("/api/copilot/context", json={
+            "customer_message": "when will my delivery arrive",
             "order_candidates": [
                 {
                     "value": "5118207015382036103",
@@ -91,9 +96,12 @@ def test_copilot_context_promotes_platform_trade_candidate(monkeypatch):
             ],
         })
 
-    assert resp.status_code == 200
-    data = resp.get_json()
+    assert response.status_code == 200
+    data = response.get_json()
+    request = calls["request"]
     assert data["context_echo"]["platform_trade_id"] == "5118207015382036103"
     assert data["context_echo"]["identifier_type"] == "platform_trade_id"
-    assert data["evidence_debug"]["copilot_context"]["platform_trade_id"] == "5118207015382036103"
-    assert calls["copilot_context"]["platform_trade_id"] == "5118207015382036103"
+    assert data["evidence_debug"]["copilot_context"]["platform_trade_id"] == (
+        "5118207015382036103"
+    )
+    assert request.copilot_context["platform_trade_id"] == "5118207015382036103"

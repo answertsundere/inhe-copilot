@@ -9,6 +9,7 @@ import pytest
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _COPILOT_DIR = os.path.join(_PROJECT_ROOT, "copilot")
 _PK_DIR = os.path.join(_PROJECT_ROOT, "product_knowledge")
+_LIVE_SK_KEY_RE = re.compile(r"(?<![A-Za-z0-9_])sk-[A-Za-z0-9_\-]{16,}")
 
 
 def _read_all_py(*directories):
@@ -98,7 +99,11 @@ class TestNoHardcodedSecrets:
         scrubbed = text
         for literal in allowed_literals:
             scrubbed = scrubbed.replace(literal, "")
-        assert not re.search(r"sk-[A-Za-z0-9_\-]{16,}", scrubbed)
+        assert not _LIVE_SK_KEY_RE.search(scrubbed)
+
+    def test_live_key_scan_requires_a_token_boundary(self):
+        assert not _LIVE_SK_KEY_RE.search("risk-tier-fast-path-qualification")
+        assert _LIVE_SK_KEY_RE.search("COPILOT_LLM_API_KEY=sk-abcdefghijklmnop")
 
 
 class TestJSTConfig:

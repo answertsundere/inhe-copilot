@@ -1,6 +1,7 @@
 """Turn-by-turn replay for sanitized real conversation eval cases."""
 
 import json
+import logging
 import time
 import queue
 import threading
@@ -27,6 +28,9 @@ from app.services.real_conversation_sidecar_context_service import (
 )
 from app.services.real_context_product_identity_service import build_conversation_media_reference, merge_product_candidates
 from app.services.pgvector_shadow_trace_service import build_pgvector_shadow_trace
+
+
+logger = logging.getLogger(__name__)
 
 
 FAILURE_TYPES = {
@@ -289,10 +293,7 @@ def _replay_progress_snapshot(
 def _record_replay_progress(db: Any, run: Any, progress: dict[str, Any], *, progress_log: bool = False) -> None:
     progress = sanitize_obj(progress)
     if progress_log:
-        try:
-            print("[replay-progress] " + json.dumps(progress, ensure_ascii=False), flush=True)
-        except UnicodeEncodeError:
-            print("[replay-progress] " + json.dumps(progress, ensure_ascii=True), flush=True)
+        logger.info("replay_progress=%s", json.dumps(progress, ensure_ascii=True))
     if run is None:
         return
     current = run.get_metadata() if hasattr(run, "get_metadata") else {}

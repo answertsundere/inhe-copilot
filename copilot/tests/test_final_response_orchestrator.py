@@ -73,6 +73,36 @@ def test_final_response_orchestrator_runs_audit_before_polish(monkeypatch):
     assert "final_semantic_fit_audit" in result["final_response_pipeline"]["order"]
 
 
+def test_final_response_orchestrator_preserves_evidence_relevance_when_final_fit_passes(monkeypatch):
+    """Semantic fit must not overwrite the upstream evidence relevance signal."""
+    def fake_audit(response, *, customer_message, copilot_context=None):
+        response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}
+        return response
+
+    def fake_polish(response, *, customer_message="", copilot_context=None):
+        return response
+
+    def fake_semantic_fit(response, *, customer_message, copilot_context=None):
+        return {"passed": True, "issues": [], "fallback_used": False}
+
+    monkeypatch.setattr(orchestrator, "audit_final_answer", fake_audit)
+    monkeypatch.setattr(orchestrator, "polish_customer_reply", fake_polish)
+    monkeypatch.setattr(orchestrator, "audit_customer_reply_semantic_fit", fake_semantic_fit)
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "Please share the specific issue for review.",
+            "requires_human_review": True,
+            "can_send": False,
+            "evidence_debug": {"answer_relevance_passed": False},
+        },
+        customer_message="Can you check what happened?",
+    )
+
+    assert result["evidence_debug"]["answer_relevance_passed"] is False
+    assert result["evidence_debug"]["final_response_relevance_passed"] is True
+
+
 def test_final_response_orchestrator_blocks_internal_language_after_polish(monkeypatch):
     def fake_audit(response, *, customer_message, copilot_context=None):
         response["final_answer_audit"] = {"passed": True, "mode": "fake", "issues": []}

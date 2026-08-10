@@ -202,10 +202,11 @@ def test_repair_task_routes_list_detail_generate_update_and_sanitize(monkeypatch
     assert updated["assigned_to"] == "knowledge_lead"
 
 
-def test_repair_task_routes_reject_operator(monkeypatch):
+def test_repair_task_routes_reject_operator(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_repair_task_run(session_factory)
 
+    set_admin_test_principal("operator")
     assert client.get("/api/eval/repair-tasks", headers={"X-User-Role": "operator"}).status_code == 403
     assert client.post(
         "/api/eval/repair-tasks/generate",

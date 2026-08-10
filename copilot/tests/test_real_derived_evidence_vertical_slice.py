@@ -68,7 +68,14 @@ def test_vertical_slice_uses_pack_convergence_and_keeps_preview_review_only(tmp_
             "--json-output", str(output_path),
         ],
         cwd=project,
-        env={**os.environ, "PYTHONPATH": str(project), "PYTHONUTF8": "1"},
+        # The formal runtime may be query-only. The vertical slice must still
+        # bind and write only its explicit disposable work database.
+        env={
+            **os.environ,
+            "PYTHONPATH": str(project),
+            "PYTHONUTF8": "1",
+            "COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY": "true",
+        },
         text=True,
         capture_output=True,
         check=False,

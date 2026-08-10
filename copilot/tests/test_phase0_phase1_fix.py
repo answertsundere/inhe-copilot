@@ -302,6 +302,77 @@ class TestNoLogisticsNoSigned:
         rewritten = result.get("suggested_reply", "")
         assert "已签收" not in rewritten or "核实" in rewritten
 
+    def test_signed_not_received_does_not_invent_signed_status_from_order_presence(self):
+        from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
+
+        state = {
+            "normalized_message": "\u663e\u793a\u7b7e\u6536\u4e86\uff0c\u4f46\u662f\u6211\u6ca1\u6536\u5230",
+            "intent": "delivery_not_received",
+            "order": {"items": [{"name": "\u5546\u54c1A"}]},
+            "live_order": None,
+            "logistics_trace": None,
+            "order_status": "",
+            "shipping_policy": {},
+            "matched_product_name": "",
+            "slots": {"order_id": "order-ref"},
+            "evidence": {"conflicts": [], "unknowns": []},
+            "need_clarification": False,
+            "trace_steps": [],
+        }
+
+        result = generate_logistics_reply(state)
+
+        assert "\u5df2\u7b7e\u6536" not in result["suggested_reply"]
+
+    def test_signed_not_received_offers_verification_without_guaranteeing_resolution(self):
+        from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
+
+        state = {
+            "normalized_message": "\u663e\u793a\u7b7e\u6536\u4e86\uff0c\u4f46\u662f\u6211\u6ca1\u6536\u5230",
+            "intent": "delivery_not_received",
+            "order": None,
+            "live_order": None,
+            "logistics_trace": None,
+            "order_status": "",
+            "shipping_policy": {},
+            "matched_product_name": "",
+            "slots": {"order_id": "order-ref"},
+            "evidence": {"conflicts": [], "unknowns": []},
+            "need_clarification": False,
+            "trace_steps": [],
+        }
+
+        result = generate_logistics_reply(state)
+
+        assert "\u6838\u5b9e" in result["suggested_reply"]
+        assert "\u8d1f\u8d23\u5230\u5e95" not in result["suggested_reply"]
+
+    def test_signed_not_received_can_reference_confirmed_logistics_trace(self):
+        from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
+
+        state = {
+            "normalized_message": "\u663e\u793a\u7b7e\u6536\u4e86\uff0c\u4f46\u662f\u6211\u6ca1\u6536\u5230",
+            "intent": "delivery_not_received",
+            "order": {"items": [{"name": "\u5546\u54c1A"}]},
+            "live_order": None,
+            "logistics_trace": {
+                "status": "delivered",
+                "confirmed_delivered": True,
+                "low_confidence": False,
+            },
+            "order_status": "",
+            "shipping_policy": {},
+            "matched_product_name": "",
+            "slots": {"order_id": "order-ref"},
+            "evidence": {"conflicts": [], "unknowns": []},
+            "need_clarification": False,
+            "trace_steps": [],
+        }
+
+        result = generate_logistics_reply(state)
+
+        assert "\u5df2\u7b7e\u6536" in result["suggested_reply"]
+
     def test_order_pending_no_signed(self):
         """待发货订单不说已签收"""
         from app.agent.nodes.generate_logistics_reply import generate_logistics_reply

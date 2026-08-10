@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,12 +11,14 @@ from scripts.qualify_risk_tier_fast_path import (
     DATASET_ID,
     FROZEN_DATASET_SHA256,
     NEGATIVE_MUTATIONS,
+    _claim_for_message,
     _runtime_identity,
     _sha256,
     _write_json,
     run_eligibility_matrix,
     validate_dataset,
 )
+from app.services.semantic_fact_type_service import GOAL_IDENTITY_SCHEMA_VERSION
 
 
 FIXTURE = (
@@ -50,11 +53,38 @@ def test_versioned_fixture_has_required_real_derived_coverage_and_privacy():
     assert manifest["privacy_scan"]["passed"] is True
     assert len(manifest["evaluator_source_sha256"]) == 64
     int(manifest["evaluator_source_sha256"], 16)
+    assert manifest["evaluator_source_sha256"] == hashlib.sha256(
+        (Path(__file__).parents[1] / "scripts" / "qualify_risk_tier_fast_path.py")
+        .read_bytes()
+    ).hexdigest()
     assert set(NEGATIVE_MUTATIONS) <= {
         case["mutation"]
         for case in dataset["cases"]
         if case["kind"] == "negative"
     }
+
+
+def test_positive_fixture_goals_match_current_canonical_identity_contract():
+    dataset = _load(FIXTURE)
+
+    for case in dataset["cases"]:
+        if case["kind"] != "positive":
+            continue
+        claim = case["request"]["understanding"]["requested_claims"][0]
+        message = case["request"]["customer_message"]
+        expected = _claim_for_message(
+            message=message,
+            claim_type=claim["claim_type"],
+            attribute_key=claim.get("attribute_key") or "",
+            risk_level=claim.get("risk_level") or "low",
+        )
+
+        assert claim["schema_version"] == GOAL_IDENTITY_SCHEMA_VERSION
+        assert claim["claim_type_status"] == "canonical"
+        assert claim["claim_type_exact_match"] is True
+        assert claim["source_turn_uid"] == expected["source_turn_uid"]
+        assert claim["source_text_sha256"] == expected["source_text_sha256"]
+        assert claim["goal_ref"] == expected["goal_ref"]
 
 
 def test_evaluator_labels_are_not_part_of_the_service_request_payload():

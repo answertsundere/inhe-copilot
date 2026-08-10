@@ -924,6 +924,11 @@ def _asset_to_reco(
         "i_id": asset.i_id,
         "sku_code": asset.sku_code,
         "product_name": asset.product_name,
+        # Preserve the existing review state for the later delivery contract.
+        # Recommendation alone is not delivery authorization.
+        "status": asset.status,
+        "audit_status": asset.audit_status,
+        "usable_for_agent": bool(asset.usable_for_agent),
         "confidence": asset.match_confidence or 0.0,
         "send_mode": "auto_when_platform_connected" if auto_level == "auto" else "manual",
         "match_reason": match_reason,

@@ -170,7 +170,8 @@ def test_repair_verification_retest_failed_moves_task_to_in_progress(monkeypatch
     result = RealConversationRepairVerificationService().verify_task("repair_verify_1", verified_by="lead")
 
     assert result["task"]["verification_status"] == "retest_failed"
-    assert "semantic_mismatch" in result["verification"]["remaining_failure_types"]
+    assert "rag_miss" in result["verification"]["remaining_failure_types"]
+    assert "needs_human_review" in result["verification"]["remaining_failure_types"]
     db = session_factory()
     try:
         task = db.query(EvalRepairTask).one()
@@ -220,20 +221,22 @@ def test_repair_verification_only_replays_related_turns(monkeypatch):
     assert called_turns == ["turn_buyer_2"]
 
 
-def test_repair_verification_api_permissions_dry_run_and_sanitized_output(monkeypatch):
+def test_repair_verification_api_permissions_dry_run_and_sanitized_output(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_task(session_factory)
 
+    set_admin_test_principal("operator")
     assert client.post(
         "/api/eval/repair-tasks/repair_verify_1/verify",
         json={"dry_run": True},
-        headers={"X-User-Role": "operator"},
+        headers={"X-User-Role": "supervisor"},
     ).status_code == 403
 
+    set_admin_test_principal("supervisor")
     response = client.post(
         "/api/eval/repair-tasks/repair_verify_1/verify",
         json={"dry_run": True},
-        headers={"X-User-Role": "supervisor"},
+        headers={"X-User-Role": "operator"},
     )
 
     assert response.status_code == 200

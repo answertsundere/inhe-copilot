@@ -20,6 +20,8 @@ import tempfile
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
@@ -29,11 +31,91 @@ from app.models.kb_tables import KBMediaAsset
 
 # ─── 公共 fixture ───────────────────────────────────────────────────
 
-@pytest.fixture(scope="module")
-def app():
+@pytest.fixture()
+def isolated_media_db(tmp_path, monkeypatch):
+    """Run media workflows against a disposable database, never recovered runtime data."""
+    import app.config as config_module
+    import app.db as db_module
+    import app.main as main_module
+    from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
+    from app.models.kb_tables import KBMediaAsset, KBQA
+
+    db_path = tmp_path / "media_assets.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(config_module, "KNOWLEDGE_DB_PATH", str(db_path))
+    monkeypatch.setattr(main_module, "KNOWLEDGE_DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    # This service binds SessionLocal at import time.  Patch that binding as
+    # well so recommendation tests never fall back to recovered runtime data.
+    from app.services import media_asset_service
+    monkeypatch.setattr(media_asset_service, "SessionLocal", session_factory)
+    for service_name in (
+        "_order_repo", "_product_repo", "_knowledge_repo", "_policy_repo",
+        "_product_knowledge_repo", "_risk_service", "_context_builder", "_output_guard",
+        "_reply_service", "_feedback_service", "_review_queue_service", "_reply_template_repo",
+        "_sop_repo", "_data_quality_service", "_quality_check_service",
+    ):
+        monkeypatch.setattr(main_module, service_name, None)
+    db_module.Base.metadata.create_all(bind=engine)
+
+    db = session_factory()
+    try:
+        readiness_entry = KnowledgeEntry(
+            source_type="faq",
+            title="Readiness fixture",
+            content="This isolated record exists only to exercise the knowledge readiness contract.",
+            intent="general",
+            status="published",
+            source_confidence=1.0,
+            fact_review_status="reviewed",
+            index_status="indexed",
+            content_hash="pytest_media_readiness_entry",
+        )
+        db.add(readiness_entry)
+        db.flush()
+        db.add(KnowledgeChunk(
+            entry_id=readiness_entry.id,
+            chunk_text="Isolated readiness fixture.",
+            chunk_index=0,
+            source_type="faq",
+            intent="general",
+            embedding_status="indexed",
+            fact_source_type="faq",
+            fact_review_status="reviewed",
+        ))
+        db.add(KBQA(
+            question="Readiness fixture question",
+            answer="Readiness fixture answer",
+            intent="general",
+            source_type="faq",
+            status="published",
+            content_hash="pytest_media_readiness_qa",
+        ))
+        db.add(KBMediaAsset(
+            i_id="YH04K14B01S03",
+            sku_code="YH04K14B01S03",
+            product_name="Baseline media product",
+            asset_type="install_video",
+            asset_title="Baseline installation video",
+            asset_url="https://example.test/media/install.mp4",
+            source="pytest",
+            content_hash="pytest_baseline_install_video",
+            status="approved",
+            audit_status="approved",
+            usable_for_agent=True,
+            refresh_status="ok",
+        ))
+        db.commit()
+    finally:
+        db.close()
+    return session_factory
+
+
+@pytest.fixture()
+def app(isolated_media_db):
     import app.models.kb_tables  # noqa: F401
-    from app.db import init_db
-    init_db()
     from app.main import create_app
     flask_app = create_app()
     flask_app.config["TESTING"] = True
@@ -93,7 +175,7 @@ def test_upload_route_allows_configured_label_studio_origin(tmp_path, monkeypatc
 
 
 @pytest.fixture(autouse=True)
-def _clean_test_assets():
+def _clean_test_assets(isolated_media_db):
     """每个测试前后清理 TEST_IID_001 测试素材，保证导入测试相互隔离。"""
     import app.models.kb_tables  # noqa: F401
     from app.db import SessionLocal
@@ -306,26 +388,29 @@ def test_api_list_and_stats(client):
     assert r.get_json()["total"] >= 1
 
 
-def test_api_approve_reject_and_permissions(client):
+def test_api_approve_reject_and_permissions(client, set_admin_test_principal):
     # operator 无权审核
-    r = client.post("/api/media-assets/1/approve", headers={"X-User-Role": "operator"})
+    set_admin_test_principal("operator")
+    r = client.post("/api/media-assets/1/approve")
     assert r.status_code == 403
 
     # supervisor 审核
-    r = client.post("/api/media-assets/1/approve", headers=_supervisor_headers())
+    set_admin_test_principal("supervisor")
+    r = client.post("/api/media-assets/1/approve")
     assert r.status_code == 200
     assert r.get_json()["asset"]["usable_for_agent"] is True
     assert r.get_json()["asset"]["status"] == "approved"
 
     # 还原
-    r = client.post("/api/media-assets/1/reject", headers=_supervisor_headers())
+    r = client.post("/api/media-assets/1/reject")
     assert r.status_code == 200
     assert r.get_json()["asset"]["usable_for_agent"] is False
 
 
-def test_api_import_permission(client):
+def test_api_import_permission(client, set_admin_test_principal):
     # operator 无权导入
-    r = client.post("/api/media-assets/import-dingtalk-report", headers={"X-User-Role": "operator"})
+    set_admin_test_principal("operator")
+    r = client.post("/api/media-assets/import-dingtalk-report")
     assert r.status_code == 403
 
 
@@ -663,7 +748,7 @@ def test_media_page_opens_and_has_no_duplicate_prefix(app):
         assert "/ask/api/kb/ask/api" not in content, f"{chunk} 中仍存在重复 API 前缀"
 
 
-def test_media_api_paths_under_ask_prefix(client):
+def test_media_api_paths_under_ask_prefix(client, set_admin_test_principal):
     """素材库接口统一通过 /ask/api/media-assets 可访问，权限正常。"""
     import app.models.kb_tables  # noqa: F401
     from app.db import SessionLocal
@@ -705,22 +790,24 @@ def test_media_api_paths_under_ask_prefix(client):
         assert r.status_code == 200
 
         # operator 无权 approve
-        r = client.post(f"/ask/api/media-assets/{aid}/approve", headers={"X-User-Role": "operator"})
+        set_admin_test_principal("operator")
+        r = client.post(f"/ask/api/media-assets/{aid}/approve")
         assert r.status_code == 403
 
         # supervisor approve
-        r = client.post(f"/ask/api/media-assets/{aid}/approve", headers=_supervisor_headers())
+        set_admin_test_principal("supervisor")
+        r = client.post(f"/ask/api/media-assets/{aid}/approve")
         assert r.status_code == 200
         assert r.get_json()["asset"]["status"] == "approved"
         assert r.get_json()["asset"]["usable_for_agent"] is True
 
         # supervisor reject
-        r = client.post(f"/ask/api/media-assets/{aid}/reject", headers=_supervisor_headers())
+        r = client.post(f"/ask/api/media-assets/{aid}/reject")
         assert r.status_code == 200
         assert r.get_json()["asset"]["status"] == "rejected"
 
         # supervisor update
-        r = client.post(f"/ask/api/media-assets/{aid}/update", json={"asset_title": "updated"}, headers=_supervisor_headers())
+        r = client.post(f"/ask/api/media-assets/{aid}/update", json={"asset_title": "updated"})
         assert r.status_code == 200
         assert r.get_json()["asset"]["asset_title"] == "updated"
     finally:
@@ -978,7 +1065,7 @@ def test_strict_delivery_media_requires_review_identity_and_matching_role():
     assert [block["type"] for block in wrong_role["reply_blocks"]] == ["text"]
 
 
-def test_api_analyze_recommended_assets_gating(client):
+def test_api_analyze_recommended_assets_gating(client, monkeypatch):
     """/api/analyze 只返回 approved+usable+ok 的素材；pending/rejected/needs_refresh/material_safety 不返回。
 
     使用测试 fixture 创建素材，不写死真实商品名/URL。
@@ -986,7 +1073,7 @@ def test_api_analyze_recommended_assets_gating(client):
     import app.models.kb_tables  # noqa: F401
     from app.db import SessionLocal
     from datetime import timedelta
-    import app.api.analyze_routes as analyze_routes
+    from app.services import analysis_execution_service as execution_module
 
     db = SessionLocal()
     try:
@@ -1028,12 +1115,10 @@ def test_api_analyze_recommended_assets_gating(client):
     finally:
         db.close()
 
-    # mock execute_analysis 避免依赖 LLM；返回一个带 installation intent 的响应
-    original_execute = getattr(analyze_routes, "execute_analysis", None)
-
     def _fake_execute(*args, **kwargs):
-        return {
+        response = {
             "intent": "product_question",
+            "evidence_debug": {"semantic_query": {"needs_visual_asset": True}},
             "context_used": {
                 "conversation_context_summary": {
                     "current_customer_message": "这个有图片吗？",
@@ -1041,8 +1126,9 @@ def test_api_analyze_recommended_assets_gating(client):
                 }
             },
         }
+        return kwargs["response_post_processor"](response)
 
-    analyze_routes.execute_analysis = _fake_execute
+    monkeypatch.setattr(execution_module, "execute_analysis", _fake_execute)
     try:
         payload = {
             "message": "这个有图片吗？",
@@ -1056,13 +1142,16 @@ def test_api_analyze_recommended_assets_gating(client):
         assert r.status_code == 200, r.get_data(as_text=True)
         data = r.get_json()
         recos = data.get("recommended_assets", [])
-        assert len(recos) == 1, f"应只返回 1 条 approved+ok 的 sku_image，实际 {len(recos)}"
+        assert len(recos) == 1
         a = recos[0]
         assert a["asset_type"] == "sku_image"
         assert a["i_id"] == "TEST_API_ANALYZE_001"
+        assert a["status"] == "approved"
+        assert a["usable_for_agent"] is True
         assert a["send_mode"] == "auto_when_platform_connected"
         for key in ["id", "asset_id", "asset_type", "asset_title", "asset_url",
-                    "product_name", "i_id", "sku_code", "send_mode", "match_reason"]:
+                    "product_name", "i_id", "sku_code", "status", "usable_for_agent",
+                    "send_mode", "match_reason"]:
             assert key in a, f"缺少字段 {key}"
 
         # material_safety 不应返回图片
@@ -1074,20 +1163,23 @@ def test_api_analyze_recommended_assets_gating(client):
                 {"value": "TEST_API_ANALYZE_001", "type": "sku_id_candidate", "source": "test", "verified": True}
             ],
         }
-        analyze_routes.execute_analysis = lambda *a, **k: {
-            "intent": "material_safety",
-            "context_used": {
-                "conversation_context_summary": {
-                    "current_customer_message": "这个有甲醛吗？安全吗？",
-                    "confirmed_product": "测试分析商品",
-                }
-            },
-        }
+        def _material_safety_execute(*args, **kwargs):
+            response = {
+                "intent": "material_safety",
+                "context_used": {
+                    "conversation_context_summary": {
+                        "current_customer_message": "这个有甲醛吗？安全吗？",
+                        "confirmed_product": "测试分析商品",
+                    }
+                },
+            }
+            return kwargs["response_post_processor"](response)
+
+        monkeypatch.setattr(execution_module, "execute_analysis", _material_safety_execute)
         r2 = client.post("/api/analyze", json=payload2)
         data2 = r2.get_json()
         assert data2.get("recommended_assets") == []
     finally:
-        analyze_routes.execute_analysis = original_execute
         db = SessionLocal()
         try:
             db.query(KBMediaAsset).filter(KBMediaAsset.i_id == "TEST_API_ANALYZE_001").delete()

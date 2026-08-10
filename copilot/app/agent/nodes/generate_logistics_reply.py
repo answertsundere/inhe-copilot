@@ -239,12 +239,16 @@ def generate_logistics_reply(state: dict) -> dict:
             "\n建议您先确认一下：家人、门卫或邻居是否已代为签收？"
             "也可以查看一下门口、快递柜或驿站是否有包裹。"
         )
-        if order:
+        if (
+            order
+            and isinstance(logistics_trace, dict)
+            and logistics_trace.get("confirmed_delivered")
+            and not logistics_trace.get("low_confidence")
+        ):
             items_text = _get_order_items_text(order)
             reply += f"\n我这边查到您的订单（{items_text}）显示已签收。"
         reply += (
-            "\n如果确认没有收到，麻烦您发一下订单截图，我会立即帮您联系快递核实并持续跟进。"
-            "\n请放心，我们会负责到底的。"
+            "\n如果确认没有收到，麻烦您发一下订单截图，我会为您登记并协助核实后续处理。"
         )
         return {
             "suggested_reply": reply,

@@ -89,10 +89,11 @@ def _seed_trends(session_factory):
         db.close()
 
 
-def test_trends_api_returns_aggregates_without_private_text(monkeypatch):
+def test_trends_api_returns_aggregates_without_private_text(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_trends(session_factory)
 
+    set_admin_test_principal("supervisor")
     response = client.get("/api/eval/trends?days=7", headers={"X-User-Role": "supervisor"})
 
     assert response.status_code == 200
@@ -111,11 +112,13 @@ def test_trends_api_returns_aggregates_without_private_text(monkeypatch):
     assert data["latest_daily_replay"]["schedule_uid"] == "daily_b"
 
 
-def test_trends_api_filters_and_rejects_operator(monkeypatch):
+def test_trends_api_filters_and_rejects_operator(monkeypatch, set_admin_test_principal):
     client, session_factory = _make_client(monkeypatch)
     _seed_trends(session_factory)
 
+    set_admin_test_principal("operator")
     assert client.get("/api/eval/trends", headers={"X-User-Role": "operator"}).status_code == 403
+    set_admin_test_principal("supervisor")
     response = client.get(
         "/api/eval/trends?days=7&suggested_fix_area=knowledge_rag",
         headers={"X-User-Role": "admin"},
