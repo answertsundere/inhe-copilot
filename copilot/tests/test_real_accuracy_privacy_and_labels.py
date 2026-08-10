@@ -12,6 +12,7 @@ from app.services.real_accuracy_label_service import (
 )
 from app.services.real_accuracy_privacy_service import (
     parse_conversation_context,
+    sanitize_gold_text,
     scan_privacy_output,
     validate_controlled_identifiers,
 )
@@ -132,6 +133,25 @@ def test_scanner_still_detects_concrete_delivery_addresses(value):
     assert "address_detected" in {
         item["reason_code"] for item in scan_privacy_output({"field": value})
     }
+
+
+def test_gold_sanitizer_redacts_address_created_by_whitespace_normalization():
+    raw = (
+        "\u6536\u8d27\u5730\u5740\uff1a\u5317\u4eac\u5e02\u671d\u9633\u533a"
+        "\u5e78\u798f\u8def\n12\u53f7"
+    )
+
+    sanitized = sanitize_gold_text(raw)
+
+    assert "[ADDRESS_REDACTED]" in sanitized
+    assert not scan_privacy_output({"field": sanitized})
+
+
+def test_gold_sanitizer_removes_legacy_control_characters_from_exported_text():
+    sanitized = sanitize_gold_text("??\x03??\x04???")
+
+    assert sanitized == "?? ?? ???"
+    assert all(ord(char) >= 32 or char in "\n\r\t" for char in sanitized)
 
 
 def _claim(**overrides):

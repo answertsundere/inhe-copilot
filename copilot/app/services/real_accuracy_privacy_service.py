@@ -25,6 +25,7 @@ _PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _LANDLINE_RE = re.compile(r"(?<!\d)0\d{2,3}[- ]?\d{7,8}(?!\d)")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 _LONG_ID_RE = re.compile(r"(?<!\d)\d{10,}(?!\d)")
+_UNSAFE_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SECRET_RE = re.compile(r"(?i)\b(?:token|secret|api[_-]?key|authorization|cookie|password)\b")
 _HTML_RE = re.compile(r"<[^>]+>|&(?:#\d+|#x[\da-f]+|[a-z]+);", re.I)
 _DATA_URL_RE = re.compile(r"data:[^\s]+", re.I)
@@ -98,15 +99,21 @@ def _link_token(raw_url: str) -> str:
 
 def _safe_text(raw: str) -> str:
     value = html.unescape(raw or "")
+    # Legacy chat exports contain terminal control bytes. They are neither
+    # customer-visible content nor safe structured-JSON text.
+    value = _UNSAFE_CONTROL_CHAR_RE.sub(" ", value)
     value = _URL_RE.sub(lambda match: _link_token(match.group(0)), value)
+    # Normalize before privacy matching. Normalizing after redaction can join
+    # fragments around a line break into a concrete address after the final
+    # address pass has already completed.
+    value = re.sub(r"\s+", " ", value).strip()
     value = sanitize_text(value)
     value = _EMAIL_RE.sub("[EMAIL_REDACTED]", value)
     value = _LANDLINE_RE.sub("[PHONE_REDACTED]", value)
     value = _ACCOUNT_RE.sub("[ACCOUNT_REDACTED]", value)
     value = _ADDRESS_RE.sub("[ADDRESS_REDACTED]", value)
     value = _LONG_ID_RE.sub("[IDENTIFIER_REDACTED]", value)
-    value = re.sub(r"\s+", " ", value).strip()
-    return value[:1800]
+    return value.strip()[:1800]
 
 
 def sanitize_gold_text(raw: Any) -> str:

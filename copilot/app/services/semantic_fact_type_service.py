@@ -58,8 +58,12 @@ _RAW_GOAL_FIELDS = {
     "semantic_key",
     "policy_intent_ref",
     "source_text",
+    "continued_from",
 }
-_RAW_GOAL_REQUIRED_FIELDS = _RAW_GOAL_FIELDS - {"semantic_key"}
+_RAW_GOAL_REQUIRED_FIELDS = _RAW_GOAL_FIELDS - {
+    "semantic_key",
+    "continued_from",
+}
 
 _CANONICAL_GOAL_FIELDS = {
     "schema_version",
@@ -123,6 +127,7 @@ MINIMAL_PROVIDER_OUTPUT_SCHEMA = {
                     "semantic_key": {"type": "string"},
                     "policy_intent_ref": {"type": "string"},
                     "source_text": {"type": "string"},
+                    "continued_from": {"type": "string"},
                 },
             },
         },
@@ -220,12 +225,18 @@ For each goal:
   one goal and occurs exactly once in the current customer_message. Copy it
   verbatim without normalization. Distinct goals must not reuse the same exact
   source fragment.
+- open_goal_candidates, when present, are server-owned aliases for still-open
+  customer goals from this conversation. Use continued_from only when the
+  current source_text continues exactly one candidate with the same goal kind,
+  claim type, attribute, semantic key, and policy intent. The alias is opaque:
+  do not infer, repeat, or create an alias. Do not emit continued_from for a
+  new request. Never add an omitted historical goal back into this output.
 
 Return this allowed shape and no additional fields. semantic_key may be
 omitted:
 {"goals":[{"goal_kind":"","claim_type_status":"","claim_type":"",
 "attribute_key":"","semantic_key":"","policy_intent_ref":"",
-"source_text":""}]}
+"source_text":"","continued_from":""}]}
 """
 
 
@@ -452,6 +463,53 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, str]]:
         candidates,
         key=lambda item: item["policy_intent_ref"],
     )
+
+
+def _trusted_open_conversation_goals(
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Read the internal open-goal projection owned by the Pipeline."""
+    from app.services.canonical_conversation_turn_service import (
+        normalize_trusted_answer_eligibility_owner_context,
+        normalize_trusted_conversation_goal_lifecycle_context,
+    )
+
+    context = state.get("copilot_context")
+    context = context if isinstance(context, dict) else {}
+    owner_context = normalize_trusted_answer_eligibility_owner_context(
+        context.get("_answer_eligibility_owner_context")
+    )
+    lifecycle = normalize_trusted_conversation_goal_lifecycle_context(
+        owner_context.get("conversation_goal_lifecycle")
+    )
+    if not lifecycle:
+        return []
+    return [
+        dict(goal)
+        for goal in lifecycle.get("open_goals") or []
+        if isinstance(goal, dict)
+    ]
+
+
+def _open_conversation_goal_candidates(
+    state: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Project server-owned open goals without exposing prior customer text."""
+    fields = (
+        "goal_alias",
+        "goal_kind",
+        "claim_type_status",
+        "claim_type",
+        "attribute_key",
+        "semantic_key",
+        "policy_intent_ref",
+        "policy_goal_family",
+        "policy_intent_kind",
+    )
+    return [
+        {field: str(goal.get(field) or "") for field in fields}
+        for goal in _trusted_open_conversation_goals(state)
+    ]
 
 
 def _canonical_fact_type_candidates() -> list[dict[str, str]]:
@@ -1175,6 +1233,8 @@ def _classify_with_llm(
         return None
 
     policy_intent_candidates = _policy_intent_candidates(state)
+    trusted_open_goals = _trusted_open_conversation_goals(state)
+    open_goal_candidates = _open_conversation_goal_candidates(state)
     source_turn_uid = _current_source_turn_uid(
         state,
         span_reference_text,
@@ -1185,6 +1245,8 @@ def _classify_with_llm(
         "canonical_fact_type_candidates": _canonical_fact_type_candidates(),
         "policy_intent_candidates": policy_intent_candidates,
     }
+    if open_goal_candidates:
+        payload["open_goal_candidates"] = open_goal_candidates
 
     diagnostics["attempted"] = True
     diagnostics["model_call_count"] = 1
@@ -1427,6 +1489,7 @@ def _classify_with_llm(
         policy_intent_candidates=policy_intent_candidates,
         canonical_goals_sink=canonical_goals,
         history_texts=history_texts,
+        open_goal_candidates=trusted_open_goals,
     )
     canonical_provenance = _canonical_provenance_violations(
         canonical_goals,
@@ -1487,6 +1550,7 @@ def _sanitize_llm_result(
     policy_intent_candidates: list[dict[str, Any]] | None = None,
     canonical_goals_sink: list[dict[str, Any]] | None = None,
     history_texts: list[str] | None = None,
+    open_goal_candidates: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(data, dict) or set(data) != _LLM_RESULT_FIELDS:
         return None
@@ -1496,12 +1560,15 @@ def _sanitize_llm_result(
         if isinstance(source_turn_uid, str)
         else ""
     ) or canonical_current_customer_turn_uid(message)
+    lifecycle_continuations: list[dict[str, str]] = []
     customer_goals, goal_understanding_status, goal_diagnostics = _sanitize_customer_goals(
         data.get("goals"),
         message=message,
         source_turn_uid=source_turn_uid,
         policy_intent_candidates=policy_intent_candidates,
         history_texts=history_texts,
+        open_goal_candidates=open_goal_candidates,
+        lifecycle_continuations_sink=lifecycle_continuations,
     )
     if isinstance(canonical_goals_sink, list):
         canonical_goals_sink.clear()
@@ -1579,7 +1646,7 @@ def _sanitize_llm_result(
         _visual_need_for_fact_type(item)
         for item in canonical_types
     )
-    return {
+    result = {
         "query_fact_type": fact_type,
         "query_fact_type_label": FACT_TYPE_LABELS.get(fact_type, fact_type),
         "confidence": 1.0,
@@ -1595,6 +1662,12 @@ def _sanitize_llm_result(
         "goal_understanding_status": goal_understanding_status,
         "goal_understanding_diagnostics": goal_diagnostics,
     }
+    if lifecycle_continuations:
+        result["conversation_goal_lifecycle"] = {
+            "schema_version": "conversation-goal-lifecycle/v1",
+            "continuations": lifecycle_continuations,
+        }
+    return result
 
 
 def _bounded_text(value: Any, limit: int) -> str:
@@ -1947,6 +2020,8 @@ def _sanitize_customer_goals(
     source_turn_uid: str = "",
     policy_intent_candidates: list[dict[str, Any]] | None = None,
     history_texts: list[str] | None = None,
+    open_goal_candidates: list[dict[str, Any]] | None = None,
+    lifecycle_continuations_sink: list[dict[str, str]] | None = None,
 ) -> tuple[list[dict[str, Any]], str, list[str]]:
     if value is None:
         return [], "degraded", ["customer_goals_missing"]
@@ -1966,10 +2041,26 @@ def _sanitize_customer_goals(
         if isinstance(item, dict)
         and _bounded_text(item.get("policy_intent_ref"), 96)
     }
+    from app.services.canonical_conversation_turn_service import (
+        normalize_conversation_goal_open_candidates,
+    )
+
+    normalized_open_goals = normalize_conversation_goal_open_candidates(
+        open_goal_candidates or []
+    )
+    if open_goal_candidates is not None and len(normalized_open_goals) != len(
+        open_goal_candidates
+    ):
+        return [], "invalid", ["conversation_goal_lifecycle_candidates_invalid"]
+    open_goal_by_alias = {
+        item["goal_alias"]: item for item in normalized_open_goals
+    }
     goals: dict[str, dict[str, Any]] = {}
     diagnostics: list[str] = []
     duplicate_provenance = False
     invalid_provenance = False
+    invalid_lifecycle_reference = False
+    used_continuation_aliases: set[str] = set()
     if len(value) > 12:
         diagnostics.append("customer_goals_limit_exceeded")
     for raw in value[:12]:
@@ -1980,6 +2071,63 @@ def _sanitize_customer_goals(
         if goal_kind not in ALLOWED_GOAL_KINDS:
             diagnostics.append("customer_goal_kind_invalid")
             continue
+
+        continued_from = _bounded_text(raw.get("continued_from"), 96)
+        continuation_candidate: dict[str, Any] | None = None
+        if "continued_from" in raw and not isinstance(
+            raw.get("continued_from"), str
+        ):
+            diagnostics.append("conversation_goal_lifecycle_alias_invalid")
+            invalid_lifecycle_reference = True
+            continue
+        if continued_from:
+            continuation_candidate = open_goal_by_alias.get(continued_from)
+            if continuation_candidate is None:
+                diagnostics.append("conversation_goal_lifecycle_alias_unknown")
+                invalid_lifecycle_reference = True
+                continue
+            if continued_from in used_continuation_aliases:
+                diagnostics.append("conversation_goal_lifecycle_alias_duplicate")
+                invalid_lifecycle_reference = True
+                continue
+            expected_identity = {
+                "goal_kind": str(continuation_candidate.get("goal_kind") or ""),
+                "claim_type_status": str(
+                    continuation_candidate.get("claim_type_status") or ""
+                ),
+                "claim_type": str(
+                    continuation_candidate.get("claim_type") or ""
+                ),
+                "attribute_key": str(
+                    continuation_candidate.get("attribute_key") or ""
+                ),
+                "semantic_key": str(
+                    continuation_candidate.get("semantic_key") or ""
+                ),
+                "policy_intent_ref": str(
+                    continuation_candidate.get("policy_intent_ref") or ""
+                ),
+            }
+            actual_identity = {
+                "goal_kind": goal_kind,
+                "claim_type_status": _bounded_text(
+                    raw.get("claim_type_status"), 24
+                ).lower(),
+                "claim_type": _bounded_text(raw.get("claim_type"), 80).lower(),
+                "attribute_key": _bounded_text(
+                    raw.get("attribute_key"), 80
+                ).lower(),
+                "semantic_key": _normalized_semantic_key(
+                    raw.get("semantic_key")
+                ),
+                "policy_intent_ref": _bounded_text(
+                    raw.get("policy_intent_ref"), 96
+                ).lower(),
+            }
+            if actual_identity != expected_identity:
+                diagnostics.append("conversation_goal_lifecycle_identity_mismatch")
+                invalid_lifecycle_reference = True
+                continue
 
         source_provenance, resolution_reason = (
             _resolve_source_span_provenance(
@@ -2091,8 +2239,28 @@ def _sanitize_customer_goals(
             duplicate_provenance = True
             continue
         goals[goal["goal_ref"]] = goal
+        if continuation_candidate is not None:
+            used_continuation_aliases.add(continued_from)
+            if isinstance(lifecycle_continuations_sink, list):
+                lifecycle_continuations_sink.append({
+                    "goal_ref": goal["goal_ref"],
+                    "continued_from_goal_ref": str(
+                        continuation_candidate["goal_ref"]
+                    ),
+                    "continued_from_alias": continued_from,
+                    "origin_source_turn_uid": str(
+                        continuation_candidate["source_turn_uid"]
+                    ),
+                    "origin_source_span_sha256": str(
+                        continuation_candidate["source_span_sha256"]
+                    ),
+                })
 
-    if duplicate_provenance or invalid_provenance:
+    if (
+        duplicate_provenance
+        or invalid_provenance
+        or invalid_lifecycle_reference
+    ):
         return [], "invalid", list(dict.fromkeys(diagnostics))
     status = "valid" if goals and not diagnostics else (
         "degraded" if goals else "invalid"

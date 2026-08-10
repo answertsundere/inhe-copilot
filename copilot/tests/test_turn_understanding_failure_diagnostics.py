@@ -158,9 +158,10 @@ def test_minimal_provider_schema_keeps_server_owned_fields_out():
         "semantic_key",
         "policy_intent_ref",
         "source_text",
+        "continued_from",
     }
     assert set(goal_schema["required"]) == (
-        set(goal_schema["properties"]) - {"semantic_key"}
+        set(goal_schema["properties"]) - {"semantic_key", "continued_from"}
     )
     assert goal_schema["additionalProperties"] is False
     for server_field in {
@@ -171,6 +172,8 @@ def test_minimal_provider_schema_keeps_server_owned_fields_out():
         "source_span_start",
         "source_span_end",
         "source_text_sha256",
+        "conversation_ref",
+        "source_span_sha256",
         "confidence",
         "status",
         "diagnostics",

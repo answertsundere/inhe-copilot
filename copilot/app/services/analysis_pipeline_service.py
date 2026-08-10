@@ -468,6 +468,13 @@ class AnalysisPipelineService:
         )
 
         context.pop("_answer_eligibility_owner_context", None)
+        public_lifecycle = context.pop("conversation_goal_lifecycle", None)
+        context.pop("_conversation_goal_lifecycle", None)
+        if public_lifecycle is not None:
+            context.setdefault("pipeline_diagnostics", []).append({
+                "stage": "canonical_input",
+                "type": "public_conversation_goal_lifecycle_removed",
+            })
         public_understanding = context.pop("turn_understanding", None)
         if isinstance(public_understanding, dict):
             removed = sorted(str(key) for key in public_understanding)
@@ -537,6 +544,22 @@ class AnalysisPipelineService:
             },
             "domain_policy_context": trusted_domain_policy_context,
         }
+        from app.tracing.repository import load_conversation_goal_lifecycle_context
+
+        lifecycle_context, lifecycle_status = (
+            load_conversation_goal_lifecycle_context(request.conversation_id)
+        )
+        if lifecycle_context:
+            trusted_eligibility_context[
+                "conversation_goal_lifecycle"
+            ] = lifecycle_context
+        if lifecycle_status != "disabled":
+            context.setdefault("pipeline_diagnostics", []).append({
+                "stage": "canonical_input",
+                "type": "conversation_goal_lifecycle",
+                "status": lifecycle_status,
+                "open_goal_count": len(lifecycle_context.get("open_goals") or []),
+            })
         reference_status = normalized_owner_context.get(
             "conversation_reference_status"
         )
@@ -576,6 +599,7 @@ class AnalysisPipelineService:
             "source": request.source,
             "conversation_turn_count": len(turns),
             "conversation_context_status": turn_diagnostics["status"],
+            "conversation_goal_lifecycle_status": lifecycle_status,
         }]
         if attachments:
             context["has_image_attachment"] = True
@@ -812,6 +836,16 @@ class AnalysisPipelineService:
 
         response, shadow_stages = self._attach_shadow_layers(response, request, identity)
         stages.extend(shadow_stages)
+        lifecycle_observation = self._record_conversation_goal_lifecycle(
+            response,
+            request,
+            understanding_verdict,
+        )
+        stages.append({
+            "stage": "conversation_goal_lifecycle",
+            "status": lifecycle_observation["status"],
+            "write_count": lifecycle_observation["write_count"],
+        })
         pipeline = {
             "version": PIPELINE_VERSION,
             "stages": stages,
@@ -828,6 +862,56 @@ class AnalysisPipelineService:
             "stages": stages,
         })
         return response
+
+    @staticmethod
+    def _record_conversation_goal_lifecycle(
+        response: dict[str, Any],
+        request: AnalysisPipelineRequest,
+        understanding_verdict: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Persist authoritative goal state without treating a draft as delivery."""
+        empty = {"status": "not_recorded", "write_count": 0}
+        if understanding_verdict.get("status") != "valid":
+            return empty
+        debug = (
+            response.get("evidence_debug")
+            if isinstance(response.get("evidence_debug"), dict)
+            else {}
+        )
+        understanding = response.get("turn_understanding")
+        if not isinstance(understanding, dict):
+            understanding = debug.get("turn_understanding")
+        if not isinstance(understanding, dict):
+            return empty
+        goals = [
+            dict(goal)
+            for goal in understanding.get("customer_goals") or []
+            if isinstance(goal, dict) and goal.get("goal_kind") == "customer_goal"
+        ]
+        lifecycle = understanding.get("conversation_goal_lifecycle")
+        continuations = (
+            lifecycle.get("continuations")
+            if isinstance(lifecycle, dict)
+            else []
+        )
+        from app.tracing.repository import record_conversation_goal_lifecycle
+
+        observation = record_conversation_goal_lifecycle(
+            request.conversation_id,
+            goals,
+            continuations,
+        )
+        status = str(observation.get("status") or "degraded")
+        write_count = int(observation.get("write_count") or 0)
+        response.setdefault("evidence_debug", {})[
+            "conversation_goal_lifecycle"
+        ] = {
+            "status": status,
+            "write_count": write_count,
+            "goal_count": len(goals),
+            "can_change_can_send": False,
+        }
+        return {"status": status, "write_count": write_count}
 
     @staticmethod
     def _turn_understanding_verdict(

@@ -53,6 +53,23 @@ _STRICT_EVALUATION_SOURCES = frozenset({
     "real_accuracy_baseline",
     "tier_d_long_conversation_simulation",
 })
+_CONVERSATION_GOAL_LIFECYCLE_SCHEMA_VERSION = "conversation-goal-lifecycle/v1"
+_CONVERSATION_GOAL_OPEN_FIELDS = frozenset({
+    "goal_alias",
+    "goal_ref",
+    "conversation_ref",
+    "goal_kind",
+    "claim_type_status",
+    "claim_type",
+    "attribute_key",
+    "semantic_key",
+    "policy_intent_ref",
+    "policy_goal_family",
+    "policy_intent_kind",
+    "source_turn_uid",
+    "source_span_sha256",
+    "status",
+})
 
 
 @dataclass(frozen=True)
@@ -120,6 +137,94 @@ def canonical_conversation_reference_status(
     }
 
 
+def normalize_conversation_goal_open_candidates(value: Any) -> list[dict[str, Any]]:
+    """Validate the server-owned open-goal projection before model use.
+
+    Goal text, customer identity, and provider output never cross this boundary.
+    A malformed candidate invalidates the complete projection instead of leaving
+    a partial list whose aliases could be confused with authoritative state.
+    """
+    if not isinstance(value, list) or len(value) > 12:
+        return []
+    aliases: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) - _CONVERSATION_GOAL_OPEN_FIELDS:
+            return []
+        if item.get("status") not in (None, "open"):
+            return []
+        goal_alias = str(item.get("goal_alias") or "").strip()
+        goal_ref = str(item.get("goal_ref") or "").strip()
+        conversation_ref = str(item.get("conversation_ref") or "").strip()
+        source_turn_uid = str(item.get("source_turn_uid") or "").strip()
+        source_span_sha256 = str(item.get("source_span_sha256") or "").strip()
+        goal_kind = str(item.get("goal_kind") or "").strip()
+        claim_type_status = str(item.get("claim_type_status") or "").strip()
+        if (
+            not re.fullmatch(r"open-goal-[0-9a-f]{24}", goal_alias)
+            or not re.fullmatch(r"goal-[0-9a-f]{16}", goal_ref)
+            or not re.fullmatch(r"conversation-[0-9a-f]{32}", conversation_ref)
+            or not re.fullmatch(r"turn-[0-9a-f]{20}", source_turn_uid)
+            or not re.fullmatch(r"[0-9a-f]{64}", source_span_sha256)
+            or goal_kind != "customer_goal"
+            or claim_type_status not in {"canonical", "unmapped"}
+            or goal_alias in aliases
+        ):
+            return []
+        string_fields = {
+            "claim_type",
+            "attribute_key",
+            "semantic_key",
+            "policy_intent_ref",
+            "policy_goal_family",
+            "policy_intent_kind",
+        }
+        if any(not isinstance(item.get(field, ""), str) for field in string_fields):
+            return []
+        if claim_type_status == "canonical":
+            if not str(item.get("claim_type") or "").strip():
+                return []
+            if str(item.get("semantic_key") or "").strip():
+                return []
+        elif str(item.get("claim_type") or "").strip():
+            return []
+        aliases.add(goal_alias)
+        normalized.append({
+            key: str(item.get(key) or "").strip()
+            for key in _CONVERSATION_GOAL_OPEN_FIELDS - {"status"}
+        })
+    return sorted(normalized, key=lambda item: item["goal_alias"])
+
+
+def normalize_trusted_conversation_goal_lifecycle_context(
+    value: Any,
+) -> dict[str, Any]:
+    """Accept only the Pipeline-owned lifecycle projection for one conversation."""
+    if not isinstance(value, dict) or set(value) != {
+        "schema_version", "owner", "conversation_ref", "open_goals"
+    }:
+        return {}
+    if (
+        value.get("schema_version") != _CONVERSATION_GOAL_LIFECYCLE_SCHEMA_VERSION
+        or value.get("owner") != "analysis_pipeline"
+    ):
+        return {}
+    conversation_ref = str(value.get("conversation_ref") or "").strip()
+    if not re.fullmatch(r"conversation-[0-9a-f]{32}", conversation_ref):
+        return {}
+    open_goals = normalize_conversation_goal_open_candidates(value.get("open_goals"))
+    if len(open_goals) != len(value.get("open_goals") or []):
+        return {}
+    if any(goal["conversation_ref"] != conversation_ref for goal in open_goals):
+        return {}
+    return {
+        "schema_version": _CONVERSATION_GOAL_LIFECYCLE_SCHEMA_VERSION,
+        "owner": "analysis_pipeline",
+        "conversation_ref": conversation_ref,
+        "open_goals": open_goals,
+    }
+
+
 def normalize_trusted_answer_eligibility_owner_context(
     value: Any,
 ) -> dict[str, Any]:
@@ -137,6 +242,7 @@ def normalize_trusted_answer_eligibility_owner_context(
         "provenance",
         "domain_policy_context",
         "conversation_reference_status",
+        "conversation_goal_lifecycle",
     }
     if set(raw) - allowed_top_level:
         return {}
@@ -311,6 +417,14 @@ def normalize_trusted_answer_eligibility_owner_context(
         }
         if set(reference_status) <= allowed_reference_keys:
             result["conversation_reference_status"] = dict(reference_status)
+    lifecycle_context = raw.get("conversation_goal_lifecycle")
+    if "conversation_goal_lifecycle" in raw:
+        normalized_lifecycle = normalize_trusted_conversation_goal_lifecycle_context(
+            lifecycle_context
+        )
+        if not normalized_lifecycle:
+            return {}
+        result["conversation_goal_lifecycle"] = normalized_lifecycle
     return result
 
 
