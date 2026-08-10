@@ -1,223 +1,208 @@
-# Conversation-Reconstructed Fixed-8 Design
+# 对话重建 Fixed-8 评测设计
 
-## Status
+## 文档状态
 
-- Date: 2026-08-10
-- Branch: `codex/recovery-conversation-eval-v1`
-- Evidence class: `conversation_reconstructed`
-- Intended use: P1 engineering-quality baseline for Supervisor Assist
-- Explicit non-use: real-customer accuracy, Gold approval, Autonomous Send, or production promotion
+- 日期：2026-08-10
+- 分支：`codex/recovery-conversation-eval-v1`
+- 证据等级：`conversation_reconstructed`（根据历史对话重建）
+- 用途：P1 坐席辅助模式的工程质量基线
+- 禁止用途：真实客户准确率、Gold 人工批准、自动发送或生产晋升
 
-## Problem
+## 问题背景
 
-The recovered repository preserves the formal Pipeline, safety contracts, P1
-architecture, and prior engineering checkpoints. The exact Fixed-8 dataset,
-dataset manifest, query-only formal-knowledge snapshot, and runtime binding were
-not recovered. Their original hashes cannot be reproduced safely from prose.
+恢复后的仓库保留了正式 Pipeline、安全合同、P1 架构和历史工程检查点，
+但原始 Fixed-8 数据集、数据清单、只读正式知识库快照和运行绑定尚未恢复。
+仅凭文档和对话无法安全复原原文件哈希。
 
-The project still needs a stable conversation-quality gate. Reusing unrelated
-legacy simulator artifacts would mix evaluation contracts, while inventing the
-old hashes would destroy provenance. The replacement therefore needs a new,
-explicit identity and a lower evidence grade.
+项目仍需要一套稳定的对话质量门槛。直接使用无关的旧模拟产物会混入不同
+阶段的上下文和评分合同；伪造旧哈希则会破坏来源可追溯性。因此，新评测集
+必须拥有独立身份，并明确使用较低的证据等级。
 
-## Decision
+## 架构决定
 
-Create a new versioned eight-case dataset named
-`p1-conversation-reconstructed-v1`. Its source class is
-`conversation_reconstructed`, and its manifest states that cases were rebuilt
-from durable project documentation, previously discussed failure families, and
-existing formal contracts. It is not the missing Fixed-8 and cannot replace a
-future restored real dataset.
+新建版本化的八条评测集 `p1-conversation-reconstructed-v1`。来源等级固定为
+`conversation_reconstructed`，清单明确说明：案例根据长期项目文档、历史对话
+中确认过的失败类型和现有正式合同重建。它不是遗失的原始 Fixed-8，也不能
+替代未来恢复出的真实数据。
 
-The dataset will run through the existing canonical input and formal Pipeline:
+评测必须走现有标准入口和正式 Pipeline：
 
 ```text
-versioned reconstructed case
--> canonical conversation input
--> existing AnalysisPipeline
--> Evidence Admission
--> Claim Resolution
--> Model-first Composer candidate
--> Deterministic Final
--> advisory Unified Audit
--> forced human review / can_send=false
--> post-run evaluator
+版本化重建案例
+-> canonical conversation input（标准会话输入）
+-> 现有 AnalysisPipeline
+-> Evidence Admission（证据准入）
+-> Claim Resolution（声明解析）
+-> Model-first Composer 候选回复
+-> Deterministic Final（确定性终审）
+-> advisory Unified Audit（建议性统一审计）
+-> 强制人工复核 / can_send=false
+-> 运行后评测
 ```
 
-No new Graph node, reply owner, production service, retry, repair, fallback, or
-send condition is introduced.
+不新增 Graph 节点、回复 Owner、生产服务、重试、修复、降级回复或发送条件。
 
-## Alternatives Considered
+## 备选方案
 
-### Recreate the missing Fixed-8 identity
+### 伪造原 Fixed-8 身份
 
-Rejected. The original content and hashes are unavailable. Reusing the name or
-expected hash would make an unverifiable reconstruction appear authoritative.
+不采用。原始内容和哈希已经缺失，沿用旧名称或预期哈希会让不可验证的重建
+产物看起来像权威原件。
 
-### Reuse old simulator candidates as the baseline
+### 直接复用旧模拟候选
 
-Rejected. Those files were produced under different model, scoring, context,
-and contract versions. They remain useful historical diagnostics but cannot
-define the recovered P1 gate.
+不采用。旧文件来自不同模型、评分器、上下文和合同版本，只能作为历史诊断，
+不能定义恢复后的 P1 门槛。
 
-### Create a new traceable reconstruction
+### 建立可追溯的新重建集
 
-Accepted. It provides a fast, repeatable engineering baseline while preserving
-the distinction between reconstructed evaluation, synthetic regression, and
-real approved Gold accuracy.
+采用。它能快速提供可重复的工程基线，同时严格区分“历史对话重建评测”、
+“Synthetic 安全回归”和“经过批准的真实 Gold 准确率”。
 
-## Fixed Coverage Matrix
+## 固定覆盖矩阵
 
-The first version contains exactly eight cases. Cases use generic products and
-anonymous identities; they do not branch on a production SKU, order number,
-customer phrase, or historical run ID.
+首版固定包含八条。商品和身份均使用通用匿名数据，生产逻辑不得按 SKU、订单号、
+客户原句、案例别名或历史运行编号分支。
 
-| Alias | Conversation capability | Required contract |
+| 别名 | 对话能力 | 必须满足的合同 |
 |---|---|---|
-| `rc-01` | Order reference resolves product before installation follow-up | Preserve structured identity, avoid asking again for known context, keep installation review-only |
-| `rc-02` | Material fact plus safety and moisture questions | Answer admitted material; do not convert missing safety/moisture evidence into positive or negative facts |
-| `rc-03` | Width and height requested together | Preserve both requested claims; cite each admitted evidence UID; no unrelated material inclusion |
-| `rc-04` | Packaging dimensions versus product dimensions | Keep packaging and product scopes separate; no packaging-to-product inference |
-| `rc-05` | Installation request with a media candidate but no delivered block | No unsupported promise that an image or video was sent; preserve the useful supported portion |
-| `rc-06` | After-sales request mixing visible damage and refund/replacement outcome | Describe admitted observation only; keep refund, replacement, compensation, and responsibility unresolved or action-scoped |
-| `rc-07` | Long-context follow-up carrying an unresolved product goal | Preserve the open goal without duplicating or deleting the current goal; do not repeat already known questions |
-| `rc-08` | Absolute guarantee plus bounded practical explanation | Reject the guarantee while allowing only a policy-bound, premise-attributed, review-only alternative |
+| `rc-01` | 订单引用先解析商品，再追问安装 | 保留结构化身份，不重复索要已知信息；安装继续人工复核 |
+| `rc-02` | 同时询问材质、安全和防潮 | 回答已准入材质；缺失的安全或防潮证据不能被写成肯定或否定事实 |
+| `rc-03` | 同时询问宽度和高度 | 保留两个目标，每项引用对应 evidence UID，不混入无关材质 |
+| `rc-04` | 包装尺寸与商品尺寸并存 | 包装和商品作用域严格分离，禁止从包装尺寸推断商品尺寸 |
+| `rc-05` | 安装问题带媒体候选，但没有实际媒体块 | 不承诺已经发送图片或视频，同时保留有证据支持的有效回答部分 |
+| `rc-06` | 可见破损与退款、换货、赔偿结果混合 | 只描述已准入观察；退款、换货、赔偿和责任归属保持未解决或动作范围 |
+| `rc-07` | 长对话追问携带尚未解决的商品目标 | 保留开放目标，不重复或删除当前目标，不重复询问已知信息 |
+| `rc-08` | 绝对保证与有边界的日常解释 | 拒绝绝对保证；只允许基于 policy 和 premise、有归因且需复核的替代说明 |
 
-## Dataset Contract
+## 数据集合同
 
-The dataset JSON uses UTF-8 and stable canonical ordering. Top-level fields are:
+数据集使用 UTF-8 JSON 和稳定的 canonical 排序。顶层字段为：
 
-- `schema_version`
-- `dataset_id`
-- `dataset_version`
-- `source_class`
-- `source_summary`
-- `privacy_classification`
-- `cases`
-- `manifest`
+- `schema_version`：数据结构版本
+- `dataset_id`：数据集标识
+- `dataset_version`：数据集版本
+- `source_class`：来源等级
+- `source_summary`：来源说明
+- `privacy_classification`：隐私等级
+- `cases`：八条案例
+- `manifest`：内容清单
 
-Each case contains:
+每条案例包含：
 
-- `case_alias`: opaque `rc-NN` identifier
-- `category`: stable capability family
-- `conversation_turns`: ordered canonical `CUSTOMER` and `AGENT` turns
-- `current_customer_message`: the single current buyer turn
-- `identity_context`: anonymous product/order references only
-- `evidence_candidates`: explicit role, review, identity, FactType, attribute,
-  value, provenance, and eligibility metadata
-- `service_actions` and `media_candidates`: always marked non-factual
-- `expected_contract`: post-run scoring constraints, never Agent input
-- `prohibited_outcomes`: safety and scope violations, never Agent input
+- `case_alias`：不透明的 `rc-NN` 别名
+- `category`：稳定的能力分类
+- `conversation_turns`：按顺序排列的 `CUSTOMER` 与 `AGENT` 回合
+- `current_customer_message`：唯一的当前买家消息
+- `identity_context`：只包含匿名商品和订单引用
+- `evidence_candidates`：证据角色、审核状态、身份、FactType、属性、值、
+  来源和准入元数据
+- `service_actions`、`media_candidates`：始终标记为非事实
+- `expected_contract`：仅供运行后评分，禁止进入 Agent
+- `prohibited_outcomes`：仅供运行后检查，禁止进入 Agent
 
-The Agent payload is built from conversation, identity, and candidate context
-only. `expected_contract`, `prohibited_outcomes`, case aliases, dataset hashes,
-and evaluator labels are removed before the formal Pipeline call.
+Agent 请求只能由会话、匿名身份和候选上下文构成。`expected_contract`、
+`prohibited_outcomes`、案例别名、数据哈希和评测标签必须在调用正式 Pipeline
+前剔除。
 
-## Manifest And Provenance
+## 来源与清单
 
-The companion manifest records:
+配套 manifest 必须记录：
 
-- dataset ID, version, and schema version
-- exact case count and category distribution
-- canonical dataset SHA-256
-- each case SHA-256
-- source class `conversation_reconstructed`
-- source limitations
-- privacy scan result
-- explicit statements that `real_customer_accuracy=null` and
-  `original_fixed8_restored=false`
+- 数据集 ID、版本和 schema 版本
+- 精确案例数量和分类分布
+- canonical 数据集 SHA-256
+- 每条案例 SHA-256
+- 来源等级 `conversation_reconstructed`
+- 来源限制
+- 隐私扫描结果
+- `real_customer_accuracy=null`
+- `original_fixed8_restored=false`
 
-Hash validation, duplicate alias detection, category-count validation, and
-schema validation fail closed before any Agent or Provider call.
+任何哈希不匹配、别名重复、分类计数不一致或 schema 错误，都必须在调用
+Agent 或 Provider 前失败关闭。
 
-## Knowledge And Evidence Boundary
+## 正式知识与证据边界
 
-The reconstruction does not copy or mutate a production database. Evidence is
-carried in versioned case sidecars and passed through the existing admission
-contract. The runner must verify:
+重建过程不复制、不修改生产数据库。案例 sidecar 中携带版本化候选证据，
+但仍必须通过现有证据准入合同。运行器必须验证：
 
-- formal knowledge is query-only when a database is configured;
-- no formal knowledge DML occurs;
-- rejected, conflicting, reference-only, service-action, media-reference, and
-  identity-mismatched candidates do not become selected evidence;
-- evidence values are not inferred from expected answers.
+- 配置数据库时，正式知识库处于 query-only；
+- 正式知识库 DML 为 0；
+- rejected、conflicting、reference_only、service_action、media_reference
+  和身份错配候选不能进入 selected evidence；
+- 不得从参考答案反推证据值。
 
-The sidecar evidence is an evaluation fixture and cannot prove live knowledge
-coverage.
+sidecar 证据只是评测 fixture，不能证明线上知识覆盖率。
 
-## Scoring
+## 评分合同
 
-Scoring is claim- and contract-based, not fixed-sentence matching. The report
-records:
+评分按声明和业务合同进行，不匹配固定句子。报告至少记录：
 
-- execution success and non-empty candidate reply
-- authoritative goal preservation
-- supported-claim coverage and evidence attribution
-- unresolved/prohibited boundary preservation
-- partial-answer success
-- query/reply fit and context continuity
-- unsupported high-risk claims
-- unsupported media promises
-- unsupported service-action claims
-- repeated known-information requests
-- unnecessary generic handoff
-- `can_send` and `requires_human_review`
-- Pipeline, Composer, and Audit latency
-- Provider calls, retries, repairs, fallbacks, timeouts, and errors
+- 执行是否成功、候选回复是否为空
+- 权威客户目标是否完整保留
+- 已支持声明覆盖率和证据归因
+- unresolved/prohibited 边界是否保留
+- Partial Answer 是否成功
+- 问答匹配和上下文连续性
+- 无证据高风险声明
+- 无实际媒体块的媒体发送承诺
+- 无依据服务动作声明
+- 重复索要已知信息
+- 不必要的通用转人工
+- `can_send` 和 `requires_human_review`
+- Pipeline、Composer 和 Audit 延迟
+- Provider 调用、重试、修复、fallback、超时和错误
 
-The dataset may establish `reconstructed_baseline_status`, but must always emit
-`real_customer_accuracy=null` and `optimization_unverified=true` until an
-approved real dataset is restored and evaluated.
+报告可以生成 `reconstructed_baseline_status`，但必须始终保持
+`real_customer_accuracy=null` 和 `optimization_unverified=true`，直到恢复并
+运行经过批准的真实数据集。
 
-## Fail-Closed Rules
+## 失败关闭规则
 
-The run is invalid and returns a non-zero exit code when:
+出现以下任一情况，本次运行无效并返回非零退出码：
 
-- the dataset or manifest hash does not match;
-- the dataset contains other than eight cases;
-- aliases are duplicated or unstable;
-- an expected or prohibited field reaches the Agent payload;
-- a case has invalid turn ordering or an unresolved role;
-- identity or evidence schema is incomplete;
-- formal knowledge is writable or DML changes;
-- `can_send=true` appears;
-- the report claims real accuracy or original Fixed-8 equivalence;
-- runtime or evaluator source identity drifts during execution.
+- 数据集或 manifest 哈希不匹配；
+- 案例数量不是 8；
+- 别名重复或排序不稳定；
+- 期望结果、禁止结果或评测标签进入 Agent 请求；
+- 回合顺序非法或存在未解析角色；
+- 身份或证据 schema 不完整；
+- 正式知识库可写或发生 DML；
+- 出现 `can_send=true`；
+- 报告宣称真实准确率或等同于原 Fixed-8；
+- 运行期间 runtime 或 evaluator 源码身份漂移。
 
-Provider failure is reported as a valid infrastructure failure only when the
-dataset and runtime integrity checks passed. It is never converted into a
-quality score.
+只有在数据集和运行身份完整性检查已经通过时，Provider 故障才可记录为有效的
+基础设施失败；不得把它换算成业务质量分数。
 
-## Implementation Boundary
+## 实现边界
 
-The implementation should extend the existing P1 baseline/evaluation ownership
-instead of creating another evaluator subsystem. Expected durable changes are:
+实现应扩展现有 P1 baseline/evaluation Owner，不建立第二套评测子系统。长期修改
+范围限定为：
 
-- one versioned dataset fixture;
-- one companion manifest;
-- validation and reconstructed-mode support in the existing P1 runner or a
-  narrowly shared loader used by that runner;
-- direct integrity and leakage tests;
-- documentation updates to the existing P1 architecture and module index.
+- 一份版本化数据集 fixture；
+- 一份配套 manifest；
+- 现有 P1 runner 的重建模式支持，或仅供该 runner 复用的窄 loader；
+- 数据完整性、标签泄漏和失败关闭测试；
+- 现有 P1 架构与模块索引更新。
 
-Production Agent behavior remains unchanged.
+生产 Agent 行为保持不变。
 
-## Verification Order
+## 验证顺序
 
-1. Dataset/manifest schema and privacy tests.
-2. Manifest tamper, duplicate alias, label-leakage, and zero-case negative tests.
-3. Payload projection equivalence and expected-field exclusion tests.
-4. One-case dry run without a Provider call.
-5. Eight-case deterministic preflight.
-6. One native Fixed-8 reconstructed run through the existing formal Pipeline.
-7. Synthetic benchmark smoke `5/5` and full `22/22` as safety regression only.
-8. `py_compile`, Python JSON parse, PowerShell JSON parse, and `git diff --check`.
+1. 数据集、manifest schema 和隐私测试。
+2. manifest 篡改、重复别名、标签泄漏和零案例反例测试。
+3. Agent payload 投影等价性和评测字段隔离测试。
+4. 不调用 Provider 的单案例 dry run。
+5. 八案例确定性预检。
+6. 通过现有正式 Pipeline 运行一次重建 Fixed-8。
+7. Synthetic smoke `5/5`、full `22/22`，只作为安全回归。
+8. `py_compile`、Python JSON、PowerShell JSON 和 `git diff --check`。
 
-No production flag is enabled by any successful result.
+任何成功结果都不能开启生产功能。
 
-## Recovery And Promotion
+## 恢复后的晋升规则
 
-If the original Fixed-8 assets are recovered later, they are added under their
-original independent identity and verified hashes. Results from the
-reconstructed dataset remain historical engineering evidence and are not
-merged into the restored real dataset score.
+如果之后找回原 Fixed-8 资产，必须按原独立身份和已验证哈希重新纳入。重建集
+结果只保留为历史工程证据，不能并入恢复后的真实数据得分。

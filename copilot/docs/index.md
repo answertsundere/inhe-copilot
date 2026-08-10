@@ -49,9 +49,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   plus the P1.2k.6i 25-file disabled bounded-inference/Audit checkpoint
   addendum.
 - `docs/superpowers/specs/2026-08-10-conversation-reconstructed-fixed8-design.md`
-  - approved design for a provenance-explicit eight-case reconstructed P1
-    engineering baseline; it cannot claim real-customer accuracy or replace the
-    missing original Fixed-8 assets.
+  - 已批准的八案例 P1 对话重建工程基线设计；来源可追溯，但不得宣称真实客户
+    准确率，也不能替代尚未恢复的原始 Fixed-8 资产。
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
