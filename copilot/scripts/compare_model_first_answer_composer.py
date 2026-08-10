@@ -68,14 +68,18 @@ GOAL_FUNNEL_BREAKPOINTS = {
 _PROHIBITED_AGENT_FIELDS = {
     "accuracy_claim_allowed",
     "correct_answer",
+    "expected_contract",
     "expected_claims",
     "forbidden_claims",
     "gold_reply",
     "pass_criteria",
     "reference_label",
+    "reconstruction_alias",
     "required_actions",
     "rubric",
     "scoring_contract",
+    "prohibited_outcomes",
+    "source_class",
 }
 _SYSTEM_TONE_TERMS = (
     "帮您核对",

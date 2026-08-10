@@ -13,6 +13,7 @@ from app.services.high_quality_long_conversation_review_service import (
 from scripts.run_p1_gold_conversation_baseline import (
     P1BaselineIntegrityError,
 )
+from scripts import compare_model_first_answer_composer as evaluator
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +92,77 @@ def test_reconstructed_fixture_passes_runner_preflight():
     assert inventory["scenario_count"] == contract.case_count
     assert inventory["conversation_history_turn_count"] == 40
     assert manifest["content_sha256"] == contract.dataset_sha256
+
+
+def test_reconstructed_labels_remain_outside_agent_payload():
+    dataset = json.loads(_DATASET_PATH.read_text(encoding="utf-8"))
+
+    payload = evaluator._agent_payload(dataset["scenarios"][0])
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    for field in (
+        "expected_contract",
+        "prohibited_outcomes",
+        "reconstruction_alias",
+        "source_class",
+    ):
+        assert field not in serialized
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "expected_contract",
+        "prohibited_outcomes",
+        "reconstruction_alias",
+        "source_class",
+    ),
+)
+def test_reconstructed_evaluation_fields_are_rejected_inside_agent_payload(
+    field,
+):
+    dataset = json.loads(_DATASET_PATH.read_text(encoding="utf-8"))
+    scenario = deepcopy(dataset["scenarios"][0])
+    scenario["api_request_template"][field] = "forbidden"
+
+    with pytest.raises(ValueError, match=f"evaluation_field_leakage:{field}"):
+        evaluator._agent_payload(scenario)
+
+
+def test_reconstructed_checkpoint_and_summary_keep_evidence_class_explicit():
+    contract = p1_baseline._resolve_dataset_contract(
+        "conversation-reconstructed-v1"
+    )
+    checkpoint = p1_baseline._checkpoint_payload(
+        contract=contract,
+        dataset_hash=contract.dataset_sha256,
+        runtime={
+            "runtime_commit": "a" * 40,
+            "source_tree_sha256": "b" * 64,
+        },
+        runner_source_sha256="c" * 64,
+        formal_knowledge_before={},
+        dml_start_offset=0,
+        completed_files=[],
+    )
+    summary = p1_baseline._summary_payload(
+        contract=contract,
+        observations=[],
+        scored_rows=[],
+        deterministic_summary={},
+        status="incomplete_execution",
+        integrity_stop_reason="",
+        owner_counts={},
+        formal_knowledge={},
+    )
+
+    for payload in (checkpoint, summary):
+        assert payload["dataset_contract"] == contract.contract_name
+        assert payload["source_class"] == "conversation_reconstructed"
+        assert payload["real_customer_accuracy"] is None
+        assert payload["optimization_unverified"] is True
+        assert payload["original_fixed8_restored"] is False
+    assert summary["scenario_count"] == 8
 
 
 @pytest.mark.parametrize(

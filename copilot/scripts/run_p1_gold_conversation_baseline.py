@@ -85,6 +85,32 @@ def _resolve_dataset_contract(name: str) -> DatasetContract:
     if contract is None:
         raise P1BaselineIntegrityError("dataset_contract_unknown")
     return contract
+
+
+def _legacy_dataset_contract() -> DatasetContract:
+    """Preserve legacy tests that intentionally narrow the case count."""
+    return DatasetContract(
+        contract_name="legacy-real-derived-v4",
+        dataset_id=EXPECTED_DATASET_ID,
+        dataset_version=EXPECTED_DATASET_VERSION,
+        case_count=EXPECTED_CASE_COUNT,
+        history_turn_count=EXPECTED_HISTORY_TURN_COUNT,
+        dataset_sha256=EXPECTED_DATASET_SHA256,
+        manifest_file_sha256=EXPECTED_MANIFEST_FILE_SHA256,
+        source_class="real_derived_draft",
+    )
+
+
+def _contract_report_fields(
+    contract: DatasetContract,
+) -> dict[str, Any]:
+    return {
+        "dataset_contract": contract.contract_name,
+        "source_class": contract.source_class,
+        "real_customer_accuracy": contract.real_customer_accuracy,
+        "optimization_unverified": True,
+        "original_fixed8_restored": contract.original_fixed8_restored,
+    }
 _PROHIBITED_REPORT_KEYS = {
     "api_key",
     "authorization",
@@ -1807,6 +1833,7 @@ def _prepare_knowledge_snapshot(
     provider_identity: dict[str, Any],
     feature_flags: dict[str, Any],
     dml_start_offset: int,
+    contract: DatasetContract | None = None,
 ) -> dict[str, Any]:
     from app.services.formal_knowledge_database_guard_service import (
         backup_sqlite_database,
@@ -1851,6 +1878,12 @@ def _prepare_knowledge_snapshot(
             "formal_knowledge": compact,
         },
     }
+    manifest.update(
+        _contract_report_fields(
+            contract
+            or _legacy_dataset_contract()
+        )
+    )
     _assert_report_safe(manifest)
     return manifest
 
@@ -1920,6 +1953,7 @@ def _build_post_run_manifest(
 
 def _checkpoint_payload(
     *,
+    contract: DatasetContract | None = None,
     dataset_hash: str,
     runtime: dict[str, Any],
     runner_source_sha256: str,
@@ -1948,6 +1982,12 @@ def _checkpoint_payload(
         "projection_capsule_files": projection_capsules,
         "resume_allowed": False,
     }
+    payload.update(
+        _contract_report_fields(
+            contract
+            or _legacy_dataset_contract()
+        )
+    )
     if evaluator_source_sha256:
         payload["evaluator_source_sha256"] = (
             evaluator_source_sha256
@@ -2101,6 +2141,7 @@ def _validate_runtime_binding(
 
 def _summary_payload(
     *,
+    contract: DatasetContract | None = None,
     observations: list[dict[str, Any]],
     scored_rows: list[dict[str, Any]],
     deterministic_summary: dict[str, Any],
@@ -2109,6 +2150,7 @@ def _summary_payload(
     owner_counts: Counter[str],
     formal_knowledge: dict[str, Any],
 ) -> dict[str, Any]:
+    contract = contract or _legacy_dataset_contract()
     goal_numerator = sum(
         int(
             _dict(item.get("goal_recall_diagnostic")).get(
@@ -2160,14 +2202,14 @@ def _summary_payload(
             for item in observations
         ),
     }
-    return {
+    summary = {
         "schema_version": SCHEMA_VERSION,
         "evaluation_tier": "development_diagnostic",
         "status": status,
         "integrity_stop_reason": integrity_stop_reason,
-        "real_customer_accuracy": None,
+        "real_customer_accuracy": contract.real_customer_accuracy,
         "optimization_verified": False,
-        "scenario_count": EXPECTED_CASE_COUNT,
+        "scenario_count": contract.case_count,
         "evaluated_scenario_count": len(observations),
         "execution_success_count": sum(
             not str(row.get("error_type") or "")
@@ -2207,6 +2249,8 @@ def _summary_payload(
         "earliest_owner_suggestions": dict(sorted(owner_counts.items())),
         "formal_knowledge": formal_knowledge,
     }
+    summary.update(_contract_report_fields(contract))
+    return summary
 
 
 def _dml_count_from_offset(path: Path, offset: int) -> int:
@@ -2402,6 +2446,7 @@ def _expert_review_metrics(
 
 def _finalize_from_checkpoint(
     *,
+    contract: DatasetContract | None = None,
     output_dir: Path,
     snapshot_path: Path,
     pre_run_manifest_path: Path,
@@ -2409,6 +2454,7 @@ def _finalize_from_checkpoint(
     hmac_key: str,
     expert_review_path: Path | None = None,
 ) -> dict[str, Any]:
+    contract = contract or _legacy_dataset_contract()
     checkpoint_path = output_dir / "checkpoint.json"
     checkpoint = _load_json(
         checkpoint_path,
@@ -2420,9 +2466,13 @@ def _finalize_from_checkpoint(
     )
     if (
         checkpoint.get("dataset_sha256")
-        != EXPECTED_DATASET_SHA256
+        != contract.dataset_sha256
         or pre_run_manifest.get("dataset_sha256")
-        != EXPECTED_DATASET_SHA256
+        != contract.dataset_sha256
+        or checkpoint.get("dataset_contract")
+        != contract.contract_name
+        or pre_run_manifest.get("dataset_contract")
+        != contract.contract_name
     ):
         raise P1BaselineIntegrityError(
             "finalization_dataset_identity_mismatch"
@@ -2494,8 +2544,8 @@ def _finalize_from_checkpoint(
     if integrity_stop_reason:
         status = "integrity_blocked"
     elif (
-        len(observations) != EXPECTED_CASE_COUNT
-        or len(capsules) != EXPECTED_CASE_COUNT
+        len(observations) != contract.case_count
+        or len(capsules) != contract.case_count
         or any(
             item.get("projection_status") != "completed"
             for item in capsules
@@ -2532,6 +2582,7 @@ def _finalize_from_checkpoint(
         for item in observations
     )
     summary = _summary_payload(
+        contract=contract,
         observations=observations,
         scored_rows=[
             {"error_type": str(item.get("error_type") or "")}
@@ -2595,9 +2646,9 @@ def _finalize_from_checkpoint(
         review_items.append(item)
     review_pack = {
         "schema_version": "p1-gold-service-review-pack/v2",
-        "dataset_id": EXPECTED_DATASET_ID,
-        "dataset_version": EXPECTED_DATASET_VERSION,
-        "dataset_sha256": EXPECTED_DATASET_SHA256,
+        "dataset_id": contract.dataset_id,
+        "dataset_version": contract.dataset_version,
+        "dataset_sha256": contract.dataset_sha256,
         "review_type": "codex_expert_offline_review",
         "review_status": (
             "completed" if expert_review else "pending_codex_review"
@@ -2609,6 +2660,7 @@ def _finalize_from_checkpoint(
             key=lambda item: str(item.get("case_alias") or ""),
         ),
     }
+    review_pack.update(_contract_report_fields(contract))
     review_meta = _write_json(
         output_dir / "review_pack.json",
         review_pack,
@@ -2649,16 +2701,18 @@ def _finalize_from_checkpoint(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": status,
         "evaluation_tier": "development_diagnostic",
-        "real_customer_accuracy": None,
+        "real_customer_accuracy": contract.real_customer_accuracy,
         "dataset": {
-            "dataset_id": EXPECTED_DATASET_ID,
-            "dataset_version": EXPECTED_DATASET_VERSION,
-            "scenario_count": EXPECTED_CASE_COUNT,
-            "history_turn_count": EXPECTED_HISTORY_TURN_COUNT,
-            "content_sha256": EXPECTED_DATASET_SHA256,
+            "dataset_id": contract.dataset_id,
+            "dataset_version": contract.dataset_version,
+            "scenario_count": contract.case_count,
+            "history_turn_count": contract.history_turn_count,
+            "content_sha256": contract.dataset_sha256,
             "source_manifest_file_sha256": (
-                EXPECTED_MANIFEST_FILE_SHA256
+                contract.manifest_file_sha256
             ),
+            "dataset_contract": contract.contract_name,
+            "source_class": contract.source_class,
         },
         "runtime": runtime,
         "runner": {
@@ -2687,6 +2741,7 @@ def _finalize_from_checkpoint(
         "files": manifest_files,
         "next_owner": summary.get("next_owner"),
     }
+    manifest.update(_contract_report_fields(contract))
     manifest["manifest_content_sha256"] = _canonical_hash(
         manifest
     )
@@ -2797,9 +2852,9 @@ def prepare(args: argparse.Namespace) -> int:
         source_path=source_path,
         snapshot_path=snapshot_path,
         hmac_key=hmac_key,
-        dataset_sha256=EXPECTED_DATASET_SHA256,
+        dataset_sha256=contract.dataset_sha256,
         source_manifest_file_sha256=(
-            EXPECTED_MANIFEST_FILE_SHA256
+            contract.manifest_file_sha256
         ),
         runner_source_sha256=_runner_source_sha256(),
         evaluator_source_sha256=_evaluator_source_sha256(),
@@ -2818,6 +2873,7 @@ def prepare(args: argparse.Namespace) -> int:
         dml_start_offset=(
             dml_path.stat().st_size if dml_path.is_file() else 0
         ),
+        contract=contract,
     )
     metadata = _write_json(
         output_dir / "pre_run_manifest.json",
@@ -2829,7 +2885,8 @@ def prepare(args: argparse.Namespace) -> int:
     )
     print(json.dumps({
         "status": "pre_run_snapshot_ready",
-        "dataset_sha256": EXPECTED_DATASET_SHA256,
+        "dataset_sha256": contract.dataset_sha256,
+        **_contract_report_fields(contract),
         "runner_source_sha256": manifest[
             "runner_source_sha256"
         ],
@@ -2889,7 +2946,9 @@ def finalize(args: argparse.Namespace) -> int:
         raise P1BaselineIntegrityError(
             "formal_kb_audit_hmac_key_required"
         )
+    contract = _resolve_dataset_contract(args.dataset_contract)
     result = _finalize_from_checkpoint(
+        contract=contract,
         output_dir=Path(args.output_dir).expanduser().resolve(),
         snapshot_path=Path(args.snapshot_db).expanduser().resolve(),
         pre_run_manifest_path=Path(
@@ -2989,7 +3048,11 @@ def run(args: argparse.Namespace) -> int:
     snapshot_path = Path(args.snapshot_db).expanduser().resolve()
     if (
         pre_run_manifest.get("dataset_sha256")
-        != EXPECTED_DATASET_SHA256
+        != contract.dataset_sha256
+        or pre_run_manifest.get("dataset_contract")
+        != contract.contract_name
+        or pre_run_manifest.get("source_class")
+        != contract.source_class
         or pre_run_manifest.get("runner_source_sha256")
         != runner_source_sha256
         or pre_run_manifest.get("evaluator_source_sha256")
@@ -3029,7 +3092,7 @@ def run(args: argparse.Namespace) -> int:
         pre_run_manifest_path
     )
     run_uid_alias = _run_alias(
-        dataset_sha256=EXPECTED_DATASET_SHA256,
+        dataset_sha256=contract.dataset_sha256,
         pre_run_manifest_sha256=pre_run_manifest_sha256,
         runner_source_sha256=runner_source_sha256,
         alias_secret=alias_secret,
@@ -3114,7 +3177,8 @@ def run(args: argparse.Namespace) -> int:
             _write_json(
                 output_dir / "checkpoint.json",
                 _checkpoint_payload(
-                    dataset_hash=EXPECTED_DATASET_SHA256,
+                    contract=contract,
+                    dataset_hash=contract.dataset_sha256,
                     runtime=runtime,
                     runner_source_sha256=runner_source_sha256,
                     formal_knowledge_before=(
@@ -3184,7 +3248,8 @@ def run(args: argparse.Namespace) -> int:
         integrity_stop_reason = "runner_source_drift"
     deterministic_summary = evaluator._summarize(scored_rows)
     checkpoint = _checkpoint_payload(
-        dataset_hash=EXPECTED_DATASET_SHA256,
+        contract=contract,
+        dataset_hash=contract.dataset_sha256,
         runtime=runtime,
         runner_source_sha256=runner_source_sha256,
         formal_knowledge_before=_compact_snapshot_fingerprint(
@@ -3201,6 +3266,7 @@ def run(args: argparse.Namespace) -> int:
     )
     _write_json(output_dir / "checkpoint.json", checkpoint)
     result = _finalize_from_checkpoint(
+        contract=contract,
         output_dir=output_dir,
         snapshot_path=snapshot_path,
         pre_run_manifest_path=pre_run_manifest_path,
@@ -3216,8 +3282,9 @@ def run(args: argparse.Namespace) -> int:
             "integrity_stop_reason"
         ],
         "agent_run_complete": (
-            len(observations) == EXPECTED_CASE_COUNT
+            len(observations) == contract.case_count
         ),
+        **_contract_report_fields(contract),
         "next_step": (
             "offline_codex_expert_review"
             if result["status"]
