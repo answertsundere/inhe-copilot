@@ -60,10 +60,12 @@ requires it. Reasoning, context construction, evidence admission, reply
 composition, safety, and delivery retain their existing application owners.
 
 Turn understanding uses the existing single semantic-classification call to
-produce atomic, typed goals. Explicit customer needs become `customer_goal`
-items and feed canonical `requested_claims`; supporting facts remain
-`evidence_dependency`, while actions and contextual constraints retain their
-own kinds. The deterministic boundary validates, deduplicates, and orders these
+produce atomic, typed goals. Explicit customer needs, including a request to
+determine which service outcome applies, become `customer_goal` items and feed
+canonical `requested_claims`; supporting facts remain `evidence_dependency`.
+A request to execute an external side effect now remains `service_action` and
+does not authorize that action or become a product fact. The deterministic
+boundary validates, deduplicates, and orders these
 items without inventing a new FactType. Each customer goal is anchored to a
 verified span of the current customer turn; downstream diagnostics retain only
 the span position and hash, not another copy of customer text. Missing or

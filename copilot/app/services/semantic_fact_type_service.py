@@ -189,6 +189,12 @@ For each goal:
   media_request, not a customer_goal. Keep a separate factual customer_goal when
   the buyer also asks for the underlying fact. A media_request is unmapped and
   cannot nominate a policy intent.
+- A request to determine which service outcome applies is a customer_goal, even
+  when the outcome cannot yet be confirmed and must remain unmapped or
+  unresolved. The classifier does not authorize that outcome or execute it.
+- A request to execute an external side effect now is a service_action. It is
+  not a product fact and must not replace a separate customer_goal asking which
+  service outcome, policy, or eligibility applies.
 - claim_type_status is canonical only for an exact semantic match to one
   canonical_fact_type_candidates fact_type_id. Then claim_type is that ID.
 - Otherwise claim_type_status is unmapped and claim_type is empty. Preserve a

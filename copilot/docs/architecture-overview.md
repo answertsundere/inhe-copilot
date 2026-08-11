@@ -509,6 +509,14 @@ schema 失败。提交 `bd1af55` 将字符串型无效 hint 规范化为空并�
 provenance 继续严格校验。确定性与相邻回归已通过，但修复后的原生案例因获批凭证
 文件缺失尚未运行，因此不能声称回复质量、历史连续性或多目标完成度已经改善。
 
+在恢复凭证后的后续原生 Fixed-8 审阅中，该售后回合暴露出第二个、独立的最早
+语义边界：要求判断退款、换货或补偿等服务结果是否适用，被标为不可渲染的
+`service_action`，使 Claim Resolution 和 Composer 没有收到该子目标。Turn
+Understanding 现明确区分“判断哪种服务结果适用”的 `customer_goal` 与“立即执行
+外部副作用”的 `service_action`。前者仍可 unresolved，后者仍不能作为商品事实、
+完成承诺或自动动作；因此不改变 Evidence、Final、Delivery 或 `can_send`。该修复
+需要在相同原生 Fixed-8 合同下重新验证，且仍不构成真实客户准确率结论。
+
 ### Final Safety And Delivery
 
 Final safety and delivery remain deterministic application responsibilities.

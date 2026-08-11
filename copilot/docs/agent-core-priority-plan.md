@@ -104,6 +104,14 @@ The following rules are non-negotiable:
 通过。当前安全凭证文件在隔离 5013 启动前已不存在，因此修复后的冻结售后案例
 尚未调用 Agent，Fixed-8 也未运行；P1 质量改善仍未验证。
 
+恢复后的原生运行证明该格式断点已消失，但同一售后回合还存在独立的分类边界：
+“判断退款、换货或补偿等服务结果是否适用”不能被归为仅供工具执行、不可渲染的
+`service_action`。它是可保持 unresolved 的 `customer_goal`；只有要求立即执行
+外部副作用才是 `service_action`。本轮只修复既有 Turn Understanding Owner 的该
+语义合同，不授权售后结果、不执行工具、不增加回复 Owner，也不改变 Evidence、
+Final、Delivery 或 `can_send`。完成定向和原生 Fixed-8 重跑前，P1 质量结论仍为
+`optimization_unverified=true` 与 `real_customer_accuracy=null`。
+
 P0-R1 qualified the existing Agent Core correctness slice. P1.4 then ran one
 native, non-intercepted fixed-eight comparison through the same formal
 Pipeline. After preserving trusted Composer control metadata and making
