@@ -95,7 +95,11 @@ Run the following through the external orchestrator after injecting a newly gene
   --dml-diagnostics $RuntimeRoot/dml.jsonl
 ```
 
-Expected: scenario count 8, privacy findings 0, snapshot and source fingerprints present, formal knowledge DML 0.
+Expected: scenario count 8, privacy findings 0, snapshot and source fingerprints present,
+8 个商品身份和 7 条 reviewed direct evidence 已进入隔离副本，4 条
+unresolved/pending/media 候选被排除，正式源知识库字节和行数据不变，formal
+knowledge DML 为 0。用于满足 readiness 的单条 `kb_qa` 哨兵必须为
+`archived + auto_reply=0`，不得被检索或成为回复依据。
 
 - [ ] **Step 3: Start only the isolated 5013 process**
 

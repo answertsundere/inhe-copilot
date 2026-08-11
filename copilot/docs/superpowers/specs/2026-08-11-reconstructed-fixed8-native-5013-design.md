@@ -27,6 +27,7 @@ query-only 预检和 Synthetic `5/5`、`22/22` 安全回归，但当前源码还
 ```text
 重建 Fixed-8 fixture
 -> 不可变 DatasetContract 与标签隔离
+-> reviewed direct evidence 的隔离快照投影
 -> 当前源码 5013 /api/analyze
 -> 现有 AnalysisPipeline
 -> Evidence Admission / Claim Resolution
@@ -42,6 +43,17 @@ query-only 预检和 Synthetic `5/5`、`22/22` 安全回归，但当前源码还
 开启这两个开关，以验证正式 Evidence 到 Composer 的候选链路。该隔离配置不得
 写回 5011/5012 或成为生产默认值。
 
+源知识库在恢复后只有正式表结构、没有可供这 8 条重建案例使用的商品事实。为避免
+绕过正式 Evidence 链路，P1 Runner 在复制出隔离 SQLite 快照后，只从已通过
+preflight 的 `evidence_candidates` 投影 `reviewed/approved/published/verified` 且
+角色为 `direct_product_fact` 的候选。投影保留 evidence UID、商品身份、FactType、
+attribute、scope、value、unit 和审核 provenance；unresolved、pending、媒体候选及
+评测标签不得进入快照。源数据库字节和行数据保持不变。
+
+readiness 所需的 `kb_qa` 非空条件由一条 `archived + auto_reply=0` 的评测哨兵满足。
+该哨兵没有业务事实、不能参与检索，也不能支持回复。投影在快照哈希和运行绑定冻结
+前完成；manifest 只记录投影哈希和数量，不保存原始事实值。
+
 ## 5013 运行合同
 
 5013 必须是独立进程，且不得停止或修改 5011/5012。启动后必须满足：
@@ -50,6 +62,7 @@ query-only 预检和 Synthetic `5/5`、`22/22` 安全回归，但当前源码还
 - boot/end source tree SHA-256 一致，`source_tree_drift=false`；
 - `ready=true`；
 - 正式知识库通过 SQLite query-only 实际验证；
+- 快照投影固定为 8 个商品身份、7 条 direct evidence、4 条排除候选和 1 条不可检索哨兵；
 - `formal_knowledge_query_only=true`；
 - `formal_evidence_convergence=true`；
 - `model_first_answer_composer=true`；

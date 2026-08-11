@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import sqlite3
 from copy import deepcopy
 from pathlib import Path
 
@@ -22,6 +24,155 @@ _FIXTURE_ROOT = (
 )
 _DATASET_PATH = _FIXTURE_ROOT / "v1.json"
 _MANIFEST_PATH = _FIXTURE_ROOT / "v1.manifest.json"
+
+
+def _create_empty_formal_knowledge_source(path: Path) -> None:
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE kb_product (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            i_id TEXT NOT NULL UNIQUE,
+            product_name TEXT NOT NULL,
+            brand TEXT NOT NULL DEFAULT '',
+            category_l1 TEXT NOT NULL DEFAULT '',
+            category_l2 TEXT NOT NULL DEFAULT '',
+            category_l3 TEXT NOT NULL DEFAULT '',
+            sku_list_json TEXT NOT NULL DEFAULT '[]',
+            specs_json TEXT NOT NULL DEFAULT '{}',
+            logistics_json TEXT NOT NULL DEFAULT '{}',
+            warranty_json TEXT NOT NULL DEFAULT '{}',
+            completeness_score REAL NOT NULL DEFAULT 0,
+            missing_fields_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'draft',
+            version INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            created_at TEXT,
+            updated_at TEXT,
+            import_batch_id TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE kb_qa (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            intent TEXT NOT NULL DEFAULT 'general',
+            sub_intent TEXT NOT NULL DEFAULT '',
+            category_l1 TEXT NOT NULL DEFAULT '',
+            category_l2 TEXT NOT NULL DEFAULT '',
+            category_l3 TEXT NOT NULL DEFAULT '',
+            product_id INTEGER,
+            sku_codes_json TEXT NOT NULL DEFAULT '[]',
+            risk_level TEXT NOT NULL DEFAULT 'low',
+            auto_reply INTEGER NOT NULL DEFAULT 1,
+            human_review INTEGER NOT NULL DEFAULT 0,
+            keywords_json TEXT NOT NULL DEFAULT '[]',
+            source_type TEXT NOT NULL DEFAULT 'faq',
+            scenario_category TEXT NOT NULL DEFAULT '',
+            issue_type TEXT NOT NULL DEFAULT '',
+            sop_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'draft',
+            version INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            reviewed_by TEXT NOT NULL DEFAULT '',
+            published_at TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            import_batch_id TEXT NOT NULL DEFAULT '',
+            content_hash TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE knowledge_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            intent TEXT NOT NULL DEFAULT 'general',
+            sub_intent TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '',
+            category_l3 TEXT NOT NULL DEFAULT '',
+            search_keywords TEXT NOT NULL DEFAULT '',
+            scene_tag TEXT NOT NULL DEFAULT '',
+            product_line TEXT NOT NULL DEFAULT '',
+            product_scope_json TEXT NOT NULL DEFAULT '[]',
+            sku_scope_json TEXT NOT NULL DEFAULT '[]',
+            platform_scope_json TEXT NOT NULL DEFAULT '[]',
+            risk_level TEXT NOT NULL DEFAULT 'low',
+            auto_reply_allowed INTEGER NOT NULL DEFAULT 1,
+            human_review_required INTEGER NOT NULL DEFAULT 0,
+            condition_text TEXT NOT NULL DEFAULT '',
+            forbidden_usage TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'draft',
+            version INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            reviewed_by TEXT NOT NULL DEFAULT '',
+            published_at TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            source_sheet TEXT NOT NULL DEFAULT '',
+            row_number INTEGER NOT NULL DEFAULT 0,
+            import_batch_id TEXT NOT NULL DEFAULT '',
+            content_hash TEXT NOT NULL DEFAULT '',
+            parent_entry_id INTEGER,
+            business_key TEXT,
+            product_id TEXT,
+            sku_id TEXT,
+            fact_type TEXT,
+            fact_scope TEXT,
+            source_confidence REAL,
+            fact_review_status TEXT,
+            index_status TEXT NOT NULL DEFAULT 'pending'
+        );
+        CREATE TABLE knowledge_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id INTEGER NOT NULL,
+            chunk_text TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL DEFAULT 0,
+            source_type TEXT NOT NULL,
+            intent TEXT NOT NULL DEFAULT 'general',
+            product_scope_json TEXT NOT NULL DEFAULT '[]',
+            sku_scope_json TEXT NOT NULL DEFAULT '[]',
+            platform_scope_json TEXT NOT NULL DEFAULT '[]',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            category TEXT NOT NULL DEFAULT '',
+            category_l3 TEXT NOT NULL DEFAULT '',
+            search_keywords TEXT NOT NULL DEFAULT '',
+            embedding_status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT,
+            embedding_json TEXT,
+            source_confidence REAL,
+            fact_review_status TEXT,
+            fact_source_type TEXT,
+            updated_at TEXT
+        );
+        """
+    )
+    connection.commit()
+    connection.close()
+
+
+def _snapshot_rows(path: Path) -> dict[str, list[tuple]]:
+    connection = sqlite3.connect(path)
+    try:
+        return {
+            "products": connection.execute(
+                "SELECT i_id, product_name, status FROM kb_product ORDER BY i_id"
+            ).fetchall(),
+            "entries": connection.execute(
+                "SELECT business_key, fact_type, fact_scope, content, product_scope_json "
+                "FROM knowledge_entries ORDER BY business_key"
+            ).fetchall(),
+            "chunks": connection.execute(
+                "SELECT metadata_json, fact_review_status, fact_source_type "
+                "FROM knowledge_chunks ORDER BY id"
+            ).fetchall(),
+            "qa": connection.execute(
+                "SELECT status, auto_reply, source_type FROM kb_qa ORDER BY id"
+            ).fetchall(),
+        }
+    finally:
+        connection.close()
 
 
 def test_reconstructed_contract_is_distinct_from_missing_original_fixed8():
@@ -239,4 +390,125 @@ def test_reconstructed_contract_fails_closed_on_identity_or_claim_mutation(
         p1_baseline._validate_reconstructed_dataset_contract(
             mutated_dataset,
             mutated_manifest,
+        )
+
+
+def test_reconstructed_prepare_projects_only_reviewed_direct_evidence(
+    tmp_path,
+):
+    dataset = json.loads(_DATASET_PATH.read_text(encoding="utf-8"))
+    contract = p1_baseline._resolve_dataset_contract(
+        "conversation-reconstructed-v1"
+    )
+    source = tmp_path / "empty-formal.sqlite"
+    snapshot = tmp_path / "snapshot.sqlite"
+    _create_empty_formal_knowledge_source(source)
+    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    manifest = p1_baseline._prepare_knowledge_snapshot(
+        source_path=source,
+        snapshot_path=snapshot,
+        hmac_key="reconstructed-snapshot-test",
+        dataset_sha256=contract.dataset_sha256,
+        source_manifest_file_sha256=contract.manifest_file_sha256,
+        runner_source_sha256="a" * 64,
+        evaluator_source_sha256="b" * 64,
+        source_tree_sha256="c" * 64,
+        git_head="d" * 40,
+        git_dirty=False,
+        provider_identity={
+            "provider_name": "formal_agent",
+            "host_fingerprint": "e" * 12,
+            "model_name": "qualified-model",
+            "configured": True,
+        },
+        feature_flags={
+            "formal_evidence_convergence": True,
+            "model_first_answer_composer": True,
+        },
+        dml_start_offset=0,
+        contract=contract,
+        dataset=dataset,
+    )
+
+    rows = _snapshot_rows(snapshot)
+    assert len(rows["products"]) == 8
+    assert all(row[2] == "published" for row in rows["products"])
+    assert len(rows["entries"]) == 7
+    assert len(rows["chunks"]) == 7
+    assert rows["qa"] == [
+        ("archived", 0, "evaluation_readiness_sentinel")
+    ]
+    metadata = [json.loads(row[0]) for row in rows["chunks"]]
+    assert {item["evidence_uid"] for item in metadata} == {
+        "evidence-00000000000000000002",
+        "evidence-00000000000000000003",
+        "evidence-00000000000000000004",
+        "evidence-00000000000000000005",
+        "evidence-00000000000000000006",
+        "evidence-00000000000000000009",
+        "evidence-0000000000000000000b",
+    }
+    assert all(
+        item["evidence_role"] == "direct_product_fact"
+        for item in metadata
+    )
+    assert all(row[1] == "reviewed" for row in rows["chunks"])
+    assert all(row[2] == "direct_product_fact" for row in rows["chunks"])
+    seed = manifest["snapshot"]["evaluation_seed"]
+    assert seed["product_count"] == 8
+    assert seed["direct_evidence_count"] == 7
+    assert seed["excluded_candidate_count"] == 4
+    assert seed["readiness_sentinel_count"] == 1
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_sha256
+    source_rows = _snapshot_rows(source)
+    assert all(not rows for rows in source_rows.values())
+
+
+def test_reconstructed_snapshot_seed_ignores_evaluation_labels(tmp_path):
+    dataset = json.loads(_DATASET_PATH.read_text(encoding="utf-8"))
+    mutated = deepcopy(dataset)
+    for scenario in mutated["scenarios"]:
+        scenario["expected_claims"] = [{"tampered": True}]
+        scenario["forbidden_claims"] = ["tampered"]
+        scenario["expected_contract"] = {"tampered": True}
+        scenario["prohibited_outcomes"] = ["tampered"]
+
+    original = p1_baseline._reconstructed_snapshot_seed_projection(dataset)
+    changed = p1_baseline._reconstructed_snapshot_seed_projection(mutated)
+
+    assert original == changed
+
+
+def test_reconstructed_snapshot_requires_dataset_for_seed(tmp_path):
+    contract = p1_baseline._resolve_dataset_contract(
+        "conversation-reconstructed-v1"
+    )
+    source = tmp_path / "empty-formal.sqlite"
+    _create_empty_formal_knowledge_source(source)
+
+    with pytest.raises(
+        P1BaselineIntegrityError,
+        match="reconstructed_snapshot_dataset_required",
+    ):
+        p1_baseline._prepare_knowledge_snapshot(
+            source_path=source,
+            snapshot_path=tmp_path / "snapshot.sqlite",
+            hmac_key="reconstructed-snapshot-test",
+            dataset_sha256=contract.dataset_sha256,
+            source_manifest_file_sha256=contract.manifest_file_sha256,
+            runner_source_sha256="a" * 64,
+            evaluator_source_sha256="b" * 64,
+            source_tree_sha256="c" * 64,
+            git_head="d" * 40,
+            git_dirty=False,
+            provider_identity={
+                "provider_name": "formal_agent",
+                "host_fingerprint": "e" * 12,
+                "model_name": "qualified-model",
+                "configured": True,
+            },
+            feature_flags={},
+            dml_start_offset=0,
+            contract=contract,
         )

@@ -1843,6 +1843,358 @@ def _verify_sqlite_query_only(path: Path) -> bool:
         connection.close()
 
 
+_RECONSTRUCTED_DIRECT_STATUSES = {
+    "approved",
+    "published",
+    "reviewed",
+    "verified",
+}
+_RECONSTRUCTED_DIRECT_ROLE = "direct_product_fact"
+_RECONSTRUCTED_SUBJECT_SCOPES = {
+    "accessory",
+    "component",
+    "included_item",
+    "packaging",
+    "product",
+}
+_RECONSTRUCTED_SEED_TIMESTAMP = "2000-01-01T00:00:00+00:00"
+
+
+def _reconstructed_snapshot_seed_projection(
+    dataset: dict[str, Any],
+) -> dict[str, Any]:
+    """Project only versioned input evidence into an isolated eval snapshot."""
+    if str(dataset.get("source_class") or "") != "conversation_reconstructed":
+        raise P1BaselineIntegrityError(
+            "reconstructed_snapshot_source_class_invalid"
+        )
+    scenarios = _dicts(dataset.get("scenarios"))
+    if not scenarios:
+        raise P1BaselineIntegrityError(
+            "reconstructed_snapshot_scenarios_missing"
+        )
+
+    products: list[dict[str, str]] = []
+    direct_evidence: list[dict[str, Any]] = []
+    excluded_candidate_count = 0
+    product_ids: set[str] = set()
+    evidence_uids: set[str] = set()
+    for scenario in scenarios:
+        request_template = _dict(
+            scenario.get("api_request_template")
+        )
+        i_id = str(request_template.get("i_id") or "").strip()
+        product_name = str(
+            request_template.get("product_name") or ""
+        ).strip()
+        if not i_id or not product_name:
+            raise P1BaselineIntegrityError(
+                "reconstructed_snapshot_product_identity_missing"
+            )
+        if i_id in product_ids:
+            raise P1BaselineIntegrityError(
+                "reconstructed_snapshot_product_identity_duplicate"
+            )
+        product_ids.add(i_id)
+        products.append({
+            "i_id": i_id,
+            "product_name": product_name,
+        })
+
+        for candidate in _dicts(scenario.get("evidence_candidates")):
+            evidence_uid = str(
+                candidate.get("evidence_uid") or ""
+            ).strip()
+            if not evidence_uid or evidence_uid in evidence_uids:
+                raise P1BaselineIntegrityError(
+                    "reconstructed_snapshot_evidence_uid_invalid"
+                )
+            evidence_uids.add(evidence_uid)
+            status = str(candidate.get("status") or "").strip().lower()
+            role = str(candidate.get("role") or "").strip().lower()
+            if (
+                status not in _RECONSTRUCTED_DIRECT_STATUSES
+                or role != _RECONSTRUCTED_DIRECT_ROLE
+            ):
+                excluded_candidate_count += 1
+                continue
+            value = candidate.get("value")
+            if value in (None, "", [], {}):
+                raise P1BaselineIntegrityError(
+                    "reconstructed_reviewed_direct_value_missing"
+                )
+            fact_type = str(
+                candidate.get("fact_type") or ""
+            ).strip().lower()
+            attribute_key = str(
+                candidate.get("attribute_key") or ""
+            ).strip().lower()
+            subject_scope = str(
+                candidate.get("subject_scope") or "product"
+            ).strip().lower()
+            if not fact_type or not attribute_key:
+                raise P1BaselineIntegrityError(
+                    "reconstructed_snapshot_fact_identity_missing"
+                )
+            if subject_scope not in _RECONSTRUCTED_SUBJECT_SCOPES:
+                raise P1BaselineIntegrityError(
+                    "reconstructed_snapshot_subject_scope_invalid"
+                )
+            direct_evidence.append({
+                "evidence_uid": evidence_uid,
+                "fact_type": fact_type,
+                "attribute_key": attribute_key,
+                "value": deepcopy(value),
+                "unit": str(candidate.get("unit") or "").strip(),
+                "subject_scope": subject_scope,
+                "status": status,
+                "role": role,
+                "i_id": i_id,
+                "product_name": product_name,
+            })
+
+    return {
+        "schema_version": "p1-reconstructed-snapshot-seed/v1",
+        "products": sorted(products, key=lambda item: item["i_id"]),
+        "direct_evidence": sorted(
+            direct_evidence,
+            key=lambda item: item["evidence_uid"],
+        ),
+        "excluded_candidate_count": excluded_candidate_count,
+    }
+
+
+def _reconstructed_fact_text(item: dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "attribute_key": item["attribute_key"],
+            "subject_scope": item["subject_scope"],
+            "unit": item["unit"],
+            "value": item["value"],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _seed_reconstructed_snapshot(
+    snapshot_path: Path,
+    *,
+    dataset: dict[str, Any],
+    dataset_sha256: str,
+) -> dict[str, Any]:
+    projection = _reconstructed_snapshot_seed_projection(dataset)
+    connection = sqlite3.connect(snapshot_path)
+    try:
+        table_names = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        required = {
+            "kb_product",
+            "kb_qa",
+            "knowledge_entries",
+            "knowledge_chunks",
+        }
+        if not required.issubset(table_names):
+            raise P1BaselineIntegrityError(
+                "reconstructed_snapshot_schema_incomplete"
+            )
+
+        with connection:
+            for product in projection["products"]:
+                if connection.execute(
+                    "SELECT 1 FROM kb_product WHERE i_id = ?",
+                    (product["i_id"],),
+                ).fetchone():
+                    raise P1BaselineIntegrityError(
+                        "reconstructed_snapshot_product_collision"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO kb_product (
+                        i_id, product_name, brand, category_l1,
+                        category_l2, category_l3, sku_list_json,
+                        specs_json, logistics_json, warranty_json,
+                        completeness_score, missing_fields_json, status,
+                        version, created_by, updated_by, created_at,
+                        updated_at, import_batch_id
+                    ) VALUES (?, ?, '', 'evaluation', '', '', '[]',
+                              '{}', '{}', '{}', 0, '[]', 'published',
+                              1, 'p1_eval_snapshot', 'p1_eval_snapshot',
+                              ?, ?, ?)
+                    """,
+                    (
+                        product["i_id"],
+                        product["product_name"],
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                        dataset_sha256,
+                    ),
+                )
+            for item in projection["direct_evidence"]:
+                fact_text = _reconstructed_fact_text(item)
+                scope_json = json.dumps(
+                    [item["i_id"], item["product_name"]],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                content_hash = _canonical_hash({
+                    "dataset_sha256": dataset_sha256,
+                    "evidence_uid": item["evidence_uid"],
+                    "fact": fact_text,
+                })
+                cursor = connection.execute(
+                    """
+                    INSERT INTO knowledge_entries (
+                        source_type, title, content, intent, sub_intent,
+                        category, category_l3, search_keywords, scene_tag,
+                        product_line, product_scope_json, sku_scope_json,
+                        platform_scope_json, risk_level,
+                        auto_reply_allowed, human_review_required,
+                        condition_text, forbidden_usage, status, version,
+                        created_by, updated_by, reviewed_by, published_at,
+                        created_at, updated_at, source_sheet, row_number,
+                        import_batch_id, content_hash, business_key,
+                        product_id, sku_id, fact_type, fact_scope,
+                        source_confidence, fact_review_status, index_status
+                    ) VALUES (
+                        'product_facts', ?, ?, 'product_question', '',
+                        'reconstructed_evidence', ?, ?, '', '', ?, '[]',
+                        '[]', 'low', 1, 0, '', '', 'published', 1,
+                        'p1_eval_snapshot', 'p1_eval_snapshot',
+                        'p1_eval_snapshot', ?, ?, ?, '', 0, ?, ?, ?,
+                        ?, '', ?, ?, 0.95, ?, 'ready'
+                    )
+                    """,
+                    (
+                        f"{item['product_name']} {item['attribute_key']}",
+                        fact_text,
+                        item["fact_type"],
+                        f"{item['fact_type']} {item['attribute_key']}",
+                        scope_json,
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                        dataset_sha256,
+                        content_hash,
+                        f"evaluation:{item['evidence_uid']}",
+                        item["i_id"],
+                        item["fact_type"],
+                        item["subject_scope"],
+                        item["status"],
+                    ),
+                )
+                entry_id = int(cursor.lastrowid)
+                metadata = {
+                    "attribute_key": item["attribute_key"],
+                    "can_direct_answer": True,
+                    "direct_answer_allowed": True,
+                    "evidence_role": _RECONSTRUCTED_DIRECT_ROLE,
+                    "evidence_uid": item["evidence_uid"],
+                    "fact_review_status": item["status"],
+                    "product_evidence_protocol": True,
+                    "reference_only": False,
+                    "source_id": item["evidence_uid"],
+                    "source_table": "knowledge_entries",
+                    "subject_scope": item["subject_scope"],
+                    "unit": item["unit"],
+                    "value": item["value"],
+                    "verification_status": item["status"],
+                }
+                if item["fact_type"] == "material":
+                    metadata["material_provenance"] = (
+                        "structured_product_record"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO knowledge_chunks (
+                        entry_id, chunk_text, chunk_index, source_type,
+                        intent, product_scope_json, sku_scope_json,
+                        platform_scope_json, metadata_json, category,
+                        category_l3, search_keywords, embedding_status,
+                        created_at, embedding_json, source_confidence,
+                        fact_review_status, fact_source_type, updated_at
+                    ) VALUES (
+                        ?, ?, 0, 'product_facts', 'product_question', ?,
+                        '[]', '[]', ?, 'reconstructed_evidence', ?, ?,
+                        'ready', ?, NULL, 0.95, ?,
+                        'direct_product_fact', ?
+                    )
+                    """,
+                    (
+                        entry_id,
+                        fact_text,
+                        scope_json,
+                        json.dumps(
+                            metadata,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        item["fact_type"],
+                        f"{item['fact_type']} {item['attribute_key']}",
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                        item["status"],
+                        _RECONSTRUCTED_SEED_TIMESTAMP,
+                    ),
+                )
+
+            connection.execute(
+                """
+                INSERT INTO kb_qa (
+                    question, answer, intent, sub_intent, category_l1,
+                    category_l2, category_l3, product_id,
+                    sku_codes_json, risk_level, auto_reply,
+                    human_review, keywords_json, source_type,
+                    scenario_category, issue_type, sop_id, status,
+                    version, created_by, updated_by, reviewed_by,
+                    published_at, created_at, updated_at,
+                    import_batch_id, content_hash
+                ) VALUES (
+                    'evaluation readiness sentinel',
+                    'inactive evaluation readiness sentinel',
+                    'general', '', 'evaluation', '', '', NULL, '[]',
+                    'low', 0, 1, '[]',
+                    'evaluation_readiness_sentinel', '', '', NULL,
+                    'archived', 1, 'p1_eval_snapshot',
+                    'p1_eval_snapshot', '', NULL, ?, ?, ?, ?
+                )
+                """,
+                (
+                    _RECONSTRUCTED_SEED_TIMESTAMP,
+                    _RECONSTRUCTED_SEED_TIMESTAMP,
+                    dataset_sha256,
+                    _canonical_hash({
+                        "dataset_sha256": dataset_sha256,
+                        "kind": "readiness_sentinel",
+                    }),
+                ),
+            )
+    except sqlite3.Error as exc:
+        raise P1BaselineIntegrityError(
+            "reconstructed_snapshot_seed_failed"
+        ) from exc
+    finally:
+        connection.close()
+
+    projection_hash = _canonical_hash(projection)
+    return {
+        "schema_version": projection["schema_version"],
+        "content_sha256": projection_hash,
+        "product_count": len(projection["products"]),
+        "direct_evidence_count": len(projection["direct_evidence"]),
+        "excluded_candidate_count": int(
+            projection["excluded_candidate_count"]
+        ),
+        "readiness_sentinel_count": 1,
+        "source": "dataset.evidence_candidates",
+    }
+
+
 def _prepare_knowledge_snapshot(
     *,
     source_path: Path,
@@ -1859,6 +2211,7 @@ def _prepare_knowledge_snapshot(
     feature_flags: dict[str, Any],
     dml_start_offset: int,
     contract: DatasetContract | None = None,
+    dataset: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from app.services.formal_knowledge_database_guard_service import (
         backup_sqlite_database,
@@ -1870,6 +2223,18 @@ def _prepare_knowledge_snapshot(
             "formal_kb_audit_hmac_key_required"
         )
     backup_sqlite_database(source_path, snapshot_path)
+    resolved_contract = contract or _legacy_dataset_contract()
+    evaluation_seed: dict[str, Any] = {}
+    if resolved_contract.source_class == "conversation_reconstructed":
+        if not isinstance(dataset, dict):
+            raise P1BaselineIntegrityError(
+                "reconstructed_snapshot_dataset_required"
+            )
+        evaluation_seed = _seed_reconstructed_snapshot(
+            snapshot_path,
+            dataset=dataset,
+            dataset_sha256=dataset_sha256,
+        )
     if not _verify_sqlite_query_only(snapshot_path):
         raise P1BaselineIntegrityError(
             "snapshot_query_only_verification_failed"
@@ -1903,10 +2268,11 @@ def _prepare_knowledge_snapshot(
             "formal_knowledge": compact,
         },
     }
+    if evaluation_seed:
+        manifest["snapshot"]["evaluation_seed"] = evaluation_seed
     manifest.update(
         _contract_report_fields(
-            contract
-            or _legacy_dataset_contract()
+            resolved_contract
         )
     )
     _assert_report_safe(manifest)
@@ -2903,6 +3269,7 @@ def prepare(args: argparse.Namespace) -> int:
             dml_path.stat().st_size if dml_path.is_file() else 0
         ),
         contract=contract,
+        dataset=dataset,
     )
     metadata = _write_json(
         output_dir / "pre_run_manifest.json",

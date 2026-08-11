@@ -484,9 +484,16 @@ Analysis Pipeline 运行，不新增 Graph、Composer、Auditor 或 Delivery 路
 `source_class` 注入。prepare、checkpoint、summary 和 finalize 全程绑定同一
 不可变 `DatasetContract`。
 
+恢复后的正式知识库仅有空表结构。重建评测因此由现有 P1 Runner 在复制出的
+隔离快照中投影 sidecar 内已审核的 direct evidence，而不是修改正式 RAG 或把
+评测证据直接塞入 Agent 请求。投影发生在快照哈希冻结前，只保留事实身份、商品
+identity 和 provenance；unresolved、pending、media 及 Gold 评分字段均被排除。
+readiness 的 `kb_qa` 哨兵是 archived/non-auto-reply，不可检索。源数据库不变，
+5013 仍以 SQLite query-only 方式消费快照。
+
 重建模式始终是人工复核轨道：出现任意 `can_send=true` 或
 `requires_human_review=false` 都使运行无效。它目前只完成 8 条数据、40 个
-历史回合、隐私 0、query-only 快照和正式知识 DML 0 的确定性预检；由于当前
+历史回合、隐私 0、隔离快照投影和正式知识 DML 0 的确定性预检；由于当前
 源码的 5013 canary 尚未启动，不能宣称回答质量、提速或真实准确率已经验证。
 
 ### Final Safety And Delivery
