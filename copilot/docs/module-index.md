@@ -87,6 +87,17 @@ repair only generic goal canonicalization and multi-goal completion through the
 existing Turn Understanding and Claim Resolution contracts; it has no Composer,
 Audit, Graph, delivery, or send authority.
 
+The current candidate run additionally verifies that the server's model-facing
+FactType projection deduplicates the existing material aliases to the canonical
+`material_composition` ID before the semantic call. This is input normalization,
+not an unmapped-output promotion. The reconstructed native gate completed `8/8`
+with Composer and Deterministic Final `8/8`, direct attribution `3/3`,
+unresolved declaration `13/13`, formal-knowledge DML `0`, `can_send=0`, and
+human review `8/8`. Its offline expert review selected the same owner after
+finding canonical goal recall `0/18`, incomplete multi-goal completion, and one
+unbound bounded-inference response. The status remains development diagnostic;
+`real_customer_accuracy=null` and Autonomous Send remain blocked.
+
 ## Frozen Shadow And Experimental Modules
 
 These modules may keep producing diagnostics. ADR 0009 freezes feature expansion

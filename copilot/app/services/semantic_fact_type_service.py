@@ -20,6 +20,9 @@ from app.llm.client import get_llm_client
 from app.services.canonical_conversation_turn_service import (
     canonical_current_customer_turn_uid,
 )
+from app.services.fact_type_alias_service import (
+    canonical_material_composition_claim_type,
+)
 from app.services.fact_type_service import FACT_TYPE_LABELS, classify_query_fact_type
 from app.services.strict_decision_provider_service import safe_provider_identity
 
@@ -522,14 +525,27 @@ def _open_conversation_goal_candidates(state: dict[str, Any]) -> list[dict[str, 
 
 def _canonical_fact_type_candidates() -> list[dict[str, str]]:
     """Project the server registry without exposing rules or sample mappings."""
-    return [
-        {
-            "fact_type_id": fact_type_id,
-            "meaning": _bounded_text(FACT_TYPE_LABELS[fact_type_id], 80),
+    candidates: list[dict[str, str]] = []
+    seen_fact_type_ids: set[str] = set()
+    for fact_type_id in sorted(FACT_TYPE_LABELS):
+        canonical_fact_type_id = canonical_material_composition_claim_type(
+            fact_type_id
+        )
+        if canonical_fact_type_id in seen_fact_type_ids:
+            continue
+        seen_fact_type_ids.add(canonical_fact_type_id)
+        candidates.append({
+            "fact_type_id": canonical_fact_type_id,
+            "meaning": _bounded_text(
+                FACT_TYPE_LABELS.get(
+                    canonical_fact_type_id,
+                    FACT_TYPE_LABELS[fact_type_id],
+                ),
+                80,
+            ),
             "attribute_contract": "optional_explicit_attribute_key",
-        }
-        for fact_type_id in sorted(FACT_TYPE_LABELS)
-    ]
+        })
+    return candidates
 
 
 def _value_type(value: Any) -> str:

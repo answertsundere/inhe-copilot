@@ -178,6 +178,22 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "whether its claim type is canonical or unmapped" in prompt
 
 
+def test_turn_understanding_candidates_expose_one_canonical_material_choice():
+    candidates = service._canonical_fact_type_candidates()
+    material_candidates = [
+        item
+        for item in candidates
+        if item["meaning"] == "材质"
+    ]
+
+    assert material_candidates == [{
+        "fact_type_id": "material_composition",
+        "meaning": "材质",
+        "attribute_contract": "optional_explicit_attribute_key",
+    }]
+    assert len({item["fact_type_id"] for item in candidates}) == len(candidates)
+
+
 def test_single_provider_goal_is_not_completed_from_legacy_fact_type(monkeypatch):
     monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
     message = "first independent request and second independent request"

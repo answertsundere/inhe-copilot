@@ -154,6 +154,22 @@ change. This is a reconstructed engineering baseline only;
 `real_customer_accuracy=null`, `optimization_unverified=true`, and
 `original_fixed8_restored=false` remain mandatory.
 
+The next native run tested a narrow Turn Understanding input-projection repair:
+the existing `material` aliases are deduplicated to one
+`material_composition` candidate before the semantic request. It does not
+promote unmapped output after the model call and does not alter Claim
+Resolution, evidence admission, Composer ownership, Final, or Delivery. The
+reconstructed `8/8` run completed with Composer and Final acceptance `8/8`,
+supported attribution `3/3`, unresolved declaration `13/13`, selected
+evidence in four cases, no formal knowledge DML, `can_send=0`, and mandatory
+human review for all candidates. Expert review still measured goal completion at
+`1.5/2`, canonical goal recall `0/18`, and found one unbound everyday-use
+inference under an absolute-guarantee request. Active P1 work therefore stays
+on `multi-goal_completion` in the existing Turn Understanding and Claim
+Resolution owners. It must first preserve restricted boundaries while exposing
+only policy-bound alternatives; no reply-template, Composer, Auditor, Graph,
+or delivery change is authorized. This is not real-customer accuracy evidence.
+
 The Unified Audit role has independent default-off configuration and reuses the
 existing one-shot strict structured-output transport. It cannot inherit the
 formal Agent/Composer or decision-shadow model, and missing or unqualified

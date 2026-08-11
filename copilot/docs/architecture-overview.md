@@ -487,6 +487,23 @@ goals are still unmapped or use noncanonical attributes. Composer, Unified
 Audit, Graph, and Delivery Gate ownership remain unchanged. This evidence is
 diagnostic only and does not qualify real customer accuracy or Autonomous Send.
 
+The follow-up native run on the current dirty candidate source preserved that
+same isolation contract while testing canonical model-facing fact candidates.
+`material` aliases now appear to Turn Understanding once as the existing
+`material_composition` canonical type; this changes no admission, evidence, or
+delivery rule. All eight reconstructed cases executed through the formal
+Pipeline, Composer and Deterministic Final accepted `8/8`, selected evidence
+was present in four cases, and direct supported attribution remained `3/3`.
+Every result remained review-only with `can_send=0`, formal knowledge content
+unchanged, and DML `0`. The Codex offline review found a `1.5/2` average for
+goal completion, canonical goal recall `0/18`, and an unbound everyday-use
+inference in an absolute-guarantee case. The next owner remains the existing
+Turn Understanding plus Claim Resolution `multi-goal_completion` boundary; it
+must not be addressed by Composer wording, a new graph path, or a relaxed
+Final/Delivery gate. This remains a reconstructed engineering baseline with
+`real_customer_accuracy=null`, `optimization_unverified=true`, and
+`original_fixed8_restored=false`.
+
 ### 恢复后的对话评测边界
 
 恢复工作不复制或猜测遗失的 Fixed-8。版本化

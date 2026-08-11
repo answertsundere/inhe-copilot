@@ -998,7 +998,10 @@ def test_turn_understanding_payload_uses_server_candidates_without_product_data(
     assert {
         item["fact_type_id"]
         for item in payload["canonical_fact_type_candidates"]
-    } == set(service.FACT_TYPE_LABELS)
+    } == {
+        canonical_material_composition_claim_type(fact_type)
+        for fact_type in service.FACT_TYPE_LABELS
+    }
     assert "resolved_product" not in payload
     assert "product_name" not in payload
     assert "product_candidates" not in payload
