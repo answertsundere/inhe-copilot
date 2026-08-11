@@ -1314,6 +1314,39 @@ def test_runtime_binding_must_match_pre_run_snapshot_and_source(tmp_path):
         )
 
 
+def test_runtime_binding_accepts_only_the_explicit_loopback_runtime_port(tmp_path):
+    path = tmp_path / "binding.json"
+    binding = {
+        "schema_version": "p1-runtime-knowledge-binding/v1",
+        "process_id": 123,
+        "runtime_port": 5014,
+        "snapshot_file_sha256": "a" * 64,
+        "source_tree_sha256": "b" * 64,
+        "formal_knowledge_query_only": True,
+        "formal_evidence_convergence": True,
+        "model_first_answer_composer": True,
+    }
+    path.write_text(json.dumps(binding), encoding="utf-8")
+
+    assert _validate_runtime_binding(
+        path,
+        pre_run_manifest={"snapshot": {"file_sha256": "a" * 64}},
+        expected_source_sha256="b" * 64,
+        expected_runtime_port=5014,
+    )["runtime_port"] == 5014
+
+    with pytest.raises(
+        P1BaselineIntegrityError,
+        match="runtime_snapshot_binding_mismatch",
+    ):
+        _validate_runtime_binding(
+            path,
+            pre_run_manifest={"snapshot": {"file_sha256": "a" * 64}},
+            expected_source_sha256="b" * 64,
+            expected_runtime_port=5015,
+        )
+
+
 def test_runner_reuses_authoritative_runtime_source_fingerprint():
     from app.api.runtime_routes import _source_tree_sha256
 

@@ -2517,6 +2517,7 @@ def _validate_runtime_binding(
     *,
     pre_run_manifest: dict[str, Any],
     expected_source_sha256: str,
+    expected_runtime_port: int = 5013,
 ) -> dict[str, Any]:
     binding = _load_json(
         path,
@@ -2534,7 +2535,7 @@ def _validate_runtime_binding(
         or binding.get("formal_evidence_convergence") is not True
         or binding.get("model_first_answer_composer") is not True
         or int(binding.get("process_id") or 0) <= 0
-        or int(binding.get("runtime_port") or 0) != 5013
+        or int(binding.get("runtime_port") or 0) != expected_runtime_port
     ):
         raise P1BaselineIntegrityError(
             "runtime_snapshot_binding_mismatch"
@@ -3482,6 +3483,7 @@ def run(args: argparse.Namespace) -> int:
         Path(args.runtime_binding).expanduser().resolve(),
         pre_run_manifest=pre_run_manifest,
         expected_source_sha256=args.expected_source_sha256,
+        expected_runtime_port=args.expected_runtime_port,
     )
     runtime = _runtime_preflight(
         evaluator,
@@ -3734,6 +3736,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--snapshot-db")
     parser.add_argument("--pre-run-manifest")
     parser.add_argument("--runtime-binding")
+    parser.add_argument("--expected-runtime-port", type=int, default=5013)
     parser.add_argument("--dml-diagnostics")
     parser.add_argument("--env-file")
     parser.add_argument("--expert-review")
