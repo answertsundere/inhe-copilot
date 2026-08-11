@@ -1245,9 +1245,15 @@ def build_case_observation(
                 alias_secret=alias_secret,
             )
         except HighQualityReviewProjectionError as exc:
+            projection_reason = str(exc).strip()
+            if not re.fullmatch(
+                r"[a-z0-9_:,.-]{1,200}",
+                projection_reason,
+            ):
+                projection_reason = "unallowlisted_projection_error"
             raise P1BaselineIntegrityError(
                 "trusted_reference_projection_failed:"
-                + str(exc).split(":", 1)[0]
+                + projection_reason
             ) from exc
     composer = _dict(response.get("model_first_answer_composer"))
     final_audit = _dict(response.get("final_answer_audit"))

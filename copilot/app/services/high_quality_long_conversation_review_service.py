@@ -187,7 +187,10 @@ def project_trusted_goal_references(
     from app.services.claim_resolution_service import _claim_uid
     from app.services.semantic_fact_type_service import (
         _validate_canonical_customer_goals,
+    )
+    from app.services.canonical_conversation_turn_service import (
         canonical_current_customer_turn_uid,
+        normalize_conversation_turns,
     )
 
     if not isinstance(response, dict):
@@ -230,9 +233,13 @@ def project_trusted_goal_references(
         )
 
     message = str(customer_message or "")
+    canonical_history, _history_diagnostics = normalize_conversation_turns(
+        conversation_history,
+        strict=False,
+    )
     source_turn_uid = canonical_current_customer_turn_uid(
         message,
-        conversation_history=conversation_history,
+        conversation_history=canonical_history,
     )
     goals = understanding.get("customer_goals")
     goals = goals if isinstance(goals, list) else []

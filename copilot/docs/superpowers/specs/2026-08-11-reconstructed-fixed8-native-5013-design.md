@@ -54,6 +54,11 @@ readiness 所需的 `kb_qa` 非空条件由一条 `archived + auto_reply=0` 的�
 该哨兵没有业务事实、不能参与检索，也不能支持回复。投影在快照哈希和运行绑定冻结
 前完成；manifest 只记录投影哈希和数量，不保存原始事实值。
 
+评测投影校验 current-turn provenance 时，必须先复用正式 Pipeline 的 canonical
+conversation normalizer，再计算 current turn UID。legacy role、缺失 index 等在线可
+观测修复不能由评测器按原始数组长度重新解释；owner、schema、source span、digest
+和引用关系仍逐项 fail-closed。投影失败报告只保留白名单 reason code。
+
 ## 5013 运行合同
 
 5013 必须是独立进程，且不得停止或修改 5011/5012。启动后必须满足：

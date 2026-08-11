@@ -14,6 +14,9 @@ import pytest
 
 import scripts.run_p1_gold_conversation_baseline as p1_baseline
 from app.services.claim_resolution_service import _claim_uid
+from app.services.canonical_conversation_turn_service import (
+    normalize_conversation_turns,
+)
 from app.services.high_quality_long_conversation_review_service import (
     HighQualityReviewProjectionError,
     project_trusted_goal_references,
@@ -209,7 +212,11 @@ def test_goal_projection_uses_canonical_history_position():
         {"role": "customer", "content": "前一个问题"},
         {"role": "assistant", "content": "前一个回答"},
     ]
-    response = _response(conversation_history=history)
+    canonical_history, _ = normalize_conversation_turns(
+        history,
+        strict=False,
+    )
+    response = _response(conversation_history=canonical_history)
 
     result = _project(response, conversation_history=history)
 
@@ -219,6 +226,24 @@ def test_goal_projection_uses_canonical_history_position():
         match="canonical_goal_provenance_invalid",
     ):
         _project(response, conversation_history=[])
+
+
+def test_goal_projection_normalizes_legacy_history_like_pipeline():
+    raw_history = [
+        {"role": "customer", "content": "前一个问题"},
+        {"role": "assistant", "content": "前一个回答"},
+        {"role": "customer", "content": "继续核对"},
+    ]
+    canonical_history, diagnostics = normalize_conversation_turns(
+        raw_history,
+        strict=False,
+    )
+    response = _response(conversation_history=canonical_history)
+
+    result = _project(response, conversation_history=raw_history)
+
+    assert diagnostics["status"] == "degraded"
+    assert result["status"] == "valid"
 
 
 @pytest.mark.parametrize("status", ["degraded", "invalid"])
@@ -743,6 +768,51 @@ def test_projection_failure_updates_pending_capsule_before_reraising(tmp_path):
     assert records[0]["sha256"] == hashlib.sha256(
         capsule_path.read_bytes()
     ).hexdigest()
+
+
+def test_projection_failure_preserves_allowlisted_provenance_reason(tmp_path):
+    response = _response()
+    response["turn_understanding"]["customer_goals"][0][
+        "source_turn_uid"
+    ] = "turn-" + "0" * 20
+    case_alias = p1_baseline._case_alias(
+        "scenario-provenance-reason",
+        _SECRET,
+    )
+    capsule_path = (
+        tmp_path / "projection_capsules" / f"{case_alias}.json"
+    )
+
+    with pytest.raises(
+        P1BaselineIntegrityError,
+        match=(
+            "trusted_reference_projection_failed:"
+            "canonical_goal_provenance_invalid:"
+            "customer_goal_identity_mismatch,"
+            "customer_goal_source_turn_uid_invalid"
+        ),
+    ):
+        _build_case_observation_with_capsule(
+            output_dir=tmp_path,
+            capsule_path=capsule_path,
+            capsule_records=[],
+            run_uid_alias="run_TEST",
+            case_uid_alias=case_alias,
+            case_index=1,
+            status_code=200,
+            scenario=_capsule_scenario(),
+            response=response,
+            scored={"error_type": "", "latency_ms": 10},
+            alias_secret=_SECRET,
+        )
+
+    persisted = json.loads(capsule_path.read_text(encoding="utf-8"))
+    assert persisted["exception"]["reason_code"] == (
+        "trusted_reference_projection_failed:"
+        "canonical_goal_provenance_invalid:"
+        "customer_goal_identity_mismatch,"
+        "customer_goal_source_turn_uid_invalid"
+    )
 
 
 def test_pending_capsule_exists_if_process_stops_before_projection(
