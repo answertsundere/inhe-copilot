@@ -8,7 +8,7 @@
   "manifest": {
     "scenario_count": 8,
     "approved_scenario_count": 0,
-    "content_sha256": "babd57bb8572633d0b8c38b52841ce310395efb242851afaacc2d708672babf1"
+    "content_sha256": "50d351316e87b0cce4d31ad5bf34a7eabf53cc1aca6c0d5355f23c366d7ff012"
   },
   "scenarios": [
     {
@@ -209,10 +209,10 @@
           "expected_status": "unresolved",
           "understanding_expectation": {
             "goal_kind": "customer_goal",
-            "claim_type_status": "canonical",
-            "claim_type": "material_safety",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
             "attribute_key": "",
-            "semantic_key": "",
+            "semantic_key": "safety_guarantee",
             "subject_scope": "",
             "source_span_start": 21,
             "source_span_end": 28,
@@ -254,7 +254,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "4e4c3f534b89284b5301dd70fce3c5f5896397513d7969df40df54f7a3bd4dea"
+      "content_sha256": "b854b2be8365858a331a8e7eb7f11b76ab2117aa33c9bf5c9347b42c11eeab16"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000003",

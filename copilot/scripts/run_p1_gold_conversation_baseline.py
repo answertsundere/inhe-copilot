@@ -81,10 +81,10 @@ _DATASET_CONTRACTS = {
         case_count=8,
         history_turn_count=40,
         dataset_sha256=(
-            "babd57bb8572633d0b8c38b52841ce310395efb242851afaacc2d708672babf1"
+            "50d351316e87b0cce4d31ad5bf34a7eabf53cc1aca6c0d5355f23c366d7ff012"
         ),
         manifest_file_sha256=(
-            "0b2c57d035aa48eb57983f6db8633235ca497d3ab26504159de8501945e0040d"
+            "4fc444b8ff79630c7b50cb77002b035b3ddcd54341c5d1204e90942d21db005f"
         ),
         source_class="conversation_reconstructed",
     ),
