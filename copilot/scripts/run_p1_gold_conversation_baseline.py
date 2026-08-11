@@ -2626,6 +2626,17 @@ def _summary_payload(
             for item in observations
         ),
     }
+    checkpoint_nonempty_reply_count = deterministic_summary.get(
+        "nonempty_reply_count"
+    )
+    if not isinstance(checkpoint_nonempty_reply_count, int) or isinstance(
+        checkpoint_nonempty_reply_count,
+        bool,
+    ):
+        checkpoint_nonempty_reply_count = sum(
+            bool(row.get("nonempty_reply"))
+            for row in scored_rows
+        )
     summary = {
         "schema_version": SCHEMA_VERSION,
         "evaluation_tier": "development_diagnostic",
@@ -2639,10 +2650,7 @@ def _summary_payload(
             not str(row.get("error_type") or "")
             for row in scored_rows
         ),
-        "nonempty_reply_count": sum(
-            bool(row.get("nonempty_reply"))
-            for row in scored_rows
-        ),
+        "nonempty_reply_count": checkpoint_nonempty_reply_count,
         "deterministic_metrics": metrics,
         "execution_error_counts": dict(sorted(Counter(
             str(row.get("error_type") or "")

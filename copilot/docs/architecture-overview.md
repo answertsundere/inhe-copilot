@@ -487,7 +487,7 @@ goals are still unmapped or use noncanonical attributes. Composer, Unified
 Audit, Graph, and Delivery Gate ownership remain unchanged. This evidence is
 diagnostic only and does not qualify real customer accuracy or Autonomous Send.
 
-The follow-up native run on the current dirty candidate source preserved that
+The follow-up native run on the current clean candidate source preserved that
 same isolation contract while testing canonical model-facing fact candidates.
 `material` aliases now appear to Turn Understanding once as the existing
 `material_composition` canonical type; this changes no admission, evidence, or
@@ -495,12 +495,19 @@ delivery rule. All eight reconstructed cases executed through the formal
 Pipeline, Composer and Deterministic Final accepted `8/8`, selected evidence
 was present in four cases, and direct supported attribution remained `3/3`.
 Every result remained review-only with `can_send=0`, formal knowledge content
-unchanged, and DML `0`. The Codex offline review found a `1.5/2` average for
-goal completion, a raw-string canonical-goal diagnostic of `0/18`, and an unbound everyday-use
-inference in an absolute-guarantee case. The next owner remains the existing
-Turn Understanding plus Claim Resolution `multi-goal_completion` boundary; it
-must not be addressed by Composer wording, a new graph path, or a relaxed
-Final/Delivery gate. This remains a reconstructed engineering baseline with
+unchanged, and DML `0`. A fresh native run under the evaluator-only
+`canonical_claim_type_and_attribute_slot/v2` comparison completed `8/8`: all
+eight customer-visible candidates were nonempty, selected evidence totaled `9`
+across four cases, direct supported attribution was `3/3`, and unresolved
+declaration was `13/13`. Its canonical-goal diagnostic was `3/18` with `14`
+unexpected goals. The Codex offline review scored goal completion `1.375/2`
+and business helpfulness `0.75/2`; the recurring problem is incomplete,
+generic completion of multiple service and installation goals, while one
+absolute-guarantee reply still needs an eligible bounded explanation. The next
+owner remains the existing Turn Understanding plus Claim Resolution
+`multi-goal_completion` boundary; it must not be addressed by Composer wording,
+a new graph path, or a relaxed Final/Delivery gate. This remains a reconstructed
+engineering baseline with
 `real_customer_accuracy=null`, `optimization_unverified=true`, and
 `original_fixed8_restored=false`.
 
@@ -509,7 +516,11 @@ The P1 baseline runner now scores goal recall with
 of the existing material and overall-dimension aliases; it prevents alias
 spelling from being counted as a missing goal but keeps unrelated attributes,
 unmapped goals, evidence gaps, and all delivery safeguards unchanged. The
-prior raw-string number is not comparable to a future v2 native run.
+prior raw-string number is not comparable to the v2 native run. The P1
+finalizer now preserves the checkpoint's deterministic nonempty-reply count
+when it rebuilds a summary from case observations; this is an evaluation-report
+consistency repair only and cannot change an Agent reply, evidence, safety
+decision, or delivery result.
 
 ### 恢复后的对话评测边界
 

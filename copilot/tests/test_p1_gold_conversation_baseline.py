@@ -1187,6 +1187,29 @@ def test_summary_separates_goal_recall_and_execution_errors():
     assert summary["real_customer_accuracy"] is None
 
 
+def test_summary_preserves_checkpoint_reply_counts_without_scored_rows():
+    summary = _summary_payload(
+        observations=[{} for _ in range(2)],
+        scored_rows=[{"error_type": ""}, {"error_type": ""}],
+        deterministic_summary={
+            "scenario_count": 2,
+            "execution_success_count": 2,
+            "nonempty_reply_count": 2,
+        },
+        status="baseline_completed",
+        integrity_stop_reason="",
+        owner_counts={},
+        formal_knowledge={
+            "changed": False,
+            "changed_row_count": 0,
+            "dml_attempt_count": 0,
+        },
+    )
+
+    assert summary["execution_success_count"] == 2
+    assert summary["nonempty_reply_count"] == 2
+
+
 def _create_formal_snapshot_source(path):
     connection = sqlite3.connect(path)
     for table in (
