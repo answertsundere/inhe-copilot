@@ -159,7 +159,7 @@ Require HTTP success, non-empty customer-visible reply, valid Pipeline diagnosti
 - Consumes: the same 5013 process, provider identity, fixture, manifest, snapshot, runtime binding and feature flags used by 1x1.
 - Produces: eight case observations, projection capsules, checkpoint, final report and integrity summary.
 
-- [ ] **Step 1: Execute the existing Runner once**
+- [x] **Step 1: Execute the existing Runner once**
 
 ```powershell
 & $Python scripts/run_p1_gold_conversation_baseline.py `
@@ -179,11 +179,11 @@ Require HTTP success, non-empty customer-visible reply, valid Pipeline diagnosti
   --timeout 180
 ```
 
-- [ ] **Step 2: Recompute report integrity offline**
+- [x] **Step 2: Recompute report integrity offline**
 
 Require exactly 8 cases and 8 trials, matching checkpoint/case/report hashes, source drift false, Provider/HTTP/schema errors 0, DML 0, `can_send=true` count 0 and human review count 8. Quality failures remain valid baseline findings and must not be rerun.
 
-- [ ] **Step 3: Classify the earliest business owner**
+- [x] **Step 3: Classify the earliest business owner**
 
 Using only the report observations, summarize current question/history, authoritative goals, selected evidence, full candidate reply, Final/Audit reason codes, latency and call counts. Classify each failure to the earliest one of Turn Understanding, Context, Identity, RAG/Evidence, Claim Resolution, Composer or Final/Audit without adding sample-specific rules.
 
@@ -201,7 +201,7 @@ Using only the report observations, summarize current question/history, authorit
 - Consumes: verified 8x1 report and synthetic safety regression.
 - Produces: accurate project status, a scoped commit, remote push and an external Git bundle.
 
-- [ ] **Step 1: Run focused regression**
+- [x] **Step 1: Run focused regression**
 
 ```powershell
 & $Python -m pytest tests/test_p1_reconstructed_conversation_baseline.py tests/test_p1_gold_conversation_baseline.py tests/test_analysis_pipeline_entrypoints.py tests/test_final_answer_auditor.py tests/test_final_response_orchestrator.py tests/test_docs_governance.py -q
@@ -209,18 +209,18 @@ Using only the report observations, summarize current question/history, authorit
 git diff --check
 ```
 
-- [ ] **Step 2: Run versioned synthetic safety regression**
+- [x] **Step 2: Run versioned synthetic safety regression**
 
 Initialize a fresh external benchmark SQLite database from `active_benchmark_synthetic_v1`, then run the same fixture as smoke 5 and full 22. Require smoke `5/5`, full `22/22`, `can_send=true` count 0 and `requires_human_review=true` count 22.
 
-- [ ] **Step 3: Verify JSON portability**
+- [x] **Step 3: Verify JSON portability**
 
 Load the authoritative fixture, manifest, one-case observation, checkpoint and full report with Python `json.load` and PowerShell `ConvertFrom-Json`.
 
-- [ ] **Step 4: Update status without accuracy inflation**
+- [x] **Step 4: Update status without accuracy inflation**
 
 Record the native 8x1 infrastructure result, earliest business owner and limitations. Preserve `real_customer_accuracy=null`, identify the source as reconstructed, and state that production feature flags and Autonomous Send remain disabled.
 
-- [ ] **Step 5: Commit, push and bundle**
+- [x] **Step 5: Commit, push and bundle**
 
 Stage only the listed docs and any directly required evaluation tests. Confirm no outputs, DB, `.env`, secrets or generated frontend files are staged, commit, push the current branch, and create a verified Git bundle under `D:\桌面文件\客服\.codex-runtime` with its SHA-256 recorded in the final report.

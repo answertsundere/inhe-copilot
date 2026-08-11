@@ -87,11 +87,14 @@ The following rules are non-negotiable:
 绝对保证边界。
 
 该重建集已经通过 schema、隐私、哈希、Agent payload 标签隔离和 query-only
-知识快照预检；正式知识 DML 为 0。当前 5011/5012 均不是本分支运行版本，
-5013 尚未启动，因此尚未产生本版本的原生 8 条模型基线。任何报告必须保持
+知识快照预检。干净提交 `52a7e1b` 的隔离 5013 已完成一次不可替换的原生
+`1×1 -> 8×1`：执行 `8/8`、Final `8/8`、Unified Audit `6/8`、正式知识 DML
+为 0、`can_send=0`、人工复核 `8/8`。离线审阅平均目标完成度为 `1.375/2`，
+首要 Owner 是 `multi-goal_completion`；售后多目标未形成 authoritative goals
+并重复索要已有照片。下一步先修这个通用理解/完成合同，再分别处理尺寸作用域
+和未经 Domain Policy 约束的常识扩写。任何报告仍必须保持
 `real_customer_accuracy=null`、`optimization_unverified=true` 和
-`original_fixed8_restored=false`。这不会阻止继续修复工程质量，但不得用于
-生产晋升或自动发送资格。
+`original_fixed8_restored=false`，不得用于生产晋升或自动发送资格。
 
 P0-R1 qualified the existing Agent Core correctness slice. P1.4 then ran one
 native, non-intercepted fixed-eight comparison through the same formal

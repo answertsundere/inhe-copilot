@@ -492,9 +492,14 @@ readiness 的 `kb_qa` 哨兵是 archived/non-auto-reply，不可检索。源数�
 5013 仍以 SQLite query-only 方式消费快照。
 
 重建模式始终是人工复核轨道：出现任意 `can_send=true` 或
-`requires_human_review=false` 都使运行无效。它目前只完成 8 条数据、40 个
-历史回合、隐私 0、隔离快照投影和正式知识 DML 0 的确定性预检；由于当前
-源码的 5013 canary 尚未启动，不能宣称回答质量、提速或真实准确率已经验证。
+`requires_human_review=false` 都使运行无效。当前干净提交 `52a7e1b` 已在隔离
+5013 完成原生 `1×1 -> 8×1`：8 条均执行成功、Final `8/8`、Unified Audit
+`6/8`、正式知识 DML 0、`can_send=0`、人工复核 `8/8`，Pipeline p50/p95 为
+`9.667s/14.074s`。离线 Codex review 将最早主断点归到多目标完成：售后回合
+没有形成 authoritative goals，且重复索要历史中已提供的照片。另有一条未经
+Domain Policy 约束的材质常识扩写和一条尺寸证据作用域不一致。该结果仍是
+`conversation_reconstructed` 工程基线，`real_customer_accuracy=null`，不能用于
+生产晋升、提速声明或 Autonomous Send。
 
 ### Final Safety And Delivery
 

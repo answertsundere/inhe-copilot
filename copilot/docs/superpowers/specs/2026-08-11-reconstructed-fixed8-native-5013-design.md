@@ -143,6 +143,15 @@ flags 运行全部八条。禁止对失败案例重跑以等待偶然通过。
 Identity、RAG/Evidence、Claim Resolution、Composer 或 Final/Audit。下一阶段只修
 出现频率最高且最早的一个通用断点，不按案例、商品或原句补规则。
 
+## 2026-08-11 原生运行结果
+
+干净提交 `52a7e1b` 在隔离 5013 完成 `1×1 -> 8×1`。执行成功 `8/8`，
+Final `8/8`，Unified Audit `6/8`，正式知识 DML 0，`can_send=0`，人工复核
+`8/8`，Pipeline p50/p95 为 `9.667s/14.074s`。Codex 离线审阅选定
+`multi-goal_completion` 为下一 Owner；售后多目标没有形成 authoritative goals，
+且回复重复索要历史已提供的照片。尺寸证据作用域和无 Domain Policy 的常识扩写
+作为后续独立问题保留。结果继续标记 `real_customer_accuracy=null`。
+
 ## 验证与提交
 
 运行 P1 Runner 专项、Pipeline、Final、docs governance、`py_compile`、JSON 双解析、
