@@ -747,6 +747,7 @@ def test_unknown_string_or_integer_like_long_identifier_still_fails(value):
 def test_only_typed_valid_fingerprints_are_removed_from_content_scan():
     _assert_report_safe({
         "source_tree_sha256": "a" * 64,
+        "source_span_sha256": "1234567890" + "c" * 54,
         "formal_provider_identity": {
             "host_fingerprint": "b" * 12,
         },

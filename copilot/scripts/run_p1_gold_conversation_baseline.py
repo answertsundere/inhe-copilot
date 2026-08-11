@@ -157,6 +157,7 @@ _CONTROLLED_FINGERPRINT_PATTERNS = {
     "sha256": re.compile(r"^[0-9a-f]{64}$"),
     "snapshot_file_sha256": re.compile(r"^[0-9a-f]{64}$"),
     "source_manifest_file_sha256": re.compile(r"^[0-9a-f]{64}$"),
+    "source_span_sha256": re.compile(r"^[0-9a-f]{64}$"),
     "source_tree_sha256": re.compile(r"^[0-9a-f]{64}$"),
     "value_sha256": re.compile(r"^[0-9a-f]{64}$"),
 }
