@@ -379,6 +379,26 @@ def test_customer_pii_and_unknown_long_identifiers_are_still_scanned(
         _assert_report_safe(payload)
 
 
+def test_fractional_report_metric_does_not_look_like_long_identifier():
+    _assert_report_safe({"coverage": {"rate": 1 / 6}})
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "12345678901234567890",
+        12345678901234567890,
+        13800138000.0,
+    ],
+)
+def test_unknown_string_or_integer_like_long_identifier_still_fails(value):
+    with pytest.raises(
+        P1BaselineIntegrityError,
+        match="report_privacy_validation_failed",
+    ):
+        _assert_report_safe({"unknown_identifier": value})
+
+
 def test_only_typed_valid_fingerprints_are_removed_from_content_scan():
     _assert_report_safe({
         "source_tree_sha256": "a" * 64,

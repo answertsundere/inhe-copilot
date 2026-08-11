@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -1652,6 +1653,12 @@ def _assert_report_safe(value: Any) -> None:
     invalid_fingerprint_paths: list[str] = []
 
     def visit(item: Any, path: str) -> Any:
+        if (
+            isinstance(item, float)
+            and math.isfinite(item)
+            and not item.is_integer()
+        ):
+            return round(item, 8)
         if isinstance(item, list):
             return [
                 visit(child, f"{path}[{index}]")
