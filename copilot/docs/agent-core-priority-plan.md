@@ -138,10 +138,19 @@ The isolated follow-up run on clean commit `3d9821d` completed the reconstructed
 unchanged, `can_send=0`, and all `8/8` cases required human review. Preserved
 metadata increased canonical selected evidence to eight records across four
 cases, but Claim Resolution still produced no supported-attribution denominator
-and declared all sixteen renderable goals unresolved. The offline review
-therefore selected `formal_knowledge_tool_coverage` as the next Owner: repair
-the generic fact-to-claim binding before changing Composer wording or the
-advisory Audit. This is a reconstructed engineering baseline only;
+and declared all sixteen renderable goals unresolved.
+
+The next clean, isolated run on `da4a0ad` verified the bounded repair to the
+existing admission and Claim Resolution contract. A canonical overall-width or
+overall-height request now requires an explicit product subject scope and can
+match its corresponding reviewed direct dimension fact, without treating
+packaging or component measurements as product dimensions. The full
+`conversation-reconstructed-v1` run completed `8/8`: supported attribution was
+`2/2`, unresolved declaration was `14/14`, every case kept human review, formal
+knowledge content/DML stayed unchanged, and `can_send=0`. Offline review moved
+the next owner to `multi-goal_completion`; it must repair generic goal
+canonicalization and completion before any Composer wording or advisory-Audit
+change. This is a reconstructed engineering baseline only;
 `real_customer_accuracy=null`, `optimization_unverified=true`, and
 `original_fixed8_restored=false` remain mandatory.
 

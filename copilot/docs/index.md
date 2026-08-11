@@ -67,8 +67,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - 固化当前源码 5013 的快照准备、运行身份、`1×1 -> 8×1` 分层门槛、
     报告复算、安全回归和恢复检查点。
   - 当前隔离 query-only 重跑已完成 `8/8`，但只形成重建工程诊断：正式知识
-    DML 为 0、`can_send=0`、全部人工复核；下一 Owner 是
-    `formal_knowledge_tool_coverage`，真实准确率和生产资格仍未证明。
+    DML 为 0、`can_send=0`、全部人工复核。`da4a0ad` 已验证商品整体宽高的
+    直接证据绑定 `2/2`；下一 Owner 是 `multi-goal_completion`，真实准确率和
+    生产资格仍未证明。
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.

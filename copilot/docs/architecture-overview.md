@@ -474,15 +474,18 @@ by default. P0 qualification is a reviewable correctness checkpoint, not
 production qualification; the active priority is now P1 Gold Conversation
 Quality.
 
-The current reconstructed P1 baseline completed on an isolated, query-only
-runtime using the existing formal Pipeline. It executed eight cases with zero
+The latest reconstructed P1 baseline completed on an isolated, query-only
+runtime at clean commit `da4a0ad`. It executed all eight cases with zero
 formal-knowledge DML, zero `can_send=true` results, and mandatory human review
-for every candidate. Preserving reviewed retrieval provenance increased
-canonical selected evidence, but no customer goal yet received a valid supported
-fact attribution. The next bounded change belongs to formal knowledge tool
-coverage and Claim Resolution compatibility, not to the Composer, Unified Audit,
-Graph, or Delivery Gate. This evidence is diagnostic only and does not qualify
-real customer accuracy or Autonomous Send.
+for every candidate. The existing admission and Claim Resolution owners now
+bind product-scoped overall width and height to the matching reviewed direct
+facts: runtime supported-claim attribution was `2/2`, while unresolved claims
+were explicitly declared `14/14`. This is a narrow evidence-binding result,
+not a quality or delivery promotion. Offline review selected
+`multi-goal_completion` as the next bounded owner because remaining customer
+goals are still unmapped or use noncanonical attributes. Composer, Unified
+Audit, Graph, and Delivery Gate ownership remain unchanged. This evidence is
+diagnostic only and does not qualify real customer accuracy or Autonomous Send.
 
 ### 恢复后的对话评测边界
 

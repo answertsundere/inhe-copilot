@@ -78,10 +78,14 @@ evaluation owner only; no Fast Path or Composer module has been added.
 | Composer role qualification | `scripts/qualify_model_first_composer_role.py` | Evaluation-only five-run synthetic gate for an explicit `COPILOT_COMPOSER_LLM_*` model; its non-secret fingerprint binds a passing report to base/model/effective timeout, with one Provider call per run and no retry/repair/fallback or delivery authority |
 | Unified Audit role qualification | `scripts/qualify_unified_audit_role.py` | Evaluation-only frozen 5+5 gate for the independent strict-output role; a non-secret fingerprint binds a passing report to provider/base/model/capability/timeout/thinking before production may call it |
 
-The latest reconstructed baseline selected `formal_knowledge_tool_coverage` as
-the next P1 Owner. It may repair only generic direct-fact to requested-claim
-binding through the existing admission and Claim Resolution contracts; it has no
-Composer, Audit, Graph, delivery, or send authority.
+The latest reconstructed baseline on `da4a0ad` verified the generic
+product-scoped overall-dimension binding through the existing admission and
+Claim Resolution contracts: supported attribution was `2/2`, unresolved
+declaration was `14/14`, and no formal knowledge or send authority changed.
+Offline review selected `multi-goal_completion` as the next P1 Owner. It may
+repair only generic goal canonicalization and multi-goal completion through the
+existing Turn Understanding and Claim Resolution contracts; it has no Composer,
+Audit, Graph, delivery, or send authority.
 
 ## Frozen Shadow And Experimental Modules
 
