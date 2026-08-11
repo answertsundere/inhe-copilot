@@ -1,14 +1,14 @@
 {
   "schema_version": "high-quality-long-conversation-review/v1",
   "dataset_id": "p1-conversation-reconstructed-v1",
-  "dataset_version": "1.1.0",
+  "dataset_version": "1.2.0",
   "source_class": "conversation_reconstructed",
   "source_summary": "根据项目已确认的通用失败类型和正式合同重建的匿名工程评测集，不是遗失的原 Fixed-8。",
   "privacy_classification": "synthetic_anonymous",
   "manifest": {
     "scenario_count": 8,
     "approved_scenario_count": 0,
-    "content_sha256": "76b7e069e41d50f8a1b572f2bcd2a6cda634543e2cd51dc1b45a9497c42f5b92"
+    "content_sha256": "babd57bb8572633d0b8c38b52841ce310395efb242851afaacc2d708672babf1"
   },
   "scenarios": [
     {
@@ -90,7 +90,8 @@
             "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 0,
-            "source_span_end": 10
+            "source_span_end": 10,
+            "source_span_sha256": "08f6b8d2cbdcf3bf32a4a8334fcc41c105eae9b6a7d98ff52b93a9aa039108a5"
           }
         },
         {
@@ -116,7 +117,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "628cfff83646d11f98b88ce2b2d1df46948adff4c59ccdce0f91e6bf8b10aaf5"
+      "content_sha256": "f4990e155476b5b6fcdbae003101f664bf8955d4ff0c0993d2f4de6096cbbebf"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000002",
@@ -198,7 +199,8 @@
             "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 2,
-            "source_span_end": 8
+            "source_span_end": 8,
+            "source_span_sha256": "69f7333ac8220a4169a1b81efd8a4cdccf1f177999de3417c62dc176313fc63b"
           }
         },
         {
@@ -207,13 +209,14 @@
           "expected_status": "unresolved",
           "understanding_expectation": {
             "goal_kind": "customer_goal",
-            "claim_type_status": "unmapped",
-            "claim_type": "",
+            "claim_type_status": "canonical",
+            "claim_type": "material_safety",
             "attribute_key": "",
-            "semantic_key": "safety_guarantee",
+            "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 21,
-            "source_span_end": 28
+            "source_span_end": 28,
+            "source_span_sha256": "57c06d521a835b114e1fb7c49014c3c79df047fd518d243d65952f7ffac14d62"
           }
         },
         {
@@ -228,7 +231,8 @@
             "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 9,
-            "source_span_end": 20
+            "source_span_end": 20,
+            "source_span_sha256": "a00160a581ce32ad29624069f107b72eabb72575243136fe8b987a53518b08cd"
           }
         }
       ],
@@ -250,7 +254,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "4263d7c6d1663b8d7ae234f755e69292ba439a81935aebb36f9fbfd9da4867f6"
+      "content_sha256": "4e4c3f534b89284b5301dd70fce3c5f5896397513d7969df40df54f7a3bd4dea"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000003",
@@ -342,7 +346,8 @@
             "semantic_key": "",
             "subject_scope": "product",
             "source_span_start": 6,
-            "source_span_end": 10
+            "source_span_end": 10,
+            "source_span_sha256": "611b3be152b4411d31bb6c4834acc908b6e6abdad1aa93ce6239daef727929cf"
           }
         },
         {
@@ -357,7 +362,8 @@
             "semantic_key": "",
             "subject_scope": "product",
             "source_span_start": 11,
-            "source_span_end": 15
+            "source_span_end": 15,
+            "source_span_sha256": "234e33f535b43af45775e6b789e8608355f0b083ab2dbc91ad9f08a08e8c6b02"
           }
         }
       ],
@@ -378,7 +384,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "3c697e9e0add60ca556d48ba8af231dbd4677928cb0383996b738e815f515465"
+      "content_sha256": "9f465c59c162e60c5b7ec28a5fe906bb87054bbfa6ec7334e49e94f637a7a7c5"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000004",
@@ -470,7 +476,8 @@
             "semantic_key": "",
             "subject_scope": "packaging",
             "source_span_start": 0,
-            "source_span_end": 6
+            "source_span_end": 6,
+            "source_span_sha256": "9b02b81fda5b66d2fafbebc7389e56d08201b7b7ba3f52aa0a99cccf82d33bb0"
           }
         },
         {
@@ -485,7 +492,8 @@
             "semantic_key": "",
             "subject_scope": "product",
             "source_span_start": 6,
-            "source_span_end": 24
+            "source_span_end": 24,
+            "source_span_sha256": "bf1a37234f5e2d1a048922d95f38094b2dac14aa17b11a88f8f0930acaeda227"
           }
         }
       ],
@@ -505,7 +513,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "091fd23690cdfe9b0b011eab2d01cf820e32e26595c634d5ee2a9efb88134c15"
+      "content_sha256": "dc8da380f1dfe93e96bf6bb67c2ae5f3bfdcd481e6eac2eeeb87578ef3ca5a47"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000005",
@@ -593,7 +601,8 @@
             "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 0,
-            "source_span_end": 9
+            "source_span_end": 9,
+            "source_span_sha256": "8d77763b56229fece7457075c433dae43f891512de9bdcca61d81b6bab0b5b04"
           }
         },
         {
@@ -608,7 +617,8 @@
             "semantic_key": "installation_video",
             "subject_scope": "",
             "source_span_start": 9,
-            "source_span_end": 17
+            "source_span_end": 17,
+            "source_span_sha256": "aa0b739b22d310813b56bbeaed4cb938bb13d968668f221215c8babb9c976000"
           }
         }
       ],
@@ -628,7 +638,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "3dc2974a56c763903fa1ab209456d8947dcdd89230f85d05d1c09c841224735b"
+      "content_sha256": "dba5f70e4afcc6055b26c11b3bef0c59adfa8d973267ee433768b1eb0cec486b"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000006",
@@ -717,7 +727,8 @@
             "semantic_key": "confirm_crack",
             "subject_scope": "",
             "source_span_start": 0,
-            "source_span_end": 12
+            "source_span_end": 12,
+            "source_span_sha256": "d6bb26b570b50b0b195a24da02f59f7c560db0d8bfed7f5c1c9d2d944704e408"
           }
         },
         {
@@ -732,7 +743,8 @@
             "semantic_key": "refund_or_exchange",
             "subject_scope": "",
             "source_span_start": 12,
-            "source_span_end": 26
+            "source_span_end": 26,
+            "source_span_sha256": "077390c55495226ecacf84340e0d2150e3b35a7caf3a016cd1d5a90a1dcb083e"
           }
         },
         {
@@ -747,7 +759,8 @@
             "semantic_key": "compensation",
             "subject_scope": "",
             "source_span_start": 27,
-            "source_span_end": 35
+            "source_span_end": 35,
+            "source_span_sha256": "ab9bb932924344749613dd68595d7582fd4ec1fe702e983f9cafd8379a42f51e"
           }
         }
       ],
@@ -771,7 +784,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "e16256cba4083a74f82862eed78e15d95507a1555e3dd5d04db6aee86fb28fd0"
+      "content_sha256": "965fb19acc247360644dbc939ae3dd0821a8f6751389c265a813a4b7411e435b"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000007",
@@ -860,7 +873,8 @@
             "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 18,
-            "source_span_end": 23
+            "source_span_end": 23,
+            "source_span_sha256": "a1d771268992870cbdc50aa86cbe8d4a677d320b27a3dad9856b29b3288e8e24"
           }
         },
         {
@@ -875,7 +889,8 @@
             "semantic_key": "",
             "subject_scope": "",
             "source_span_start": 26,
-            "source_span_end": 37
+            "source_span_end": 37,
+            "source_span_sha256": "3d0ac47abb7cf6e5abff1f6fbe614a6948bdfce9d055a50dbb10322be2a87325"
           }
         }
       ],
@@ -898,7 +913,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "8fbc8135ee530aa41ae5253c0cd3a81f17b934783e948b154650975fdd28342a"
+      "content_sha256": "b37499f715fb61981c36ba2d24899164a33cc15f88fdc6fc0792e26d8f93ed6a"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000008",
@@ -980,7 +995,8 @@
             "semantic_key": "absolute_durability_guarantee",
             "subject_scope": "",
             "source_span_start": 0,
-            "source_span_end": 19
+            "source_span_end": 19,
+            "source_span_sha256": "ad1dd0107b910c9c4eb9f63bc4628b4228e18bbb48520168c5b1e9dfbb0cf10d"
           }
         },
         {
@@ -995,7 +1011,9 @@
             "semantic_key": "durability_ordinary_use_guidance",
             "subject_scope": "",
             "source_span_start": 19,
-            "source_span_end": 45
+            "source_span_end": 45,
+            "policy_intent_ref": "product_durability_practical_guidance",
+            "source_span_sha256": "8fd389f2df89c619be1952abb1388b932687ec0ed1f2f530701a489c44a258da"
           }
         }
       ],
@@ -1016,7 +1034,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "21df4bf87c56d23337d0e0c543c49d5dae56108f9bac44babb2d7fc388b0bb2c"
+      "content_sha256": "f8eeb904b0a4989e756561f52eddc357783ff292724537f5da0f24555be57b39"
     }
   ]
 }

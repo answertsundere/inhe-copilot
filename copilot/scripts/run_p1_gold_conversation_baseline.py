@@ -77,14 +77,14 @@ _DATASET_CONTRACTS = {
     "conversation-reconstructed-v1": DatasetContract(
         contract_name="conversation-reconstructed-v1",
         dataset_id="p1-conversation-reconstructed-v1",
-        dataset_version="1.1.0",
+        dataset_version="1.2.0",
         case_count=8,
         history_turn_count=40,
         dataset_sha256=(
-            "76b7e069e41d50f8a1b572f2bcd2a6cda634543e2cd51dc1b45a9497c42f5b92"
+            "babd57bb8572633d0b8c38b52841ce310395efb242851afaacc2d708672babf1"
         ),
         manifest_file_sha256=(
-            "b12019b64d241cab2f7e3f39b4a6f7494972a6cc160e749cb04cd837addc33e3"
+            "0b2c57d035aa48eb57983f6db8633235ca497d3ab26504159de8501945e0040d"
         ),
         source_class="conversation_reconstructed",
     ),
@@ -378,6 +378,23 @@ def _validate_reconstructed_dataset_contract(
             for turn in history
         ):
             findings.append("reconstructed_conversation_turn_invalid")
+            break
+        message = str(request_template.get("message") or "")
+        for claim in _dicts(row.get("expected_claims")):
+            expectation = _goal_expectation(claim)
+            if expectation is None:
+                continue
+            source_hash = expectation["source_span_sha256"]
+            source = message[
+                expectation["source_span_start"]:
+                expectation["source_span_end"]
+            ]
+            if not source_hash or source_hash != hashlib.sha256(
+                source.encode("utf-8")
+            ).hexdigest():
+                findings.append("reconstructed_goal_span_hash_invalid")
+                break
+        if findings:
             break
 
     if findings:
@@ -1436,7 +1453,7 @@ def _goal_expectation(item: dict[str, Any]) -> dict[str, Any] | None:
         "source_span_start",
         "source_span_end",
     }
-    optional = {"source_span_sha256"}
+    optional = {"source_span_sha256", "policy_intent_ref"}
     if not required <= set(raw) or set(raw) - required - optional:
         raise P1BaselineIntegrityError("understanding_expectation_fields_invalid")
 
@@ -1445,6 +1462,7 @@ def _goal_expectation(item: dict[str, Any]) -> dict[str, Any] | None:
     source_start = raw.get("source_span_start")
     source_end = raw.get("source_span_end")
     source_hash = str(raw.get("source_span_sha256") or "").strip().lower()
+    policy_intent_ref = str(raw.get("policy_intent_ref") or "").strip().lower()
     if goal_kind not in {
         "customer_goal",
         "evidence_dependency",
@@ -1463,6 +1481,10 @@ def _goal_expectation(item: dict[str, Any]) -> dict[str, Any] | None:
         or source_start < 0
         or source_end <= source_start
         or (source_hash and not re.fullmatch(r"[0-9a-f]{64}", source_hash))
+        or (
+            policy_intent_ref
+            and not re.fullmatch(r"[a-z][a-z0-9_]{2,95}", policy_intent_ref)
+        )
     ):
         raise P1BaselineIntegrityError("understanding_expectation_span_invalid")
 
@@ -1485,6 +1507,7 @@ def _goal_expectation(item: dict[str, Any]) -> dict[str, Any] | None:
         "claim_type": claim_type,
         "attribute_key": attribute_key,
         "semantic_key": semantic_key,
+        "policy_intent_ref": policy_intent_ref,
         "subject_scope": subject_scope,
         "source_span_start": source_start,
         "source_span_end": source_end,
@@ -1514,6 +1537,9 @@ def _runtime_goal_contract(item: dict[str, Any]) -> dict[str, Any]:
         "claim_type": claim_type,
         "attribute_key": attribute_key,
         "semantic_key": str(item.get("semantic_key") or "").strip().lower(),
+        "policy_intent_ref": str(
+            item.get("policy_intent_ref") or ""
+        ).strip().lower(),
         "subject_scope": raw_subject_scope,
         "effective_subject_scope": str(effective_subject_scope or ""),
         "source_span_start": item.get("source_span_start"),
@@ -1551,11 +1577,11 @@ def _goal_identity_matches(
             and expected["attribute_key"] == observed["attribute_key"]
             and not observed["semantic_key"]
         )
-    return (
-        not observed["claim_type"]
-        and not observed["attribute_key"]
-        and expected["semantic_key"] == observed["semantic_key"]
-    )
+    if observed["claim_type"] or observed["attribute_key"]:
+        return False
+    if expected["policy_intent_ref"]:
+        return expected["policy_intent_ref"] == observed["policy_intent_ref"]
+    return expected["semantic_key"] == observed["semantic_key"]
 
 
 def _goal_recall_diagnostic(

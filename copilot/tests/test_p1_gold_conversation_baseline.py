@@ -271,6 +271,48 @@ def test_goal_recall_scope_preserves_explicit_non_product_scope():
     }
 
 
+def test_goal_recall_uses_trusted_policy_identity_for_unmapped_goal():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [{
+                "understanding_expectation": {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "attribute_key": "",
+                    "semantic_key": "ordinary_durability_guidance",
+                    "policy_intent_ref": "product_durability_practical_guidance",
+                    "subject_scope": "",
+                    "source_span_start": 0,
+                    "source_span_end": 4,
+                    "source_span_sha256": "a" * 64,
+                },
+            }],
+        },
+        {
+            "status": "valid",
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "semantic_key": "daily_use_durability_guidance",
+                "policy_intent_ref": "product_durability_practical_guidance",
+                "subject_scope": "",
+                "source_span_start": 0,
+                "source_span_end": 4,
+                "source_span_sha256": "a" * 64,
+            }],
+        },
+    )
+
+    assert diagnostic["customer_goal_identity_recall"] == {
+        "numerator": 1,
+        "denominator": 1,
+        "rate": 1.0,
+    }
+
+
 def test_reconstructed_fixed8_goal_labels_are_versioned_and_contract_valid():
     root = Path(__file__).parent / "fixtures" / "p1_conversation_reconstructed"
     dataset, inventory, _manifest = p1_baseline._preflight_dataset(
@@ -288,7 +330,7 @@ def test_reconstructed_fixed8_goal_labels_are_versioned_and_contract_valid():
     ]
 
     assert inventory["validation_status"] == "passed"
-    assert dataset["dataset_version"] == "1.1.0"
+    assert dataset["dataset_version"] == "1.2.0"
     assert len(expectations) == 17
     assert sum(
         item["goal_kind"] == "customer_goal" for item in expectations
@@ -297,6 +339,25 @@ def test_reconstructed_fixed8_goal_labels_are_versioned_and_contract_valid():
         item["goal_kind"] == "media_request" for item in expectations
     ) == 1
     assert sum(bool(item["subject_scope"]) for item in expectations) == 4
+
+
+def test_reconstructed_goal_labels_bind_each_span_to_its_current_message():
+    root = Path(__file__).parent / "fixtures" / "p1_conversation_reconstructed"
+    dataset = json.loads((root / "v1.json").read_text(encoding="utf-8"))
+
+    for scenario in dataset["scenarios"]:
+        message = scenario["api_request_template"]["message"]
+        for claim in scenario["expected_claims"]:
+            expectation = claim.get("understanding_expectation")
+            if not isinstance(expectation, dict):
+                continue
+            source = message[
+                expectation["source_span_start"]:
+                expectation["source_span_end"]
+            ]
+            assert expectation["source_span_sha256"] == hashlib.sha256(
+                source.encode("utf-8")
+            ).hexdigest()
 
 
 def _goal(

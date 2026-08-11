@@ -28,6 +28,7 @@ _PRIVACY_CONTROLLED_FIELDS = {
     "content_sha256", "provenance_hash", "scenario_uid", "turn_uid",
     "claim_uid", "evidence_uid", "evidence_uids", "source_case_uid", "source_linkage_fingerprint",
     "source_conversation_digest", "target_turn_uids",
+    "source_span_sha256",
 }
 
 
@@ -295,6 +296,7 @@ def project_trusted_goal_references(
             "attribute_key": str(goal.get("attribute_key") or ""),
             "subject_scope": str(goal.get("subject_scope") or ""),
             "semantic_key": str(goal.get("semantic_key") or ""),
+            "policy_intent_ref": str(goal.get("policy_intent_ref") or ""),
             "source_span_start": goal.get("source_span_start"),
             "source_span_end": goal.get("source_span_end"),
             "provenance_status": "validated_current_customer_turn",
