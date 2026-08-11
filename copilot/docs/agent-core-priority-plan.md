@@ -96,6 +96,14 @@ The following rules are non-negotiable:
 `real_customer_accuracy=null`、`optimization_unverified=true` 和
 `original_fixed8_restored=false`，不得用于生产晋升或自动发送资格。
 
+`bd1af55` 已定位并修复该售后回合的第一个确定性断点：Provider 实际返回了
+三个来源 span 唯一的原子目标，但两个 unmapped 目标携带了格式不合格的可选
+`semantic_key`，旧校验器因此清空整回合。现在仅丢弃这种字符串型、非权威 hint
+并记录 discarded count；非字符串、canonical hint、未知 claim、错误 provenance
+仍 fail-closed。Understanding 专项 `179/179`、相邻 Owner 回归 `422/422`
+通过。当前安全凭证文件在隔离 5013 启动前已不存在，因此修复后的冻结售后案例
+尚未调用 Agent，Fixed-8 也未运行；P1 质量改善仍未验证。
+
 P0-R1 qualified the existing Agent Core correctness slice. P1.4 then ran one
 native, non-intercepted fixed-eight comparison through the same formal
 Pipeline. After preserving trusted Composer control metadata and making

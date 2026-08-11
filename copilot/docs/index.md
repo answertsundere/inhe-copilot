@@ -57,6 +57,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - 当前实现已完成版本化 8 条/40 回合 fixture、独立 manifest、不可变
     `DatasetContract`、评测字段隔离、query-only 快照及干净提交 `52a7e1b` 的
     原生 `1×1 -> 8×1`。该运行只形成重建工程基线，真实准确率和生产资格仍为空。
+  - 后续 `bd1af55` 修复了可选 unmapped semantic hint 清空多目标回合的确定性
+    断点；专项与相邻回归通过，但修复后的原生案例尚未执行，质量结论保持未验证。
 - `docs/superpowers/specs/2026-08-11-reconstructed-fixed8-native-5013-design.md`
   - 定义重建 Fixed-8 在当前源码 5013 上的原生 `1×1 -> 8×1` 运行合同、
     query-only/review-only 边界、基础设施失败与业务质量失败分离，以及继续保持

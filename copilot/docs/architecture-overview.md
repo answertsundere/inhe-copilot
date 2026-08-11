@@ -501,6 +501,14 @@ Domain Policy 约束的材质常识扩写和一条尺寸证据作用域不一致
 `conversation_reconstructed` 工程基线，`real_customer_accuracy=null`，不能用于
 生产晋升、提速声明或 Autonomous Send。
 
+后续漏斗诊断确认该售后案例的 Provider 已拆出三个独立目标，且三个 current-turn
+source span 均唯一解析。最早失效点不是 Graph、Claim Resolution 或 Composer，
+而是 Turn Understanding 把 unmapped 目标的可选 `semantic_key` 格式错误视为整回合
+schema 失败。提交 `bd1af55` 将字符串型无效 hint 规范化为空并增加丢弃计数；hint
+仍无 claim、evidence、policy 或 send authority，所有 authoritative 字段和来源
+provenance 继续严格校验。确定性与相邻回归已通过，但修复后的原生案例因获批凭证
+文件缺失尚未运行，因此不能声称回复质量、历史连续性或多目标完成度已经改善。
+
 ### Final Safety And Delivery
 
 Final safety and delivery remain deterministic application responsibilities.
