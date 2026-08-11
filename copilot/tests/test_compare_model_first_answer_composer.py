@@ -412,6 +412,71 @@ def test_response_scoring_separates_restricted_request_and_answer_risk():
     ) == []
 
 
+def test_response_scoring_counts_restricted_bounded_clause_as_unresolved_boundary():
+    response = _restricted_bounded_policy_response()
+    response["turn_understanding"] = {
+        "goal_understanding_status": "valid",
+        "customer_goals": [{
+            "goal_ref": "claim-durability",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "semantic_key": "absolute_durability_guarantee",
+        }],
+    }
+    response["minimal_decision_context"]["claim_resolutions"][0].update({
+        "goal_kind": "customer_goal",
+        "claim_type_status": "unmapped",
+        "semantic_key": "absolute_durability_guarantee",
+    })
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+
+    assert score["wrong_clause_kind_count"] == 0
+    assert score["runtime_unresolved_handling_numerator"] == 1
+    assert score["runtime_unresolved_handling_denominator"] == 1
+    assert score["customer_goal_clause_coverage_numerator"] == 1
+    assert score["customer_goal_clause_coverage_denominator"] == 1
+
+
+def test_response_scoring_does_not_credit_unbound_allowed_inference_as_unresolved():
+    response = _restricted_bounded_policy_response()
+    response["turn_understanding"] = {
+        "goal_understanding_status": "valid",
+        "customer_goals": [{
+            "goal_ref": "claim-durability",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "semantic_key": "absolute_durability_guarantee",
+        }],
+    }
+    response["minimal_decision_context"]["claim_resolutions"][0].update({
+        "goal_kind": "customer_goal",
+        "claim_type_status": "unmapped",
+        "semantic_key": "absolute_durability_guarantee",
+    })
+    response["model_first_answer_composer"]["clauses"][0][
+        "restricted_request_boundary"
+    ] = {}
+
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+
+    assert score["wrong_clause_kind_count"] == 1
+    assert score["runtime_unresolved_handling_numerator"] == 0
+
+
 def test_response_scoring_rejects_restricted_boundary_and_risk_mutations():
     mutations = (
         (

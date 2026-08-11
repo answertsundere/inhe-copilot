@@ -729,6 +729,48 @@ def _goal_ref_partial_answer_diagnostics(
             and clause.get("goal_ref").strip() == claim_uid
         ]
 
+    def preserves_restricted_boundary(
+        resolution: dict[str, Any],
+        clause: dict[str, Any],
+    ) -> bool:
+        boundary = _as_dict(resolution.get("restricted_request_boundary"))
+        option_refs = {
+            str(option.get("policy_ref") or "").strip()
+            for option in _as_dict_list(
+                resolution.get("eligible_policy_options")
+            )
+            if str(option.get("policy_ref") or "").strip()
+        }
+        selected_refs = {
+            str(item).strip()
+            for item in clause.get("inference_policy_refs") or []
+            if str(item).strip()
+        }
+        evidence_refs = {
+            str(item).strip()
+            for item in clause.get("evidence_uids") or []
+            if str(item).strip()
+        }
+        premise_refs = {
+            str(item).strip()
+            for item in clause.get("premise_evidence_uids") or []
+            if str(item).strip()
+        }
+        return bool(
+            clause.get("clause_kind") == "allowed_inference"
+            and valid_restricted_request_boundary(boundary)
+            and _as_dict(clause.get("restricted_request_boundary"))
+            == boundary
+            and clause.get("inference_review_only") is True
+            and str(clause.get("requested_claim_risk_level") or "").strip()
+            == str(resolution.get("requested_claim_risk") or "").strip()
+            and len(selected_refs) == 1
+            and selected_refs.issubset(option_refs)
+            and premise_refs
+            and premise_refs == evidence_refs
+            and premise_refs.issubset(admitted_uids)
+        )
+
     for resolution in supported:
         matched = matching_clauses(resolution)
         if len(matched) != 1:
@@ -765,6 +807,9 @@ def _goal_ref_partial_answer_diagnostics(
         if len(matched) != 1:
             continue
         clause = matched[0]
+        if preserves_restricted_boundary(resolution, clause):
+            unresolved_hits += 1
+            continue
         if str(clause.get("clause_kind") or "").strip() != "unresolved":
             wrong_clause_kind_count += 1
             continue
