@@ -2184,10 +2184,15 @@ class ModelFirstAnswerComposerService:
         if offered_error:
             return {}, offered_error
         partitions["renderable_customer_goals"] = customer_goals
+        prompt_evidence, prompt_evidence_error = (
+            cls._project_prompt_evidence(evidence, customer_goals)
+        )
+        if prompt_evidence_error:
+            return {}, prompt_evidence_error
         prompt_payload = cls._prompt_payload(
             decision_input,
             customer_message="",
-            evidence=evidence,
+            evidence=prompt_evidence,
             partitions=partitions,
         )
         system_prompt = cls._system_prompt()
@@ -2307,6 +2312,39 @@ class ModelFirstAnswerComposerService:
                 "content": str(item.get("content") or item.get("value") or ""),
             })
         return projected, uid_by_ref
+
+    @staticmethod
+    def _project_prompt_evidence(
+        evidence: list[dict[str, Any]],
+        customer_goals: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Limit model-visible facts to a goal's direct support or policy premise."""
+        evidence_by_ref = {
+            str(item.get("evidence_ref") or "").strip(): item
+            for item in evidence
+            if str(item.get("evidence_ref") or "").strip()
+        }
+        allowed_refs: set[str] = set()
+        for goal in customer_goals:
+            allowed_refs.update(
+                str(item).strip()
+                for item in goal.get("required_evidence_refs") or []
+                if str(item).strip()
+            )
+            for option in goal.get("eligible_policy_options") or []:
+                if not isinstance(option, dict):
+                    return [], "composer_prompt_evidence_scope_invalid"
+                allowed_refs.update(
+                    str(item).strip()
+                    for item in option.get("premise_evidence_refs") or []
+                    if str(item).strip()
+                )
+        if not allowed_refs <= set(evidence_by_ref):
+            return [], "composer_prompt_evidence_scope_invalid"
+        return [
+            item for item in evidence
+            if str(item["evidence_ref"]) in allowed_refs
+        ], ""
 
     @staticmethod
     def _partition_composer_inputs(

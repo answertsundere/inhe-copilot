@@ -604,6 +604,18 @@ Understanding 现明确区分“判断哪种服务结果适用”的 `customer_g
 基线；`real_customer_accuracy=null`、`optimization_unverified=true`，Autonomous Send
 继续被阻断。
 
+后续的默认关闭 Composer 输入投影只收紧模型可见事实，不增加 Owner、Graph 节点或
+模型调用。完整 admitted evidence 继续只在服务端保留，用于 canonical reconstruction、
+deterministic validation 和 audit；进入 Composer 的事实必须直接分配给可渲染 customer
+goal，或作为该目标已提供 policy option 的 premise。材质到耐用性、尺寸到摆放适配的
+跨域 mutation 均验证未分配事实不会成为隐式推理前提。该查询专用 Fixed-8 仅运行一次：
+Composer、Deterministic Final 和 Unified Audit 均为 `8/8`，direct attribution `4/4`，
+explicit unresolved `11/11`，正式知识内容与 DML 为 `0`，`can_send=0` 且全部人工复核。
+它不是质量晋升：canonical goal recall 仍为 `4/18`、unexpected goals 为 `13`，且全部
+八条人工质量审阅仍是 `pending_supervisor`，没有可引用的自然度、商业帮助度或有界推理
+分数。在冻结这些目标理解失败并定位 Turn Understanding 与 Claim Resolution 之间最早
+Owner 前，不进入 26 条对话评审，也不改变 Autonomous Send 的阻断条件。
+
 ### Final Safety And Delivery
 
 Final safety and delivery remain deterministic application responsibilities.

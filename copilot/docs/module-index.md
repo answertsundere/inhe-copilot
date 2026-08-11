@@ -96,12 +96,18 @@ derived items are discarded rather than entering Claim Resolution. The latest
 reconstructed native gate completed `8/8` with review-only replies,
 Deterministic Final `8/8`, direct attribution `4/4`, explicit unresolved
 declaration `12/12`, formal-knowledge DML `0`, `can_send=0`, and human review
-`8/8`. Unified Audit passed `7/8`; expert review selected the existing bounded
-low-risk inference boundary after finding one unsupported durability expansion
-from a material premise and generally over-cautious unresolved handling. The
-baseline finalizer preserves checkpoint metrics when rebuilding its report.
-This remains a development diagnostic: `real_customer_accuracy=null` and
-Autonomous Send remain blocked.
+`8/8`. Unified Audit passed `7/8`; expert review found an unsupported
+durability expansion from an unallocated material premise. The follow-up
+default-off Composer projection keeps complete evidence server-side, but shows
+the model only facts allocated to a renderable goal or an already-offered
+policy premise. Material-to-durability and dimension-to-fit mutation tests
+cover that boundary without product-specific rules. One subsequent
+query-only `8/8` completed Composer, Deterministic Final, and Unified Audit at
+`8/8`, with direct attribution `4/4`, explicit unresolved declaration `11/11`,
+formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. It is a safety
+and attribution checkpoint, not a demonstrated quality gain: canonical goal
+recall remains `4/18` with `13` unexpected goals. This remains a development
+diagnostic: `real_customer_accuracy=null` and Autonomous Send remain blocked.
 
 ## Frozen Shadow And Experimental Modules
 

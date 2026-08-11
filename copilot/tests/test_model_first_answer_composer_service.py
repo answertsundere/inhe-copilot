@@ -776,6 +776,87 @@ def test_composer_preserves_unmapped_goal_as_unresolved_clause():
 
 
 @pytest.mark.parametrize(
+    ("fact_type", "attribute_key", "goal_summary"),
+    [
+        ("material_composition", "material", "确认日常耐用边界"),
+        ("dimensions", "overall_width", "确认摆放适配边界"),
+    ],
+)
+def test_composer_prompt_excludes_unallocated_evidence_from_unresolved_goal(
+    fact_type: str,
+    attribute_key: str,
+    goal_summary: str,
+):
+    """Unallocated facts cannot become an implicit inference premise."""
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["requested_claims"] = [
+        _goal(
+            "goal-unresolved",
+            "",
+            claim_type_status="unmapped",
+            goal_summary=goal_summary,
+        ),
+    ]
+    context["admitted_evidence"] = [{
+        "evidence_uid": "ev-unallocated",
+        "fact_type": fact_type,
+        "attribute_key": attribute_key,
+        "content": "已准入但未分配给当前目标的事实",
+    }]
+    context["claim_resolutions"] = [{
+        **_resolution(
+            "claim-unresolved",
+            "",
+            "unresolved",
+            claim_type_status="unmapped",
+        ),
+        "semantic_key": "",
+        "goal_summary": goal_summary,
+    }]
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="请给出当前目标可以确认的范围",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert material["evidence"] == [{
+        "evidence_ref": "E1",
+        "fact_type": fact_type,
+        "attribute_key": attribute_key,
+        "content": "已准入但未分配给当前目标的事实",
+    }]
+    assert material["prompt_payload"]["admitted_evidence"] == []
+
+
+def test_composer_prompt_retains_evidence_allocated_to_renderable_goal():
+    response = _response()
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="确认商品宽度",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert material["prompt_payload"]["admitted_evidence"] == [
+        item for item in material["evidence"]
+        if item["evidence_ref"] == "E1"
+    ]
+
+
+@pytest.mark.parametrize(
     ("mutate", "reason"),
     [
         (
