@@ -180,6 +180,9 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "changes their precedence, not the number of goals" in prompt
     assert "action, method, handling, care, fit, use, or suitability" in prompt
     assert "whether its claim type is canonical or unmapped" in prompt
+    assert "unconditional or extreme performance outcome" in prompt
+    assert "what can be said under ordinary use" in prompt
+    assert "classification metadata, not evidence, a conclusion, or authorization" in prompt
 
 
 def test_turn_understanding_candidates_expose_one_canonical_material_choice():

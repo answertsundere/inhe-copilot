@@ -264,6 +264,12 @@ For each goal:
   supplied practical-guidance candidate, nominate that candidate instead of
   leaving a known practical intent blank, whether its claim type is canonical or
   unmapped.
+- For an explicit unconditional or extreme performance outcome, nominate the
+  exact supplied absolute_guarantee candidate for the goal that contains that
+  request. If the buyer separately asks what can be said under ordinary use,
+  create a distinct goal for that source span and nominate only its exact
+  practical_guidance candidate. Both nominations are classification metadata,
+  not evidence, a conclusion, or authorization.
 - source_text is the smallest continuous exact substring that expresses this
   one goal and occurs exactly once in the current customer_message. Copy it
   verbatim without normalization. Distinct goals must not reuse the same exact
