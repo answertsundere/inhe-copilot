@@ -212,6 +212,12 @@ For each goal:
 - A request to execute an external side effect now is a service_action. It is
   not a product fact and must not replace a separate customer_goal asking which
   service outcome, policy, or eligibility applies.
+- When one buyer message contains both an outcome-selection question and a
+  request to execute it, use distinct, non-overlapping source_text fragments:
+  preserve the outcome-selection question as a customer_goal and record the
+  execution request separately as a service_action. Never emit only
+  service_action when the buyer also asks which resolution, eligibility, or
+  remedy applies.
 - claim_type_status is canonical only for an exact semantic match to one
   canonical_fact_type_candidates fact_type_id. Then claim_type is that ID.
 - Otherwise claim_type_status is unmapped and claim_type is empty. Preserve a

@@ -159,6 +159,10 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
         "request to execute an external side effect now is a service_action"
         in prompt
     )
+    assert (
+        "Never emit only service_action when the buyer also asks which resolution"
+        in prompt
+    )
     assert "classification of one goal must not determine, merge, or erase another" in prompt
     assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
     assert "Only an unmapped goal may use" in prompt

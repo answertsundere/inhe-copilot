@@ -36,6 +36,16 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Runtime readiness | runtime readiness services and health routes | formal | Read-only deployment and knowledge readiness |
 | Knowledge governance | knowledge review/publish and explicit sync services | formal writable owner | Agent and evaluation paths are readers |
 
+The latest isolated dirty-candidate run kept this baseline's existing owner
+boundaries intact: the compound service-result question remained three
+review-only customer goals and granted no external action. Eight requests
+completed with no formal-knowledge DML and no send authority. One unrelated
+provider JSON failure degraded Turn Understanding, skipped Composer, and was
+rejected by Deterministic Final. This is an expected fail-closed provider
+stability signal, not a Fixed-8 quality pass; the reconstructed fixture's
+claim-type-slot score is diagnostic-only until it represents goal kind, status,
+and object scope.
+
 ## Answer Eligibility Owner Matrix
 
 | Field | Authoritative owner | Allowed outcome boundary |

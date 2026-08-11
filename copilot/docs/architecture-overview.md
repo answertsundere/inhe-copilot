@@ -616,6 +616,21 @@ explicit unresolved `11/11`，正式知识内容与 DML 为 `0`，`can_send=0` �
 分数。在冻结这些目标理解失败并定位 Turn Understanding 与 Claim Resolution 之间最早
 Owner 前，不进入 26 条对话评审，也不改变 Autonomous Send 的阻断条件。
 
+The latest isolated candidate run also verified the service-result boundary
+through the formal Pipeline: a compound after-sales request retained its
+confirmation, outcome-selection, and compensation questions as separate
+review-only customer goals. No refund, replacement, compensation, tool action,
+or send authority was granted. The run completed all eight requests with
+formal-knowledge DML `0`, `can_send=0`, and mandatory human review. An
+unrelated dimensions turn returned invalid provider JSON and therefore
+degraded at Turn Understanding; Composer did not run and Deterministic Final
+rejected the candidate. This preserves fail-closed behavior and is a provider
+stability finding, not evidence of a quality improvement. The current
+`canonical_claim_type_and_attribute_slot/v2` fixture score is not a valid
+customer-goal recall metric because its expected entries span different goal
+kinds, statuses, and subject scopes. It remains diagnostic-only until an
+approved evaluation contract represents those semantics explicitly.
+
 ### Final Safety And Delivery
 
 Final safety and delivery remain deterministic application responsibilities.

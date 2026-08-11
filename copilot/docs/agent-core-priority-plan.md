@@ -112,6 +112,22 @@ The following rules are non-negotiable:
 Final、Delivery 或 `can_send`。完成定向和原生 Fixed-8 重跑前，P1 质量结论仍为
 `optimization_unverified=true` 与 `real_customer_accuracy=null`。
 
+The subsequent isolated, dirty-candidate Fixed-8 run validated the same
+service-result boundary on the formal Pipeline: the compound after-sales turn
+preserved its crack confirmation, outcome-selection, and compensation
+questions as three review-only customer goals. The system neither selected nor
+executed a refund, replacement, or compensation action. All eight requests
+completed with formal-knowledge DML `0`, `can_send=0`, and mandatory human
+review. One unrelated dimensions turn produced an invalid provider JSON
+completion, so Turn Understanding degraded and the deterministic Final
+rejected that candidate. This is a fail-closed provider-stability finding, not
+a successful quality run and not a reason to retry the frozen fixture. The
+current `canonical_claim_type_and_attribute_slot/v2` score remains a
+diagnostic only because its fixture expectations include policy, media, and
+context outcomes that are not canonical fact-type slots; it must not be
+reported as customer-goal recall until its evaluation contract has approved
+goal-kind, status, and scope semantics.
+
 P0-R1 qualified the existing Agent Core correctness slice. P1.4 then ran one
 native, non-intercepted fixed-eight comparison through the same formal
 Pipeline. After preserving trusted Composer control metadata and making
