@@ -474,6 +474,16 @@ by default. P0 qualification is a reviewable correctness checkpoint, not
 production qualification; the active priority is now P1 Gold Conversation
 Quality.
 
+The current reconstructed P1 baseline completed on an isolated, query-only
+runtime using the existing formal Pipeline. It executed eight cases with zero
+formal-knowledge DML, zero `can_send=true` results, and mandatory human review
+for every candidate. Preserving reviewed retrieval provenance increased
+canonical selected evidence, but no customer goal yet received a valid supported
+fact attribution. The next bounded change belongs to formal knowledge tool
+coverage and Claim Resolution compatibility, not to the Composer, Unified Audit,
+Graph, or Delivery Gate. This evidence is diagnostic only and does not qualify
+real customer accuracy or Autonomous Send.
+
 ### 恢复后的对话评测边界
 
 恢复工作不复制或猜测遗失的 Fixed-8。版本化

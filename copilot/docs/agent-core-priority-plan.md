@@ -132,6 +132,19 @@ supported/direct evidence and correctly answered `PP/TPE`; odor and boiling-
 water sterilization remained unresolved. This is a targeted capability proof,
 not a new fixed-eight result or real-accuracy claim.
 
+The isolated follow-up run on clean commit `3d9821d` completed the reconstructed
+`conversation-reconstructed-v1` gate through the existing formal Pipeline:
+`8/8` executed, Final passed `8/8`, formal knowledge content and DML remained
+unchanged, `can_send=0`, and all `8/8` cases required human review. Preserved
+metadata increased canonical selected evidence to eight records across four
+cases, but Claim Resolution still produced no supported-attribution denominator
+and declared all sixteen renderable goals unresolved. The offline review
+therefore selected `formal_knowledge_tool_coverage` as the next Owner: repair
+the generic fact-to-claim binding before changing Composer wording or the
+advisory Audit. This is a reconstructed engineering baseline only;
+`real_customer_accuracy=null`, `optimization_unverified=true`, and
+`original_fixed8_restored=false` remain mandatory.
+
 The Unified Audit role has independent default-off configuration and reuses the
 existing one-shot strict structured-output transport. It cannot inherit the
 formal Agent/Composer or decision-shadow model, and missing or unqualified
