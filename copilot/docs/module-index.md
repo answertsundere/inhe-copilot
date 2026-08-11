@@ -83,12 +83,12 @@ evaluation owner only; no Fast Path or Composer module has been added.
 | Real accuracy Gold Set | Gold/privacy/label services | Labels never enter Agent input; insufficient approval means `real_accuracy=null` |
 | Formal answer QA | `scripts/run_full_answer_validation.py` | Read-only safety and response-contract validation |
 | Real-derived capability slice | existing real-derived export and vertical-slice scripts | Proves evidence plumbing/capability, not customer accuracy |
-| P1 Gold conversation baseline | `scripts/run_p1_gold_conversation_baseline.py`, `app/services/high_quality_long_conversation_review_service.py` | 仅限开发诊断。旧 real-derived 合同保持兼容；恢复后新增独立 `conversation-reconstructed-v1` 合同，固定 8 条/40 个历史回合，并明确不是原 Fixed-8 或真实 Gold。统一 Owner 校验目标 provenance、控制引用别名、隐私、版本化哈希、query-only 知识快照和正式知识 DML；runtime binding 将调用方固定的本机 loopback 端口与 PID、快照和源码哈希一起校验，默认端口为 5013，不信任任意已占用的服务。review projection 复用正式 canonical history normalizer，并与 Composer 一致排除无客户 goal 的 legacy `supporting_only` dependency。重建合同只把 sidecar 中已审核的 direct evidence 投影到隔离快照，排除 unresolved/pending/media/评分标签，并用 archived/non-auto-reply 哨兵满足 readiness，绝不写源知识库。干净提交 `52a7e1b` 已完成原生 `1×1 -> 8×1`，执行 8、Final 8、Unified Audit 6、DML 0、`can_send=0`、人工复核 8；离线审阅选定下一 Owner 为 `multi-goal_completion`。`bd1af55` 在既有 Turn Understanding Owner 内将格式不合格的字符串型 unmapped `semantic_key` 作为可丢弃非权威 hint，而非清空已有可靠 span 的整个回合；严格字段和 provenance 不放宽。确定性回归已通过，修复后的原生 gate 仍因安全凭证入口缺失而未运行。Goal recall 只在 evaluation 中按现有 material/overall-dimension 别名规范化比较（`canonical_claim_type_and_attribute_slot/v2`），不改变 Turn Understanding 或回答路径；未映射和不相关属性继续计为失败。评测字段不得进入 Agent payload，`real_customer_accuracy=null`，生产开关保持关闭 |
+| P1 Gold conversation baseline | `scripts/run_p1_gold_conversation_baseline.py`, `scripts/compare_model_first_answer_composer.py`, `app/services/high_quality_long_conversation_review_service.py` | 仅限开发诊断。旧 real-derived 合同保持兼容；恢复后新增独立 `conversation-reconstructed-v1` 合同，固定 8 条/40 个历史回合，并明确不是原 Fixed-8 或真实 Gold。统一 Owner 校验目标 provenance、控制引用别名、隐私、版本化哈希、query-only 知识快照和正式知识 DML；runtime binding 将调用方固定的本机 loopback 端口与 PID、快照和源码哈希一起校验，默认端口为 5013，不信任任意已占用的服务。review projection 复用正式 canonical history normalizer，并与 Composer 一致排除无客户 goal 的 legacy `supporting_only` dependency。重建合同只把 sidecar 中已审核的 direct evidence 投影到隔离快照，排除 unresolved/pending/media/评分标签，并用 archived/non-auto-reply 哨兵满足 readiness，绝不写源知识库。评分、case observation、checkpoint 与 summary 共用同一确定性分轨结果：Supervisor Assist 仅要求 accepted Composer、Deterministic Final、`requires_human_review=true`、`can_send=false` 以及无确定性安全、媒体或服务动作违规；Unified Audit 的失败只作为 advisory quality evidence。Autonomous Send 仍要求独立 Audit role qualification、真实准确率、安全与 Delivery 全部通过。评测字段不得进入 Agent payload，`real_customer_accuracy=null`，生产开关保持关闭 |
 | Composer attribution diagnostics | opt-in sinks in `app/services/analysis_pipeline_service.py` and `app/services/model_first_answer_composer_service.py` | Evaluation-only and default-off; sink absence is zero-work, persisted references use the existing server-keyed HMAC/Base32 alias owner, and diagnostics cannot change provider payloads, calls, replies, evidence, audit, or `can_send` |
 | Composer role qualification | `scripts/qualify_model_first_composer_role.py` | Evaluation-only five-run synthetic gate for an explicit `COPILOT_COMPOSER_LLM_*` model; its non-secret fingerprint binds a passing report to base/model/effective timeout, with one Provider call per run and no retry/repair/fallback or delivery authority |
 | Unified Audit role qualification | `scripts/qualify_unified_audit_role.py` | Evaluation-only frozen 5+5 gate for the independent strict-output role; a non-secret fingerprint binds a passing report to provider/base/model/capability/timeout/thinking before production may call it |
 
-The latest reconstructed baseline on `da4a0ad` verified the generic
+An earlier reconstructed baseline on `da4a0ad` verified the generic
 product-scoped overall-dimension binding through the existing admission and
 Claim Resolution contracts: supported attribution was `2/2`, unresolved
 declaration was `14/14`, and no formal knowledge or send authority changed.
@@ -97,7 +97,7 @@ repair only generic goal canonicalization and multi-goal completion through the
 existing Turn Understanding and Claim Resolution contracts; it has no Composer,
 Audit, Graph, delivery, or send authority.
 
-The current candidate additionally verifies that the server's model-facing
+An earlier candidate additionally verified that the server's model-facing
 FactType projection deduplicates the existing material aliases to the canonical
 `material_composition` ID before the semantic call. This is input normalization,
 not an unmapped-output promotion. Canonical customer goals are also the sole
@@ -118,6 +118,15 @@ formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. It is a safety
 and attribution checkpoint, not a demonstrated quality gain: canonical goal
 recall remains `4/18` with `13` unexpected goals. This remains a development
 diagnostic: `real_customer_accuracy=null` and Autonomous Send remain blocked.
+
+The current query-only `conversation-reconstructed-v1` Fixed-8 is the
+Supervisor Assist diagnostic baseline. It records `8/8` deterministic candidate
+eligibility, `16/16` goal-clause coverage, direct attribution `4/4`, explicit
+unresolved handling `12/12`, formal-knowledge DML `0`, `can_send=0`, and human
+review `8/8`. Unified Audit passed `6/8` calls and recorded two advisory
+failures in the same case observations; this neither qualifies the role nor
+changes the Autonomous Send block. The eight human-quality reviews are still
+pending and `real_customer_accuracy=null`.
 
 ## Frozen Shadow And Experimental Modules
 

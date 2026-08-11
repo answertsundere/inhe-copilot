@@ -1551,6 +1551,91 @@ def test_summary_preserves_checkpoint_reply_counts_without_scored_rows():
     assert summary["nonempty_reply_count"] == 2
 
 
+def test_summary_preserves_supervisor_assist_release_track_metrics():
+    summary = _summary_payload(
+        observations=[{}],
+        scored_rows=[{"error_type": ""}],
+        deterministic_summary={
+            "scenario_count": 1,
+            "unified_audit_advisory_failure_count": 1,
+            "autonomous_send_audit_gate_pass_count": 0,
+            "supervisor_assist_candidate_eligible_count": 1,
+        },
+        status="baseline_completed",
+        integrity_stop_reason="",
+        owner_counts={},
+        formal_knowledge={
+            "changed": False,
+            "changed_row_count": 0,
+            "dml_attempt_count": 0,
+        },
+    )
+
+    assert summary["deterministic_metrics"] == {
+        "scenario_count": 1,
+        "policy_intent_ref_total_count": 0,
+        "customer_goal_recall": {
+            "contract": "canonical_claim_type_and_attribute_slot/v2",
+            "numerator": 0,
+            "denominator": 0,
+            "rate": None,
+            "unexpected_goal_count": 0,
+        },
+        "unified_audit_advisory_failure_count": 1,
+        "autonomous_send_audit_gate_pass_count": 0,
+        "supervisor_assist_candidate_eligible_count": 1,
+    }
+
+
+def test_case_observation_keeps_release_track_metrics_with_the_score():
+    response = _response()
+    response.update({
+        "can_send": False,
+        "requires_human_review": True,
+        "final_answer_audit": {"passed": True, "issues": []},
+        "final_semantic_fit_audit": {
+            "passed": False,
+            "issues": ["semantic_judge_schema_invalid"],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "used_for_final_reply": True,
+            "candidate_reply": "候选回复",
+        },
+    })
+    observation = build_case_observation(
+        {
+            "scenario_uid": "scenario-release-track",
+            "business_domain": "商品事实",
+            "risk_level": "low",
+            "must_handoff": False,
+            "api_request_template": {
+                "message": "材质和尺寸分别是什么",
+                "conversation_history": [],
+            },
+        },
+        response,
+        {
+            "error_type": "",
+            "latency_ms": 10,
+            "unified_audit_advisory_failed": True,
+            "autonomous_send_audit_gate_passed": False,
+            "supervisor_assist_candidate_eligible": True,
+        },
+        alias_secret=_SECRET,
+    )
+
+    assert observation["deterministic_score"][
+        "unified_audit_advisory_failed"
+    ] is True
+    assert observation["deterministic_score"][
+        "autonomous_send_audit_gate_passed"
+    ] is False
+    assert observation["deterministic_score"][
+        "supervisor_assist_candidate_eligible"
+    ] is True
+
+
 def _create_formal_snapshot_source(path):
     connection = sqlite3.connect(path)
     for table in (

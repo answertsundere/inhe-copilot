@@ -158,6 +158,31 @@ def test_response_scoring_separates_supported_and_unresolved_claims():
     assert score["can_send"] is False
 
 
+def test_response_scoring_keeps_unqualified_audit_advisory_for_supervisor_assist():
+    response = _goal_ref_partial_response()
+    response["final_semantic_fit_audit"] = {
+        "passed": False,
+        "issues": ["semantic_judge_schema_invalid"],
+    }
+
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+    summary = comparison._summarize([score])
+
+    assert score["partial_answer_success"] is True
+    assert score["supervisor_assist_candidate_eligible"] is True
+    assert score["unified_audit_advisory_failed"] is True
+    assert score["autonomous_send_audit_gate_passed"] is False
+    assert summary["supervisor_assist_candidate_eligible_count"] == 1
+    assert summary["unified_audit_advisory_failure_count"] == 1
+    assert summary["autonomous_send_audit_gate_pass_count"] == 0
+
+
 def _bounded_policy_response():
     policy_ref = (
         "domain-policy:fixture_domain@1.0.0:"
@@ -184,8 +209,15 @@ def _bounded_policy_response():
                 "scope_qualifier": "ordinary_minor_accidental_impact",
                 "inference_risk_level": "medium",
                 "maximum_risk_level": "medium",
+                "requested_claim_risk_level": "medium",
                 "inference_review_only": True,
                 "required_qualifiers": ["no_absolute_guarantee"],
+                "prohibited_extensions": [
+                    "certification_report",
+                    "child_safety",
+                    "warranty",
+                ],
+                "restricted_request_boundary": {},
             }],
         },
         "minimal_decision_context": {
@@ -265,9 +297,11 @@ def _bounded_policy_response():
                         "child_safety",
                         "warranty",
                     ],
-                    "maximum_risk": "medium",
-                    "requested_risk": "medium",
-                    "required_qualifiers": [
+                "maximum_risk": "medium",
+                "requested_risk": "medium",
+                "requested_claim_risk": "medium",
+                "answer_strategy_risk": "medium",
+                "required_qualifiers": [
                         "no_absolute_guarantee"
                     ],
                     "review_only": True,
@@ -385,6 +419,81 @@ def test_response_scoring_reports_trusted_policy_and_bounded_attribution():
     assert summary["selected_policy_validity"]["rate"] == 1.0
     assert summary["selected_policy_premise_coverage"]["rate"] == 1.0
     assert summary["selected_policy_scope_validity"]["rate"] == 1.0
+
+
+def test_response_scoring_counts_bound_policy_guidance_as_unresolved_handling():
+    response = _bounded_policy_response()
+    response["turn_understanding"] = {
+        "goal_understanding_status": "valid",
+        "customer_goals": [{
+            "goal_ref": "claim-durability",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "semantic_key": "ordinary_durability_guidance",
+        }],
+    }
+    response["minimal_decision_context"]["claim_resolutions"][0].update({
+        "goal_kind": "customer_goal",
+        "claim_type_status": "unmapped",
+        "semantic_key": "ordinary_durability_guidance",
+    })
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+
+    assert score["wrong_clause_kind_count"] == 0
+    assert score["runtime_unresolved_handling_numerator"] == 1
+    assert score["runtime_unresolved_handling_denominator"] == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda response: response["model_first_answer_composer"]["clauses"][0].update({
+            "premise_evidence_uids": [],
+        }),
+        lambda response: response["model_first_answer_composer"]["clauses"][0].update({
+            "scope_qualifier": "different_scope",
+        }),
+        lambda response: response["model_first_answer_composer"]["clauses"][0].update({
+            "inference_risk_level": "high",
+        }),
+    ),
+)
+def test_response_scoring_rejects_malformed_bound_policy_guidance(mutation):
+    response = _bounded_policy_response()
+    response["turn_understanding"] = {
+        "goal_understanding_status": "valid",
+        "customer_goals": [{
+            "goal_ref": "claim-durability",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "semantic_key": "ordinary_durability_guidance",
+        }],
+    }
+    response["minimal_decision_context"]["claim_resolutions"][0].update({
+        "goal_kind": "customer_goal",
+        "claim_type_status": "unmapped",
+        "semantic_key": "ordinary_durability_guidance",
+    })
+    mutation(response)
+
+    score = comparison._score_response(
+        _scenario(),
+        response,
+        status_code=200,
+        error_type="",
+        latency_ms=25,
+    )
+
+    assert score["wrong_clause_kind_count"] == 1
+    assert score["runtime_unresolved_handling_numerator"] == 0
 
 
 def test_response_scoring_separates_restricted_request_and_answer_risk():

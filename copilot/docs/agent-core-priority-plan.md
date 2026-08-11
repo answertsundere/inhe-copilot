@@ -212,6 +212,19 @@ remains blocked until an independent Unified Audit role, real-accuracy evidence,
 Safety, and Delivery are all qualified. This distinction does not create a new
 reply owner or a second Pipeline.
 
+The current `conversation-reconstructed-v1` Fixed-8 rerun records those tracks
+in the same immutable observation, checkpoint, and summary: execution,
+non-empty replies, customer-goal clause coverage, direct attribution, and
+explicit unresolved handling were each `8/8`, `8/8`, `16/16`, `4/4`, and
+`12/12`. All eight candidates met the deterministic Supervisor Assist boundary
+(`requires_human_review=true`, `can_send=false`, accepted Composer, and passed
+Deterministic Final); formal-knowledge DML stayed `0`. The unqualified Unified
+Audit passed six reply-level calls and recorded two advisory failures. Those
+two failures are visible to the human reviewer, but do not convert a valid
+review-only candidate into an automatic-send candidate. The reconstructed
+dataset remains an engineering diagnostic: `real_customer_accuracy=null`, its
+eight human-quality reviews remain pending, and Autonomous Send stays blocked.
+
 The first native Supervisor Assist Fixed-8 on clean commit `451be614` closed
 that pending baseline. The current DeepSeek V4 Flash Composer role first passed
 its frozen qualification `5/5`, then the formal HTTP Pipeline accepted all
@@ -1011,7 +1024,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; reconstructed Fixed-8 baseline complete; Autonomous Send provider-blocked | The latest query-only native `8/8` keeps Composer, Deterministic Final, and Unified Audit at `8/8`; direct attribution is `4/4`, explicit unresolved declaration is `11/11`, formal-knowledge DML is `0`, `can_send=0`, and human review is `8/8`. Composer now receives only evidence allocated to a renderable goal or an offered policy premise; material-to-durability and dimension-to-fit mutation checks confirm that unrelated admitted facts are excluded. This is a safety and attribution checkpoint, not a demonstrated quality gain: canonical goal recall is `4/18` with `13` unexpected goals, while all eight human-quality reviews remain `pending_supervisor`. The dataset remains reconstructed and `real_customer_accuracy=null` | Do not enter the 26-conversation review yet. Freeze the current goal-recall failures and locate the earliest owner between canonical goal understanding and Claim Resolution before changing Domain Policy, Composer wording, Audit, or Delivery. Keep Autonomous Send blocked until independent Audit, real accuracy, Safety, and Delivery qualify |
+| P1 Gold Conversation Quality | active; reconstructed Fixed-8 Supervisor Assist baseline complete; Autonomous Send provider-blocked | The current query-only rerun executes `8/8`; Composer and Deterministic Final pass `8/8`; customer-goal clause coverage is `16/16`; direct attribution is `4/4`; explicit unresolved declaration is `12/12`; partial-answer structural handling is `2/2`; formal-knowledge DML and `can_send` are both `0`; and human review is `8/8`. The same observation records Unified Audit `6/8` pass and two advisory failures, with no Audit-based send authority. This is a safety and structure checkpoint, not a demonstrated quality gain: all eight human-quality reviews remain `pending_supervisor`, the dataset is reconstructed, and `real_customer_accuracy=null` | Run human supervisor review on the frozen eight replies before expanding to 26 conversations. Keep Autonomous Send blocked until an independent Audit role, real accuracy, Safety, and Delivery qualify; do not change Composer wording or Delivery based only on this reconstructed baseline |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |

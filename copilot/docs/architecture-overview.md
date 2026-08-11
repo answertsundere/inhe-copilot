@@ -593,7 +593,7 @@ Understanding 现明确区分“判断哪种服务结果适用”的 `customer_g
 完成承诺或自动动作；因此不改变 Evidence、Final、Delivery 或 `can_send`。该修复
 需要在相同原生 Fixed-8 合同下重新验证，且仍不构成真实客户准确率结论。
 
-最新的 query-only 重建 Fixed-8 在当前候选源码上完成了全部八条案例。Answer Context
+此前的 query-only 重建 Fixed-8 在当前候选源码上完成了全部八条案例。Answer Context
 只从 canonical customer goals 重建客户 claim 身份，并将尺寸 subject scope 精确传给既有
 准入与 Claim Resolution。direct supported attribution 为 `4/4`，explicit unresolved 为
 `12/12`，Deterministic Final 为 `8/8`，Unified Audit 为 `7/8`。正式知识内容和 DML
@@ -616,7 +616,16 @@ explicit unresolved `11/11`，正式知识内容与 DML 为 `0`，`can_send=0` �
 分数。在冻结这些目标理解失败并定位 Turn Understanding 与 Claim Resolution 之间最早
 Owner 前，不进入 26 条对话评审，也不改变 Autonomous Send 的阻断条件。
 
-The latest isolated candidate run also verified the service-result boundary
+最新的 `conversation-reconstructed-v1` 隔离 Fixed-8 将同一条候选的评分、审阅
+observation 与 checkpoint 对齐为双轨指标。所有八条均通过 Composer 和
+Deterministic Final，强制 `requires_human_review=true` 与 `can_send=false`；正式知识
+内容和 DML 均为 `0`。其结构化目标子句覆盖为 `16/16`、direct attribution 为 `4/4`、
+explicit unresolved 为 `12/12`，并记录两条 Unified Audit advisory failure。该 Audit
+角色仍未资格通过，因此这两条只供坐席复核，不能批准、改写或发送候选；Autonomous
+Send 继续需要独立 Audit、真实准确率、安全与 Delivery 资格。该数据集是重建开发
+诊断，八条人工质量审阅仍 pending，`real_customer_accuracy=null`。
+
+A separate isolated candidate run also verified the service-result boundary
 through the formal Pipeline: a compound after-sales request retained its
 confirmation, outcome-selection, and compensation questions as separate
 review-only customer goals. No refund, replacement, compensation, tool action,

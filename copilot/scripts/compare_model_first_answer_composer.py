@@ -729,35 +729,108 @@ def _goal_ref_partial_answer_diagnostics(
             and clause.get("goal_ref").strip() == claim_uid
         ]
 
-    def preserves_restricted_boundary(
+    def preserves_allowed_inference_contract(
         resolution: dict[str, Any],
         clause: dict[str, Any],
     ) -> bool:
-        boundary = _as_dict(resolution.get("restricted_request_boundary"))
-        option_refs = {
-            str(option.get("policy_ref") or "").strip()
-            for option in _as_dict_list(
-                resolution.get("eligible_policy_options")
-            )
-            if str(option.get("policy_ref") or "").strip()
-        }
+        options = _as_dict_list(resolution.get("eligible_policy_options"))
         selected_refs = {
             str(item).strip()
             for item in clause.get("inference_policy_refs") or []
             if str(item).strip()
         }
-        evidence_refs = {
+        if clause.get("clause_kind") != "allowed_inference" or len(selected_refs) != 1:
+            return False
+        matching_options = [
+            option
+            for option in options
+            if str(option.get("policy_ref") or "").strip() in selected_refs
+        ]
+        if len(matching_options) != 1:
+            return False
+        option = matching_options[0]
+        expected_premises = [
+            str(item).strip()
+            for item in option.get("premise_evidence_refs") or []
+            if str(item).strip()
+        ]
+        actual_evidence_refs = [
             str(item).strip()
             for item in clause.get("evidence_uids") or []
             if str(item).strip()
-        }
-        premise_refs = {
+        ]
+        actual_premise_refs = [
             str(item).strip()
             for item in clause.get("premise_evidence_uids") or []
             if str(item).strip()
+        ]
+        provenance = _as_dict(option.get("option_provenance"))
+        empty_premise_is_authoritative = (
+            not expected_premises
+            and provenance.get("premise_owner") == "authoritative_customer_goal"
+        )
+        return bool(
+            option.get("review_only") is True
+            and provenance.get("policy_owner") == "domain_policy_pack"
+            and provenance.get("filter_owner") == "claim_resolution"
+            and (
+                provenance.get("premise_owner") == "admitted_answer_context"
+                or empty_premise_is_authoritative
+            )
+            and str(option.get("applicable_goal_ref") or "").strip()
+            == str(resolution.get("goal_ref") or "").strip()
+            and actual_evidence_refs == expected_premises
+            and actual_premise_refs == expected_premises
+            and (
+                bool(expected_premises)
+                or empty_premise_is_authoritative
+            )
+            and set(actual_premise_refs).issubset(admitted_uids)
+            and clause.get("inference_review_only") is True
+            and str(clause.get("scope_qualifier") or "").strip()
+            == str(option.get("allowed_scope") or "").strip()
+            and str(clause.get("requested_claim_risk_level") or "").strip()
+            == str(option.get("requested_claim_risk") or "").strip()
+            and str(clause.get("inference_risk_level") or "").strip()
+            == str(option.get("answer_strategy_risk") or "").strip()
+            and str(clause.get("maximum_risk_level") or "").strip()
+            == str(option.get("maximum_risk") or "").strip()
+            and [
+                str(item).strip()
+                for item in clause.get("required_qualifiers") or []
+                if str(item).strip()
+            ]
+            == [
+                str(item).strip()
+                for item in option.get("required_qualifiers") or []
+                if str(item).strip()
+            ]
+            and [
+                str(item).strip()
+                for item in clause.get("prohibited_extensions") or []
+                if str(item).strip()
+            ]
+            == [
+                str(item).strip()
+                for item in option.get("forbidden_claim_families") or []
+                if str(item).strip()
+            ]
+            and _as_dict(clause.get("restricted_request_boundary"))
+            == _as_dict(option.get("restricted_request_boundary"))
+        )
+
+    def preserves_restricted_boundary(
+        resolution: dict[str, Any],
+        clause: dict[str, Any],
+    ) -> bool:
+        boundary = _as_dict(resolution.get("restricted_request_boundary"))
+        selected_refs = {
+            str(item).strip()
+            for item in clause.get("inference_policy_refs") or []
+            if str(item).strip()
         }
         return bool(
-            clause.get("clause_kind") == "allowed_inference"
+            preserves_allowed_inference_contract(resolution, clause)
             and valid_restricted_request_boundary(boundary)
             and _as_dict(clause.get("restricted_request_boundary"))
             == boundary
@@ -765,10 +838,6 @@ def _goal_ref_partial_answer_diagnostics(
             and str(clause.get("requested_claim_risk_level") or "").strip()
             == str(resolution.get("requested_claim_risk") or "").strip()
             and len(selected_refs) == 1
-            and selected_refs.issubset(option_refs)
-            and premise_refs
-            and premise_refs == evidence_refs
-            and premise_refs.issubset(admitted_uids)
         )
 
     for resolution in supported:
@@ -808,6 +877,9 @@ def _goal_ref_partial_answer_diagnostics(
             continue
         clause = matched[0]
         if preserves_restricted_boundary(resolution, clause):
+            unresolved_hits += 1
+            continue
+        if preserves_allowed_inference_contract(resolution, clause):
             unresolved_hits += 1
             continue
         if str(clause.get("clause_kind") or "").strip() != "unresolved":
@@ -854,10 +926,6 @@ def _goal_ref_partial_answer_diagnostics(
         reasons.append("composer_human_review_missing")
     if (response.get("final_answer_audit") or {}).get("passed") is not True:
         reasons.append("final_audit_failed")
-    if (
-        response.get("final_semantic_fit_audit") or {}
-    ).get("passed") is not True:
-        reasons.append("semantic_audit_failed")
     if response.get("can_send") is not False:
         reasons.append("can_send_pollution")
     if response.get("requires_human_review") is not True:
@@ -1656,6 +1724,18 @@ def _score_response(
         final_audit.get("fallback_used") is True
         or any(item.get("fallback_used") is True for item in pipeline_stages)
     )
+    supervisor_assist_candidate_eligible = bool(
+        not error_type
+        and status_code == 200
+        and composer_audit.get("status") == "accepted"
+        and composer_audit.get("used_for_final_reply") is True
+        and final_audit.get("passed") is True
+        and response.get("can_send") is False
+        and response.get("requires_human_review") is True
+        and not forbidden_hits
+        and not unsupported_media
+        and not unsupported_service_action
+    )
     return {
         "status_code": status_code,
         "error_type": error_type,
@@ -1676,6 +1756,11 @@ def _score_response(
             final_audit.get("model_call_count") or 0
         ),
         "semantic_audit_passed": unified_audit.get("passed"),
+        "unified_audit_advisory_failed": unified_audit.get("passed") is False,
+        "autonomous_send_audit_gate_passed": unified_audit.get("passed") is True,
+        "supervisor_assist_candidate_eligible": (
+            supervisor_assist_candidate_eligible
+        ),
         "unified_audit_model_call_count": int(
             unified_provider.get("model_call_count") or 0
         ),
@@ -2071,6 +2156,15 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         ).items())),
         "final_audit_pass_count": sum(row["final_audit_passed"] is True for row in rows),
         "semantic_audit_pass_count": sum(row["semantic_audit_passed"] is True for row in rows),
+        "unified_audit_advisory_failure_count": sum(
+            row["unified_audit_advisory_failed"] for row in rows
+        ),
+        "autonomous_send_audit_gate_pass_count": sum(
+            row["autonomous_send_audit_gate_passed"] for row in rows
+        ),
+        "supervisor_assist_candidate_eligible_count": sum(
+            row["supervisor_assist_candidate_eligible"] for row in rows
+        ),
         "final_audit_model_call_count": sum(
             int(row["final_audit_model_call_count"]) for row in rows
         ),
