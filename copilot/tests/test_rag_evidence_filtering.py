@@ -5,6 +5,45 @@
 import pytest
 
 
+def test_formal_attribution_survives_retrieval_metadata_boundary():
+    from app.agent.nodes.evidence_filter_node import evidence_filter_node
+
+    result = evidence_filter_node({
+        "retrieved_chunks": [{
+            "score": 0.9,
+            "chunk_id": "chunk-width",
+            "entry_id": "entry-width",
+            "title": "Dimensions",
+            "source_type": "product_facts",
+            "chunk_text": "Width is 45 cm.",
+            "metadata": {
+                "auto_reply_allowed": True,
+                "evidence_uid": "evidence-width",
+                "fact_type": "dimensions",
+                "fact_review_status": "reviewed",
+                "attribute_key": "width",
+                "subject_scope": "product",
+                "product_scope": ["IID-A"],
+                "sku_scope": ["SKU-A"],
+            },
+            "entry_status": "published",
+            "entry_risk_level": "low",
+        }],
+        "intent": "product_question",
+        "allowed_source_types": ["product_facts"],
+        "slots": {"sku_code": "SKU-A", "i_id": "IID-A"},
+    })
+
+    evidence = result["knowledge_evidence"]
+    assert len(evidence) == 1
+    assert evidence[0]["evidence_uid"] == "evidence-width"
+    assert evidence[0]["fact_type"] == "dimensions"
+    assert evidence[0]["fact_review_status"] == "reviewed"
+    assert evidence[0]["attribute_key"] == "width"
+    assert evidence[0]["subject_scope"] == "product"
+    assert evidence[0]["product_scope"] == ["IID-A"]
+
+
 class TestEvidenceFilterNewFields:
     """测试 evidence_filter_node 输出的新字段"""
 

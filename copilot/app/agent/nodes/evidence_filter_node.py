@@ -24,6 +24,34 @@ SOURCE_TYPE_CONFIDENCE = {
 }
 
 
+# Retrieval metadata may carry formal fact provenance.  Only these protocol
+# fields cross the boundary; arbitrary metadata remains opaque.
+_FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
+    "evidence_uid",
+    "fact_type",
+    "evidence_fact_type",
+    "fact_review_status",
+    "attribute_key",
+    "canonical_attribute_key",
+    "subject_scope",
+    "product_scope",
+    "sku_scope",
+    "i_id",
+    "sku_code",
+)
+
+
+def _protocol_value(item: dict, field: str, default=None):
+    if field not in _FORMAL_EVIDENCE_PROTOCOL_FIELDS:
+        return default
+    if field in item and item.get(field) is not None:
+        return item.get(field)
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict) and field in metadata:
+        return metadata.get(field)
+    return default
+
+
 def _candidate_texts(candidate) -> list[str]:
     if isinstance(candidate, str):
         return [candidate.strip()] if candidate.strip() else []
@@ -319,10 +347,18 @@ def evidence_filter_node(state: dict) -> dict:
             "chunk_text": f["chunk_text"],
             "score": f.get("score", 0),
             "metadata": f.get("metadata", {}),
-            "product_scope": f.get("product_scope", []),
-            "sku_scope": f.get("sku_scope", []),
+            "evidence_uid": _protocol_value(f, "evidence_uid", ""),
+            "fact_type": _protocol_value(f, "fact_type", ""),
+            "evidence_fact_type": _protocol_value(f, "evidence_fact_type", evidence_fact_type),
+            "fact_review_status": _protocol_value(f, "fact_review_status", ""),
+            "attribute_key": _protocol_value(f, "attribute_key", ""),
+            "canonical_attribute_key": _protocol_value(f, "canonical_attribute_key", ""),
+            "subject_scope": _protocol_value(f, "subject_scope", ""),
+            "product_scope": _protocol_value(f, "product_scope", []),
+            "sku_scope": _protocol_value(f, "sku_scope", []),
+            "i_id": _protocol_value(f, "i_id", ""),
+            "sku_code": _protocol_value(f, "sku_code", ""),
             "index_status": f.get("index_status", "unknown"),
-            "fact_review_status": f.get("fact_review_status", ""),
             "fact_source_type": f.get("fact_source_type", ""),
             "material_provenance": f.get("material_provenance", ""),
             "confidence": f["confidence"],

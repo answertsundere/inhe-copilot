@@ -92,6 +92,33 @@ def _compact_value(value) -> str:
     return str(value).strip()
 
 
+# Retrieval metadata may carry formal attribution.  Keep the allowlist narrow
+# so opaque metadata never becomes answerable evidence.
+_FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
+    "evidence_uid",
+    "fact_type",
+    "evidence_fact_type",
+    "fact_review_status",
+    "attribute_key",
+    "canonical_attribute_key",
+    "subject_scope",
+    "product_scope",
+    "sku_scope",
+    "i_id",
+    "sku_code",
+)
+
+
+def _formal_evidence_protocol(item: dict) -> dict:
+    metadata = item.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return {
+        field: item.get(field) if item.get(field) is not None else metadata.get(field)
+        for field in _FORMAL_EVIDENCE_PROTOCOL_FIELDS
+        if item.get(field) is not None or field in metadata
+    }
+
+
 def _has_odor_signal(text: str) -> bool:
     return any(term in str(text or "") for term in (
         "\u6c14\u5473",
@@ -896,6 +923,7 @@ def evidence_builder(state: dict) -> dict:
             "evidence_allowed_for_exact_answer": ke.get("evidence_allowed_for_exact_answer", True),
             "material_provenance": ke.get("material_provenance", ""),
         }
+        base.update(_formal_evidence_protocol(ke))
         base = _enrich_evidence_item(base, text, entry_status, fact_review_status, st)
         if ke.get("evidence_allowed_for_direct_answer") is False and not odor_material_bridge:
             base["evidence_allowed_for_direct_answer"] = False
@@ -1103,6 +1131,7 @@ def evidence_builder(state: dict) -> dict:
                     "title": chunk.get("title", ""),
                     "chunk_id": chunk.get("chunk_id", ""),
                 }
+                base.update(_formal_evidence_protocol(chunk))
                 base = _enrich_evidence_item(
                     base, text, entry_status,
                     chunk.get("fact_review_status", ""), st,

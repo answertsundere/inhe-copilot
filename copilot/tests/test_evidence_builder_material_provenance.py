@@ -1,4 +1,76 @@
 from app.agent.nodes import evidence_builder as evidence_builder_module
+from app.services.admitted_answer_context_service import collect_admitted_product_facts
+
+
+def test_rag_product_fact_preserves_structured_claim_attribution_fields():
+    result = evidence_builder_module.evidence_builder(
+        {
+            "intent": "product_question",
+            "query_fact_type": "dimensions",
+            "knowledge_evidence": [
+                {
+                    "entry_id": "entry-width",
+                    "chunk_id": "chunk-width",
+                    "evidence_uid": "evidence-width",
+                    "source_type": "product_facts",
+                    "chunk_text": "Width is 45 cm.",
+                    "fact_type": "dimensions",
+                    "evidence_fact_type": "dimensions",
+                    "attribute_key": "width",
+                    "subject_scope": "product",
+                    "product_scope": ["IID-A"],
+                    "entry_status": "published",
+                    "fact_review_status": "reviewed",
+                    "evidence_allowed_for_direct_answer": True,
+                    "direct_answer_allowed": True,
+                }
+            ],
+        }
+    )
+
+    fact = result["evidence"]["product_facts"][0]
+    assert fact["attribute_key"] == "width"
+    assert fact["evidence_uid"] == "evidence-width"
+    assert fact["subject_scope"] == "product"
+    assert fact["product_scope"] == ["IID-A"]
+
+
+def test_preserved_rag_attribution_can_be_admitted_for_its_requested_field():
+    result = evidence_builder_module.evidence_builder(
+        {
+            "intent": "product_question",
+            "query_fact_type": "dimensions",
+            "order_product_identity": {"i_id": "IID-A"},
+            "knowledge_evidence": [
+                {
+                    "entry_id": "entry-width",
+                    "chunk_id": "chunk-width",
+                    "evidence_uid": "evidence-width",
+                    "source_type": "product_facts",
+                    "chunk_text": "Width is 45 cm.",
+                    "evidence_fact_type": "dimensions",
+                    "attribute_key": "width",
+                    "subject_scope": "product",
+                    "product_scope": ["IID-A"],
+                    "entry_status": "published",
+                    "fact_review_status": "reviewed",
+                    "evidence_allowed_for_direct_answer": True,
+                    "direct_answer_allowed": True,
+                }
+            ],
+        }
+    )
+
+    admitted, rejected, _warnings = collect_admitted_product_facts(
+        {"formal_evidence_candidates": result["evidence"]["product_facts"]},
+        product_identity={"i_id": "IID-A"},
+        requested_claim_types=["dimensions"],
+    )
+
+    assert rejected == []
+    assert [(fact["attribute_key"], fact["evidence_uid"]) for fact in admitted] == [
+        ("width", "evidence-width")
+    ]
 
 
 def test_published_product_material_placeholder_never_becomes_verified_fact(monkeypatch):
