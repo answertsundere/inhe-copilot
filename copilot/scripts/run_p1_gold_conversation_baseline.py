@@ -26,6 +26,14 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from app.services.fact_type_alias_service import (
+    canonical_attribute_slot,
+    canonical_material_composition_claim_type,
+)
+from app.services.product_media_annotation_schema_service import (
+    canonical_dimension_attribute,
+)
+
 SCHEMA_VERSION = "p1-gold-conversation-baseline/v2"
 EXPECTED_DATASET_ID = "hq-long-conversation-real-derived-v4"
 EXPECTED_DATASET_VERSION = "1.3.2-draft"
@@ -1391,22 +1399,33 @@ def build_case_observation(
     return observation
 
 
+def _canonical_goal_identity(item: dict[str, Any]) -> tuple[str, str]:
+    """Reuse production-owned aliases when scoring an isolated evaluation goal."""
+    claim_type = canonical_material_composition_claim_type(
+        item.get("claim_type") or item.get("fact_type")
+    )
+    raw_attribute = str(item.get("attribute_key") or "")
+    normalized_attribute = (
+        canonical_dimension_attribute(raw_attribute)
+        if claim_type in {"dimensions", "size", "space_fit"}
+        else raw_attribute
+    )
+    return (
+        claim_type,
+        canonical_attribute_slot(normalized_attribute, fact_type=claim_type),
+    )
+
+
 def _goal_recall_diagnostic(
     scenario: dict[str, Any],
     projection: dict[str, Any],
 ) -> dict[str, Any]:
     expected = Counter(
-        (
-            str(item.get("claim_type") or ""),
-            str(item.get("attribute_key") or ""),
-        )
+        _canonical_goal_identity(item)
         for item in _dicts(scenario.get("expected_claims"))
     )
     observed = Counter(
-        (
-            str(item.get("claim_type") or ""),
-            str(item.get("attribute_key") or ""),
-        )
+        _canonical_goal_identity(item)
         for item in _dicts(projection.get("goals"))
     )
     matched = sum(
@@ -1416,7 +1435,7 @@ def _goal_recall_diagnostic(
     observed_total = sum(observed.values())
     projection_status = str(projection.get("status") or "")
     return {
-        "contract": "exact_claim_type_and_attribute/v1",
+        "contract": "canonical_claim_type_and_attribute_slot/v2",
         "numerator": matched,
         "denominator": sum(expected.values()),
         "unexpected_goal_count": max(0, observed_total - matched),
@@ -2590,7 +2609,7 @@ def _summary_payload(
         )
     )
     metrics["customer_goal_recall"] = {
-        "contract": "exact_claim_type_and_attribute/v1",
+        "contract": "canonical_claim_type_and_attribute_slot/v2",
         "numerator": goal_numerator,
         "denominator": goal_denominator,
         "rate": (

@@ -201,8 +201,11 @@ deduplicate the existing material aliases to `material_composition` before the
 semantic call. The run completed `8/8` with Composer and Deterministic Final
 `8/8`, direct attribution `3/3`, unresolved declaration `13/13`, formal
 knowledge DML `0`, `can_send=0`, and human review `8/8`. Codex offline review
-keeps `multi-goal_completion` as the next owner because canonical goal recall
-was `0/18` and one everyday-use inference was not policy-bound. This remains
+keeps `multi-goal_completion` as the next owner because the prior raw-string
+goal diagnostic was `0/18` and one everyday-use inference was not policy-bound.
+The evaluation-only v2 comparison now reuses existing material and
+overall-dimension aliases, so the raw v1 value is not comparable to the next
+native run. This remains
 engineering evidence only: `real_customer_accuracy=null`,
 `optimization_unverified=true`, and `original_fixed8_restored=false`.
 

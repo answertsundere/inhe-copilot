@@ -163,12 +163,21 @@ reconstructed `8/8` run completed with Composer and Final acceptance `8/8`,
 supported attribution `3/3`, unresolved declaration `13/13`, selected
 evidence in four cases, no formal knowledge DML, `can_send=0`, and mandatory
 human review for all candidates. Expert review still measured goal completion at
-`1.5/2`, canonical goal recall `0/18`, and found one unbound everyday-use
+`1.5/2`, while the then-current raw-string goal diagnostic reported `0/18`,
+and found one unbound everyday-use
 inference under an absolute-guarantee request. Active P1 work therefore stays
 on `multi-goal_completion` in the existing Turn Understanding and Claim
 Resolution owners. It must first preserve restricted boundaries while exposing
 only policy-bound alternatives; no reply-template, Composer, Auditor, Graph,
 or delivery change is authorized. This is not real-customer accuracy evidence.
+
+The raw-string goal diagnostic is now superseded by
+`canonical_claim_type_and_attribute_slot/v2`: it reuses the existing
+material-composition and overall-dimension-axis aliases only for evaluation
+comparison. It does not alter Turn Understanding, Claim Resolution, evidence
+admission, Composer, or Delivery. A fresh native run is required before
+reporting a replacement metric; unmapped goals, unrelated attributes, and
+missing evidence remain failures.
 
 The Unified Audit role has independent default-off configuration and reuses the
 existing one-shot strict structured-output transport. It cannot inherit the

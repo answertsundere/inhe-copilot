@@ -52,6 +52,74 @@ from scripts.run_p1_gold_conversation_baseline import (
 _SECRET = b"p1-baseline-test-secret"
 
 
+def test_goal_recall_diagnostic_normalizes_existing_claim_and_dimension_aliases():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [
+                {"claim_type": "material", "attribute_key": "material"},
+                {"claim_type": "dimensions", "attribute_key": "height"},
+                {"claim_type": "dimensions", "attribute_key": "width"},
+            ],
+        },
+        {
+            "status": "valid",
+            "goals": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "material_composition",
+                    "attribute_key": "material_composition",
+                },
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "dimensions",
+                    "attribute_key": "overall_height",
+                },
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "dimensions",
+                    "attribute_key": "overall_width",
+                },
+            ],
+        },
+    )
+
+    assert diagnostic == {
+        "contract": "canonical_claim_type_and_attribute_slot/v2",
+        "numerator": 3,
+        "denominator": 3,
+        "unexpected_goal_count": 0,
+        "status": "scored",
+    }
+
+
+def test_goal_recall_diagnostic_keeps_unrelated_dimension_axis_unmatched():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [
+                {"claim_type": "dimensions", "attribute_key": "height"},
+            ],
+        },
+        {
+            "status": "valid",
+            "goals": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "dimensions",
+                    "attribute_key": "overall_depth",
+                },
+            ],
+        },
+    )
+
+    assert diagnostic == {
+        "contract": "canonical_claim_type_and_attribute_slot/v2",
+        "numerator": 0,
+        "denominator": 1,
+        "unexpected_goal_count": 1,
+        "status": "scored",
+    }
+
+
 def _goal(
     message: str,
     source_text: str,
@@ -1027,7 +1095,7 @@ def test_execution_failure_is_recorded_without_untrusted_reference_leakage():
     assert projection["reason_code"] == "agent_execution_failed"
     assert projection["goals"] == []
     assert observation["goal_recall_diagnostic"] == {
-        "contract": "exact_claim_type_and_attribute/v1",
+        "contract": "canonical_claim_type_and_attribute_slot/v2",
         "numerator": 0,
         "denominator": 1,
         "unexpected_goal_count": 0,
@@ -1098,7 +1166,7 @@ def test_summary_separates_goal_recall_and_execution_errors():
     )
 
     assert summary["deterministic_metrics"]["customer_goal_recall"] == {
-        "contract": "exact_claim_type_and_attribute/v1",
+        "contract": "canonical_claim_type_and_attribute_slot/v2",
         "numerator": 1,
         "denominator": 2,
         "rate": 0.5,

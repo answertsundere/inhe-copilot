@@ -496,13 +496,20 @@ Pipeline, Composer and Deterministic Final accepted `8/8`, selected evidence
 was present in four cases, and direct supported attribution remained `3/3`.
 Every result remained review-only with `can_send=0`, formal knowledge content
 unchanged, and DML `0`. The Codex offline review found a `1.5/2` average for
-goal completion, canonical goal recall `0/18`, and an unbound everyday-use
+goal completion, a raw-string canonical-goal diagnostic of `0/18`, and an unbound everyday-use
 inference in an absolute-guarantee case. The next owner remains the existing
 Turn Understanding plus Claim Resolution `multi-goal_completion` boundary; it
 must not be addressed by Composer wording, a new graph path, or a relaxed
 Final/Delivery gate. This remains a reconstructed engineering baseline with
 `real_customer_accuracy=null`, `optimization_unverified=true`, and
 `original_fixed8_restored=false`.
+
+The P1 baseline runner now scores goal recall with
+`canonical_claim_type_and_attribute_slot/v2`. This is an evaluator-only reuse
+of the existing material and overall-dimension aliases; it prevents alias
+spelling from being counted as a missing goal but keeps unrelated attributes,
+unmapped goals, evidence gaps, and all delivery safeguards unchanged. The
+prior raw-string number is not comparable to a future v2 native run.
 
 ### 恢复后的对话评测边界
 
