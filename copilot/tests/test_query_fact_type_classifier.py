@@ -291,6 +291,79 @@ def test_turn_understanding_requests_only_customer_goals():
     assert understanding["customer_goals"] == result["customer_goals"]
 
 
+def test_requested_claim_risk_is_scoped_to_each_customer_goal():
+    """A restricted goal cannot promote a separate practical goal to high risk."""
+    goals = [
+        {
+            "goal_ref": "goal-absolute",
+            "goal_kind": "customer_goal",
+            "claim_type": "",
+            "attribute_key": "durability",
+            "semantic_key": "durability",
+            "policy_intent_ref": "durability_absolute_guarantee",
+            "policy_goal_family": "product_durability",
+            "policy_intent_kind": "absolute_guarantee",
+            "goal_summary": "confirm absolute durability guarantee",
+            "source": "current_customer_message",
+            "source_span_start": 0,
+            "source_span_end": 10,
+            "source_span_sha256": "a" * 64,
+        },
+        {
+            "goal_ref": "goal-practical",
+            "goal_kind": "customer_goal",
+            "claim_type": "",
+            "attribute_key": "durability",
+            "semantic_key": "durability",
+            "policy_intent_ref": "durability_practical_guidance",
+            "policy_goal_family": "product_durability",
+            "policy_intent_kind": "practical_guidance",
+            "goal_summary": "confirm ordinary-use durability guidance",
+            "source": "current_customer_message",
+            "source_span_start": 11,
+            "source_span_end": 21,
+            "source_span_sha256": "b" * 64,
+        },
+    ]
+
+    claims = _requested_claims_from_customer_goals(
+        goals,
+        question="multi-goal customer turn",
+        risk_hint="high",
+    )
+
+    assert {
+        item["goal_ref"]: item["risk_level"] for item in claims
+    } == {
+        "goal-absolute": "high",
+        "goal-practical": "medium",
+    }
+
+
+def test_requested_claim_high_risk_fact_type_is_never_downgraded():
+    claims = _requested_claims_from_customer_goals(
+        [{
+            "goal_ref": "goal-safety",
+            "goal_kind": "customer_goal",
+            "claim_type": "stability",
+            "attribute_key": "",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "policy_goal_family": "",
+            "policy_intent_kind": "",
+            "goal_summary": "confirm stability",
+            "source": "current_customer_message",
+            "source_span_start": 0,
+            "source_span_end": 10,
+            "source_span_sha256": "a" * 64,
+        }],
+        question="single high-risk customer turn",
+        risk_hint="low",
+    )
+
+    assert claims[0]["risk_level"] == "high"
+
+
 def test_unmapped_customer_goal_is_preserved_without_new_fact_type():
     claims = _requested_claims_from_customer_goals(
         [{

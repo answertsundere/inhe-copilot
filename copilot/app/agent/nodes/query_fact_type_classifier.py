@@ -5,7 +5,47 @@ from __future__ import annotations
 import time
 
 from app.services.logistics_fast_path import get_explicit_logistics_identifier
+from app.services.fact_type_alias_service import (
+    high_risk_claim_types,
+    normalize_high_risk_claim_type,
+)
 from app.services.semantic_fact_type_service import classify_query_fact_type_llm_first
+
+
+_RESTRICTED_POLICY_INTENT_KINDS = {
+    "absolute_guarantee",
+    "test_standard_request",
+    "warranty_or_liability_request",
+}
+_LOW_OR_MEDIUM_RISK_LEVELS = {"low", "medium"}
+_NON_DOWNGRADABLE_TURN_RISK_LEVELS = {"critical", "prohibited"}
+
+
+def _requested_claim_risk_level(goal: dict, *, risk_hint: str) -> str:
+    """Project risk from the authoritative goal, never a sibling goal.
+
+    ``risk_hint`` remains a turn-level routing diagnostic.  A mixed turn can
+    contain both a restricted request and an independent practical question;
+    copying its highest risk to every requested claim would suppress the
+    policy-bound alternative for the practical goal.  The projection is
+    conservative: canonical high-risk facts and restricted request intents
+    always remain high, while an otherwise unclassified sibling is medium.
+    """
+    claim_type = str(goal.get("claim_type") or "").strip().lower()
+    intent_kind = str(goal.get("policy_intent_kind") or "").strip().lower()
+    if (
+        claim_type in high_risk_claim_types()
+        or bool(normalize_high_risk_claim_type(claim_type))
+        or intent_kind in _RESTRICTED_POLICY_INTENT_KINDS
+    ):
+        return "high"
+
+    normalized_turn_risk = str(risk_hint or "").strip().lower()
+    if normalized_turn_risk in _NON_DOWNGRADABLE_TURN_RISK_LEVELS:
+        return normalized_turn_risk
+    if normalized_turn_risk in _LOW_OR_MEDIUM_RISK_LEVELS:
+        return normalized_turn_risk
+    return "medium"
 
 
 def _requested_claims_from_customer_goals(
@@ -46,7 +86,10 @@ def _requested_claims_from_customer_goals(
             "owner": "turn_understanding_owner",
             "source_stage": "query_fact_type_classifier",
             "question": question,
-            "risk_level": risk_hint,
+            "risk_level": _requested_claim_risk_level(
+                goal,
+                risk_hint=risk_hint,
+            ),
         }
         if "subject_scope" in goal:
             claim["subject_scope"] = str(
