@@ -14,7 +14,9 @@ from typing import Any
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.fact_type_alias_service import (
     canonical_attribute_slot,
+    canonical_dimension_subject_scope,
     canonical_material_composition_claim_type,
+    is_dimension_claim_type,
     normalize_high_risk_claim_type,
 )
 from app.services.product_media_annotation_schema_service import canonical_dimension_attribute
@@ -161,24 +163,35 @@ def _facts_for_claim(claim_type: str, facts: list[dict[str, Any]]) -> list[dict[
     )
 
 
-def _requested_subject_scope(item: dict[str, Any]) -> str:
+def _requested_subject_scope(item: dict[str, Any]) -> str | None:
     """Return an explicit subject constraint encoded by a structured request."""
     claim_type = sanitize_text(item.get("claim_type")).lower()
+    if not is_dimension_claim_type(claim_type):
+        return None
+    explicit_scope = canonical_dimension_subject_scope(
+        item.get("subject_scope")
+    )
+    if explicit_scope:
+        return explicit_scope
     original_attribute = canonical_dimension_attribute(
         _original_attribute_key(item).lower()
     )
     if (
-        claim_type in _DIMENSION_CLAIM_TYPES
-        and original_attribute in _PRODUCT_OVERALL_DIMENSION_ATTRIBUTES
+        original_attribute in _PRODUCT_OVERALL_DIMENSION_ATTRIBUTES
     ):
         return "product"
     return ""
 
 
-def _matches_subject_scope(fact: dict[str, Any], required_scope: str) -> bool:
-    if not required_scope:
+def _matches_subject_scope(
+    fact: dict[str, Any],
+    required_scope: str | None,
+) -> bool:
+    if required_scope is None:
         return True
     subject_scope = sanitize_text(fact.get("subject_scope")).lower()
+    if not required_scope:
+        return not subject_scope or subject_scope in _PRODUCT_OVERALL_SUBJECT_SCOPES
     if required_scope == "product":
         return subject_scope in _PRODUCT_OVERALL_SUBJECT_SCOPES
     return subject_scope == required_scope
@@ -188,7 +201,7 @@ def _select_for_attribute(
     requested_attribute: str,
     candidates: list[dict[str, Any]],
     *,
-    required_subject_scope: str = "",
+    required_subject_scope: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Select evidence by declared attribute without inferring from free text."""
     if requested_attribute:
@@ -198,9 +211,11 @@ def _select_for_attribute(
                 fact for fact in matching
                 if _matches_subject_scope(fact, required_subject_scope)
             ]
-            if required_subject_scope:
+            if required_subject_scope is not None:
                 if scoped:
                     return scoped, ""
+                if not required_subject_scope:
+                    return [], "subject_scope_missing"
                 if any(
                     not sanitize_text(fact.get("subject_scope"))
                     for fact in matching
@@ -212,6 +227,18 @@ def _select_for_attribute(
             return [], "attribute_evidence_missing"
         return [], "no_admitted_direct_evidence"
 
+    scoped_candidates = [
+        fact
+        for fact in candidates
+        if _matches_subject_scope(fact, required_subject_scope)
+    ]
+    if required_subject_scope is not None and not scoped_candidates:
+        if not required_subject_scope:
+            return [], "subject_scope_missing"
+        if any(not sanitize_text(fact.get("subject_scope")) for fact in candidates):
+            return [], "subject_scope_evidence_missing"
+        return [], "subject_scope_mismatch"
+    candidates = scoped_candidates
     if len(candidates) <= 1:
         return candidates, ""
     attribute_groups = {_attribute_key(fact) or "__attribute_missing__" for fact in candidates}
@@ -896,6 +923,7 @@ def build_claim_resolutions(
             "supporting_only": requested.get("supporting_only") is True,
             "claim_type": claim_type,
             "attribute_key": requested_attribute,
+            "subject_scope": requested_subject_scope or "",
             "original_claim_type": original_claim_type,
             "original_attribute_key": original_attribute_key,
             "canonical_claim_family": _canonical_claim_type(claim_type),

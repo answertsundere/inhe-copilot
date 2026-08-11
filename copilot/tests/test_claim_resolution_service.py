@@ -163,6 +163,34 @@ def test_overall_dimension_goal_requires_explicit_product_scope():
     assert result["reason"] == "subject_scope_evidence_missing"
 
 
+def test_unscoped_dimension_goal_never_selects_a_non_product_measurement():
+    result = build_claim_resolutions(
+        [_claim("width")],
+        direct_product_facts=[
+            _fact("product-width", "width", subject_scope="product"),
+            _fact("packaging-width", "width", subject_scope="packaging"),
+            _fact("component-width", "width", subject_scope="component"),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["product-width"]
+
+
+def test_unscoped_dimension_goal_keeps_legacy_unscoped_evidence_compatibility():
+    result = build_claim_resolutions(
+        [_claim("width")],
+        direct_product_facts=[_fact("legacy-width", "width")],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["legacy-width"]
+
+
 def test_ambiguous_unattributed_claim_does_not_absorb_multiple_attributes():
     result = build_claim_resolutions(
         [_claim()],

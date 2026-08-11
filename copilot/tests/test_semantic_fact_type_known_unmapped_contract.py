@@ -71,6 +71,200 @@ def test_canonical_material_and_material_composition_share_existing_family():
     assert material[0]["goal_ref"] == composition[0]["goal_ref"]
 
 
+def test_known_dimension_display_attribute_reaches_only_matching_direct_fact():
+    message = "dimension request"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [_raw_goal(
+            source_text=message,
+            claim_type="dimensions",
+            attribute_key="\u5bbd\u5ea6",
+        )],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    claims = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+    resolution = build_claim_resolutions(
+        claims,
+        direct_product_facts=[{
+            "evidence_uid": "width-evidence",
+            "claim_types_supported": ["dimensions"],
+            "attribute_key": "width",
+            "subject_scope": "product",
+            "text": "verified width",
+        }],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert claims[0]["attribute_key"] == "width"
+    assert resolution["status"] == "supported"
+    assert resolution["evidence_uids"] == ["width-evidence"]
+
+
+def test_dimension_subject_scope_reaches_only_matching_direct_fact():
+    message = "dimension request"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [_raw_goal(
+            source_text=message,
+            claim_type="dimensions",
+            attribute_key="width",
+            subject_scope="packaging",
+        )],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    claims = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+    resolution = build_claim_resolutions(
+        claims,
+        direct_product_facts=[
+            {
+                "evidence_uid": "product-width",
+                "claim_types_supported": ["dimensions"],
+                "attribute_key": "width",
+                "subject_scope": "product",
+                "text": "verified product width",
+            },
+            {
+                "evidence_uid": "packaging-width",
+                "claim_types_supported": ["dimensions"],
+                "attribute_key": "width",
+                "subject_scope": "packaging",
+                "text": "verified packaging width",
+            },
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert goals[0]["subject_scope"] == "packaging"
+    assert claims[0]["subject_scope"] == "packaging"
+    assert resolution["status"] == "supported"
+    assert resolution["evidence_uids"] == ["packaging-width"]
+
+
+def test_product_overall_dimensions_do_not_become_a_specific_axis():
+    result = build_claim_resolutions(
+        [{
+            "goal_ref": "goal-product-width",
+            "goal_kind": "customer_goal",
+            "claim_type": "dimensions",
+            "attribute_key": "width",
+            "subject_scope": "product",
+        }],
+        direct_product_facts=[{
+            "evidence_uid": "product-overall-dimensions",
+            "claim_types_supported": ["dimensions"],
+            "attribute_key": "overall_dimensions",
+            "subject_scope": "product",
+            "text": "verified overall dimensions",
+        }],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["evidence_uids"] == []
+
+
+def test_product_overall_dimensions_require_same_scope_and_attribute():
+    result = build_claim_resolutions(
+        [{
+            "goal_ref": "goal-product-overall-dimensions",
+            "goal_kind": "customer_goal",
+            "claim_type": "dimensions",
+            "attribute_key": "overall_dimensions",
+            "subject_scope": "product",
+        }],
+        direct_product_facts=[
+            {
+                "evidence_uid": "packaging-overall-dimensions",
+                "claim_types_supported": ["dimensions"],
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "packaging",
+                "text": "verified packaging dimensions",
+            },
+            {
+                "evidence_uid": "product-overall-dimensions",
+                "claim_types_supported": ["dimensions"],
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "product",
+                "text": "verified product dimensions",
+            },
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["product-overall-dimensions"]
+
+
+def test_non_dimension_scope_cannot_promote_a_customer_goal():
+    message = "material request"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [_raw_goal(
+            source_text=message,
+            claim_type="material",
+            attribute_key="material",
+            subject_scope="packaging",
+        )],
+        message=message,
+    )
+
+    assert status == "degraded"
+    assert "dimension_subject_scope_not_applicable" in diagnostics
+    assert goals[0]["claim_type_status"] == "unmapped"
+    assert goals[0]["subject_scope"] == ""
+
+
+def test_unknown_dimension_attribute_is_not_guessed_into_direct_evidence():
+    message = "dimension request"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [_raw_goal(
+            source_text=message,
+            claim_type="dimensions",
+            attribute_key="unregistered_dimension_property",
+        )],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    claims = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+    resolution = build_claim_resolutions(
+        claims,
+        direct_product_facts=[{
+            "evidence_uid": "width-evidence",
+            "claim_types_supported": ["dimensions"],
+            "attribute_key": "width",
+            "subject_scope": "product",
+            "text": "verified width",
+        }],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert claims[0]["attribute_key"] == "unregistered_dimension_property"
+    assert resolution["status"] == "unresolved"
+    assert resolution["evidence_uids"] == []
+
+
 def test_unmapped_goal_is_preserved_without_authorizing_a_fact_type():
     message = "durability request"
     goals, status, diagnostics = service._sanitize_customer_goals(

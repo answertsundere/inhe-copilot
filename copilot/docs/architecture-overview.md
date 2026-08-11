@@ -511,6 +511,34 @@ engineering baseline with
 `real_customer_accuracy=null`, `optimization_unverified=true`, and
 `original_fixed8_restored=false`.
 
+The active `multi-goal_completion` repair keeps the same owners and adds no
+new route: canonical dimension goals may carry a closed object scope into the
+existing Claim Resolution and Composer Decision Input projections. Admission
+only treats a dimension as directly supported when its canonical attribute and
+scope both match. `overall_dimensions` remains an aggregate attribute; the
+system never parses it into axis facts or promotes packaging, component, or
+accessory measurements into a product measurement. A missing scope can select
+only direct product-overall or legacy-unscoped evidence and fails closed for a
+packaging, component, accessory, or included-item measurement. This remains a
+feature-disabled, review-only
+contract until the frozen P1 baseline is rerun; it changes neither safety,
+delivery, formal knowledge writes, nor `can_send` authority.
+
+Within the same Turn Understanding result, `customer_goals` remain the sole
+identity source. `requested_claims` are a derived context projection: when
+canonical goals exist, Answer Context rebuilds each customer claim from that
+goal before Claim Resolution and ignores stale or divergent customer-claim
+copies. This only prevents internal reference drift; it creates no fact,
+evidence, reply path, or send authority.
+
+The frozen eight-case reconstructed-conversation baseline is execution-complete
+under this contract, with all candidates remaining review-only and no formal
+knowledge DML. It is not a promotion result: the baseline still exposes
+incomplete reconstructed-goal recall and one independently requested service
+outcome omission. The next repair stays with the existing
+`multi-goal_completion` ownership boundary; no reply path or delivery
+authority is enabled from this result.
+
 The P1 baseline runner now scores goal recall with
 `canonical_claim_type_and_attribute_slot/v2`. This is an evaluator-only reuse
 of the existing material and overall-dimension aliases; it prevents alias
@@ -564,6 +592,17 @@ Understanding 现明确区分“判断哪种服务结果适用”的 `customer_g
 外部副作用”的 `service_action`。前者仍可 unresolved，后者仍不能作为商品事实、
 完成承诺或自动动作；因此不改变 Evidence、Final、Delivery 或 `can_send`。该修复
 需要在相同原生 Fixed-8 合同下重新验证，且仍不构成真实客户准确率结论。
+
+最新的 query-only 重建 Fixed-8 在当前候选源码上完成了全部八条案例。Answer Context
+只从 canonical customer goals 重建客户 claim 身份，并将尺寸 subject scope 精确传给既有
+准入与 Claim Resolution。direct supported attribution 为 `4/4`，explicit unresolved 为
+`12/12`，Deterministic Final 为 `8/8`，Unified Audit 为 `7/8`。正式知识内容和 DML
+均保持不变，所有候选都要求人工复核，`can_send=0`。离线专家复核给出 factual correctness
+`1.75/2`、goal completion `1.375/2`、naturalness `1.125/2` 和 business helpfulness
+`1.25/2`。最早剩余质量 Owner 是既有 bounded low-risk inference：直接材质 premise
+不得扩写为没有 eligible attributed policy option 的耐用性结论。该结果仍是重建工程
+基线；`real_customer_accuracy=null`、`optimization_unverified=true`，Autonomous Send
+继续被阻断。
 
 ### Final Safety And Delivery
 

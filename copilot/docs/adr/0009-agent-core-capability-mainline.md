@@ -61,8 +61,14 @@ composition, safety, and delivery retain their existing application owners.
 
 Turn understanding uses the existing single semantic-classification call to
 produce atomic, typed goals. Explicit customer needs, including a request to
-determine which service outcome applies, become `customer_goal` items and feed
-canonical `requested_claims`; supporting facts remain `evidence_dependency`.
+determine which service outcome applies, become canonical `customer_goal`
+items and derive `requested_claims`; supporting facts remain
+`evidence_dependency`. Downstream context rebuilds customer-claim identities
+from those canonical goals, so a stale derived projection cannot create a
+second Claim Resolution goal identity. When canonical customer goals exist,
+only explicitly typed non-customer derived items may remain alongside that
+rebuild. An untyped stale item is not a safe dependency and is discarded rather
+than retaining a divergent goal reference.
 A request to execute an external side effect now remains `service_action` and
 does not authorize that action or become a product fact. The deterministic
 boundary validates, deduplicates, and orders these
@@ -94,6 +100,20 @@ evidence dependencies are not customer goals. The application validates the
 complete goal set and renders the verified clauses in stable order without
 adding fallback wording. This remains one model call and review-only; it cannot
 change `can_send`, delivery, evidence admission, or final safety ownership.
+
+For canonical dimension goals, Turn Understanding may provide one closed
+object scope alongside the existing canonical attribute. Claim Resolution and
+the Composer Decision Input preserve that scope only to require an exact
+evidence match; it does not create a fact, select an option, or change risk.
+An omitted scope does not become an explicit `product` scope and can select
+only direct product-overall or legacy-unscoped evidence; it cannot select a
+packaging, component, accessory, or included-item measurement.
+`overall_dimensions` is an aggregate
+attribute and cannot be decomposed into axis measurements. Consequently a
+packaging, component, accessory, or included-item dimension cannot support a
+product dimension by scope or value similarity. This is an additive,
+backward-compatible goal-contract extension within the existing owners, not a
+graph, planner, registry, or reply-owner change.
 
 The disabled model-first candidate has four explicit reply-stage owners:
 

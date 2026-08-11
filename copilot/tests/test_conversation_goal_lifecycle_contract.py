@@ -258,6 +258,7 @@ def test_continuation_requires_current_turn_provenance_and_exact_goal_identity()
         "claim_type_status": "canonical",
         "claim_type": "material",
         "attribute_key": "",
+        "subject_scope": "",
         "semantic_key": "",
         "policy_intent_ref": "",
         "policy_goal_family": "",
@@ -270,6 +271,7 @@ def test_continuation_requires_current_turn_provenance_and_exact_goal_identity()
         "claim_type_status": "canonical",
         "claim_type": "material",
         "attribute_key": "",
+        "subject_scope": "",
         "semantic_key": "",
         "policy_intent_ref": "",
         "source_text": current_message,
@@ -303,6 +305,58 @@ def test_continuation_requires_current_turn_provenance_and_exact_goal_identity()
         message=current_message,
         open_goal_candidates=[open_goal],
     )
+    assert goals == []
+    assert status == "invalid"
+    assert "conversation_goal_lifecycle_identity_mismatch" in diagnostics
+
+
+def test_dimension_scope_is_part_of_conversation_goal_continuation_identity():
+    current_message = "Please confirm the packaging width."
+    open_goal = {
+        "goal_alias": "open-goal-0123456789abcdef01234567",
+        "goal_ref": "goal-0123456789abcdef",
+        "conversation_ref": "conversation-0123456789abcdef0123456789abcdef",
+        "goal_kind": "customer_goal",
+        "claim_type_status": "canonical",
+        "claim_type": "dimensions",
+        "attribute_key": "width",
+        "subject_scope": "packaging",
+        "semantic_key": "",
+        "policy_intent_ref": "",
+        "policy_goal_family": "",
+        "policy_intent_kind": "",
+        "source_turn_uid": "turn-0123456789abcdef0123",
+        "source_span_sha256": "a" * 64,
+    }
+    raw_goal = {
+        "goal_kind": "customer_goal",
+        "claim_type_status": "canonical",
+        "claim_type": "dimensions",
+        "attribute_key": "width",
+        "subject_scope": "packaging",
+        "semantic_key": "",
+        "policy_intent_ref": "",
+        "source_text": current_message,
+        "continued_from": open_goal["goal_alias"],
+    }
+
+    goals, status, diagnostics = semantic_service._sanitize_customer_goals(
+        [raw_goal],
+        message=current_message,
+        open_goal_candidates=[open_goal],
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["subject_scope"] == "packaging"
+
+    changed_scope = dict(raw_goal, subject_scope="product")
+    goals, status, diagnostics = semantic_service._sanitize_customer_goals(
+        [changed_scope],
+        message=current_message,
+        open_goal_candidates=[open_goal],
+    )
+
     assert goals == []
     assert status == "invalid"
     assert "conversation_goal_lifecycle_identity_mismatch" in diagnostics
@@ -434,6 +488,7 @@ def test_llm_receives_only_opaque_open_goal_metadata_and_returns_verified_contin
         "claim_type_status": "canonical",
         "claim_type": "material",
         "attribute_key": "",
+        "subject_scope": "",
         "semantic_key": "",
         "policy_intent_ref": "",
         "policy_goal_family": "",

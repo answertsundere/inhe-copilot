@@ -13,6 +13,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.fact_type_alias_service import (
+    canonical_dimension_subject_scope,
+    is_dimension_claim_type,
+)
+
 
 _ROLE_ALIASES = {
     "customer": "customer", "buyer": "customer", "user": "customer",
@@ -62,6 +67,7 @@ _CONVERSATION_GOAL_OPEN_FIELDS = frozenset({
     "claim_type_status",
     "claim_type",
     "attribute_key",
+    "subject_scope",
     "semantic_key",
     "policy_intent_ref",
     "policy_goal_family",
@@ -142,8 +148,12 @@ def normalize_conversation_goal_open_candidates(value: Any) -> list[dict[str, st
         return []
     aliases: set[str] = set()
     normalized: list[dict[str, str]] = []
+    legacy_fields = _CONVERSATION_GOAL_OPEN_FIELDS - {"subject_scope"}
     for item in value:
-        if not isinstance(item, dict) or set(item) != _CONVERSATION_GOAL_OPEN_FIELDS:
+        if not isinstance(item, dict) or (
+            set(item) != _CONVERSATION_GOAL_OPEN_FIELDS
+            and set(item) != legacy_fields
+        ):
             return []
         normalized_item = {
             key: str(item.get(key) or "").strip()
@@ -168,6 +178,18 @@ def normalize_conversation_goal_open_candidates(value: Any) -> list[dict[str, st
                 return []
         elif normalized_item["claim_type"]:
             return []
+        scope = canonical_dimension_subject_scope(
+            normalized_item["subject_scope"]
+        )
+        if (
+            normalized_item["subject_scope"] and not scope
+        ) or (
+            scope and not is_dimension_claim_type(
+                normalized_item["claim_type"]
+            )
+        ):
+            return []
+        normalized_item["subject_scope"] = scope
         aliases.add(normalized_item["goal_alias"])
         normalized.append(normalized_item)
     return sorted(normalized, key=lambda item: item["goal_alias"])

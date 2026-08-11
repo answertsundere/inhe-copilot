@@ -177,6 +177,7 @@ _DECISION_GOAL_FIELDS = {
     "claim_type_status",
     "claim_type",
     "attribute_key",
+    "subject_scope",
     "semantic_key",
     "goal_summary",
     "source",
@@ -198,6 +199,7 @@ _DECISION_RESOLUTION_FIELDS = {
     "claim_type",
     "claim_type_status",
     "attribute_key",
+    "subject_scope",
     "semantic_key",
     "goal_summary",
     "status",
@@ -2612,6 +2614,9 @@ class ModelFirstAnswerComposerService:
                 "claim_type_status": claim_type_status,
                 "attribute_key": str(
                     resolution.get("attribute_key") or ""
+                ).strip(),
+                "subject_scope": str(
+                    resolution.get("subject_scope") or ""
                 ).strip(),
                 "semantic_key": str(
                     resolution.get("semantic_key") or ""

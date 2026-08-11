@@ -43,6 +43,7 @@ _GOAL_LIFECYCLE_METADATA_FIELDS = frozenset({
     "claim_type_status",
     "claim_type",
     "attribute_key",
+    "subject_scope",
     "semantic_key",
     "policy_intent_ref",
     "policy_goal_family",
@@ -195,9 +196,15 @@ def _goal_lifecycle_current_states(
         ).strip()
         getter = getattr(row, "get_goal_metadata", None)
         metadata = getter() if callable(getter) else {}
+        legacy_metadata_fields = _GOAL_LIFECYCLE_METADATA_FIELDS - {
+            "subject_scope"
+        }
         if (
             state not in _GOAL_LIFECYCLE_STATES
-            or set(metadata) != _GOAL_LIFECYCLE_METADATA_FIELDS
+            or (
+                set(metadata) != _GOAL_LIFECYCLE_METADATA_FIELDS
+                and set(metadata) != legacy_metadata_fields
+            )
             or metadata.get("goal_ref") != goal_ref
         ):
             return {}, False
@@ -259,6 +266,9 @@ def load_conversation_goal_lifecycle_context(
         {
             "goal_alias": _goal_lifecycle_alias(key, conversation_ref, goal_ref),
             "conversation_ref": conversation_ref,
+            "subject_scope": str(
+                item["metadata"].get("subject_scope") or ""
+            ).strip(),
             **dict(item["metadata"]),
         }
         for goal_ref, item in states.items()

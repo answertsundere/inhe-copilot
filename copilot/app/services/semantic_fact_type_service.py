@@ -22,8 +22,15 @@ from app.services.canonical_conversation_turn_service import (
 )
 from app.services.fact_type_alias_service import (
     canonical_material_composition_claim_type,
+    canonical_dimension_subject_scope,
+    declared_attribute_candidates,
+    DIMENSION_SUBJECT_SCOPES,
+    is_dimension_claim_type,
 )
 from app.services.fact_type_service import FACT_TYPE_LABELS, classify_query_fact_type
+from app.services.product_media_annotation_schema_service import (
+    canonical_dimension_attribute,
+)
 from app.services.strict_decision_provider_service import safe_provider_identity
 
 logger = logging.getLogger(__name__)
@@ -58,6 +65,7 @@ _RAW_GOAL_FIELDS = {
     "claim_type_status",
     "claim_type",
     "attribute_key",
+    "subject_scope",
     "semantic_key",
     "policy_intent_ref",
     "source_text",
@@ -66,6 +74,7 @@ _RAW_GOAL_FIELDS = {
 _RAW_GOAL_REQUIRED_FIELDS = _RAW_GOAL_FIELDS - {
     "semantic_key",
     "continued_from",
+    "subject_scope",
 }
 
 _CANONICAL_GOAL_FIELDS = {
@@ -76,6 +85,7 @@ _CANONICAL_GOAL_FIELDS = {
     "claim_type",
     "claim_type_exact_match",
     "attribute_key",
+    "subject_scope",
     "semantic_key",
     "policy_intent_ref",
     "policy_goal_family",
@@ -94,7 +104,7 @@ _CANONICAL_GOAL_FIELDS = {
 }
 
 _DIAGNOSTICS_SCHEMA_VERSION = "turn-understanding-diagnostics/v4"
-MINIMAL_PROVIDER_SCHEMA_VERSION = "turn-understanding-provider-output/v4"
+MINIMAL_PROVIDER_SCHEMA_VERSION = "turn-understanding-provider-output/v5"
 GOAL_IDENTITY_SCHEMA_VERSION = "turn-understanding-goal-identity/v2"
 JSON_ENVELOPE_CONTRACT_VERSION = "turn-understanding-json-envelope/v1"
 ATOMIC_GOAL_SPAN_CONTRACT_VERSION = "turn-understanding-atomic-goal-span/v2"
@@ -127,6 +137,10 @@ MINIMAL_PROVIDER_OUTPUT_SCHEMA = {
                     },
                     "claim_type": {"type": "string"},
                     "attribute_key": {"type": "string"},
+                    "subject_scope": {
+                        "type": "string",
+                        "enum": ["", *sorted(DIMENSION_SUBJECT_SCOPES)],
+                    },
                     "semantic_key": {"type": "string"},
                     "policy_intent_ref": {"type": "string"},
                     "source_text": {"type": "string"},
@@ -221,6 +235,14 @@ For each goal:
   claim_type. It is not the product, product category, component, or grammatical
   subject being described. Leave it empty when claim_type already identifies the
   requested property or when the buyer did not name a narrower property.
+- When a canonical_fact_type_candidates item includes attribute_candidates, a
+  nonempty attribute_key must be exactly one of those supplied tokens. Do not
+  put free-form scope, packaging, component, or subject wording in attribute_key.
+- subject_scope is empty unless a dimension request explicitly identifies the
+  complete product, packaging, a component, an accessory, or an included item.
+  When nonempty, it must be exactly one of product, packaging, component,
+  accessory, or included_item. It narrows the measured object only; it never
+  changes the requested attribute or creates a fact.
 - policy_intent_ref is empty or exactly one supplied policy_intent_candidates
   ID. It may be empty only when this is a direct factual identity/value request
   or no supplied candidate directly matches the goal. Nominate a candidate only
@@ -250,7 +272,7 @@ For each goal:
 Return this allowed shape and no additional fields. semantic_key may be
 omitted:
 {"goals":[{"goal_kind":"","claim_type_status":"","claim_type":"",
-"attribute_key":"","semantic_key":"","policy_intent_ref":"",
+"attribute_key":"","subject_scope":"","semantic_key":"","policy_intent_ref":"",
 "source_text":"","continued_from":""}]}
 """
 
@@ -512,6 +534,7 @@ def _open_conversation_goal_candidates(state: dict[str, Any]) -> list[dict[str, 
         "claim_type_status",
         "claim_type",
         "attribute_key",
+        "subject_scope",
         "semantic_key",
         "policy_intent_ref",
         "policy_goal_family",
@@ -523,9 +546,9 @@ def _open_conversation_goal_candidates(state: dict[str, Any]) -> list[dict[str, 
     ]
 
 
-def _canonical_fact_type_candidates() -> list[dict[str, str]]:
+def _canonical_fact_type_candidates() -> list[dict[str, Any]]:
     """Project the server registry without exposing rules or sample mappings."""
-    candidates: list[dict[str, str]] = []
+    candidates: list[dict[str, Any]] = []
     seen_fact_type_ids: set[str] = set()
     for fact_type_id in sorted(FACT_TYPE_LABELS):
         canonical_fact_type_id = canonical_material_composition_claim_type(
@@ -534,7 +557,7 @@ def _canonical_fact_type_candidates() -> list[dict[str, str]]:
         if canonical_fact_type_id in seen_fact_type_ids:
             continue
         seen_fact_type_ids.add(canonical_fact_type_id)
-        candidates.append({
+        candidate = {
             "fact_type_id": canonical_fact_type_id,
             "meaning": _bounded_text(
                 FACT_TYPE_LABELS.get(
@@ -544,7 +567,13 @@ def _canonical_fact_type_candidates() -> list[dict[str, str]]:
                 80,
             ),
             "attribute_contract": "optional_explicit_attribute_key",
-        })
+        }
+        attribute_candidates = declared_attribute_candidates(
+            canonical_fact_type_id
+        )
+        if attribute_candidates:
+            candidate["attribute_candidates"] = list(attribute_candidates)
+        candidates.append(candidate)
     return candidates
 
 
@@ -2014,6 +2043,14 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
         return "semantic_key_schema_invalid"
     claim_type = claim_type_value.strip().lower()
     semantic_key = _normalized_semantic_key(semantic_key_value)
+    subject_scope_value = raw.get("subject_scope", "")
+    if not isinstance(subject_scope_value, str):
+        return "dimension_subject_scope_schema_invalid"
+    normalized_subject_scope = canonical_dimension_subject_scope(
+        subject_scope_value
+    )
+    if subject_scope_value.strip() and not normalized_subject_scope:
+        return "dimension_subject_scope_invalid"
 
     if status == "canonical":
         if not claim_type:
@@ -2026,8 +2063,12 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
             return "service_action_canonical_claim_forbidden"
         if goal_kind == "media_request":
             return "media_request_canonical_claim_forbidden"
+        if normalized_subject_scope and not is_dimension_claim_type(claim_type):
+            return "dimension_subject_scope_not_applicable"
         return ""
 
+    if normalized_subject_scope:
+        return "dimension_subject_scope_not_applicable"
     if claim_type:
         return "unmapped_claim_type_present"
     return ""
@@ -2117,6 +2158,7 @@ def _sanitize_customer_goals(
                     "claim_type_status",
                     "claim_type",
                     "attribute_key",
+                    "subject_scope",
                     "semantic_key",
                     "policy_intent_ref",
                 )
@@ -2130,6 +2172,9 @@ def _sanitize_customer_goals(
                 "attribute_key": _bounded_text(
                     raw.get("attribute_key"), 80
                 ).lower(),
+                "subject_scope": canonical_dimension_subject_scope(
+                    raw.get("subject_scope", "")
+                ),
                 "semantic_key": _normalized_semantic_key(raw.get("semantic_key")),
                 "policy_intent_ref": _bounded_text(
                     raw.get("policy_intent_ref"), 96
@@ -2171,6 +2216,18 @@ def _sanitize_customer_goals(
         )
         claim_type_exact_match = claim_type_status == "canonical"
         attribute_key = _bounded_text(raw.get("attribute_key"), 80).lower()
+        if (
+            claim_type_status == "canonical"
+            and claim_type in {"dimensions", "size", "space_fit"}
+        ):
+            attribute_key = canonical_dimension_attribute(attribute_key).lower()
+        subject_scope = ""
+        if claim_type_status == "canonical" and is_dimension_claim_type(
+            claim_type
+        ):
+            subject_scope = canonical_dimension_subject_scope(
+                raw.get("subject_scope", "")
+            )
         semantic_key = (
             ""
             if claim_type_status == "canonical"
@@ -2223,6 +2280,7 @@ def _sanitize_customer_goals(
             "claim_type": claim_type,
             "claim_type_exact_match": claim_type_exact_match,
             "attribute_key": attribute_key,
+            "subject_scope": subject_scope,
             "semantic_key": semantic_key,
             "policy_intent_ref": policy_intent_ref,
             "policy_goal_family": (
@@ -2302,7 +2360,11 @@ def _validate_canonical_customer_goals(
         if not isinstance(goal, dict):
             reasons.append("customer_goal_not_object")
             continue
-        if set(goal) != _CANONICAL_GOAL_FIELDS:
+        legacy_goal_fields = _CANONICAL_GOAL_FIELDS - {"subject_scope"}
+        if (
+            set(goal) != _CANONICAL_GOAL_FIELDS
+            and set(goal) != legacy_goal_fields
+        ):
             if not str(goal.get("goal_ref") or "").strip():
                 reasons.append("customer_goal_ref_missing")
             else:
@@ -2353,6 +2415,14 @@ def _validate_canonical_customer_goals(
                 reasons.append("unmapped_claim_type_contract_invalid")
         else:
             reasons.append("claim_type_status_invalid")
+
+        subject_scope = canonical_dimension_subject_scope(
+            goal.get("subject_scope", "")
+        )
+        if str(goal.get("subject_scope", "")).strip() and not subject_scope:
+            reasons.append("canonical_dimension_subject_scope_invalid")
+        elif subject_scope and not is_dimension_claim_type(claim_type):
+            reasons.append("canonical_dimension_subject_scope_not_applicable")
 
         if (
             goal.get("owner") != "turn_understanding_owner"

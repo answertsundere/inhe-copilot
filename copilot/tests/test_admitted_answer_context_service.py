@@ -152,6 +152,51 @@ def test_preserves_dimension_subject_scope_without_cross_scope_conflict():
     )
 
 
+def test_requested_dimension_scope_survives_admission_to_resolution():
+    response = {
+        "selected_evidence": [
+            _fact(
+                evidence_uid="product-width",
+                fact_type="dimensions",
+                attribute_key="width",
+                subject_scope="product",
+                content="Product width is 45 cm.",
+                value="45cm",
+            ),
+            _fact(
+                evidence_uid="packaging-width",
+                fact_type="dimensions",
+                attribute_key="width",
+                subject_scope="packaging",
+                content="Packaging width is 51 cm.",
+                value="51cm",
+            ),
+        ],
+    }
+    understanding = {
+        "requested_claims": [
+            {
+                "claim_type": "dimensions",
+                "attribute_key": "width",
+                "subject_scope": "packaging",
+                "question": "packaging width",
+                "risk_level": "low",
+            },
+        ],
+    }
+
+    context = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+    )
+
+    resolution = context["claim_resolutions"][0]
+    assert context["requested_claims"][0]["subject_scope"] == "packaging"
+    assert resolution["subject_scope"] == "packaging"
+    assert resolution["evidence_uids"] == ["packaging-width"]
+
+
 def test_rejects_reference_placeholder_identity_mismatch_and_unreviewed_faq():
     response = {
         "selected_evidence": [
@@ -538,6 +583,253 @@ def test_semantic_key_variation_cannot_change_admission_or_send_contract():
     ]
     assert all(item["can_change_can_send"] is False for item in contexts)
     assert all(response == original for response, original in responses)
+
+
+def test_rebuilds_customer_requested_claims_from_canonical_goals_on_goal_ref_mismatch():
+    from app.agent.nodes.query_fact_type_classifier import (
+        _requested_claims_from_customer_goals,
+    )
+    from app.services import semantic_fact_type_service
+
+    message = "material request and durability request"
+    goals, status, diagnostics = semantic_fact_type_service._sanitize_customer_goals(
+        [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "material",
+                "attribute_key": "material",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": "material request",
+            },
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "drop_durability",
+                "semantic_key": "durability_wording",
+                "policy_intent_ref": "",
+                "source_text": "durability request",
+            },
+        ],
+        message=message,
+    )
+    assert status == "valid"
+    assert diagnostics == []
+    requested = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+    corrupted = deepcopy(requested)
+    corrupted[0]["goal_ref"] = "a" * 40
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding={
+            "customer_goals": goals,
+            "requested_claims": corrupted,
+        },
+    )
+
+    expected_goal_refs = {item["goal_ref"] for item in goals}
+    requested_goal_refs = {
+        item["goal_ref"]
+        for item in context["requested_claims"]
+        if item.get("goal_kind") == "customer_goal"
+    }
+    resolution_goal_refs = {
+        item["goal_ref"]
+        for item in context["claim_resolutions"]
+        if item.get("goal_kind") == "customer_goal"
+    }
+    assert requested_goal_refs == expected_goal_refs
+    assert resolution_goal_refs == expected_goal_refs
+    assert "a" * 40 not in requested_goal_refs
+
+
+def test_rebuilding_customer_claims_discards_untyped_stale_goal_projection():
+    goals = [
+        {
+            "goal_ref": "goal-material",
+            "goal_kind": "customer_goal",
+            "claim_type": "material_safety",
+        },
+        {
+            "goal_ref": "goal-dimension",
+            "goal_kind": "customer_goal",
+            "claim_type": "dimensions",
+        },
+    ]
+    requested = [
+        {
+            "goal_ref": "goal-material",
+            "goal_kind": "customer_goal",
+            "claim_type": "material_safety",
+        },
+        {
+            "goal_ref": "goal-dimension",
+            "goal_kind": "customer_goal",
+            "claim_type": "dimensions",
+        },
+        {
+            "goal_ref": "c" * 40,
+            "claim_type": "dimensions",
+        },
+    ]
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding={
+            "customer_goals": goals,
+            "requested_claims": requested,
+        },
+    )
+
+    expected_goal_refs = {item["goal_ref"] for item in goals}
+    assert {
+        item["goal_ref"]
+        for item in context["requested_claims"]
+        if item.get("goal_kind") == "customer_goal"
+    } == expected_goal_refs
+    assert {
+        item["goal_ref"]
+        for item in context["claim_resolutions"]
+        if item.get("goal_kind") == "customer_goal"
+    } == expected_goal_refs
+    assert "c" * 40 not in {
+        item.get("goal_ref") for item in context["claim_resolutions"]
+    }
+
+
+def test_rebuilt_customer_claim_defaults_to_high_risk_when_derived_goal_ref_is_stale():
+    from app.agent.nodes.query_fact_type_classifier import (
+        _requested_claims_from_customer_goals,
+    )
+    from app.services import semantic_fact_type_service
+
+    message = "material request"
+    goals, status, _diagnostics = semantic_fact_type_service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material",
+            "attribute_key": "material",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": message,
+        }],
+        message=message,
+    )
+    assert status == "valid"
+    requested = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="low",
+    )
+    requested[0]["goal_ref"] = "b" * 40
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding={
+            "customer_goals": goals,
+            "requested_claims": requested,
+        },
+    )
+
+    rebuilt = context["requested_claims"][0]
+    assert rebuilt["goal_ref"] == goals[0]["goal_ref"]
+    assert rebuilt["risk_level"] == "high"
+
+
+def test_rebuilt_customer_claim_projects_only_derived_claim_fields():
+    from app.agent.nodes.query_fact_type_classifier import (
+        _requested_claims_from_customer_goals,
+    )
+    from app.services import semantic_fact_type_service
+
+    message = "material request"
+    goals, status, _diagnostics = semantic_fact_type_service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material",
+            "attribute_key": "material",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": message,
+        }],
+        message=message,
+    )
+    assert status == "valid"
+    requested = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding={
+            "customer_goals": goals,
+            "requested_claims": requested,
+        },
+    )
+
+    assert context["requested_claims"][0]["unexpected_fields"] == []
+
+
+def test_rebuilding_customer_claims_preserves_non_customer_requested_items():
+    from app.agent.nodes.query_fact_type_classifier import (
+        _requested_claims_from_customer_goals,
+    )
+    from app.services import semantic_fact_type_service
+
+    message = "material request"
+    goals, status, _diagnostics = semantic_fact_type_service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material",
+            "attribute_key": "material",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": message,
+        }],
+        message=message,
+    )
+    assert status == "valid"
+    requested = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+    requested.append({
+        "goal_kind": "service_action",
+        "claim_type": "after_sales",
+        "question": "service request",
+        "risk_level": "high",
+    })
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [_fact()]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding={
+            "customer_goals": goals,
+            "requested_claims": requested,
+        },
+    )
+
+    assert any(
+        item.get("goal_kind") == "service_action"
+        and item.get("claim_type") == "after_sales"
+        for item in context["requested_claims"]
+    )
 
 
 def test_material_composition_cannot_admit_a_material_safety_claim():

@@ -48,6 +48,10 @@ def _requested_claims_from_customer_goals(
             "question": question,
             "risk_level": risk_hint,
         }
+        if "subject_scope" in goal:
+            claim["subject_scope"] = str(
+                goal.get("subject_scope") or ""
+            ).strip()
         for field in (
             "schema_version",
             "claim_type_status",

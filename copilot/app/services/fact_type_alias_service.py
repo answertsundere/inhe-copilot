@@ -126,6 +126,14 @@ _DIMENSION_FACT_TYPE_ALIASES = frozenset({
     "space_fit",
 })
 
+DIMENSION_SUBJECT_SCOPES = frozenset({
+    "product",
+    "packaging",
+    "component",
+    "accessory",
+    "included_item",
+})
+
 # These aliases only normalize the measured axis.  Claim Resolution keeps the
 # requested overall-product scope separate, so a component or package width
 # cannot satisfy an overall-width request merely through this normalization.
@@ -137,6 +145,17 @@ _OVERALL_DIMENSION_AXIS_ALIASES = {
     "overall_diameter": "diameter",
     "overall_thickness": "thickness",
 }
+
+_DIMENSION_ATTRIBUTE_SLOTS = (
+    "width",
+    "height",
+    "depth",
+    "length",
+    "diameter",
+    "thickness",
+    "layer_count",
+    "compartment_count",
+)
 
 _CANONICAL_ATTRIBUTE_FAMILIES = (
     {
@@ -183,6 +202,33 @@ def canonical_material_composition_claim_type(value: Any) -> str:
     if claim_type in _BASE_MATERIAL_COMPOSITION_ALIASES:
         return "material_composition"
     return claim_type
+
+
+def declared_attribute_candidates(fact_type: Any) -> tuple[str, ...]:
+    """Return the closed attribute tokens the current goal contract can use."""
+    claim_type = canonical_material_composition_claim_type(fact_type)
+    if claim_type in _DIMENSION_FACT_TYPE_ALIASES:
+        return (
+            *_DIMENSION_ATTRIBUTE_SLOTS,
+            *sorted(_OVERALL_DIMENSION_AXIS_ALIASES),
+            "overall_dimensions",
+        )
+    if claim_type == "material_composition":
+        return ("material_composition",)
+    return ()
+
+
+def is_dimension_claim_type(value: Any) -> bool:
+    """Return whether the declared claim uses the dimension scope contract."""
+    return canonical_material_composition_claim_type(value) in _DIMENSION_FACT_TYPE_ALIASES
+
+
+def canonical_dimension_subject_scope(value: Any) -> str:
+    """Normalize an explicitly declared measurement subject without guessing one."""
+    scope = _normalize_contract_token(value)
+    if scope == "product_overall":
+        return "product"
+    return scope if scope in DIMENSION_SUBJECT_SCOPES else ""
 
 
 def canonical_attribute_slot(

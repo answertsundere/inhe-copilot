@@ -20,7 +20,9 @@ from app.services.claim_resolution_service import (
 from app.services.fact_type_alias_service import (
     build_risk_policy_status,
     canonical_attribute_slot,
+    canonical_dimension_subject_scope,
     canonical_material_composition_claim_type,
+    is_dimension_claim_type,
     normalize_high_risk_claim_type,
 )
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
@@ -1148,14 +1150,109 @@ def build_turn_evidence_funnel(
     })
 
 
+def _authoritative_requested_claim_items(
+    understanding: dict[str, Any],
+) -> list[Any]:
+    """Project customer claims from the canonical Turn Understanding goals.
+
+    ``requested_claims`` is a classifier-owned convenience projection.  When
+    canonical customer goals are available, their server-owned goal identities
+    remain authoritative so a stale or mutated projection cannot create a
+    separate Claim Resolution identity.
+    """
+    requested_items = _as_list(understanding.get("requested_claims"))
+    customer_goals = [
+        item
+        for item in _as_list(understanding.get("customer_goals"))
+        if isinstance(item, dict)
+        and sanitize_text(item.get("goal_kind")).lower() == "customer_goal"
+    ]
+    if not customer_goals:
+        return requested_items
+
+    requested_by_goal_ref = {
+        sanitize_text(item.get("goal_ref")): item
+        for item in requested_items
+        if isinstance(item, dict)
+        and sanitize_text(item.get("goal_kind")).lower() == "customer_goal"
+        and sanitize_text(item.get("goal_ref"))
+    }
+    canonical_customer_claims: list[dict[str, Any]] = []
+    seen_goal_refs: set[str] = set()
+    for goal in customer_goals:
+        goal_ref = sanitize_text(goal.get("goal_ref"))
+        if not goal_ref or goal_ref in seen_goal_refs:
+            continue
+        seen_goal_refs.add(goal_ref)
+        matching_projection = requested_by_goal_ref.get(goal_ref)
+        claim = {
+            field: goal[field]
+            for field in (
+                "schema_version",
+                "goal_ref",
+                "goal_kind",
+                "claim_type_status",
+                "claim_type",
+                "claim_type_exact_match",
+                "attribute_key",
+                "subject_scope",
+                "semantic_key",
+                "policy_intent_ref",
+                "policy_goal_family",
+                "policy_intent_kind",
+                "goal_summary",
+                "source",
+                "source_span_start",
+                "source_span_end",
+                "source_span_sha256",
+                "source_text_sha256",
+                "source_turn_uid",
+                "owner",
+                "source_stage",
+            )
+            if field in goal
+        }
+        projected_risk = (
+            sanitize_text(matching_projection.get("risk_level")).lower()
+            if isinstance(matching_projection, dict)
+            else ""
+        )
+        claim.update({
+            "goal_ref": goal_ref,
+            "goal_kind": "customer_goal",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "question": (
+                matching_projection.get("question")
+                if isinstance(matching_projection, dict)
+                else ""
+            ),
+            "risk_level": (
+                projected_risk
+                if projected_risk in {"low", "medium", "high", "critical", "prohibited"}
+                else "high"
+            ),
+        })
+        canonical_customer_claims.append(claim)
+
+    non_customer_claims = [
+        item
+        for item in requested_items
+        if isinstance(item, dict)
+        and sanitize_text(item.get("goal_kind")).lower()
+        and sanitize_text(item.get("goal_kind")).lower() != "customer_goal"
+    ]
+    return [*canonical_customer_claims, *non_customer_claims]
+
+
 def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
-    for item in _as_list(understanding.get("requested_claims")):
+    for item in _authoritative_requested_claim_items(understanding):
         if isinstance(item, dict):
             allowed_fields = {
                 "schema_version", "goal_ref", "goal_kind",
                 "claim_type_status", "claim_type", "claim_type_exact_match",
-                "attribute_key",
+                "attribute_key", "subject_scope",
                 "semantic_key", "policy_intent_ref", "policy_goal_family",
                 "policy_intent_kind", "goal_summary", "source", "source_span_start",
                 "source_span_end", "source_span_sha256", "source_text_sha256",
@@ -1189,6 +1286,9 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                         item.get("claim_type_exact_match") is True
                     ),
                     "attribute_key": sanitize_text(item.get("attribute_key")).lower(),
+                    "subject_scope": canonical_dimension_subject_scope(
+                        item.get("subject_scope")
+                    ),
                     "semantic_key": semantic_key,
                     "policy_intent_ref": sanitize_text(
                         item.get("policy_intent_ref")
@@ -1396,6 +1496,9 @@ def _resolution_matches_goal(
         != goal_attribute
     ):
         return False
+    goal_scope = _dimension_subject_scope(goal)
+    if goal_scope and _dimension_subject_scope(resolution) != goal_scope:
+        return False
     return True
 
 
@@ -1417,6 +1520,9 @@ def _admitted_fact_matches_goal(
 
     goal_attribute = _canonical_attribute_key(goal)
     if goal_attribute and _canonical_attribute_key(fact) != goal_attribute:
+        return False
+    goal_scope = _dimension_subject_scope(goal)
+    if goal_scope and _dimension_subject_scope(fact) != goal_scope:
         return False
 
     expected = {

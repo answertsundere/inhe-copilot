@@ -25,6 +25,7 @@ def _resolution(
     status: str,
     *,
     attribute_key: str = "",
+    subject_scope: str = "",
     evidence_uids: list[str] | None = None,
     support_basis: str = "",
     premise_evidence_uids: list[str] | None = None,
@@ -50,6 +51,7 @@ def _resolution(
         "claim_type": claim_type,
         "claim_type_status": claim_type_status,
         "attribute_key": attribute_key,
+        "subject_scope": subject_scope,
         "status": status,
         "evidence_uids": list(evidence_uids or []),
         "support_basis": support_basis,
@@ -75,6 +77,7 @@ def _goal(
     *,
     goal_kind: str = "customer_goal",
     attribute_key: str = "",
+    subject_scope: str = "",
     supporting_only: bool = False,
     supporting_for_goal_ref: str = "",
     claim_type_status: str = "mapped",
@@ -93,6 +96,7 @@ def _goal(
         "claim_type_status": claim_type_status,
         "claim_type": claim_type,
         "attribute_key": attribute_key,
+        "subject_scope": subject_scope,
         "semantic_key": semantic_key,
         "goal_summary": goal_summary,
         "source": "current_customer_message",
@@ -397,6 +401,39 @@ def _presentation_payload() -> dict:
             },
         ],
     }
+
+
+def test_composer_decision_input_preserves_dimension_subject_scope():
+    response = _presentation_response()
+    claim = response["minimal_decision_context"]["requested_claims"][0]
+    claim["attribute_key"] = "overall_dimensions"
+    claim["subject_scope"] = "product"
+    resolution = response["minimal_decision_context"]["claim_resolutions"][0]
+    resolution["attribute_key"] = "overall_dimensions"
+    resolution["subject_scope"] = "product"
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="商品展开后的整体尺寸是多少",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert decision_input["requested_claims"][0]["subject_scope"] == "product"
+    assert decision_input["claim_resolutions"][0]["subject_scope"] == "product"
+    dimension_goal = next(
+        item
+        for item in material["partitions"][
+            "renderable_customer_goals"
+        ]
+        if item["claim_type"] == "dimensions"
+    )
+    assert dimension_goal["subject_scope"] == "product"
 
 
 def test_composer_uses_source_span_presentation_without_changing_aliases():

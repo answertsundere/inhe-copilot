@@ -190,8 +190,52 @@ def test_turn_understanding_candidates_expose_one_canonical_material_choice():
         "fact_type_id": "material_composition",
         "meaning": "材质",
         "attribute_contract": "optional_explicit_attribute_key",
+        "attribute_candidates": ["material_composition"],
     }]
+    dimension_candidates = [
+        item
+        for item in candidates
+        if item["fact_type_id"] == "dimensions"
+    ]
+    assert len(dimension_candidates) == 1
+    assert set(dimension_candidates[0]["attribute_candidates"]) == {
+        "width",
+        "height",
+        "depth",
+        "length",
+        "diameter",
+        "thickness",
+        "layer_count",
+        "compartment_count",
+        "overall_width",
+        "overall_height",
+        "overall_depth",
+        "overall_length",
+        "overall_diameter",
+        "overall_thickness",
+        "overall_dimensions",
+    }
     assert len({item["fact_type_id"] for item in candidates}) == len(candidates)
+
+
+def test_turn_understanding_normalizes_known_dimension_display_attribute():
+    message = "dimension request"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "dimensions",
+            "attribute_key": "\u5bbd\u5ea6",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": message,
+        }],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["attribute_key"] == "width"
 
 
 def test_single_provider_goal_is_not_completed_from_legacy_fact_type(monkeypatch):
