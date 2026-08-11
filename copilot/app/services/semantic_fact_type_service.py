@@ -674,6 +674,7 @@ def _new_turn_understanding_diagnostics(client: Any) -> dict[str, Any]:
             "semantic_key_present_count": 0,
             "semantic_key_empty_count": 0,
             "semantic_key_missing_count": 0,
+            "semantic_key_discarded_count": 0,
         },
         "span_reference": {
             "text_length": 0,
@@ -998,18 +999,11 @@ def _validate_raw_llm_result(
                         expected_type="empty_string",
                         actual_value=claim_type,
                     ))
-                if (
-                    isinstance(semantic_key, str)
-                    and semantic_key.strip()
-                    and not _normalized_semantic_key(semantic_key)
-                ):
-                    schema.append(_violation(
-                        stage="known_unmapped",
-                        json_pointer=f"{base}.semantic_key",
-                        reason_code="unmapped_semantic_key_invalid",
-                        expected_type="bounded_semantic_key",
-                        actual_value=semantic_key,
-                    ))
+                # semantic_key is optional, non-authoritative metadata. A
+                # malformed string cannot promote an unmapped goal, so discard
+                # it during canonicalization instead of losing the goal and
+                # its independently verified source span. Non-string values
+                # remain schema failures above.
 
         source_provenance, resolution_reason = (
             _resolve_source_span_provenance(
@@ -1450,6 +1444,10 @@ def _classify_with_llm(
                 diagnostics["optional_metadata"][
                     "semantic_key_present_count"
                 ] += 1
+                if not _normalized_semantic_key(goal.get("semantic_key")):
+                    diagnostics["optional_metadata"][
+                        "semantic_key_discarded_count"
+                    ] += 1
 
     history_texts = _historical_customer_texts(state)
     diagnostics["span_resolution"] = _span_resolution_diagnostics(
@@ -2010,8 +2008,6 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
 
     if claim_type:
         return "unmapped_claim_type_present"
-    if semantic_key_value.strip() and not semantic_key:
-        return "unmapped_semantic_key_invalid"
     return ""
 
 

@@ -217,6 +217,98 @@ def test_non_string_semantic_metadata_remains_schema_invalid(
     }
 
 
+@pytest.mark.parametrize(
+    "semantic_key",
+    [
+        "visible damage",
+        "refund or replacement",
+        "\u53ef\u89c1\u7834\u635f",
+    ],
+)
+def test_invalid_optional_semantic_hint_is_discarded_without_losing_unmapped_goal(
+    semantic_key,
+):
+    message = "first request, second request, third request"
+    raw_goals = [
+        _raw_goal(
+            source_text="first request",
+            claim_type_status="unmapped",
+            claim_type="",
+            attribute_key="visible_condition",
+            semantic_key=semantic_key,
+        ),
+        _raw_goal(
+            source_text="second request",
+            claim_type_status="unmapped",
+            claim_type="",
+            attribute_key="resolution_choice",
+            semantic_key="resolution_choice",
+        ),
+        _raw_goal(
+            source_text="third request",
+            claim_type_status="canonical",
+            claim_type="aftersales_policy",
+            semantic_key="",
+        ),
+    ]
+
+    schema, provenance = service._validate_raw_llm_result(
+        _llm_result(raw_goals),
+        message=message,
+    )
+    result = service._sanitize_llm_result(
+        _llm_result(raw_goals),
+        message=message,
+    )
+
+    assert schema == []
+    assert provenance == []
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert len(result["customer_goals"]) == 3
+    first = next(
+        goal
+        for goal in result["customer_goals"]
+        if goal["attribute_key"] == "visible_condition"
+    )
+    assert first["claim_type_status"] == "unmapped"
+    assert first["claim_type"] == ""
+    assert first["semantic_key"] == ""
+
+
+def test_invalid_optional_semantic_hint_cannot_promote_or_merge_goals():
+    message = "property one and property two"
+    raw_goals = [
+        _raw_goal(
+            source_text="property one",
+            claim_type_status="unmapped",
+            claim_type="",
+            attribute_key="first_property",
+            semantic_key="material composition",
+        ),
+        _raw_goal(
+            source_text="property two",
+            claim_type_status="unmapped",
+            claim_type="",
+            attribute_key="second_property",
+            semantic_key="material composition",
+        ),
+    ]
+
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        raw_goals,
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert len(goals) == 2
+    assert len({goal["goal_ref"] for goal in goals}) == 2
+    assert all(goal["claim_type_status"] == "unmapped" for goal in goals)
+    assert all(goal["claim_type"] == "" for goal in goals)
+    assert all(goal["semantic_key"] == "" for goal in goals)
+
+
 def test_semantic_metadata_presence_and_value_do_not_change_goal_identity():
     message = "durability request"
     base = _raw_goal(

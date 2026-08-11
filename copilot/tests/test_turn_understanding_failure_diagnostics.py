@@ -249,6 +249,7 @@ def test_optional_semantic_metadata_counts_do_not_change_validity(monkeypatch):
         "semantic_key_present_count": 0,
         "semantic_key_empty_count": 1,
         "semantic_key_missing_count": 1,
+        "semantic_key_discarded_count": 0,
     }
     assert diagnostics["unmapped_metadata_contract_version"] == (
         service.UNMAPPED_METADATA_CONTRACT_VERSION
@@ -677,7 +678,7 @@ def test_previous_wide_provider_schema_is_rejected(monkeypatch):
                 claim_type="",
                 semantic_key="not valid",
             ),
-            "unmapped_semantic_key_invalid",
+            None,
         ),
         (
             lambda goal: goal.pop("claim_type_status"),
@@ -703,8 +704,14 @@ def test_known_unmapped_failures_are_attributed(
         _response_for_payload(payload),
     )
 
-    assert reason_code in _reason_codes(diagnostics)
-    assert diagnostics["status"] == "failed"
+    if reason_code is None:
+        assert diagnostics["status"] == "passed"
+        assert diagnostics["optional_metadata"][
+            "semantic_key_discarded_count"
+        ] == 1
+    else:
+        assert reason_code in _reason_codes(diagnostics)
+        assert diagnostics["status"] == "failed"
 
 
 def test_duplicate_goal_is_reported(monkeypatch):
