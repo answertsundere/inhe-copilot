@@ -57,6 +57,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - 当前实现已完成版本化 8 条/40 回合 fixture、独立 manifest、不可变
     `DatasetContract`、评测字段隔离和 query-only 预检；尚未运行当前源码
     5013，因此真实准确率和优化结论继续为空。
+- `docs/superpowers/specs/2026-08-11-reconstructed-fixed8-native-5013-design.md`
+  - 定义重建 Fixed-8 在当前源码 5013 上的原生 `1×1 -> 8×1` 运行合同、
+    query-only/review-only 边界、基础设施失败与业务质量失败分离，以及继续保持
+    `real_customer_accuracy=null` 的报告要求。
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
