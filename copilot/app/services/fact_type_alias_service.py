@@ -120,6 +120,24 @@ _BASE_MATERIAL_COMPOSITION_ALIASES = frozenset({
     "material_composition",
 })
 
+_DIMENSION_FACT_TYPE_ALIASES = frozenset({
+    "dimensions",
+    "size",
+    "space_fit",
+})
+
+# These aliases only normalize the measured axis.  Claim Resolution keeps the
+# requested overall-product scope separate, so a component or package width
+# cannot satisfy an overall-width request merely through this normalization.
+_OVERALL_DIMENSION_AXIS_ALIASES = {
+    "overall_width": "width",
+    "overall_height": "height",
+    "overall_depth": "depth",
+    "overall_length": "length",
+    "overall_diameter": "diameter",
+    "overall_thickness": "thickness",
+}
+
 _CANONICAL_ATTRIBUTE_FAMILIES = (
     {
         "canonical_family": "material_composition",
@@ -186,6 +204,14 @@ def canonical_attribute_slot(
         for item in declared
         if (token := _normalize_contract_token(item))
     }
+
+    belongs_to_dimensions = (
+        primary_fact_type in _DIMENSION_FACT_TYPE_ALIASES
+        if primary_fact_type
+        else bool(declared_types) and declared_types <= _DIMENSION_FACT_TYPE_ALIASES
+    )
+    if belongs_to_dimensions:
+        return _OVERALL_DIMENSION_AXIS_ALIASES.get(attribute, attribute)
 
     for family in _CANONICAL_ATTRIBUTE_FAMILIES:
         aliases = family["fact_type_aliases"]

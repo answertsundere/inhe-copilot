@@ -98,6 +98,60 @@ def test_same_origin_transport_copies_do_not_make_dimension_claim_ambiguous():
     assert any(item["reason"] == "duplicate_evidence" for item in context["rejected_evidence"])
 
 
+def test_preserves_dimension_subject_scope_without_cross_scope_conflict():
+    response = {
+        "selected_evidence": [
+            _fact(
+                evidence_uid="component-width",
+                fact_type="dimensions",
+                attribute_key="width",
+                subject_scope="component",
+                content="Component width is 31 cm.",
+                value="31cm",
+            ),
+            _fact(
+                evidence_uid="product-width",
+                fact_type="dimensions",
+                attribute_key="width",
+                subject_scope="product",
+                content="Overall product width is 45 cm.",
+                value="45cm",
+            ),
+        ],
+    }
+    understanding = {
+        "requested_claims": [
+            {
+                "claim_type": "dimensions",
+                "attribute_key": "overall_width",
+                "question": "overall width",
+                "risk_level": "low",
+            },
+        ],
+    }
+
+    context = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={"sku_code": "SKU-A"},
+        understanding=understanding,
+    )
+
+    assert {
+        item["evidence_uid"]: item["subject_scope"]
+        for item in context["direct_product_facts"]
+    } == {
+        "component-width": "component",
+        "product-width": "product",
+    }
+    resolution = context["claim_resolutions"][0]
+    assert resolution["status"] == "supported"
+    assert resolution["evidence_uids"] == ["product-width"]
+    assert not any(
+        item["reason"] == "conflicting_evidence"
+        for item in context["rejected_evidence"]
+    )
+
+
 def test_rejects_reference_placeholder_identity_mismatch_and_unreviewed_faq():
     response = {
         "selected_evidence": [

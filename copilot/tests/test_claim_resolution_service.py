@@ -9,13 +9,21 @@ def _claim(attribute_key: str = "", claim_type: str = "dimensions") -> dict[str,
     return {"claim_type": claim_type, "attribute_key": attribute_key, "question": "", "risk_level": "medium"}
 
 
-def _fact(uid: str, attribute_key: str, *, claim_type: str = "dimensions", reason: str = "") -> dict[str, str | list[str]]:
+def _fact(
+    uid: str,
+    attribute_key: str,
+    *,
+    claim_type: str = "dimensions",
+    reason: str = "",
+    subject_scope: str = "",
+) -> dict[str, str | list[str]]:
     return {
         "evidence_uid": uid,
         "attribute_key": attribute_key,
         "claim_types_supported": [claim_type],
         "text": f"{attribute_key} fact",
         "reason": reason,
+        "subject_scope": subject_scope,
     }
 
 
@@ -124,6 +132,35 @@ def test_explicit_attribute_requires_attributed_evidence():
 
     assert result["status"] == "unresolved"
     assert result["reason"] == "attribute_evidence_missing"
+
+
+def test_overall_dimension_goal_selects_only_a_product_scoped_axis():
+    result = build_claim_resolutions(
+        [_claim("overall_width")],
+        direct_product_facts=[
+            _fact("component-width", "width", subject_scope="component"),
+            _fact("packaging-width", "width", subject_scope="packaging"),
+            _fact("product-width", "width", subject_scope="product"),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["attribute_key"] == "width"
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["product-width"]
+
+
+def test_overall_dimension_goal_requires_explicit_product_scope():
+    result = build_claim_resolutions(
+        [_claim("overall_height")],
+        direct_product_facts=[_fact("unscoped-height", "height")],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["reason"] == "subject_scope_evidence_missing"
 
 
 def test_ambiguous_unattributed_claim_does_not_absorb_multiple_attributes():

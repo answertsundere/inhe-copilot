@@ -46,6 +46,18 @@ _REQUEST_CLAIM_RISK_LEVELS = {
     "critical",
     "prohibited",
 }
+
+_DIMENSION_CLAIM_TYPES = frozenset({"dimensions", "size", "space_fit"})
+_PRODUCT_OVERALL_DIMENSION_ATTRIBUTES = frozenset({
+    "overall_width",
+    "overall_height",
+    "overall_depth",
+    "overall_length",
+    "overall_diameter",
+    "overall_thickness",
+    "overall_dimensions",
+})
+_PRODUCT_OVERALL_SUBJECT_SCOPES = frozenset({"product", "product_overall"})
 _RESTRICTED_REQUEST_INTENT_REASONS = {
     "absolute_guarantee": "absolute_guarantee_prohibited",
     "test_standard_request": "direct_test_evidence_required",
@@ -149,14 +161,52 @@ def _facts_for_claim(claim_type: str, facts: list[dict[str, Any]]) -> list[dict[
     )
 
 
+def _requested_subject_scope(item: dict[str, Any]) -> str:
+    """Return an explicit subject constraint encoded by a structured request."""
+    claim_type = sanitize_text(item.get("claim_type")).lower()
+    original_attribute = canonical_dimension_attribute(
+        _original_attribute_key(item).lower()
+    )
+    if (
+        claim_type in _DIMENSION_CLAIM_TYPES
+        and original_attribute in _PRODUCT_OVERALL_DIMENSION_ATTRIBUTES
+    ):
+        return "product"
+    return ""
+
+
+def _matches_subject_scope(fact: dict[str, Any], required_scope: str) -> bool:
+    if not required_scope:
+        return True
+    subject_scope = sanitize_text(fact.get("subject_scope")).lower()
+    if required_scope == "product":
+        return subject_scope in _PRODUCT_OVERALL_SUBJECT_SCOPES
+    return subject_scope == required_scope
+
+
 def _select_for_attribute(
     requested_attribute: str,
     candidates: list[dict[str, Any]],
+    *,
+    required_subject_scope: str = "",
 ) -> tuple[list[dict[str, Any]], str]:
     """Select evidence by declared attribute without inferring from free text."""
     if requested_attribute:
         matching = [fact for fact in candidates if _attribute_key(fact) == requested_attribute]
         if matching:
+            scoped = [
+                fact for fact in matching
+                if _matches_subject_scope(fact, required_subject_scope)
+            ]
+            if required_subject_scope:
+                if scoped:
+                    return scoped, ""
+                if any(
+                    not sanitize_text(fact.get("subject_scope"))
+                    for fact in matching
+                ):
+                    return [], "subject_scope_evidence_missing"
+                return [], "subject_scope_mismatch"
             return matching, ""
         if any(not _attribute_key(fact) for fact in candidates):
             return [], "attribute_evidence_missing"
@@ -722,12 +772,14 @@ def build_claim_resolutions(
             else []
         )
         requested_attribute = _attribute_key(requested)
+        requested_subject_scope = _requested_subject_scope(requested)
         matching_facts, fact_selection_reason = (
             ([], "")
             if unmapped_customer_goal
             else _select_for_attribute(
                 requested_attribute,
                 _facts_for_claim(claim_type, direct_facts),
+                required_subject_scope=requested_subject_scope,
             )
         )
         conflict_candidates = (
@@ -736,7 +788,11 @@ def build_claim_resolutions(
             else _facts_for_claim(claim_type, conflicts)
         )
         matching_conflicts, _conflict_selection_reason = (
-            _select_for_attribute(requested_attribute, conflict_candidates)
+            _select_for_attribute(
+                requested_attribute,
+                conflict_candidates,
+                required_subject_scope=requested_subject_scope,
+            )
             if conflict_candidates
             else ([], "")
         )

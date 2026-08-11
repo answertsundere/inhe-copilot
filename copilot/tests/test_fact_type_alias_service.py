@@ -139,6 +139,27 @@ def test_material_composition_aliases_share_only_the_base_material_family():
     ) == ""
 
 
+def test_overall_dimension_axis_aliases_are_limited_to_dimension_facts():
+    from app.services.fact_type_alias_service import canonical_attribute_slot
+
+    assert canonical_attribute_slot(
+        "overall_width",
+        fact_type="dimensions",
+    ) == "width"
+    assert canonical_attribute_slot(
+        "overall_height",
+        supported_claim_types=["dimensions"],
+    ) == "height"
+    assert canonical_attribute_slot(
+        "overall_dimensions",
+        fact_type="dimensions",
+    ) == "overall_dimensions"
+    assert canonical_attribute_slot(
+        "overall_width",
+        fact_type="packaging",
+    ) == "overall_width"
+
+
 def test_service_action_and_media_reference_are_not_direct_answer_aliases():
     from app.services.fact_type_alias_service import is_alias_safe_for_direct_answer
 

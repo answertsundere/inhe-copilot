@@ -206,6 +206,31 @@ def _canonical_attribute_key(item: dict[str, Any]) -> str:
     )
 
 
+def _dimension_subject_scope(item: dict[str, Any]) -> str:
+    """Return the subject bucket used for dimension conflict isolation."""
+    fact_types = {
+        _fact_type(item),
+        *(_claim_types(item)),
+    }
+    if not fact_types.intersection({"dimensions", "size", "space_fit"}):
+        return ""
+    subject_scope = sanitize_text(item.get("subject_scope")).lower()
+    return "product" if subject_scope in {"product", "product_overall"} else subject_scope
+
+
+def _conflict_group_key(item: dict[str, Any]) -> str:
+    """Keep independently scoped dimensions out of the same conflict group."""
+    slot = sanitize_text(item.get("canonical_attribute_key"))
+    subject_scope = _dimension_subject_scope(item)
+    if slot and subject_scope:
+        return f"{slot}|subject:{subject_scope}"
+    if slot and _dimension_subject_scope(item) == "":
+        fact_types = {_fact_type(item), *(_claim_types(item))}
+        if fact_types.intersection({"dimensions", "size", "space_fit"}):
+            return f"{slot}|subject:__missing__"
+    return slot
+
+
 def _identity_scope(item: dict[str, Any]) -> list[dict[str, str]]:
     return [
         {"namespace": key, "value": value}
@@ -707,6 +732,7 @@ def collect_admitted_product_facts(
             "canonical_attribute_key": _canonical_attribute_key(item),
             "original_fact_type": _fact_type(item),
             "original_evidence_attribute_key": _attribute_key(item),
+            "subject_scope": sanitize_text(item.get("subject_scope")).lower(),
             "fact_scope": sanitize_text(item.get("fact_scope") or item.get("product_scope")).lower(),
             "text": _clip(text),
             "value": _clip(item.get("value") or item.get("fact_value") or text),
@@ -719,7 +745,7 @@ def collect_admitted_product_facts(
     admitted: list[dict[str, Any]] = []
     grouped: dict[str, list[dict[str, Any]]] = {}
     for candidate in candidates:
-        slot = sanitize_text(candidate.get("canonical_attribute_key"))
+        slot = _conflict_group_key(candidate)
         if not slot:
             admitted.append(candidate)
             warnings.append({**candidate, "reason": "conflict_check_skipped"})
