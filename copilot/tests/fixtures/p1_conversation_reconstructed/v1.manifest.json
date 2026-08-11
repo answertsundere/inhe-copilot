@@ -1,7 +1,7 @@
 {
   "schema_version": "p1-conversation-reconstructed-manifest/v1",
   "dataset_id": "p1-conversation-reconstructed-v1",
-  "dataset_version": "1.0.0",
+  "dataset_version": "1.1.0",
   "source_class": "conversation_reconstructed",
   "scenario_count": 8,
   "conversation_history_turn_count": 40,
@@ -15,17 +15,17 @@
     "多轮上下文连续性": 1,
     "有界推断": 1
   },
-  "dataset_file_sha256": "52f9b02590d23de2891fa3c3265d6b6e4dcb8b98e199be2a003183cf386d01e2",
-  "content_sha256": "689c8990db4cae9299b4cf4eda156f45401efc145cf68c43e7b07f74f968e487",
+  "dataset_file_sha256": "c59b3694ca501caec949520eb87d6f37fb000f91e3f20f86ea6f7130a544ed3e",
+  "content_sha256": "76b7e069e41d50f8a1b572f2bcd2a6cda634543e2cd51dc1b45a9497c42f5b92",
   "scenario_hashes": {
-    "rc-01": "02e3d8dfac3044c5cf1cbf3d84185274689b0b3e02cda14a59cdaf91f9c069e6",
-    "rc-02": "03d50b32879b23c6fb1c2d8dd294cba9c79bb89c3a68757d12fada4ff34248f9",
-    "rc-03": "32d3c342200a98df20880884c5b4440070add714af334d657a73f42222f34339",
-    "rc-04": "4e8071ca58deea7951d5f903e7828d4cedd0a546559993fe50cb19cd3d43d1bb",
-    "rc-05": "efad45eabdc78d258b74abbc71b63bf1f3fe6350079dee638cde5321a4aac353",
-    "rc-06": "7a5e12e8a2778e06eafae773055c96d0bf4b87de36252f91a868390e23013e79",
-    "rc-07": "35c2d5070df6edbfb2adca4c7cf9415c6979c516c1e42e6b47a4ae987e26d6fb",
-    "rc-08": "3e150b628c3a13eebee4baf1c0f9c719dbc8ddedf62f591f444992178034f37e"
+    "rc-01": "628cfff83646d11f98b88ce2b2d1df46948adff4c59ccdce0f91e6bf8b10aaf5",
+    "rc-02": "4263d7c6d1663b8d7ae234f755e69292ba439a81935aebb36f9fbfd9da4867f6",
+    "rc-03": "3c697e9e0add60ca556d48ba8af231dbd4677928cb0383996b738e815f515465",
+    "rc-04": "091fd23690cdfe9b0b011eab2d01cf820e32e26595c634d5ee2a9efb88134c15",
+    "rc-05": "3dc2974a56c763903fa1ab209456d8947dcdd89230f85d05d1c09c841224735b",
+    "rc-06": "e16256cba4083a74f82862eed78e15d95507a1555e3dd5d04db6aee86fb28fd0",
+    "rc-07": "8fbc8135ee530aa41ae5253c0cd3a81f17b934783e948b154650975fdd28342a",
+    "rc-08": "21df4bf87c56d23337d0e0c543c49d5dae56108f9bac44babb2d7fc388b0bb2c"
   },
   "privacy_declaration": {
     "classification": "synthetic_anonymous",

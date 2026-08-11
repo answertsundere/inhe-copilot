@@ -293,6 +293,7 @@ def project_trusted_goal_references(
                 goal.get("claim_type_status") or ""
             ),
             "attribute_key": str(goal.get("attribute_key") or ""),
+            "subject_scope": str(goal.get("subject_scope") or ""),
             "semantic_key": str(goal.get("semantic_key") or ""),
             "source_span_start": goal.get("source_span_start"),
             "source_span_end": goal.get("source_span_end"),

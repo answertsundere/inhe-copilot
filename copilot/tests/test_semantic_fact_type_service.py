@@ -173,6 +173,10 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "an explicit buyer request must never be relabeled" in prompt
     assert "not the product, product category, component" in prompt
     assert "Leave it empty when claim_type already identifies" in prompt
+    assert (
+        "must set subject_scope to the named measured object"
+        in prompt
+    )
     assert "Do not nominate practical_guidance for a direct factual identity" in prompt
     assert "It may be empty only when this is a direct factual identity/value request" in prompt
     assert "as a fallback when media or a service action is unavailable" in prompt

@@ -249,6 +249,10 @@ For each goal:
   When nonempty, it must be exactly one of product, packaging, component,
   accessory, or included_item. It narrows the measured object only; it never
   changes the requested attribute or creates a fact.
+- When a dimension goal's exact source_text explicitly names its measured
+  object, must set subject_scope to the named measured object. Do not leave it
+  empty merely because another dimension goal in the same message names a
+  different object. Keep separate dimension goals separate by source_text.
 - policy_intent_ref is empty or exactly one supplied policy_intent_candidates
   ID. It may be empty only when this is a direct factual identity/value request
   or no supplied candidate directly matches the goal. Nominate a candidate only

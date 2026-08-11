@@ -120,6 +120,185 @@ def test_goal_recall_diagnostic_keeps_unrelated_dimension_axis_unmatched():
     }
 
 
+def test_goal_recall_diagnostic_separates_presence_identity_and_dimension_scope():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [
+                {
+                    "understanding_expectation": {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "canonical",
+                        "claim_type": "dimensions",
+                        "attribute_key": "width",
+                        "semantic_key": "",
+                        "subject_scope": "product",
+                        "source_span_start": 0,
+                        "source_span_end": 2,
+                        "source_span_sha256": "a" * 64,
+                    },
+                },
+                {
+                    "understanding_expectation": {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "unmapped",
+                        "claim_type": "",
+                        "attribute_key": "",
+                        "semantic_key": "safety_guarantee",
+                        "subject_scope": "",
+                        "source_span_start": 3,
+                        "source_span_end": 5,
+                        "source_span_sha256": "b" * 64,
+                    },
+                },
+                {
+                    "understanding_expectation": {
+                        "goal_kind": "media_request",
+                        "claim_type_status": "unmapped",
+                        "claim_type": "",
+                        "attribute_key": "",
+                        "semantic_key": "installation_video",
+                        "subject_scope": "",
+                        "source_span_start": 6,
+                        "source_span_end": 8,
+                        "source_span_sha256": "c" * 64,
+                    },
+                },
+                {"claim_type": "product_identity", "attribute_key": "current_product"},
+            ],
+        },
+        {
+            "status": "valid",
+            "goals": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "dimensions",
+                    "attribute_key": "overall_width",
+                    "subject_scope": "",
+                    "semantic_key": "",
+                    "source_span_start": 0,
+                    "source_span_end": 2,
+                    "source_span_sha256": "a" * 64,
+                },
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "attribute_key": "",
+                    "subject_scope": "",
+                    "semantic_key": "safety_guarantee",
+                    "source_span_start": 3,
+                    "source_span_end": 5,
+                    "source_span_sha256": "b" * 64,
+                },
+                {
+                    "goal_kind": "media_request",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "attribute_key": "",
+                    "subject_scope": "",
+                    "semantic_key": "installation_video",
+                    "source_span_start": 6,
+                    "source_span_end": 8,
+                    "source_span_sha256": "c" * 64,
+                },
+            ],
+        },
+    )
+
+    assert diagnostic == {
+        "contract": "atomic_goal_identity_and_effective_scope/v4",
+        "numerator": 2,
+        "denominator": 2,
+        "unexpected_goal_count": 0,
+        "customer_goal_identity_recall": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1.0,
+        },
+        "explicit_request_recall": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1.0,
+        },
+        "dimension_subject_scope_attribution": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1.0,
+        },
+        "unscored_expected_claim_count": 1,
+        "status": "scored",
+    }
+
+
+def test_goal_recall_scope_preserves_explicit_non_product_scope():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [{
+                "understanding_expectation": {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "dimensions",
+                    "attribute_key": "width",
+                    "semantic_key": "",
+                    "subject_scope": "product",
+                    "source_span_start": 0,
+                    "source_span_end": 2,
+                    "source_span_sha256": "a" * 64,
+                },
+            }],
+        },
+        {
+            "status": "valid",
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_width",
+                "subject_scope": "packaging",
+                "semantic_key": "",
+                "source_span_start": 0,
+                "source_span_end": 2,
+                "source_span_sha256": "a" * 64,
+            }],
+        },
+    )
+
+    assert diagnostic["dimension_subject_scope_attribution"] == {
+        "numerator": 0,
+        "denominator": 1,
+        "rate": 0.0,
+    }
+
+
+def test_reconstructed_fixed8_goal_labels_are_versioned_and_contract_valid():
+    root = Path(__file__).parent / "fixtures" / "p1_conversation_reconstructed"
+    dataset, inventory, _manifest = p1_baseline._preflight_dataset(
+        root / "v1.json",
+        root / "v1.manifest.json",
+        contract=p1_baseline._resolve_dataset_contract(
+            "conversation-reconstructed-v1"
+        ),
+    )
+    expectations = [
+        item["understanding_expectation"]
+        for scenario in dataset["scenarios"]
+        for item in scenario["expected_claims"]
+        if "understanding_expectation" in item
+    ]
+
+    assert inventory["validation_status"] == "passed"
+    assert dataset["dataset_version"] == "1.1.0"
+    assert len(expectations) == 17
+    assert sum(
+        item["goal_kind"] == "customer_goal" for item in expectations
+    ) == 16
+    assert sum(
+        item["goal_kind"] == "media_request" for item in expectations
+    ) == 1
+    assert sum(bool(item["subject_scope"]) for item in expectations) == 4
+
+
 def _goal(
     message: str,
     source_text: str,
@@ -261,6 +440,24 @@ def test_valid_server_goal_refs_become_stable_linked_aliases():
     } == {
         item["claim_alias"] for item in result["composer_clauses"]
     }
+
+
+def test_goal_projection_keeps_validated_dimension_scope_as_safe_enum():
+    response = _response()
+    response["turn_understanding"]["customer_goals"][1][
+        "subject_scope"
+    ] = "product"
+
+    result = _project(response)
+    projected_dimension = next(
+        item
+        for item in result["goals"]
+        if item["attribute_key"] == "dimensions"
+    )
+
+    assert projected_dimension["subject_scope"] == "product"
+    assert "goal_summary" not in projected_dimension
+    assert "source_text" not in projected_dimension
 
 
 def test_goal_alias_projection_is_independent_of_input_order():
@@ -1185,6 +1382,69 @@ def test_summary_separates_goal_recall_and_execution_errors():
     )
     _assert_report_safe(summary)
     assert summary["real_customer_accuracy"] is None
+
+
+def test_summary_aggregates_atomic_goal_identity_and_scope_metrics():
+    summary = _summary_payload(
+        observations=[
+            {
+                "goal_recall_diagnostic": {
+                    "contract": "atomic_goal_identity_and_effective_scope/v4",
+                    "numerator": 2,
+                    "denominator": 2,
+                    "unexpected_goal_count": 0,
+                    "customer_goal_identity_recall": {
+                        "numerator": 2,
+                        "denominator": 2,
+                    },
+                    "explicit_request_recall": {
+                        "numerator": 3,
+                        "denominator": 3,
+                    },
+                    "dimension_subject_scope_attribution": {
+                        "numerator": 1,
+                        "denominator": 2,
+                    },
+                    "unscored_expected_claim_count": 1,
+                }
+            }
+        ],
+        scored_rows=[{"error_type": ""}],
+        deterministic_summary={"scenario_count": 1},
+        status="baseline_completed",
+        integrity_stop_reason="",
+        owner_counts={},
+        formal_knowledge={
+            "changed": False,
+            "changed_row_count": 0,
+            "dml_attempt_count": 0,
+        },
+    )
+
+    metrics = summary["deterministic_metrics"]
+    assert metrics["customer_goal_recall"] == {
+        "contract": "atomic_goal_identity_and_effective_scope/v4",
+        "numerator": 2,
+        "denominator": 2,
+        "rate": 1.0,
+        "unexpected_goal_count": 0,
+    }
+    assert metrics["customer_goal_identity_recall"] == {
+        "numerator": 2,
+        "denominator": 2,
+        "rate": 1.0,
+    }
+    assert metrics["explicit_request_recall"] == {
+        "numerator": 3,
+        "denominator": 3,
+        "rate": 1.0,
+    }
+    assert metrics["dimension_subject_scope_attribution"] == {
+        "numerator": 1,
+        "denominator": 2,
+        "rate": 0.5,
+    }
+    assert metrics["unscored_expected_claim_count"] == 1
 
 
 def test_summary_preserves_checkpoint_reply_counts_without_scored_rows():

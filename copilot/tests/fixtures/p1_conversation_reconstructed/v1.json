@@ -1,14 +1,14 @@
 {
   "schema_version": "high-quality-long-conversation-review/v1",
   "dataset_id": "p1-conversation-reconstructed-v1",
-  "dataset_version": "1.0.0",
+  "dataset_version": "1.1.0",
   "source_class": "conversation_reconstructed",
   "source_summary": "根据项目已确认的通用失败类型和正式合同重建的匿名工程评测集，不是遗失的原 Fixed-8。",
   "privacy_classification": "synthetic_anonymous",
   "manifest": {
     "scenario_count": 8,
     "approved_scenario_count": 0,
-    "content_sha256": "689c8990db4cae9299b4cf4eda156f45401efc145cf68c43e7b07f74f968e487"
+    "content_sha256": "76b7e069e41d50f8a1b572f2bcd2a6cda634543e2cd51dc1b45a9497c42f5b92"
   },
   "scenarios": [
     {
@@ -81,7 +81,17 @@
         {
           "claim_type": "installation",
           "attribute_key": "assembly_method",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "installation",
+            "attribute_key": "",
+            "semantic_key": "",
+            "subject_scope": "",
+            "source_span_start": 0,
+            "source_span_end": 10
+          }
         },
         {
           "claim_type": "product_identity",
@@ -106,7 +116,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "02e3d8dfac3044c5cf1cbf3d84185274689b0b3e02cda14a59cdaf91f9c069e6"
+      "content_sha256": "628cfff83646d11f98b88ce2b2d1df46948adff4c59ccdce0f91e6bf8b10aaf5"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000002",
@@ -179,17 +189,47 @@
         {
           "claim_type": "material",
           "attribute_key": "material",
-          "expected_status": "supported"
+          "expected_status": "supported",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material",
+            "attribute_key": "material_composition",
+            "semantic_key": "",
+            "subject_scope": "",
+            "source_span_start": 2,
+            "source_span_end": 8
+          }
         },
         {
           "claim_type": "material_safety",
           "attribute_key": "safety",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "safety_guarantee",
+            "subject_scope": "",
+            "source_span_start": 21,
+            "source_span_end": 28
+          }
         },
         {
           "claim_type": "moisture_resistance",
           "attribute_key": "moisture_resistance",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "moisture_resistance",
+            "attribute_key": "",
+            "semantic_key": "",
+            "subject_scope": "",
+            "source_span_start": 9,
+            "source_span_end": 20
+          }
         }
       ],
       "forbidden_claims": [
@@ -210,7 +250,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "03d50b32879b23c6fb1c2d8dd294cba9c79bb89c3a68757d12fada4ff34248f9"
+      "content_sha256": "4263d7c6d1663b8d7ae234f755e69292ba439a81935aebb36f9fbfd9da4867f6"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000003",
@@ -293,12 +333,32 @@
         {
           "claim_type": "dimensions",
           "attribute_key": "width",
-          "expected_status": "supported"
+          "expected_status": "supported",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "dimensions",
+            "attribute_key": "width",
+            "semantic_key": "",
+            "subject_scope": "product",
+            "source_span_start": 6,
+            "source_span_end": 10
+          }
         },
         {
           "claim_type": "dimensions",
           "attribute_key": "height",
-          "expected_status": "supported"
+          "expected_status": "supported",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "dimensions",
+            "attribute_key": "height",
+            "semantic_key": "",
+            "subject_scope": "product",
+            "source_span_start": 11,
+            "source_span_end": 15
+          }
         }
       ],
       "forbidden_claims": [
@@ -318,7 +378,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "32d3c342200a98df20880884c5b4440070add714af334d657a73f42222f34339"
+      "content_sha256": "3c697e9e0add60ca556d48ba8af231dbd4677928cb0383996b738e815f515465"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000004",
@@ -401,12 +461,32 @@
         {
           "claim_type": "packaging",
           "attribute_key": "package_dimensions",
-          "expected_status": "supported"
+          "expected_status": "supported",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "dimensions",
+            "attribute_key": "overall_dimensions",
+            "semantic_key": "",
+            "subject_scope": "packaging",
+            "source_span_start": 0,
+            "source_span_end": 6
+          }
         },
         {
           "claim_type": "dimensions",
           "attribute_key": "overall_dimensions",
-          "expected_status": "supported"
+          "expected_status": "supported",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "dimensions",
+            "attribute_key": "overall_dimensions",
+            "semantic_key": "",
+            "subject_scope": "product",
+            "source_span_start": 6,
+            "source_span_end": 24
+          }
         }
       ],
       "forbidden_claims": [
@@ -425,7 +505,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "4e8071ca58deea7951d5f903e7828d4cedd0a546559993fe50cb19cd3d43d1bb"
+      "content_sha256": "091fd23690cdfe9b0b011eab2d01cf820e32e26595c634d5ee2a9efb88134c15"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000005",
@@ -504,12 +584,32 @@
         {
           "claim_type": "installation",
           "attribute_key": "assembly_sequence",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "installation",
+            "attribute_key": "",
+            "semantic_key": "",
+            "subject_scope": "",
+            "source_span_start": 0,
+            "source_span_end": 9
+          }
         },
         {
           "claim_type": "media_request",
           "attribute_key": "install_video",
-          "expected_status": "unavailable"
+          "expected_status": "unavailable",
+          "understanding_expectation": {
+            "goal_kind": "media_request",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "installation_video",
+            "subject_scope": "",
+            "source_span_start": 9,
+            "source_span_end": 17
+          }
         }
       ],
       "forbidden_claims": [
@@ -528,7 +628,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "efad45eabdc78d258b74abbc71b63bf1f3fe6350079dee638cde5321a4aac353"
+      "content_sha256": "3dc2974a56c763903fa1ab209456d8947dcdd89230f85d05d1c09c841224735b"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000006",
@@ -608,17 +708,47 @@
         {
           "claim_type": "visual_observation",
           "attribute_key": "visible_damage",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "confirm_crack",
+            "subject_scope": "",
+            "source_span_start": 0,
+            "source_span_end": 12
+          }
         },
         {
           "claim_type": "aftersales_decision",
           "attribute_key": "refund_or_replacement",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "refund_or_exchange",
+            "subject_scope": "",
+            "source_span_start": 12,
+            "source_span_end": 26
+          }
         },
         {
           "claim_type": "compensation",
           "attribute_key": "compensation",
-          "expected_status": "prohibited"
+          "expected_status": "prohibited",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "compensation",
+            "subject_scope": "",
+            "source_span_start": 27,
+            "source_span_end": 35
+          }
         }
       ],
       "forbidden_claims": [
@@ -641,7 +771,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "7a5e12e8a2778e06eafae773055c96d0bf4b87de36252f91a868390e23013e79"
+      "content_sha256": "e16256cba4083a74f82862eed78e15d95507a1555e3dd5d04db6aee86fb28fd0"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000007",
@@ -721,12 +851,32 @@
         {
           "claim_type": "detachable",
           "attribute_key": "washable_component",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "detachable",
+            "attribute_key": "",
+            "semantic_key": "",
+            "subject_scope": "",
+            "source_span_start": 18,
+            "source_span_end": 23
+          }
         },
         {
           "claim_type": "installation",
           "attribute_key": "reassembly",
-          "expected_status": "unresolved"
+          "expected_status": "unresolved",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "installation",
+            "attribute_key": "",
+            "semantic_key": "",
+            "subject_scope": "",
+            "source_span_start": 26,
+            "source_span_end": 37
+          }
         }
       ],
       "forbidden_claims": [
@@ -748,7 +898,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "35c2d5070df6edbfb2adca4c7cf9415c6979c516c1e42e6b47a4ae987e26d6fb"
+      "content_sha256": "8fbc8135ee530aa41ae5253c0cd3a81f17b934783e948b154650975fdd28342a"
     },
     {
       "scenario_uid": "reconstructed-00000000000000000008",
@@ -821,12 +971,32 @@
         {
           "claim_type": "absolute_guarantee",
           "attribute_key": "damage_resistance",
-          "expected_status": "prohibited"
+          "expected_status": "prohibited",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "absolute_durability_guarantee",
+            "subject_scope": "",
+            "source_span_start": 0,
+            "source_span_end": 19
+          }
         },
         {
           "claim_type": "bounded_alternative",
           "attribute_key": "daily_use_boundary",
-          "expected_status": "policy_conditioned"
+          "expected_status": "policy_conditioned",
+          "understanding_expectation": {
+            "goal_kind": "customer_goal",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "semantic_key": "durability_ordinary_use_guidance",
+            "subject_scope": "",
+            "source_span_start": 19,
+            "source_span_end": 45
+          }
         }
       ],
       "forbidden_claims": [
@@ -846,7 +1016,7 @@
       "review": {
         "status": "draft"
       },
-      "content_sha256": "3e150b628c3a13eebee4baf1c0f9c719dbc8ddedf62f591f444992178034f37e"
+      "content_sha256": "21df4bf87c56d23337d0e0c543c49d5dae56108f9bac44babb2d7fc388b0bb2c"
     }
   ]
 }

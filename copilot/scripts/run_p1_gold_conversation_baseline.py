@@ -28,8 +28,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from app.services.fact_type_alias_service import (
     canonical_attribute_slot,
+    canonical_dimension_subject_scope,
     canonical_material_composition_claim_type,
 )
+from app.services.claim_resolution_service import _requested_subject_scope
 from app.services.product_media_annotation_schema_service import (
     canonical_dimension_attribute,
 )
@@ -75,14 +77,14 @@ _DATASET_CONTRACTS = {
     "conversation-reconstructed-v1": DatasetContract(
         contract_name="conversation-reconstructed-v1",
         dataset_id="p1-conversation-reconstructed-v1",
-        dataset_version="1.0.0",
+        dataset_version="1.1.0",
         case_count=8,
         history_turn_count=40,
         dataset_sha256=(
-            "689c8990db4cae9299b4cf4eda156f45401efc145cf68c43e7b07f74f968e487"
+            "76b7e069e41d50f8a1b572f2bcd2a6cda634543e2cd51dc1b45a9497c42f5b92"
         ),
         manifest_file_sha256=(
-            "f242158f1aba67ae32a95ccfc82c880ad3b2965453b4058f7589884531faccc3"
+            "b12019b64d241cab2f7e3f39b4a6f7494972a6cc160e749cb04cd837addc33e3"
         ),
         source_class="conversation_reconstructed",
     ),
@@ -1416,10 +1418,246 @@ def _canonical_goal_identity(item: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+def _goal_expectation(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Normalize an evaluation-only atomic goal label without widening runtime facts."""
+    raw = item.get("understanding_expectation")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise P1BaselineIntegrityError("understanding_expectation_invalid")
+
+    required = {
+        "goal_kind",
+        "claim_type_status",
+        "claim_type",
+        "attribute_key",
+        "semantic_key",
+        "subject_scope",
+        "source_span_start",
+        "source_span_end",
+    }
+    optional = {"source_span_sha256"}
+    if not required <= set(raw) or set(raw) - required - optional:
+        raise P1BaselineIntegrityError("understanding_expectation_fields_invalid")
+
+    goal_kind = str(raw.get("goal_kind") or "").strip()
+    status = str(raw.get("claim_type_status") or "").strip().lower()
+    source_start = raw.get("source_span_start")
+    source_end = raw.get("source_span_end")
+    source_hash = str(raw.get("source_span_sha256") or "").strip().lower()
+    if goal_kind not in {
+        "customer_goal",
+        "evidence_dependency",
+        "media_request",
+        "service_action",
+        "contextual_constraint",
+    }:
+        raise P1BaselineIntegrityError("understanding_expectation_goal_kind_invalid")
+    if status not in {"canonical", "unmapped"}:
+        raise P1BaselineIntegrityError("understanding_expectation_status_invalid")
+    if (
+        not isinstance(source_start, int)
+        or isinstance(source_start, bool)
+        or not isinstance(source_end, int)
+        or isinstance(source_end, bool)
+        or source_start < 0
+        or source_end <= source_start
+        or (source_hash and not re.fullmatch(r"[0-9a-f]{64}", source_hash))
+    ):
+        raise P1BaselineIntegrityError("understanding_expectation_span_invalid")
+
+    claim_type, attribute_key = _canonical_goal_identity(raw)
+    semantic_key = str(raw.get("semantic_key") or "").strip().lower()
+    if status == "canonical":
+        if not claim_type or semantic_key:
+            raise P1BaselineIntegrityError("understanding_expectation_canonical_invalid")
+    elif claim_type or attribute_key or not semantic_key:
+        raise P1BaselineIntegrityError("understanding_expectation_unmapped_invalid")
+
+    subject_scope = canonical_dimension_subject_scope(raw.get("subject_scope"))
+    if str(raw.get("subject_scope") or "").strip() and not subject_scope:
+        raise P1BaselineIntegrityError("understanding_expectation_scope_invalid")
+    if subject_scope and claim_type not in {"dimensions", "size", "space_fit"}:
+        raise P1BaselineIntegrityError("understanding_expectation_scope_type_invalid")
+    return {
+        "goal_kind": goal_kind,
+        "claim_type_status": status,
+        "claim_type": claim_type,
+        "attribute_key": attribute_key,
+        "semantic_key": semantic_key,
+        "subject_scope": subject_scope,
+        "source_span_start": source_start,
+        "source_span_end": source_end,
+        "source_span_sha256": source_hash,
+    }
+
+
+def _runtime_goal_contract(item: dict[str, Any]) -> dict[str, Any]:
+    claim_type, attribute_key = _canonical_goal_identity(item)
+    status = str(item.get("claim_type_status") or "").strip().lower()
+    if status not in {"canonical", "unmapped"}:
+        status = "canonical" if claim_type else "unmapped"
+    raw_claim_type = str(item.get("claim_type") or "").strip().lower()
+    raw_attribute_key = str(item.get("attribute_key") or "").strip().lower()
+    raw_subject_scope = canonical_dimension_subject_scope(
+        item.get("subject_scope")
+    )
+    effective_subject_scope = _requested_subject_scope({
+        "claim_type": raw_claim_type,
+        "attribute_key": raw_attribute_key,
+        "original_attribute_key": raw_attribute_key,
+        "subject_scope": raw_subject_scope,
+    })
+    return {
+        "goal_kind": str(item.get("goal_kind") or "customer_goal").strip(),
+        "claim_type_status": status,
+        "claim_type": claim_type,
+        "attribute_key": attribute_key,
+        "semantic_key": str(item.get("semantic_key") or "").strip().lower(),
+        "subject_scope": raw_subject_scope,
+        "effective_subject_scope": str(effective_subject_scope or ""),
+        "source_span_start": item.get("source_span_start"),
+        "source_span_end": item.get("source_span_end"),
+        "source_span_sha256": str(item.get("source_span_sha256") or "").strip().lower(),
+    }
+
+
+def _goal_source_matches(
+    expected: dict[str, Any],
+    observed: dict[str, Any],
+) -> bool:
+    return (
+        expected["goal_kind"] == observed["goal_kind"]
+        and expected["source_span_start"] == observed["source_span_start"]
+        and expected["source_span_end"] == observed["source_span_end"]
+        and (
+            not expected["source_span_sha256"]
+            or expected["source_span_sha256"] == observed["source_span_sha256"]
+        )
+    )
+
+
+def _goal_identity_matches(
+    expected: dict[str, Any],
+    observed: dict[str, Any],
+) -> bool:
+    if not _goal_source_matches(expected, observed):
+        return False
+    if expected["claim_type_status"] != observed["claim_type_status"]:
+        return False
+    if expected["claim_type_status"] == "canonical":
+        return (
+            expected["claim_type"] == observed["claim_type"]
+            and expected["attribute_key"] == observed["attribute_key"]
+            and not observed["semantic_key"]
+        )
+    return (
+        not observed["claim_type"]
+        and not observed["attribute_key"]
+        and expected["semantic_key"] == observed["semantic_key"]
+    )
+
+
 def _goal_recall_diagnostic(
     scenario: dict[str, Any],
     projection: dict[str, Any],
 ) -> dict[str, Any]:
+    expectations = [
+        expectation
+        for item in _dicts(scenario.get("expected_claims"))
+        if (expectation := _goal_expectation(item)) is not None
+    ]
+    if expectations:
+        expected_customer_goals = [
+            item for item in expectations if item["goal_kind"] == "customer_goal"
+        ]
+        expected_explicit_requests = [
+            item
+            for item in expectations
+            if item["goal_kind"] in {
+                "customer_goal",
+                "media_request",
+                "service_action",
+            }
+        ]
+        observed_goals = [
+            _runtime_goal_contract(item)
+            for item in _dicts(projection.get("goals"))
+        ]
+
+        def count_matches(expected_rows: list[dict[str, Any]], predicate) -> int:
+            remaining = list(observed_goals)
+            matched = 0
+            for expected in expected_rows:
+                for index, observed in enumerate(remaining):
+                    if predicate(expected, observed):
+                        matched += 1
+                        remaining.pop(index)
+                        break
+            return matched
+
+        presence_count = count_matches(expected_customer_goals, _goal_source_matches)
+        identity_count = count_matches(expected_customer_goals, _goal_identity_matches)
+        explicit_count = count_matches(expected_explicit_requests, _goal_source_matches)
+        scoped_dimensions = [
+            item
+            for item in expected_customer_goals
+            if item["subject_scope"]
+        ]
+        scope_count = count_matches(
+            scoped_dimensions,
+            lambda expected, observed: (
+                _goal_identity_matches(expected, observed)
+                and expected["subject_scope"]
+                == observed["effective_subject_scope"]
+            ),
+        )
+        unexpected_goal_count = sum(
+            not any(_goal_source_matches(expected, observed) for expected in expectations)
+            for observed in observed_goals
+        )
+        unscored_count = sum(
+            _goal_expectation(item) is None
+            for item in _dicts(scenario.get("expected_claims"))
+        )
+        projection_status = str(projection.get("status") or "")
+        return {
+            "contract": "atomic_goal_identity_and_effective_scope/v4",
+            "numerator": presence_count,
+            "denominator": len(expected_customer_goals),
+            "unexpected_goal_count": unexpected_goal_count,
+            "customer_goal_identity_recall": {
+                "numerator": identity_count,
+                "denominator": len(expected_customer_goals),
+                "rate": (
+                    identity_count / len(expected_customer_goals)
+                    if expected_customer_goals else None
+                ),
+            },
+            "explicit_request_recall": {
+                "numerator": explicit_count,
+                "denominator": len(expected_explicit_requests),
+                "rate": (
+                    explicit_count / len(expected_explicit_requests)
+                    if expected_explicit_requests else None
+                ),
+            },
+            "dimension_subject_scope_attribution": {
+                "numerator": scope_count,
+                "denominator": len(scoped_dimensions),
+                "rate": (
+                    scope_count / len(scoped_dimensions)
+                    if scoped_dimensions else None
+                ),
+            },
+            "unscored_expected_claim_count": unscored_count,
+            "status": (
+                "scored"
+                if projection_status == "valid"
+                else projection_status or "projection_invalid"
+            ),
+        }
+
     expected = Counter(
         _canonical_goal_identity(item)
         for item in _dicts(scenario.get("expected_claims"))
@@ -2575,23 +2813,35 @@ def _summary_payload(
     formal_knowledge: dict[str, Any],
 ) -> dict[str, Any]:
     contract = contract or _legacy_dataset_contract()
+    goal_diagnostics = [
+        _dict(item.get("goal_recall_diagnostic"))
+        for item in observations
+    ]
+    goal_contracts = {
+        str(item.get("contract") or "").strip()
+        for item in goal_diagnostics
+        if str(item.get("contract") or "").strip()
+    }
+    if len(goal_contracts) > 1:
+        raise P1BaselineIntegrityError("goal_recall_contract_mixed")
+    goal_contract = next(iter(goal_contracts), "canonical_claim_type_and_attribute_slot/v2")
     goal_numerator = sum(
         int(
-            _dict(item.get("goal_recall_diagnostic")).get(
+            item.get(
                 "numerator"
             )
             or 0
         )
-        for item in observations
+        for item in goal_diagnostics
     )
     goal_denominator = sum(
         int(
-            _dict(item.get("goal_recall_diagnostic")).get(
+            item.get(
                 "denominator"
             )
             or 0
         )
-        for item in observations
+        for item in goal_diagnostics
     )
     metrics = {
         key: deepcopy(value)
@@ -2609,7 +2859,7 @@ def _summary_payload(
         )
     )
     metrics["customer_goal_recall"] = {
-        "contract": "canonical_claim_type_and_attribute_slot/v2",
+        "contract": goal_contract,
         "numerator": goal_numerator,
         "denominator": goal_denominator,
         "rate": (
@@ -2618,14 +2868,38 @@ def _summary_payload(
         ),
         "unexpected_goal_count": sum(
             int(
-                _dict(item.get("goal_recall_diagnostic")).get(
+                item.get(
                     "unexpected_goal_count"
                 )
                 or 0
             )
-            for item in observations
+            for item in goal_diagnostics
         ),
     }
+    for metric_name in (
+        "customer_goal_identity_recall",
+        "explicit_request_recall",
+        "dimension_subject_scope_attribution",
+    ):
+        metric_rows = [
+            _dict(item.get(metric_name))
+            for item in goal_diagnostics
+            if isinstance(item.get(metric_name), dict)
+        ]
+        if not metric_rows:
+            continue
+        numerator = sum(int(item.get("numerator") or 0) for item in metric_rows)
+        denominator = sum(int(item.get("denominator") or 0) for item in metric_rows)
+        metrics[metric_name] = {
+            "numerator": numerator,
+            "denominator": denominator,
+            "rate": numerator / denominator if denominator else None,
+        }
+    if goal_contract == "atomic_goal_identity_and_effective_scope/v4":
+        metrics["unscored_expected_claim_count"] = sum(
+            int(item.get("unscored_expected_claim_count") or 0)
+            for item in goal_diagnostics
+        )
     checkpoint_nonempty_reply_count = deterministic_summary.get(
         "nonempty_reply_count"
     )
