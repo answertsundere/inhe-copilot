@@ -521,6 +521,25 @@ def test_goal_projection_keeps_validated_dimension_scope_as_safe_enum():
     assert "source_text" not in projected_dimension
 
 
+def test_goal_projection_keeps_validated_span_hash_and_policy_identity():
+    response = _response()
+    source_goal = response["turn_understanding"]["customer_goals"][0]
+    source_goal["policy_intent_ref"] = "material_practical_guidance"
+
+    result = _project(response)
+    projected_goal = next(
+        item
+        for item in result["goals"]
+        if item["attribute_key"] == "material"
+    )
+
+    assert projected_goal["source_span_sha256"] == source_goal[
+        "source_span_sha256"
+    ]
+    assert projected_goal["policy_intent_ref"] == "material_practical_guidance"
+    assert "source_text" not in projected_goal
+
+
 def test_goal_alias_projection_is_independent_of_input_order():
     response = _response()
     reversed_response = deepcopy(response)

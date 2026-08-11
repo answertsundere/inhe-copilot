@@ -299,6 +299,9 @@ def project_trusted_goal_references(
             "policy_intent_ref": str(goal.get("policy_intent_ref") or ""),
             "source_span_start": goal.get("source_span_start"),
             "source_span_end": goal.get("source_span_end"),
+            "source_span_sha256": str(
+                goal.get("source_span_sha256") or ""
+            ),
             "provenance_status": "validated_current_customer_turn",
         }
         for goal in sorted(
