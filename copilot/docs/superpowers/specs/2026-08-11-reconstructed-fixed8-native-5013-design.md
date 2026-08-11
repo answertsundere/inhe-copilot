@@ -37,8 +37,10 @@ query-only 预检和 Synthetic `5/5`、`22/22` 安全回归，但当前源码还
 ```
 
 不新增 Graph 节点、服务、模型调用角色、回复 Owner、重试、修复、fallback、
-发送条件或平行评测系统。Formal Evidence Convergence 和其他生产功能开关保持
-既有默认状态。
+发送条件或平行评测系统。生产默认配置继续保持 Formal Evidence Convergence
+和 Model-first Composer 关闭；本轮仅在隔离 5013 中按既有 P1 Runner 合同临时
+开启这两个开关，以验证正式 Evidence 到 Composer 的候选链路。该隔离配置不得
+写回 5011/5012 或成为生产默认值。
 
 ## 5013 运行合同
 
@@ -49,7 +51,9 @@ query-only 预检和 Synthetic `5/5`、`22/22` 安全回归，但当前源码还
 - `ready=true`；
 - 正式知识库通过 SQLite query-only 实际验证；
 - `formal_knowledge_query_only=true`；
-- `formal_evidence_convergence=false`；
+- `formal_evidence_convergence=true`；
+- `model_first_answer_composer=true`；
+- 上述两个开关仅属于隔离 P1 评测运行，生产默认状态仍为关闭；
 - Provider/model 身份与 Runner 预期一致；
 - 不输出 API key、完整 Provider URL、数据库内容或本地私密路径。
 

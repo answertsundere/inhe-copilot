@@ -61,6 +61,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - 定义重建 Fixed-8 在当前源码 5013 上的原生 `1×1 -> 8×1` 运行合同、
     query-only/review-only 边界、基础设施失败与业务质量失败分离，以及继续保持
     `real_customer_accuracy=null` 的报告要求。
+- `docs/superpowers/plans/2026-08-11-reconstructed-fixed8-native-5013.md`
+  - 固化当前源码 5013 的快照准备、运行身份、`1×1 -> 8×1` 分层门槛、
+    报告复算、安全回归和恢复检查点。
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
