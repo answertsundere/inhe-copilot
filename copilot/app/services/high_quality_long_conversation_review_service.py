@@ -309,7 +309,13 @@ def project_trusted_goal_references(
     resolutions = [
         item
         for item in minimal.get("claim_resolutions") or []
-        if isinstance(item, dict)
+        if (
+            isinstance(item, dict)
+            and not (
+                item.get("supporting_only") is True
+                and not str(item.get("goal_ref") or "").strip()
+            )
+        )
     ]
     claim_alias_by_uid: dict[str, str] = {}
     projected_resolutions: list[dict[str, Any]] = []

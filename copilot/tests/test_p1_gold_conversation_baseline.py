@@ -531,6 +531,50 @@ def test_projection_capsule_contains_only_shapes_aliases_and_hashes():
     _assert_report_safe(capsule)
 
 
+def test_projection_excludes_unbound_supporting_only_compatibility_resolution():
+    response = _response()
+    response["minimal_decision_context"]["claim_resolutions"].append({
+        "claim_uid": "claim-legacy-support",
+        "goal_ref": "",
+        "goal_kind": "",
+        "claim_type": "supporting_fact",
+        "status": "supported",
+        "supporting_only": True,
+        "evidence_uids": ["evidence-support"],
+    })
+
+    result = _project(response)
+
+    assert result["resolution_count"] == 2
+    assert len(result["resolutions"]) == 2
+
+
+def test_projection_rejects_clause_bound_to_excluded_compatibility_resolution():
+    response = _response()
+    response["minimal_decision_context"]["claim_resolutions"].append({
+        "claim_uid": "claim-legacy-support",
+        "goal_ref": "",
+        "goal_kind": "",
+        "claim_type": "supporting_fact",
+        "status": "supported",
+        "supporting_only": True,
+        "evidence_uids": ["evidence-support"],
+    })
+    response["model_first_answer_composer"]["clauses"].append({
+        "clause_ref": "clause-support",
+        "goal_ref": "claim-legacy-support",
+        "clause_kind": "supported_fact",
+        "text": "compatibility dependency must not render",
+        "evidence_uids": ["evidence-support"],
+    })
+
+    with pytest.raises(
+        HighQualityReviewProjectionError,
+        match="composer_claim_reference_untrusted",
+    ):
+        _project(response)
+
+
 def test_projection_capsule_exposes_mutation_shapes_without_classifying_owner():
     response = _response()
     goals = response["turn_understanding"]["customer_goals"]
