@@ -80,6 +80,7 @@ evaluation owner only; no Fast Path or Composer module has been added.
 |---|---|---|
 | Real conversation replay | replay services and scripts | Same canonical context and formal Pipeline as the user path |
 | Synthetic safety benchmark | benchmark runner and versioned fixture | Regression only; not real accuracy. Its scenario SQLite and formal knowledge snapshot are separate sources: fixture runs require an explicit query-only snapshot and reject the scenario DB or live `knowledge_base.db` as retrieval input. The current anonymized-identity fixture can expose a context gap but cannot establish factual quality until an independently reviewed synthetic knowledge companion exists. |
+| Historical knowledge snapshot recovery audit | `scripts/diagnose_knowledge_snapshot_recovery.py` | Read-only recovery-governance utility. It compares a historical SQLite snapshot with the current schema, reports only hashes/counts/controlled enums/field names, and always rejects direct database replacement or formal-evidence admission. A later candidate import must preserve current identity, review, media, privacy, and Delivery contracts. |
 | Real accuracy Gold Set | Gold/privacy/label services | Labels never enter Agent input; insufficient approval means `real_accuracy=null` |
 | Formal answer QA | `scripts/run_full_answer_validation.py` | Read-only safety and response-contract validation |
 | Real-derived capability slice | existing real-derived export and vertical-slice scripts | Proves evidence plumbing/capability, not customer accuracy |

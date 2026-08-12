@@ -70,6 +70,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
     DML 为 0、`can_send=0`、全部人工复核。`da4a0ad` 已验证商品整体宽高的
     直接证据绑定 `2/2`；下一 Owner 是 `multi-goal_completion`，真实准确率和
     生产资格仍未证明。
+- `docs/superpowers/plans/2026-08-12-knowledge-snapshot-recovery-audit.md`
+  - Read-only verification of historical SQLite knowledge snapshots. It reports
+    schema, identity, review, media, and potential-sensitive-field diagnostics
+    without exposing content or permitting direct formal-database replacement.
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.

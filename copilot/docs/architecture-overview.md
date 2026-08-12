@@ -735,10 +735,16 @@ cannot supply lifecycle state, and no candidate, review, or feedback path is a
 completion receipt. Deterministic contract tests passed, and the explicit
 DeepSeek V4 Flash Composer role requalified `5/5` on the recovered source with
 one Provider call per attempt and zero retry, repair, fallback, knowledge DML,
-or send authority. No fresh native Fixed-8 has occurred: the immutable
-dataset, manifest, query-only knowledge snapshot, and runtime binding are not
-present in the recovered source, local Git history, or recovery inventory.
-P1 quality and `real_customer_accuracy` therefore remain unqualified.
+or send authority. A historical runtime SQLite snapshot was later located and
+passed a read-only integrity check, but it is not an exact restored Fixed-8
+asset and cannot replace `data/knowledge_base.db`: it predates the reviewed
+`domain_policy_id` control field, contains records without current content
+hashes, identity-mismatched approved media, and potential sensitive fields.
+`scripts/diagnose_knowledge_snapshot_recovery.py` is the required read-only
+admission check. Any later import must target a separate candidate database,
+reapply current review governance and evidence admission, quarantine risky or
+identity-mismatched records, and keep `can_send=false`. P1 quality and
+`real_customer_accuracy` therefore remain unqualified.
 
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
