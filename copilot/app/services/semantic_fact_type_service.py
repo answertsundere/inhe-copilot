@@ -209,6 +209,10 @@ For each goal:
 - A request to determine which service outcome applies is a customer_goal, even
   when the outcome cannot yet be confirmed and must remain unmapped or
   unresolved. The classifier does not authorize that outcome or execute it.
+- A request that asks the business to choose among alternative remedies is an
+  outcome-selection customer_goal, even when it is phrased as an instruction to
+  customer service. A service_action requires one definite external operation,
+  not an unresolved choice between possible outcomes.
 - A request to execute an external side effect now is a service_action. It is
   not a product fact and must not replace a separate customer_goal asking which
   service outcome, policy, or eligibility applies.

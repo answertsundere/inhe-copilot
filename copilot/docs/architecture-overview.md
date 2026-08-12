@@ -590,8 +590,12 @@ provenance 继续严格校验。确定性与相邻回归已通过，但修复后
 `service_action`，使 Claim Resolution 和 Composer 没有收到该子目标。Turn
 Understanding 现明确区分“判断哪种服务结果适用”的 `customer_goal` 与“立即执行
 外部副作用”的 `service_action`。前者仍可 unresolved，后者仍不能作为商品事实、
-完成承诺或自动动作；因此不改变 Evidence、Final、Delivery 或 `can_send`。该修复
-需要在相同原生 Fixed-8 合同下重新验证，且仍不构成真实客户准确率结论。
+完成承诺或自动动作；因此不改变 Evidence、Final、Delivery 或 `can_send`。同一冻结
+合同下的后续全量原生 Fixed-8 重跑保留了该售后回合的确认、结果选择和补偿三个子目标；
+全体 16 个可渲染目标的结构化覆盖为 `16/16`、目标身份命中为 `13/16`，正式知识快照与
+DML 均为 `0`，`can_send=0` 且 8 条全部人工复核。离线专家复核仍只得到目标完成度
+`1.375/2`、商业帮助度 `0.625/2`，所以这是对最小 Understanding 合同的回归验证，
+不构成真实客户准确率、Autonomous Send 或 P1 质量晋升。
 
 此前的 query-only 重建 Fixed-8 在当前候选源码上完成了全部八条案例。Answer Context
 只从 canonical customer goals 重建客户 claim 身份，并将尺寸 subject scope 精确传给既有

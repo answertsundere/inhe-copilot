@@ -163,6 +163,14 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
         "Never emit only service_action when the buyer also asks which resolution"
         in prompt
     )
+    assert (
+        "A request that asks the business to choose among alternative remedies is an outcome-selection customer_goal"
+        in prompt
+    )
+    assert (
+        "A service_action requires one definite external operation"
+        in prompt
+    )
     assert "classification of one goal must not determine, merge, or erase another" in prompt
     assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
     assert "Only an unmapped goal may use" in prompt

@@ -97,6 +97,16 @@ repair only generic goal canonicalization and multi-goal completion through the
 existing Turn Understanding and Claim Resolution contracts; it has no Composer,
 Audit, Graph, delivery, or send authority.
 
+The latest isolated query-only rerun validates one narrow Turn Understanding
+boundary within that same Owner: a request to choose among alternative service
+outcomes remains a review-only `customer_goal`, while only one definite external
+operation is a `service_action`. The frozen reconstructed Fixed-8 preserved all
+`16/16` renderable goals and `13/16` goal identities, with formal-knowledge DML
+`0`, `can_send=0`, and mandatory human review for every candidate. Expert
+quality remains below promotion at goal completion `1.375/2` and business
+helpfulness `0.625/2`; it does not alter production authority or establish real
+customer accuracy.
+
 An earlier candidate additionally verified that the server's model-facing
 FactType projection deduplicates the existing material aliases to the canonical
 `material_composition` ID before the semantic call. This is input normalization,

@@ -109,8 +109,13 @@ The following rules are non-negotiable:
 `service_action`。它是可保持 unresolved 的 `customer_goal`；只有要求立即执行
 外部副作用才是 `service_action`。本轮只修复既有 Turn Understanding Owner 的该
 语义合同，不授权售后结果、不执行工具、不增加回复 Owner，也不改变 Evidence、
-Final、Delivery 或 `can_send`。完成定向和原生 Fixed-8 重跑前，P1 质量结论仍为
-`optimization_unverified=true` 与 `real_customer_accuracy=null`。
+Final、Delivery 或 `can_send`。该语义边界随后在同一冻结
+`conversation-reconstructed-v1` 合同下完成一次全量原生 Fixed-8 重跑：16 个可渲染
+客户目标全部保留，目标身份命中为 `13/16`，售后确认、结果选择与补偿三个子目标均只以
+人工复核候选呈现。正式知识快照与 DML 均为 `0`，`can_send=0`，8 条全部要求人工复核。
+离线专家复核的目标完成度为 `1.375/2`、商业帮助度为 `0.625/2`，因此下一 Owner 仍是
+既有 `multi-goal_completion`，不是 Composer、Audit、Graph 或 Delivery。该结果仍是重建
+开发诊断：`optimization_unverified=true` 与 `real_customer_accuracy=null`。
 
 The subsequent isolated, dirty-candidate Fixed-8 run validated the same
 service-result boundary on the formal Pipeline: the compound after-sales turn
