@@ -247,6 +247,15 @@ may nominate only a candidate from the exact same goal family; the server
 removes mismatches before Claim Resolution. Final safety and Delivery ownership
 remain unchanged.
 
+For an unmapped goal, a nominated Pack policy is additionally retained only
+when the model's optional semantic key is explicitly listed in that policy's
+trusted `unmapped_semantic_keys` boundary. The key remains non-authoritative:
+it cannot create a claim type, fact, goal family, option, or answer authority.
+It is used solely to remove an otherwise valid-looking policy nomination when
+the Pack does not declare that semantic scope. A missing or mismatched key
+therefore preserves the customer goal as unresolved rather than allowing a
+policy with the same surface request form to govern it.
+
 This does not add a service, graph node, model call, reply owner, safety gate,
 or production flag. P1.2c made one live representative request without a
 separate preflight or retry. Provider execution, one Composer call, goal

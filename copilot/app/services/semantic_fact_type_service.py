@@ -266,6 +266,13 @@ For each goal:
   nominated when its goal_family directly matches the request; its prohibited
   claim families restrict conclusions, not the handling boundary itself. It is
   a nomination, not an authorization.
+- For an unmapped goal, policy_intent_ref is allowed only when semantic_key is
+  exactly one of that candidate's unmapped_semantic_keys. This is a fail-closed
+  semantic boundary from the trusted Pack: it never creates a fact, permits an
+  inference, or turns an unknown request into a canonical claim. If no exact
+  Pack key matches, leave policy_intent_ref empty and preserve the goal as
+  unresolved. Do not select a policy merely because a different request shares
+  an absolute-guarantee, warranty, safety, or service form.
 - practical_guidance is for an explicit action, method, handling, care, fit, or
   use or suitability question. Do not nominate practical_guidance for a direct
   factual identity or value request such as asking what something is or how much
@@ -521,6 +528,11 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
             for item in policy.get("prohibited_claim_families") or []
             if _bounded_text(item, 96)
         })
+        unmapped_semantic_keys = sorted({
+            _normalized_semantic_key(item)
+            for item in policy.get("unmapped_semantic_keys") or []
+            if _normalized_semantic_key(item)
+        })
         description = _POLICY_INTENT_DESCRIPTIONS.get(intent_kind, "")
         if (
             not policy_intent_ref
@@ -542,6 +554,7 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
             "allowed_conclusion_family": allowed_conclusion_family,
             "required_qualifiers": required_qualifiers,
             "prohibited_claim_families": prohibited_claim_families,
+            "unmapped_semantic_keys": unmapped_semantic_keys,
             "description": description,
         })
     return sorted(
@@ -2306,6 +2319,18 @@ def _sanitize_customer_goals(
             diagnostics.append("customer_goal_policy_intent_family_mismatch")
             policy_intent_ref = ""
             selected_policy = None
+        elif policy_intent_ref and claim_type_status == "unmapped":
+            allowed_semantic_keys = {
+                _normalized_semantic_key(item)
+                for item in selected_policy.get("unmapped_semantic_keys") or []
+                if _normalized_semantic_key(item)
+            }
+            if not semantic_key or semantic_key not in allowed_semantic_keys:
+                diagnostics.append(
+                    "customer_goal_policy_intent_semantic_boundary_mismatch"
+                )
+                policy_intent_ref = ""
+                selected_policy = None
         derived_policy_goal_family = ""
         derived_policy_intent_kind = ""
         if (

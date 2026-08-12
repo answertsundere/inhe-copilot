@@ -404,6 +404,10 @@ def _policy_candidate() -> dict:
             "child_safety",
             "load_capacity",
         ],
+        "unmapped_semantic_keys": [
+            "ordinary_use_durability_confirmation",
+            "impact_durability",
+        ],
         "description": "low-risk practical guidance",
     }
 
@@ -423,7 +427,7 @@ def _policy_goal(*, semantic_key: str, policy_intent_ref: str) -> dict:
 def test_policy_intent_nomination_is_bound_to_trusted_candidate():
     goals, status, diagnostics = service._sanitize_customer_goals(
         [_policy_goal(
-            semantic_key="free_model_summary",
+            semantic_key="ordinary_use_durability_confirmation",
             policy_intent_ref=(
                 "product_durability_practical_guidance"
             ),
@@ -439,6 +443,31 @@ def test_policy_intent_nomination_is_bound_to_trusted_candidate():
     )
     assert goals[0]["policy_goal_family"] == "product_durability"
     assert goals[0]["policy_intent_kind"] == "practical_guidance"
+
+
+def test_unmapped_goal_rejects_policy_outside_pack_semantic_boundary():
+    policy = {
+        **_policy_candidate(),
+        "unmapped_semantic_keys": ["ordinary_use_durability_confirmation"],
+    }
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [_policy_goal(
+            semantic_key="safety_guarantee",
+            policy_intent_ref=(
+                "product_durability_practical_guidance"
+            ),
+        )],
+        message="durability question",
+        policy_intent_candidates=[policy],
+    )
+
+    assert status == "degraded"
+    assert diagnostics == [
+        "customer_goal_policy_intent_semantic_boundary_mismatch"
+    ]
+    assert goals[0]["policy_intent_ref"] == ""
+    assert goals[0]["policy_goal_family"] == ""
+    assert goals[0]["policy_intent_kind"] == ""
 
 
 def test_canonical_goal_rejects_nominated_policy_from_another_goal_family():
@@ -603,7 +632,7 @@ def test_unknown_or_unavailable_policy_intent_nomination_is_removed():
 def test_semantic_key_variation_does_not_change_nominated_goal_identity():
     first, first_status, _ = service._sanitize_customer_goals(
         [_policy_goal(
-            semantic_key="first_free_model_summary",
+            semantic_key="ordinary_use_durability_confirmation",
             policy_intent_ref=(
                 "product_durability_practical_guidance"
             ),
@@ -613,7 +642,7 @@ def test_semantic_key_variation_does_not_change_nominated_goal_identity():
     )
     second, second_status, _ = service._sanitize_customer_goals(
         [_policy_goal(
-            semantic_key="different_free_model_summary",
+            semantic_key="impact_durability",
             policy_intent_ref=(
                 "product_durability_practical_guidance"
             ),
@@ -698,6 +727,10 @@ def test_policy_candidates_come_only_from_internal_owner_context():
         "replacement",
         "warranty",
     ]
+    assert durability["unmapped_semantic_keys"] == [
+        "impact_durability",
+        "ordinary_use_durability_confirmation",
+    ]
 
 
 def test_turn_understanding_payload_contains_only_trusted_policy_candidates(
@@ -705,7 +738,7 @@ def test_turn_understanding_payload_contains_only_trusted_policy_candidates(
 ):
     client = _FakeLLMClient(_complete_llm_payload(**{
         "goals": [_policy_goal(
-            semantic_key="free_model_summary",
+            semantic_key="ordinary_use_durability_confirmation",
             policy_intent_ref=(
                 "product_durability_practical_guidance"
             ),

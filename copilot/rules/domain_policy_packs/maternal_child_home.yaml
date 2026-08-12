@@ -1,6 +1,6 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.6.3
+version: 1.6.4
 bounded_inference_policies:
   - policy_intent_ref: product_dimensions_practical_guidance
     goal_family: product_dimensions_and_space
@@ -256,6 +256,9 @@ bounded_inference_policies:
       - refund
       - replacement
       - warranty
+    unmapped_semantic_keys:
+      - impact_durability
+      - ordinary_use_durability_confirmation
     review_only: true
   - policy_intent_ref: product_durability_absolute_guarantee
     goal_family: product_durability
@@ -280,6 +283,8 @@ bounded_inference_policies:
       - refund
       - replacement
       - warranty
+    unmapped_semantic_keys:
+      - absolute_durability_guarantee
     review_only: true
   - policy_intent_ref: product_durability_test_standard
     goal_family: product_durability
