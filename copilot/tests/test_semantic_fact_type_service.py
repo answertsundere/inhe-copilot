@@ -389,12 +389,21 @@ def test_customer_goal_with_paraphrased_source_span_fails_closed():
     assert diagnostics == ["source_text_not_found"]
 
 
-def _policy_candidate() -> dict[str, str]:
+def _policy_candidate() -> dict:
     return {
         "policy_intent_ref": "product_durability_practical_guidance",
         "goal_family": "product_durability",
         "intent_kind": "practical_guidance",
         "allowed_scope": "ordinary_minor_accidental_impact",
+        "allowed_conclusion_family": "ordinary_minor_impact_tolerance",
+        "required_qualifiers": [
+            "avoid_high_or_repeated_impact",
+            "no_absolute_guarantee",
+        ],
+        "prohibited_claim_families": [
+            "child_safety",
+            "load_capacity",
+        ],
         "description": "low-risk practical guidance",
     }
 
@@ -430,6 +439,56 @@ def test_policy_intent_nomination_is_bound_to_trusted_candidate():
     )
     assert goals[0]["policy_goal_family"] == "product_durability"
     assert goals[0]["policy_intent_kind"] == "practical_guidance"
+
+
+def test_canonical_goal_rejects_nominated_policy_from_another_goal_family():
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material_safety",
+            "attribute_key": "",
+            "semantic_key": "",
+            "policy_intent_ref": "product_durability_practical_guidance",
+            "source_text": "material safety request",
+        }],
+        message="material safety request",
+        policy_intent_candidates=[_policy_candidate()],
+    )
+
+    assert status == "degraded"
+    assert diagnostics == ["customer_goal_policy_intent_family_mismatch"]
+    assert goals[0]["policy_intent_ref"] == ""
+    assert goals[0]["policy_goal_family"] == ""
+    assert goals[0]["policy_intent_kind"] == ""
+
+
+def test_matching_high_risk_goal_can_retain_a_safety_handling_policy():
+    policy = {
+        **_policy_candidate(),
+        "policy_intent_ref": "oral_exposure_safety_handling",
+        "goal_family": "bite_or_toxicity",
+        "allowed_conclusion_family": "general_oral_exposure_risk_mitigation",
+        "prohibited_claim_families": ["bite_or_toxicity"],
+    }
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "bite_or_toxicity",
+            "attribute_key": "",
+            "semantic_key": "",
+            "policy_intent_ref": "oral_exposure_safety_handling",
+            "source_text": "oral exposure request",
+        }],
+        message="oral exposure request",
+        policy_intent_candidates=[policy],
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["policy_intent_ref"] == "oral_exposure_safety_handling"
+    assert goals[0]["policy_goal_family"] == "bite_or_toxicity"
 
 
 def test_canonical_goal_derives_only_exact_trusted_policy_family_and_kind():
@@ -616,6 +675,29 @@ def test_policy_candidates_come_only_from_internal_owner_context():
         "product_weight_practical_guidance",
         "variant_specification_practical_comparison",
     }
+    durability = next(
+        item
+        for item in trusted
+        if item["policy_intent_ref"] == "product_durability_practical_guidance"
+    )
+    assert durability["allowed_conclusion_family"] == (
+        "ordinary_minor_impact_tolerance"
+    )
+    assert durability["required_qualifiers"] == [
+        "avoid_high_or_repeated_impact",
+        "no_absolute_guarantee",
+        "no_test_claim",
+    ]
+    assert durability["prohibited_claim_families"] == [
+        "certification_report",
+        "child_safety",
+        "food_grade",
+        "load_capacity",
+        "non_toxic_claim",
+        "refund",
+        "replacement",
+        "warranty",
+    ]
 
 
 def test_turn_understanding_payload_contains_only_trusted_policy_candidates(
@@ -649,6 +731,14 @@ def test_turn_understanding_payload_contains_only_trusted_policy_candidates(
     assert result["customer_goals"][0]["policy_intent_ref"] == (
         "product_durability_practical_guidance"
     )
+
+
+def test_turn_understanding_prompt_requires_policy_family_and_conclusion_bounds():
+    prompt = " ".join(service.SYSTEM_PROMPT.split())
+
+    assert "allowed_conclusion_family" in prompt
+    assert "prohibited_claim_families" in prompt
+    assert "must have that same goal_family" in prompt
 
 
 def test_fact_type_falls_back_when_llm_unavailable(monkeypatch):

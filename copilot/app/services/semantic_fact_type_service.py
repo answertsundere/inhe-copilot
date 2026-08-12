@@ -257,7 +257,15 @@ For each goal:
   ID. It may be empty only when this is a direct factual identity/value request
   or no supplied candidate directly matches the goal. Nominate a candidate only
   when its goal_family and allowed_scope directly match this goal; do not
-  substitute a merely related policy. It is a nomination, not an authorization.
+  substitute a merely related policy. For a canonical claim type, the candidate
+  must have that same goal_family. allowed_conclusion_family and
+  required_qualifiers describe the candidate's only permitted answer strategy;
+  prohibited_claim_families forbid asserting those claim families. Do not
+  nominate a candidate merely because two requests share a request form such as
+  an absolute guarantee. A matching safety-handling candidate may still be
+  nominated when its goal_family directly matches the request; its prohibited
+  claim families restrict conclusions, not the handling boundary itself. It is
+  a nomination, not an authorization.
 - practical_guidance is for an explicit action, method, handling, care, fit, or
   use or suitability question. Do not nominate practical_guidance for a direct
   factual identity or value request such as asking what something is or how much
@@ -469,8 +477,8 @@ def _semantic_consistency_guard(
     return guarded
 
 
-def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, str]]:
-    """Project only trusted Domain Pack intent IDs into Turn Understanding."""
+def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Project only trusted Domain Pack strategy bounds into Turn Understanding."""
     from app.repositories.file_policy_repository import FilePolicyRepository
     from app.services.canonical_conversation_turn_service import (
         normalize_trusted_answer_eligibility_owner_context,
@@ -499,8 +507,29 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, str]]:
         ).lower()
         goal_family = _bounded_text(policy.get("goal_family"), 96).lower()
         intent_kind = _bounded_text(policy.get("intent_kind"), 64).lower()
+        allowed_conclusion_family = _bounded_text(
+            policy.get("allowed_conclusion_family"),
+            96,
+        ).lower()
+        required_qualifiers = sorted({
+            _bounded_text(item, 96).lower()
+            for item in policy.get("required_qualifiers") or []
+            if _bounded_text(item, 96)
+        })
+        prohibited_claim_families = sorted({
+            _bounded_text(item, 96).lower()
+            for item in policy.get("prohibited_claim_families") or []
+            if _bounded_text(item, 96)
+        })
         description = _POLICY_INTENT_DESCRIPTIONS.get(intent_kind, "")
-        if not policy_intent_ref or not goal_family or not description:
+        if (
+            not policy_intent_ref
+            or not goal_family
+            or not allowed_conclusion_family
+            or not required_qualifiers
+            or not prohibited_claim_families
+            or not description
+        ):
             continue
         candidates.append({
             "policy_intent_ref": policy_intent_ref,
@@ -510,6 +539,9 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, str]]:
                 policy.get("allowed_scope"),
                 96,
             ).lower(),
+            "allowed_conclusion_family": allowed_conclusion_family,
+            "required_qualifiers": required_qualifiers,
+            "prohibited_claim_families": prohibited_claim_families,
             "description": description,
         })
     return sorted(
@@ -2263,6 +2295,17 @@ def _sanitize_customer_goals(
         elif policy_intent_ref and goal_kind != "customer_goal":
             diagnostics.append("customer_goal_policy_intent_kind_invalid")
             policy_intent_ref = ""
+            selected_policy = None
+        elif (
+            policy_intent_ref
+            and claim_type_status == "canonical"
+            and claim_type
+            and _bounded_text(selected_policy.get("goal_family"), 96).lower()
+            != claim_type
+        ):
+            diagnostics.append("customer_goal_policy_intent_family_mismatch")
+            policy_intent_ref = ""
+            selected_policy = None
         derived_policy_goal_family = ""
         derived_policy_intent_kind = ""
         if (

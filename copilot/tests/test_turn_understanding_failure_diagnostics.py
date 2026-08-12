@@ -155,13 +155,15 @@ def test_minimal_provider_schema_keeps_server_owned_fields_out():
         "claim_type_status",
         "claim_type",
         "attribute_key",
+        "subject_scope",
         "semantic_key",
         "policy_intent_ref",
         "source_text",
         "continued_from",
     }
     assert set(goal_schema["required"]) == (
-        set(goal_schema["properties"]) - {"semantic_key", "continued_from"}
+        set(goal_schema["properties"])
+        - {"semantic_key", "continued_from", "subject_scope"}
     )
     assert goal_schema["additionalProperties"] is False
     for server_field in {

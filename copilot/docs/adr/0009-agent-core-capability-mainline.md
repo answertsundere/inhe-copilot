@@ -239,6 +239,14 @@ metadata, qualifiers, and prohibitions; Unified Textual Audit validates textual
 faithfulness. Service, media, dependency, contextual, conflicting, and
 high-risk goals remain ineligible.
 
+Turn Understanding may receive a compact projection of each already-trusted
+Domain Pack candidate's goal family, scope, permitted conclusion family,
+qualifiers, and prohibited claim families. This is semantic disambiguation
+data, not evidence, an option selection, or response authority. Canonical goals
+may nominate only a candidate from the exact same goal family; the server
+removes mismatches before Claim Resolution. Final safety and Delivery ownership
+remain unchanged.
+
 This does not add a service, graph node, model call, reply owner, safety gate,
 or production flag. P1.2c made one live representative request without a
 separate preflight or retry. Provider execution, one Composer call, goal
