@@ -224,6 +224,11 @@ For each goal:
   specific requested property or performance condition as unmapped when no
   exact candidate exists; do not collapse it into a broader related action or
   use-case candidate.
+- Before choosing unmapped, compare the goal against every supplied
+  canonical_fact_type_candidates ID and meaning. If exactly one candidate
+  directly expresses the requested concept, set claim_type_status to canonical
+  and copy that candidate ID into claim_type; do not restate that candidate as
+  a semantic_key.
 - Match claim type and policy intent independently for each enumerated goal;
   the classification of one goal must not determine, merge, or erase another.
 - For a comparison, implication, or causal question, separate the conclusion

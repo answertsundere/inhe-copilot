@@ -166,6 +166,10 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "classification of one goal must not determine, merge, or erase another" in prompt
     assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
     assert "Only an unmapped goal may use" in prompt
+    assert (
+        "Before choosing unmapped, compare the goal against every supplied "
+        "canonical_fact_type_candidates ID and meaning"
+    ) in prompt
     assert "goal_family and allowed_scope directly match" in prompt
     assert "do not substitute a merely related policy" in prompt
     assert "Preserve a specific requested property or performance condition as unmapped" in prompt
