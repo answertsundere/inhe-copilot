@@ -12,8 +12,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -24,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.services.formal_knowledge_database_guard_service import backup_sqlite_database  # noqa: E402
 
 
+_RECOVERY_CANDIDATE_ROOT = PROJECT_ROOT / "data" / "imports"
 _COPIED_TABLES = ("kb_product", "knowledge_entries")
 _EXCLUDED_TABLES = (
     "kb_qa",
@@ -115,7 +118,24 @@ def _validate_candidate_path(
     *,
     apply: bool,
 ) -> None:
-    if candidate_path in {snapshot_path, schema_path} or candidate_path.name.lower() == "knowledge_base.db":
+    reserved_paths = {
+        *{path for path in (snapshot_path, schema_path)},
+        *{
+            Path(f"{path}{suffix}")
+            for path in (snapshot_path, schema_path)
+            for suffix in ("-wal", "-shm", "-journal")
+        },
+    }
+    candidate_root = _RECOVERY_CANDIDATE_ROOT.resolve()
+    try:
+        candidate_path.relative_to(candidate_root)
+    except ValueError:
+        raise ValueError("candidate_path_not_isolated") from None
+    if (
+        candidate_path in reserved_paths
+        or candidate_path.name.lower() == "knowledge_base.db"
+        or candidate_path.name.lower().endswith(("-wal", "-shm", "-journal"))
+    ):
         raise ValueError("candidate_path_not_isolated")
     if apply and candidate_path.exists():
         raise ValueError("candidate_path_not_isolated")
@@ -125,18 +145,10 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _recovery_content_hash(entry: sqlite3.Row, product_i_id: str) -> str:
-    """Return a current 64-character fingerprint without exposing source text."""
-    payload = {
-        "entry_id": int(entry["id"]),
-        "product_i_id": product_i_id,
-        "title": str(entry["title"] or ""),
-        "content": str(entry["content"] or ""),
-        "business_key": str(entry["business_key"] or ""),
-        "fact_type": str(entry["fact_type"] or ""),
-        "fact_scope": str(entry["fact_scope"] or ""),
-    }
-    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+def _recovery_content_hash(entry: sqlite3.Row) -> str:
+    """Reuse the formal repository's title-and-content duplicate fingerprint."""
+    payload = f"{str(entry['title'] or '').strip()}|{str(entry['content'] or '').strip()}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
 
 
 def _select_eligible_rows(
@@ -151,12 +163,14 @@ def _select_eligible_rows(
               AND EXISTS (
                   SELECT 1
                   FROM knowledge_entries AS entry
-                  WHERE CAST(entry.product_id AS TEXT)=CAST(product.i_id AS TEXT)
+                  WHERE typeof(entry.product_id)='text'
+                    AND typeof(product.i_id)='text'
+                    AND entry.product_id=product.i_id
                     AND entry.status='published'
                     AND entry.fact_review_status='published'
                     AND entry.fact_scope='product'
               )
-            ORDER BY CAST(product.i_id AS TEXT), product.id
+            ORDER BY product.i_id, product.id
             """
         )
     )
@@ -166,12 +180,14 @@ def _select_eligible_rows(
             SELECT entry.*
             FROM knowledge_entries AS entry
             JOIN kb_product AS product
-              ON CAST(entry.product_id AS TEXT)=CAST(product.i_id AS TEXT)
+              ON typeof(entry.product_id)='text'
+             AND typeof(product.i_id)='text'
+             AND entry.product_id=product.i_id
             WHERE product.status='published'
               AND entry.status='published'
               AND entry.fact_review_status='published'
               AND entry.fact_scope='product'
-            ORDER BY CAST(entry.product_id AS TEXT), entry.id
+            ORDER BY entry.product_id, entry.id
             """
         )
     )
@@ -196,7 +212,7 @@ def _candidate_overrides(table: str, *, batch_id: str, row: sqlite3.Row) -> dict
         "reviewed_by": "",
         "published_at": None,
         "import_batch_id": batch_id,
-        "content_hash": _recovery_content_hash(row, str(row["product_id"] or "")),
+        "content_hash": _recovery_content_hash(row),
         "parent_entry_id": None,
         "auto_reply_allowed": 0,
         "human_review_required": 1,
@@ -289,9 +305,11 @@ def build_snapshot_recovery_candidate(
         source.close()
 
     if apply:
-        try:
-            backup_sqlite_database(schema, candidate)
-            candidate_connection = sqlite3.connect(candidate)
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".snapshot-recovery-", dir=candidate.parent) as temporary_dir:
+            temporary_candidate = Path(temporary_dir) / candidate.name
+            backup_sqlite_database(schema, temporary_candidate)
+            candidate_connection = sqlite3.connect(temporary_candidate)
             candidate_connection.row_factory = sqlite3.Row
             try:
                 candidate_connection.execute("BEGIN IMMEDIATE")
@@ -318,12 +336,14 @@ def build_snapshot_recovery_candidate(
                 candidate_connection.commit()
             finally:
                 candidate_connection.close()
+            if candidate.exists():
+                raise ValueError("candidate_path_not_isolated")
+            try:
+                os.link(temporary_candidate, candidate)
+            except FileExistsError as exc:
+                raise ValueError("candidate_path_not_isolated") from exc
             candidate_created = True
             candidate_sha256 = _file_sha256(candidate)
-        except Exception:
-            if candidate.exists():
-                candidate.unlink()
-            raise
 
     schema_sha256_after = _file_sha256(schema)
     if schema_sha256_before != schema_sha256_after:

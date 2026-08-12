@@ -381,6 +381,31 @@ def test_product_context_pack_returns_structured_profile(product_context_db):
     assert pack["evidence_pack"]["matched_fields"] == ["installation"]
 
 
+def test_exact_identity_pending_product_is_not_used_as_structured_evidence(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import _find_kb_product
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="PENDING_PRODUCT",
+            product_name="candidate product",
+            specs_json=json.dumps({"material": "candidate material"}),
+            status="pending_review",
+        ))
+        db.commit()
+
+        product = _find_kb_product(
+            db,
+            KBProduct,
+            {"sku": "", "i_id": "PENDING_PRODUCT", "sku_family": "", "product_name": ""},
+        )
+    finally:
+        db.close()
+
+    assert product is None
+
+
 def test_product_context_pack_turns_exact_profile_field_into_fact(product_context_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack

@@ -151,6 +151,40 @@ def _create_snapshot_database(path: Path) -> None:
             (3, "IID-component", "component product", "published", 2),
         ],
     )
+    connection.execute(
+        """
+        INSERT INTO knowledge_entries (
+            id, source_type, title, content, status, version, created_by, updated_by,
+            reviewed_by, published_at, import_batch_id, content_hash, business_key,
+            product_id, fact_type, fact_scope, risk_level, auto_reply_allowed,
+            human_review_required, source_confidence, fact_review_status, index_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            16,
+            "product_facts",
+            "binary identity fact",
+            "not selected",
+            "published",
+            1,
+            "historical-user",
+            "historical-user",
+            "historical-reviewer",
+            "2025-01-01T00:00:00",
+            "old-batch",
+            "",
+            "product:IID-eligible:binary",
+            sqlite3.Binary(b"IID-eligible"),
+            "material",
+            "product",
+            "low",
+            1,
+            0,
+            0.9,
+            "published",
+            "done",
+        ),
+    )
     connection.executemany(
         """
         INSERT INTO knowledge_entries (
@@ -297,13 +331,21 @@ def _create_snapshot_database(path: Path) -> None:
 
 
 @pytest.fixture()
-def recovery_paths(tmp_path: Path) -> tuple[Path, Path, Path]:
+def recovery_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    module = _load_module()
     schema = tmp_path / "schema.db"
     snapshot = tmp_path / "snapshot.db"
-    candidate = tmp_path / "candidate.db"
+    candidate_root = tmp_path / "ignored-candidates"
+    candidate = candidate_root / "candidate.db"
+    monkeypatch.setattr(
+        module,
+        "_RECOVERY_CANDIDATE_ROOT",
+        candidate_root,
+        raising=False,
+    )
     _create_schema_database(schema)
     _create_snapshot_database(snapshot)
-    return snapshot, schema, candidate
+    return module, snapshot, schema, candidate
 
 
 def _row_count(path: Path, table: str) -> int:
@@ -315,10 +357,9 @@ def _row_count(path: Path, table: str) -> int:
 
 
 def test_dry_run_reports_only_eligible_counts_and_never_creates_candidate(
-    recovery_paths: tuple[Path, Path, Path],
+    recovery_context,
 ) -> None:
-    module = _load_module()
-    snapshot, schema, candidate = recovery_paths
+    module, snapshot, schema, candidate = recovery_context
 
     report = module.build_snapshot_recovery_candidate(
         snapshot,
@@ -335,10 +376,9 @@ def test_dry_run_reports_only_eligible_counts_and_never_creates_candidate(
 
 
 def test_apply_resets_review_state_and_excludes_other_knowledge_roles(
-    recovery_paths: tuple[Path, Path, Path],
+    recovery_context,
 ) -> None:
-    module = _load_module()
-    snapshot, schema, candidate = recovery_paths
+    module, snapshot, schema, candidate = recovery_context
 
     report = module.build_snapshot_recovery_candidate(snapshot, schema, candidate, apply=True)
 
@@ -375,30 +415,64 @@ def test_apply_resets_review_state_and_excludes_other_knowledge_roles(
     assert product[4] == fact[7]
     assert fact[0] == "IID-eligible"
     assert fact[1:6] == ("pending_review", "needs_human_review", 0, 1, "pending")
-    assert len(fact[6]) == 64
+    assert fact[6] == hashlib.sha256(
+        "eligible title|private source sentence".encode("utf-8")
+    ).hexdigest()[:32]
     assert fact[8] == ""
     assert fact[9] is None
 
 
 def test_builder_refuses_formal_target_or_existing_candidate(
-    recovery_paths: tuple[Path, Path, Path],
+    recovery_context,
 ) -> None:
-    module = _load_module()
-    snapshot, schema, candidate = recovery_paths
+    module, snapshot, schema, candidate = recovery_context
 
     with pytest.raises(ValueError, match="candidate_path_not_isolated"):
         module.build_snapshot_recovery_candidate(snapshot, schema, schema, apply=True)
 
+    candidate.parent.mkdir(parents=True, exist_ok=True)
     candidate.write_bytes(b"already exists")
     with pytest.raises(ValueError, match="candidate_path_not_isolated"):
         module.build_snapshot_recovery_candidate(snapshot, schema, candidate, apply=True)
 
 
-def test_source_and_formal_schema_checksums_remain_unchanged(
-    recovery_paths: tuple[Path, Path, Path],
+def test_builder_refuses_sqlite_sidecar_and_non_ignored_candidate_paths(
+    recovery_context,
 ) -> None:
-    module = _load_module()
-    snapshot, schema, candidate = recovery_paths
+    module, snapshot, schema, candidate = recovery_context
+
+    formal_sidecar = schema.with_name(f"{schema.name}-wal")
+    with pytest.raises(ValueError, match="candidate_path_not_isolated"):
+        module.build_snapshot_recovery_candidate(snapshot, schema, formal_sidecar, apply=True)
+
+    outside_ignored_root = candidate.parent.parent / "not-ignored" / "candidate.db"
+    with pytest.raises(ValueError, match="candidate_path_not_isolated"):
+        module.build_snapshot_recovery_candidate(snapshot, schema, outside_ignored_root, apply=True)
+
+
+def test_builder_never_deletes_external_file_created_after_validation(
+    recovery_context,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, snapshot, schema, candidate = recovery_context
+
+    def external_writer(_source: Path, _destination: Path) -> None:
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        candidate.write_bytes(b"external")
+        raise RuntimeError("injected_backup_failure")
+
+    monkeypatch.setattr(module, "backup_sqlite_database", external_writer)
+
+    with pytest.raises(RuntimeError, match="injected_backup_failure"):
+        module.build_snapshot_recovery_candidate(snapshot, schema, candidate, apply=True)
+
+    assert candidate.read_bytes() == b"external"
+
+
+def test_source_and_formal_schema_checksums_remain_unchanged(
+    recovery_context,
+) -> None:
+    module, snapshot, schema, candidate = recovery_context
     before = (_sha256(snapshot), _sha256(schema))
 
     report = module.build_snapshot_recovery_candidate(snapshot, schema, candidate, apply=True)
@@ -410,10 +484,9 @@ def test_source_and_formal_schema_checksums_remain_unchanged(
 
 
 def test_manifest_contains_hashes_and_counts_but_not_source_content(
-    recovery_paths: tuple[Path, Path, Path],
+    recovery_context,
 ) -> None:
-    module = _load_module()
-    snapshot, schema, candidate = recovery_paths
+    module, snapshot, schema, candidate = recovery_context
 
     report = module.build_snapshot_recovery_candidate(snapshot, schema, candidate, apply=True)
     rendered = json.dumps(report, ensure_ascii=False, sort_keys=True)
@@ -434,9 +507,13 @@ def test_manifest_contains_hashes_and_counts_but_not_source_content(
 
 
 def test_cli_dry_run_works_when_invoked_as_a_script(
-    recovery_paths: tuple[Path, Path, Path],
+    tmp_path: Path,
 ) -> None:
-    snapshot, schema, candidate = recovery_paths
+    schema = tmp_path / "schema.db"
+    snapshot = tmp_path / "snapshot.db"
+    candidate = SCRIPT_PATH.parents[1] / "data" / "imports" / "candidate-dry-run.db"
+    _create_schema_database(schema)
+    _create_snapshot_database(snapshot)
 
     completed = subprocess.run(
         [

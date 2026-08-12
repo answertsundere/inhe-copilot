@@ -855,13 +855,23 @@ def _find_kb_product(db, KBProduct, identity: dict[str, str]):
     sku_family = identity.get("sku_family", "")
     product_name = identity.get("product_name", "")
     if i_id:
-        product = db.query(KBProduct).filter(KBProduct.i_id == i_id).first()
+        product = (
+            db.query(KBProduct)
+            .filter(KBProduct.i_id == i_id)
+            .filter(KBProduct.status == "published")
+            .first()
+        )
         if product:
             return product
     for code in (sku, sku_family):
         if not code:
             continue
-        product = db.query(KBProduct).filter(KBProduct.i_id == code).first()
+        product = (
+            db.query(KBProduct)
+            .filter(KBProduct.i_id == code)
+            .filter(KBProduct.status == "published")
+            .first()
+        )
         if product:
             return product
 

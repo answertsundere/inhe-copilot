@@ -748,10 +748,18 @@ facts whose `product_id` exactly equals a historically published product
 reset every selected row to current `pending_review` / `needs_human_review`,
 disabled auto reply, cleared policy bindings, and copied no QA, media, chunks,
 Answer Memory, or change-log rows. The candidate database is a local review
-artifact, never a runtime database or formal-evidence source. Any later
-acceptance must reapply current review governance and evidence admission,
-quarantine risky or identity-mismatched records, and keep `can_send=false`. P1
-quality and `real_customer_accuracy` therefore remain unqualified.
+artifact under the Git-ignored `data/imports/` root, never a runtime database
+or formal-evidence source. The builder rejects the formal database, its SQLite
+sidecars, and arbitrary output locations; it builds through a temporary file
+and does not delete a newly appearing external candidate on failure. Candidate
+content hashes use the current `title|content` contract, not historical entry
+identifiers. `ProductContextPackService` builds a structured profile only from
+`published` products, including exact identity lookup, so a
+`pending_review` recovery candidate cannot become selected evidence even if an
+operator misconfigures a process to point at it. Any later acceptance must
+reapply current review governance and evidence admission, quarantine risky or
+identity-mismatched records, and keep `can_send=false`. P1 quality and
+`real_customer_accuracy` therefore remain unqualified.
 
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
