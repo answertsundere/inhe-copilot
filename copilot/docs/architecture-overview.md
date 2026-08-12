@@ -741,10 +741,17 @@ asset and cannot replace `data/knowledge_base.db`: it predates the reviewed
 `domain_policy_id` control field, contains records without current content
 hashes, identity-mismatched approved media, and potential sensitive fields.
 `scripts/diagnose_knowledge_snapshot_recovery.py` is the required read-only
-admission check. Any later import must target a separate candidate database,
-reapply current review governance and evidence admission, quarantine risky or
-identity-mismatched records, and keep `can_send=false`. P1 quality and
-`real_customer_accuracy` therefore remain unqualified.
+admission check. `scripts/build_knowledge_snapshot_recovery_candidate.py` can
+then create one isolated current-schema candidate only from historical product
+facts whose `product_id` exactly equals a historically published product
+`i_id`. Its verified first run selected 470 products and 2,206 facts, but it
+reset every selected row to current `pending_review` / `needs_human_review`,
+disabled auto reply, cleared policy bindings, and copied no QA, media, chunks,
+Answer Memory, or change-log rows. The candidate database is a local review
+artifact, never a runtime database or formal-evidence source. Any later
+acceptance must reapply current review governance and evidence admission,
+quarantine risky or identity-mismatched records, and keep `can_send=false`. P1
+quality and `real_customer_accuracy` therefore remain unqualified.
 
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing

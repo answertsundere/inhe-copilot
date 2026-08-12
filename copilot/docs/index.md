@@ -74,6 +74,11 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - Read-only verification of historical SQLite knowledge snapshots. It reports
     schema, identity, review, media, and potential-sensitive-field diagnostics
     without exposing content or permitting direct formal-database replacement.
+- `docs/superpowers/plans/2026-08-12-knowledge-snapshot-recovery-candidate.md`
+  - TDD plan for turning only exact-identity historical published product facts
+    into an isolated current-schema candidate database. Candidate rows require
+    fresh review and cannot become formal evidence, runtime retrieval, or send
+    authority without a separate governed acceptance path.
 - `docs/adr/0002-product-media-observation-review-lifecycle.md` - immutable
   local-VLM observation candidates, supervisor review, hash invalidation, and
   shadow-only approval boundary.
