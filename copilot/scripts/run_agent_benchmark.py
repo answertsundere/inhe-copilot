@@ -14,17 +14,55 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def _configure_fixture_database_from_argv(argv: list[str]) -> None:
-    """Set the isolated fixture DB before config/app modules are imported."""
+def _option_value(argv: list[str], option: str) -> str:
+    """Return one long-option value without importing app configuration."""
+    prefix = f"{option}="
     for index, value in enumerate(argv):
-        if value == "--fixture" or value.startswith("--fixture="):
-            os.environ["COPILOT_BENCHMARK_FIXTURE_MODE"] = "true"
-        if value == "--benchmark-db" and index + 1 < len(argv):
-            os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = argv[index + 1]
-            return
-        if value.startswith("--benchmark-db="):
-            os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = value.split("=", 1)[1]
-            return
+        if value.startswith(prefix):
+            return value.split("=", 1)[1]
+        if value == option and index + 1 < len(argv):
+            return argv[index + 1]
+    return ""
+
+
+def _configure_fixture_database_from_argv(argv: list[str]) -> None:
+    """Bind a fixture run to its explicit query-only knowledge snapshot.
+
+    The scenario fixture database intentionally contains only evaluation tables.
+    It must never become the formal knowledge source used by retrieval.
+    """
+    fixture_path = _option_value(argv, "--fixture")
+    if not fixture_path:
+        return
+
+    os.environ["COPILOT_BENCHMARK_FIXTURE_MODE"] = "true"
+    # A fixture run may not silently inherit a parent process knowledge source.
+    os.environ.pop("COPILOT_KNOWLEDGE_DB_PATH", None)
+    os.environ.pop("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", None)
+
+    knowledge_db = _option_value(argv, "--knowledge-db")
+    if knowledge_db:
+        os.environ["COPILOT_KNOWLEDGE_DB_PATH"] = knowledge_db
+        os.environ["COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY"] = "true"
+
+
+def _validate_fixture_knowledge_snapshot(
+    knowledge_db: str,
+    benchmark_db: str,
+) -> Path:
+    """Reject unsafe or ambiguous formal knowledge sources for fixture runs."""
+    if not knowledge_db:
+        raise ValueError("--fixture requires --knowledge-db")
+    snapshot = Path(knowledge_db).expanduser().resolve()
+    scenarios = Path(benchmark_db).expanduser().resolve()
+    production = (PROJECT_ROOT / "data" / "knowledge_base.db").resolve()
+    if snapshot == scenarios:
+        raise ValueError("--knowledge-db must not equal --benchmark-db")
+    if snapshot == production or snapshot.name.lower() == "knowledge_base.db":
+        raise ValueError("--knowledge-db must be an isolated knowledge snapshot")
+    if not snapshot.is_file():
+        raise ValueError("--knowledge-db snapshot is missing")
+    return snapshot
 
 
 def _load_dotenv_safely() -> None:
@@ -198,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fixture", default="")
     parser.add_argument("--fixture-manifest", default="")
     parser.add_argument("--benchmark-db", default="")
+    parser.add_argument("--knowledge-db", default="")
     args = parser.parse_args(argv)
 
     db_factory = None
@@ -205,6 +244,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.fixture:
         if not args.benchmark_db:
             parser.error("--fixture requires --benchmark-db")
+        try:
+            _validate_fixture_knowledge_snapshot(
+                args.knowledge_db,
+                args.benchmark_db,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         from app.services.agent_benchmark_fixture_service import (
             BenchmarkFixtureError,
             fixture_database_metadata,
@@ -222,8 +268,8 @@ def main(argv: list[str] | None = None) -> int:
             dataset_metadata = {**metadata, "database_path": str(Path(args.benchmark_db).resolve())}
         except BenchmarkFixtureError as exc:
             parser.error(str(exc))
-    elif args.benchmark_db:
-        parser.error("--benchmark-db is only supported with --fixture")
+    elif args.benchmark_db or args.knowledge_db:
+        parser.error("--benchmark-db and --knowledge-db are only supported with --fixture")
     else:
         init_db()
     result, exit_code = run_benchmark_report(

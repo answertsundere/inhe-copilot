@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from copy import deepcopy
 from pathlib import Path
@@ -18,7 +19,11 @@ from app.services.agent_benchmark_fixture_service import (
     validate_fixture,
 )
 from app.services.agent_benchmark_runner_service import AgentBenchmarkRunnerService
-from scripts.run_agent_benchmark import run_benchmark_report
+from scripts.run_agent_benchmark import (
+    _configure_fixture_database_from_argv,
+    main as run_agent_benchmark_main,
+    run_benchmark_report,
+)
 
 
 def _source_scenario(uid: str = "raw-scenario-1") -> dict:
@@ -177,6 +182,68 @@ def test_fixture_database_refuses_existing_or_production_named_path(tmp_path):
         initialize_fixture_database(fixture_path, existing, manifest_path=manifest_path)
     with pytest.raises(BenchmarkFixtureError, match="knowledge_base"):
         initialize_fixture_database(fixture_path, tmp_path / "knowledge_base.db", manifest_path=manifest_path)
+
+
+def test_fixture_bootstrap_keeps_scenario_database_separate_from_knowledge_snapshot(
+    monkeypatch,
+    tmp_path,
+):
+    scenario_database = tmp_path / "benchmark_scenarios.sqlite"
+    knowledge_snapshot = tmp_path / "knowledge_snapshot.sqlite"
+    monkeypatch.delenv("COPILOT_BENCHMARK_FIXTURE_MODE", raising=False)
+    monkeypatch.delenv("COPILOT_KNOWLEDGE_DB_PATH", raising=False)
+    monkeypatch.delenv("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", raising=False)
+
+    _configure_fixture_database_from_argv([
+        "--fixture", "active.json",
+        "--benchmark-db", str(scenario_database),
+        "--knowledge-db", str(knowledge_snapshot),
+    ])
+
+    assert os.environ.get("COPILOT_BENCHMARK_FIXTURE_MODE") == "true"
+    assert os.environ.get("COPILOT_KNOWLEDGE_DB_PATH") == str(knowledge_snapshot)
+    assert os.environ.get("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY") == "true"
+    os.environ.pop("COPILOT_BENCHMARK_FIXTURE_MODE", None)
+    os.environ.pop("COPILOT_KNOWLEDGE_DB_PATH", None)
+    os.environ.pop("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", None)
+
+
+def test_fixture_bootstrap_does_not_use_scenario_database_as_knowledge_database(
+    monkeypatch,
+    tmp_path,
+):
+    scenario_database = tmp_path / "benchmark_scenarios.sqlite"
+    monkeypatch.delenv("COPILOT_BENCHMARK_FIXTURE_MODE", raising=False)
+    monkeypatch.setenv("COPILOT_KNOWLEDGE_DB_PATH", "stale-parent-database.sqlite")
+    monkeypatch.setenv("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", "false")
+
+    _configure_fixture_database_from_argv([
+        "--fixture", "active.json",
+        "--benchmark-db", str(scenario_database),
+    ])
+
+    assert os.environ.get("COPILOT_BENCHMARK_FIXTURE_MODE") == "true"
+    assert "COPILOT_KNOWLEDGE_DB_PATH" not in os.environ
+    assert "COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY" not in os.environ
+    os.environ.pop("COPILOT_BENCHMARK_FIXTURE_MODE", None)
+
+
+def test_fixture_cli_requires_an_explicit_isolated_knowledge_snapshot(
+    capsys,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.delenv("COPILOT_KNOWLEDGE_DB_PATH", raising=False)
+    monkeypatch.delenv("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_agent_benchmark_main([
+            "--fixture", str(tmp_path / "active.json"),
+            "--benchmark-db", str(tmp_path / "benchmark_scenarios.sqlite"),
+        ])
+
+    assert exc_info.value.code == 2
+    assert "--knowledge-db" in capsys.readouterr().err
 
 
 def test_runner_marks_no_scenarios_invalid_and_reports_dataset_metadata(tmp_path):

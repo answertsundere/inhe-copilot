@@ -66,7 +66,8 @@ fixture under `tests/fixtures/agent_benchmark/`. It is a semantic projection:
 it retains the reviewed evaluation contract while replacing customer turns,
 product identities, order identities, source identifiers, and titles with
 synthetic values. It is the required source for clean-worktree and CI benchmark
-validation; `knowledge_base.db` is never a benchmark fixture.
+validation; `knowledge_base.db` is never a benchmark fixture. The scenario
+fixture database is not a RAG knowledge database.
 
 Create an isolated temporary benchmark database:
 
@@ -78,23 +79,36 @@ python scripts\init_agent_benchmark_fixture_db.py `
 ```
 
 Run smoke or full evaluation against that exact fixture. Both commands record
-the dataset ID, version, hash, and database source in their JSON result.
+the dataset ID, version, hash, and database source in their JSON result. Every
+fixture run also requires a separate, externally created formal-knowledge
+snapshot. The runner opens that snapshot in query-only mode and rejects a
+missing snapshot, the scenario database itself, or the repository's live
+`data/knowledge_base.db`.
+
+The current fixture deliberately uses anonymous product identities. A raw copy
+of formal knowledge therefore cannot supply product-specific evidence for those
+aliases. Such a run is a safety/context-gap regression check only; it must not
+be reported as a factual-quality score or a `22/22` pass. A future factual
+fixture needs an independently reviewed, versioned synthetic knowledge
+companion. It must not derive facts from the benchmark rubric or expected reply.
 
 ```powershell
 python scripts\run_agent_benchmark.py `
   --fixture tests\fixtures\agent_benchmark\active_benchmark_synthetic_v1.json `
   --fixture-manifest tests\fixtures\agent_benchmark\active_benchmark_synthetic_v1.manifest.json `
   --benchmark-db outputs\active_benchmark_fixture.sqlite `
+  --knowledge-db D:\copilot-runtime\knowledge_snapshot.sqlite `
   --status active --limit 5 --fail-on-failure
 
 python scripts\run_agent_benchmark.py `
   --fixture tests\fixtures\agent_benchmark\active_benchmark_synthetic_v1.json `
   --fixture-manifest tests\fixtures\agent_benchmark\active_benchmark_synthetic_v1.manifest.json `
   --benchmark-db outputs\active_benchmark_fixture.sqlite `
+  --knowledge-db D:\copilot-runtime\knowledge_snapshot.sqlite `
   --status active --fail-on-failure
 ```
 
 The initializer refuses `knowledge_base.db` and existing paths. A fixture hash,
-schema, manifest, or scenario-count mismatch fails closed. A runner result with
-zero scenarios is `invalid_run/no_scenarios`, has exit code `2`, and must never
-be reported as a passing benchmark.
+schema, manifest, scenario-count, or knowledge-source mismatch fails closed. A
+runner result with zero scenarios is `invalid_run/no_scenarios`, has exit code
+`2`, and must never be reported as a passing benchmark.
