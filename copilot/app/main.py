@@ -689,7 +689,7 @@ def create_app():
     @app.route("/reviews")
     @app.route("/training-samples")
     @app.route("/real-accuracy-labels")
-    @app.route("/high-quality-conversation-review")
+    @app.route("/high-quality-conversation-review", endpoint="high_quality_conversation_review_spa")
     @app.route("/service-rules")
     @app.route("/ai-updates")
     @app.route("/quality-replay")

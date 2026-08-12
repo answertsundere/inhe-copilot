@@ -127,10 +127,11 @@ in the ignored SQLite path configured by
 `COPILOT_HQ_LONG_CONVERSATION_LABEL_DB`; that path must differ from
 `COPILOT_KNOWLEDGE_DB_PATH`. `COPILOT_REAL_ACCURACY_LABEL_AUDIT_HMAC_KEY`
 pseudonymises the human actor in the append-only audit trail. Reviewer sessions
-may save and submit; approval and rejection require a signed Cloudflare Access
-supervisor/admin session and a valid browser origin. There is no bulk-approval
-route. The source JSON, formal knowledge database, Agent, and 5011 are not
-modified by this workflow.
+may read this dedicated review page, save, and submit; the rest of the
+management SPA retains its existing route policies. Approval and rejection
+require a signed Cloudflare Access supervisor/admin session and a valid browser
+origin. There is no bulk-approval route. The source JSON, formal knowledge
+database, Agent, and 5011 are not modified by this workflow.
 
 The immutable source validator owns schema, hashes, identifiers, privacy, text
 quality, and conversation/claim structure only. Source `review` fields never

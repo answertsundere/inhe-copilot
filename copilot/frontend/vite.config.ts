@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
         resolvers: [ElementPlusResolver()],
       }),
     ],
-    base: './',
+    base: '/ask/',
     build: {
       outDir: '../web/static/kb-admin',
       emptyOutDir: true,

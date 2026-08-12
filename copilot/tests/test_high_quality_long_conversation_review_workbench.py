@@ -273,6 +273,24 @@ def test_full_app_registers_high_quality_review_routes():
     assert "/api/kb/hq-long-conversation-review" in rules
 
 
+def test_high_quality_review_spa_is_reviewer_readable_without_broadening_other_admin_pages(
+    set_admin_test_principal,
+):
+    from app.main import create_app
+
+    app = create_app()
+    client = app.test_client()
+
+    set_admin_test_principal("reviewer")
+    assert client.get("/high-quality-conversation-review").status_code == 200
+    assert client.get("/assets/review-shell.js").status_code == 404
+    assert client.get("/products").status_code == 403
+
+    set_admin_test_principal("operator")
+    assert client.get("/high-quality-conversation-review").status_code == 403
+    assert client.get("/assets/review-shell.js").status_code == 403
+
+
 def test_frontend_uses_chinese_labels_instead_of_rendering_raw_enums():
     from pathlib import Path
 
@@ -283,3 +301,13 @@ def test_frontend_uses_chinese_labels_instead_of_rendering_raw_enums():
     assert "像真人金牌客服" in source
     assert "{{ claim.expected_status }}" not in source
     assert "{{ selected.risk_level }}" not in source
+
+
+def test_frontend_build_uses_ask_base_for_deep_admin_routes():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "frontend" / "vite.config.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "base: '/ask/'" in source

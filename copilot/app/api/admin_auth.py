@@ -64,6 +64,8 @@ _EXPLICIT_ROUTE_POLICIES: dict[tuple[str, str], str] = {
     ("config.api_update_llm_config", "POST"): "admin_only",
     ("config.api_update_llm_config", "PUT"): "admin_only",
     ("kb_admin.api_ai_center_rebuild_rag", "POST"): "admin_only",
+    ("high_quality_conversation_review_spa", "GET"): "reviewer_write",
+    ("kb_admin_assets", "GET"): "reviewer_write",
 }
 _POLICY_ALLOWED_ROLES: dict[str, frozenset[str]] = {
     "authenticated_read": ALL_HUMAN_ROLES,
