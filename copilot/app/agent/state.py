@@ -41,6 +41,7 @@ class AgentState(TypedDict, total=False):
     secondary_fact_types: list
     semantic_query: dict
     turn_understanding: dict
+    turn_understanding_model_diagnostics: dict
     needs_visual_asset: bool
 
     # ========== 风险 ==========

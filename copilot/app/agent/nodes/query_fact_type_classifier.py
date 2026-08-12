@@ -202,7 +202,11 @@ def query_fact_type_classifier(state: dict) -> dict:
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
-    result = classify_query_fact_type_llm_first(state)
+    model_diagnostics: dict = {}
+    result = classify_query_fact_type_llm_first(
+        state,
+        diagnostics_sink=model_diagnostics,
+    )
     if (
         not result.get("query_fact_type")
         and state.get("query_fact_type")
@@ -251,5 +255,6 @@ def query_fact_type_classifier(state: dict) -> dict:
         "semantic_query": result.get("semantic_query", {}),
         "needs_visual_asset": bool((result.get("semantic_query") or {}).get("needs_visual_asset")),
         "turn_understanding": turn_understanding,
+        "turn_understanding_model_diagnostics": model_diagnostics,
         "trace_steps": state.get("trace_steps", []) + [trace],
     }

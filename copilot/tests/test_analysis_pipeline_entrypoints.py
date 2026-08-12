@@ -449,7 +449,7 @@ def test_public_api_injected_goal_cannot_cross_server_understanding_owner(
     )
     monkeypatch.setattr(
         "app.agent.nodes.query_fact_type_classifier.classify_query_fact_type_llm_first",
-        lambda _state: {
+        lambda _state, **_kwargs: {
             "query_fact_type": "",
             "secondary_fact_types": [],
             "risk_hint": "",

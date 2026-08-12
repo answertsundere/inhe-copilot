@@ -191,6 +191,27 @@ def test_bite_or_toxicity_is_a_distinct_high_risk_fact_type():
 
 def test_api_exposes_query_fact_type_debug(monkeypatch):
     message = "\u6ca1\u6709\u7532\u919b\u7684\u68c0\u67e5\u62a5\u544a\u5417\uff1f"
+    def fake_classify(_state, _message, _intent, **kwargs):
+        diagnostics_sink = kwargs.get("diagnostics_sink")
+        if isinstance(diagnostics_sink, dict):
+            diagnostics_sink.update({
+                "schema_version": "turn-understanding-diagnostics/v4",
+                "status": "passed",
+                "reason_code": "",
+                "provider": {
+                    "provider_family": "formal_agent",
+                    "model": "configured-model",
+                    "host_fingerprint": "a" * 12,
+                    "http_status": None,
+                    "provider_error_category": "",
+                },
+            })
+        return _authoritative_llm_result(
+            message,
+            fact_type="certification_report",
+            secondary_fact_types=[],
+        )
+
     monkeypatch.setattr(
         semantic_fact_type_service.config,
         "COPILOT_FACT_TYPE_LLM_ENABLED",
@@ -199,13 +220,7 @@ def test_api_exposes_query_fact_type_debug(monkeypatch):
     monkeypatch.setattr(
         semantic_fact_type_service,
         "_classify_with_llm",
-        lambda _state, _message, _intent, **_kwargs: (
-            _authoritative_llm_result(
-                message,
-                fact_type="certification_report",
-                secondary_fact_types=[],
-            )
-        ),
+        fake_classify,
     )
     app = create_app()
     client = app.test_client()
@@ -222,6 +237,18 @@ def test_api_exposes_query_fact_type_debug(monkeypatch):
     debug = result["evidence_debug"]
     assert debug["query_fact_type"] == "certification_report"
     assert debug["query_fact_type_label"]
+    assert debug["turn_understanding_model_diagnostics"] == {
+        "schema_version": "turn-understanding-diagnostics/v4",
+        "status": "passed",
+        "reason_code": "",
+        "provider": {
+            "provider_family": "formal_agent",
+            "model": "configured-model",
+            "host_fingerprint": "a" * 12,
+            "http_status": None,
+            "provider_error_category": "",
+        },
+    }
     assert result["requires_human_review"] is True
 
 
@@ -479,7 +506,7 @@ def test_preclassified_top_level_fact_type_does_not_override_multi_goal_owner(
     monkeypatch.setattr(
         "app.agent.nodes.query_fact_type_classifier."
         "classify_query_fact_type_llm_first",
-        lambda _state: {
+        lambda _state, **_kwargs: {
             "query_fact_type": "",
             "confidence": 0.9,
             "source": "llm",
@@ -514,6 +541,59 @@ def test_preclassified_top_level_fact_type_does_not_override_multi_goal_owner(
     assert result["turn_understanding"]["customer_goals"][0][
         "claim_type_status"
     ] == "unmapped"
+
+
+def test_classifier_projects_safe_turn_understanding_model_diagnostics(
+    monkeypatch,
+):
+    def fake_classify(_state, *, diagnostics_sink=None):
+        diagnostics_sink.update({
+            "schema_version": "turn-understanding-diagnostics/v4",
+            "status": "failed",
+            "reason_code": "provider_rate_limited",
+            "provider": {
+                "provider_family": "formal_agent",
+                "model": "configured-model",
+                "host_fingerprint": "a" * 12,
+                "http_status": 429,
+                "provider_error_category": "provider_rate_limited",
+            },
+        })
+        return {
+            "query_fact_type": "material_composition",
+            "confidence": 0.5,
+            "source": "fallback",
+            "reason": "fallback",
+            "risk_hint": "medium",
+            "secondary_fact_types": [],
+            "semantic_query": {},
+            "customer_goals": [],
+            "goal_understanding_status": "degraded",
+            "goal_understanding_diagnostics": [
+                "provider_rate_limited",
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.agent.nodes.query_fact_type_classifier."
+        "classify_query_fact_type_llm_first",
+        fake_classify,
+    )
+
+    result = query_fact_type_classifier({"customer_message": "question"})
+
+    assert result["turn_understanding_model_diagnostics"] == {
+        "schema_version": "turn-understanding-diagnostics/v4",
+        "status": "failed",
+        "reason_code": "provider_rate_limited",
+        "provider": {
+            "provider_family": "formal_agent",
+            "model": "configured-model",
+            "host_fingerprint": "a" * 12,
+            "http_status": 429,
+            "provider_error_category": "provider_rate_limited",
+        },
+    }
 
 
 def test_api_final_audit_blocks_pinch_as_battery_topic(monkeypatch):
