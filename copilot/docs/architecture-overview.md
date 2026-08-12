@@ -166,6 +166,17 @@ Pipeline's separate, schema-checked internal owner context with explicit source
 and provenance. Missing internal owner output stays unknown or missing; client
 claims cannot promote it.
 
+For a resolved product request, the Pipeline may derive that internal context
+from one exact SKU or `i_id` cross-checked against one published `KBProduct`.
+The product's reviewed `domain_policy_id` is control metadata only: it is not
+evidence, a product fact, an evidence UID, or model-visible Pack content. Title
+matching, ambiguous identifiers, unpublished products, a blank mapping, and
+public tenant/store/catalog values all fail closed to a missing Pack. Changing
+the mapping on a published product returns it to the existing product review
+workflow before it can be used. A query-only legacy catalog that predates this
+optional control column remains readable but is treated as unbound until its
+normal writable migration completes.
+
 ### Identity, Knowledge, And Tools
 
 External product references resolve to JST/internal identity before scoped facts
@@ -195,8 +206,8 @@ Formal Evidence Convergence is implemented but disabled in production. Enabling
 it in an isolated slice does not change the evidence contract.
 
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
-from explicit tenant, store, or catalog metadata supplied by trusted deployment
-configuration or an explicit internal evaluation fixture. They contain
+from trusted deployment configuration, a Pipeline-verified published-product
+mapping, or an explicit internal evaluation fixture. They contain
 claim-level risk, inference, direct-fact, and freshness policy, never product
 facts, customer text, identities, or reply templates. Deterministic Claim and
 Safety owners remain authoritative at runtime. The first

@@ -764,6 +764,238 @@ def test_degraded_understanding_preserves_existing_review_only_reply(
     assert response["turn_understanding_boundary"]["status"] == "degraded"
 
 
+@pytest.fixture()
+def published_product_policy_db(monkeypatch):
+    """An isolated formal-product catalog for canonical-input policy binding."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import app.db as db_module
+    from app.models.kb_tables import KBProduct
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=engine,
+        expire_on_commit=False,
+    )
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    db_module.Base.metadata.create_all(bind=engine)
+
+    def add_product(*, i_id: str, sku_code: str, status: str = "published", domain_policy_id: str = ""):
+        db = session_factory()
+        try:
+            product = KBProduct(
+                i_id=i_id,
+                product_name="Catalog Product",
+                status=status,
+                domain_policy_id=domain_policy_id,
+            )
+            product.set_sku_list([{"sku_code": sku_code}])
+            db.add(product)
+            db.commit()
+        finally:
+            db.close()
+
+    return add_product
+
+
+def test_pipeline_uses_published_product_domain_policy_from_exact_sku(
+    monkeypatch,
+    published_product_policy_db,
+):
+    monkeypatch.delenv("COPILOT_DOMAIN_POLICY_ID", raising=False)
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-001",
+        sku_code="POLICY-SKU-001",
+        domain_policy_id="maternal_child_home",
+    )
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            product_candidates=[{"type": "sku_code", "value": "POLICY-SKU-001"}],
+            copilot_context={
+                "catalog_metadata": {"domain_policy_id": "public_injection"},
+            },
+        )
+    )
+
+    owner_context = prepared.copilot_context["_answer_eligibility_owner_context"]
+    domain_context = owner_context["domain_policy_context"]
+    assert owner_context["source"] == "verified_server_mapping"
+    assert domain_context["status"] == "selected"
+    assert domain_context["selection_source"] == "verified_server_mapping"
+    assert domain_context["pack_ref"] == _current_domain_pack_ref()
+    assert domain_context["binding_summary"] == {
+        "tenant": False,
+        "store": False,
+        "catalog": True,
+    }
+
+
+def test_pipeline_rejects_title_only_or_unpublished_product_policy_binding(
+    monkeypatch,
+    published_product_policy_db,
+):
+    monkeypatch.delenv("COPILOT_DOMAIN_POLICY_ID", raising=False)
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-002",
+        sku_code="POLICY-SKU-002",
+        domain_policy_id="maternal_child_home",
+    )
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-003",
+        sku_code="POLICY-SKU-003",
+        status="draft",
+        domain_policy_id="maternal_child_home",
+    )
+
+    title_only = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            product_name="Catalog Product",
+        )
+    )
+    unpublished = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            product_candidates=[{"type": "sku_code", "value": "POLICY-SKU-003"}],
+        )
+    )
+
+    assert (
+        title_only.copilot_context["_answer_eligibility_owner_context"]["source"]
+        == "server_configuration"
+    )
+    assert (
+        title_only.copilot_context["_answer_eligibility_owner_context"]
+        ["domain_policy_context"]["status"]
+        == "missing"
+    )
+    unpublished_owner = unpublished.copilot_context[
+        "_answer_eligibility_owner_context"
+    ]
+    assert unpublished_owner["source"] == "verified_server_mapping"
+    assert unpublished_owner["domain_policy_context"]["status"] == "missing"
+
+
+def test_pipeline_rejects_conflicting_exact_product_identifiers(
+    monkeypatch,
+    published_product_policy_db,
+):
+    monkeypatch.delenv("COPILOT_DOMAIN_POLICY_ID", raising=False)
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-004",
+        sku_code="POLICY-SKU-004",
+        domain_policy_id="maternal_child_home",
+    )
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-005",
+        sku_code="POLICY-SKU-005",
+        domain_policy_id="maternal_child_home",
+    )
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            copilot_context={"i_id": "POLICY-PRODUCT-004"},
+            product_candidates=[{"type": "sku_code", "value": "POLICY-SKU-005"}],
+        )
+    )
+
+    owner_context = prepared.copilot_context["_answer_eligibility_owner_context"]
+    assert owner_context["source"] == "verified_server_mapping"
+    assert owner_context["domain_policy_context"]["status"] == "missing"
+
+
+def test_pipeline_keeps_legacy_query_only_catalog_usable_without_policy_column(
+    monkeypatch,
+    tmp_path,
+):
+    """A pre-migration catalog must fail closed for policy binding, not retrieval."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import app.db as db_module
+    from app.models.kb_tables import KBProduct
+
+    database = tmp_path / "legacy-catalog.sqlite"
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE kb_product (
+                id INTEGER PRIMARY KEY,
+                i_id VARCHAR(64) NOT NULL,
+                product_name VARCHAR(255) NOT NULL,
+                brand VARCHAR(128) NOT NULL DEFAULT '',
+                category_l1 VARCHAR(64) NOT NULL DEFAULT '',
+                category_l2 VARCHAR(64) NOT NULL DEFAULT '',
+                category_l3 VARCHAR(64) NOT NULL DEFAULT '',
+                sku_list_json TEXT NOT NULL DEFAULT '[]',
+                specs_json TEXT NOT NULL DEFAULT '{}',
+                logistics_json TEXT NOT NULL DEFAULT '{}',
+                warranty_json TEXT NOT NULL DEFAULT '{}',
+                completeness_score FLOAT NOT NULL DEFAULT 0,
+                missing_fields_json TEXT NOT NULL DEFAULT '[]',
+                status VARCHAR(16) NOT NULL DEFAULT 'draft',
+                version INTEGER NOT NULL DEFAULT 1,
+                created_by VARCHAR(64) NOT NULL DEFAULT '',
+                updated_by VARCHAR(64) NOT NULL DEFAULT '',
+                created_at DATETIME,
+                updated_at DATETIME,
+                import_batch_id VARCHAR(64) NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            INSERT INTO kb_product (
+                id, i_id, product_name, sku_list_json, status
+            ) VALUES (
+                1, 'LEGACY-PRODUCT-001', 'Legacy catalog product',
+                '[{"sku_code": "LEGACY-SKU-001"}]', 'published'
+            )
+            """
+        )
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    monkeypatch.delenv("COPILOT_DOMAIN_POLICY_ID", raising=False)
+
+    db = session_factory()
+    try:
+        legacy_product = db.query(KBProduct).filter(KBProduct.id == 1).one()
+        assert legacy_product.to_dict()["i_id"] == "LEGACY-PRODUCT-001"
+        assert legacy_product.to_dict(detail=True)["domain_policy_id"] == ""
+    finally:
+        db.close()
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            product_candidates=[{"type": "sku_code", "value": "LEGACY-SKU-001"}],
+        )
+    )
+
+    owner_context = prepared.copilot_context["_answer_eligibility_owner_context"]
+    assert owner_context["source"] == "verified_server_mapping"
+    assert owner_context["domain_policy_context"]["status"] == "missing"
+
+
 def test_disabled_decision_shadow_reports_provider_block_without_a_candidate_reply(pipeline_harness, monkeypatch):
     monkeypatch.delenv("COPILOT_LLM_DECISION_SHADOW_ENABLED", raising=False)
 

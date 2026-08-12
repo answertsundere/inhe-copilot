@@ -101,6 +101,16 @@ def _migrate_add_columns():
                     conn.execute(text(f"ALTER TABLE kb_qa ADD COLUMN {col_name} {col_type} DEFAULT {default}"))
             conn.commit()
 
+    # kb_product 表迁移 - 已发布商品的非事实领域策略控制元数据。
+    if "kb_product" in inspector.get_table_names():
+        existing_cols = {c["name"] for c in inspector.get_columns("kb_product")}
+        if "domain_policy_id" not in existing_cols:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE kb_product ADD COLUMN domain_policy_id VARCHAR(64) DEFAULT ''"
+                ))
+                conn.commit()
+
     # kb_sop 表迁移 - agent_action 字段
     if "kb_sop" in inspector.get_table_names():
         existing_cols = {c["name"] for c in inspector.get_columns("kb_sop")}

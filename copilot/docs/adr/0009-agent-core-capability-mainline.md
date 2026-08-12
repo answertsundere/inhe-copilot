@@ -167,7 +167,11 @@ rules. Minimal Decision Context only projects those verdicts. Missing output is
 `unknown`, never implicitly safe.
 
 Domain Policy Packs are strict data files selected only by explicit structured
-metadata. They may contain claim-level risk, inference, direct-fact, and
+metadata. A verified Pipeline lookup may bind one exact SKU or `i_id` to one
+published product's reviewed `domain_policy_id`; title matching, ambiguous or
+unpublished products, and public Pack metadata cannot select a Pack. This
+field is non-factual control metadata and a published-product change returns
+through the existing review workflow. Packs may contain claim-level risk, inference, direct-fact, and
 freshness policy. They may not contain product facts, identities, customer
 text, scenario identifiers, or reply templates. Product truth continues to
 come from admitted evidence. The diagnostic

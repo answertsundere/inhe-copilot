@@ -114,6 +114,56 @@ class TestCleanValue:
         assert clean_value("无") == "无"
 
 
+def test_domain_policy_id_is_validated_as_control_metadata(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="POLICY-METADATA-001",
+        product_name="Policy metadata product",
+        domain_policy_id="maternal_child_home",
+    )
+
+    assert created.to_dict(detail=True)["domain_policy_id"] == "maternal_child_home"
+    with pytest.raises(ValueError, match="domain_policy_id_not_available"):
+        KBProductRepository.create(
+            i_id="POLICY-METADATA-002",
+            product_name="Invalid policy product",
+            domain_policy_id="does_not_exist",
+        )
+
+
+def test_published_product_policy_binding_returns_to_existing_review_workflow(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="POLICY-METADATA-003",
+        product_name="Published policy metadata product",
+        status="published",
+    )
+    updated = KBProductRepository.update(
+        created.id,
+        {"domain_policy_id": "maternal_child_home"},
+        updated_by="reviewer",
+    )
+
+    assert updated is not None
+    assert updated.domain_policy_id == "maternal_child_home"
+    assert updated.status == "pending_review"
+
+
+def test_new_product_policy_binding_cannot_bypass_existing_review_workflow(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="POLICY-METADATA-004",
+        product_name="New policy metadata product",
+        status="published",
+        domain_policy_id="maternal_child_home",
+    )
+
+    assert created.status == "pending_review"
+
+
 class TestMergeJsonDict:
     def test_new_overwrites_old(self):
         old = {"weight": "1.0", "color": "red"}

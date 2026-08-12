@@ -11,7 +11,8 @@ from sqlalchemy import (
     Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey,
     Index,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import deferred, relationship
 
 from app.db import Base
 
@@ -55,6 +56,10 @@ class KBProduct(Base):
     specs_json = Column(Text, nullable=False, default="{}")
     logistics_json = Column(Text, nullable=False, default="{}")
     warranty_json = Column(Text, nullable=False, default="{}")
+    # Control metadata only. This is never product evidence or a customer-visible
+    # fact. Defer it so query-only legacy catalogs remain readable until their
+    # normal writable migration has added the optional control column.
+    domain_policy_id = deferred(Column(String(64), nullable=False, default=""))
 
     completeness_score = Column(Float, nullable=False, default=0.0)
     missing_fields_json = Column(Text, nullable=False, default="[]")
@@ -98,6 +103,13 @@ class KBProduct(Base):
     def set_warranty(self, value):
         self.warranty_json = _json_set(value, False)
 
+    def get_domain_policy_id(self):
+        """Return empty control metadata when a query-only legacy schema lacks it."""
+        try:
+            return str(self.domain_policy_id or "").strip()
+        except SQLAlchemyError:
+            return ""
+
     def get_missing_fields(self):
         return _json_get(self.missing_fields_json, [])
 
@@ -126,6 +138,7 @@ class KBProduct(Base):
         if detail:
             d.update({
                 "sku_list": self.get_sku_list(),
+                "domain_policy_id": self.get_domain_policy_id(),
                 "created_by": self.created_by,
                 "updated_by": self.updated_by,
             })

@@ -53,6 +53,21 @@ def _is_useful(value) -> bool:
     return text not in _USELESS_VALUES
 
 
+def _validated_domain_policy_id(value) -> str:
+    """Keep policy selection as reviewed control metadata, never product fact."""
+    domain_policy_id = str(value or "").strip()
+    if not domain_policy_id:
+        return ""
+    from app.repositories.file_policy_repository import FilePolicyRepository
+
+    resolved = FilePolicyRepository().resolve_domain_policy_pack({
+        "catalog_metadata": {"domain_policy_id": domain_policy_id},
+    })
+    if resolved.get("status") != "loaded":
+        raise ValueError("domain_policy_id_not_available")
+    return domain_policy_id
+
+
 def _get_field_value(product: KBProduct, key: str, getter_name: Optional[str]):
     """根据字段定义取值。key 支持点号路径（如 specs.material）。"""
     if getter_name is None:
@@ -95,6 +110,16 @@ class KBProductRepository:
     def create(**kwargs) -> KBProduct:
         db = SessionLocal()
         try:
+            if "domain_policy_id" in kwargs:
+                kwargs = dict(kwargs)
+                kwargs["domain_policy_id"] = _validated_domain_policy_id(
+                    kwargs["domain_policy_id"]
+                )
+                if (
+                    kwargs["domain_policy_id"]
+                    and str(kwargs.get("status") or "").strip() == "published"
+                ):
+                    kwargs["status"] = "pending_review"
             product = KBProduct(**kwargs)
             # 计算 completeness
             db.add(product)
@@ -146,11 +171,13 @@ class KBProductRepository:
             product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
             if not product:
                 return None
+            policy_binding_changed = False
+            status_before_update = product.status
 
             allowed_fields = {
                 "i_id", "product_name", "brand",
                 "category_l1", "category_l2", "category_l3",
-                "status", "import_batch_id",
+                "status", "import_batch_id", "domain_policy_id",
             }
             json_setters = {
                 "sku_list": "set_sku_list",
@@ -167,8 +194,18 @@ class KBProductRepository:
                     getattr(product, json_setters[k])(v)
                     changed.append(k)
                 elif k in allowed_fields:
+                    if k == "domain_policy_id":
+                        v = _validated_domain_policy_id(v)
+                        policy_binding_changed = (
+                            v != str(product.domain_policy_id or "")
+                        ) or policy_binding_changed
                     setattr(product, k, v)
                     changed.append(k)
+
+            # A published product cannot change its answer-strategy control
+            # metadata without returning to the existing review workflow.
+            if policy_binding_changed and status_before_update == "published":
+                product.status = "pending_review"
 
             product.updated_by = updated_by or product.updated_by
             product.updated_at = datetime.utcnow()
@@ -184,7 +221,7 @@ class KBProductRepository:
             _log_change(
                 db, target_type="kb_product", target_id=product.id,
                 target_title=product.product_name, action="update",
-                before_status=product.status, after_status=product.status,
+                before_status=status_before_update, after_status=product.status,
                 performed_by=updated_by, changed_fields=changed,
                 snapshot=product.to_dict(detail=True),
                 reason="更新商品知识",

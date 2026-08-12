@@ -74,6 +74,14 @@ The following rules are non-negotiable:
 10. Synthetic benchmarks are safety regression only. They never establish real
     customer accuracy.
 
+Reviewed product-to-Domain-Pack binding is a prerequisite for bounded practical
+guidance. The existing Pipeline may derive it only from one exact SKU/`i_id`
+that resolves to one published product with a reviewed `domain_policy_id`.
+That field is control metadata, not evidence or a reply fact; ambiguous,
+unpublished, title-only, missing, or public-injected mappings must remain
+fail-closed. This work stays inside the existing Pipeline, product review, and
+Domain Pack owners.
+
 ## Current Active Priority
 
 **Active priority: P1 - Gold Conversation Quality.**

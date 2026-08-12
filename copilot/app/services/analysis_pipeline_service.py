@@ -57,6 +57,152 @@ _MEDIA_PROMISE_TERMS = (
     "发安装视频", "发视频", "发图", "图片发您", "参考我下面发您的图片或视频",
     "下面发您的图片或视频", "图片/视频资料", "图片或视频",
 )
+_PRODUCT_POLICY_EXACT_SKU_KEYS = (
+    "sku_code",
+    "sku_id",
+    "sku",
+    "internal_sku_code",
+)
+_PRODUCT_POLICY_EXACT_IID_KEYS = (
+    "i_id",
+    "internal_i_id",
+    "internal_product_code",
+)
+
+
+def _text_identifier(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _collect_product_policy_identifiers(
+    request: "AnalysisPipelineRequest",
+    context: dict[str, Any],
+) -> tuple[set[str], set[str]]:
+    """Collect exact server-resolvable identifiers without title or text matching."""
+    sku_values: set[str] = set()
+    iid_values: set[str] = set()
+
+    def add_mapping(value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        for key in _PRODUCT_POLICY_EXACT_SKU_KEYS:
+            text = _text_identifier(value.get(key))
+            if text:
+                sku_values.add(text)
+        for key in _PRODUCT_POLICY_EXACT_IID_KEYS:
+            text = _text_identifier(value.get(key))
+            if text:
+                iid_values.add(text)
+
+    add_mapping(context)
+    add_mapping(context.get("slots"))
+    real_identity = context.get("real_context_product_identity")
+    add_mapping(real_identity)
+    real_context = context.get("real_context")
+    if isinstance(real_context, dict):
+        add_mapping(real_context.get("product"))
+    real_candidates = (
+        real_identity.get("product_candidates") or []
+        if isinstance(real_identity, dict)
+        else []
+    )
+    candidates = [
+        *(request.product_candidates or []),
+        *(context.get("product_candidates") or []),
+        *real_candidates,
+    ]
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        candidate_type = _text_identifier(candidate.get("type")).lower()
+        value = _text_identifier(candidate.get("value"))
+        add_mapping(candidate)
+        if value and "sku" in candidate_type:
+            sku_values.add(value)
+        if value and "i_id" in candidate_type:
+            iid_values.add(value)
+    return sku_values, iid_values
+
+
+def _product_contains_exact_sku(product: Any, sku: str) -> bool:
+    target = _text_identifier(sku).upper()
+    if not target:
+        return False
+    if _text_identifier(getattr(product, "i_id", "")).upper() == target:
+        return True
+    try:
+        sku_list = product.get_sku_list()
+    except Exception:
+        return False
+    for item in sku_list if isinstance(sku_list, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if any(
+            _text_identifier(item.get(key)).upper() == target
+            for key in _PRODUCT_POLICY_EXACT_SKU_KEYS
+        ):
+            return True
+    return False
+
+
+def _verified_product_domain_policy_selector(
+    request: "AnalysisPipelineRequest",
+    context: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """Resolve a policy only from one exact identifier and one published product.
+
+    The boolean marks that an identity was supplied. It prevents a global policy
+    from silently applying after an ambiguous, unpublished, or unbound product
+    identity was presented.
+    """
+    sku_values, iid_values = _collect_product_policy_identifiers(request, context)
+    if not sku_values and not iid_values:
+        return {}, False
+    if len(sku_values) > 1 or len(iid_values) > 1:
+        return {}, True
+    try:
+        from app.db import SessionLocal
+        from app.models.kb_tables import KBProduct
+    except Exception:
+        return {}, True
+
+    db = SessionLocal()
+    try:
+        matches: dict[int, Any] = {}
+        if iid_values:
+            i_id = next(iter(iid_values))
+            for product in (
+                db.query(KBProduct)
+                .filter(KBProduct.i_id == i_id)
+                .filter(KBProduct.status == "published")
+                .all()
+            ):
+                matches[product.id] = product
+        if sku_values:
+            sku = next(iter(sku_values))
+            for product in (
+                db.query(KBProduct)
+                .filter(KBProduct.status == "published")
+                .limit(1000)
+                .all()
+            ):
+                if _product_contains_exact_sku(product, sku):
+                    matches[product.id] = product
+        if len(matches) != 1:
+            return {}, True
+        product = next(iter(matches.values()))
+        domain_policy_id = _text_identifier(product.get_domain_policy_id())
+        if not domain_policy_id:
+            return {}, True
+        return {
+            "catalog_metadata": {
+                "domain_policy_id": domain_policy_id,
+            },
+        }, True
+    except Exception:
+        return {}, True
+    finally:
+        db.close()
 
 
 def _diagnostic_alias(value: Any, *, prefix: str) -> str:
@@ -511,19 +657,25 @@ class AnalysisPipelineService:
                 or {}
             )
         else:
-            owner_source = "server_configuration"
-            configured_domain_policy_id = str(
-                os.getenv("COPILOT_DOMAIN_POLICY_ID", "")
-            ).strip()
-            domain_selector = (
-                {
-                    "catalog_metadata": {
-                        "domain_policy_id": configured_domain_policy_id,
-                    },
-                }
-                if configured_domain_policy_id
-                else {}
+            domain_selector, product_identity_present = (
+                _verified_product_domain_policy_selector(request, context)
             )
+            if product_identity_present:
+                owner_source = "verified_server_mapping"
+            else:
+                owner_source = "server_configuration"
+                configured_domain_policy_id = str(
+                    os.getenv("COPILOT_DOMAIN_POLICY_ID", "")
+                ).strip()
+                domain_selector = (
+                    {
+                        "catalog_metadata": {
+                            "domain_policy_id": configured_domain_policy_id,
+                        },
+                    }
+                    if configured_domain_policy_id
+                    else {}
+                )
         from app.repositories.file_policy_repository import (
             FilePolicyRepository,
         )
