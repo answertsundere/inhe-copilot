@@ -6,7 +6,8 @@ This is the durable documentation entry point for the INHE customer-service Copi
 
 Every AI or engineer must read these before implementation:
 
-1. Parent workspace `AGENTS.md` and project `AGENTS.md`.
+1. Parent workspace `AGENTS.md`, project `AGENTS.md`, `PROJECT_INDEX.md`, and
+   `ROADMAP.md`.
 2. `docs/PROJECT_CHARTER.md` - business mission, truth flow, non-goals, and quality definition.
 3. `docs/architecture-overview.md` - current system, target system, confirmed gaps, and convergence order.
 4. `docs/agent-core-priority-plan.md` - mandatory delivery order, stage gates,
@@ -43,6 +44,22 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/agent-core-priority-plan.md` - operational priority authority for the
   gold-service Agent Core, including the active priority, protocol-work budget,
   promotion gates, domain portability, and required task header.
+- `docs/gold-customer-service-delivery-plan.md` - authoritative execution
+  sequence for the Gold Customer Service Agent, including dynamic-truth source
+  policy, P0-P7 gates, and the active P1 work queue.
+- `docs/project-execution-ledger.md` - current task ledger, stage gates, blockers, and immediate execution queue.
+- `PROJECT_INDEX.md` - root execution entry point, current gate, and required
+  documentation sequence.
+- `ROADMAP.md` - active task record, phase status, blockers, and immediate
+  implementation queue.
+- `docs/testing-and-acceptance.md` - reproducible regression, development
+  loopback, API smoke, and P1 E2 evaluation procedures.
+- `docs/p1-multigoal-completion-boundary.md` - verified P1 multi-goal result,
+  frozen-owner boundary, and the required P3/P4 reauthorization for
+  customer-visible completion steps.
+- `docs/p1-e2-long-conversation-evaluation-plan.md` - privacy-safe, review-only
+  P1 E2 evaluation of multi-turn quality on the existing formal Pipeline.
+- `docs/CHANGELOG.md` - dated implementation and verification record.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/agent-core-candidate-change-ownership.md` - P0-R0 ownership and
   disposition manifest for the 45-file feature-disabled Agent Core checkpoint,
@@ -228,6 +245,10 @@ engineering evidence only: `real_customer_accuracy=null`,
 - `docs/adr/0001-unified-analysis-pipeline.md` - accepted decision establishing
   one formal AnalysisPipeline before any service decomposition.
 - `docs/research/mature-customer-service-systems.md` - official-source comparison of mature routing, handoff, task, AI, and self-hosted control-plane patterns.
+- `docs/research/customer-experience-and-controlled-recommendation.md` -
+  mature-system findings and the proposed emotion, handoff, and
+  evidence-grounded recommendation contract; it does not authorize runtime
+  behavior before the stated phase gates.
 - `docs/research/grounded-reasoning-evaluation.md` - official-source-informed, deterministic evaluation contract for the shadow Grounded Reasoning layer.
 - `docs/research/multimodal-grounded-customer-service.md` - mature-product patterns, verified current gaps, and the target contract for product-media understanding, bounded derivation, and claim-level safety.
 - `docs/research/vision-grounding-provider-qualification.md` - provider-neutral, read-only 10-image grounding qualification contract and reuse assessment.

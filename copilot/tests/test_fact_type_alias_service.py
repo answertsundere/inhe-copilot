@@ -1,6 +1,21 @@
 from __future__ import annotations
 
 
+def test_explicit_dimension_subject_scope_requires_one_unambiguous_object():
+    from app.services.fact_type_alias_service import (
+        explicit_dimension_subject_scope_from_text,
+    )
+
+    assert explicit_dimension_subject_scope_from_text("外箱尺寸") == "packaging"
+    assert explicit_dimension_subject_scope_from_text("main product dimensions") == "product"
+    assert explicit_dimension_subject_scope_from_text(
+        "包装和商品本身尺寸"
+    ) == ""
+    assert explicit_dimension_subject_scope_from_text(
+        "compartment dimensions"
+    ) == ""
+
+
 def test_low_risk_promotion_alias_is_direct_safe_for_product_fact():
     from app.services.fact_type_alias_service import (
         expand_fact_type_aliases,

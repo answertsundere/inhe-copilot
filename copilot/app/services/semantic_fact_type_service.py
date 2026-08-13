@@ -25,6 +25,7 @@ from app.services.fact_type_alias_service import (
     canonical_dimension_subject_scope,
     declared_attribute_candidates,
     DIMENSION_SUBJECT_SCOPES,
+    explicit_dimension_subject_scope_from_text,
     is_dimension_claim_type,
 )
 from app.services.fact_type_service import FACT_TYPE_LABELS, classify_query_fact_type
@@ -2274,6 +2275,23 @@ def _sanitize_customer_goals(
             raw.get("claim_type_status"),
             24,
         ).lower()
+        declared_claim_type = _bounded_text(raw.get("claim_type"), 80).lower()
+        declared_subject_scope = canonical_dimension_subject_scope(
+            raw.get("subject_scope", "")
+        )
+        if (
+            not reason_code
+            and declared_status == "canonical"
+            and is_dimension_claim_type(declared_claim_type)
+        ):
+            source_subject_scope = explicit_dimension_subject_scope_from_text(
+                raw.get("source_text")
+            )
+            if (
+                source_subject_scope
+                and source_subject_scope != declared_subject_scope
+            ):
+                declared_subject_scope = source_subject_scope
         claim_type_status = (
             declared_status
             if not reason_code
@@ -2295,9 +2313,7 @@ def _sanitize_customer_goals(
         if claim_type_status == "canonical" and is_dimension_claim_type(
             claim_type
         ):
-            subject_scope = canonical_dimension_subject_scope(
-                raw.get("subject_scope", "")
-            )
+            subject_scope = declared_subject_scope
         semantic_key = (
             ""
             if claim_type_status == "canonical"

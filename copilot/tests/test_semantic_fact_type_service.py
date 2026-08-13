@@ -261,6 +261,68 @@ def test_turn_understanding_normalizes_known_dimension_display_attribute():
     assert goals[0]["attribute_key"] == "width"
 
 
+def test_turn_understanding_normalizes_explicit_dimension_subject_scope_from_source():
+    message = "外箱有多大？商品本身展开后的整体尺寸也一起告诉我。"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "product",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": "外箱有多大",
+            },
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "packaging",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": "商品本身展开后的整体尺寸",
+            },
+        ],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert {
+        goal["goal_summary"]: goal["subject_scope"]
+        for goal in goals
+    } == {
+        "外箱有多大": "packaging",
+        "商品本身展开后的整体尺寸": "product",
+    }
+
+
+def test_turn_understanding_does_not_guess_dimension_scope_for_mixed_source():
+    message = "包装和商品本身的尺寸都要确认。"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "packaging",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": message,
+            },
+        ],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["subject_scope"] == "packaging"
+
+
 def test_single_provider_goal_is_not_completed_from_legacy_fact_type(monkeypatch):
     monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
     message = "first independent request and second independent request"

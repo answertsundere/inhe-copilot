@@ -7,6 +7,7 @@ original query fact type or final answer gates.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Any
 
@@ -134,6 +135,87 @@ DIMENSION_SUBJECT_SCOPES = frozenset({
     "included_item",
 })
 
+# These cues are a closed, scope-only contract for a source span that names
+# exactly one measured object. They do not identify a product, retrieve a
+# fact, or infer a scope from a mixed or otherwise ambiguous phrase.
+_DIMENSION_SUBJECT_SCOPE_CUES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "packaging",
+        (
+            "包装",
+            "纸箱",
+            "外箱",
+            "内箱",
+            "包裹",
+            "包材",
+            "carton",
+            "package",
+            "packaging",
+            "shipping box",
+        ),
+    ),
+    (
+        "component",
+        (
+            "部件",
+            "零件",
+            "组件",
+            "抽屉",
+            "柜门",
+            "层板",
+            "把手",
+            "脚轮",
+            "component",
+            "part",
+            "drawer",
+            "door",
+            "panel",
+            "handle",
+            "shelf",
+            "wheel",
+        ),
+    ),
+    (
+        "accessory",
+        (
+            "配件",
+            "附件",
+            "螺丝",
+            "工具",
+            "赠品",
+            "accessory",
+            "fitting",
+            "screw",
+            "tool",
+        ),
+    ),
+    (
+        "included_item",
+        (
+            "随附",
+            "附带",
+            "套装内",
+            "included item",
+            "included accessory",
+        ),
+    ),
+    (
+        "product",
+        (
+            "商品本身",
+            "商品本体",
+            "产品本身",
+            "产品本体",
+            "商品整体",
+            "产品整体",
+            "整机",
+            "product itself",
+            "main product",
+            "whole product",
+        ),
+    ),
+)
+
 # These aliases only normalize the measured axis.  Claim Resolution keeps the
 # requested overall-product scope separate, so a component or package width
 # cannot satisfy an overall-width request merely through this normalization.
@@ -229,6 +311,22 @@ def canonical_dimension_subject_scope(value: Any) -> str:
     if scope == "product_overall":
         return "product"
     return scope if scope in DIMENSION_SUBJECT_SCOPES else ""
+
+
+def explicit_dimension_subject_scope_from_text(value: Any) -> str:
+    """Return a scope only when one explicit object family is present in text."""
+    text = _normalize_contract_token(value)
+    matching_scopes = {
+        scope
+        for scope, cues in _DIMENSION_SUBJECT_SCOPE_CUES
+        if any(
+            re.search(rf"(?<![a-z0-9]){re.escape(cue)}(?![a-z0-9])", text)
+            if cue.isascii()
+            else cue in text
+            for cue in cues
+        )
+    }
+    return next(iter(matching_scopes)) if len(matching_scopes) == 1 else ""
 
 
 def canonical_attribute_slot(
