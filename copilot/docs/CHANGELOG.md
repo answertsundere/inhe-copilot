@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-08-13 - Repeatable P1 Isolated Smoke
+
+- Added `scripts/run_p1_isolated_smoke.py` and its contract tests for a
+  loopback-only 5012 Supervisor Assist smoke check. The command requires an
+  explicit read-only knowledge snapshot, starts and stops its child runtime,
+  and reports response metadata rather than conversation or reply content.
+- The runner rejects remote endpoints, fails closed for a non-ready runtime,
+  nonempty low-risk draft failure, absent human review, or any automatic-send
+  result. It leaves formal evidence convergence disabled and formal knowledge
+  query-only.
+- The real two-case execution with the local loopback model passed: readiness
+  was true, both cases had review drafts and human review, and no case could
+  send automatically. This is P1 regression/operability evidence only;
+  `real_customer_accuracy` remains `null` and P1 E2 authorization remains
+  blocked.
+
 ## 2026-08-13 - P1 Test Entry Verification
 
 - Focused P1/API/workbench regression and `compileall` completed successfully.

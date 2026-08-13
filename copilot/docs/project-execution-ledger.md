@@ -12,9 +12,9 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-E2-001-TEST-ENTRY` |
+| Task ID | `P1-E2-001-ISOLATED-SMOKE` |
 | Owner | Codex |
-| Status | Safety verification complete; functional smoke blocked on isolated runtime configuration and E2 remains blocked on authorized deidentified conversations |
+| Status | Repeatable isolated smoke complete; E2 remains blocked on authorized deidentified conversations |
 | Active priority | P1 - Gold Conversation Quality |
 | Customer outcome | Preserve every explicit buyer goal, use confirmed context, answer supported parts naturally, and expose only the unresolved remainder. |
 | In-scope owners | Turn Understanding, canonical conversation-goal lifecycle, Claim Resolution, P1 runner, and their contract tests. |
@@ -104,6 +104,15 @@ and next owner here and in `docs/CHANGELOG.md`.
   it also had no LLM credential, so no functional reply was available for
   review. This is an environment readiness block, not a quality pass or a
   reason to weaken the no-send boundary. The temporary server was stopped.
+- `P1-E2-001-ISOLATED-SMOKE` replaces manual environment assembly with
+  `scripts/run_p1_isolated_smoke.py`. It allows only loopback endpoints,
+  requires an explicit isolated SQLite snapshot, supplies the development
+  loopback role only to its child process, starts and stops port 5012, and
+  reports no input or reply text. Its successful two-case execution used an
+  eligible query-only snapshot and a local loopback model: runtime readiness
+  was true, both drafts were present, all candidates required human review,
+  and `can_send=true` was zero. The result is a P1 safety/operability check,
+  not a real-customer quality or promotion result.
 
 ## Phase Plan
 
@@ -120,16 +129,13 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 ## Immediate Queue
 
-1. Configure a 5012-only query-only runtime with approved knowledge,
-   authentication, and ignored provider credentials; repeat functional API
-   smoke without changing production 5011.
-2. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
+1. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
    versioned, hashed long-conversation manifest. Keep raw content, direct
    identifiers, and label answers outside the repository and Agent prompt.
-3. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
+2. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
    and review-only delivery. Compare only equivalent runtimes and preserve
    `can_send=false`.
-4. `P1-E2-001C` - Independently review goal coverage, continuity, factual
+3. `P1-E2-001C` - Independently review goal coverage, continuity, factual
    restraint, unresolved handling, and handoff necessity. Record failures by
    owner without modifying frozen owners.
 5. `P2-LIVE-EVIDENCE-DESIGN` - After P1 acceptance, create the source-of-truth

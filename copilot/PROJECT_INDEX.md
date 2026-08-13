@@ -47,10 +47,10 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The focused regression and development-loopback safety smoke have passed. The
-current isolated runtime is not ready for functional reply review because its
-knowledge database and management authentication configuration are absent, and
-no LLM credential is configured. Correct those ignored runtime prerequisites
-before repeating the functional API smoke check. E2 evaluation may start only
-when a data owner supplies the authorized, deidentified review package outside
-this repository and the existing validator accepts it.
+The repeatable `scripts/run_p1_isolated_smoke.py` check has passed with an
+explicit query-only knowledge snapshot and a loopback model. It verifies
+readiness, no-send, human review, and nonempty review drafts without retaining
+reply content in its report. It is still regression and operability evidence,
+not real customer accuracy. E2 evaluation may start only when a data owner
+supplies the authorized, deidentified review package outside this repository
+and the existing validator accepts it.

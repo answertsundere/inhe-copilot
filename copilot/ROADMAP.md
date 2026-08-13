@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-E2-001-TEST-ENTRY` |
+| Task ID | `P1-E2-001-ISOLATED-SMOKE` |
 | Owner | Codex |
-| Goal | Establish the project execution index and verify the formal API and P1 regression entry points without changing Agent behavior. |
-| Scope | Documentation, test invocation, and review-only diagnostic verification. |
-| Status | Safety verification complete; functional smoke blocked on isolated runtime configuration |
+| Goal | Make the formal P1 Supervisor Assist smoke check repeatable on an isolated 5012 runtime without changing Agent behavior. |
+| Scope | P1 runner, contract test, test documentation, and review-only diagnostic verification. |
+| Status | Complete; E2 remains blocked on authorized deidentified conversations |
 | Gate | No live product or order data, no knowledge write, no delivery action, and no change to `can_send`. |
 
 ## Phase Status
@@ -26,30 +26,23 @@
 
 ## Current Blockers
 
-1. The isolated 5012 smoke runtime reports `ready=false`: its configured
-   knowledge store has no `knowledge_entries`, `knowledge_chunks`, or `kb_qa`,
-   and management authentication is not configured. It also has no LLM
-   credential, so it cannot produce a functional draft for review.
-2. `P1-E2-001` cannot claim real quality until a data owner authorizes a
+1. `P1-E2-001` cannot claim real quality until a data owner authorizes a
    deidentified long-conversation review package and independent labels.
-3. The P1 frozen-owner boundary prevents inventing a policy outcome, product
+2. The P1 frozen-owner boundary prevents inventing a policy outcome, product
    fact, compensation, refund, replacement, or promised completion step.
-4. No test result may promote the current Supervisor Assist runtime to
+3. No test result may promote the current Supervisor Assist runtime to
    autonomous sending.
 
 ## Immediate Queue
 
-1. Configure an isolated 5012 runtime with an approved query-only knowledge
-   database, required management authentication, and an ignored LLM credential;
-   rerun the functional API smoke check without changing production 5011.
-2. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
+1. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
    deidentified review package outside the repository; no raw conversations or
    label answers enter an Agent prompt.
-3. `P1-E2-001B`: run the existing formal Pipeline on a query-only snapshot,
+2. `P1-E2-001B`: run the existing formal Pipeline on a query-only snapshot,
    retaining `can_send=false` and human review.
-4. `P1-E2-001C`: independent reviewers record completeness, continuity,
+3. `P1-E2-001C`: independent reviewers record completeness, continuity,
    factual restraint, unresolved coverage, and handoff needs.
-5. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
+4. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
 
 ## Completion Record
 
@@ -65,3 +58,16 @@
 - Functional reply validation is blocked, not passed: no LLM credential is
   configured and readiness is `false` for the knowledge/auth reasons recorded
   above. The temporary 5012 server was stopped after the check.
+
+`P1-E2-001-ISOLATED-SMOKE` completed on 2026-08-13:
+
+- Added `scripts/run_p1_isolated_smoke.py`, which refuses non-loopback URLs,
+  requires an explicit knowledge snapshot, starts and stops a 5012-only
+  development process, and emits reply-free report metadata only.
+- The checked runtime used an explicit query-only snapshot, development
+  loopback admin role, local loopback model, and formal evidence convergence
+  disabled. Health was `ready=true`; both scenarios returned review drafts,
+  required human review, and had `can_send=true` count `0`.
+- Script tests, related readiness/auth tests, and a real two-case 5012 run
+  passed. This does not assess product facts, policies, real customers, or
+  autonomous delivery.

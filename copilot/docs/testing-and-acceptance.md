@@ -59,9 +59,38 @@ Use a non-production port and a query-only knowledge configuration. The
 development run is for a human to inspect a review-only draft; it must not be
 connected to a delivery adapter.
 
+### Recommended Repeatable Check
+
+Use the dedicated P1 runner when an approved isolated snapshot and local model
+are available. It accepts loopback HTTP endpoints only, starts and stops its
+own 5012 process, and writes report metadata without conversation or reply
+text.
+
+```powershell
+$knowledgeSnapshot = 'D:\approved-isolated-runtime\knowledge_snapshot.sqlite'
+python scripts/run_p1_isolated_smoke.py `
+  --knowledge-db $knowledgeSnapshot `
+  --llm-api-base 'http://127.0.0.1:8001/v1' `
+  --llm-model 'Qwen/Qwen3-VL-8B-Instruct'
+```
+
+Accept only a result where `health.ready=true`,
+`formal_knowledge_query_only=true`,
+`formal_evidence_convergence=false`, `can_send_true_count=0`, and every case
+has `requires_human_review=true`. The command is a Supervisor Assist safety and
+operability check. It must not be used as a real-accuracy score, production
+release approval, or automatic-send qualification.
+
+### Manual Inspection
+
 ```powershell
 $env:COPILOT_WEB_HOST = '127.0.0.1'
 $env:COPILOT_WEB_PORT = '5012'
+$env:COPILOT_RUNTIME_ENV = 'development'
+$env:COPILOT_ADMIN_AUTH_MODE = 'development_loopback'
+$env:COPILOT_ADMIN_DEV_SUBJECT = 'local-operator'
+$env:COPILOT_ADMIN_DEV_ROLE = 'admin'
+$env:COPILOT_KNOWLEDGE_DB_PATH = 'D:\approved-isolated-runtime\knowledge_snapshot.sqlite'
 $env:COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY = 'true'
 $env:COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED = 'false'
 python run_web.py
