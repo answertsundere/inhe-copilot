@@ -178,6 +178,17 @@ _POLICY_INTENT_DESCRIPTIONS = {
     ),
 }
 
+_FACT_TYPE_CLASSIFICATION_BOUNDARIES = {
+    "dimensions": (
+        "A request for a product measurement value; not a conclusion about "
+        "whether it fits a supplied space."
+    ),
+    "space_fit": (
+        "A request for a fit conclusion; supplied measurements are premises, "
+        "not separate requested measurement values."
+    ),
+}
+
 SYSTEM_PROMPT = """
 You are the Turn Understanding owner for INHE customer-service Copilot.
 Identify every explicit atomic need in the current buyer message. Do not answer
@@ -650,6 +661,11 @@ def _canonical_fact_type_candidates() -> list[dict[str, Any]]:
             ),
             "attribute_contract": "optional_explicit_attribute_key",
         }
+        classification_boundary = _FACT_TYPE_CLASSIFICATION_BOUNDARIES.get(
+            canonical_fact_type_id
+        )
+        if classification_boundary:
+            candidate["classification_boundary"] = classification_boundary
         attribute_candidates = declared_attribute_candidates(
             canonical_fact_type_id
         )

@@ -241,6 +241,23 @@ def test_turn_understanding_candidates_expose_one_canonical_material_choice():
     assert len({item["fact_type_id"] for item in candidates}) == len(candidates)
 
 
+def test_fact_type_candidates_distinguish_measurements_from_fit_conclusions():
+    candidates = {
+        item["fact_type_id"]: item
+        for item in service._canonical_fact_type_candidates()
+    }
+
+    assert "measurement value" in candidates["dimensions"][
+        "classification_boundary"
+    ]
+    assert "fit conclusion" in candidates["space_fit"][
+        "classification_boundary"
+    ]
+    assert "supplied measurements are premises" in candidates[
+        "space_fit"
+    ]["classification_boundary"]
+
+
 def test_turn_understanding_normalizes_known_dimension_display_attribute():
     message = "dimension request"
     goals, status, diagnostics = service._sanitize_customer_goals(
