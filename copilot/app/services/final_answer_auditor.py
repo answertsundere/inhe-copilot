@@ -1824,6 +1824,7 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
         elif status == "supported":
             if (
                 clause.get("clause_kind") != "supported_fact"
+                or not actual_evidence
                 or actual_evidence != expected_evidence
                 or clause.get("inference_policy_refs")
                 or clause.get("scope_qualifier")

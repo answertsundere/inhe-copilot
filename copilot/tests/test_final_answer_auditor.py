@@ -515,6 +515,94 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
     assert audited["final_answer_audit"]["model_call_count"] == 0
 
 
+def _customer_condition_audit_response(*, status: str, clause_kind: str) -> dict:
+    return {
+        "intent": "product_question",
+        "suggested_reply": (
+            "If the product is 12 cm high and the available space is 10 cm, "
+            "it would not fit under that condition; the actual product height "
+            "still needs confirmation."
+        ),
+        "requires_human_review": True,
+        "can_send": False,
+        "selected_evidence": [],
+        "minimal_decision_context": {
+            "requested_claims": [{
+                "claim_type": "space_fit",
+                "attribute_key": "height_fit",
+            }],
+            "claim_resolutions": [{
+                "claim_uid": "claim-space-fit",
+                "claim_type": "space_fit",
+                "attribute_key": "height_fit",
+                "status": status,
+                "support_basis": "none",
+                "evidence_uids": [],
+                "premise_evidence_uids": [],
+                "inference_policy_refs": [],
+            }],
+            "admitted_evidence": [],
+            "recent_conversation_turns": [
+                {"role": "customer", "content": "The available height is 10 cm."},
+                {"role": "customer", "content": "Is 12 cm too tall?"},
+            ],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "clauses": [{
+                "clause_ref": "C1",
+                "goal_ref": "claim-space-fit",
+                "clause_kind": clause_kind,
+                "text": (
+                    "Under the stated 12 cm versus 10 cm condition, it would "
+                    "not fit; the actual product height remains unconfirmed."
+                ),
+                "evidence_uids": [],
+            }],
+        },
+    }
+
+
+def test_final_auditor_allows_unresolved_customer_condition_comparison():
+    response = _customer_condition_audit_response(
+        status="unresolved",
+        clause_kind="unresolved",
+    )
+
+    audited = audit_final_answer(
+        response,
+        customer_message="Is 12 cm too tall for a 10 cm space?",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["requires_human_review"] is True
+    assert audited["can_send"] is False
+    assert audited["selected_evidence"] == []
+
+
+def test_final_auditor_blocks_unsupported_fact_when_both_evidence_lists_are_empty():
+    response = _customer_condition_audit_response(
+        status="supported",
+        clause_kind="supported_fact",
+    )
+    response["suggested_reply"] = "The product is 12 cm high."
+    response["model_first_answer_composer"]["clauses"][0]["text"] = (
+        "The product is 12 cm high."
+    )
+
+    audited = audit_final_answer(
+        response,
+        customer_message="How high is this product?",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "model_first_candidate_supported_clause_invalid" in (
+        audited["final_answer_audit"]["issues"]
+    )
+    assert audited["requires_human_review"] is True
+    assert audited["can_send"] is False
+
+
 def _bounded_inference_audit_response() -> dict:
     policy_ref = (
         "domain-policy:fixture_domain@1.0.0:"
