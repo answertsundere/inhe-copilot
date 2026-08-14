@@ -114,6 +114,25 @@ and next owner here and in `docs/CHANGELOG.md`.
   and `can_send=true` was zero. The result is a P1 safety/operability check,
   not a real-customer quality or promotion result.
 
+## P1 Customer-Conditional Space-Fit Slice
+
+- Frozen symptom: a customer supplied an available-space height and asked for
+  the consequence of a separately stated product-height condition, but Turn
+  Understanding classified the request as a measurement lookup and the
+  no-evidence path asked for product identity again.
+- Earliest corrected owner: the existing FactType semantic boundary. The
+  model-visible candidate contract now distinguishes measurement values from
+  fit conclusions without deterministic phrase matching.
+- Customer-supplied quantities remain conversation context, not admitted
+  evidence. The existing Composer may state only their direct conditional
+  consequence and must preserve the unresolved actual-product boundary.
+- Deterministic Final rejects `supported_fact` clauses with zero canonical
+  evidence. Conditional unresolved clauses remain review-only with
+  `can_send=false`.
+- Focused P1 regression completed 557 tests with no new Graph node, service,
+  model call, reply owner, knowledge write, or Delivery change. Live-provider
+  quality remains unverified and `real_customer_accuracy=null`.
+
 ## Phase Plan
 
 | Phase | Outcome | Status | Entry / exit gate |

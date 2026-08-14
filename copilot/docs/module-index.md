@@ -139,6 +139,17 @@ failures in the same case observations; this neither qualifies the role nor
 changes the Autonomous Send block. The eight human-quality reviews are still
 pending and `real_customer_accuracy=null`.
 
+The P1 customer-conditional comparison slice remains within existing owners.
+`SemanticFactTypeService` exposes the semantic distinction between measurement
+lookup and fit conclusion to the existing Turn Understanding call.
+`ModelFirstAnswerComposerService` may conditionally describe only the direct
+consequence of values explicitly supplied in current/recent customer turns;
+those values stay outside admitted evidence and the resulting canonical clause
+remains `unresolved`. `final_answer_auditor` requires every
+`supported_fact` clause to cite canonical selected evidence. The slice adds no
+owner, call, send condition, or production flag and remains review-only with
+`real_customer_accuracy=null`.
+
 ## Frozen Shadow And Experimental Modules
 
 These modules may keep producing diagnostics. ADR 0009 freezes feature expansion

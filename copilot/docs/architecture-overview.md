@@ -922,6 +922,23 @@ may still be reported, but must not be renamed accuracy.
 The project is therefore in **Agent Core capability convergence**, not broad
 feature expansion and not production automation.
 
+### Customer-Conditional Comparison Boundary
+
+The current P1 vertical slice distinguishes a request for a product measurement
+from a request for a fit conclusion. Measurements or conditions supplied by the
+customer remain non-factual conversation context: they do not enter admitted
+evidence, receive an evidence UID, or establish an actual product attribute.
+The existing Composer may use those explicit conditions only to state their
+direct logical consequence while preserving an unresolved actual-product
+boundary. Such a candidate remains review-only with
+`requires_human_review=true` and `can_send=false`.
+
+Deterministic Final now also rejects any Model-first `supported_fact` clause
+that cites no canonical selected evidence, including the formerly ambiguous
+case where both the claim and clause evidence lists were empty. This adds no
+Graph node, service, model call, reply owner, delivery authority, or accuracy
+claim. The qualification is synthetic and `real_customer_accuracy=null`.
+
 ## Decisions And References
 
 - ADR 0001: one formal AnalysisPipeline.

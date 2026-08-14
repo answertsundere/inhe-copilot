@@ -62,6 +62,12 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/p1-high-frequency-synthetic-dialogues.md` - fictional five-turn P1
   dialogue fixture, review-only preview, and loopback formal-baseline contract;
   it is synthetic regression evidence, not a real-customer accuracy claim.
+- `docs/superpowers/specs/2026-08-14-customer-conditional-space-fit-design.md`
+  - defines the P1 boundary between a measurement lookup and a fit conclusion,
+    while keeping customer-supplied conditions outside formal evidence.
+- `docs/superpowers/plans/2026-08-14-customer-conditional-space-fit.md`
+  - records the TDD sequence for semantic FactType guidance, review-only
+    conditional composition, deterministic final validation, and regression.
 - `docs/CHANGELOG.md` - dated implementation and verification record.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/agent-core-candidate-change-ownership.md` - P0-R0 ownership and
