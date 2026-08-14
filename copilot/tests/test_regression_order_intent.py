@@ -207,6 +207,47 @@ class TestPlannerNoDuplicateRequest:
         plan = result["response_strategy_plan"]
         assert "order_id" not in plan["missing_slots"]
 
+    def test_aftersales_without_identifier_requests_one_order_reference(self):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "aftersales",
+            "customer_concern": "unknown",
+            "customer_state": {},
+            "conversation_context": {},
+            "normalized_message": "Please explain how the applicable resolution is checked.",
+            "slots": {},
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["should_ask_slot"] is True
+        assert plan["missing_slots"] == ["order_id", "tracking_no"]
+        assert plan["missing_slot_mode"] == "any_of"
+        assert result["requires_human_review"] is True
+
+    def test_aftersales_with_identifier_does_not_request_it_again(self):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "aftersales",
+            "customer_concern": "unknown",
+            "customer_state": {},
+            "conversation_context": {},
+            "normalized_message": "Please explain how the applicable resolution is checked.",
+            "slots": {
+                "order_id": "ORDER-REFERENCE",
+                "identifier_type": "internal_order_id",
+            },
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["should_ask_slot"] is False
+        assert plan["missing_slots"] == []
+        assert plan["missing_slot_mode"] == "none"
+        assert result["requires_human_review"] is True
+
 
 # ===========================================================================
 # Test 3: router_validation locks logistics when API order_id provided

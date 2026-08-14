@@ -182,6 +182,15 @@ def response_strategy_planner(state: dict) -> dict:
         missing_slots = _compute_missing_order_slots(state) if not has_order else []
         should_ask_slot = bool(missing_slots)
 
+    elif intent == "aftersales":
+        reply_goal = "verify_aftersales_conditions"
+        tone = "careful"
+        empathy_level = "medium"
+        should_explain_reason = True
+        should_escalate = True
+        missing_slots = _compute_missing_order_slots(state)
+        should_ask_slot = bool(missing_slots)
+
     elif concern in ("worries_material", "worries_product_safety"):
         if _has_clear_product_identity(state) and _has_product_evidence(state):
             reply_goal = "answer_product_fact"
