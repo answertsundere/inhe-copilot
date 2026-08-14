@@ -25,8 +25,13 @@ def _response(*, content="{}", finish_reason="stop"):
     )
 
 
-def _client(api_base: str, response):
-    client = LLMClient(api_key="test-key", api_base=api_base, model="test-model")
+def _client(api_base: str, response, **client_kwargs):
+    client = LLMClient(
+        api_key="test-key",
+        api_base=api_base,
+        model="test-model",
+        **client_kwargs,
+    )
     completions = _FakeCompletions(response)
     client._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
     return client, completions
@@ -190,6 +195,26 @@ def test_other_transport_is_not_rewritten():
     assert request["temperature"] == 0
     assert request["max_tokens"] == 300
     assert "extra_body" not in request
+
+
+def test_explicit_composer_transport_capabilities_disable_thinking_and_expand_budget():
+    client, completions = _client(
+        "https://api.example.test/v1",
+        _response(content='{"suggested_reply":"ok"}'),
+        transport_thinking="disabled",
+        minimum_output_tokens=1200,
+    )
+
+    client.create_chat_completion(
+        model="candidate-model",
+        messages=[{"role": "user", "content": "hello"}],
+        temperature=0,
+        max_tokens=500,
+    )
+
+    request = completions.calls[0]
+    assert request["max_tokens"] == 1200
+    assert request["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 def test_client_projects_private_customer_text_before_provider_call():

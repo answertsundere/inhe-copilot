@@ -422,6 +422,12 @@ def run_qualification(
         api_base=str(role_client.api_base or ""),
         model=str(role_client.model or ""),
         timeout_seconds=int(getattr(role_client, "timeout_seconds", 30) or 30),
+        transport_thinking=str(
+            getattr(role_client, "transport_thinking", "") or ""
+        ),
+        minimum_output_tokens=int(
+            getattr(role_client, "minimum_output_tokens", 0) or 0
+        ),
     )
     records: list[dict[str, Any]] = []
     hard_stop_reason = ""

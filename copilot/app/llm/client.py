@@ -41,11 +41,15 @@ class LLMClient:
         api_base: str = "",
         model: str = "",
         timeout_seconds: int | None = None,
+        transport_thinking: str = "",
+        minimum_output_tokens: int = 0,
     ):
         self.api_key = api_key or LLM_API_KEY
         self.api_base = api_base or LLM_API_BASE
         self.model = model or LLM_MODEL
         self.timeout_seconds = timeout_seconds
+        self.transport_thinking = str(transport_thinking or "").strip().lower()
+        self.minimum_output_tokens = max(0, int(minimum_output_tokens or 0))
         self._client = None
 
     @property
@@ -86,6 +90,15 @@ class LLMClient:
             request.pop("_single_attempt_no_repair", False)
         )
         request["messages"] = self._privacy_project_messages(request.get("messages"))
+        if self.minimum_output_tokens:
+            request["max_tokens"] = max(
+                int(request.get("max_tokens") or 0),
+                self.minimum_output_tokens,
+            )
+        if self.transport_thinking == "disabled":
+            extra_body = dict(request.get("extra_body") or {})
+            extra_body.setdefault("thinking", {"type": "disabled"})
+            request["extra_body"] = extra_body
         if self.provider_name == "minimax":
             temperature = float(request.get("temperature", 0.3) or 0)
             request["temperature"] = max(temperature, 0.1)
@@ -353,6 +366,8 @@ def composer_role_configuration_fingerprint(
     api_base: str,
     model: str,
     timeout_seconds: int,
+    transport_thinking: str = "",
+    minimum_output_tokens: int = 0,
 ) -> str:
     """Bind a Composer qualification to its non-secret transport settings."""
     payload = {
@@ -363,6 +378,13 @@ def composer_role_configuration_fingerprint(
         "model": str(model or "").strip(),
         "timeout_seconds": int(timeout_seconds),
     }
+    normalized_thinking = str(transport_thinking or "").strip().lower()
+    normalized_minimum_output = max(0, int(minimum_output_tokens or 0))
+    if normalized_thinking or normalized_minimum_output:
+        payload["transport_capabilities"] = {
+            "thinking": normalized_thinking,
+            "minimum_output_tokens": normalized_minimum_output,
+        }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
@@ -398,6 +420,17 @@ def get_composer_llm_client(
         1,
         min(int(config.COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS), 120),
     )
+    transport_thinking = str(
+        config.COPILOT_COMPOSER_LLM_TRANSPORT_THINKING or ""
+    ).strip().lower()
+    if transport_thinking not in {"", "disabled"}:
+        raise ComposerRoleConfigurationError(
+            "composer_role_transport_thinking_invalid"
+        )
+    minimum_output_tokens = max(
+        0,
+        min(int(config.COPILOT_COMPOSER_LLM_MIN_OUTPUT_TOKENS), 4096),
+    )
     if not allow_unqualified:
         expected_fingerprint = str(
             config.COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT or ""
@@ -410,6 +443,8 @@ def get_composer_llm_client(
             api_base=values["api_base"],
             model=values["model"],
             timeout_seconds=timeout_seconds,
+            transport_thinking=transport_thinking,
+            minimum_output_tokens=minimum_output_tokens,
         )
         if actual_fingerprint != expected_fingerprint:
             raise ComposerRoleConfigurationError(
@@ -420,4 +455,6 @@ def get_composer_llm_client(
         api_base=values["api_base"],
         model=values["model"],
         timeout_seconds=timeout_seconds,
+        transport_thinking=transport_thinking,
+        minimum_output_tokens=minimum_output_tokens,
     )

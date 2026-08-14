@@ -11,6 +11,8 @@ _COMPOSER_FIELDS = (
     "COPILOT_COMPOSER_LLM_API_KEY",
     "COPILOT_COMPOSER_LLM_MODEL",
     "COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS",
+    "COPILOT_COMPOSER_LLM_TRANSPORT_THINKING",
+    "COPILOT_COMPOSER_LLM_MIN_OUTPUT_TOKENS",
     "COPILOT_COMPOSER_LLM_QUALIFIED",
     "COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT",
 )
@@ -23,6 +25,8 @@ def _set_override(
     api_key: str = "",
     model: str = "",
     timeout_seconds: int = 30,
+    transport_thinking: str = "",
+    minimum_output_tokens: int = 0,
     qualified: bool = False,
     qualification_fingerprint: str = "",
 ) -> None:
@@ -31,11 +35,13 @@ def _set_override(
         "COPILOT_COMPOSER_LLM_API_KEY": api_key,
         "COPILOT_COMPOSER_LLM_MODEL": model,
         "COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS": timeout_seconds,
+        "COPILOT_COMPOSER_LLM_TRANSPORT_THINKING": transport_thinking,
+        "COPILOT_COMPOSER_LLM_MIN_OUTPUT_TOKENS": minimum_output_tokens,
         "COPILOT_COMPOSER_LLM_QUALIFIED": qualified,
         "COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT": qualification_fingerprint,
     }
     for field in _COMPOSER_FIELDS:
-        monkeypatch.setattr(config, field, values[field])
+        monkeypatch.setattr(config, field, values[field], raising=False)
 
 
 def test_composer_role_uses_the_unchanged_formal_client_without_override(
@@ -199,3 +205,47 @@ def test_composer_role_rejects_a_changed_model_after_qualification(
         match="composer_role_configuration_changed",
     ):
         llm_client.get_composer_llm_client()
+
+
+def test_composer_role_binds_explicit_transport_capabilities_to_qualification(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fingerprint = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.example.test/v1",
+        model="candidate-model",
+        timeout_seconds=30,
+        transport_thinking="disabled",
+        minimum_output_tokens=1200,
+    )
+    _set_override(
+        monkeypatch,
+        api_base="https://api.example.test/v1",
+        api_key="test-composer-key",
+        model="candidate-model",
+        qualified=True,
+        qualification_fingerprint=fingerprint,
+        transport_thinking="disabled",
+        minimum_output_tokens=1200,
+    )
+
+    client = llm_client.get_composer_llm_client()
+
+    assert client.transport_thinking == "disabled"
+    assert client.minimum_output_tokens == 1200
+
+
+def test_composer_role_fingerprint_changes_when_transport_capabilities_change():
+    baseline = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.example.test/v1",
+        model="candidate-model",
+        timeout_seconds=30,
+    )
+    configured = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.example.test/v1",
+        model="candidate-model",
+        timeout_seconds=30,
+        transport_thinking="disabled",
+        minimum_output_tokens=1200,
+    )
+
+    assert configured != baseline
