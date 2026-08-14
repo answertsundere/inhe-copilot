@@ -7,6 +7,7 @@ knowledge, or change delivery decisions. Candidate presence is not admission.
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from typing import Any
@@ -48,6 +49,14 @@ REJECTED_FACT_ROLES = {
 }
 REVIEWED_STATUSES = {"reviewed", "verified", "published", "approved"}
 ALLOWED_GATES = {"allowed", "approved", "passed"}
+CUSTOMER_INPUT_SLOT_IDS = {
+    "order_id",
+    "product_link",
+    "product_screenshot",
+    "sku",
+    "tracking_no",
+}
+CUSTOMER_INPUT_SELECTION_MODES = {"all_of", "any_of"}
 PLACEHOLDER_TERMS = (
     "待核实",
     "待确认",
@@ -2106,3 +2115,54 @@ def build_minimal_decision_context(
         "can_change_can_send": False,
     }
     return sanitize_obj(context)
+
+
+def project_response_strategy_actions(
+    minimal_context: dict[str, Any],
+    response_strategy_plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Project deterministic next-input requirements as non-fact context."""
+    context = deepcopy(
+        minimal_context if isinstance(minimal_context, dict) else {}
+    )
+    actions = [
+        deepcopy(item)
+        for item in context.get("service_actions") or []
+        if isinstance(item, dict)
+    ]
+    context["service_actions"] = actions
+    if not isinstance(response_strategy_plan, dict):
+        return context
+    if response_strategy_plan.get("should_ask_slot") is not True:
+        return context
+
+    raw_slots = response_strategy_plan.get("missing_slots")
+    selection_mode = str(
+        response_strategy_plan.get("missing_slot_mode") or ""
+    ).strip()
+    if (
+        not isinstance(raw_slots, list)
+        or not raw_slots
+        or selection_mode not in CUSTOMER_INPUT_SELECTION_MODES
+    ):
+        return context
+    slots = [str(item or "").strip() for item in raw_slots]
+    if (
+        any(not item for item in slots)
+        or len(slots) != len(set(slots))
+        or any(item not in CUSTOMER_INPUT_SLOT_IDS for item in slots)
+    ):
+        return context
+
+    action = {
+        "action_type": "request_customer_input",
+        "accepted_input_slots": slots,
+        "input_selection_mode": selection_mode,
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }
+    if action not in actions:
+        actions.append(action)
+    return context

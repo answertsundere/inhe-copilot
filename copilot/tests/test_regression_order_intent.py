@@ -141,6 +141,24 @@ class TestPlannerNoDuplicateRequest:
         )
         assert plan["should_ask_slot"] is False
 
+    def test_logistics_without_identifier_exposes_alternative_input_slots(self):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "logistics_trace",
+            "customer_concern": "unknown",
+            "customer_state": {},
+            "conversation_context": {},
+            "normalized_message": "Please help check the shipment status.",
+            "slots": {},
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["should_ask_slot"] is True
+        assert plan["missing_slots"] == ["order_id", "tracking_no"]
+        assert plan["missing_slot_mode"] == "any_of"
+
     def test_eta_certainty_with_order_id_no_missing(self):
         from app.agent.nodes.response_strategy_planner import response_strategy_planner
         state = {

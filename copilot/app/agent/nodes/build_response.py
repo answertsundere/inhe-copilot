@@ -8,6 +8,9 @@ import time
 
 from app.services.reply_style_service import beautify_customer_reply
 from app.services.fact_type_service import FACT_TYPE_LABELS
+from app.services.admitted_answer_context_service import (
+    project_response_strategy_actions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,10 @@ def build_response(state: dict) -> dict:
 
     evidence = state.get("evidence", {})
     answer_type = state.get("answer_type", "")
+    minimal_decision_context = project_response_strategy_actions(
+        state.get("minimal_decision_context") or {},
+        state.get("response_strategy_plan") or {},
+    )
 
     duration_ms = int((time.time() - t0) * 1000)
     trace = {
@@ -182,7 +189,7 @@ def build_response(state: dict) -> dict:
         # content or a delivery decision.
         evidence_debug["selected_evidence"] = state.get("selected_evidence") or []
         evidence_debug["admitted_answer_context"] = state.get("admitted_answer_context") or {}
-        evidence_debug["minimal_decision_context"] = state.get("minimal_decision_context") or {}
+        evidence_debug["minimal_decision_context"] = minimal_decision_context
         evidence_debug["formal_evidence_convergence"] = state.get("formal_evidence_convergence") or {}
         evidence_debug["supervisor_candidate_preview"] = state.get("supervisor_candidate_preview") or {}
 
@@ -384,7 +391,7 @@ def build_response(state: dict) -> dict:
         "needs_clarification": sufficiency["needs_clarification"],
         **({
             "selected_evidence": state.get("selected_evidence") or [],
-            "minimal_decision_context": state.get("minimal_decision_context") or {},
+            "minimal_decision_context": minimal_decision_context,
             "supervisor_candidate_preview": state.get("supervisor_candidate_preview") or {},
         } if "selected_evidence" in state else {}),
     }

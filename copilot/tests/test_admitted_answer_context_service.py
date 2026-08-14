@@ -8,6 +8,7 @@ from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
     build_minimal_decision_context,
     is_placeholder_evidence_text,
+    project_response_strategy_actions,
 )
 
 
@@ -1333,3 +1334,63 @@ def test_admitted_context_blocks_bounded_inference_without_all_trusted_inputs(
     assert durability["status"] == "unresolved"
     assert durability["support_basis"] == "none"
     assert durability["evidence_uids"] == []
+
+
+def test_response_strategy_customer_input_is_projected_as_non_fact_action():
+    original = {
+        "customer_goal": "Check the current shipment status.",
+        "service_actions": [{
+            "evidence_uid": "existing-action",
+            "text": "Existing non-fact action",
+            "non_fact": True,
+        }],
+    }
+
+    projected = project_response_strategy_actions(
+        original,
+        {
+            "should_ask_slot": True,
+            "missing_slots": ["order_id", "tracking_no"],
+            "missing_slot_mode": "any_of",
+        },
+    )
+
+    assert projected is not original
+    assert original["service_actions"] == [{
+        "evidence_uid": "existing-action",
+        "text": "Existing non-fact action",
+        "non_fact": True,
+    }]
+    assert projected["service_actions"][-1] == {
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id", "tracking_no"],
+        "input_selection_mode": "any_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "plan",
+    [
+        {
+            "should_ask_slot": True,
+            "missing_slots": ["unknown_private_field"],
+            "missing_slot_mode": "all_of",
+        },
+        {
+            "should_ask_slot": True,
+            "missing_slots": ["order_id", "tracking_no"],
+            "missing_slot_mode": "unknown_mode",
+        },
+    ],
+)
+def test_response_strategy_customer_input_projection_fails_closed(plan):
+    projected = project_response_strategy_actions(
+        {"service_actions": []},
+        plan,
+    )
+
+    assert projected["service_actions"] == []

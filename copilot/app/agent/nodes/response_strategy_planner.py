@@ -6,6 +6,12 @@ import re
 import time
 
 
+_ALTERNATIVE_CUSTOMER_INPUT_SLOT_GROUPS = (
+    frozenset({"order_id", "tracking_no"}),
+    frozenset({"product_link", "product_screenshot", "sku"}),
+)
+
+
 MODEL_MARKER_RE = re.compile(r"([一二三四五六七八九十百千万两0-9]+号)")
 
 
@@ -89,6 +95,18 @@ def _compute_missing_product_slots(state: dict) -> list[str]:
     if not slots.get("product_name") and not state.get("matched_product_name"):
         missing.append("product_link")
     return missing
+
+
+def _missing_slot_mode(missing_slots: list[str]) -> str:
+    if not missing_slots:
+        return "none"
+    slot_set = set(missing_slots)
+    if any(
+        slot_set.issubset(group)
+        for group in _ALTERNATIVE_CUSTOMER_INPUT_SLOT_GROUPS
+    ):
+        return "any_of"
+    return "all_of"
 
 
 def response_strategy_planner(state: dict) -> dict:
@@ -227,6 +245,7 @@ def response_strategy_planner(state: dict) -> dict:
         "should_escalate": should_escalate,
         "reply_structure": reply_structure,
         "missing_slots": missing_slots,
+        "missing_slot_mode": _missing_slot_mode(missing_slots),
     }
     trace = {
         "node": "response_strategy_planner",

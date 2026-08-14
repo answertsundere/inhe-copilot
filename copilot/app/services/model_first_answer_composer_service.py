@@ -292,7 +292,13 @@ _DECISION_RECENT_TURN_FIELDS = {
     "turn_index",
 }
 _DECISION_SERVICE_ACTION_FIELDS = {
+    "accepted_input_slots",
+    "action_type",
+    "can_change_can_send",
+    "completed",
     "evidence_uid",
+    "input_selection_mode",
+    "source_owner",
     "text",
     "non_fact",
 }
@@ -3814,6 +3820,9 @@ class ModelFirstAnswerComposerService:
             "present delivery, attachment, display, availability in the reply, or a future send. "
             "media_context.candidate_count and media_context.request_refs are context only and never authorize "
             "customer-facing delivery wording."
+            "For a request_customer_input service action, ask naturally only for the accepted_input_slots. "
+            "input_selection_mode=any_of means one listed input is sufficient; all_of means every listed input is required. "
+            "Do not expose internal slot names, claim the lookup already happened, or treat the action as evidence. "
             "When advice_mode=safety_handoff_required, express only the risk-mitigation actions required by "
             "required_qualifiers, such as stopping further exposure, checking for damage or missing fragments, "
             "and seeking medical help when ingestion or symptoms make that necessary. Never turn those actions "

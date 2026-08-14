@@ -351,6 +351,41 @@ def test_build_response_persists_the_same_formal_selection_as_debug_context():
     assert response["minimal_decision_context"]["schema_version"] == "minimal-decision-context-v1"
 
 
+def test_build_response_projects_late_strategy_action_into_composer_context():
+    original_context = {
+        "schema_version": "minimal-decision-context-v1",
+        "service_actions": [],
+    }
+    response = build_response({
+        "suggested_reply": "Draft reply.",
+        "selected_evidence": [],
+        "minimal_decision_context": original_context,
+        "response_strategy_plan": {
+            "should_ask_slot": True,
+            "missing_slots": ["order_id", "tracking_no"],
+            "missing_slot_mode": "any_of",
+        },
+        "evidence": {},
+    })
+
+    expected_action = {
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id", "tracking_no"],
+        "input_selection_mode": "any_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }
+    assert original_context["service_actions"] == []
+    assert response["minimal_decision_context"]["service_actions"] == [
+        expected_action
+    ]
+    assert response["evidence_debug"]["minimal_decision_context"][
+        "service_actions"
+    ] == [expected_action]
+
+
 def test_reply_suggestion_keeps_opt_in_formal_evidence_fields():
     suggestion = ReplySuggestion.from_dict({
         "suggested_reply": "Draft reply.",

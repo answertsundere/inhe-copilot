@@ -2118,6 +2118,55 @@ def test_composer_rejects_service_action_or_media_as_extra_goal():
     assert result["rejection_reason"] == "composer_unknown_goal_reference"
 
 
+def test_composer_preserves_customer_input_action_without_treating_it_as_fact():
+    response = _response()
+    response["minimal_decision_context"]["service_actions"] = [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id", "tracking_no"],
+        "input_selection_mode": "any_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="Please help check the shipment status.",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    assert decision_input["service_actions"] == [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id", "tracking_no"],
+        "input_selection_mode": "any_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+    assert material["partitions"]["service_actions"] == (
+        decision_input["service_actions"]
+    )
+    assert material["prompt_payload"]["service_actions"] == (
+        decision_input["service_actions"]
+    )
+    assert material["evidence"] == [{
+        "evidence_ref": "E1",
+        "fact_type": "dimensions",
+        "attribute_key": "width",
+        "content": response["minimal_decision_context"][
+            "admitted_evidence"
+        ][0]["content"],
+    }]
+
+
 def test_composer_requires_minimal_context():
     original = {"suggested_reply": "旧回复", "can_send": False}
 
