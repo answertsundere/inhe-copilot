@@ -129,6 +129,23 @@ def test_conversation_fact_cannot_gain_evidence_authority():
     ] == ["ev-width"]
 
 
+def test_customer_conditional_measurements_remain_non_evidence_context():
+    response = _HELPERS._customer_conditional_space_fit_response()
+
+    decision_input = _decision_input(response)
+    serialized = json.dumps(decision_input, ensure_ascii=False)
+
+    assert decision_input["admitted_evidence"] == []
+    assert "The available height is 10 cm." in serialized
+    assert "stated product height is 12 cm" in serialized
+    assert "customer_measurement" not in serialized
+    assert all(
+        resolution["evidence_uids"] == []
+        and resolution["premise_evidence_uids"] == []
+        for resolution in decision_input["claim_resolutions"]
+    )
+
+
 @pytest.mark.parametrize(
     "missing_field",
     ["owner", "source", "source_span_sha256", "source_text_sha256"],

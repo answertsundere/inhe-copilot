@@ -329,6 +329,84 @@ def test_composer_prompt_projects_canonical_clause_contract():
     )
 
 
+def _customer_conditional_space_fit_response() -> dict:
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["customer_goal"] = (
+        "If the stated product height is 12 cm, will it fit?"
+    )
+    context["recent_conversation_turns"] = [{
+        "role": "customer",
+        "content": "The available height is 10 cm.",
+        "turn_index": 1,
+    }]
+    context["product_identity"] = {}
+    context["requested_claims"] = [
+        _goal(
+            "goal-space-fit",
+            "space_fit",
+            attribute_key="height",
+            goal_summary="will the stated height fit",
+        )
+    ]
+    context["admitted_evidence"] = []
+    context["claim_resolutions"] = [
+        _resolution(
+            "claim-space-fit",
+            "space_fit",
+            "unresolved",
+            attribute_key="height",
+        )
+    ]
+    return response
+
+
+def test_composer_allows_review_only_customer_conditional_comparison():
+    response = _customer_conditional_space_fit_response()
+    updated, result, client = _compose(
+        {
+            "clauses": [{
+                "goal_ref": "goal_01",
+                "text": (
+                    "If the values you supplied are accurate, 12 cm exceeds "
+                    "10 cm, so it would not fit; the actual product height "
+                    "is still unconfirmed."
+                ),
+                "selected_option_refs": [],
+            }],
+        },
+        response,
+    )
+
+    assert result["status"] == "accepted"
+    assert len(result["clauses"]) == 1
+    clause = result["clauses"][0]
+    assert clause["goal_ref"] == "claim-space-fit"
+    assert clause["clause_kind"] == "unresolved"
+    assert clause["text"] == (
+        "If the values you supplied are accurate, 12 cm exceeds 10 cm, "
+        "so it would not fit; the actual product height is still "
+        "unconfirmed."
+    )
+    assert clause["evidence_uids"] == []
+    assert clause["premise_evidence_uids"] == []
+    assert clause["inference_policy_refs"] == []
+    assert updated["requires_human_review"] is True
+    assert updated["can_send"] is False
+    prompt = json.loads(client.messages[1]["content"])
+    assert prompt["current_customer_question"] == (
+        "If the stated product height is 12 cm, will it fit?"
+    )
+    assert prompt["recent_conversation_turns"] == [{
+        "role": "customer",
+        "content": "The available height is 10 cm.",
+        "turn_index": 1,
+    }]
+    assert "explicit customer-condition boundary" in client.messages[0][
+        "content"
+    ]
+
+
 def _presentation_response() -> dict:
     response = _response()
     context = response["minimal_decision_context"]
