@@ -59,6 +59,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   customer-visible completion steps.
 - `docs/p1-e2-long-conversation-evaluation-plan.md` - privacy-safe, review-only
   P1 E2 evaluation of multi-turn quality on the existing formal Pipeline.
+- `docs/p1-high-frequency-synthetic-dialogues.md` - fictional five-turn P1
+  dialogue fixture, review-only preview, and loopback formal-baseline contract;
+  it is synthetic regression evidence, not a real-customer accuracy claim.
 - `docs/CHANGELOG.md` - dated implementation and verification record.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/agent-core-candidate-change-ownership.md` - P0-R0 ownership and
