@@ -268,7 +268,8 @@ For each goal:
   or no supplied candidate directly matches the goal. Nominate a candidate only
   when its goal_family and allowed_scope directly match this goal; do not
   substitute a merely related policy. For a canonical claim type, the candidate
-  must have that same goal_family. allowed_conclusion_family and
+  must either have that same goal_family or explicitly list the claim type in
+  canonical_claim_types. allowed_conclusion_family and
   required_qualifiers describe the candidate's only permitted answer strategy;
   prohibited_claim_families forbid asserting those claim families. Do not
   nominate a candidate merely because two requests share a request form such as
@@ -543,6 +544,15 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
             for item in policy.get("unmapped_semantic_keys") or []
             if _normalized_semantic_key(item)
         })
+        canonical_claim_types = sorted({
+            canonical_material_composition_claim_type(
+                _bounded_text(item, 96).lower()
+            )
+            for item in policy.get("canonical_claim_types") or []
+            if canonical_material_composition_claim_type(
+                _bounded_text(item, 96).lower()
+            ) in ALLOWED_FACT_TYPES
+        })
         description = _POLICY_INTENT_DESCRIPTIONS.get(intent_kind, "")
         if (
             not policy_intent_ref
@@ -565,6 +575,7 @@ def _policy_intent_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
             "required_qualifiers": required_qualifiers,
             "prohibited_claim_families": prohibited_claim_families,
             "unmapped_semantic_keys": unmapped_semantic_keys,
+            "canonical_claim_types": canonical_claim_types,
             "description": description,
         })
     return sorted(
@@ -2173,6 +2184,22 @@ def _sanitize_customer_goals(
         if isinstance(item, dict)
         and _bounded_text(item.get("policy_intent_ref"), 96)
     }
+
+    def candidate_applies_to_canonical_claim(
+        candidate: dict[str, Any],
+        claim_type: str,
+    ) -> bool:
+        candidate_family = _bounded_text(
+            candidate.get("goal_family"), 96
+        ).lower()
+        declared_types = {
+            canonical_material_composition_claim_type(
+                _bounded_text(item, 96).lower()
+            )
+            for item in candidate.get("canonical_claim_types") or []
+            if _bounded_text(item, 96)
+        }
+        return candidate_family == claim_type or claim_type in declared_types
     from app.services.canonical_conversation_turn_service import (
         normalize_conversation_goal_open_candidates,
     )
@@ -2338,8 +2365,10 @@ def _sanitize_customer_goals(
             policy_intent_ref
             and claim_type_status == "canonical"
             and claim_type
-            and _bounded_text(selected_policy.get("goal_family"), 96).lower()
-            != claim_type
+            and not candidate_applies_to_canonical_claim(
+                selected_policy,
+                claim_type,
+            )
         ):
             diagnostics.append("customer_goal_policy_intent_family_mismatch")
             policy_intent_ref = ""
@@ -2368,16 +2397,33 @@ def _sanitize_customer_goals(
             exact_family_candidates = [
                 candidate
                 for candidate in candidate_by_ref.values()
-                if _bounded_text(candidate.get("goal_family"), 96).lower()
-                == claim_type
+                if candidate_applies_to_canonical_claim(
+                    candidate,
+                    claim_type,
+                )
             ]
             if exact_family_candidates:
-                derived_policy_goal_family = claim_type
+                exact_goal_families = {
+                    _bounded_text(
+                        candidate.get("goal_family"), 96
+                    ).lower()
+                    for candidate in exact_family_candidates
+                }
+                if len(exact_goal_families) == 1 and "" not in (
+                    exact_goal_families
+                ):
+                    derived_policy_goal_family = next(
+                        iter(exact_goal_families)
+                    )
                 exact_intent_kinds = {
                     _bounded_text(candidate.get("intent_kind"), 64).lower()
                     for candidate in exact_family_candidates
                 }
-                if len(exact_intent_kinds) == 1 and "" not in exact_intent_kinds:
+                if (
+                    derived_policy_goal_family
+                    and len(exact_intent_kinds) == 1
+                    and "" not in exact_intent_kinds
+                ):
                     derived_policy_intent_kind = next(iter(exact_intent_kinds))
         goal_summary = canonical_source_span_text(
             raw.get("source_text")

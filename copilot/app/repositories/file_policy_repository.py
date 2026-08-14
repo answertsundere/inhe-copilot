@@ -571,7 +571,10 @@ class FilePolicyRepository(PolicyRepositoryBase):
             "prohibited_claim_families",
             "review_only",
         }
-        optional_inference_keys = {"unmapped_semantic_keys"}
+        optional_inference_keys = {
+            "canonical_claim_types",
+            "unmapped_semantic_keys",
+        }
         identifier_pattern = re.compile(r"[a-z0-9][a-z0-9_.-]{0,95}")
         for policy in inference_policies:
             if (
@@ -667,6 +670,21 @@ class FilePolicyRepository(PolicyRepositoryBase):
                 return "domain_policy_bounded_inference_risk_invalid"
             if policy.get("review_only") is not True:
                 return "domain_policy_bounded_inference_review_only_required"
+            canonical_claim_types = policy.get(
+                "canonical_claim_types", []
+            )
+            if (
+                not isinstance(canonical_claim_types, list)
+                or len(canonical_claim_types)
+                != len(set(canonical_claim_types))
+                or any(
+                    not isinstance(value, str)
+                    or not identifier_pattern.fullmatch(value)
+                    or value not in policies
+                    for value in canonical_claim_types
+                )
+            ):
+                return "domain_policy_canonical_claim_types_invalid"
             unmapped_semantic_keys = policy.get(
                 "unmapped_semantic_keys", []
             )

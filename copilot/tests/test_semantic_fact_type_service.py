@@ -566,6 +566,65 @@ def test_canonical_goal_rejects_nominated_policy_from_another_goal_family():
     assert goals[0]["policy_intent_kind"] == ""
 
 
+def test_canonical_goal_uses_declared_cross_family_policy_applicability():
+    policy = {
+        **_policy_candidate(),
+        "policy_intent_ref": "product_dimensions_practical_guidance",
+        "goal_family": "product_dimensions_and_space",
+        "canonical_claim_types": ["dimensions", "space_fit"],
+    }
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "dimensions",
+            "attribute_key": "height",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_text": "height fit request",
+        }],
+        message="height fit request",
+        policy_intent_candidates=[policy],
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["policy_intent_ref"] == ""
+    assert goals[0]["policy_goal_family"] == (
+        "product_dimensions_and_space"
+    )
+    assert goals[0]["policy_intent_kind"] == "practical_guidance"
+
+
+def test_canonical_goal_rejects_policy_without_declared_applicability():
+    policy = {
+        **_policy_candidate(),
+        "policy_intent_ref": "product_dimensions_practical_guidance",
+        "goal_family": "product_dimensions_and_space",
+        "canonical_claim_types": ["dimensions"],
+    }
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material_safety",
+            "attribute_key": "",
+            "semantic_key": "",
+            "policy_intent_ref": (
+                "product_dimensions_practical_guidance"
+            ),
+            "source_text": "material safety request",
+        }],
+        message="material safety request",
+        policy_intent_candidates=[policy],
+    )
+
+    assert status == "degraded"
+    assert diagnostics == ["customer_goal_policy_intent_family_mismatch"]
+    assert goals[0]["policy_intent_ref"] == ""
+    assert goals[0]["policy_goal_family"] == ""
+
+
 def test_matching_high_risk_goal_can_retain_a_safety_handling_policy():
     policy = {
         **_policy_candidate(),
@@ -845,7 +904,8 @@ def test_turn_understanding_prompt_requires_policy_family_and_conclusion_bounds(
 
     assert "allowed_conclusion_family" in prompt
     assert "prohibited_claim_families" in prompt
-    assert "must have that same goal_family" in prompt
+    assert "must either have that same goal_family" in prompt
+    assert "canonical_claim_types" in prompt
 
 
 def test_fact_type_falls_back_when_llm_unavailable(monkeypatch):

@@ -1,10 +1,13 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.6.4
+version: 1.6.5
 bounded_inference_policies:
   - policy_intent_ref: product_dimensions_practical_guidance
     goal_family: product_dimensions_and_space
     intent_kind: practical_guidance
+    canonical_claim_types:
+      - dimensions
+      - space_fit
     premise_fact_families:
       - dimensions
     required_context_capabilities:
