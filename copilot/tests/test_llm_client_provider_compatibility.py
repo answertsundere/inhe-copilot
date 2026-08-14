@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import config
+import app.llm.client as client_module
 from app.llm.client import LLMClient
 
 
@@ -215,6 +217,28 @@ def test_explicit_composer_transport_capabilities_disable_thinking_and_expand_bu
     request = completions.calls[0]
     assert request["max_tokens"] == 1200
     assert request["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_formal_client_uses_explicit_transport_capabilities(monkeypatch):
+    monkeypatch.setattr(config, "COPILOT_LLM_TRANSPORT_THINKING", "disabled")
+    monkeypatch.setattr(config, "COPILOT_LLM_MIN_OUTPUT_TOKENS", 1200)
+    monkeypatch.setattr(client_module, "_client", None)
+
+    client = client_module.get_llm_client()
+
+    assert client.transport_thinking == "disabled"
+    assert client.minimum_output_tokens == 1200
+
+
+def test_formal_client_transport_defaults_preserve_existing_behavior(monkeypatch):
+    monkeypatch.setattr(config, "COPILOT_LLM_TRANSPORT_THINKING", "")
+    monkeypatch.setattr(config, "COPILOT_LLM_MIN_OUTPUT_TOKENS", 0)
+    monkeypatch.setattr(client_module, "_client", None)
+
+    client = client_module.get_llm_client()
+
+    assert client.transport_thinking == ""
+    assert client.minimum_output_tokens == 0
 
 
 def test_client_projects_private_customer_text_before_provider_call():

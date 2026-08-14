@@ -14,6 +14,13 @@ LLM_API_BASE = os.environ.get(
 )
 LLM_API_KEY = os.environ.get("COPILOT_LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("COPILOT_LLM_MODEL", "qwen-plus")
+COPILOT_LLM_TRANSPORT_THINKING = os.environ.get(
+    "COPILOT_LLM_TRANSPORT_THINKING",
+    "",
+).strip().lower()
+COPILOT_LLM_MIN_OUTPUT_TOKENS = int(
+    os.environ.get("COPILOT_LLM_MIN_OUTPUT_TOKENS", "0")
+)
 
 # The post-graph decision shadow intentionally has independent credentials and
 # transport capability.  It must never silently reuse the formal reply model.

@@ -357,7 +357,10 @@ _client: Optional[LLMClient] = None
 def get_llm_client() -> LLMClient:
     global _client
     if _client is None:
-        _client = LLMClient()
+        _client = LLMClient(
+            transport_thinking=config.COPILOT_LLM_TRANSPORT_THINKING,
+            minimum_output_tokens=config.COPILOT_LLM_MIN_OUTPUT_TOKENS,
+        )
     return _client
 
 
