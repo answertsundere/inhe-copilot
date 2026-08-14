@@ -54,6 +54,17 @@ def test_normalizes_role_aware_turns_without_preserving_legacy_text_key():
     assert diagnostics["status"] == "valid"
 
 
+def test_normalizes_openai_assistant_role_as_agent_in_strict_history():
+    turns, diagnostics = normalize_conversation_turns([
+        {"role": "user", "content": "first question", "turn_index": 0},
+        {"role": "assistant", "content": "first answer", "turn_index": 1},
+    ], strict=True)
+
+    assert [turn["role"] for turn in turns] == ["customer", "agent"]
+    assert [turn["content"] for turn in turns] == ["first question", "first answer"]
+    assert diagnostics["status"] == "valid"
+
+
 @pytest.mark.parametrize("value,reason", [
     ("买家: 这个怎么样", "conversation_history_expected_list"),
     ([{"role": "unknown", "content": "这个"}], "conversation_turn_invalid_role"),

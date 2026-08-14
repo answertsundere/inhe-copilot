@@ -21,7 +21,7 @@ from app.services.fact_type_alias_service import (
 
 _ROLE_ALIASES = {
     "customer": "customer", "buyer": "customer", "user": "customer",
-    "agent": "agent", "seller": "agent", "csr": "agent", "system": "system",
+    "agent": "agent", "assistant": "agent", "seller": "agent", "csr": "agent", "system": "system",
 }
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WHITESPACE = re.compile(r"\s+")
