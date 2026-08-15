@@ -175,8 +175,10 @@ def test_formal_report_stops_after_first_transport_failure(monkeypatch, tmp_path
 def test_formal_payload_supplies_canonical_history_roles_and_order():
     item = build_dataset()["scenarios"][0]
 
+    payload = runner._formal_payload(item)
+
     turns, diagnostics = normalize_conversation_turns(
-        runner._formal_payload(item)["conversation_history"],
+        payload["conversation_history"],
         strict=True,
     )
 
@@ -185,3 +187,9 @@ def test_formal_payload_supplies_canonical_history_roles_and_order():
     ]
     assert [turn["turn_index"] for turn in turns] == [0, 1, 2, 3]
     assert diagnostics["status"] == "valid"
+    assert payload["product_title"] == "合成评测商品"
+    assert payload["sku_code"] == "SYN-SKU-001"
+    assert payload["i_id"] == "SYN-IID-001"
+    assert payload["order_id"] == "SYN-ORDER-001"
+    assert "review_expectations" not in payload
+    assert "requested_claims" not in payload

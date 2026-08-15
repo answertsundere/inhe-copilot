@@ -664,6 +664,15 @@ customer toward a resolution.
 - supervisor naturalness review that does not expose labels to the Agent; and
 - the synthetic safety benchmark as a separate regression suite.
 
+The recovered workspace does not contain the pinned 26-case dataset or its
+manifest, so that gate remains unavailable rather than silently reconstructed.
+The separate 40-case fictional suite is not a replacement. Its first GLM formal
+attempt was invalidated for quality analysis because the evaluator omitted
+structured synthetic identity from `/api/analyze`; a one-case corrected-input
+gate subsequently passed with no send or knowledge-write authority. Completion
+of the remaining synthetic cases is still pending, and neither result changes
+`real_customer_accuracy=null` or the active P1 owner.
+
 The first P1.1a 26-call attempt is retained as an integrity-blocked diagnostic,
 not a baseline: report projection omitted the canonical history position and
 the finalization failure prevented persistence of the start knowledge

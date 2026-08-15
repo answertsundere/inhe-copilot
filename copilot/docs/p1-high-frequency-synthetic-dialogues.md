@@ -42,23 +42,37 @@ python scripts\run_p1_high_frequency_synthetic_preview.py --mode formal --input 
 The runner refuses a non-loopback URL and stops if an answer becomes sendable
 or loses the human-review requirement.
 
+The formal request uses the same public `/api/analyze` contract as the
+customer-facing path. It sends the current message, canonical prior turns, and
+the fixture's synthetic `product_title`, `sku_code`, `i_id`, and `order_id` as
+top-level structured identity fields. It must not send review expectations,
+requested-claim labels, reference answers, or scoring metadata. The API route,
+not the evaluator, owns conversion into `copilot_context`.
+
 ## Current Evidence And Blocker
 
 The preview run generated 40 review-only drafts: `requires_human_review=40`,
 `can_send=0`, 18 supported clauses, and 23 unresolved clauses. This validates
 the fixture and delivery boundary, not reply quality.
 
-A single isolated formal-pipeline probe also returned review-only/no-send, but
-asked for dimensions already supplied in the conversation. The resumable
-formal batch did not finish because the local Qwen loopback endpoint did not
-start its vLLM engine: free GPU memory was below the container's configured
-memory-utilization target. The Docker port proxy remained reachable but
-returned empty HTTP responses because no model engine was serving requests.
-Restarting the container without restoring GPU capacity cannot fix that
-condition. The checkpoint is diagnostic only and must not be read as a
-completed baseline.
+A later isolated GLM attempt completed 14 rows before Deterministic Final
+stopped on an internal-process phrase. That attempt is superseded as a quality
+baseline: its evaluator omitted all four structured synthetic identity fields,
+so identity-dependent requests did not exercise the formal input contract.
+The snapshot remained query-only, formal-knowledge DML was zero, every row was
+review-only, and `can_send` stayed false; those safety observations remain
+valid, but its reply-quality observations do not.
 
-Before resuming, restore a healthy local model and pass the minimal generation
-probe. Then complete all 40 rows, review repeated-known-context and generic
-handling failures, and keep the result explicitly synthetic with
-`real_customer_accuracy=null`.
+After the evaluator was corrected, the previously failing logistics case ran
+once through the same isolated formal Pipeline with all four prior turns and
+synthetic identity present. It passed Deterministic Final, retained
+`can_send=false`, required human review, leaked no transport turn UID, wrote no
+formal knowledge, and left the snapshot hash unchanged. This one-case result
+qualifies the input-contract repair only. The remaining 39 cases have not been
+completed, and `real_customer_accuracy` remains `null`.
+
+The historical fixed 26-case real-derived development asset referenced by the
+legacy runner is not present in the recovered workspace. It must not be
+recreated from the 40 synthetic fixture or represented as recovered customer
+data. Until that asset or an approved replacement is restored, the 40-case set
+is limited to synthetic regression, context-continuity, and safety diagnosis.

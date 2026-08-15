@@ -134,9 +134,19 @@ def _loopback_analyze_url(value: str) -> str:
 
 def _formal_payload(item: dict[str, Any]) -> dict[str, Any]:
     turns = item["conversation_turns"]
+    raw_context = item.get("raw_context") if isinstance(item.get("raw_context"), dict) else {}
+    product_identity = (
+        raw_context.get("product_identity")
+        if isinstance(raw_context.get("product_identity"), dict)
+        else {}
+    )
     return {
         "conversation_id": f"p1-synthetic-{item['scenario_uid']}",
-        "message": item["raw_context"]["customer_message"],
+        "message": raw_context["customer_message"],
+        "product_title": str(product_identity.get("product_title") or ""),
+        "sku_code": str(product_identity.get("sku_code") or ""),
+        "i_id": str(product_identity.get("i_id") or ""),
+        "order_id": str(product_identity.get("order_id") or ""),
         "conversation_history": [
             {
                 "role": "user" if turn["speaker"] == "buyer" else "assistant",

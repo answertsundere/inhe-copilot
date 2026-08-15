@@ -139,6 +139,19 @@ and next owner here and in `docs/CHANGELOG.md`.
   comparison, used zero selected formal evidence, kept the formal knowledge
   snapshot and DML unchanged, required human review, and kept `can_send=false`.
   This is a synthetic capability result only; `real_customer_accuracy=null`.
+- The pinned legacy 26-case long-conversation asset is absent from the recovered
+  workspace. Repository and external-runtime searches found only its contract
+  references, not the versioned dataset or manifest. It remains blocked and
+  must not be substituted with synthetic or reconstructed content.
+- The first GLM-backed 40-case synthetic attempt stopped after 14 rows, but its
+  evaluator omitted the fixture's structured product and order identity from
+  `/api/analyze`. The attempt is therefore superseded for reply-quality use,
+  although its zero-DML, review-only, and no-send observations remain valid.
+  The evaluator now sends only the public API's four identity fields alongside
+  canonical history; it sends no labels or expected answers. A corrected
+  single-case logistics gate passed Final with history `4/4`, transport UID
+  leakage `0`, formal DML `0`, and `can_send=false`. The full 40-case formal
+  baseline is still incomplete and cannot support a quality or accuracy claim.
 
 ## Phase Plan
 
