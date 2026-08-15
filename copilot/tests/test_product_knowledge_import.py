@@ -35,6 +35,7 @@ def tmp_db(monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from app.models.knowledge_base import Base
+    import app.models.kb_tables  # noqa: F401 - register KBProduct tables
 
     tmp = tempfile.mktemp(suffix=".db")
     engine = create_engine(f"sqlite:///{tmp}", connect_args={"check_same_thread": False})
@@ -208,6 +209,209 @@ class TestBuildEntries:
         assert e["product_id"] == "TEST001"
         assert e["fact_type"] == "identity"
         assert e["business_key"] == "BK:TEST001::identity:product"
+
+
+class TestBuildProductDraft:
+    def test_builds_review_only_product_identity(self, sample_card):
+        from scripts.import_product_knowledge import analyze_card, build_product_draft
+
+        data = build_product_draft(sample_card, analyze_card(sample_card))
+
+        assert data["i_id"] == "TEST001"
+        assert data["product_name"] == sample_card["product_name"]
+        assert data["status"] == "draft"
+        assert data["sku_list"] == sample_card["sku_summary"]["sku_list"]
+
+    def test_does_not_promote_card_facts_into_product_specs(self, sample_card):
+        from scripts.import_product_knowledge import analyze_card, build_product_draft
+
+        data = build_product_draft(sample_card, analyze_card(sample_card))
+
+        assert data["specs"] == {}
+        assert data["logistics"] == {}
+        assert data["warranty"] == {}
+
+
+class TestProductDraftPlanning:
+    def test_creates_managed_product_as_draft(self, tmp_db, sample_card):
+        from app.models.kb_tables import KBProduct
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+
+        db = tmp_db["session"]
+        plan = _plan_product(
+            db,
+            build_product_draft(sample_card, analyze_card(sample_card)),
+            dry_run=False,
+            batch_id="batch1",
+        )
+        db.commit()
+
+        product = db.query(KBProduct).filter(KBProduct.i_id == "TEST001").one()
+        assert plan["action"] == "created"
+        assert product.status == "draft"
+        assert product.created_by == "import_tool"
+        assert product.get_specs() == {}
+
+    def test_dry_run_does_not_create_product(self, tmp_db, sample_card):
+        from app.models.kb_tables import KBProduct
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+
+        db = tmp_db["session"]
+        plan = _plan_product(
+            db,
+            build_product_draft(sample_card, analyze_card(sample_card)),
+            dry_run=True,
+            batch_id="batch1",
+        )
+
+        assert plan["action"] == "would_create"
+        assert db.query(KBProduct).count() == 0
+
+    def test_existing_published_product_is_never_overwritten(self, tmp_db, sample_card):
+        from app.models.kb_tables import KBProduct
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+
+        db = tmp_db["session"]
+        product = KBProduct(
+            i_id="TEST001",
+            product_name="reviewed name",
+            status="published",
+            created_by="supervisor",
+        )
+        db.add(product)
+        db.commit()
+
+        data = build_product_draft(sample_card, analyze_card(sample_card))
+        plan = _plan_product(db, data, dry_run=False, batch_id="batch1")
+        db.commit()
+
+        db.refresh(product)
+        assert plan["action"] == "conflict"
+        assert product.product_name == "reviewed name"
+        assert product.status == "published"
+
+    def test_manually_created_draft_is_never_overwritten(self, tmp_db, sample_card):
+        from app.models.kb_tables import KBProduct
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+
+        db = tmp_db["session"]
+        product = KBProduct(
+            i_id="TEST001",
+            product_name="manual draft",
+            status="draft",
+            created_by="reviewer",
+        )
+        db.add(product)
+        db.commit()
+
+        data = build_product_draft(sample_card, analyze_card(sample_card))
+        plan = _plan_product(db, data, dry_run=False, batch_id="batch1")
+        db.commit()
+
+        db.refresh(product)
+        assert plan["action"] == "conflict"
+        assert product.product_name == "manual draft"
+        assert product.created_by == "reviewer"
+
+    def test_managed_draft_identity_update_preserves_structured_fields(
+        self, tmp_db, sample_card
+    ):
+        from app.models.kb_tables import KBProduct
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+
+        db = tmp_db["session"]
+        product = KBProduct(
+            i_id="TEST001",
+            product_name="old recovered name",
+            status="draft",
+            created_by="import_tool",
+            updated_by="import_tool",
+        )
+        product.set_specs({"reviewed_candidate": "retain"})
+        product.set_logistics({"reviewed_candidate": "retain"})
+        product.set_warranty({"reviewed_candidate": "retain"})
+        db.add(product)
+        db.commit()
+
+        data = build_product_draft(sample_card, analyze_card(sample_card))
+        plan = _plan_product(db, data, dry_run=False, batch_id="batch1")
+        db.commit()
+
+        db.refresh(product)
+        assert plan["action"] == "updated_draft"
+        assert product.product_name == sample_card["product_name"]
+        assert product.get_specs() == {"reviewed_candidate": "retain"}
+        assert product.get_logistics() == {"reviewed_candidate": "retain"}
+        assert product.get_warranty() == {"reviewed_candidate": "retain"}
+
+    def test_same_managed_draft_is_idempotent(self, tmp_db, sample_card):
+        from app.models.kb_tables import KBProduct
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+
+        db = tmp_db["session"]
+        data = build_product_draft(sample_card, analyze_card(sample_card))
+        first = _plan_product(db, data, dry_run=False, batch_id="batch1")
+        db.commit()
+        second = _plan_product(db, data, dry_run=False, batch_id="batch2")
+        db.commit()
+
+        assert first["action"] == "created"
+        assert second["action"] == "skipped"
+        assert db.query(KBProduct).count() == 1
+
+    def test_execute_import_stages_product_and_entry_in_one_product_transaction(
+        self, tmp_db, sample_card
+    ):
+        from app.models.kb_tables import KBProduct
+        from app.models.knowledge_base import KnowledgeEntry
+        from scripts.import_product_knowledge import (
+            analyze_card,
+            build_identity_entry,
+            build_product_draft,
+            _execute_import,
+        )
+
+        analysis = analyze_card(sample_card)
+        result = _execute_import(
+            [("product_identity", build_identity_entry(sample_card, analysis), analysis)],
+            [(build_product_draft(sample_card, analysis), analysis)],
+        )
+
+        db = tmp_db["session"]
+        db.expire_all()
+        product = db.query(KBProduct).filter(KBProduct.i_id == "TEST001").one()
+        entry = db.query(KnowledgeEntry).filter(KnowledgeEntry.product_id == "TEST001").one()
+        assert result["product_records_created"] == 1
+        assert result["created"] == 1
+        assert product.status == "draft"
+        assert product.get_specs() == {}
+        assert entry.status == "draft"
+        assert entry.index_status == "pending"
+
+    def test_staged_product_is_not_formal_product_context(self, tmp_db, sample_card):
+        from scripts.import_product_knowledge import analyze_card, build_product_draft, _plan_product
+        from app.services.product_context_pack_service import build_product_context_pack
+
+        db = tmp_db["session"]
+        analysis = analyze_card(sample_card)
+        _plan_product(
+            db,
+            build_product_draft(sample_card, analysis),
+            dry_run=False,
+            batch_id="batch1",
+        )
+        db.commit()
+
+        pack = build_product_context_pack(
+            {"i_id": "TEST001"},
+            query="what material",
+            allowed_source_types=["product_facts"],
+            query_fact_type="material",
+        )
+
+        product_first = pack["product_first_evidence_pack"]
+        assert product_first["product_structured_facts"] == []
+        assert pack["facts"] == []
 
 
 # === Analysis ===
@@ -591,7 +795,8 @@ class TestModule:
     def test_has_required_functions(self):
         import scripts.import_product_knowledge as mod
         for name in ["run_import", "analyze_card", "build_identity_entry", "build_fact_entry",
-                      "_make_business_key", "_find_by_business_key", "_plan_entry", "_gen_batch_id"]:
+                      "build_product_draft", "_plan_product", "_make_business_key",
+                      "_find_by_business_key", "_plan_entry", "_gen_batch_id"]:
             assert hasattr(mod, name), f"missing {name}"
 
     def test_no_dangerous_functions(self):

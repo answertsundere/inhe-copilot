@@ -12,19 +12,38 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-COMPOSER-INPUT-AUTHORITY-003` |
+| Task ID | `P1-FORMAL-EVIDENCE-COVERAGE-001` |
 | Owner | Codex |
-| Status | Composer input-authority contract verified; formal evidence coverage is the next P1 owner |
+| Status | Formal evidence plumbing verified; recovered product identities can now enter review-only staging without fact promotion |
 | Active priority | P1 - Gold Conversation Quality |
-| Customer outcome | Preserve every explicit buyer goal, use confirmed context, answer supported parts naturally, and expose only the unresolved remainder. |
-| In-scope owners | Existing Composer offered-action prompt contract, formal synthetic runner, and their direct tests. |
-| Frozen owners | Turn Understanding, Claim Resolution, Unified Audit, Graph expansion, Delivery, live product data, recommendation runtime, emotion runtime, and `can_send`. |
+| Customer outcome | Establish trustworthy product identity coverage so reviewed facts can later support useful answers without weakening evidence admission. |
+| In-scope owners | Existing product-card recovery importer, KBProduct draft lifecycle, Product Context Pack, Evidence Convergence tests, and isolated candidate databases. |
+| Frozen owners | Formal Agent, Composer, Turn Understanding, Claim Resolution, Unified Audit, Graph expansion, Delivery, production knowledge, and `can_send`. |
 | User-facing entry points | The existing formal `AnalysisPipeline` and `/api/analyze`; no new entry point is introduced. |
 | Delivery authority | Unchanged: Supervisor Assist only, `requires_human_review=true`, `can_send=false`. |
 | Real-dataset gate | Blocked. `real_customer_accuracy=null`; `optimization_unverified=true`. |
 
 ## Current Evidence
 
+- `P1-FORMAL-EVIDENCE-COVERAGE-001` confirmed that the fixed-40 zero-evidence
+  result is caused by fictional `SYN-*` identities and a snapshot with no
+  eligible reviewed product facts. Existing positive Evidence Convergence and
+  real-derived vertical-slice tests pass, so no reusable retrieval/admission
+  defect was found.
+- The recovered `product_cards.json` contains 1,898 identity records, all still
+  requiring review and none eligible for publication. The importer now creates
+  identity-only `KBProduct` drafts, strips volatile SKU price/stock, and keeps
+  `specs`, `logistics`, and `warranty` empty. The existing 2,593 identity/fact
+  entries remain drafts; no material or dimension coverage was recovered.
+- A full isolated dry-run planned 1,898 product drafts and 2,593 unchanged
+  knowledge drafts. Applying product identity staging to a copied candidate
+  created 1,898 drafts on the first run and skipped all 1,898 on the second;
+  published products, published entries, and chunks remained zero. The source
+  candidate hash was unchanged.
+- The focused import, lifecycle, Product Context Pack, Evidence Convergence,
+  Pipeline-entry, Final Audit, database-guard, and documentation set passed
+  `324/324`. The full repository collected 4,558 tests and retained exactly
+  five known unrelated failures plus two skips; this slice added no new failure.
 - `P1-COMPOSER-INPUT-AUTHORITY-003` traced one repeated product/order request
   to the Composer: the formal request already carried resolved structured
   identity, while the admitted context offered no `request_customer_input`

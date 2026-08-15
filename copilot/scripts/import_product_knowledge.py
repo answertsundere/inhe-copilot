@@ -274,6 +274,141 @@ def build_fact_entry(card: dict, analysis: dict, fact: dict) -> dict:
     }
 
 
+def build_product_draft(card: dict, analysis: dict) -> dict:
+    """Build a review-only product identity record from a recovered card.
+
+    Product-card facts stay in the existing per-fact draft workflow. They are
+    deliberately not copied into KBProduct structured fields, because
+    publishing a product would otherwise promote unreviewed facts as direct
+    evidence.
+    """
+    sku_list = []
+    for sku in analysis.get("skus") or []:
+        sku_id = _safe_str(sku.get("sku_id"))
+        sku_name = _safe_str(sku.get("sku_name"))
+        if not sku_id and not sku_name:
+            continue
+        sku_list.append({"sku_id": sku_id, "sku_name": sku_name})
+
+    return {
+        "i_id": analysis["i_id"],
+        "product_name": analysis["product_name"],
+        "brand": _safe_str(card.get("brand")),
+        "category_l1": analysis.get("category", ""),
+        "category_l2": "",
+        "category_l3": "",
+        "sku_list": sku_list,
+        "specs": {},
+        "logistics": {},
+        "warranty": {},
+        "status": "draft",
+    }
+
+
+def _product_draft_matches(product, data: dict) -> bool:
+    existing_skus = product.get_sku_list() if hasattr(product, "get_sku_list") else []
+    return (
+        _safe_str(product.product_name) == _safe_str(data.get("product_name"))
+        and _safe_str(product.brand) == _safe_str(data.get("brand"))
+        and _safe_str(product.category_l1) == _safe_str(data.get("category_l1"))
+        and _safe_str(product.category_l2) == _safe_str(data.get("category_l2"))
+        and _safe_str(product.category_l3) == _safe_str(data.get("category_l3"))
+        and json.dumps(existing_skus, ensure_ascii=False, sort_keys=True)
+        == json.dumps(data.get("sku_list") or [], ensure_ascii=False, sort_keys=True)
+    )
+
+
+def _plan_product(db, data: dict, dry_run: bool, batch_id: str = "") -> dict:
+    """Plan or stage one KBProduct identity without publishing any facts."""
+    from app.models.kb_tables import KBProduct
+
+    i_id = _safe_str(data.get("i_id"))
+    existing = db.query(KBProduct).filter(KBProduct.i_id == i_id).first()
+    if existing:
+        if _product_draft_matches(existing, data):
+            return {
+                "action": "would_skip_unchanged" if dry_run else "skipped",
+                "product_id": existing.id,
+                "reason": "product identity unchanged",
+                "existing_status": existing.status,
+            }
+        if existing.status != "draft":
+            return {
+                "action": "conflict",
+                "product_id": existing.id,
+                "reason": "reviewed product cannot be overwritten by recovery import",
+                "existing_status": existing.status,
+            }
+        if existing.created_by != IMPORT_TOOL_ID:
+            return {
+                "action": "conflict",
+                "product_id": existing.id,
+                "reason": "product was created manually, import tool cannot modify",
+                "existing_status": existing.status,
+            }
+        if dry_run:
+            return {
+                "action": "would_update_draft",
+                "product_id": existing.id,
+                "reason": "managed product identity changed",
+                "existing_status": existing.status,
+            }
+
+        existing.product_name = _safe_str(data.get("product_name"))
+        existing.brand = _safe_str(data.get("brand"))
+        existing.category_l1 = _safe_str(data.get("category_l1"))
+        existing.category_l2 = _safe_str(data.get("category_l2"))
+        existing.category_l3 = _safe_str(data.get("category_l3"))
+        existing.set_sku_list(data.get("sku_list") or [])
+        existing.import_batch_id = batch_id
+        existing.updated_by = IMPORT_TOOL_ID
+        existing.updated_at = datetime.utcnow()
+        from app.repositories.kb_product_repository import _compute_completeness
+        score, missing = _compute_completeness(existing)
+        existing.completeness_score = round(score * 100, 1)
+        existing.set_missing_fields(missing)
+        db.flush()
+        return {
+            "action": "updated_draft",
+            "product_id": existing.id,
+            "reason": "managed product identity updated",
+        }
+
+    if dry_run:
+        return {
+            "action": "would_create",
+            "reason": "new review-only product identity",
+        }
+
+    product = KBProduct(
+        i_id=i_id,
+        product_name=_safe_str(data.get("product_name")),
+        brand=_safe_str(data.get("brand")),
+        category_l1=_safe_str(data.get("category_l1")),
+        category_l2=_safe_str(data.get("category_l2")),
+        category_l3=_safe_str(data.get("category_l3")),
+        status="draft",
+        created_by=IMPORT_TOOL_ID,
+        updated_by=IMPORT_TOOL_ID,
+        import_batch_id=batch_id,
+    )
+    product.set_sku_list(data.get("sku_list") or [])
+    product.set_specs({})
+    product.set_logistics({})
+    product.set_warranty({})
+    db.add(product)
+    db.flush()
+    from app.repositories.kb_product_repository import _compute_completeness
+    score, missing = _compute_completeness(product)
+    product.completeness_score = round(score * 100, 1)
+    product.set_missing_fields(missing)
+    return {
+        "action": "created",
+        "product_id": product.id,
+        "reason": "review-only product identity created",
+    }
+
+
 # ---------------------------------------------------------------------------
 # DB operations
 # ---------------------------------------------------------------------------
@@ -575,14 +710,18 @@ def run_import(args):
         print(f"Limited to top {args.limit} cards.")
 
     import_plan = []
+    product_plan = []
     for card, analysis in analyses:
+        if args.type in ("products", "all"):
+            product_plan.append((build_product_draft(card, analysis), analysis))
         if args.type in ("identity", "all"):
             import_plan.append(("product_identity", build_identity_entry(card, analysis), analysis))
         if args.type in ("facts", "all") and analysis["has_facts"]:
             for fact in analysis["facts"]:
                 import_plan.append(("product_facts", build_fact_entry(card, analysis, fact), analysis))
 
-    print(f"Import plan: {len(import_plan)} entries")
+    print(f"Product review plan: {len(product_plan)} products")
+    print(f"Knowledge entry plan: {len(import_plan)} entries")
     type_counts = {}
     for t, _, _ in import_plan:
         type_counts[t] = type_counts.get(t, 0) + 1
@@ -590,12 +729,12 @@ def run_import(args):
         print(f"  {t}: {c}")
 
     if args.dry_run:
-        return _dry_run_report(import_plan)
+        return _dry_run_report(import_plan, product_plan)
 
-    return _execute_import(import_plan)
+    return _execute_import(import_plan, product_plan)
 
 
-def _dry_run_report(import_plan: list) -> dict:
+def _dry_run_report(import_plan: list, product_plan: list | None = None) -> dict:
     from app.db import SessionLocal
     from app.models.knowledge_base import KnowledgeEntry
 
@@ -612,9 +751,27 @@ def _dry_run_report(import_plan: list) -> dict:
             "conflicts": 0,
             "product_count": 0,
             "entry_count": len(import_plan),
+            "product_record_count": len(product_plan or []),
+            "product_would_create": 0,
+            "product_would_update_draft": 0,
+            "product_would_skip_unchanged": 0,
+            "product_conflicts": 0,
         }
         details = []
         products_seen = set()
+
+        for product_data, analysis in product_plan or []:
+            plan = _plan_product(db, product_data, dry_run=True, batch_id=batch_id)
+            action = plan["action"]
+            key = {
+                "would_create": "product_would_create",
+                "would_update_draft": "product_would_update_draft",
+                "would_skip_unchanged": "product_would_skip_unchanged",
+                "conflict": "product_conflicts",
+            }.get(action)
+            if key:
+                stats[key] += 1
+            products_seen.add(analysis["i_id"])
 
         for t, data, analysis in import_plan:
             plan = _plan_entry(db, data, dry_run=True, batch_id=batch_id)
@@ -665,6 +822,11 @@ def _dry_run_report(import_plan: list) -> dict:
         print(f"\nBatch ID: {batch_id}")
         print(f"\nSummary:")
         print(f"  Products: {stats['product_count']}")
+        print(f"  Product records: {stats['product_record_count']}")
+        print(f"  Product records to create: {stats['product_would_create']}")
+        print(f"  Product draft updates: {stats['product_would_update_draft']}")
+        print(f"  Product records unchanged: {stats['product_would_skip_unchanged']}")
+        print(f"  Product record conflicts: {stats['product_conflicts']}")
         print(f"  Total entries: {stats['entry_count']}")
         print(f"  Would create (new): {stats['would_create']}")
         print(f"  Would update draft: {stats['would_update_draft']}")
@@ -703,7 +865,7 @@ def _dry_run_report(import_plan: list) -> dict:
         db.close()
 
 
-def _execute_import(import_plan: list) -> dict:
+def _execute_import(import_plan: list, product_plan: list | None = None) -> dict:
     from app.db import SessionLocal
     from app.models.knowledge_base import KnowledgeEntry
 
@@ -711,6 +873,9 @@ def _execute_import(import_plan: list) -> dict:
     print(f"Batch ID: {batch_id}")
 
     products = {}
+    product_records = {}
+    for data, analysis in product_plan or []:
+        product_records[analysis["i_id"]] = data
     for t, data, analysis in import_plan:
         pid = analysis["i_id"]
         if pid not in products:
@@ -727,11 +892,30 @@ def _execute_import(import_plan: list) -> dict:
         "failed_products": 0,
         "rolled_back": 0,
         "errors": [],
+        "product_records_created": 0,
+        "product_records_updated": 0,
+        "product_records_skipped": 0,
+        "product_record_conflicts": 0,
     }
 
-    for pid, entries in products.items():
+    for pid in sorted(set(products) | set(product_records)):
+        entries = products.get(pid, [])
         db = SessionLocal()
         try:
+            product_data = product_records.get(pid)
+            if product_data:
+                product_result = _plan_product(
+                    db, product_data, dry_run=False, batch_id=batch_id
+                )
+                product_action = product_result["action"]
+                if product_action == "created":
+                    stats["product_records_created"] += 1
+                elif product_action == "updated_draft":
+                    stats["product_records_updated"] += 1
+                elif product_action == "skipped":
+                    stats["product_records_skipped"] += 1
+                elif product_action == "conflict":
+                    stats["product_record_conflicts"] += 1
             for t, data, analysis in entries:
                 plan = _plan_entry(db, data, dry_run=False, batch_id=batch_id)
                 action = plan["action"]
@@ -759,6 +943,10 @@ def _execute_import(import_plan: list) -> dict:
             db.close()
 
     print(f"\nImport complete:")
+    print(f"  Product records created: {stats['product_records_created']}")
+    print(f"  Product records updated: {stats['product_records_updated']}")
+    print(f"  Product records skipped: {stats['product_records_skipped']}")
+    print(f"  Product record conflicts: {stats['product_record_conflicts']}")
     print(f"  Created: {stats['created']}")
     print(f"  Updated: {stats['updated']}")
     print(f"  Skipped (unchanged): {stats['skipped']}")
@@ -777,7 +965,7 @@ def _execute_import(import_plan: list) -> dict:
         ready = db.query(KnowledgeEntry).filter_by(
             status="published", index_status="ready"
         ).count()
-        print(f"\nProduction DB after import:")
+        print(f"\nConfigured knowledge DB after import:")
         print(f"  entries: {total}")
         print(f"  published+ready: {ready}")
     finally:
@@ -800,8 +988,8 @@ def main():
                         help="只导入指定商品（单个编号）")
     parser.add_argument("--product-ids", type=str, default="",
                         help="导入多个商品编号，逗号分隔，如 YH01K01,YH01K02,YH02K05")
-    parser.add_argument("--type", choices=["identity", "facts", "all"], default="all",
-                        help="导入类型: identity=身份, facts=事实, all=全部")
+    parser.add_argument("--type", choices=["products", "identity", "facts", "all"], default="all",
+                        help="导入类型: products=商品身份草稿, identity=身份条目, facts=事实条目, all=全部")
     args = parser.parse_args()
 
     if not args.dry_run:

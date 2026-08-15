@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-COMPOSER-INPUT-AUTHORITY-003` |
+| Task ID | `P1-FORMAL-EVIDENCE-COVERAGE-001` |
 | Owner | Codex |
-| Goal | Prevent the Composer from inventing a request for customer input that is absent from the deterministic offered service-action set. |
-| Scope | Existing Composer prompt contract, direct test, same-pipeline synthetic qualification, and durable result documentation. No new node, service, model call, action, or reply owner. |
-| Status | Engineering contract passed. DeepSeek V4 Flash Composer qualified `5/5`; the frozen identity-sensitive case stopped re-requesting resolved product/order context. Fresh fixed-four and fixed-40 runs completed, with fixed-40 Composer and Deterministic Final `40/40`, no empty reply, DML, or send authority. |
-| Gate | The run selected zero formal evidence and is not a factual-quality result. Keep `can_send=false` and human review mandatory; the next vertical slice must address formal evidence supply/coverage before further wording changes. |
+| Goal | Restore a governed product-identity review surface without promoting recovered facts, then prove whether the existing formal evidence path is structurally healthy. |
+| Scope | Existing recovery importer, KBProduct draft lifecycle, Product Context Pack, Evidence Convergence tests, isolated candidate databases, and durable documentation. No Agent, Prompt, Graph, model, reply owner, or Delivery change. |
+| Status | Root cause confirmed: the synthetic fixed-40 uses intentionally absent `SYN-*` identities and the snapshot contains no eligible reviewed product facts. Existing positive evidence-chain tests pass. The recovery importer now stages identity-only KBProduct drafts while leaving all facts in per-fact draft review. |
+| Gate | Recovered records are not formal evidence. Human review and publication are still required; `selected_evidence=0`, `real_customer_accuracy=null`, `can_send=false`, and mandatory review remain correct until governed facts exist for real identities. |
 
 ## Phase Status
 
@@ -32,10 +32,10 @@
    fact, compensation, refund, replacement, or promised completion step.
 3. No test result may promote the current Supervisor Assist runtime to
    autonomous sending.
-4. The completed synthetic fixed-40 selected zero formal evidence. It cannot
-   establish factual accuracy. The latest run removed one unauthorized
-   product/order re-request, but many replies remain generic or offer
-   ungrounded procedural advice; those are separate semantic-quality findings.
+4. The completed synthetic fixed-40 selected zero formal evidence because its
+   fictional `SYN-*` identities do not exist in the query-only knowledge
+   snapshot. This is correct fail-closed behavior, not an Evidence Convergence
+   failure, and it cannot establish factual accuracy.
 5. The Composer-enabled versioned smoke scored `0/5`; the default-off Composer
    safety smoke scored `3/5` and left both installation replies empty. The full
    22-scenario run was correctly not started. These reports are retained as
@@ -43,10 +43,9 @@
 
 ## Immediate Queue
 
-1. `P1-FORMAL-EVIDENCE-COVERAGE-001`: trace why the current fixed-40 formal
-   requests reach generation with `selected_evidence=0`, and repair the earliest
-   reusable identity/retrieval/admission gap without using synthetic identities
-   as product truth. Do not add more Composer wording rules to hide the gap.
+1. `P1-FORMAL-KNOWLEDGE-REVIEW-002`: use the existing supervisor lifecycle to
+   review identity-linked, high-frequency fact drafts. Do not bulk approve,
+   infer missing material or dimensions, or use synthetic identities as truth.
 2. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
    deidentified review package outside the repository; no raw conversations or
    label answers enter an Agent prompt.

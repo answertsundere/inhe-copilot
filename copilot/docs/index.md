@@ -64,7 +64,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   fixed-40 structural baseline; it is synthetic regression evidence with zero
   formal evidence in the latest run, not a real-customer accuracy claim. The
   latest follow-up also records the offered customer-input boundary and moves
-  the next owner to formal evidence supply/admission coverage.
+  the next owner to formal evidence supply/admission coverage. That follow-up
+  confirmed the zero-evidence result is correct for fictional `SYN-*`
+  identities; recovered product cards now support identity-only review drafts,
+  not automatic fact admission or publication.
 - `docs/superpowers/specs/2026-08-14-customer-conditional-space-fit-design.md`
   - defines the P1 boundary between a measurement lookup and a fit conclusion,
     while keeping customer-supplied conditions outside formal evidence.

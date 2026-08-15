@@ -792,6 +792,18 @@ reapply current review governance and evidence admission, quarantine risky or
 identity-mismatched records, and keep `can_send=false`. P1 quality and
 `real_customer_accuracy` therefore remain unqualified.
 
+The recovered product-card corpus is a separate, lower-authority source. Its
+1,898 records contain useful identity metadata but no reviewed material or
+dimension coverage, and every card retains data-quality warnings. The existing
+product-card importer may now stage only the product identity and SKU labels as
+managed `KBProduct.status=draft` rows. It deliberately leaves `specs`,
+`logistics`, and `warranty` empty and retains recovered facts as independent
+draft knowledge entries. Published or manually managed products are never
+overwritten. This creates a supervisor review surface without creating formal
+evidence: Product Context Pack and Evidence Admission still require normal
+publication, direct-answer permission, exact identity, compatible claim scope,
+and conflict-free provenance.
+
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
 only immediate risk-reduction steps owned by the same authoritative customer

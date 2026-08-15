@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-08-16 - Recovery Product Identity Review Boundary
+
+- Confirmed that the fixed-40 zero-evidence result comes from fictional
+  `SYN-*` identities and an empty eligible-fact snapshot, while the existing
+  positive Evidence Convergence path remains healthy.
+- Extended the existing product-card importer to stage identity-only
+  `KBProduct` drafts. Recovered card facts are not copied into product specs,
+  logistics, or warranty, and published or manually managed products are not
+  overwritten.
+- An isolated copy staged 1,898 product drafts idempotently while all 2,593
+  existing knowledge entries remained drafts; published records, chunks,
+  formal knowledge DML, Agent behavior, and send authority did not change.
+- Focused knowledge/evidence/safety/documentation regression passed `324/324`.
+  The full repository retained its five known unrelated failures and two skips
+  across 4,558 collected tests; no new failure was introduced by this slice.
+
 ## 2026-08-15 - Offered Customer Input Boundary
 
 - The existing Composer may request new customer input only when an offered
