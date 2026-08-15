@@ -139,6 +139,23 @@ Turn Understanding provider is not stable enough for this fixed-40 gate. This
 is a provider qualification blocker, not permission to normalize an invalid
 enum, loosen the schema, or claim reply-quality progress.
 
+A later GLM-4.7-Flash candidate passed the existing Composer-role gate `5/5`
+without retry, repair, fallback, knowledge DML, or send authority. The first
+fixed-40 attempt reached row 10, where the Composer rejected the customer-safe
+boundary phrase `不能承诺` as internal language. The shared redline contract
+was inconsistent with its own reviewed benchmark and generic service rules,
+which require a clear refusal of unsupported guarantees. The contract now
+allows negative promise boundaries while continuing to reject evidence,
+review, knowledge-base, RAG, and Final-Gate process language. The frozen row 10
+then passed once with Final accepted, human review required, `can_send=false`,
+and DML `0`.
+
+The new-source fixed-40 run stopped at row 3 on the unchanged 180-second HTTP
+timeout. GLM-4.7-Flash therefore remains latency-unqualified despite its schema
+and Composer-role results. GLM-4.6 stopped at its first qualification call with
+a rate-limit error. Neither result is a conversation-quality score, and
+`real_customer_accuracy` remains `null`.
+
 The associated versioned safety benchmark passed smoke `5/5` and full
 `22/22` with `can_send=0` and mandatory human review for all scenarios. Those
 runs used an explicit isolated knowledge snapshot whose runtime readiness was

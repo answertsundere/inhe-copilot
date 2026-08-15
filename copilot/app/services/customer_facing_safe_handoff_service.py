@@ -13,10 +13,6 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 
 CUSTOMER_FACING_INTERNAL_REDLINE_TERMS = (
-    "不直接说",
-    "不直接承诺",
-    "不能承诺",
-    "不敢保证",
     "缺少证据",
     "没有证据",
     "人工审核",

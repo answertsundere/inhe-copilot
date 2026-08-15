@@ -1010,13 +1010,11 @@ def test_composer_rejects_process_copy_instead_of_direct_answer():
 @pytest.mark.parametrize(
     ("text", "trigger_category"),
     [
-        ("这个结论不能承诺。", "reply_policy_meta_language"),
         ("当前缺少证据支持。", "evidence_process_language"),
         ("这项需要人工审核。", "review_process_language"),
         ("当前知识库没有记录。", "internal_knowledge_language"),
         ("Final Gate 尚未通过。", "internal_system_language"),
         ("需要查看 rAg 结果。", "internal_system_language"),
-        ("这项不直接说结论。", "reply_policy_meta_language"),
     ],
 )
 def test_composer_attributes_customer_visible_internal_language(
@@ -1042,6 +1040,26 @@ def test_composer_attributes_customer_visible_internal_language(
     assert match["json_path"] == "$.clauses[0].text"
     assert len(match["text_sha256"]) == 64
     assert len(match["rule_sha256"]) == 64
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "这项不能承诺绝对结果，具体以当前活动规则为准。",
+        "这项不直接承诺百分之百成立。",
+        "这项不敢保证任何情况下都成立。",
+        "这项不直接说成确定结论。",
+    ],
+)
+def test_composer_allows_customer_visible_restricted_boundary_language(text):
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = text
+
+    _, result, client = _compose(payload)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
     assert client.call_count == 1
 
 

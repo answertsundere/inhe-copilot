@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-08-15 - Customer-Visible Promise Boundary Semantics
+
+- Corrected a shared redline conflict that classified legitimate refusals of
+  absolute promises as internal system language. Evidence, review,
+  knowledge-base, RAG, and Final-Gate process terms remain blocked.
+- GLM-4.7-Flash passed the changed-source Composer role gate `5/5`, and the
+  frozen promotion regression passed with Final accepted, human review
+  required, `can_send=false`, and formal-knowledge DML `0`.
+- The following fixed-40 run stopped at row 3 on the existing 180-second
+  timeout. GLM-4.6 was rate-limited on its first qualification call. Provider
+  stability, synthetic conversation quality, and real accuracy remain
+  unqualified.
+- No Graph node, service, model call, reply owner, knowledge authority,
+  delivery authority, or automatic-send condition was added.
+
 ## 2026-08-15 - Canonical Goal Routing And Synthetic Gate Integrity
 
 - Formal synthetic observations now distinguish Composer-owned replies from

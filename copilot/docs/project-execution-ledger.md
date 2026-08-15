@@ -192,6 +192,16 @@ and next owner here and in `docs/CHANGELOG.md`.
   query-only snapshot, with zero sendable replies and all scenarios requiring
   human review. Full-repository pytest retained the five pre-existing failures
   outside this change's ownership; no additional failure was introduced.
+- `P1-COMPOSER-BOUNDARY-LANGUAGE-001` removed four legitimate negative-promise
+  phrases from the shared internal-language redline. Internal evidence,
+  review, knowledge-base, RAG, and Final-Gate terms remain blocked. The change
+  resolves the reproducible row-10 promotion Composer rejection without
+  weakening evidence, safety, media, service-action, or delivery contracts.
+- GLM-4.7-Flash requalified for the Composer role `5/5` on the changed source,
+  with no retry, repair, fallback, DML, or send-authority change. Its next
+  fixed-40 attempt timed out at row 3 after 180 seconds, so the model is not a
+  stable baseline Provider. GLM-4.6 was also not qualified because its first
+  call returned a rate-limit error. No quality or accuracy result is claimed.
 
 ## Phase Plan
 

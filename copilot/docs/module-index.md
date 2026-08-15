@@ -128,8 +128,12 @@ identity and provenance can enter the existing evidence route when legacy
 intent remains `general`. Public, invalid, media, and service goals cannot use
 that path. This adds no node, service, model call, evidence authority, reply
 owner, or delivery authority. The fixed-40 synthetic gate remains blocked by
-GLM-4.5-Air Turn Understanding enum instability; `real_customer_accuracy` is
-still `null`.
+Provider instability. GLM-4.7-Flash passed the Composer-role gate and the
+repaired promotion regression, but its new-source run timed out at row 3;
+GLM-4.6 was rate-limited on its first qualification call. Negative promise
+boundaries such as refusing an absolute guarantee are customer-visible safety
+content, not internal-system language; evidence, review, knowledge-base, RAG,
+and Final-Gate terms remain redlined. `real_customer_accuracy` is still `null`.
 
 An earlier candidate additionally verified that the server's model-facing
 FactType projection deduplicates the existing material aliases to the canonical

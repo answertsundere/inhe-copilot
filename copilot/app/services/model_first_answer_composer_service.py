@@ -503,10 +503,6 @@ _PROCESS_LANGUAGE_TERMS = (
     "公司资料",
 )
 _INTERNAL_LANGUAGE_TRIGGER_CATEGORIES = {
-    "不直接说": "reply_policy_meta_language",
-    "不直接承诺": "reply_policy_meta_language",
-    "不能承诺": "reply_policy_meta_language",
-    "不敢保证": "reply_policy_meta_language",
     "缺少证据": "evidence_process_language",
     "没有证据": "evidence_process_language",
     "人工审核": "review_process_language",

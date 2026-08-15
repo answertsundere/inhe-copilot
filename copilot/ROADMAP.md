@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-SYNTHETIC-BASELINE-AUTHORITATIVE-GOAL-ROUTING` |
+| Task ID | `P1-COMPOSER-BOUNDARY-LANGUAGE-001` |
 | Owner | Codex |
-| Goal | Preserve safe non-factual media goals and route a provenance-valid canonical customer goal into the existing evidence path even when the legacy intent remains `general`. |
-| Scope | Existing Turn Understanding sanitizer, response-strategy router, P1 synthetic runner, direct tests, external runtime harness, and durable result documentation. No new node, service, model call, or reply owner. |
-| Status | Engineering contract complete; the fresh fixed-40 run stopped at row 1 because GLM-4.5-Air emitted an invalid `claim_type_status`. Provider stability is not qualified. |
+| Goal | Keep customer-visible refusals of absolute promises distinct from internal system, evidence, and review-process language. |
+| Scope | Existing shared customer-facing redline vocabulary, Composer validation, direct tests, external runtime harness, and durable result documentation. No new node, service, model call, or reply owner. |
+| Status | Engineering contract and the frozen promotion regression pass. GLM-4.7-Flash Composer qualified `5/5`, but the fresh fixed-40 run stopped at row 3 on a 180-second Provider timeout; Provider stability and conversation quality remain unqualified. |
 | Gate | Keep schema validation fail-closed, formal knowledge query-only, `can_send=false`, and human review mandatory. Do not retry for a lucky pass or treat synthetic execution as real accuracy. |
 
 ## Phase Status
@@ -32,6 +32,9 @@
    fact, compensation, refund, replacement, or promised completion step.
 3. No test result may promote the current Supervisor Assist runtime to
    autonomous sending.
+4. The available GLM candidates are not stable enough for the fixed-40 gate:
+   GLM-4.7-Flash timed out and GLM-4.6 returned a rate-limit error on its first
+   qualification attempt.
 
 ## Immediate Queue
 
