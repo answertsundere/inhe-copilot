@@ -60,8 +60,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/p1-e2-long-conversation-evaluation-plan.md` - privacy-safe, review-only
   P1 E2 evaluation of multi-turn quality on the existing formal Pipeline.
 - `docs/p1-high-frequency-synthetic-dialogues.md` - fictional five-turn P1
-  dialogue fixture, review-only preview, and loopback formal-baseline contract;
-  it is synthetic regression evidence, not a real-customer accuracy claim.
+  dialogue fixture, review-only preview, Provider comparison, and formal
+  fixed-40 structural baseline; it is synthetic regression evidence with zero
+  formal evidence in the latest run, not a real-customer accuracy claim.
 - `docs/superpowers/specs/2026-08-14-customer-conditional-space-fit-design.md`
   - defines the P1 boundary between a measurement lookup and a fit conclusion,
     while keeping customer-supplied conditions outside formal evidence.

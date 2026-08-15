@@ -162,3 +162,28 @@ runs used an explicit isolated knowledge snapshot whose runtime readiness was
 verified before execution. A preliminary run against an empty snapshot
 produced `3/5`; it was classified as `input/context gap` because the Pipeline
 correctly stopped at runtime readiness, not as an Agent quality regression.
+
+The next provider comparison established a usable structural baseline without
+changing the dataset. DeepSeek V4 Flash passed the existing Composer-role gate
+`5/5` and completed all 40 scenarios once. Composer and Deterministic Final
+accepted `40/40`; empty replies, duplicate replies, sendable replies, and
+formal-knowledge DML were zero; every result required human review. Pipeline
+latency p50/p95/max was `5.658s/8.820s/9.497s`. GLM-4.7-Flash remained blocked
+by a strict-schema defect on an installation goal and by tail latency, so its
+output was not normalized or retried into a pass.
+
+This completion is not a Gold-quality result. The synthetic identities selected
+no formal evidence, `32/40` replies used a generic inability-to-confirm
+construction, and one reply turned missing evidence into the unsupported
+negative fact that no image/text instructions were available. That frozen row
+is the next polarity/faithfulness diagnosis. `real_customer_accuracy` remains
+`null` and `optimization_unverified` remains true.
+
+Two separate versioned benchmark observations are intentionally retained. With
+the DeepSeek Composer enabled, smoke scored `0/5` because the generated replies
+did not satisfy the legacy key-point rubric and two installation FactTypes
+diverged. With the Composer disabled, smoke scored `3/5`; after-sales remained
+review-only but both installation rows had empty drafts. No full 22-scenario run
+was started after either failed smoke. These failures do not overwrite the
+earlier `5/5` and `22/22` reports, and the earlier reports do not prove the
+current provider's reply quality.

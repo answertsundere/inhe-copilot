@@ -1063,6 +1063,19 @@ def test_composer_allows_customer_visible_restricted_boundary_language(text):
     assert client.call_count == 1
 
 
+def test_composer_allows_concrete_information_request_with_verification_offer():
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = (
+        "请提供问题部位和关联位置的清晰照片，我帮您核对对应关系。"
+    )
+
+    _, result, client = _compose(payload)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
 @pytest.mark.parametrize(
     ("text", "trigger_category"),
     [

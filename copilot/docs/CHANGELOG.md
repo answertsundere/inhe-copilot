@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-08-15 - Concrete Verification Guidance Boundary
+
+- Corrected a Composer redline that rejected a concrete, customer-visible
+  request for photos or location details solely because it contained
+  `帮您核对`. Vague future-work, evidence, review, RAG, knowledge-base, and
+  Final-Gate process language remains blocked.
+- DeepSeek V4 Flash requalified `5/5` and completed one fixed-40 structural run
+  with Composer and Deterministic Final `40/40`, no empty or duplicate replies,
+  mandatory human review, `can_send=false`, and formal-knowledge DML `0`.
+- The fixed-40 had zero selected evidence and exposed an unsupported negative
+  absence claim. It is not a factual-quality or real-accuracy result.
+- Composer-enabled and default-off Composer versioned smokes scored `0/5` and
+  `3/5` respectively; full 22 was not run. The failures remain recorded and no
+  scenario wording, rubric, safety gate, or send authority was changed.
+
 ## 2026-08-15 - Customer-Visible Promise Boundary Semantics
 
 - Corrected a shared redline conflict that classified legitimate refusals of

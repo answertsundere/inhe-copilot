@@ -491,7 +491,6 @@ _DIAGNOSTIC_SAFE_PATH_FIELDS = frozenset().union(
     {"provenance", "product_scope", "safety_constraints"},
 )
 _PROCESS_LANGUAGE_TERMS = (
-    "帮您核对",
     "我先核对",
     "确认后回复",
     "确认后再回复",
@@ -514,7 +513,6 @@ _INTERNAL_LANGUAGE_TRIGGER_CATEGORIES = {
     "RAG": "internal_system_language",
 }
 _PROCESS_LANGUAGE_TRIGGER_CATEGORIES = {
-    "帮您核对": "deferred_process_language",
     "我先核对": "deferred_process_language",
     "确认后回复": "deferred_process_language",
     "确认后再回复": "deferred_process_language",

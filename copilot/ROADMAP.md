@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-COMPOSER-BOUNDARY-LANGUAGE-001` |
+| Task ID | `P1-COMPOSER-PROCESS-LANGUAGE-002` |
 | Owner | Codex |
-| Goal | Keep customer-visible refusals of absolute promises distinct from internal system, evidence, and review-process language. |
+| Goal | Keep concrete verification guidance requested by the customer distinct from vague internal or future-process language. |
 | Scope | Existing shared customer-facing redline vocabulary, Composer validation, direct tests, external runtime harness, and durable result documentation. No new node, service, model call, or reply owner. |
-| Status | Engineering contract and the frozen promotion regression pass. GLM-4.7-Flash Composer qualified `5/5`, but the fresh fixed-40 run stopped at row 3 on a 180-second Provider timeout; Provider stability and conversation quality remain unqualified. |
-| Gate | Keep schema validation fail-closed, formal knowledge query-only, `can_send=false`, and human review mandatory. Do not retry for a lucky pass or treat synthetic execution as real accuracy. |
+| Status | Engineering contract passed. DeepSeek V4 Flash Composer qualified `5/5`, and one fresh fixed-40 run completed `40/40` through Composer and Deterministic Final with no empty reply, DML, or send authority. The run had zero selected evidence and remains a synthetic structural baseline, not a quality or accuracy qualification. |
+| Gate | Keep schema validation fail-closed, formal knowledge query-only, `can_send=false`, and human review mandatory. Freeze the first unsupported negative-absence claim before changing another wording rule. |
 
 ## Phase Status
 
@@ -32,20 +32,29 @@
    fact, compensation, refund, replacement, or promised completion step.
 3. No test result may promote the current Supervisor Assist runtime to
    autonomous sending.
-4. The available GLM candidates are not stable enough for the fixed-40 gate:
-   GLM-4.7-Flash timed out and GLM-4.6 returned a rate-limit error on its first
-   qualification attempt.
+4. The completed synthetic fixed-40 selected zero formal evidence. It cannot
+   establish factual accuracy; `32/40` replies used a generic inability-to-
+   confirm construction, and one reply asserted that no image/text steps were
+   available without evidence for that negative fact.
+5. The Composer-enabled versioned smoke scored `0/5`; the default-off Composer
+   safety smoke scored `3/5` and left both installation replies empty. The full
+   22-scenario run was correctly not started. These reports are retained as
+   failures, not rewritten as passing safety or quality evidence.
 
 ## Immediate Queue
 
-1. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
+1. `P1-NEGATIVE-ABSENCE-001`: freeze the first synthetic reply that asserted
+   an unavailable asset without evidence, then trace requested-claim polarity
+   through Claim Resolution, Composer, Deterministic Final, and Unified Audit.
+   Do not add an asset-specific phrase rule.
+2. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
    deidentified review package outside the repository; no raw conversations or
    label answers enter an Agent prompt.
-2. `P1-E2-001B`: run the existing formal Pipeline on a query-only snapshot,
+3. `P1-E2-001B`: run the existing formal Pipeline on a query-only snapshot,
    retaining `can_send=false` and human review.
-3. `P1-E2-001C`: independent reviewers record completeness, continuity,
+4. `P1-E2-001C`: independent reviewers record completeness, continuity,
    factual restraint, unresolved coverage, and handoff needs.
-4. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
+5. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
 
 ## Completion Record
 
@@ -74,3 +83,17 @@
 - Script tests, related readiness/auth tests, and a real two-case 5012 run
   passed. This does not assess product facts, policies, real customers, or
   autonomous delivery.
+
+`P1-COMPOSER-PROCESS-LANGUAGE-002` completed its engineering gate on
+2026-08-15:
+
+- A concrete request for photos or location details so the same reply can
+  verify a relationship is no longer rejected solely because it contains the
+  customer-visible phrase `帮您核对`. More specific internal/future-process
+  expressions remain blocked.
+- DeepSeek V4 Flash requalified `5/5`. One fixed-40 run completed all rows with
+  40 accepted Composer results, 40 Deterministic Final passes, 40 mandatory
+  human reviews, zero sendable replies, and zero formal-knowledge DML.
+- The run selected no formal evidence and therefore cannot prove factual
+  quality. The next owner is the unsupported negative-absence claim, not a new
+  reply template or graph layer.

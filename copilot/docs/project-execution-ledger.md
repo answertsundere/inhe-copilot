@@ -202,6 +202,28 @@ and next owner here and in `docs/CHANGELOG.md`.
   fixed-40 attempt timed out at row 3 after 180 seconds, so the model is not a
   stable baseline Provider. GLM-4.6 was also not qualified because its first
   call returned a rate-limit error. No quality or accuracy result is claimed.
+- `P1-COMPOSER-PROCESS-LANGUAGE-002` removed only the overbroad
+  customer-visible phrase `帮您核对` from the Composer process-language redline.
+  Generic future work, evidence, review, RAG, knowledge-base, and Final-Gate
+  language remains blocked. The frozen information-request row then passed.
+- DeepSeek V4 Flash requalified `5/5` and completed one fresh fixed-40 run:
+  execution, Composer acceptance, and Deterministic Final were `40/40`; empty
+  replies, DML, sendable replies, and duplicate replies were `0`; all 40 rows
+  required human review. Pipeline latency p50/p95 was `5.658s/8.820s`.
+- The completed set contained zero selected evidence, `32/40` generic
+  inability-to-confirm replies, and an unsupported negative statement that no
+  image/text instructions were available. It is a structure/safety diagnostic,
+  not factual quality; `real_customer_accuracy=null` and
+  `optimization_unverified=true` remain unchanged.
+- A Composer-enabled DeepSeek safety smoke scored `0/5`; a separate default-off
+  Composer smoke scored `3/5` and returned empty installation drafts. Both kept
+  `can_send=false` and mandatory human review. Full `22` was not run after the
+  failed smoke, and neither failure was patched with scenario wording.
+- The scoped regression suite passed `555/555`, documentation governance and
+  `py_compile` passed, and staged-diff checks were clean. Full-repository pytest
+  retained the same five existing failures outside this change: odor-bridge
+  FactType ownership, two reconstructed-fixture file hashes, partial-answer
+  evaluator polarity, and the fast-path evaluator source hash.
 
 ## Phase Plan
 
@@ -218,13 +240,16 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 ## Immediate Queue
 
-1. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
+1. `P1-NEGATIVE-ABSENCE-001` - Freeze the first unsupported negative-absence
+   claim and identify whether Claim Resolution, Composer, Deterministic Final,
+   or Unified Audit first loses the unresolved polarity.
+2. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
    versioned, hashed long-conversation manifest. Keep raw content, direct
    identifiers, and label answers outside the repository and Agent prompt.
-2. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
+3. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
    and review-only delivery. Compare only equivalent runtimes and preserve
    `can_send=false`.
-3. `P1-E2-001C` - Independently review goal coverage, continuity, factual
+4. `P1-E2-001C` - Independently review goal coverage, continuity, factual
    restraint, unresolved handling, and handoff necessity. Record failures by
    owner without modifying frozen owners.
 5. `P2-LIVE-EVIDENCE-DESIGN` - After P1 acceptance, create the source-of-truth
