@@ -22,6 +22,10 @@ from app.services.agent_benchmark_fixture_service import scan_sensitive_content
 from scripts.build_p1_high_frequency_synthetic_dialogue_set import SCHEMA_VERSION
 from scripts.run_supervisor_partial_answer_preview_eval import _build_preview_context
 
+FORMAL_REPORT_SCHEMA_VERSION = (
+    "p1-high-frequency-synthetic-formal-pipeline-report/v2"
+)
+
 
 class SyntheticDialogueError(ValueError):
     """Raised when a synthetic dialogue fixture violates its safety contract."""
@@ -166,10 +170,199 @@ def _response_reply(response: dict[str, Any]) -> str:
     return ""
 
 
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    return [item for item in (value or []) if isinstance(item, dict)]
+
+
+def _issue_codes(value: Any) -> list[str]:
+    codes: list[str] = []
+    for item in value or []:
+        if isinstance(item, str) and item.strip():
+            codes.append(item.strip())
+        elif isinstance(item, dict):
+            code = str(item.get("code") or "unknown_issue").strip()
+            if code:
+                codes.append(code)
+    return codes
+
+
+def _build_formal_observation(
+    item: dict[str, Any],
+    response: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the single immutable observation used by reports and gates."""
+    expected_history = _formal_payload(item)["conversation_history"]
+    minimal_context = _dict(response.get("minimal_decision_context"))
+    projected_history = _dict_list(
+        minimal_context.get("recent_conversation_turns")
+    )
+    composer = _dict(response.get("model_first_answer_composer"))
+    boundary = _dict(response.get("turn_understanding_boundary"))
+    final_audit = _dict(response.get("final_answer_audit"))
+    semantic_audit = _dict(response.get("final_semantic_fit_audit"))
+    pipeline = _dict(response.get("analysis_pipeline"))
+    pipeline_stages = _dict_list(pipeline.get("stages"))
+    selected_evidence = _dict_list(
+        minimal_context.get("admitted_evidence")
+        or response.get("selected_evidence")
+    )
+    claim_resolutions = _dict_list(minimal_context.get("claim_resolutions"))
+    reply = _response_reply(response)
+
+    def history_projection(turns: list[dict[str, Any]]) -> list[dict[str, str]]:
+        role_map = {
+            "user": "customer",
+            "customer": "customer",
+            "assistant": "agent",
+            "agent": "agent",
+        }
+        return [
+            {
+                "role": role_map.get(
+                    str(turn.get("role") or "").strip().lower(),
+                    "unknown",
+                ),
+                "content": str(
+                    turn.get("content")
+                    if turn.get("content") is not None
+                    else turn.get("text") or ""
+                ).strip(),
+            }
+            for turn in turns
+        ]
+
+    expected_projection = history_projection(expected_history)
+    projected_projection = history_projection(projected_history)
+
+    understanding_status = "authoritative"
+    if boundary and (
+        str(boundary.get("status") or "").strip().lower()
+        in {"invalid", "degraded", "blocked"}
+        or boundary.get("used_for_final_reply") is False
+    ):
+        understanding_status = "not_authoritative"
+
+    history_status = (
+        "complete"
+        if projected_projection == expected_projection
+        else "mismatch"
+    )
+    composer_accepted = (
+        composer.get("status") == "accepted"
+        and composer.get("used_for_final_reply") is True
+    )
+    final_passed = final_audit.get("passed") is True
+
+    reason = ""
+    if not reply:
+        reason = "empty_reply"
+    elif understanding_status != "authoritative":
+        reason = "turn_understanding_not_authoritative"
+    elif history_status != "complete":
+        reason = "conversation_history_projection_mismatch"
+    elif any(turn.get("turn_uid") for turn in projected_history):
+        reason = "transport_uid_leaked"
+    elif not composer_accepted:
+        reason = "composer_entry_blocked"
+    elif not final_passed:
+        reason = "final_audit_failed"
+
+    status_counts = {
+        status: sum(
+            str(claim.get("status") or "") == status
+            for claim in claim_resolutions
+        )
+        for status in ("supported", "unresolved", "conflicting", "prohibited")
+    }
+    return {
+        "candidate_reply": reply,
+        "requires_human_review": response.get("requires_human_review") is True,
+        "can_send": response.get("can_send") is True,
+        "reply_status": str(response.get("reply_status") or ""),
+        "expected_history_count": len(expected_history),
+        "projected_history_count": len(projected_history),
+        "projected_history_roles": [
+            turn["role"] for turn in projected_projection
+        ],
+        "projected_transport_uid_count": sum(
+            bool(turn.get("turn_uid")) for turn in projected_history
+        ),
+        "history_projection_status": history_status,
+        "turn_understanding_status": understanding_status,
+        "turn_understanding_boundary": (
+            {
+                "status": str(boundary.get("status") or ""),
+                "earliest_reason_code": str(
+                    boundary.get("earliest_reason_code") or ""
+                ),
+                "reason_codes": [
+                    str(code) for code in (boundary.get("reason_codes") or [])
+                ],
+            }
+            if boundary
+            else None
+        ),
+        "selected_evidence_count": len(selected_evidence),
+        "selected_evidence_roles": [
+            str(evidence.get("evidence_role") or "")
+            for evidence in selected_evidence
+        ],
+        "claim_status_counts": status_counts,
+        "requested_claim_count": len(
+            _dict_list(minimal_context.get("requested_claims"))
+        ),
+        "composer_status": str(composer.get("status") or ""),
+        "composer_rejection_reason": str(
+            composer.get("rejection_reason") or ""
+        ),
+        "composer_used_for_final_reply": (
+            composer.get("used_for_final_reply") is True
+        ),
+        "composer_clause_count": len(_dict_list(composer.get("clauses"))),
+        "pipeline_stages": [
+            {
+                "stage": str(stage.get("stage") or ""),
+                "status": str(stage.get("status") or ""),
+                "reason": str(stage.get("reason") or ""),
+            }
+            for stage in pipeline_stages
+        ],
+        "final_audit_passed": final_passed,
+        "final_audit_issue_codes": _issue_codes(final_audit.get("issues")),
+        "semantic_audit_status": str(
+            semantic_audit.get("status") or ""
+        ),
+        "stability_status": "not_qualified" if reason else "qualified",
+        "stability_reason_code": reason,
+    }
+
+
 def _formal_report(payload: dict[str, Any], validation: dict[str, Any], rows_by_uid: dict[str, dict[str, Any]]) -> dict[str, Any]:
     rows = [rows_by_uid[item["scenario_uid"]] for item in payload["scenarios"] if item["scenario_uid"] in rows_by_uid]
+    failure_counts = Counter(
+        str(row.get("stability_reason_code") or "")
+        for row in rows
+        if str(row.get("stability_reason_code") or "")
+    )
+    stop_reason = next(
+        (
+            str(row.get("stability_reason_code") or "")
+            for row in rows
+            if str(row.get("stability_reason_code") or "")
+        ),
+        "",
+    )
+    status = (
+        "stopped"
+        if stop_reason
+        else "completed" if len(rows) == len(payload["scenarios"]) else "running"
+    )
     return {
-        "report_schema_version": "p1-high-frequency-synthetic-formal-pipeline-report/v1",
+        "report_schema_version": FORMAL_REPORT_SCHEMA_VERSION,
         "dataset_id": payload["dataset_id"],
         "dataset_version": payload["dataset_version"],
         "dataset_sha256": _canonical_sha256(payload),
@@ -179,6 +372,8 @@ def _formal_report(payload: dict[str, Any], validation: dict[str, Any], rows_by_
         "real_customer_accuracy": None,
         "optimization_unverified": True,
         "agent_call_is_formal_runtime_call": True,
+        "status": status,
+        "stop_reason": stop_reason,
         "rows": rows,
         "summary": {
             "scenario_count": len(payload["scenarios"]),
@@ -187,6 +382,10 @@ def _formal_report(payload: dict[str, Any], validation: dict[str, Any], rows_by_
             "error_count": sum(bool(row["error"]) for row in rows),
             "requires_human_review_count": sum(row["requires_human_review"] for row in rows),
             "can_send_true_count": sum(row["can_send"] for row in rows),
+            "stability_qualified_count": sum(
+                row.get("stability_status") == "qualified" for row in rows
+            ),
+            "stability_failure_counts": dict(sorted(failure_counts.items())),
         },
     }
 
@@ -196,6 +395,8 @@ def _load_checkpoint(payload: dict[str, Any], checkpoint_path: Path) -> dict[str
         checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SyntheticDialogueError("formal_checkpoint_unreadable") from exc
+    if checkpoint.get("report_schema_version") != FORMAL_REPORT_SCHEMA_VERSION:
+        raise SyntheticDialogueError("formal_checkpoint_schema_mismatch")
     if (
         checkpoint.get("dataset_id") != payload.get("dataset_id")
         or checkpoint.get("dataset_version") != payload.get("dataset_version")
@@ -259,10 +460,7 @@ def build_formal_report(
                 "demand_topic": item["demand_topic"],
                 "customer_profile": item["customer_profile"],
                 "conversation_turns": item["conversation_turns"],
-                "candidate_reply": _response_reply(body),
-                "requires_human_review": bool(body.get("requires_human_review")),
-                "can_send": bool(body.get("can_send")),
-                "reply_status": str(body.get("reply_status") or ""),
+                **_build_formal_observation(item, body),
                 "error": "",
             }
         except Exception as exc:  # report failures; callers decide whether an incomplete run is acceptable
@@ -276,6 +474,8 @@ def build_formal_report(
                 "requires_human_review": True,
                 "can_send": False,
                 "reply_status": "",
+                "stability_status": "not_qualified",
+                "stability_reason_code": "formal_pipeline_request_failed",
                 "error": type(exc).__name__,
             }
             transport_failure = isinstance(
@@ -290,7 +490,7 @@ def build_formal_report(
         attempted_count += 1
         if checkpoint_path:
             _write_checkpoint(_formal_report(payload, validation, rows_by_uid), checkpoint_path)
-        if transport_failure:
+        if transport_failure or row.get("stability_status") != "qualified":
             break
     return _formal_report(payload, validation, rows_by_uid)
 

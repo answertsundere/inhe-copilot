@@ -42,6 +42,14 @@ python scripts\run_p1_high_frequency_synthetic_preview.py --mode formal --input 
 The runner refuses a non-loopback URL and stops if an answer becomes sendable
 or loses the human-review requirement.
 
+Formal report schema `v2` derives one immutable stability observation from the
+same API response used by the checkpoint and summary. It verifies the exact
+ordered history projection, authoritative Turn Understanding, Composer entry,
+and Deterministic Final result. The first failure is classified as
+`turn_understanding_not_authoritative`,
+`conversation_history_projection_mismatch`, `composer_entry_blocked`, or
+`final_audit_failed`; later stages cannot hide an earlier boundary failure.
+
 The formal request uses the same public `/api/analyze` contract as the
 customer-facing path. It sends the current message, canonical prior turns, and
 the fixture's synthetic `product_title`, `sku_code`, `i_id`, and `order_id` as
@@ -82,6 +90,17 @@ Composer. A diagnosis-only replay of the same row later retained `4/4` and
 used the Composer. The replay does not overwrite the first failure or permit
 rows 19-40 to run. The earliest gate is now Turn Understanding / Composer-entry
 stability under the same canonical input, not reply wording.
+
+The bounded stability qualification then stopped on its first permitted call;
+the second and third calls were not made. The row exposed an invalid
+`turn_understanding_boundary` with earliest reason
+`canonical_claim_type_not_allowed`, followed by correctly blocked media and
+Composer stages, history `0/4`, a safe review-only fallback, `can_send=false`,
+and formal-knowledge DML `0`. The earlier runtime-only gate had reported this
+as a history mismatch because it checked history before the authoritative
+understanding boundary. The corrected evaluator classifies the earliest owner
+as `turn_understanding_not_authoritative`. This is a reproducible stability
+failure, not permission to change reply wording or continue rows 19-40.
 
 Across the stopped 18-row attempt, Deterministic Final passed `18/18`,
 `can_send=true` was `0`, human review was `18/18`, formal-knowledge DML was

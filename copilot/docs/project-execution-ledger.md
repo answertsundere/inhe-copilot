@@ -162,6 +162,14 @@ and next owner here and in `docs/CHANGELOG.md`.
   zero formal evidence because their `SYN-` identities are intentionally absent
   from the query-only snapshot. The next gate is fixed-input understanding and
   Composer-entry stability; rows 19-40 remain unexecuted.
+- `P1-SYNTHETIC-STABILITY-001` moved the stability gate into the existing
+  formal evaluator. One response now owns the checkpoint, summary, exact
+  ordered-history comparison, Turn Understanding boundary, Composer entry,
+  and Final result. Deterministic qualification passed `57/57`. The bounded
+  live gate stopped on attempt `1/3`: Turn Understanding was invalid with
+  earliest reason `canonical_claim_type_not_allowed`; Composer was correctly
+  blocked, `can_send` remained false, human review remained required, and
+  formal-knowledge DML remained zero. Attempts 2-3 and rows 19-40 were not run.
 
 ## Phase Plan
 

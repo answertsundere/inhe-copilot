@@ -677,6 +677,15 @@ replay. This blocks continuation on stability rather than authorizing a
 sample-specific routing or wording fix. None of these results changes
 `real_customer_accuracy=null` or the active P1 owner.
 
+The existing formal evaluator now applies a single observation and earliest-
+owner order to history, Turn Understanding, Composer entry, and Deterministic
+Final. Its zero-model qualification passed `57/57`. The next bounded fixed-row
+qualification stopped on call `1/3`, before any repeat or rows 19-40: the
+authoritative boundary was invalid with
+`canonical_claim_type_not_allowed`, and the Pipeline correctly prevented
+Composer use. The active owner is therefore Turn Understanding canonical claim
+compatibility for service requests, not reply wording, Composer, or Delivery.
+
 The first P1.1a 26-call attempt is retained as an integrity-blocked diagnostic,
 not a baseline: report projection omitted the canonical history position and
 the finalization failure prevented persistence of the start knowledge

@@ -12,11 +12,72 @@ from scripts.build_p1_high_frequency_synthetic_dialogue_set import build_dataset
 import scripts.run_p1_high_frequency_synthetic_preview as runner
 from scripts.run_p1_high_frequency_synthetic_preview import (
     SyntheticDialogueError,
+    _build_formal_observation,
     build_formal_report,
     build_report,
     main,
     validate_dataset,
 )
+
+
+def _stable_formal_response(item=None, **updates):
+    history = (
+        [
+            {
+                "role": "customer" if turn["speaker"] == "buyer" else "agent",
+                "content": turn["text"],
+            }
+            for turn in item["conversation_turns"][:-1]
+        ]
+        if item
+        else [
+            {"role": "customer", "content": "第一轮"},
+            {"role": "agent", "content": "第二轮"},
+            {"role": "customer", "content": "第三轮"},
+            {"role": "agent", "content": "第四轮"},
+        ]
+    )
+    response = {
+        "suggested_reply": "合成草稿",
+        "requires_human_review": True,
+        "can_send": False,
+        "reply_status": "needs_human_review",
+        "minimal_decision_context": {
+            "recent_conversation_turns": history,
+            "requested_claims": [{"goal_kind": "customer_goal"}],
+            "claim_resolutions": [{"status": "unresolved"}],
+            "admitted_evidence": [],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "rejection_reason": "",
+            "used_for_final_reply": True,
+            "clauses": [{"status": "unresolved"}],
+        },
+        "analysis_pipeline": {
+            "stages": [
+                {"stage": "model_first_answer_composer", "status": "completed"},
+                {"stage": "final_response_orchestration", "status": "completed"},
+            ],
+        },
+        "final_answer_audit": {"passed": True, "issues": []},
+        "final_semantic_fit_audit": {"status": "passed", "passed": True},
+    }
+    response.update(updates)
+    return response
+
+
+def _stable_response_for_request(request, **updates):
+    request_payload = json.loads(request.data.decode("utf-8"))
+    response = _stable_formal_response(**updates)
+    response["minimal_decision_context"]["recent_conversation_turns"] = [
+        {
+            "role": "customer" if turn["role"] == "user" else "agent",
+            "content": turn["content"],
+        }
+        for turn in request_payload["conversation_history"]
+    ]
+    return response
 
 
 def test_dataset_has_forty_multi_turn_synthetic_scenarios():
@@ -90,6 +151,9 @@ def test_preview_cli_runs_from_project_root(tmp_path):
 
 def test_formal_report_accepts_only_loopback_preserves_review_contract_and_resumes(monkeypatch, tmp_path):
     class _Response:
+        def __init__(self, body):
+            self.body = body
+
         def __enter__(self):
             return self
 
@@ -97,10 +161,18 @@ def test_formal_report_accepts_only_loopback_preserves_review_contract_and_resum
             return False
 
         def read(self):
-            return b'{"suggested_reply":"\xe5\x90\x88\xe6\x88\x90\xe8\x8d\x89\xe7\xa8\xbf","requires_human_review":true,"can_send":false,"reply_status":"needs_human_review"}'
+            return json.dumps(
+                self.body,
+                ensure_ascii=False,
+            ).encode("utf-8")
 
     calls = []
-    monkeypatch.setattr(runner, "urlopen", lambda request, timeout: calls.append((request, timeout)) or _Response())
+    monkeypatch.setattr(
+        runner,
+        "urlopen",
+        lambda request, timeout: calls.append((request, timeout))
+        or _Response(_stable_response_for_request(request)),
+    )
     payload = build_dataset()
     checkpoint = tmp_path / "formal-checkpoint.json"
     report = build_formal_report(
@@ -129,6 +201,9 @@ def test_formal_report_accepts_only_loopback_preserves_review_contract_and_resum
 
 def test_formal_report_honors_batch_limit(monkeypatch, tmp_path):
     class _Response:
+        def __init__(self, body):
+            self.body = body
+
         def __enter__(self):
             return self
 
@@ -136,10 +211,18 @@ def test_formal_report_honors_batch_limit(monkeypatch, tmp_path):
             return False
 
         def read(self):
-            return b'{"suggested_reply":"draft","requires_human_review":true,"can_send":false}'
+            return json.dumps(
+                self.body,
+                ensure_ascii=False,
+            ).encode("utf-8")
 
     calls = []
-    monkeypatch.setattr(runner, "urlopen", lambda request, timeout: calls.append((request, timeout)) or _Response())
+    monkeypatch.setattr(
+        runner,
+        "urlopen",
+        lambda request, timeout: calls.append((request, timeout))
+        or _Response(_stable_response_for_request(request)),
+    )
     report = build_formal_report(
         build_dataset(),
         analyze_url="http://127.0.0.1:5018/api/analyze",
@@ -150,6 +233,43 @@ def test_formal_report_honors_batch_limit(monkeypatch, tmp_path):
     assert len(calls) == 3
     assert report["summary"]["scenario_count"] == 40
     assert report["summary"]["completed_count"] == 3
+
+
+def test_formal_report_rejects_pre_stability_checkpoint(monkeypatch, tmp_path):
+    payload = build_dataset()
+    checkpoint = tmp_path / "legacy-checkpoint.json"
+    checkpoint.write_text(
+        json.dumps(
+            {
+                "report_schema_version": (
+                    "p1-high-frequency-synthetic-formal-pipeline-report/v1"
+                ),
+                "dataset_id": payload["dataset_id"],
+                "dataset_version": payload["dataset_version"],
+                "dataset_sha256": runner._canonical_sha256(payload),
+                "generation_path": "formal_analysis_pipeline",
+                "rows": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        runner,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail("legacy checkpoint must fail first"),
+    )
+
+    with pytest.raises(
+        SyntheticDialogueError,
+        match="formal_checkpoint_schema_mismatch",
+    ):
+        build_formal_report(
+            payload,
+            analyze_url="http://127.0.0.1:5018/api/analyze",
+            checkpoint_path=checkpoint,
+            resume=True,
+        )
 
 
 def test_formal_report_stops_after_first_transport_failure(monkeypatch, tmp_path):
@@ -193,3 +313,154 @@ def test_formal_payload_supplies_canonical_history_roles_and_order():
     assert payload["order_id"] == "SYN-ORDER-001"
     assert "review_expectations" not in payload
     assert "requested_claims" not in payload
+
+
+def test_formal_observation_qualifies_complete_history_and_composer_entry():
+    item = build_dataset()["scenarios"][17]
+
+    observation = _build_formal_observation(
+        item,
+        _stable_formal_response(item=item),
+    )
+
+    assert observation["expected_history_count"] == 4
+    assert observation["projected_history_count"] == 4
+    assert observation["history_projection_status"] == "complete"
+    assert observation["turn_understanding_status"] == "authoritative"
+    assert observation["composer_status"] == "accepted"
+    assert observation["composer_used_for_final_reply"] is True
+    assert observation["final_audit_passed"] is True
+    assert observation["stability_status"] == "qualified"
+    assert observation["stability_reason_code"] == ""
+
+
+def test_formal_observation_rejects_same_length_history_with_wrong_order():
+    item = build_dataset()["scenarios"][17]
+    response = _stable_formal_response(item=item)
+    response["minimal_decision_context"]["recent_conversation_turns"].reverse()
+
+    observation = _build_formal_observation(item, response)
+
+    assert observation["expected_history_count"] == 4
+    assert observation["projected_history_count"] == 4
+    assert observation["history_projection_status"] == "mismatch"
+    assert observation["stability_reason_code"] == (
+        "conversation_history_projection_mismatch"
+    )
+
+
+@pytest.mark.parametrize(
+    ("response_updates", "expected_status", "expected_reason"),
+    [
+        (
+            {
+                "minimal_decision_context": {
+                    "recent_conversation_turns": [],
+                    "requested_claims": [],
+                    "claim_resolutions": [],
+                    "admitted_evidence": [],
+                },
+                "turn_understanding_boundary": {
+                    "status": "degraded",
+                    "earliest_reason_code": "llm_goal_understanding_unavailable",
+                    "reason_codes": ["llm_goal_understanding_unavailable"],
+                },
+                "model_first_answer_composer": {
+                    "status": "provider_blocked",
+                    "rejection_reason": "turn_understanding_not_authoritative",
+                    "used_for_final_reply": False,
+                    "clauses": [],
+                },
+            },
+            "not_qualified",
+            "turn_understanding_not_authoritative",
+        ),
+        (
+            {
+                "minimal_decision_context": {
+                    "recent_conversation_turns": [],
+                    "requested_claims": [{"goal_kind": "customer_goal"}],
+                    "claim_resolutions": [{"status": "unresolved"}],
+                    "admitted_evidence": [],
+                },
+            },
+            "not_qualified",
+            "conversation_history_projection_mismatch",
+        ),
+        (
+            {
+                "model_first_answer_composer": {
+                    "status": "provider_blocked",
+                    "rejection_reason": "formal_llm_error:TimeoutError",
+                    "used_for_final_reply": False,
+                    "clauses": [],
+                },
+            },
+            "not_qualified",
+            "composer_entry_blocked",
+        ),
+        (
+            {"final_answer_audit": {"passed": False, "issues": ["query_reply_mismatch"]}},
+            "not_qualified",
+            "final_audit_failed",
+        ),
+    ],
+)
+def test_formal_observation_classifies_the_earliest_stability_failure(
+    response_updates,
+    expected_status,
+    expected_reason,
+):
+    item = build_dataset()["scenarios"][17]
+    response = _stable_formal_response(item=item, **response_updates)
+
+    observation = _build_formal_observation(item, response)
+
+    assert observation["stability_status"] == expected_status
+    assert observation["stability_reason_code"] == expected_reason
+
+
+def test_formal_report_stops_after_first_composer_entry_failure(monkeypatch, tmp_path):
+    class _Response:
+        def __init__(self, request):
+            self.request = request
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            body = _stable_response_for_request(
+                self.request,
+                model_first_answer_composer={
+                    "status": "provider_blocked",
+                    "rejection_reason": "formal_llm_error:TimeoutError",
+                    "used_for_final_reply": False,
+                    "clauses": [],
+                },
+            )
+            return json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+    calls = []
+    monkeypatch.setattr(
+        runner,
+        "urlopen",
+        lambda request, timeout: calls.append((request, timeout))
+        or _Response(request),
+    )
+
+    report = build_formal_report(
+        build_dataset(),
+        analyze_url="http://127.0.0.1:5018/api/analyze",
+        checkpoint_path=tmp_path / "formal-checkpoint.json",
+    )
+
+    assert len(calls) == 1
+    assert report["status"] == "stopped"
+    assert report["stop_reason"] == "composer_entry_blocked"
+    assert report["summary"]["stability_qualified_count"] == 0
+    assert report["summary"]["stability_failure_counts"] == {
+        "composer_entry_blocked": 1,
+    }
