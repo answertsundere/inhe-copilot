@@ -62,7 +62,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/p1-high-frequency-synthetic-dialogues.md` - fictional five-turn P1
   dialogue fixture, review-only preview, Provider comparison, and formal
   fixed-40 structural baseline; it is synthetic regression evidence with zero
-  formal evidence in the latest run, not a real-customer accuracy claim.
+  formal evidence in the latest run, not a real-customer accuracy claim. The
+  latest follow-up also records the offered customer-input boundary and moves
+  the next owner to formal evidence supply/admission coverage.
 - `docs/superpowers/specs/2026-08-14-customer-conditional-space-fit-design.md`
   - defines the P1 boundary between a measurement lookup and a fit conclusion,
     while keeping customer-supplied conditions outside formal evidence.

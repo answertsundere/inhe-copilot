@@ -12,19 +12,31 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-E2-001-ISOLATED-SMOKE` |
+| Task ID | `P1-COMPOSER-INPUT-AUTHORITY-003` |
 | Owner | Codex |
-| Status | Repeatable isolated smoke complete; E2 remains blocked on authorized deidentified conversations |
+| Status | Composer input-authority contract verified; formal evidence coverage is the next P1 owner |
 | Active priority | P1 - Gold Conversation Quality |
 | Customer outcome | Preserve every explicit buyer goal, use confirmed context, answer supported parts naturally, and expose only the unresolved remainder. |
-| In-scope owners | Turn Understanding, canonical conversation-goal lifecycle, Claim Resolution, P1 runner, and their contract tests. |
-| Frozen owners | Composer wording, Unified Audit, Graph expansion, Delivery, live product data, recommendation runtime, emotion runtime, and `can_send`. |
+| In-scope owners | Existing Composer offered-action prompt contract, formal synthetic runner, and their direct tests. |
+| Frozen owners | Turn Understanding, Claim Resolution, Unified Audit, Graph expansion, Delivery, live product data, recommendation runtime, emotion runtime, and `can_send`. |
 | User-facing entry points | The existing formal `AnalysisPipeline` and `/api/analyze`; no new entry point is introduced. |
 | Delivery authority | Unchanged: Supervisor Assist only, `requires_human_review=true`, `can_send=false`. |
 | Real-dataset gate | Blocked. `real_customer_accuracy=null`; `optimization_unverified=true`. |
 
 ## Current Evidence
 
+- `P1-COMPOSER-INPUT-AUTHORITY-003` traced one repeated product/order request
+  to the Composer: the formal request already carried resolved structured
+  identity, while the admitted context offered no `request_customer_input`
+  action. The Composer now receives an explicit general rule that it may ask
+  for new input only through the offered action and accepted-slot contract.
+  DeepSeek V4 Flash requalified `5/5`; the frozen case, fixed-four, and one
+  fixed-40 completed without execution errors. Fixed-40 Composer and Final were
+  `40/40`, p50/p95 were `5.613s/8.682s`, all rows required human review,
+  `can_send=0`, and formal-knowledge DML was `0`.
+- The same fixed-40 had `selected_evidence=0`. It does not qualify factual
+  quality or real accuracy. The next owner is the reusable formal evidence
+  supply/admission path, not another Composer phrase rule.
 - `P1-MULTIGOAL-001` repaired a deterministic scope-conflict path in the
   existing Turn Understanding owner. When the exact source span for a
   dimension goal unambiguously names packaging, the complete product, a

@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-08-15 - Offered Customer Input Boundary
+
+- The existing Composer may request new customer input only when an offered
+  `request_customer_input` service action explicitly authorizes the matching
+  input slots. A resolved product scope may not trigger another product-
+  identity request. This is a prompt-level ownership clarification; no action,
+  evidence, Graph, Final, Delivery, or send authority changed.
+- DeepSeek V4 Flash requalified `5/5`. The frozen identity-sensitive case no
+  longer asked for product or order information already present in the formal
+  request. A fresh fixed-four and fixed-40 completed without execution errors;
+  the fixed-40 had Composer acceptance and Deterministic Final `40/40`,
+  `can_send=0`, mandatory human review `40/40`, and formal-knowledge DML `0`.
+- The fixed-40 again selected zero formal evidence. It remains a synthetic
+  unresolved/context diagnostic, not supported-fact quality or real accuracy;
+  `real_customer_accuracy=null` and `optimization_unverified=true` remain.
+
 ## 2026-08-15 - Concrete Verification Guidance Boundary
 
 - Corrected a Composer redline that rejected a concrete, customer-visible

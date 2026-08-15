@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-COMPOSER-PROCESS-LANGUAGE-002` |
+| Task ID | `P1-COMPOSER-INPUT-AUTHORITY-003` |
 | Owner | Codex |
-| Goal | Keep concrete verification guidance requested by the customer distinct from vague internal or future-process language. |
-| Scope | Existing shared customer-facing redline vocabulary, Composer validation, direct tests, external runtime harness, and durable result documentation. No new node, service, model call, or reply owner. |
-| Status | Engineering contract passed. DeepSeek V4 Flash Composer qualified `5/5`, and one fresh fixed-40 run completed `40/40` through Composer and Deterministic Final with no empty reply, DML, or send authority. The run had zero selected evidence and remains a synthetic structural baseline, not a quality or accuracy qualification. |
-| Gate | Keep schema validation fail-closed, formal knowledge query-only, `can_send=false`, and human review mandatory. Freeze the first unsupported negative-absence claim before changing another wording rule. |
+| Goal | Prevent the Composer from inventing a request for customer input that is absent from the deterministic offered service-action set. |
+| Scope | Existing Composer prompt contract, direct test, same-pipeline synthetic qualification, and durable result documentation. No new node, service, model call, action, or reply owner. |
+| Status | Engineering contract passed. DeepSeek V4 Flash Composer qualified `5/5`; the frozen identity-sensitive case stopped re-requesting resolved product/order context. Fresh fixed-four and fixed-40 runs completed, with fixed-40 Composer and Deterministic Final `40/40`, no empty reply, DML, or send authority. |
+| Gate | The run selected zero formal evidence and is not a factual-quality result. Keep `can_send=false` and human review mandatory; the next vertical slice must address formal evidence supply/coverage before further wording changes. |
 
 ## Phase Status
 
@@ -33,9 +33,9 @@
 3. No test result may promote the current Supervisor Assist runtime to
    autonomous sending.
 4. The completed synthetic fixed-40 selected zero formal evidence. It cannot
-   establish factual accuracy; `32/40` replies used a generic inability-to-
-   confirm construction, and one reply asserted that no image/text steps were
-   available without evidence for that negative fact.
+   establish factual accuracy. The latest run removed one unauthorized
+   product/order re-request, but many replies remain generic or offer
+   ungrounded procedural advice; those are separate semantic-quality findings.
 5. The Composer-enabled versioned smoke scored `0/5`; the default-off Composer
    safety smoke scored `3/5` and left both installation replies empty. The full
    22-scenario run was correctly not started. These reports are retained as
@@ -43,10 +43,10 @@
 
 ## Immediate Queue
 
-1. `P1-NEGATIVE-ABSENCE-001`: freeze the first synthetic reply that asserted
-   an unavailable asset without evidence, then trace requested-claim polarity
-   through Claim Resolution, Composer, Deterministic Final, and Unified Audit.
-   Do not add an asset-specific phrase rule.
+1. `P1-FORMAL-EVIDENCE-COVERAGE-001`: trace why the current fixed-40 formal
+   requests reach generation with `selected_evidence=0`, and repair the earliest
+   reusable identity/retrieval/admission gap without using synthetic identities
+   as product truth. Do not add more Composer wording rules to hide the gap.
 2. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
    deidentified review package outside the repository; no raw conversations or
    label answers enter an Agent prompt.

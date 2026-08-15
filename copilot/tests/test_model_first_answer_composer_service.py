@@ -1592,6 +1592,28 @@ def test_composer_rejects_schema_metadata_echo_mutations(
     assert updated["suggested_reply"] == "旧回复"
 
 
+def test_composer_prompt_forbids_unoffered_customer_input_requests():
+    response = _response()
+    response["minimal_decision_context"]["service_actions"] = []
+
+    updated, result, client = _compose(_valid_payload(), response)
+
+    assert result["status"] == "accepted"
+    system_prompt = client.messages[0]["content"]
+    assert (
+        "Do not ask the customer for any new input unless service_actions "
+        "contains a request_customer_input action"
+    ) in system_prompt
+    assert (
+        "When product_scope.resolved is true, do not request product "
+        "identity again"
+    ) in system_prompt
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+    assert result["provider_diagnostics"]["json_repair_count"] == 0
+    assert client.call_count == 1
+
+
 def test_composer_excludes_supporting_only_dependency_from_customer_goals():
     response = _response()
     context = response["minimal_decision_context"]

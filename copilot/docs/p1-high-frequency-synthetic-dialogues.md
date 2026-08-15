@@ -187,3 +187,28 @@ review-only but both installation rows had empty drafts. No full 22-scenario run
 was started after either failed smoke. These failures do not overwrite the
 earlier `5/5` and `22/22` reports, and the earlier reports do not prove the
 current provider's reply quality.
+
+## Offered Customer Input Follow-up
+
+The next frozen diagnosis used the same formal API path and found that the
+identity-sensitive missing-instructions case already carried structured product
+and order context, while its admitted context offered no
+`request_customer_input` action. The Composer nevertheless asked for product or
+order information. The earliest defect was therefore Composer selection beyond
+the deterministic offered action set, not missing request identity.
+
+The existing Composer contract now forbids new input requests unless an offered
+`request_customer_input` action explicitly authorizes the corresponding slots;
+resolved product scope also forbids another product-identity request. DeepSeek
+V4 Flash requalified `5/5`. The frozen case then completed once without the
+identity re-request, and fresh fixed-four and fixed-40 runs completed without
+execution errors. The fixed-40 recorded Composer and Deterministic Final
+`40/40`, empty replies `0`, `can_send=0`, mandatory human review `40/40`,
+formal-knowledge DML `0`, and Pipeline p50/p95 `5.613s/8.682s`.
+
+Every row still had zero selected formal evidence. The run therefore measures
+unresolved/context behavior only. Generic procedural suggestions and other
+semantic-faithfulness concerns remain review findings; they must not be fixed
+with sentence matchers. `real_customer_accuracy=null` and
+`optimization_unverified=true` remain unchanged. The next vertical slice is
+formal evidence supply and admission coverage.
