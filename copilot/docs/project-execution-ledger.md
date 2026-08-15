@@ -152,6 +152,16 @@ and next owner here and in `docs/CHANGELOG.md`.
   single-case logistics gate passed Final with history `4/4`, transport UID
   leakage `0`, formal DML `0`, and `can_send=false`. The full 40-case formal
   baseline is still incomplete and cannot support a quality or accuracy claim.
+- The corrected four-case identity-sensitive gate passed `4/4`. The following
+  fixed attempt reached `18/40` and then stopped fail-closed because one
+  logistics/service turn projected history `0/4`. A diagnosis-only replay of
+  that exact row projected `4/4`, so the failure is not yet a deterministic
+  production-code reproduction and cannot justify a reply or routing patch.
+  The stopped attempt had Final `18/18`, Composer use `14/18`, no-send `18/18`,
+  formal DML `0`, and latency p50/p95 `8.913s/23.209s`. All 18 rows selected
+  zero formal evidence because their `SYN-` identities are intentionally absent
+  from the query-only snapshot. The next gate is fixed-input understanding and
+  Composer-entry stability; rows 19-40 remain unexecuted.
 
 ## Phase Plan
 

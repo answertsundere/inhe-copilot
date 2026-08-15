@@ -670,7 +670,11 @@ The separate 40-case fictional suite is not a replacement. Its first GLM formal
 attempt was invalidated for quality analysis because the evaluator omitted
 structured synthetic identity from `/api/analyze`; a one-case corrected-input
 gate subsequently passed with no send or knowledge-write authority. Completion
-of the remaining synthetic cases is still pending, and neither result changes
+of the remaining synthetic cases is still pending. A corrected four-case gate
+passed, but the next fixed run stopped at `18/40` when one service turn lost its
+four projected history turns; the same row retained them in a diagnosis-only
+replay. This blocks continuation on stability rather than authorizing a
+sample-specific routing or wording fix. None of these results changes
 `real_customer_accuracy=null` or the active P1 owner.
 
 The first P1.1a 26-call attempt is retained as an integrity-blocked diagnostic,
