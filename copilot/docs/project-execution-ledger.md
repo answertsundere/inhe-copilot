@@ -129,9 +129,16 @@ and next owner here and in `docs/CHANGELOG.md`.
 - Deterministic Final rejects `supported_fact` clauses with zero canonical
   evidence. Conditional unresolved clauses remain review-only with
   `can_send=false`.
-- Focused P1 regression completed 557 tests with no new Graph node, service,
-  model call, reply owner, knowledge write, or Delivery change. Live-provider
-  quality remains unverified and `real_customer_accuracy=null`.
+- The next live-provider 1x1 located a second, earlier transport defect: Formal
+  Evidence Convergence omitted the normalized history when calling the existing
+  Minimal Decision Context service. The repair passes that history through the
+  existing field-aware privacy projection and strips transport-only turn IDs;
+  it does not promote customer statements to evidence.
+- On the repaired current source, the Composer role qualified `5/5`. The frozen
+  synthetic 1x1 retained all four prior turns, produced the direct conditional
+  comparison, used zero selected formal evidence, kept the formal knowledge
+  snapshot and DML unchanged, required human review, and kept `can_send=false`.
+  This is a synthetic capability result only; `real_customer_accuracy=null`.
 
 ## Phase Plan
 

@@ -314,6 +314,56 @@ def test_feature_flag_produces_supervisor_only_preview(monkeypatch):
     assert "Material is PP." in result["supervisor_candidate_preview"]["candidate_text"]
 
 
+def test_formal_convergence_propagates_canonical_history_to_minimal_context(
+    monkeypatch,
+):
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    result = _formal_evidence_convergence(
+        {
+            "customer_message": "Will the height fit?",
+            "query_fact_type": "dimensions",
+            "slots": {"sku_code": "SKU-A"},
+            "copilot_context": {
+                "conversation_history": [
+                    {
+                        "role": "user",
+                        "content": "The available height is 60 cm.",
+                        "turn_index": 0,
+                        "turn_uid": "private-transport-id",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "I noted the available space.",
+                        "turn_index": 1,
+                    },
+                ],
+            },
+        },
+        product_facts=[],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+
+    recent_turns = result["minimal_decision_context"][
+        "recent_conversation_turns"
+    ]
+    assert recent_turns == [
+        {
+            "role": "user",
+            "content": "The available height is 60 cm.",
+            "turn_index": 0,
+        },
+        {
+            "role": "assistant",
+            "content": "I noted the available space.",
+            "turn_index": 1,
+        },
+    ]
+    assert result["minimal_decision_context"]["context_stats"][
+        "recent_turn_count"
+    ] == 2
+
+
 def test_formal_selection_is_the_only_product_fact_input_when_present():
     selected = _candidate(evidence_uid="selected", chunk_text="Material is PP.")
     raw_only = _candidate(evidence_uid="raw", chunk_text="Material is ABS.")

@@ -933,6 +933,13 @@ direct logical consequence while preserving an unresolved actual-product
 boundary. Such a candidate remains review-only with
 `requires_human_review=true` and `can_send=false`.
 
+When opt-in Formal Evidence Convergence builds Minimal Decision Context, the
+existing Evidence Builder must carry the already-normalized recent conversation
+turns through the field-aware provider privacy projection. Transport-only turn
+identifiers are removed. These turns remain context, never selected evidence:
+they receive no evidence UID, cannot satisfy a product claim, and grant no
+delivery authority.
+
 Deterministic Final now also rejects any Model-first `supported_fact` clause
 that cites no canonical selected evidence, including the formerly ambiguous
 case where both the claim and clause evidence lists were empty. This adds no

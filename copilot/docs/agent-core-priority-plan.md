@@ -695,6 +695,16 @@ owner from the capsule.
 6. Remove duplicated wording and internal-process language.
 7. Measure and reduce end-to-end latency after correctness is stable.
 
+The customer-conditional space-fit slice exposed a context propagation defect,
+not a new reasoning owner: Formal Evidence Convergence built Minimal Decision
+Context without the already-normalized conversation history. A current-source
+synthetic 1x1 after the narrow wiring repair retained all four prior turns,
+produced the direct conditional comparison, kept selected formal evidence at
+zero, required human review, and kept `can_send=false`. This validates only the
+review-only capability slice; the fixed long-conversation set and approved real
+Gold denominator remain outstanding, so `real_customer_accuracy=null` and
+`optimization_unverified=true`.
+
 **Initial exit gate**
 
 - formal execution and non-empty replies: `100%`;
