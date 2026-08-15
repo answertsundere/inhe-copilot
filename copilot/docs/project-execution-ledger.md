@@ -171,6 +171,28 @@ and next owner here and in `docs/CHANGELOG.md`.
   blocked, `can_send` remained false, human review remained required, and
   formal-knowledge DML remained zero. Attempts 2-3 and rows 19-40 were not run.
 
+## P1 Synthetic Authoritative Goal Routing
+
+- The formal evaluator now distinguishes a Composer-owned result from an
+  accepted, contractually non-applicable media/service no-op. Both remain
+  observable, but only the former counts as Composer ownership.
+- Turn Understanding preserves a fact-misclassified media request only after
+  clearing all fact and policy authority. Separately, the existing response
+  strategy router recognizes a provenance-valid canonical customer goal even
+  when the legacy intent is `general`, sending it through the existing Graph
+  and Evidence Builder without keyword or scenario branches.
+- The frozen price-validation single case passed with history `4/4`, one
+  unresolved claim, one Composer clause, Deterministic Final passed,
+  `can_send=false`, mandatory human review, and formal-knowledge DML `0`.
+- A fresh fixed-40 attempt stopped at row 1 because GLM-4.5-Air emitted an
+  invalid `claim_type_status`. Strict schema validation remained fail-closed;
+  the run was not retried and no quality or accuracy result is claimed.
+- Direct and related regression coverage passed `640` tests. The versioned
+  synthetic benchmark passed `5/5` and `22/22` against a readiness-qualified
+  query-only snapshot, with zero sendable replies and all scenarios requiring
+  human review. Full-repository pytest retained the five pre-existing failures
+  outside this change's ownership; no additional failure was introduced.
+
 ## Phase Plan
 
 | Phase | Outcome | Status | Entry / exit gate |

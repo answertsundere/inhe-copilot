@@ -51,6 +51,7 @@ def _stable_formal_response(item=None, **updates):
         "model_first_answer_composer": {
             "status": "accepted",
             "rejection_reason": "",
+            "composition_applicable": True,
             "used_for_final_reply": True,
             "clauses": [{"status": "unresolved"}],
         },
@@ -332,6 +333,52 @@ def test_formal_observation_qualifies_complete_history_and_composer_entry():
     assert observation["final_audit_passed"] is True
     assert observation["stability_status"] == "qualified"
     assert observation["stability_reason_code"] == ""
+
+
+def test_formal_observation_keeps_contractual_composer_noop_scorable():
+    item = build_dataset()["scenarios"][0]
+    response = _stable_formal_response(item=item)
+    response["minimal_decision_context"]["requested_claims"] = [{
+        "goal_kind": "media_request",
+    }]
+    response["minimal_decision_context"]["claim_resolutions"] = [{
+        "goal_kind": "media_request",
+        "status": "unresolved",
+    }]
+    response["model_first_answer_composer"] = {
+        "status": "accepted",
+        "rejection_reason": "",
+        "composition_applicable": False,
+        "used_for_final_reply": False,
+        "clauses": [],
+    }
+
+    observation = _build_formal_observation(item, response)
+
+    assert observation["composer_contract_status"] == "not_applicable"
+    assert observation["composer_composition_applicable"] is False
+    assert observation["composer_used_for_final_reply"] is False
+    assert observation["stability_status"] == "qualified"
+    assert observation["stability_reason_code"] == ""
+
+
+@pytest.mark.parametrize("composition_applicable", [True, None])
+def test_formal_observation_rejects_unowned_or_undeclared_composer_path(
+    composition_applicable,
+):
+    item = build_dataset()["scenarios"][0]
+    response = _stable_formal_response(item=item)
+    response["model_first_answer_composer"].update({
+        "composition_applicable": composition_applicable,
+        "used_for_final_reply": False,
+        "clauses": [],
+    })
+
+    observation = _build_formal_observation(item, response)
+
+    assert observation["composer_contract_status"] == "invalid"
+    assert observation["stability_status"] == "not_qualified"
+    assert observation["stability_reason_code"] == "composer_entry_blocked"
 
 
 def test_formal_observation_rejects_same_length_history_with_wrong_order():

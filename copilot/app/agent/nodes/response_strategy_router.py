@@ -120,6 +120,53 @@ def _is_clarification(state: dict) -> bool:
     return state.get("intent", "") in ("needs_clarification", "image_attachment")
 
 
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _has_authoritative_customer_goal(state: dict) -> bool:
+    understanding = state.get("turn_understanding")
+    if not isinstance(understanding, dict):
+        return False
+    if (
+        understanding.get("schema_version") != "turn-understanding/v2"
+        or understanding.get("owner") != "turn_understanding_owner"
+        or understanding.get("source_stage") != "query_fact_type_classifier"
+        or understanding.get("goal_understanding_status") != "valid"
+    ):
+        return False
+    requested_refs = {
+        str(item.get("goal_ref") or "").strip()
+        for item in understanding.get("requested_claims") or []
+        if isinstance(item, dict) and str(item.get("goal_ref") or "").strip()
+    }
+    for goal in understanding.get("customer_goals") or []:
+        if not isinstance(goal, dict) or goal.get("goal_kind") != "customer_goal":
+            continue
+        goal_ref = str(goal.get("goal_ref") or "").strip()
+        claim_status = str(goal.get("claim_type_status") or "").strip()
+        has_claim_identity = (
+            claim_status == "canonical"
+            and bool(str(goal.get("claim_type") or "").strip())
+        ) or (
+            claim_status == "unmapped"
+            and bool(str(goal.get("semantic_key") or "").strip())
+        )
+        if (
+            goal_ref
+            and goal_ref in requested_refs
+            and has_claim_identity
+            and goal.get("owner") == "turn_understanding_owner"
+            and goal.get("source") == "current_customer_message"
+            and goal.get("source_stage") == "semantic_fact_type_service"
+            and bool(str(goal.get("source_turn_uid") or "").strip())
+            and _SHA256_RE.fullmatch(
+                str(goal.get("source_span_sha256") or "").strip().lower()
+            )
+        ):
+            return True
+    return False
+
+
 def _has_ambiguous_sidecar_product_name(state: dict) -> bool:
     """Check if there are truly multiple competing product candidates.
 
@@ -155,6 +202,7 @@ def response_strategy_router(state: dict) -> dict:
     has_id = _has_identifier(state)
     has_embedded_product_question = _has_embedded_product_question(state)
     has_product_followup = _looks_like_product_followup(state)
+    has_authoritative_customer_goal = _has_authoritative_customer_goal(state)
     force_product_clarification = _has_ambiguous_sidecar_product_name(state)
 
     # 品类冲突检测：买家问的品类与当前商品不一致（如问“放多少本绘本”却是水龙头延长器）
@@ -273,7 +321,11 @@ def response_strategy_router(state: dict) -> dict:
             answer_mode = "logistics_time_commitment" if is_commitment else "policy"
 
     # 5. 商品咨询
-    elif _is_product_question(state) or has_product_followup:
+    elif (
+        _is_product_question(state)
+        or has_product_followup
+        or has_authoritative_customer_goal
+    ):
         if product_context_validation.get("mismatch"):
             # 品类冲突：问的不是这款商品，强制澄清，不查知识/工具，避免拿无关字段硬答
             strategy = "clarification"

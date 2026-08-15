@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-E2-001-ISOLATED-SMOKE` |
+| Task ID | `P1-SYNTHETIC-BASELINE-AUTHORITATIVE-GOAL-ROUTING` |
 | Owner | Codex |
-| Goal | Make the formal P1 Supervisor Assist smoke check repeatable on an isolated 5012 runtime without changing Agent behavior. |
-| Scope | P1 runner, contract test, test documentation, and review-only diagnostic verification. |
-| Status | Complete; E2 remains blocked on authorized deidentified conversations |
-| Gate | No live product or order data, no knowledge write, no delivery action, and no change to `can_send`. |
+| Goal | Preserve safe non-factual media goals and route a provenance-valid canonical customer goal into the existing evidence path even when the legacy intent remains `general`. |
+| Scope | Existing Turn Understanding sanitizer, response-strategy router, P1 synthetic runner, direct tests, external runtime harness, and durable result documentation. No new node, service, model call, or reply owner. |
+| Status | Engineering contract complete; the fresh fixed-40 run stopped at row 1 because GLM-4.5-Air emitted an invalid `claim_type_status`. Provider stability is not qualified. |
+| Gate | Keep schema validation fail-closed, formal knowledge query-only, `can_send=false`, and human review mandatory. Do not retry for a lucky pass or treat synthetic execution as real accuracy. |
 
 ## Phase Status
 

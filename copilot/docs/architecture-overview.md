@@ -485,6 +485,17 @@ by default. P0 qualification is a reviewable correctness checkpoint, not
 production qualification; the active priority is now P1 Gold Conversation
 Quality.
 
+The current P1 repair also closes one legacy routing gap without changing the
+Graph topology. A provenance-valid current-turn canonical customer goal may
+enter the existing evidence path when the legacy intent is still `general`.
+The router revalidates Turn Understanding ownership, requested-goal identity,
+and source-span digest shape; invalid, public, media, and service goals remain
+non-authoritative. Evidence Admission, Claim Resolution, Composer,
+Deterministic Final, Unified Audit, and Delivery ownership are unchanged.
+The fixed synthetic baseline is still not qualified because the active GLM
+Turn Understanding provider produced an invalid schema enum on the first fresh
+row; schema validation remains fail-closed and no retry-based pass is accepted.
+
 The latest reconstructed P1 baseline completed on an isolated, query-only
 runtime at clean commit `da4a0ad`. It executed all eight cases with zero
 formal-knowledge DML, zero `can_send=true` results, and mandatory human review

@@ -789,6 +789,87 @@ def test_unknown_canonical_service_action_remains_blocked(monkeypatch):
     assert diagnostics["reason_code"] == "canonical_claim_type_not_allowed"
 
 
+def test_media_request_with_fact_type_is_preserved_without_fact_authority(
+    monkeypatch,
+):
+    message = "Please provide the relevant setup diagram."
+    payload = {
+        "goals": [
+            _goal(
+                source_text=message,
+                goal_kind="media_request",
+                claim_type="installation",
+                attribute_key="",
+            )
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
+    )
+
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert result["query_fact_type"] == ""
+    assert len(result["customer_goals"]) == 1
+    goal = result["customer_goals"][0]
+    assert goal["goal_kind"] == "media_request"
+    assert goal["claim_type_status"] == "unmapped"
+    assert goal["claim_type"] == ""
+    assert goal["policy_intent_ref"] == ""
+    assert goal["claim_type_reason_code"] == (
+        "media_request_canonical_claim_forbidden"
+    )
+    assert diagnostics["schema_success"] is True
+    assert diagnostics["provenance_validation"]["passed"] is True
+
+
+def test_non_fact_media_normalization_keeps_independent_fact_goal(
+    monkeypatch,
+):
+    message = "What material is it, and please provide the setup diagram."
+    payload = {
+        "goals": [
+            _goal(
+                source_text="What material is it",
+                claim_type="material",
+                attribute_key="material",
+            ),
+            _goal(
+                source_text="please provide the setup diagram",
+                goal_kind="media_request",
+                claim_type="installation",
+                attribute_key="",
+            ),
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
+    )
+
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert result["query_fact_type"] == "material"
+    assert {
+        (goal["goal_kind"], goal["claim_type_status"], goal["claim_type"])
+        for goal in result["customer_goals"]
+    } == {
+        ("customer_goal", "canonical", "material"),
+        ("media_request", "unmapped", ""),
+    }
+    assert diagnostics["runtime_goal_continuity"] == {
+        "status": "preserved_non_fact_media_request",
+        "downgraded_goal_count": 1,
+        "recovered_goal_can_create_fact": False,
+        "can_change_can_send": False,
+    }
+
+
 def test_noncanonical_spelling_of_known_fact_type_cannot_use_goal_continuity(
     monkeypatch,
 ):

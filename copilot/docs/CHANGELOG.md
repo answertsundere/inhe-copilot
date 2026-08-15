@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-08-15 - Canonical Goal Routing And Synthetic Gate Integrity
+
+- Formal synthetic observations now distinguish Composer-owned replies from
+  accepted non-applicable media/service no-ops without hiding either result.
+- Safe media requests survive provider fact misclassification only after fact
+  and policy authority are removed. Provenance-valid current-turn customer
+  goals can enter the existing evidence path when legacy intent is `general`;
+  invalid and non-factual goals cannot.
+- The fixed price-validation single case passed the complete review-only path.
+  The fresh fixed-40 run then stopped at row 1 on an invalid provider enum, so
+  provider stability and conversation quality remain unqualified.
+- The versioned synthetic safety regression passed `5/5` and `22/22` against
+  an explicit readiness-qualified, query-only knowledge snapshot. All 22
+  scenarios remained review-only and none became sendable. An empty snapshot
+  was rejected as an input/context gap rather than scored as reply quality.
+- No Graph node, service, model call, reply owner, knowledge write, delivery
+  authority, or `can_send` condition was added.
+
 ## 2026-08-13 - Repeatable P1 Isolated Smoke
 
 - Added `scripts/run_p1_isolated_smoke.py` and its contract tests for a

@@ -1739,6 +1739,25 @@ def _classify_with_llm(
             "recovered_goal_can_create_fact": False,
             "can_change_can_send": False,
         }
+    elif any(
+        goal.get("goal_kind") == "media_request"
+        and goal.get("claim_type_reason_code")
+        == "media_request_canonical_claim_forbidden"
+        for goal in result.get("customer_goals") or []
+        if isinstance(goal, dict)
+    ):
+        diagnostics["runtime_goal_continuity"] = {
+            "status": "preserved_non_fact_media_request",
+            "downgraded_goal_count": sum(
+                goal.get("goal_kind") == "media_request"
+                and goal.get("claim_type_reason_code")
+                == "media_request_canonical_claim_forbidden"
+                for goal in result.get("customer_goals") or []
+                if isinstance(goal, dict)
+            ),
+            "recovered_goal_can_create_fact": False,
+            "can_change_can_send": False,
+        }
 
     _finish_diagnostics(diagnostics, started_at=started_at)
     return result
@@ -1778,6 +1797,29 @@ def _sanitize_llm_result(
         and customer_goals
         and goal_understanding_status == "degraded"
         and set(goal_diagnostics) == {"canonical_claim_type_unknown"}
+    ):
+        goal_understanding_status = "valid"
+    if (
+        customer_goals
+        and goal_understanding_status == "degraded"
+        and set(goal_diagnostics)
+        == {"media_request_canonical_claim_forbidden"}
+        and all(
+            goal.get("claim_type_reason_code") in {
+                "",
+                "media_request_canonical_claim_forbidden",
+            }
+            for goal in customer_goals
+        )
+        and all(
+            goal.get("goal_kind") != "media_request"
+            or (
+                goal.get("claim_type_status") == "unmapped"
+                and not goal.get("claim_type")
+                and not goal.get("policy_intent_ref")
+            )
+            for goal in customer_goals
+        )
     ):
         goal_understanding_status = "valid"
     if isinstance(canonical_goals_sink, list):

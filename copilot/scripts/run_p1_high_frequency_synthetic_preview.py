@@ -23,7 +23,7 @@ from scripts.build_p1_high_frequency_synthetic_dialogue_set import SCHEMA_VERSIO
 from scripts.run_supervisor_partial_answer_preview_eval import _build_preview_context
 
 FORMAL_REPORT_SCHEMA_VERSION = (
-    "p1-high-frequency-synthetic-formal-pipeline-report/v2"
+    "p1-high-frequency-synthetic-formal-pipeline-report/v3"
 )
 
 
@@ -251,10 +251,22 @@ def _build_formal_observation(
         if projected_projection == expected_projection
         else "mismatch"
     )
-    composer_accepted = (
+    composition_applicable = composer.get("composition_applicable")
+    composer_used = composer.get("used_for_final_reply") is True
+    if (
         composer.get("status") == "accepted"
-        and composer.get("used_for_final_reply") is True
-    )
+        and composition_applicable is True
+        and composer_used
+    ):
+        composer_contract_status = "owned"
+    elif (
+        composer.get("status") == "accepted"
+        and composition_applicable is False
+        and not composer_used
+    ):
+        composer_contract_status = "not_applicable"
+    else:
+        composer_contract_status = "invalid"
     final_passed = final_audit.get("passed") is True
 
     reason = ""
@@ -266,7 +278,7 @@ def _build_formal_observation(
         reason = "conversation_history_projection_mismatch"
     elif any(turn.get("turn_uid") for turn in projected_history):
         reason = "transport_uid_leaked"
-    elif not composer_accepted:
+    elif composer_contract_status == "invalid":
         reason = "composer_entry_blocked"
     elif not final_passed:
         reason = "final_audit_failed"
@@ -319,9 +331,9 @@ def _build_formal_observation(
         "composer_rejection_reason": str(
             composer.get("rejection_reason") or ""
         ),
-        "composer_used_for_final_reply": (
-            composer.get("used_for_final_reply") is True
-        ),
+        "composer_contract_status": composer_contract_status,
+        "composer_composition_applicable": composition_applicable,
+        "composer_used_for_final_reply": composer_used,
         "composer_clause_count": len(_dict_list(composer.get("clauses"))),
         "pipeline_stages": [
             {
@@ -384,6 +396,14 @@ def _formal_report(payload: dict[str, Any], validation: dict[str, Any], rows_by_
             "can_send_true_count": sum(row["can_send"] for row in rows),
             "stability_qualified_count": sum(
                 row.get("stability_status") == "qualified" for row in rows
+            ),
+            "composer_owned_reply_count": sum(
+                row.get("composer_contract_status") == "owned"
+                for row in rows
+            ),
+            "composer_not_applicable_count": sum(
+                row.get("composer_contract_status") == "not_applicable"
+                for row in rows
             ),
             "stability_failure_counts": dict(sorted(failure_counts.items())),
         },

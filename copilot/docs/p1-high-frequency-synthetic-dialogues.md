@@ -42,10 +42,12 @@ python scripts\run_p1_high_frequency_synthetic_preview.py --mode formal --input 
 The runner refuses a non-loopback URL and stops if an answer becomes sendable
 or loses the human-review requirement.
 
-Formal report schema `v2` derives one immutable stability observation from the
+Formal report schema `v3` derives one immutable stability observation from the
 same API response used by the checkpoint and summary. It verifies the exact
 ordered history projection, authoritative Turn Understanding, Composer entry,
-and Deterministic Final result. The first failure is classified as
+and Deterministic Final result. An accepted Composer result is now explicitly
+classified as `owned` or `not_applicable`; a media/service-only no-op remains
+scorable but cannot be counted as a Composer-owned reply. The first failure is classified as
 `turn_understanding_not_authoritative`,
 `conversation_history_projection_mismatch`, `composer_entry_blocked`, or
 `final_audit_failed`; later stages cannot hide an earlier boundary failure.
@@ -117,3 +119,29 @@ legacy runner is not present in the recovered workspace. It must not be
 recreated from the 40 synthetic fixture or represented as recovered customer
 data. Until that asset or an approved replacement is restored, the 40-case set
 is limited to synthetic regression, context-continuity, and safety diagnosis.
+
+The current follow-up corrected two generic contract gaps. A safe media request
+whose provider output improperly assigns a fact type is retained only as an
+`unmapped` non-factual goal; it cannot create evidence, an action, or send
+authority. A provenance-valid current-turn `customer_goal` now enters the
+existing evidence path when legacy intent routing remains `general`, while
+invalid, public, media, and service goals remain in the clarification path. A
+single price-validation scenario then retained history `4/4`, traversed the
+existing Evidence Builder, produced one unresolved claim and one Composer
+clause, passed Deterministic Final, required human review, and kept
+`can_send=false` with zero formal-knowledge DML.
+
+The subsequent fresh fixed-40 run stopped at row 1. GLM-4.5-Air returned an
+invalid `claim_type_status`; strict Turn Understanding validation rejected it
+before Composer use. The run was not retried. The official provider interface
+offers JSON-object mode rather than server-enforced JSON Schema, so the current
+Turn Understanding provider is not stable enough for this fixed-40 gate. This
+is a provider qualification blocker, not permission to normalize an invalid
+enum, loosen the schema, or claim reply-quality progress.
+
+The associated versioned safety benchmark passed smoke `5/5` and full
+`22/22` with `can_send=0` and mandatory human review for all scenarios. Those
+runs used an explicit isolated knowledge snapshot whose runtime readiness was
+verified before execution. A preliminary run against an empty snapshot
+produced `3/5`; it was classified as `input/context gap` because the Pipeline
+correctly stopped at runtime readiness, not as an Agent quality regression.

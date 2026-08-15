@@ -121,6 +121,16 @@ two unresolved requested claims and two Composer clauses; audit passed,
 DML was zero. This is a narrow capability result, not real accuracy or
 production qualification, and no production authority changes.
 
+The existing response-strategy router now consumes the same authoritative
+Turn Understanding ownership boundary before falling back to clarification.
+Only a valid current-turn `customer_goal` with matching requested-claim
+identity and provenance can enter the existing evidence route when legacy
+intent remains `general`. Public, invalid, media, and service goals cannot use
+that path. This adds no node, service, model call, evidence authority, reply
+owner, or delivery authority. The fixed-40 synthetic gate remains blocked by
+GLM-4.5-Air Turn Understanding enum instability; `real_customer_accuracy` is
+still `null`.
+
 An earlier candidate additionally verified that the server's model-facing
 FactType projection deduplicates the existing material aliases to the canonical
 `material_composition` ID before the semantic call. This is input normalization,
