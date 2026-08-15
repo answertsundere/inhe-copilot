@@ -686,6 +686,22 @@ authoritative boundary was invalid with
 Composer use. The active owner is therefore Turn Understanding canonical claim
 compatibility for service requests, not reply wording, Composer, or Delivery.
 
+The deterministic candidate contract now separates customer-goal continuity
+from claim-type authority. When the Provider returns an exact-source
+`customer_goal` whose only schema defect is an unknown canonical claim type,
+the goal may continue as `unmapped`; its claim type and policy are cleared and
+it receives no fact, evidence, or send authority. Service actions, invalid
+provenance, mixed schema failures, and mutations of an existing canonical type
+remain fail-closed. The focused and related deterministic suites pass. A
+qualified GLM 4.5 Air run then exposed a second, earlier boundary: broad
+logistics lookup eligibility was also suppressing Turn Understanding for an
+order-scoped delivery-method question. Lookup permission remains broad while
+semantic omission is limited to explicit carrier tracking identity. The same
+frozen row completed once with `2` unresolved requested claims, `2` Composer
+clauses, accepted Deterministic Final, `can_send=false`, mandatory human review,
+and formal-knowledge DML `0`. This is a narrow synthetic capability check, not
+P1 quality qualification or real-customer accuracy.
+
 The first P1.1a 26-call attempt is retained as an integrity-blocked diagnostic,
 not a baseline: report projection omitted the canonical history position and
 the finalization failure prevented persistence of the start knowledge

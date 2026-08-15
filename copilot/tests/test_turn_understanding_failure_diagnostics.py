@@ -114,7 +114,7 @@ def _response_for_payload(payload: dict) -> _FakeResponse:
     ])
 
 
-def _run(monkeypatch, outcome):
+def _run(monkeypatch, outcome, *, message=MESSAGE):
     client = _FakeClient(outcome)
     diagnostics = {"untrusted": "must be removed"}
     monkeypatch.setattr(service, "get_llm_client", lambda: client)
@@ -125,7 +125,7 @@ def _run(monkeypatch, outcome):
     )
     result = service._classify_with_llm(
         {},
-        MESSAGE,
+        message,
         "product_question",
         diagnostics_sink=diagnostics,
     )
@@ -655,13 +655,6 @@ def test_previous_wide_provider_schema_is_rejected(monkeypatch):
         (
             lambda goal: goal.update(
                 claim_type_status="canonical",
-                claim_type="unknown_type",
-            ),
-            "canonical_claim_type_not_allowed",
-        ),
-        (
-            lambda goal: goal.update(
-                claim_type_status="canonical",
                 semantic_key="material_diagnostic",
             ),
             "canonical_with_semantic_key",
@@ -714,6 +707,216 @@ def test_known_unmapped_failures_are_attributed(
     else:
         assert reason_code in _reason_codes(diagnostics)
         assert diagnostics["status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    ("message", "unknown_claim_type", "attribute_key"),
+    [
+        ("Which fulfillment option applies?", "provider_fulfillment_option", "service_option"),
+        ("Is this suitable for the intended setup?", "provider_suitability", "suitability"),
+    ],
+)
+def test_unknown_canonical_customer_goal_preserves_only_source_bound_goal(
+    monkeypatch,
+    message,
+    unknown_claim_type,
+    attribute_key,
+):
+    payload = {
+        "goals": [
+            _goal(
+                source_text=message,
+                claim_type=unknown_claim_type,
+                attribute_key=attribute_key,
+            )
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
+    )
+
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert result["query_fact_type"] == ""
+    assert len(result["customer_goals"]) == 1
+    goal = result["customer_goals"][0]
+    assert goal["goal_kind"] == "customer_goal"
+    assert goal["claim_type_status"] == "unmapped"
+    assert goal["claim_type"] == ""
+    assert goal["policy_intent_ref"] == ""
+    assert goal["claim_type_reason_code"] == "canonical_claim_type_unknown"
+    assert goal["goal_summary"] == message
+    assert goal["source_span_start"] == 0
+    assert goal["source_span_end"] == len(message)
+    assert goal["source_span_sha256"] == hashlib.sha256(
+        message.encode("utf-8")
+    ).hexdigest()
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["schema_success"] is False
+    assert diagnostics["reason_code"] == "canonical_claim_type_not_allowed"
+    assert diagnostics["runtime_goal_continuity"] == {
+        "status": "preserved_unmapped",
+        "downgraded_goal_count": 1,
+        "recovered_goal_can_create_fact": False,
+        "can_change_can_send": False,
+    }
+
+
+def test_unknown_canonical_service_action_remains_blocked(monkeypatch):
+    message = "Please perform the external service operation."
+    payload = {
+        "goals": [
+            _goal(
+                source_text=message,
+                goal_kind="service_action",
+                claim_type="provider_service_operation",
+                attribute_key="service_operation",
+            )
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
+    )
+
+    assert result is None
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["reason_code"] == "canonical_claim_type_not_allowed"
+
+
+def test_noncanonical_spelling_of_known_fact_type_cannot_use_goal_continuity(
+    monkeypatch,
+):
+    message = "What material is it?"
+    payload = {
+        "goals": [
+            _goal(
+                source_text=message,
+                claim_type="MATERIAL",
+                attribute_key="material",
+            )
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
+    )
+
+    assert result is None
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["runtime_goal_continuity"]["status"] == "not_applied"
+
+
+def test_unknown_canonical_goal_cannot_mask_another_schema_failure(monkeypatch):
+    message = "Which option applies?"
+    goal = _goal(
+        source_text=message,
+        claim_type="provider_option",
+        attribute_key="option",
+    )
+    goal["untrusted_extra"] = "must fail"
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload({"goals": [goal]}),
+        message=message,
+    )
+
+    assert result is None
+    assert diagnostics["status"] == "failed"
+    assert {
+        item["reason_code"]
+        for item in diagnostics["schema_validation"]["violations"]
+    } == {"canonical_claim_type_not_allowed", "goal_extra_field"}
+
+
+def test_llm_first_keeps_recovered_goal_authoritative_without_fact_authority(
+    monkeypatch,
+):
+    message = "Which service outcome applies?"
+    payload = {
+        "goals": [
+            _goal(
+                source_text=message,
+                claim_type="provider_outcome",
+                attribute_key="service_outcome",
+            )
+        ]
+    }
+    client = _FakeClient(_response_for_payload(payload))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(
+        service,
+        "_policy_intent_candidates",
+        lambda _state: [],
+    )
+    monkeypatch.setattr(
+        service.config,
+        "COPILOT_FACT_TYPE_LLM_ENABLED",
+        True,
+    )
+    diagnostics = {}
+
+    result = service.classify_query_fact_type_llm_first(
+        {
+            "normalized_message": message,
+            "intent": "service_question",
+        },
+        diagnostics_sink=diagnostics,
+    )
+
+    assert result["source"] == "llm"
+    assert result["goal_understanding_status"] == "valid"
+    assert result["query_fact_type"] == ""
+    assert result["customer_goals"][0]["claim_type_status"] == "unmapped"
+    assert result["goal_understanding_diagnostics"] == [
+        "canonical_claim_type_unknown",
+        "canonical_claim_type_not_allowed",
+    ]
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["schema_success"] is False
+
+
+def test_unknown_goal_downgrade_does_not_remove_independent_canonical_goal(
+    monkeypatch,
+):
+    message = "What material is it, and which service outcome applies?"
+    payload = {
+        "goals": [
+            _goal(
+                source_text="What material is it",
+                claim_type="material",
+                attribute_key="material",
+            ),
+            _goal(
+                source_text="which service outcome applies",
+                claim_type="provider_outcome",
+                attribute_key="service_outcome",
+            ),
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
+    )
+
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert result["query_fact_type"] == "material"
+    assert {
+        (goal["claim_type_status"], goal["claim_type"])
+        for goal in result["customer_goals"]
+    } == {("canonical", "material"), ("unmapped", "")}
+    assert diagnostics["runtime_goal_continuity"]["downgraded_goal_count"] == 1
 
 
 def test_duplicate_goal_is_reported(monkeypatch):

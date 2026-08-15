@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from app.services.logistics_fast_path import get_explicit_logistics_identifier
+from app.services.logistics_fast_path import get_semantic_free_logistics_identifier
 from app.services.fact_type_alias_service import (
     high_risk_claim_types,
     normalize_high_risk_claim_type,
@@ -178,7 +178,7 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
 
 def query_fact_type_classifier(state: dict) -> dict:
     t0 = time.time()
-    if get_explicit_logistics_identifier(state):
+    if get_semantic_free_logistics_identifier(state):
         trace = {
             "node": "query_fact_type_classifier",
             "status": "success",

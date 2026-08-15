@@ -67,3 +67,24 @@ def get_explicit_logistics_identifier(state: dict) -> dict | None:
                 "identifier_value": value,
             }
     return None
+
+
+def get_semantic_free_logistics_identifier(state: dict) -> dict | None:
+    """Return an identifier only when logistics semantics are unambiguous.
+
+    An order identifier proves that an order lookup is possible, but it does
+    not prove that the customer only wants tracking or ETA.  A carrier-issued
+    tracking number is the narrower transport identity required to skip Turn
+    Understanding.  Order operations retain their customer-goal analysis even
+    when a tracking number is present.
+    """
+    descriptor = get_explicit_logistics_identifier(state)
+    if not descriptor or descriptor.get("identifier_type") != "tracking_no":
+        return None
+
+    message = str(
+        state.get("normalized_message") or state.get("customer_message") or ""
+    )
+    if any(term in message for term in ORDER_OPERATION_TERMS):
+        return None
+    return descriptor

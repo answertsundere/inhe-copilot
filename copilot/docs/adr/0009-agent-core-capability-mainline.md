@@ -426,6 +426,23 @@ one bounded vertical slice and changes one capability boundary at a time.
 - Evaluation work must state whether it measures infrastructure, safety,
   capability, or real accuracy.
 
+Turn Understanding must not conflate trusted customer-goal identity with
+claim-type authority. An exact-source customer goal whose only Provider schema
+defect is an unknown canonical claim type may be preserved only as `unmapped`.
+Its type and policy are cleared, and it cannot create fact, evidence, action,
+or send authority. This exception does not apply to service actions, invalid
+provenance, mixed schema failures, or malformed aliases of an existing type.
+Provider schema conformance remains failed and promotion still requires a
+fresh native qualification through the formal Pipeline.
+
+Logistics lookup eligibility is separate from permission to skip Turn
+Understanding. An order identifier may authorize the existing read-only order
+lookup, but it does not prove that the customer only asked for tracking or ETA.
+Only an explicit carrier tracking identity may take the semantic-free
+logistics path; order-scoped delivery-method and service goals continue through
+canonical Turn Understanding. This changes no tool, Graph, reply, Safety, or
+Delivery owner.
+
 ## Migration And Rollback
 
 The previous experimental worktree remains intact and uncommitted. The active

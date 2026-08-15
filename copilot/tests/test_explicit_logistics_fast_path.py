@@ -58,6 +58,64 @@ def test_explicit_tracking_skips_fact_type_llm(monkeypatch):
     assert result["query_fact_type_source"] == "explicit_logistics_identifier_fast_path"
 
 
+def test_order_identity_with_logistics_routing_keeps_turn_understanding(
+    monkeypatch,
+):
+    from app import config
+    from app.agent.nodes import query_fact_type_classifier as module
+
+    calls = []
+
+    def classify(state, **_kwargs):
+        calls.append(state["intent"])
+        return {
+            "query_fact_type": "",
+            "confidence": 1.0,
+            "matched_terms": [],
+            "source": "llm",
+            "reason": "minimal_turn_understanding_validated",
+            "risk_hint": "medium",
+            "secondary_fact_types": [],
+            "customer_goals": [{
+                "schema_version": "canonical-customer-goal/v1",
+                "goal_ref": f"goal-{state['intent']}",
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "goal_summary": "current customer logistics request",
+                "source": "current_customer_message",
+            }],
+            "goal_understanding_status": "valid",
+            "goal_understanding_diagnostics": [],
+        }
+
+    monkeypatch.setattr(config, "COPILOT_EXPLICIT_LOGISTICS_FAST_PATH_ENABLED", True)
+    monkeypatch.setattr(module, "classify_query_fact_type_llm_first", classify)
+
+    for intent in ("logistics_eta", "shipping", "logistics"):
+        result = module.query_fact_type_classifier(_tracking_state(
+            customer_message="current customer logistics request",
+            normalized_message="current customer logistics request",
+            intent=intent,
+            slots={
+                "identifier_type": "order_id",
+                "tracking_no": "",
+                "order_id": "fixture-order",
+                "platform_trade_id": "",
+                "possible_numeric_id": "",
+            },
+        ))
+
+        assert result["query_fact_type_source"] == "llm"
+        assert result["turn_understanding"]["goal_understanding_status"] == "valid"
+        assert len(result["turn_understanding"]["requested_claims"]) == 1
+
+    assert calls == ["logistics_eta", "shipping", "logistics"]
+
+
 def test_explicit_tracking_skips_customer_state_llm(monkeypatch):
     from app import config
     from app.agent.nodes import customer_state_analyzer as module

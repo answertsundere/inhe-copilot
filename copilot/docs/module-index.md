@@ -108,6 +108,19 @@ quality remains below promotion at goal completion `1.375/2` and business
 helpfulness `0.625/2`; it does not alter production authority or establish real
 customer accuracy.
 
+The current Turn Understanding candidate preserves an exact-source
+customer goal when its sole schema defect is an unknown canonical claim type.
+The canonical result remains `unmapped`, with empty type and policy and no
+fact, evidence, action, or send authority. The recovery is excluded for service
+actions, provenance defects, mixed schema errors, and known-type spelling
+mutations. Its logistics entry boundary now separately preserves read-only
+lookup eligibility while allowing semantic omission only for explicit carrier
+tracking identity. A frozen synthetic delivery-method row completed once with
+two unresolved requested claims and two Composer clauses; audit passed,
+`can_send` stayed false, human review remained required, and formal-knowledge
+DML was zero. This is a narrow capability result, not real accuracy or
+production qualification, and no production authority changes.
+
 An earlier candidate additionally verified that the server's model-facing
 FactType projection deduplicates the existing material aliases to the canonical
 `material_composition` ID before the semantic call. This is input normalization,

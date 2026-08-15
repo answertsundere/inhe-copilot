@@ -655,6 +655,26 @@ customer-goal recall metric because its expected entries span different goal
 kinds, statuses, and subject scopes. It remains diagnostic-only until an
 approved evaluation contract represents those semantics explicitly.
 
+The current Turn Understanding candidate also keeps goal provenance separate
+from claim-type authority. A source-bound `customer_goal` with no defect other
+than an unknown canonical claim type may survive as an `unmapped` goal so the
+conversation objective is not erased. Sanitization clears the type and policy,
+and the recovered goal cannot create a fact, evidence admission, service
+action, or send authority. Unknown service actions, provenance failures, mixed
+schema failures, and aliases of known canonical types remain blocked. This is
+an existing-owner correction only: it adds no node, service, model call, reply
+owner, or delivery condition.
+
+The logistics fast path now separates tool eligibility from semantic omission.
+Order, platform, and tracking identities may still authorize existing read-only
+lookup routing, but only a carrier tracking identity may skip Turn
+Understanding. An order-scoped delivery-method request therefore reaches the
+canonical goal and Claim Resolution owners instead of being reduced to an
+identifier lookup. One frozen synthetic native row completed with two
+unresolved goals, two Composer clauses, deterministic audit acceptance,
+`can_send=false`, human review, and zero formal-knowledge DML. This validates
+the narrow owner correction only; it does not establish real accuracy.
+
 ### Final Safety And Delivery
 
 Final safety and delivery remain deterministic application responsibilities.

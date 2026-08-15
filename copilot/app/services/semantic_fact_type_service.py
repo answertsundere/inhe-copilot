@@ -840,6 +840,12 @@ def _new_turn_understanding_diagnostics(client: Any) -> dict[str, Any]:
         "envelope_unwrap_count": 0,
         "json_parse_success": False,
         "schema_success": False,
+        "runtime_goal_continuity": {
+            "status": "not_applied",
+            "downgraded_goal_count": 0,
+            "recovered_goal_can_create_fact": False,
+            "can_change_can_send": False,
+        },
         "response_content_length": 0,
         "response_content_sha256": "",
         "schema_validation": {
@@ -1197,6 +1203,35 @@ def _validate_raw_llm_result(
             array_item_count=array_item_count,
         ),
     )
+
+
+def _recoverable_unmapped_goal_count(
+    data: dict[str, Any],
+    *,
+    schema_violations: list[dict[str, Any]],
+    provenance_violations: list[dict[str, Any]],
+) -> int:
+    if provenance_violations or not schema_violations:
+        return 0
+    if any(
+        violation.get("reason_code") != "canonical_claim_type_not_allowed"
+        for violation in schema_violations
+    ):
+        return 0
+    goals = data.get("goals")
+    if not isinstance(goals, list):
+        return 0
+    downgraded = [
+        goal
+        for goal in goals
+        if isinstance(goal, dict)
+        and str(goal.get("goal_kind") or "").strip().lower() == "customer_goal"
+        and str(goal.get("claim_type_status") or "").strip().lower() == "canonical"
+        and str(goal.get("claim_type") or "").strip()
+        and str(goal.get("claim_type") or "").strip().lower()
+        not in ALLOWED_FACT_TYPES
+    ]
+    return len(downgraded) if len(downgraded) == len(schema_violations) else 0
 
 
 def _canonical_provenance_violations(
@@ -1628,6 +1663,11 @@ def _classify_with_llm(
         violations=schema_violations,
     )
     diagnostics["schema_success"] = not schema_violations
+    recoverable_unmapped_goal_count = _recoverable_unmapped_goal_count(
+        parsed,
+        schema_violations=schema_violations,
+        provenance_violations=raw_provenance_violations,
+    )
 
     provenance_started = time.perf_counter()
     canonical_goals: list[dict[str, Any]] = []
@@ -1639,6 +1679,9 @@ def _classify_with_llm(
         canonical_goals_sink=canonical_goals,
         history_texts=history_texts,
         open_goal_candidates=trusted_open_goals,
+        preserve_unmapped_goal_authority=bool(
+            recoverable_unmapped_goal_count
+        ),
     )
     canonical_provenance = _canonical_provenance_violations(
         canonical_goals,
@@ -1667,7 +1710,9 @@ def _classify_with_llm(
         violations=provenance_violations,
     )
 
-    if schema_violations or provenance_violations:
+    if provenance_violations or (
+        schema_violations and not recoverable_unmapped_goal_count
+    ):
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
     if result is None:
@@ -1687,6 +1732,14 @@ def _classify_with_llm(
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
 
+    if recoverable_unmapped_goal_count:
+        diagnostics["runtime_goal_continuity"] = {
+            "status": "preserved_unmapped",
+            "downgraded_goal_count": recoverable_unmapped_goal_count,
+            "recovered_goal_can_create_fact": False,
+            "can_change_can_send": False,
+        }
+
     _finish_diagnostics(diagnostics, started_at=started_at)
     return result
 
@@ -1700,6 +1753,7 @@ def _sanitize_llm_result(
     canonical_goals_sink: list[dict[str, Any]] | None = None,
     history_texts: list[str] | None = None,
     open_goal_candidates: list[dict[str, Any]] | None = None,
+    preserve_unmapped_goal_authority: bool = False,
 ) -> dict[str, Any] | None:
     if not isinstance(data, dict) or set(data) != _LLM_RESULT_FIELDS:
         return None
@@ -1719,6 +1773,13 @@ def _sanitize_llm_result(
         open_goal_candidates=open_goal_candidates,
         lifecycle_continuations_sink=lifecycle_continuations,
     )
+    if (
+        preserve_unmapped_goal_authority
+        and customer_goals
+        and goal_understanding_status == "degraded"
+        and set(goal_diagnostics) == {"canonical_claim_type_unknown"}
+    ):
+        goal_understanding_status = "valid"
     if isinstance(canonical_goals_sink, list):
         canonical_goals_sink.clear()
         canonical_goals_sink.extend(
