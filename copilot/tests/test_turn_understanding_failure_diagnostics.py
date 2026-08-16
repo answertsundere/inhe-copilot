@@ -1091,6 +1091,95 @@ def test_wrong_turn_source_text_has_sanitized_diagnostic(monkeypatch):
     assert "上一轮安装问题" not in serialized
 
 
+def test_turn_understanding_receives_bounded_role_preserving_recent_conversation(
+    monkeypatch,
+):
+    message = "其他事项都没有了"
+    payload = {
+        "goals": [{
+            "goal_kind": "contextual_constraint",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "subject_scope": "",
+            "semantic_key": "no_additional_issue",
+            "policy_intent_ref": "",
+            "source_text": message,
+            "continued_from": "",
+        }],
+    }
+    client = _FakeClient(_response_for_payload(payload))
+    diagnostics = {}
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: [])
+
+    result = service._classify_with_llm(
+        {
+            "copilot_context": {
+                "conversation_history": [
+                    {
+                        "role": "customer",
+                        "content": "我还需要一份使用资料",
+                        "turn_index": 2,
+                    },
+                    {
+                        "role": "agent",
+                        "content": "除此之外还有其他情况吗",
+                        "turn_index": 3,
+                    },
+                ],
+            },
+        },
+        message,
+        "general",
+        diagnostics_sink=diagnostics,
+    )
+
+    request_payload = json.loads(client.kwargs["messages"][1]["content"])
+    assert request_payload["customer_message"] == message
+    assert request_payload["recent_conversation"] == [
+        {"role": "customer", "content": "我还需要一份使用资料"},
+        {"role": "agent", "content": "除此之外还有其他情况吗"},
+    ]
+    assert result is not None
+    assert result["customer_goals"][0]["goal_kind"] == "contextual_constraint"
+
+
+def test_turn_understanding_recent_conversation_is_bounded(monkeypatch):
+    message = "目前就这些"
+    payload = {
+        "goals": [{
+            "goal_kind": "contextual_constraint",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "subject_scope": "",
+            "semantic_key": "conversation_scope_confirmation",
+            "policy_intent_ref": "",
+            "source_text": message,
+            "continued_from": "",
+        }],
+    }
+    client = _FakeClient(_response_for_payload(payload))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: [])
+    history = [
+        {"role": "customer" if index % 2 == 0 else "agent", "content": f"turn-{index}"}
+        for index in range(20)
+    ]
+
+    service._classify_with_llm(
+        {"copilot_context": {"conversation_history": history}},
+        message,
+        "general",
+    )
+
+    request_payload = json.loads(client.kwargs["messages"][1]["content"])
+    assert len(request_payload["recent_conversation"]) == 8
+    assert request_payload["recent_conversation"][0]["content"] == "turn-12"
+    assert request_payload["recent_conversation"][-1]["content"] == "turn-19"
+
+
 def test_span_diagnostics_distinguish_schema_and_hash_mismatch():
     malformed = _valid_payload()["goals"][0]
     malformed["source_text"] = ""

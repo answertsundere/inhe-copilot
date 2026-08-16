@@ -194,6 +194,14 @@ You are the Turn Understanding owner for INHE customer-service Copilot.
 Identify every explicit atomic need in the current buyer message. Do not answer
 the buyer and do not select evidence.
 
+When recent_conversation is supplied, use its role and order only to resolve
+ellipsis, acknowledgements, confirmations, rejections, and answers to the
+latest conversational question. A current message that explicitly constrains
+the ongoing conversation but asks for no new fact or action is a
+contextual_constraint. Its source_text must still come only from the current
+customer_message. Never revive an omitted historical request or treat an agent
+statement as product, order, policy, or completed-action truth.
+
 Treat each independently answerable request as a separate goal. Enumerate the
 requests before classifying them, and then silently verify that every explicit
 request is represented exactly once in the output. A restrictive, high-risk,
@@ -1425,6 +1433,12 @@ def _classify_with_llm(
         "canonical_fact_type_candidates": _canonical_fact_type_candidates(),
         "policy_intent_candidates": policy_intent_candidates,
     }
+    recent_conversation = _recent_conversation_for_understanding(
+        state,
+        current_message=span_reference_text,
+    )
+    if recent_conversation:
+        payload["recent_conversation"] = recent_conversation
     if open_goal_candidates:
         payload["open_goal_candidates"] = open_goal_candidates
 
@@ -1962,6 +1976,42 @@ def _historical_customer_texts(state: dict[str, Any]) -> list[str]:
         if isinstance(content, str) and content:
             texts.append(content)
     return texts
+
+
+def _recent_conversation_for_understanding(
+    state: dict[str, Any],
+    *,
+    current_message: str,
+    limit: int = 8,
+) -> list[dict[str, str]]:
+    """Project a bounded, role-preserving context window for understanding."""
+    context = state.get("copilot_context")
+    context = context if isinstance(context, dict) else {}
+    history = context.get("conversation_history")
+    if not isinstance(history, list):
+        return []
+
+    projected: list[dict[str, str]] = []
+    for turn in history:
+        if not isinstance(turn, dict):
+            continue
+        raw_role = str(turn.get("role") or "").strip().lower()
+        if raw_role in {"customer", "buyer", "user"}:
+            role = "customer"
+        elif raw_role in {"agent", "assistant"}:
+            role = "agent"
+        else:
+            continue
+        content = turn.get("content")
+        if not isinstance(content, str):
+            content = turn.get("text")
+        content = _bounded_text(content, 300)
+        if not content:
+            continue
+        if role == "customer" and content == current_message:
+            continue
+        projected.append({"role": role, "content": content})
+    return projected[-max(1, min(int(limit), 8)):]
 
 
 def _span_resolution_diagnostics(

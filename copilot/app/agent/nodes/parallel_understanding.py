@@ -140,8 +140,22 @@ def _text(state: dict) -> str:
     return " ".join(p for p in parts if p)
 
 
+def _current_text(state: dict) -> str:
+    """Return only the current buyer message for current-turn classifiers.
+
+    Raw history is contextual evidence, not another copy of the current turn.
+    Reclassifying concatenated history revives already answered or unrelated
+    intents and loses role/order semantics.
+    """
+    return str(
+        state.get("normalized_message")
+        or state.get("customer_message", "")
+        or ""
+    )
+
+
 def _intent_classifier(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     identifiers = _extract_identifiers(text)
     colloquial_aftersales = classify_colloquial_aftersales(text)
 
@@ -229,7 +243,7 @@ def _intent_classifier(state: dict) -> dict[str, Any]:
 
 
 def _risk_classifier(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     reasons = []
     level = "low"
 
@@ -252,7 +266,7 @@ def _risk_classifier(state: dict) -> dict[str, Any]:
 
 
 def _slot_entity_extractor(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     identifiers = _extract_identifiers(text)
     product_mentions = [w for w in PRODUCT_WORDS if w in text]
     sku_mentions = re.findall(r"([一二三四五六七八九十百千万0-9]+号[^，。！？\s]{0,12})", text)
@@ -271,7 +285,7 @@ def _slot_entity_extractor(state: dict) -> dict[str, Any]:
 
 
 def _context_resolver(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     ctx = state.get("conversation_context") or {}
     requested = ctx.get("last_requested_slots", []) or []
     identifiers = _extract_identifiers(text)
@@ -292,7 +306,7 @@ def _context_resolver(state: dict) -> dict[str, Any]:
 
 
 def _customer_state_analyzer(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     emotion = "calm"
     concern = "unknown"
     urgency = "low"
@@ -337,7 +351,7 @@ def _customer_state_analyzer(state: dict) -> dict[str, Any]:
 
 
 def _tool_need_predictor(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     identifiers = _extract_identifiers(text)
     ctx = state.get("conversation_context") or {}
     active_issue = ctx.get("active_issue", "")
@@ -380,7 +394,7 @@ def _tool_need_predictor(state: dict) -> dict[str, Any]:
 
 
 def _knowledge_scope_predictor(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     allowed: list[str] = []
     forbidden: list[str] = []
     if any(w in text for w in MATERIAL_WORDS + SIZE_WORDS):
@@ -401,7 +415,7 @@ def _knowledge_scope_predictor(state: dict) -> dict[str, Any]:
 
 
 def _safety_precheck(state: dict) -> dict[str, Any]:
-    text = _text(state)
+    text = _current_text(state)
     contract = SafetyContract()
     if any(w in text for w in ETA_CERTAINTY_WORDS) or any(w in text for w in ("什么时候到", "几天到", "多久到")):
         contract.forbidden_claims.extend(["一定到", "保证到", "肯定到"])

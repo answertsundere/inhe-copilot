@@ -256,6 +256,38 @@ def test_parallel_understanding_uses_only_customer_history():
     assert text.count("这个是哪个？还能补吗？") == 1
 
 
+def test_parallel_intent_does_not_reclassify_current_acknowledgement_from_history():
+    from app.agent.nodes.parallel_understanding import _intent_classifier
+
+    state = {
+        "normalized_message": "其他事项都没有了",
+        "copilot_context": {
+            "conversation_history": [
+                {"role": "customer", "content": "之前还问过安装资料"},
+                {"role": "agent", "content": "除此之外还有其他情况吗"},
+            ],
+        },
+    }
+
+    assert _intent_classifier(state)["primary_intent"] == "general"
+
+
+def test_parallel_intent_ignores_unrelated_historical_logistics_request():
+    from app.agent.nodes.parallel_understanding import _intent_classifier
+
+    state = {
+        "normalized_message": "目前就这些",
+        "copilot_context": {
+            "conversation_history": [
+                {"role": "customer", "content": "上一件订单什么时候送到"},
+                {"role": "agent", "content": "我会核对物流"},
+            ],
+        },
+    }
+
+    assert _intent_classifier(state)["primary_intent"] == "general"
+
+
 def test_aftersales_reply_uses_customer_history_for_broken_part():
     from app.agent.nodes.generate_reply import _aftersales_reply
 
