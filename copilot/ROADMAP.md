@@ -96,3 +96,24 @@
 - The run selected no formal evidence and therefore cannot prove factual
   quality. The next owner is the unsupported negative-absence claim, not a new
   reply template or graph layer.
+
+`P1-NEGATIVE-ABSENCE-001` completed its engineering gate on 2026-08-16:
+
+- The frozen installation reply was traced to the existing Composer: an
+  unresolved customer observation was converted into an objective statement
+  that product instructions lacked a marking.
+- Unresolved goals now carry a source-faithfulness statement contract. Product,
+  order, document, and source assertions require admitted evidence; customer
+  observations require attribution; missing evidence remains an internal
+  assertion boundary and cannot be exposed as a customer-visible reason.
+- DeepSeek V4 Flash requalified `5/5`. The frozen installation case plus
+  logistics and damage/packaging adjacent cases passed Composer and
+  Deterministic Final on clean commit `ab80c1c`, with `can_send=false`,
+  mandatory human review, zero selected evidence, and formal-knowledge DML
+  `0`.
+- This closes the unsupported negative-absence defect only. The logistics
+  mutation remains weak on concrete next-step guidance, so business
+  helpfulness and service-action completion remain P1 review owners.
+- The versioned default-off safety smoke repeated the existing `3/5`
+  baseline: after-sales `3/3`, installation `0/2`, all five review-only and
+  `can_send=0`. Full 22 was not run after the failed smoke.

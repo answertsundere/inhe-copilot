@@ -279,6 +279,30 @@ and next owner here and in `docs/CHANGELOG.md`.
   retained the same five existing failures outside this change: odor-bridge
   FactType ownership, two reconstructed-fixture file hashes, partial-answer
   evaluator polarity, and the fast-path evaluator source hash.
+- `P1-NEGATIVE-ABSENCE-001` froze `hf-syn-005` and located the earliest
+  malformed output at the existing Composer. With no admitted evidence, a
+  customer statement about an unclear instruction image had been upgraded into
+  an objective claim that product instructions omitted a marking.
+- The existing Composer goal projection now carries a source-faithfulness
+  statement contract for unresolved goals. It permits only an uncertainty
+  boundary, requires explicit attribution for customer observations, forbids
+  negative source facts without admitted evidence, and keeps internal
+  no-evidence state out of customer-visible reasons. No Graph, service, model
+  call, reply owner, Final, Safety, Delivery, or send condition was added.
+- DeepSeek V4 Flash requalified `5/5` on source hash
+  `208a74658b147271f4a014736c4000fb909a3ca8918260c2783c41b9f848ee99`.
+  The final-source installation, logistics, and damage/packaging runs completed
+  `3/3`: Composer and Deterministic Final passed, `can_send=0`, human review
+  was `3/3`, selected evidence was `0`, and formal-knowledge DML was `0`.
+  These are synthetic source-faithfulness checks, not real accuracy.
+- The versioned Composer-default-off smoke executed five cases and repeated
+  `3/5`: after-sales `3/3`, installation `0/2` with the existing
+  FactType/key-point mismatch, mandatory human review `5/5`, and
+  `can_send=0`. Full 22 was correctly not run.
+- The scoped suite passed `663/663`. Full-repository pytest retained the
+  same five pre-existing failures: odor-bridge FactType ownership, two
+  reconstructed-fixture hash checks, partial-answer evaluator polarity, and
+  the fast-path evaluator source hash. No new failure was introduced.
 
 ## Phase Plan
 
@@ -295,18 +319,18 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 ## Immediate Queue
 
-1. `P1-NEGATIVE-ABSENCE-001` - Freeze the first unsupported negative-absence
-   claim and identify whether Claim Resolution, Composer, Deterministic Final,
-   or Unified Audit first loses the unresolved polarity.
-2. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
+1. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
    versioned, hashed long-conversation manifest. Keep raw content, direct
    identifiers, and label answers outside the repository and Agent prompt.
-3. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
+2. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
    and review-only delivery. Compare only equivalent runtimes and preserve
    `can_send=false`.
-4. `P1-E2-001C` - Independently review goal coverage, continuity, factual
+3. `P1-E2-001C` - Independently review goal coverage, continuity, factual
    restraint, unresolved handling, and handoff necessity. Record failures by
    owner without modifying frozen owners.
+4. `P1-SERVICE-ACTION-HELPFULNESS-001` - Use the approved long-conversation
+   review to locate where unresolved order and after-sales goals lose concrete
+   offered actions. Do not repair this with process-language templates.
 5. `P2-LIVE-EVIDENCE-DESIGN` - After P1 acceptance, create the source-of-truth
    ADR and inventory read-only JST/platform authorities. Volatile product,
    price, promotion, order, and stock facts must be read at answer time.

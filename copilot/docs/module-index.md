@@ -34,6 +34,14 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Final orchestration | `app/services/final_response_orchestrator.py` | formal | Sequence, state synchronization, and fail-closed delivery shared by all entry points; enters model-first handling only for an accepted Composer result with `used_for_final_reply=true`; no model-first reply generation or rewriting |
 | Media delivery | media services plus final reply blocks | formal | A candidate asset is not delivered media; role, identity, usability, approval, and block required |
 | Runtime readiness | runtime readiness services and health routes | formal | Read-only deployment and knowledge readiness |
+
+The P1 unresolved-clause projection in the existing candidate-reply owner now
+also carries a source-faithfulness statement contract. It keeps product,
+order, document, and source assertions evidence-owned; requires attribution
+when recent customer observations are reused; and prevents internal no-evidence
+state from becoming a customer-visible reason. This changes no module status,
+Graph topology, model-call count, Final/Safety/Delivery owner, or send
+authority.
 | Knowledge governance | knowledge review/publish and explicit sync services | formal writable owner | Agent and evaluation paths are readers |
 
 The latest isolated dirty-candidate run kept this baseline's existing owner

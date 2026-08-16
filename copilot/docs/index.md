@@ -257,6 +257,18 @@ replies or delivery. This remains
 engineering evidence only: `real_customer_accuracy=null`,
 `optimization_unverified=true`, and `original_fixed8_restored=false`.
 
+The later fixed-40 source-faithfulness follow-up froze the first unsupported
+negative-absence reply and located the earliest malformed output at the
+existing Composer. Unresolved goals now carry an evidence-owned statement
+boundary: customer observations require attribution, negative product/source
+facts require admitted evidence, and internal no-evidence state is not a
+customer-visible reason. DeepSeek requalified `5/5`; final-source
+installation, logistics, and damage/packaging checks passed `3/3` with
+`can_send=0`, mandatory human review, selected evidence `0`, and
+formal-knowledge DML `0`. This closes one synthetic faithfulness defect, not
+overall quality or real accuracy; P1 now returns to approved long-conversation
+review and service-action/business-helpfulness diagnosis.
+
 ## Architecture Decisions And Research
 
 - `docs/adr/README.md` - ADR rules and required format.

@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-08-16 - Unresolved Source-Faithfulness Boundary
+
+- Traced the fixed-40 unsupported negative-absence reply to the existing
+  Composer. An unresolved customer observation had been upgraded into an
+  objective product-instruction absence claim despite zero admitted evidence.
+- Added a per-goal statement contract for unresolved clauses: factual
+  assertions require admitted evidence, customer observations require
+  attribution, negative source facts are forbidden without evidence, and
+  internal no-evidence state cannot become a customer-visible reason. No Graph,
+  service, model call, reply owner, Final, Safety, Delivery, or send condition
+  changed.
+- DeepSeek V4 Flash requalified `5/5`. Final-source installation, logistics,
+  and damage/packaging checks passed Composer and Deterministic Final `3/3`
+  with mandatory human review, `can_send=0`, selected evidence `0`, and
+  formal-knowledge DML `0`. This is a synthetic engineering result;
+  business helpfulness and real accuracy remain unqualified.
+- The versioned default-off smoke repeated `3/5`: after-sales `3/3`,
+  installation `0/2`, mandatory human review `5/5`, and `can_send=0`.
+  Full 22 was not run after the failed smoke.
+- Scoped regression and docs governance passed `663/663`. Full pytest
+  retained the same five known unrelated failures and introduced no new
+  failure.
+
 ## 2026-08-16 - Product Fact Review Lifecycle Closure
 
 - Closed a formal-knowledge governance bypass before the Agent path. Published

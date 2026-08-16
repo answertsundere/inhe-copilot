@@ -212,3 +212,40 @@ semantic-faithfulness concerns remain review findings; they must not be fixed
 with sentence matchers. `real_customer_accuracy=null` and
 `optimization_unverified=true` remain unchanged. The next vertical slice is
 formal evidence supply and admission coverage.
+
+## Unresolved Source-Faithfulness Follow-up
+
+The first unsupported negative-absence row, `hf-syn-005`, was frozen without
+changing the dataset. Turn Understanding and Claim Resolution correctly kept
+the goal unresolved and admitted no evidence. The earliest malformed output
+was the Composer clause, which converted a customer observation about an
+unclear instruction image into an objective statement that product
+instructions omitted the marking.
+
+The existing unresolved-goal projection now carries a statement contract:
+facts about a product, order, document, or source require admitted evidence;
+customer observations require explicit attribution; and missing evidence is
+an internal assertion boundary, not a customer-visible cause. This is a
+provider-facing semantic boundary, not a reply template or text matcher.
+
+DeepSeek V4 Flash requalified `5/5` after the final source change. On clean
+commit `ab80c1c`, the frozen installation case and logistics plus
+damage/packaging adjacent cases completed once each. Composer and Deterministic
+Final passed `3/3`; all three remained human-review-only with
+`can_send=false`, selected evidence `0`, and formal-knowledge DML `0`.
+The installation reply no longer asserted that instructions lacked a marking,
+and the logistics reply no longer exposed the internal “nothing was found”
+state as its reason.
+
+The logistics reply still did not provide a concrete query action. That is a
+separate service-action/business-helpfulness finding and is intentionally not
+treated as success for overall conversation quality. These synthetic checks do
+not change `real_customer_accuracy=null` or
+`optimization_unverified=true`.
+
+The same final source also ran the versioned five-case safety smoke with the
+Composer feature at its default-off setting. It repeated the existing `3/5`:
+after-sales passed `3/3`, both installation cases retained their existing
+FactType/key-point mismatch, all five required human review, and
+`can_send=0`. Full 22 was not run after the failed smoke, and no fixture,
+rubric, or production rule was changed.

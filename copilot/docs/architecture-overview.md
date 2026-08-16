@@ -496,6 +496,15 @@ The fixed synthetic baseline is still not qualified because the active GLM
 Turn Understanding provider produced an invalid schema enum on the first fresh
 row; schema validation remains fail-closed and no retry-based pass is accepted.
 
+The current P1 Composer contract also separates unresolved epistemic boundaries
+from source facts. For an unresolved goal, product, order, document, and source
+assertions remain evidence-owned; a recent customer observation can only be
+used with explicit attribution; and the absence of admitted evidence is an
+internal assertion boundary rather than a customer-visible cause. This is
+carried in the existing Composer input and does not add a Graph node, service,
+text classifier, reply owner, or Delivery authority. Final and Delivery remain
+unchanged, and every observed candidate stays human-review-only.
+
 The latest reconstructed P1 baseline completed on an isolated, query-only
 runtime at clean commit `da4a0ad`. It executed all eight cases with zero
 formal-knowledge DML, zero `can_send=true` results, and mandatory human review
