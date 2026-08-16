@@ -129,6 +129,7 @@ def _authoritative_contextual_reply_kind(state: dict) -> str:
         or goal.get("claim_type_status") != "unmapped"
         or str(goal.get("claim_type") or "").strip()
         or str(goal.get("policy_intent_ref") or "").strip()
+        or str(goal.get("continued_from") or "").strip()
     ):
         return ""
     return str(goal.get("semantic_key") or "").strip()
@@ -156,6 +157,14 @@ def response_strategy_planner(state: dict) -> dict:
 
     if contextual_reply_kind == "conversation_closure":
         reply_goal = "acknowledge_conversation_closure"
+        tone = "warm"
+        empathy_level = "low"
+        should_answer_directly = True
+        should_offer_next_step = False
+        missing_slots = []
+
+    elif contextual_reply_kind in {"acknowledgement", "confirmation"}:
+        reply_goal = "acknowledge_contextual_confirmation"
         tone = "warm"
         empathy_level = "low"
         should_answer_directly = True

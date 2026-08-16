@@ -319,7 +319,10 @@ def gold_csr_reply_builder(state: dict) -> dict:
         reply = _product_no_evidence_reply(state)
         changed = True
 
-    elif goal == "acknowledge_conversation_closure":
+    elif goal in {
+        "acknowledge_conversation_closure",
+        "acknowledge_contextual_confirmation",
+    }:
         reply = "好的，明白了。后续有其他问题，您随时联系我。"
         changed = True
 

@@ -20,6 +20,7 @@ def _contextual_turn(semantic_key: str) -> dict:
                 "claim_type_status": "unmapped",
                 "claim_type": "",
                 "semantic_key": semantic_key,
+                "continued_from": "",
             }
         ],
     }
@@ -94,7 +95,24 @@ def test_other_contextual_semantics_do_not_impersonate_conversation_closure():
         }
     )
 
-    assert result["reply_goal"] != "acknowledge_conversation_closure"
+    assert result["reply_goal"] == "acknowledge_contextual_confirmation"
+
+
+def test_confirmation_of_an_open_goal_is_not_treated_as_standalone_acknowledgement():
+    turn = _contextual_turn("confirmation")
+    turn["customer_goals"][0]["continued_from"] = "open-goal-1"
+    result = response_strategy_planner(
+        {
+            "intent": "general",
+            "customer_concern": "smalltalk",
+            "customer_state": {},
+            "conversation_context": {},
+            "customer_message": "current turn is intentionally opaque to policy code",
+            "turn_understanding": turn,
+        }
+    )
+
+    assert result["reply_goal"] != "acknowledge_contextual_confirmation"
 
 
 def test_gold_csr_closure_reply_is_natural_and_makes_no_action_claim():
@@ -117,3 +135,23 @@ def test_gold_csr_closure_reply_is_natural_and_makes_no_action_claim():
     assert "确认后" not in reply
     assert "已处理" not in reply
     assert "？" not in reply
+
+
+def test_gold_csr_standalone_confirmation_is_natural_and_makes_no_action_claim():
+    result = gold_csr_reply_builder(
+        {
+            "suggested_reply": "legacy fallback",
+            "response_strategy_plan": {
+                "reply_goal": "acknowledge_contextual_confirmation"
+            },
+            "answer_mode": "clarification",
+            "intent": "general",
+            "customer_concern": "smalltalk",
+        }
+    )
+
+    reply = result["suggested_reply"]
+    assert "明白" in reply
+    assert "随时" in reply
+    assert "核对" not in reply
+    assert "已处理" not in reply
