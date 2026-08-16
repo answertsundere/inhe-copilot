@@ -73,6 +73,39 @@ COPILOT_UNIFIED_AUDIT_DISABLE_THINKING = os.environ.get(
     "COPILOT_UNIFIED_AUDIT_DISABLE_THINKING", "false"
 ).lower() in ("1", "true", "yes", "on")
 
+# Turn Understanding may use an independently qualified strict-output role.
+# It never inherits formal Agent, decision-shadow, Composer, or Audit settings.
+COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+COPILOT_TURN_UNDERSTANDING_PROVIDER = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_PROVIDER", ""
+)
+COPILOT_TURN_UNDERSTANDING_API_BASE = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_API_BASE", ""
+)
+COPILOT_TURN_UNDERSTANDING_API_KEY = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_API_KEY", ""
+)
+COPILOT_TURN_UNDERSTANDING_MODEL = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_MODEL", ""
+)
+COPILOT_TURN_UNDERSTANDING_CAPABILITY = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_CAPABILITY", "unsupported"
+)
+COPILOT_TURN_UNDERSTANDING_TIMEOUT_SECONDS = int(
+    os.environ.get("COPILOT_TURN_UNDERSTANDING_TIMEOUT_SECONDS", "20")
+)
+COPILOT_TURN_UNDERSTANDING_QUALIFIED = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_QUALIFIED", "false"
+).lower() in ("1", "true", "yes", "on")
+COPILOT_TURN_UNDERSTANDING_QUALIFICATION_FINGERPRINT = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_QUALIFICATION_FINGERPRINT", ""
+)
+COPILOT_TURN_UNDERSTANDING_DISABLE_THINKING = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_DISABLE_THINKING", "false"
+).lower() in ("1", "true", "yes", "on")
+
 # ============ 客户图片 VLM 配置 ============
 COPILOT_VLM_ENABLED = os.environ.get("COPILOT_VLM_ENABLED", "false").lower() in ("1", "true", "yes", "on")
 COPILOT_VLM_API_BASE = os.environ.get(

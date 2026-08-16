@@ -142,6 +142,109 @@ def test_unified_audit_config_is_independent_from_formal_and_decision_roles(
     }
 
 
+def test_turn_understanding_strict_role_is_default_disabled_and_independent(
+    monkeypatch,
+):
+    assert config.COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED is False
+    monkeypatch.setattr(config, "LLM_API_KEY", "formal-secret")
+    monkeypatch.setattr(
+        config,
+        "COPILOT_DECISION_LLM_API_KEY",
+        "decision-secret",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_UNIFIED_AUDIT_API_KEY",
+        "audit-secret",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_PROVIDER",
+        "turn-provider",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_API_BASE",
+        "https://turn.example.invalid/v1",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_API_KEY",
+        "turn-secret",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_MODEL",
+        "turn-model",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_CAPABILITY",
+        "tool_call_schema",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_TIMEOUT_SECONDS",
+        19,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_QUALIFIED",
+        False,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_DISABLE_THINKING",
+        True,
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_QUALIFICATION_FINGERPRINT",
+        "",
+    )
+
+    role = StrictDecisionProviderConfig.from_turn_understanding_environment()
+
+    assert role.role_name == "turn_understanding"
+    assert role.api_key == "turn-secret"
+    assert role.api_key not in {
+        config.LLM_API_KEY,
+        config.COPILOT_DECISION_LLM_API_KEY,
+        config.COPILOT_UNIFIED_AUDIT_API_KEY,
+    }
+    assert role.qualification_status() == "provider_not_qualified"
+
+
+def test_turn_understanding_strict_role_requires_matching_fingerprint(
+    monkeypatch,
+):
+    values = {
+        "COPILOT_TURN_UNDERSTANDING_PROVIDER": "turn-provider",
+        "COPILOT_TURN_UNDERSTANDING_API_BASE": "https://turn.example.invalid/v1",
+        "COPILOT_TURN_UNDERSTANDING_API_KEY": "turn-secret",
+        "COPILOT_TURN_UNDERSTANDING_MODEL": "turn-model",
+        "COPILOT_TURN_UNDERSTANDING_CAPABILITY": "strict_json_schema",
+        "COPILOT_TURN_UNDERSTANDING_TIMEOUT_SECONDS": 23,
+        "COPILOT_TURN_UNDERSTANDING_QUALIFIED": True,
+        "COPILOT_TURN_UNDERSTANDING_DISABLE_THINKING": True,
+        "COPILOT_TURN_UNDERSTANDING_QUALIFICATION_FINGERPRINT": "bad",
+    }
+    for name, value in values.items():
+        monkeypatch.setattr(config, name, value)
+
+    changed = StrictDecisionProviderConfig.from_turn_understanding_environment()
+    assert changed.qualification_status() == "provider_configuration_changed"
+
+    fingerprint = qualification_configuration_fingerprint(changed)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_QUALIFICATION_FINGERPRINT",
+        fingerprint,
+    )
+    qualified = StrictDecisionProviderConfig.from_turn_understanding_environment()
+    assert qualified.qualification_status() == "qualified"
+
+
 def test_strict_json_schema_request_never_uses_json_object():
     client = _Client(_result())
     provider = StrictDecisionProviderService(config=_config(), client_factory=lambda **_: client)

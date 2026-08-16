@@ -142,6 +142,41 @@ class StrictDecisionProviderConfig:
             role_name="unified_audit",
         )
 
+    @classmethod
+    def from_turn_understanding_environment(
+        cls,
+    ) -> "StrictDecisionProviderConfig":
+        return cls(
+            provider_name=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_PROVIDER
+            ),
+            api_base=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_API_BASE
+            ),
+            api_key=config.COPILOT_TURN_UNDERSTANDING_API_KEY,
+            model=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_MODEL
+            ),
+            capability=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_CAPABILITY
+            ).lower(),
+            timeout_seconds=_bounded_timeout(
+                str(config.COPILOT_TURN_UNDERSTANDING_TIMEOUT_SECONDS)
+            ),
+            qualified=bool(
+                config.COPILOT_TURN_UNDERSTANDING_QUALIFIED
+            ),
+            disable_thinking=bool(
+                config.COPILOT_TURN_UNDERSTANDING_DISABLE_THINKING
+            ),
+            qualification_fingerprint=str(
+                config.COPILOT_TURN_UNDERSTANDING_QUALIFICATION_FINGERPRINT
+                or ""
+            ).strip(),
+            qualification_fingerprint_required=True,
+            role_name="turn_understanding",
+        )
+
     def capability_status(self) -> str:
         if not all((self.provider_name, self.api_base, self.api_key, self.model)):
             return "provider_not_configured"
