@@ -2667,6 +2667,21 @@ class ModelFirstAnswerComposerService:
                 "required_clause_kind": required_clause_kind,
                 "required_evidence_refs": evidence_refs,
                 "eligible_policy_options": eligible_options,
+                "statement_contract": (
+                    {
+                        "fact_assertion_mode": "admitted_evidence_only",
+                        "unresolved_expression_mode": (
+                            "uncertainty_boundary_only"
+                        ),
+                        "customer_observation_mode": (
+                            "explicit_attribution_required"
+                        ),
+                        "negative_source_fact_allowed": False,
+                        "customer_visible_reason_mode": "none",
+                    }
+                    if required_clause_kind == "unresolved"
+                    else {}
+                ),
                 "requested_claim_risk": str(
                     resolution.get("requested_claim_risk") or ""
                 ).strip(),
@@ -3856,6 +3871,7 @@ class ModelFirstAnswerComposerService:
             "若 goal 带 restricted_request_boundary，所选有界说明必须保留该请求边界，"
             "不得把绝对保证、测试结论或责任承诺改写成已确认事实。"
             "缺少直接依据只表示当前没有可引用的直接依据，不等于事实从未发生；"
+            "这是内部断言边界，不是客户可见的检索过程或未知原因。"
             "除非 admitted_evidence 明确证明，不得声称商品未测试、已通过或未通过测试、"
             "符合某项测试标准，也不得把任何未知事实改写成否定事实。"
             "未选择 option 且 required_clause_kind=supported_fact 时直接陈述已确认事实，"
@@ -3864,6 +3880,17 @@ class ModelFirstAnswerComposerService:
             "保留非绝对边界，不得扩展到 prohibited claim。"
             "未选择 option 且 required_clause_kind=unresolved 时结合 goal_summary 和当前问题，"
             "自然说明目前无法确认或不能保证，不补充原因、概率、性能、适用或使用建议。"
+            "statement_contract 是服务器给当前 goal 的表达边界。"
+            "fact_assertion_mode=admitted_evidence_only 时，任何商品、订单、资料或来源事实"
+            "都只能来自该 goal 的 admitted_evidence。"
+            "unresolved_expression_mode=uncertainty_boundary_only 时，只表达当前不能确认的边界，"
+            "不得自行补充导致未知的客观原因。"
+            "customer_observation_mode=explicit_attribution_required 时，若使用 recent_conversation_turns"
+            " 中的客户观察，必须明确归因于客户陈述，不得改写成独立核实过的商品或来源事实。"
+            "negative_source_fact_allowed=false 时，缺少 admitted_evidence 不能变成某个商品、资料、"
+            "订单或来源未包含、未展示、未提供某项内容的否定事实。"
+            "customer_visible_reason_mode=none 时，未决 clause 不得把无证据、未检索到、"
+            "未核对到或系统未知等内部状态写成客户可见原因。"
             "When the current question and recent customer turns explicitly supply the quantities or conditions "
             "being compared, an unresolved clause may state only their direct logical consequence under an "
             "explicit customer-condition boundary. Do not present a customer-supplied or hypothetical value as "

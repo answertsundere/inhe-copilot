@@ -854,6 +854,80 @@ def test_composer_preserves_unmapped_goal_as_unresolved_clause():
 
 
 @pytest.mark.parametrize(
+    "customer_observation",
+    [
+        "说明图里这个方向我看不清楚。",
+        "我看到包装边角有一点压痕。",
+        "订单页上的配送时间刚才变了。",
+    ],
+)
+def test_unresolved_goal_projects_source_faithfulness_statement_contract(
+    customer_observation: str,
+):
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["recent_conversation_turns"] = [{
+        "role": "customer",
+        "content": customer_observation,
+        "turn_index": 1,
+    }]
+    context["requested_claims"] = [
+        _goal(
+            "goal-current",
+            "",
+            claim_type_status="unmapped",
+            goal_summary="确认当前问题是否成立",
+        ),
+    ]
+    context["admitted_evidence"] = []
+    context["claim_resolutions"] = [{
+        **_resolution(
+            "claim-current",
+            "",
+            "unresolved",
+            claim_type_status="unmapped",
+        ),
+        "semantic_key": "",
+        "goal_summary": "确认当前问题是否成立",
+    }]
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="请确认当前问题",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+
+    assert decision_error == material_error == ""
+    goal = material["prompt_payload"]["renderable_customer_goals"][0]
+    assert goal["statement_contract"] == {
+        "fact_assertion_mode": "admitted_evidence_only",
+        "unresolved_expression_mode": "uncertainty_boundary_only",
+        "customer_observation_mode": "explicit_attribution_required",
+        "negative_source_fact_allowed": False,
+        "customer_visible_reason_mode": "none",
+    }
+    assert material["prompt_payload"]["recent_conversation_turns"] == [{
+        "role": "customer",
+        "content": customer_observation,
+        "turn_index": 1,
+    }]
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+    for required_contract in (
+        "fact_assertion_mode=admitted_evidence_only",
+        "unresolved_expression_mode=uncertainty_boundary_only",
+        "customer_observation_mode=explicit_attribution_required",
+        "negative_source_fact_allowed=false",
+        "customer_visible_reason_mode=none",
+    ):
+        assert required_contract in prompt
+
+
+@pytest.mark.parametrize(
     ("fact_type", "attribute_key", "goal_summary"),
     [
         ("material_composition", "material", "确认日常耐用边界"),
