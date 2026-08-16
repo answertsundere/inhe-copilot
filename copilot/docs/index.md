@@ -295,8 +295,11 @@ canonical normalizer. GLM-4.6 was blocked by Provider rate limits on `24/24`
 attempts, and the account-listed GLM-5-Turbo candidate was blocked on its
 `8/8` first-stage attempts. DeepSeek was callable: V4 Flash passed `7/8`
 semantic contracts, and V4 Pro passed all `24/24` repeated execution, schema,
-current-source, and semantic checks but only `22/24` repeat stability. None of
-these candidates is qualified for the strict Turn Understanding role; the
+current-source, and semantic checks but only `22/24` repeat stability. The
+privacy-safe v2 diagnostic attributed the two misses to current-source span
+variation in one material case and semantic-key variation in one carrier-action
+case; it did not retain model output or field values. None of these candidates
+is qualified for the strict Turn Understanding role; the
 separate qualified V4 Flash Composer role is unchanged. No isolated runtime or
 long-conversation gate was started, and `real_customer_accuracy` remains
 `null` with `can_send=false`.

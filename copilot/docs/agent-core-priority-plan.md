@@ -1136,8 +1136,12 @@ confirmed that Provider availability is not the blocker: V4 Flash completed
 all eight calls but passed only `7/8` semantic contracts because its material
 goal declared a dimension-only subject scope. V4 Pro passed the first `8/8`
 gate, then completed all `24/24` repeated calls with `100%` execution, schema,
-current-source, and semantic success, but only `22/24` repeat stability. The
-strict role therefore remains not qualified and disabled. This does not revoke
+current-source, and semantic success, but only `22/24` repeat stability. A safe
+v2 diagnostic identified two real drifts: one material case changed its
+exact current-message source span, and one carrier-action case changed its
+optional semantic key. The transport already used temperature zero and
+disabled thinking, so no unsupported sampling adjustment or retry was added.
+The strict role therefore remains not qualified and disabled. This does not revoke
 the independently qualified DeepSeek V4 Flash Composer role. No isolated
 runtime, `1x1`, `3x1`, or authorized internal-conversation run was started, and
 P1 remains blocked on a repeat-stable, provenance-qualified Turn Understanding

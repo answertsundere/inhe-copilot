@@ -1,5 +1,17 @@
 # Change Log
 
+## 2026-08-16 - Turn Understanding qualification diagnostics v2
+
+- Added anonymous per-case repeat-stability diagnostics to the existing
+  fictional strict Turn Understanding qualifier: signature variant count,
+  stable attempt count, and changed schema-field names.
+- Kept raw conversations, model output, field values, Provider endpoints, and
+  credentials out of the report; qualification still requires `100%` repeat
+  stability and remains default-off.
+- Confirmed DeepSeek V4 Pro is callable but not qualified for this role:
+  `24/24` execution/schema/current-source/semantic and `22/24` repeat stability.
+  No runtime, evidence, reply, knowledge, or delivery behavior changed.
+
 ## 2026-08-16 - Unresolved Source-Faithfulness Boundary
 
 - Traced the fixed-40 unsupported negative-absence reply to the existing

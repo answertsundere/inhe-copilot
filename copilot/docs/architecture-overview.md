@@ -1029,6 +1029,12 @@ transport-level limits. DeepSeek was callable but still did not qualify for
 this separate role: V4 Flash passed `7/8` semantic contracts, while V4 Pro
 passed its first `8/8` gate and all `24/24` repeated execution, schema,
 current-source, and semantic checks but reached only `22/24` repeat stability.
+The qualification v2 report keeps the threshold unchanged while exposing only
+anonymous per-case signature counts and changed schema-field names. It traced
+the misses to different exact current-message source spans for one material
+goal and a different semantic key for one carrier service action, not to
+transport errors. The strict transport already fixes temperature at zero and
+disables thinking for this candidate.
 Provider qualification remains role-scoped, so this result does not invalidate
 the qualified DeepSeek V4 Flash Composer role. The project therefore did not
 start isolated `1x1`, `3x1`, or internal-conversation evaluation, and no

@@ -32,6 +32,10 @@ After implementation, update this index, `ROADMAP.md`, and
 - Accuracy status: `real_customer_accuracy=null` and
   `optimization_unverified=true` until the authorized E2 data and independent
   reviews are complete.
+- Strict Turn Understanding status: the default-off role and fictional
+  qualification harness exist, but no candidate is qualified. DeepSeek remains
+  available for its separately qualified Composer role; no Provider result has
+  changed formal replies or delivery.
 
 ## Active Documents
 

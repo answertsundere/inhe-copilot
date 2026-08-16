@@ -162,6 +162,26 @@ exact Provider/model/privacy configuration must pass strict preflight, the
 frozen semantic matrix, and the current Composer gate independently before a
 new native Fixed-8. Vendor identity never substitutes for qualification.
 
+## Turn Understanding Provider Check: 2026-08-16
+
+The separate Turn Understanding role reuses the production Prompt, strict tool
+schema, exact-current-source validator, and canonical normalizer on eight
+fictional cases. GLM-4.6 and GLM-5-Turbo were transport-blocked by account rate
+limits. DeepSeek V4 Flash was callable but passed only `7/8` semantic contracts:
+its material response populated a dimension-only subject scope and was rejected
+by the existing canonical contract.
+
+DeepSeek V4 Pro passed an initial `8/8` gate and completed a repeated `24/24`
+run with `100%` execution, schema, current-source, and semantic success. Repeat
+stability was only `22/24`. A privacy-safe v2 diagnostic records anonymous case
+aliases, signature-variant counts, stable-attempt counts, and changed field
+names without model output or field values. One material case varied its exact
+current-message source span; one carrier-action case varied `semantic_key`.
+The role already used temperature zero and disabled thinking. The result is a
+real provenance/semantic stability failure, not a reason to weaken validation,
+retry for a lucky pass, or invalidate the separately qualified Composer role.
+No strict Turn Understanding runtime was started.
+
 `scripts/qualify_unified_audit_role.py` is the reusable, read-only command for
 that Audit-side `5+5` gate. It reads only `COPILOT_UNIFIED_AUDIT_*`, invokes the
 existing strict role transport with `allow_unqualified=true` only inside the

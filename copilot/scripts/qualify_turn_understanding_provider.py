@@ -30,7 +30,19 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-SCHEMA_VERSION = "turn-understanding-provider-qualification-v1"
+SCHEMA_VERSION = "turn-understanding-provider-qualification-v2"
+_SIGNATURE_FIELDS = (
+    "goal_kind",
+    "claim_type_status",
+    "claim_type",
+    "attribute_key",
+    "subject_scope",
+    "semantic_key",
+    "policy_intent_ref",
+    "source_span_start",
+    "source_span_end",
+    "source_span_sha256",
+)
 _KNOWN_ERRORS = {
     "authentication_failed",
     "empty_structured_output",
@@ -201,26 +213,19 @@ def _semantic_matches(result: dict[str, Any], case: dict[str, Any]) -> bool:
     )
 
 
-def _signature(result: dict[str, Any]) -> str:
-    goals = [
+def _signature_projection(result: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
         {
             key: goal.get(key)
-            for key in (
-                "goal_kind",
-                "claim_type_status",
-                "claim_type",
-                "attribute_key",
-                "subject_scope",
-                "semantic_key",
-                "policy_intent_ref",
-                "source_span_start",
-                "source_span_end",
-                "source_span_sha256",
-            )
+            for key in _SIGNATURE_FIELDS
         }
         for goal in result.get("customer_goals", [])
         if isinstance(goal, dict)
     ]
+
+
+def _signature(result: dict[str, Any]) -> str:
+    goals = _signature_projection(result)
     return hashlib.sha256(
         json.dumps(
             goals,
@@ -229,6 +234,46 @@ def _signature(result: dict[str, Any]) -> str:
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _changed_field_names(
+    projections: list[list[dict[str, Any]]],
+) -> list[str]:
+    if len(projections) < 2:
+        return []
+    changed: set[str] = set()
+    goal_counts = {len(projection) for projection in projections}
+    if len(goal_counts) > 1:
+        changed.add("customer_goals")
+    comparable_count = min(goal_counts)
+    for index in range(comparable_count):
+        for field in _SIGNATURE_FIELDS:
+            if len({
+                json.dumps(
+                    projection[index].get(field),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                for projection in projections
+            }) > 1:
+                changed.add(field)
+    return sorted(changed)
+
+
+def _stability_diagnostics(
+    signatures: list[str],
+    projections: list[list[dict[str, Any]]],
+) -> dict[str, Any]:
+    return {
+        "signature_variant_count": len(set(signatures)),
+        "stable_attempt_count": (
+            sum(value == signatures[0] for value in signatures)
+            if signatures
+            else 0
+        ),
+        "changed_field_names": _changed_field_names(projections),
+    }
 
 
 def qualify(
@@ -245,6 +290,10 @@ def qualify(
     metadata = provider.metadata()
     errors: Counter[str] = Counter()
     signatures: dict[str, list[str]] = defaultdict(list)
+    signature_projections: dict[
+        str,
+        list[list[dict[str, Any]]],
+    ] = defaultdict(list)
     successful_latencies: list[float] = []
     case_counts: dict[str, Counter[str]] = defaultdict(Counter)
     total_attempts = len(selected_cases) * repeat_count
@@ -311,6 +360,9 @@ def qualify(
                     semantic_success += 1
                     case_counts[alias]["semantic"] += 1
                     signatures[alias].append(_signature(normalized))
+                    signature_projections[alias].append(
+                        _signature_projection(normalized)
+                    )
                     latency = provider.last_latency_ms
                     if isinstance(latency, (int, float)):
                         successful_latencies.append(float(latency))
@@ -349,6 +401,16 @@ def qualify(
             "semantic_success_count": case_counts[
                 str(case.get("alias") or "unnamed")
             ]["semantic"],
+            **_stability_diagnostics(
+                signatures.get(
+                    str(case.get("alias") or "unnamed"),
+                    [],
+                ),
+                signature_projections.get(
+                    str(case.get("alias") or "unnamed"),
+                    [],
+                ),
+            ),
         }
         for case in selected_cases
     ]

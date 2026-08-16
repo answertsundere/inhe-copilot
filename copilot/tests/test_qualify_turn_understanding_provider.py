@@ -166,6 +166,51 @@ def test_report_contains_no_raw_messages_or_provider_secrets():
     assert len(report["fixture_sha256"]) == 64
 
 
+def test_repeat_instability_reports_safe_case_and_changed_field_diagnostics():
+    case = {
+        "alias": "fictional-dimension-attributes",
+        "customer_message": "这件虚构商品的宽度和高度是多少？",
+        "current_intent": "product_question",
+        "recent_conversation": [],
+        "expected_claim_types": ["dimensions"],
+        "expected_goal_kinds": ["customer_goal"],
+    }
+
+    def responder(call, index):
+        return {
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "width" if index != 2 else "height",
+                "subject_scope": "product_overall",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": call["payload"]["customer_message"],
+                "continued_from": "",
+            }]
+        }
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=3,
+    )
+
+    result = report["case_results"][0]
+    assert report["schema_version"] == (
+        "turn-understanding-provider-qualification-v2"
+    )
+    assert report["qualification_status"] == "not_qualified"
+    assert result["signature_variant_count"] == 2
+    assert result["stable_attempt_count"] == 2
+    assert result["changed_field_names"] == ["attribute_key"]
+    serialized = str(report)
+    assert case["customer_message"] not in serialized
+    assert "width" not in serialized
+    assert "height" not in serialized
+
+
 def test_default_provider_uses_turn_understanding_role_config(monkeypatch):
     sentinel = object()
     captured = []

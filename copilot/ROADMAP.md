@@ -40,6 +40,10 @@
    safety smoke scored `3/5` and left both installation replies empty. The full
    22-scenario run was correctly not started. These reports are retained as
    failures, not rewritten as passing safety or quality evidence.
+6. The strict Turn Understanding role remains Provider-blocked. DeepSeek V4 Pro
+   passed `24/24` execution, schema, current-source, and semantic checks but
+   reached only `22/24` repeat stability; anonymous diagnostics confirmed both
+   source-span and service-action semantic-key drift. No runtime gate started.
 
 ## Immediate Queue
 
@@ -117,3 +121,17 @@
 - The versioned default-off safety smoke repeated the existing `3/5`
   baseline: after-sales `3/3`, installation `0/2`, all five review-only and
   `can_send=0`. Full 22 was not run after the failed smoke.
+
+`P1-TURN-UNDERSTANDING-PROVIDER-QUALIFICATION` stopped at its Provider gate on
+2026-08-16:
+
+- A default-off strict role and fictional eight-case qualification path reuse
+  the existing Turn Understanding owner and validators.
+- GLM candidates were rate-limited; DeepSeek V4 Flash passed `7/8`; DeepSeek V4
+  Pro passed all `24/24` structural and semantic attempts but only `22/24`
+  repeat stability.
+- Qualification report v2 adds privacy-safe per-case structural diagnostics;
+  it does not retain model output or field values and does not change the
+  `100%` gate.
+- No 5013, real conversation, formal-knowledge write, or send-authority change
+  occurred. The Composer role remains independent.
