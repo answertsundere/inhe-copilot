@@ -1024,10 +1024,15 @@ fall back to the legacy Provider.
 The fictional read-only qualification gate currently remains not qualified.
 GLM-4.6 reached the Provider but returned rate-limit errors for all `24/24`
 attempts; the account-listed GLM-5-Turbo candidate returned the same error for
-all `8/8` first-stage attempts. No semantic result can be inferred from a
-transport-level limit. The project therefore did not start isolated `1x1`,
-`3x1`, or internal-conversation evaluation, and no runtime or production flag
-was changed.
+all `8/8` first-stage attempts. No semantic result can be inferred from those
+transport-level limits. DeepSeek was callable but still did not qualify for
+this separate role: V4 Flash passed `7/8` semantic contracts, while V4 Pro
+passed its first `8/8` gate and all `24/24` repeated execution, schema,
+current-source, and semantic checks but reached only `22/24` repeat stability.
+Provider qualification remains role-scoped, so this result does not invalidate
+the qualified DeepSeek V4 Flash Composer role. The project therefore did not
+start isolated `1x1`, `3x1`, or internal-conversation evaluation, and no
+runtime or production flag was changed.
 
 ### Customer-Conditional Comparison Boundary
 

@@ -1131,9 +1131,17 @@ requires execution, schema, current-source, semantic, and repeat stability to
 be `100%` with zero fallback, write, or send authority. On 2026-08-16 the
 configured account returned `rate_limited` for all `24/24` GLM-4.6 attempts and
 all `8/8` GLM-5-Turbo first-stage attempts. The gate therefore stopped before
-repeat qualification, isolated runtime, `1x1`, `3x1`, or any authorized
-internal-conversation run. The strict feature remains disabled and P1 remains
-blocked on a callable, provenance-qualified Turn Understanding Provider.
+repeat qualification for those candidates. A separate DeepSeek role probe
+confirmed that Provider availability is not the blocker: V4 Flash completed
+all eight calls but passed only `7/8` semantic contracts because its material
+goal declared a dimension-only subject scope. V4 Pro passed the first `8/8`
+gate, then completed all `24/24` repeated calls with `100%` execution, schema,
+current-source, and semantic success, but only `22/24` repeat stability. The
+strict role therefore remains not qualified and disabled. This does not revoke
+the independently qualified DeepSeek V4 Flash Composer role. No isolated
+runtime, `1x1`, `3x1`, or authorized internal-conversation run was started, and
+P1 remains blocked on a repeat-stable, provenance-qualified Turn Understanding
+Provider.
 
 ## Definition Of Project Progress
 
