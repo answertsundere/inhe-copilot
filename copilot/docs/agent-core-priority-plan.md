@@ -1095,6 +1095,33 @@ Changing priority order requires:
 Update this ledger only when a gate changes. Dated run details remain in
 evaluation outputs, not in this durable plan.
 
+### Role-Aware Follow-Up Checkpoint (2026-08-16)
+
+The existing Turn Understanding owner now receives a bounded, role-preserving
+recent conversation while every canonical goal still has to cite an exact span
+from the current buyer message. Deterministic analyzers no longer classify a
+flattened copy of the whole conversation as the current request. A closed set
+of standalone acknowledgement, confirmation, rejection, deferment, correction,
+and conversation-closure constraints remains non-factual and cannot become a
+claim or policy intent. The existing response planner and CSR reply builder may
+acknowledge a standalone closure or confirmation without requesting product
+facts, running a service action, or creating evidence.
+
+The isolated Supervisor Assist gate passed its first closure case, then stopped
+at the third case of the fixed `3x1` stage. The current Provider copied a source
+span from an earlier logistics turn when the buyer asked an elliptical follow-up;
+the current-source validator rejected it as `source_text_from_wrong_turn` and
+the Pipeline failed closed to a generic review-only reply. A synthetic strict
+transport probe did not qualify the same Provider for this role. Therefore the
+remaining 20 authorized conversations were not run, no quality or accuracy
+claim is made, and the next owner is a provenance-qualified Turn Understanding
+Provider/transport rather than another reply template or Graph change.
+`real_customer_accuracy=null`, `can_send=false`, and mandatory human review
+remain unchanged. The separate versioned synthetic safety fixture passed smoke
+`5/5` and full `22/22` with `can_send=0` and human review `22/22`; this is
+regression evidence only and does not override the stopped real-conversation
+quality gate.
+
 ## Definition Of Project Progress
 
 The project has progressed only when at least one of these becomes true without

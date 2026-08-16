@@ -269,6 +269,19 @@ formal-knowledge DML `0`. This closes one synthetic faithfulness defect, not
 overall quality or real accuracy; P1 now returns to approved long-conversation
 review and service-action/business-helpfulness diagnosis.
 
+The current role-aware follow-up checkpoint keeps the same P1 owner chain. Turn
+Understanding sees bounded role-preserving history but must bind every goal to
+the current buyer message; closed contextual confirmations and conversation
+closures remain non-factual and use the existing response owners. The first
+closure case passed, while the fixed `3x1` gate stopped at an elliptical
+logistics follow-up because the Provider copied a historical source span. The
+validator rejected it and a synthetic strict-transport probe did not qualify
+the Provider for this role. The 20-case E2 run was not started. This is a
+fail-closed Provider/transport finding with `real_customer_accuracy=null`,
+formal knowledge query-only, mandatory human review, and `can_send=false`. A
+separate versioned synthetic safety run passed smoke `5/5` and full `22/22`
+with no send authority; it does not change the real-conversation conclusion.
+
 ## Architecture Decisions And Research
 
 - `docs/adr/README.md` - ADR rules and required format.

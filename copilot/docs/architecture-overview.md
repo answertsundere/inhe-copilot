@@ -987,6 +987,29 @@ may still be reported, but must not be renamed accuracy.
 The project is therefore in **Agent Core capability convergence**, not broad
 feature expansion and not production automation.
 
+### Role-Aware Conversation Continuity
+
+Turn Understanding receives at most the bounded recent role-aware turns needed
+to resolve an elliptical current message. History is context only: canonical
+goal provenance must still be an exact span of the current buyer message, and
+historical text cannot become current-source evidence. The deterministic
+current-turn analyzers consume only the current message instead of a flattened
+conversation. Contextual acknowledgement and closure use a closed, non-factual
+constraint vocabulary and route through the existing response strategy and CSR
+reply owner; they add no Graph node, service, model call, evidence role, or send
+authority.
+
+The current isolated gate validates a standalone closure but not the broader
+follow-up contract. In the third `3x1` case, the Provider copied an earlier
+logistics span for an elliptical current question. The exact-source validator
+rejected it and the Pipeline remained review-only. A separate synthetic strict
+transport probe also failed qualification. The project therefore stops before
+the 20-case E2 run and records this as a Provider/transport provenance blocker,
+not as Agent accuracy. Formal knowledge remains query-only, Formal Evidence
+Convergence remains disabled, and `can_send=false`. The separate versioned
+synthetic safety fixture passed smoke `5/5` and full `22/22`, all review-only;
+it is not factual-quality or real-accuracy evidence.
+
 ### Customer-Conditional Comparison Boundary
 
 The current P1 vertical slice distinguishes a request for a product measurement
