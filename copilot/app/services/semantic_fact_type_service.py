@@ -32,7 +32,12 @@ from app.services.fact_type_service import FACT_TYPE_LABELS, classify_query_fact
 from app.services.product_media_annotation_schema_service import (
     canonical_dimension_attribute,
 )
-from app.services.strict_decision_provider_service import safe_provider_identity
+from app.services.strict_decision_provider_service import (
+    StrictDecisionProviderConfig,
+    StrictDecisionProviderError,
+    StrictDecisionProviderService,
+    safe_provider_identity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1412,9 +1417,33 @@ def _classify_with_llm(
     *,
     diagnostics_sink: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    client = get_llm_client()
+    strict_enabled = bool(
+        config.COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED
+    )
+    strict_provider: StrictDecisionProviderService | None = None
+    if strict_enabled:
+        strict_provider = StrictDecisionProviderService(
+            config=(
+                StrictDecisionProviderConfig
+                .from_turn_understanding_environment()
+            )
+        )
+        client = strict_provider
+    else:
+        client = get_llm_client()
     started_at = time.perf_counter()
     diagnostics = _new_turn_understanding_diagnostics(client)
+    if strict_provider is not None:
+        metadata = strict_provider.metadata()
+        diagnostics["provider"].update({
+            "provider_family": str(
+                metadata.get("provider_name") or "unknown"
+            ),
+            "model": str(metadata.get("model_name") or "unknown"),
+            "host_fingerprint": str(
+                metadata.get("host_fingerprint") or ""
+            ),
+        })
     if isinstance(diagnostics_sink, dict):
         diagnostics_sink.clear()
         diagnostics_sink.update(diagnostics)
@@ -1426,7 +1455,7 @@ def _classify_with_llm(
             span_reference_text.encode("utf-8")
         ).hexdigest(),
     }
-    if not client.api_key:
+    if strict_provider is None and not client.api_key:
         diagnostics["provider"]["provider_error_category"] = (
             "provider_auth_error"
         )
@@ -1465,23 +1494,47 @@ def _classify_with_llm(
     diagnostics["stage"] = "provider_request"
     provider_started = time.perf_counter()
     try:
-        response = client.create_chat_completion(
-            model=client.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
-            temperature=0,
-            max_tokens=360,
-            response_format={"type": "json_object"},
-            _single_attempt_no_repair=True,
-        )
+        if strict_provider is not None:
+            strict_payload = strict_provider.request(
+                name="turn_understanding",
+                schema=MINIMAL_PROVIDER_OUTPUT_SCHEMA,
+                system_prompt=SYSTEM_PROMPT,
+                payload=payload,
+                max_tokens=1200,
+            )
+            response = None
+            raw = json.dumps(
+                strict_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        else:
+            response = client.create_chat_completion(
+                model=client.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    },
+                ],
+                temperature=0,
+                max_tokens=360,
+                response_format={"type": "json_object"},
+                _single_attempt_no_repair=True,
+            )
+            raw = ""
     except Exception as exc:
         diagnostics["latency"]["provider_ms"] = round(
             (time.perf_counter() - provider_started) * 1000,
             2,
         )
-        reason_code, http_status = _provider_error_details(exc)
+        if isinstance(exc, StrictDecisionProviderError):
+            reason_code = str(exc) or "strict_provider_failed"
+            http_status = None
+        else:
+            reason_code, http_status = _provider_error_details(exc)
         diagnostics["provider"]["http_status"] = http_status
         diagnostics["provider"]["provider_error_category"] = (
             reason_code
@@ -1503,7 +1556,22 @@ def _classify_with_llm(
         2,
     )
     diagnostics["stage"] = "completion"
-    if response is None:
+    if strict_provider is not None:
+        diagnostics["completion"].update({
+            "choices_count": 1,
+            "finish_reason": "tool_calls",
+            "content_present": bool(raw),
+            "content_char_count": len(raw),
+            "content_sha256": hashlib.sha256(
+                raw.encode("utf-8")
+            ).hexdigest(),
+            "reasoning_content_present": False,
+        })
+        diagnostics["response_content_length"] = len(raw)
+        diagnostics["response_content_sha256"] = diagnostics[
+            "completion"
+        ]["content_sha256"]
+    elif response is None:
         _set_failure(
             diagnostics,
             stage="completion",
@@ -1512,8 +1580,12 @@ def _classify_with_llm(
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
 
-    choices = getattr(response, "choices", None)
-    if not isinstance(choices, (list, tuple)):
+    choices = (
+        getattr(response, "choices", None)
+        if strict_provider is None
+        else []
+    )
+    if strict_provider is None and not isinstance(choices, (list, tuple)):
         _set_failure(
             diagnostics,
             stage="completion",
@@ -1521,8 +1593,9 @@ def _classify_with_llm(
         )
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
-    diagnostics["completion"]["choices_count"] = len(choices)
-    if not choices:
+    if strict_provider is None:
+        diagnostics["completion"]["choices_count"] = len(choices)
+    if strict_provider is None and not choices:
         _set_failure(
             diagnostics,
             stage="completion",
@@ -1531,13 +1604,20 @@ def _classify_with_llm(
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
 
-    choice = choices[0]
-    finish_reason = _safe_finish_reason(
-        getattr(choice, "finish_reason", "")
+    choice = choices[0] if strict_provider is None else None
+    finish_reason = (
+        _safe_finish_reason(getattr(choice, "finish_reason", ""))
+        if strict_provider is None
+        else "tool_calls"
     )
-    diagnostics["completion"]["finish_reason"] = finish_reason
-    message_object = getattr(choice, "message", None)
-    if message_object is None:
+    if strict_provider is None:
+        diagnostics["completion"]["finish_reason"] = finish_reason
+    message_object = (
+        getattr(choice, "message", None)
+        if strict_provider is None
+        else None
+    )
+    if strict_provider is None and message_object is None:
         _set_failure(
             diagnostics,
             stage="completion",
@@ -1546,26 +1626,28 @@ def _classify_with_llm(
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
 
-    reasoning_present = bool(
-        getattr(message_object, "reasoning_content", None)
-        or getattr(message_object, "reasoning_details", None)
-    )
-    diagnostics["completion"]["reasoning_content_present"] = (
-        reasoning_present
-    )
-    content = getattr(message_object, "content", None)
-    raw = content if isinstance(content, str) else ""
-    diagnostics["completion"]["content_present"] = bool(raw.strip())
-    diagnostics["completion"]["content_char_count"] = len(raw)
-    diagnostics["completion"]["content_sha256"] = (
-        hashlib.sha256(raw.encode("utf-8")).hexdigest()
-        if raw
-        else ""
-    )
-    diagnostics["response_content_length"] = len(raw)
-    diagnostics["response_content_sha256"] = diagnostics[
-        "completion"
-    ]["content_sha256"]
+    reasoning_present = False
+    if strict_provider is None:
+        reasoning_present = bool(
+            getattr(message_object, "reasoning_content", None)
+            or getattr(message_object, "reasoning_details", None)
+        )
+        diagnostics["completion"]["reasoning_content_present"] = (
+            reasoning_present
+        )
+        content = getattr(message_object, "content", None)
+        raw = content if isinstance(content, str) else ""
+        diagnostics["completion"]["content_present"] = bool(raw.strip())
+        diagnostics["completion"]["content_char_count"] = len(raw)
+        diagnostics["completion"]["content_sha256"] = (
+            hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            if raw
+            else ""
+        )
+        diagnostics["response_content_length"] = len(raw)
+        diagnostics["response_content_sha256"] = diagnostics[
+            "completion"
+        ]["content_sha256"]
     if finish_reason == "length":
         _set_failure(
             diagnostics,

@@ -50,6 +50,29 @@ class _FakeLLMClient:
         return self.client.chat.completions.create(**kwargs)
 
 
+class _FakeStrictTurnProvider:
+    def __init__(self, payload=None, error=""):
+        self.payload = payload or {"goals": []}
+        self.error = error
+        self.calls = []
+        self.last_latency_ms = 12.5
+
+    def metadata(self):
+        return {
+            "provider_name": "strict-turn-test",
+            "host_fingerprint": "a" * 12,
+            "model_name": "strict-turn-model",
+            "configured": True,
+            "qualified": not self.error,
+        }
+
+    def request(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise service.StrictDecisionProviderError(self.error)
+        return self.payload
+
+
 def _complete_llm_payload(**overrides):
     payload = {"goals": []}
     payload.update(overrides)
@@ -84,6 +107,114 @@ def test_llm_first_fact_type_classification(monkeypatch):
     assert result["source"] == "llm"
     assert result["confidence"] == 1.0
     assert result["secondary_fact_types"] == []
+
+
+def test_strict_turn_understanding_reuses_schema_prompt_and_normalizer(
+    monkeypatch,
+):
+    message = "现在怎么说"
+    strict = _FakeStrictTurnProvider({
+        "goals": [{
+            "goal_kind": "contextual_constraint",
+            "claim_type_status": "unmapped",
+            "claim_type": "",
+            "attribute_key": "",
+            "subject_scope": "",
+            "semantic_key": "confirmation",
+            "policy_intent_ref": "",
+            "source_text": message,
+            "continued_from": "",
+        }],
+    })
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service.config,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        service.StrictDecisionProviderConfig,
+        "from_turn_understanding_environment",
+        classmethod(lambda cls: object()),
+    )
+    monkeypatch.setattr(
+        service,
+        "StrictDecisionProviderService",
+        lambda config: strict,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_llm_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("legacy provider must not be used")
+        ),
+    )
+    diagnostics = {}
+
+    result = service.classify_query_fact_type_llm_first(
+        {
+            "customer_message": message,
+            "intent": "general",
+            "conversation_history": [
+                {"role": "agent", "content": "核实后给您消息。"},
+            ],
+        },
+        diagnostics_sink=diagnostics,
+    )
+
+    assert len(strict.calls) == 1
+    assert strict.calls[0]["schema"] == service.MINIMAL_PROVIDER_OUTPUT_SCHEMA
+    assert strict.calls[0]["system_prompt"] == service.SYSTEM_PROMPT
+    assert strict.calls[0]["payload"]["customer_message"] == message
+    assert result["goal_understanding_status"] == "valid"
+    goal = result["customer_goals"][0]
+    assert goal["source_span_start"] == 0
+    assert goal["source_span_end"] == len(message)
+    assert len(goal["source_span_sha256"]) == 64
+    assert "source_text" not in goal
+    assert diagnostics["provider"]["provider_family"] == "strict-turn-test"
+    assert diagnostics["model_call_count"] == 1
+
+
+def test_strict_turn_understanding_unqualified_fails_without_legacy_fallback(
+    monkeypatch,
+):
+    strict = _FakeStrictTurnProvider(error="provider_not_qualified")
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service.config,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        service.StrictDecisionProviderConfig,
+        "from_turn_understanding_environment",
+        classmethod(lambda cls: object()),
+    )
+    monkeypatch.setattr(
+        service,
+        "StrictDecisionProviderService",
+        lambda config: strict,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_llm_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("legacy provider must not be used")
+        ),
+    )
+    diagnostics = {}
+
+    result = service.classify_query_fact_type_llm_first(
+        {"customer_message": "现在怎么说", "intent": "general"},
+        diagnostics_sink=diagnostics,
+    )
+
+    assert len(strict.calls) == 1
+    assert result["goal_understanding_status"] == "degraded"
+    assert result["customer_goals"] == []
+    assert diagnostics["reason_code"] == "provider_not_qualified"
+    assert diagnostics["model_call_count"] == 1
 
 
 def test_llm_goal_understanding_preserves_multiple_customer_goals_and_dependency(monkeypatch):
