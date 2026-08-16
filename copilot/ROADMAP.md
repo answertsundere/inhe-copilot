@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-FORMAL-EVIDENCE-COVERAGE-001` |
+| Task ID | `P1-FORMAL-KNOWLEDGE-REVIEW-002` |
 | Owner | Codex |
-| Goal | Restore a governed product-identity review surface without promoting recovered facts, then prove whether the existing formal evidence path is structurally healthy. |
-| Scope | Existing recovery importer, KBProduct draft lifecycle, Product Context Pack, Evidence Convergence tests, isolated candidate databases, and durable documentation. No Agent, Prompt, Graph, model, reply owner, or Delivery change. |
-| Status | Root cause confirmed: the synthetic fixed-40 uses intentionally absent `SYN-*` identities and the snapshot contains no eligible reviewed product facts. Existing positive evidence-chain tests pass. The recovery importer now stages identity-only KBProduct drafts while leaving all facts in per-fact draft review. |
-| Gate | Recovered records are not formal evidence. Human review and publication are still required; `selected_evidence=0`, `real_customer_accuracy=null`, `can_send=false`, and mandatory review remain correct until governed facts exist for real identities. |
+| Goal | Make the existing product-fact review lifecycle fail closed before supervisors begin reviewing recovered identity drafts. |
+| Scope | Existing KBProduct repository, product management routes, structured backfill, Product Context Pack, lifecycle tests, and durable documentation. No Agent, Prompt, Graph, model, reply owner, or Delivery change. |
+| Status | Published identity, structured fact, logistics, warranty, SKU, or policy-binding changes now return the product to `pending_review`. HTTP create/update/publish and batch lifecycle operations cannot bypass the existing repository transitions, and draft structured fields can be staged for review. |
+| Gate | Only a dedicated supervisor approval can republish a changed product. Pending-review products disappear from Product Context Pack immediately. Recovered material and product-dimension coverage remains absent, so no fact is auto-approved or promoted. |
 
 ## Phase Status
 

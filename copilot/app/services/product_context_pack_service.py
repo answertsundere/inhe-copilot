@@ -949,6 +949,8 @@ def _clean_mapping(value: dict[str, Any]) -> dict[str, Any]:
         return {}
     cleaned = {}
     for key, val in value.items():
+        if str(key).startswith("_") or str(key) == "trusted_auto_backfill":
+            continue
         if val in (None, "", [], {}, "-"):
             continue
         cleaned[str(key)] = val

@@ -110,8 +110,13 @@ class KBProductRepository:
     def create(**kwargs) -> KBProduct:
         db = SessionLocal()
         try:
+            kwargs = dict(kwargs)
+            structured_fields = {
+                field: kwargs.pop(field)
+                for field in ("sku_list", "specs", "logistics", "warranty")
+                if field in kwargs
+            }
             if "domain_policy_id" in kwargs:
-                kwargs = dict(kwargs)
                 kwargs["domain_policy_id"] = _validated_domain_policy_id(
                     kwargs["domain_policy_id"]
                 )
@@ -121,6 +126,8 @@ class KBProductRepository:
                 ):
                     kwargs["status"] = "pending_review"
             product = KBProduct(**kwargs)
+            for field, value in structured_fields.items():
+                getattr(product, f"set_{field}")(value)
             # 计算 completeness
             db.add(product)
             db.flush()  # 让 defaults 生效后再计算
@@ -171,13 +178,13 @@ class KBProductRepository:
             product = db.query(KBProduct).filter(KBProduct.id == product_id).first()
             if not product:
                 return None
-            policy_binding_changed = False
+            answer_authority_changed = False
             status_before_update = product.status
 
             allowed_fields = {
                 "i_id", "product_name", "brand",
                 "category_l1", "category_l2", "category_l3",
-                "status", "import_batch_id", "domain_policy_id",
+                "import_batch_id", "domain_policy_id",
             }
             json_setters = {
                 "sku_list": "set_sku_list",
@@ -185,26 +192,41 @@ class KBProductRepository:
                 "logistics": "set_logistics",
                 "warranty": "set_warranty",
             }
+            json_getters = {
+                "sku_list": "get_sku_list",
+                "specs": "get_specs",
+                "logistics": "get_logistics",
+                "warranty": "get_warranty",
+            }
+            answer_authority_fields = {
+                "i_id", "product_name", "brand",
+                "category_l1", "category_l2", "category_l3",
+                "domain_policy_id",
+            }
 
             changed = []
             for k, v in updates.items():
                 if k.startswith("_"):
                     continue
                 if k in json_setters:
+                    if getattr(product, json_getters[k])() != v:
+                        answer_authority_changed = True
                     getattr(product, json_setters[k])(v)
                     changed.append(k)
                 elif k in allowed_fields:
                     if k == "domain_policy_id":
                         v = _validated_domain_policy_id(v)
-                        policy_binding_changed = (
-                            v != str(product.domain_policy_id or "")
-                        ) or policy_binding_changed
+                    if (
+                        k in answer_authority_fields
+                        and v != getattr(product, k)
+                    ):
+                        answer_authority_changed = True
                     setattr(product, k, v)
                     changed.append(k)
 
-            # A published product cannot change its answer-strategy control
-            # metadata without returning to the existing review workflow.
-            if policy_binding_changed and status_before_update == "published":
+            # Published identity, fact, or answer-strategy changes must return
+            # to the existing review workflow before they can be read again.
+            if answer_authority_changed and status_before_update == "published":
                 product.status = "pending_review"
 
             product.updated_by = updated_by or product.updated_by

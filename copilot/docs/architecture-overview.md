@@ -804,6 +804,19 @@ evidence: Product Context Pack and Evidence Admission still require normal
 publication, direct-answer permission, exact identity, compatible claim scope,
 and conflict-free provenance.
 
+The product repository is the lifecycle owner for that review surface. HTTP
+create and generic update cannot grant `published`; single and batch review
+routes reuse repository transitions. If a published product's identity, SKU
+data, structured specifications, logistics, warranty, or reviewed Domain Pack
+binding changes, it returns to `pending_review` before the transaction can
+affect answer authority. An equal update does not create review churn.
+Structured backfill follows the same rule. Because Product Context Pack reads
+only published products, changed facts fail closed immediately and can return
+only after a dedicated supervisor approval and its audit record. Backfill
+provenance stores a source digest as internal metadata rather than a local file
+path; internal and legacy backfill metadata are removed from model-facing
+structured profiles.
+
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
 only immediate risk-reduction steps owned by the same authoritative customer

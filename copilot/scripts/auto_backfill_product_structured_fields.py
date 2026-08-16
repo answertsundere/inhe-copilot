@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections import Counter
@@ -17,7 +18,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 
 from app.db import SessionLocal, init_db
-from app.models.kb_tables import KBProduct
+from app.models.kb_tables import KBChangeLog, KBProduct
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 
 
@@ -152,6 +153,7 @@ def run_backfill(
 ) -> dict[str, Any]:
     db_factory = db_factory or SessionLocal
     rows = _read_rows(input_path)
+    source_sha256 = hashlib.sha256(Path(input_path).read_bytes()).hexdigest()
     db = db_factory()
     stats = Counter()
     conflicts: list[dict[str, Any]] = []
@@ -167,6 +169,7 @@ def run_backfill(
             specs = product.get_specs()
             logistics = product.get_logistics()
             changed = False
+            changed_fields: list[str] = []
             for source_key, target_key in SPEC_FIELDS.items():
                 value = sanitize_text(row.get(source_key))
                 if not value:
@@ -175,6 +178,7 @@ def run_backfill(
                 if _is_empty(existing):
                     specs[target_key] = value
                     changed = True
+                    changed_fields.append(f"specs.{target_key}")
                     stats["field_updated_count"] += 1
                 elif sanitize_text(str(existing)) != value:
                     stats["conflict_count"] += 1
@@ -193,6 +197,7 @@ def run_backfill(
                 if _is_empty(existing):
                     logistics[target_key] = value
                     changed = True
+                    changed_fields.append(f"logistics.{target_key}")
                     stats["field_updated_count"] += 1
                 elif sanitize_text(str(existing)) != value:
                     stats["conflict_count"] += 1
@@ -215,15 +220,38 @@ def run_backfill(
                     })
             if changed:
                 stats["product_updated_count"] += 1
+                if product.status == "published":
+                    stats["published_product_review_required_count"] += 1
                 if apply:
-                    specs.setdefault("trusted_auto_backfill", {})
-                    specs["trusted_auto_backfill"].update({
-                        "source_file": str(input_path),
+                    before_status = product.status
+                    specs.pop("trusted_auto_backfill", None)
+                    specs.setdefault("_trusted_auto_backfill", {})
+                    specs["_trusted_auto_backfill"].update({
+                        "source_sha256": source_sha256,
                         "operator": operator,
                     })
                     product.set_specs(specs)
                     product.set_logistics(logistics)
+                    if product.status == "published":
+                        product.status = "pending_review"
+                        stats["product_returned_to_review_count"] += 1
                     product.updated_by = operator
+                    audit = KBChangeLog(
+                        target_type="kb_product",
+                        target_id=product.id,
+                        target_title=product.product_name,
+                        action=(
+                            "structured_backfill_requires_review"
+                            if before_status == "published"
+                            else "structured_backfill"
+                        ),
+                        before_status=before_status,
+                        after_status=product.status,
+                        performed_by=operator,
+                        change_reason="trusted structured field backfill",
+                    )
+                    audit.set_changed_fields(changed_fields)
+                    db.add(audit)
         _write_conflicts(sanitize_obj(conflicts), conflict_output)
         if apply:
             db.commit()
@@ -235,6 +263,12 @@ def run_backfill(
             "product_checked_count": stats["product_checked_count"],
             "product_updated_count": stats["product_updated_count"],
             "field_updated_count": stats["field_updated_count"],
+            "published_product_review_required_count": stats[
+                "published_product_review_required_count"
+            ],
+            "product_returned_to_review_count": stats[
+                "product_returned_to_review_count"
+            ],
             "conflict_count": stats["conflict_count"],
             "missing_required_count": stats["missing_required_count"],
             "high_risk_pending_count": stats["high_risk_pending_count"],

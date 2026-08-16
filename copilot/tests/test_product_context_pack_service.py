@@ -381,6 +381,16 @@ def test_product_context_pack_returns_structured_profile(product_context_db):
     assert pack["evidence_pack"]["matched_fields"] == ["installation"]
 
 
+def test_structured_profile_excludes_internal_backfill_provenance():
+    from app.services.product_context_pack_service import _clean_mapping
+
+    assert _clean_mapping({
+        "material": "PP",
+        "trusted_auto_backfill": {"source_file": "private/source.xlsx"},
+        "_trusted_auto_backfill": {"source_sha256": "a" * 64},
+    }) == {"material": "PP"}
+
+
 def test_exact_identity_pending_product_is_not_used_as_structured_evidence(product_context_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import _find_kb_product

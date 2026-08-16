@@ -12,12 +12,12 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-FORMAL-EVIDENCE-COVERAGE-001` |
+| Task ID | `P1-FORMAL-KNOWLEDGE-REVIEW-002` |
 | Owner | Codex |
-| Status | Formal evidence plumbing verified; recovered product identities can now enter review-only staging without fact promotion |
+| Status | Product-fact staging and publication now share one fail-closed review lifecycle |
 | Active priority | P1 - Gold Conversation Quality |
-| Customer outcome | Establish trustworthy product identity coverage so reviewed facts can later support useful answers without weakening evidence admission. |
-| In-scope owners | Existing product-card recovery importer, KBProduct draft lifecycle, Product Context Pack, Evidence Convergence tests, and isolated candidate databases. |
+| Customer outcome | Prevent edited or backfilled product facts from becoming answer authority until a supervisor reviews and republishes them. |
+| In-scope owners | Existing KBProduct repository, product management routes, structured backfill, Product Context Pack, and lifecycle tests. |
 | Frozen owners | Formal Agent, Composer, Turn Understanding, Claim Resolution, Unified Audit, Graph expansion, Delivery, production knowledge, and `can_send`. |
 | User-facing entry points | The existing formal `AnalysisPipeline` and `/api/analyze`; no new entry point is introduced. |
 | Delivery authority | Unchanged: Supervisor Assist only, `requires_human_review=true`, `can_send=false`. |
@@ -25,6 +25,30 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 ## Current Evidence
 
+- `P1-FORMAL-KNOWLEDGE-REVIEW-002` found the earliest governance bypass before
+  any Agent stage: published products retained `published` after structured
+  fact backfill or generic updates, and product publish routes wrote status
+  directly instead of using the existing lifecycle owner. New products could
+  also request `published` through the generic create payload.
+- The repository now sends a published product back to `pending_review` only
+  when identity, structured facts, SKU data, logistics, warranty, or reviewed
+  policy binding actually changes. Equal updates do not create status churn.
+  Generic create/update cannot grant publication; single and batch lifecycle
+  routes reuse `submit_for_review`, `approve`, and `archive`, preserving
+  their change-log audit.
+- Structured backfill records review-required counts and, in apply mode, stages
+  changed published products as `pending_review`. Product Context Pack then
+  returns no structured profile or formal facts for the changed product until
+  supervisor approval. Each applied change has a lifecycle audit; source
+  provenance is stored as an internal SHA-256 rather than a local path and is
+  excluded from model-facing structured profiles. No recovered fact was
+  approved, published, or written to the formal database during verification.
+- The focused lifecycle, context, RBAC, convergence, admitted-context, and docs
+  suite passed `213/213`. Full pytest collected 4,568 tests and retained the
+  same five known unrelated failures plus two skips; the other 4,561 passed.
+  The versioned synthetic smoke repeated its existing `3/5` baseline, with all
+  five requiring human review and zero sendable replies, so full 22 was not
+  run and no Agent-quality claim is made.
 - `P1-FORMAL-EVIDENCE-COVERAGE-001` confirmed that the fixed-40 zero-evidence
   result is caused by fictional `SYN-*` identities and a snapshot with no
   eligible reviewed product facts. Existing positive Evidence Convergence and

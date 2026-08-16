@@ -17,7 +17,7 @@ def structured_db(monkeypatch):
     session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
     monkeypatch.setattr(db_module, "engine", engine)
     monkeypatch.setattr(db_module, "SessionLocal", session_factory)
-    db_module.Base.metadata.create_all(bind=engine, tables=[KBProduct.__table__])
+    db_module.Base.metadata.create_all(bind=engine)
     return session_factory
 
 
@@ -86,6 +86,39 @@ def test_structured_backfill_fills_empty_fields(structured_db, tmp_path):
         assert product.get_specs()["material"] == "PP"
         assert product.get_specs()["dimensions"] == "100x40x80cm"
         assert product.get_logistics()["gross_weight_kg"] == "2.5kg"
+    finally:
+        db.close()
+
+
+def test_structured_backfill_returns_published_product_to_review(structured_db, tmp_path):
+    from app.models.kb_tables import KBChangeLog, KBProduct
+    from scripts.auto_backfill_product_structured_fields import run_backfill
+
+    db = structured_db()
+    try:
+        _add_product(db)
+    finally:
+        db.close()
+    source = tmp_path / "fields.json"
+    _write_rows(source, [{"i_id": "YH20K01", "material": "PP"}])
+
+    result = run_backfill(str(source), apply=True, db_factory=structured_db)
+
+    assert result["product_returned_to_review_count"] == 1
+    assert result["writes_verified_knowledge"] is False
+    db = structured_db()
+    try:
+        product = db.query(KBProduct).one()
+        assert product.get_specs()["material"] == "PP"
+        assert product.status == "pending_review"
+        audit = db.query(KBChangeLog).one()
+        assert audit.action == "structured_backfill_requires_review"
+        assert audit.before_status == "published"
+        assert audit.after_status == "pending_review"
+        assert audit.get_changed_fields() == ["specs.material"]
+        provenance = product.get_specs()["_trusted_auto_backfill"]
+        assert len(provenance["source_sha256"]) == 64
+        assert "source_file" not in provenance
     finally:
         db.close()
 

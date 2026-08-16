@@ -151,6 +151,200 @@ def test_published_product_policy_binding_returns_to_existing_review_workflow(fr
     assert updated.status == "pending_review"
 
 
+def test_published_product_structured_fact_update_returns_to_review(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="STRUCTURED-FACT-REVIEW-001",
+        product_name="Published structured product",
+        status="published",
+    )
+    updated = KBProductRepository.update(
+        created.id,
+        {"specs": {"material": "PP"}},
+        updated_by="reviewer",
+    )
+
+    assert updated is not None
+    assert updated.get_specs()["material"] == "PP"
+    assert updated.status == "pending_review"
+
+
+def test_unchanged_published_structured_fact_does_not_create_review_churn(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="STRUCTURED-FACT-REVIEW-002",
+        product_name="Published unchanged product",
+        status="published",
+        specs_json='{"material":"PP"}',
+    )
+    updated = KBProductRepository.update(
+        created.id,
+        {"specs": {"material": "PP"}},
+        updated_by="reviewer",
+    )
+
+    assert updated is not None
+    assert updated.status == "published"
+
+
+def test_generic_product_update_cannot_publish_a_draft(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="LIFECYCLE-OWNER-001",
+        product_name="Lifecycle-owned product",
+        status="draft",
+    )
+    updated = KBProductRepository.update(
+        created.id,
+        {"status": "published"},
+        updated_by="operator",
+    )
+
+    assert updated is not None
+    assert updated.status == "draft"
+
+
+def _product_admin_client():
+    from flask import Flask
+    from app.api.kb_admin_routes import kb_admin_bp
+
+    app = Flask(__name__)
+    app.register_blueprint(kb_admin_bp)
+    return app.test_client()
+
+
+def test_product_publish_route_cannot_skip_pending_review(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="LIFECYCLE-ROUTE-001",
+        product_name="Draft route product",
+        status="draft",
+    )
+
+    response = _product_admin_client().post(
+        f"/api/kb/products/{created.id}/publish"
+    )
+
+    assert response.status_code == 409
+    current = KBProductRepository.get_by_id(created.id)
+    assert current is not None
+    assert current.status == "draft"
+
+
+def test_product_create_route_cannot_create_published(fresh_db):
+    response = _product_admin_client().post(
+        "/api/kb/products",
+        json={
+            "i_id": "LIFECYCLE-ROUTE-NEW-001",
+            "product_name": "Client-created product",
+            "status": "published",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["status"] == "draft"
+
+
+def test_product_create_route_stages_structured_fields_as_draft(fresh_db):
+    response = _product_admin_client().post(
+        "/api/kb/products",
+        json={
+            "i_id": "LIFECYCLE-ROUTE-NEW-002",
+            "product_name": "Structured draft product",
+            "specs": {"material": "PP"},
+            "logistics": {"package_weight": "8kg"},
+            "warranty": {"period": "one year"},
+            "sku_list": [{"sku_code": "LIFECYCLE-ROUTE-NEW-002-A"}],
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["status"] == "draft"
+    assert body["specs"]["material"] == "PP"
+    assert body["logistics"]["package_weight"] == "8kg"
+    assert body["warranty"]["period"] == "one year"
+    assert body["sku_list"][0]["sku_code"] == "LIFECYCLE-ROUTE-NEW-002-A"
+
+
+def test_product_batch_publish_uses_approve_lifecycle_and_audit(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+
+    created = KBProductRepository.create(
+        i_id="LIFECYCLE-ROUTE-002",
+        product_name="Pending batch product",
+        status="draft",
+    )
+    pending = KBProductRepository.submit_for_review(created.id, user="reviewer")
+    assert pending is not None
+
+    response = _product_admin_client().post(
+        "/api/kb/products/batch-update",
+        json={"ids": [created.id], "action": "publish"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["updated"] == 1
+    current = KBProductRepository.get_by_id(created.id)
+    assert current is not None
+    assert current.status == "published"
+
+    db = fresh_db()
+    try:
+        audit = (
+            db.query(KBChangeLog)
+            .filter(
+                KBChangeLog.target_type == "kb_product",
+                KBChangeLog.target_id == created.id,
+                KBChangeLog.action == "approve",
+            )
+            .one_or_none()
+        )
+        assert audit is not None
+    finally:
+        db.close()
+
+
+def test_structured_fact_update_removes_product_from_formal_context(fresh_db):
+    from app.repositories.kb_product_repository import KBProductRepository
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    created = KBProductRepository.create(
+        i_id="FORMAL-CONTEXT-REVIEW-001",
+        product_name="Formal context product",
+        status="published",
+        specs_json='{"material":"PP"}',
+    )
+    before = build_product_context_pack(
+        {"i_id": created.i_id},
+        query="What material is it?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="material",
+    )
+    assert before["structured_profile"]["specs"]["material"] == "PP"
+
+    updated = KBProductRepository.update(
+        created.id,
+        {"specs": {"material": "ABS"}},
+        updated_by="reviewer",
+    )
+    assert updated is not None
+    assert updated.status == "pending_review"
+
+    after = build_product_context_pack(
+        {"i_id": created.i_id},
+        query="What material is it?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="material",
+    )
+    assert after["structured_profile"] == {}
+    assert after["facts"] == []
+
+
 def test_new_product_policy_binding_cannot_bypass_existing_review_workflow(fresh_db):
     from app.repositories.kb_product_repository import KBProductRepository
 

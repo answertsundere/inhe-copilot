@@ -67,7 +67,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   the next owner to formal evidence supply/admission coverage. That follow-up
   confirmed the zero-evidence result is correct for fictional `SYN-*`
   identities; recovered product cards now support identity-only review drafts,
-  not automatic fact admission or publication.
+  not automatic fact admission or publication. The existing product lifecycle
+  now also sends any changed published identity or structured fact back to
+  `pending_review`; generic create/update and batch routes cannot bypass
+  supervisor publication.
 - `docs/superpowers/specs/2026-08-14-customer-conditional-space-fit-design.md`
   - defines the P1 boundary between a measurement lookup and a fit conclusion,
     while keeping customer-supplied conditions outside formal evidence.

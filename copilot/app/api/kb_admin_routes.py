@@ -913,9 +913,10 @@ def api_product_versions(product_id):
 @kb_admin_bp.route("/products/batch-update", methods=["POST"])
 def api_product_batch_update():
     """批量更新商品状态"""
+    from app.repositories.kb_product_repository import KBProductRepository
     from app.db import SessionLocal
     from app.models.kb_tables import KBProduct
-    db = SessionLocal()
+    db = None
     try:
         data = request.get_json(force=True) or {}
         ids = data.get("ids", [])
@@ -925,19 +926,34 @@ def api_product_batch_update():
         if not ids or not action:
             return jsonify({"error": "ids and action required"}), 400
 
+        lifecycle_actions = {
+            "submit_review": KBProductRepository.submit_for_review,
+            "publish": KBProductRepository.approve,
+            "archive": KBProductRepository.archive,
+        }
         updated = 0
+        errors = []
+        if action in lifecycle_actions:
+            transition = lifecycle_actions[action]
+            for pid in ids:
+                try:
+                    product = transition(pid, user=name)
+                except ValueError as exc:
+                    errors.append({"product_id": pid, "reason": str(exc)})
+                    continue
+                if product is not None:
+                    updated += 1
+            return jsonify({"updated": updated, "errors": errors})
+
+        db = SessionLocal()
         for pid in ids:
             product = db.query(KBProduct).get(pid)
             if not product:
                 continue
-            if action == "submit_review" and product.status == "draft":
-                product.status = "pending_review"
-            elif action == "publish" and product.status == "pending_review":
-                product.status = "published"
-            elif action == "archive":
-                product.status = "archived"
-            elif action == "set_agent_use":
+            if action == "set_agent_use":
                 product.agent_usable_level = data.get("value", "L1")
+            else:
+                continue
             product.updated_by = name
             product.updated_at = datetime.utcnow()
             updated += 1
@@ -945,59 +961,46 @@ def api_product_batch_update():
         db.commit()
         return jsonify({"updated": updated})
     except Exception as e:
-        db.rollback()
+        if db is not None:
+            db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @kb_admin_bp.route("/products/<int:product_id>/submit-review", methods=["POST"])
 def api_product_submit_review(product_id):
     """提交商品审核"""
-    from app.db import SessionLocal
-    from app.models.kb_tables import KBProduct
-    db = SessionLocal()
+    from app.repositories.kb_product_repository import KBProductRepository
     try:
-        product = db.query(KBProduct).get(product_id)
+        _, name = _get_user_info()
+        product = KBProductRepository.submit_for_review(product_id, user=name)
         if not product:
             return jsonify({"error": "Not found"}), 404
-        _, name = _get_user_info()
-        product.status = "pending_review"
-        product.updated_by = name
-        product.updated_at = datetime.utcnow()
-        db.commit()
         return jsonify(product.to_dict(detail=True))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
     except Exception as e:
-        db.rollback()
         return jsonify({"error": str(e)}), 500
-    finally:
-        db.close()
 
 
 @kb_admin_bp.route("/products/<int:product_id>/publish", methods=["POST"])
 def api_product_publish(product_id):
     """发布商品"""
-    from app.db import SessionLocal
-    from app.models.kb_tables import KBProduct
-    db = SessionLocal()
+    from app.repositories.kb_product_repository import KBProductRepository
     try:
-        product = db.query(KBProduct).get(product_id)
-        if not product:
-            return jsonify({"error": "Not found"}), 404
         _, name = _get_user_info()
         if not _require_supervisor(_get_user_info()[0]):
             return jsonify({"error": "Forbidden"}), 403
-        product.status = "published"
-        product.version += 1
-        product.updated_by = name
-        product.updated_at = datetime.utcnow()
-        db.commit()
+        product = KBProductRepository.approve(product_id, user=name)
+        if not product:
+            return jsonify({"error": "Not found"}), 404
         return jsonify(product.to_dict(detail=True))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
     except Exception as e:
-        db.rollback()
         return jsonify({"error": str(e)}), 500
-    finally:
-        db.close()
 
 
 @kb_admin_bp.route("/products/<int:product_id>/activity-rules", methods=["GET"])
@@ -1032,7 +1035,7 @@ def _extract_product_kwargs(data):
     simple_fields = [
         "i_id", "product_name", "brand",
         "category_l1", "category_l2", "category_l3",
-        "status", "import_batch_id", "created_by",
+        "import_batch_id", "created_by",
     ]
     for f in simple_fields:
         if f in data:

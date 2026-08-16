@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-08-16 - Product Fact Review Lifecycle Closure
+
+- Closed a formal-knowledge governance bypass before the Agent path. Published
+  products now return to `pending_review` whenever identity, SKU, structured
+  facts, logistics, warranty, or reviewed policy binding actually changes.
+  Equal updates remain published and do not create review churn.
+- Product HTTP create/update, single publish, and batch lifecycle operations
+  now use the existing repository lifecycle. Client payloads cannot create or
+  generically update a product directly to `published`; only supervisor
+  approval of a pending product can publish it, with the existing change log.
+- Structured backfill now reports review-required transitions and removes
+  changed products from Product Context Pack answer authority until approval.
+  It records a lifecycle audit and keeps only an internal source SHA-256;
+  legacy and current backfill metadata are excluded from model-facing specs.
+  Recovered-source audit still found no safe material or product-dimension
+  coverage to auto-promote, so no recovered fact was approved or published.
+- Focused product lifecycle, context, authentication, Evidence Convergence,
+  admitted-context, and docs regression passed `213/213`. Full pytest retained
+  the same five unrelated failures and two skips across 4,568 collected tests.
+  Synthetic smoke repeated the existing `3/5`, review-only, no-send baseline;
+  full 22 was correctly not run. Agent replies, model calls, Graph, Delivery,
+  formal knowledge content, and `can_send` did not change.
+
 ## 2026-08-16 - Recovery Product Identity Review Boundary
 
 - Confirmed that the fixed-40 zero-evidence result comes from fictional
