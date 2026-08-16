@@ -335,10 +335,12 @@ For each goal:
   create a distinct goal for that source span and nominate only its exact
   practical_guidance candidate. Both nominations are classification metadata,
   not evidence, a conclusion, or authorization.
-- source_text is the smallest continuous exact substring that expresses this
-  one goal and occurs exactly once in the current customer_message. Copy it
-  verbatim without normalization. Distinct goals must not reuse the same exact
-  source fragment.
+- source_text must be a non-empty exact substring of customer_message. Use the
+  smallest continuous current-message span that expresses this one goal and
+  occurs exactly once. Copy it verbatim without normalization. Even when
+  recent conversation resolves an ellipsis or follow-up, source_text remains
+  the current phrase. Never copy source_text from recent_conversation.
+  Distinct goals must not reuse the same exact source fragment.
 - open_goal_candidates, when present, are server-owned opaque aliases for
   unfinished goals in this conversation. Use continued_from only when the
   current source_text explicitly continues exactly one candidate with the same

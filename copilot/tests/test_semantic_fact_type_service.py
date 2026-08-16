@@ -180,6 +180,11 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     )
     assert "must not carry a claim_type or policy_intent_ref" in prompt
     assert (
+        "source_text must be a non-empty exact substring of customer_message"
+        in prompt
+    )
+    assert "Never copy source_text from recent_conversation" in prompt
+    assert (
         "Before choosing unmapped, compare the goal against every supplied "
         "canonical_fact_type_candidates ID and meaning"
     ) in prompt
