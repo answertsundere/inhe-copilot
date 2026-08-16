@@ -77,6 +77,12 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/superpowers/plans/2026-08-14-customer-conditional-space-fit.md`
   - records the TDD sequence for semantic FactType guidance, review-only
     conditional composition, deterministic final validation, and regression.
+- `docs/superpowers/specs/2026-08-16-turn-understanding-strict-provider-design.md`
+  - defines the default-off, role-scoped strict Turn Understanding transport,
+    qualification gates, provenance boundary, and single-flag rollback.
+- `docs/superpowers/plans/2026-08-16-turn-understanding-strict-provider.md`
+  - records the TDD sequence for role configuration, existing-schema reuse,
+    fictional qualification, staged runtime gates, and regression checks.
 - `docs/CHANGELOG.md` - dated implementation and verification record.
 - `docs/module-index.md` - module ownership and status (`formal`, `shadow`, `legacy`, or `planned`).
 - `docs/agent-core-candidate-change-ownership.md` - P0-R0 ownership and
@@ -281,6 +287,15 @@ fail-closed Provider/transport finding with `real_customer_accuracy=null`,
 formal knowledge query-only, mandatory human review, and `can_send=false`. A
 separate versioned synthetic safety run passed smoke `5/5` and full `22/22`
 with no send authority; it does not change the real-conversation conclusion.
+
+The next default-off engineering slice introduced a role-scoped strict Turn
+Understanding configuration and a fictional, read-only qualification script
+that reuses the formal Prompt, schema, exact-current-source checks, and
+canonical normalizer. GLM-4.6 was blocked by Provider rate limits on `24/24`
+attempts, and the account-listed GLM-5-Turbo candidate was blocked on its
+`8/8` first-stage attempts. Neither candidate is qualified; no isolated
+runtime or long-conversation gate was started, and `real_customer_accuracy`
+remains `null` with `can_send=false`.
 
 ## Architecture Decisions And Research
 

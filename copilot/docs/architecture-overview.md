@@ -1010,6 +1010,25 @@ Convergence remains disabled, and `can_send=false`. The separate versioned
 synthetic safety fixture passed smoke `5/5` and full `22/22`, all review-only;
 it is not factual-quality or real-accuracy evidence.
 
+Turn Understanding now also has an optional role-scoped strict transport
+contract. The feature is disabled by default and uses the existing
+`StrictDecisionProviderService`; it adds no Graph node, service, retry, repair,
+fallback, evidence role, reply owner, or delivery authority. When enabled, the
+role must present its own Provider identity, capability, qualification flag,
+and matching configuration fingerprint. Its single strict response is still
+processed by the existing Turn Understanding schema, exact-current-span
+provenance checks, and canonical normalizer. Any configuration, transport,
+schema, provenance, or qualification failure remains observable and cannot
+fall back to the legacy Provider.
+
+The fictional read-only qualification gate currently remains not qualified.
+GLM-4.6 reached the Provider but returned rate-limit errors for all `24/24`
+attempts; the account-listed GLM-5-Turbo candidate returned the same error for
+all `8/8` first-stage attempts. No semantic result can be inferred from a
+transport-level limit. The project therefore did not start isolated `1x1`,
+`3x1`, or internal-conversation evaluation, and no runtime or production flag
+was changed.
+
 ### Customer-Conditional Comparison Boundary
 
 The current P1 vertical slice distinguishes a request for a product measurement

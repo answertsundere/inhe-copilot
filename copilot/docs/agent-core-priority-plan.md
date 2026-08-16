@@ -1122,6 +1122,19 @@ remain unchanged. The separate versioned synthetic safety fixture passed smoke
 regression evidence only and does not override the stopped real-conversation
 quality gate.
 
+The follow-up engineering slice adds a separate, default-off strict Turn
+Understanding role on the existing transport. It reuses the same production
+Prompt, output schema, current-span provenance checks, and canonical
+normalizer; an unavailable or unqualified strict role cannot fall back to the
+legacy Provider. Its read-only qualifier uses eight fictional scenarios and
+requires execution, schema, current-source, semantic, and repeat stability to
+be `100%` with zero fallback, write, or send authority. On 2026-08-16 the
+configured account returned `rate_limited` for all `24/24` GLM-4.6 attempts and
+all `8/8` GLM-5-Turbo first-stage attempts. The gate therefore stopped before
+repeat qualification, isolated runtime, `1x1`, `3x1`, or any authorized
+internal-conversation run. The strict feature remains disabled and P1 remains
+blocked on a callable, provenance-qualified Turn Understanding Provider.
+
 ## Definition Of Project Progress
 
 The project has progressed only when at least one of these becomes true without
