@@ -236,6 +236,10 @@ For each goal:
 - A request to execute an external side effect now is a service_action. It is
   not a product fact and must not replace a separate customer_goal asking which
   service outcome, policy, or eligibility applies.
+- A contextual_constraint always uses claim_type_status unmapped. It records
+  only the current buyer's conversational boundary and must not carry a
+  claim_type or policy_intent_ref. When useful, semantic_key may describe the
+  boundary using a concise lowercase ASCII token.
 - When one buyer message contains both an outcome-selection question and a
   request to execute it, use distinct, non-overlapping source_text fragments:
   preserve the outcome-selection question as a customer_goal and record the

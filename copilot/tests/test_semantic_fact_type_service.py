@@ -175,6 +175,11 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
     assert "Only an unmapped goal may use" in prompt
     assert (
+        "A contextual_constraint always uses claim_type_status unmapped"
+        in prompt
+    )
+    assert "must not carry a claim_type or policy_intent_ref" in prompt
+    assert (
         "Before choosing unmapped, compare the goal against every supplied "
         "canonical_fact_type_candidates ID and meaning"
     ) in prompt
