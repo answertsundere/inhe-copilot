@@ -109,6 +109,31 @@ def _missing_slot_mode(missing_slots: list[str]) -> str:
     return "all_of"
 
 
+def _authoritative_contextual_reply_kind(state: dict) -> str:
+    understanding = state.get("turn_understanding")
+    if not isinstance(understanding, dict):
+        return ""
+    if (
+        understanding.get("schema_version") != "turn-understanding/v2"
+        or understanding.get("owner") != "turn_understanding_owner"
+        or understanding.get("source_stage") != "query_fact_type_classifier"
+        or understanding.get("goal_understanding_status") != "valid"
+    ):
+        return ""
+    goals = understanding.get("customer_goals") or []
+    if len(goals) != 1 or not isinstance(goals[0], dict):
+        return ""
+    goal = goals[0]
+    if (
+        goal.get("goal_kind") != "contextual_constraint"
+        or goal.get("claim_type_status") != "unmapped"
+        or str(goal.get("claim_type") or "").strip()
+        or str(goal.get("policy_intent_ref") or "").strip()
+    ):
+        return ""
+    return str(goal.get("semantic_key") or "").strip()
+
+
 def response_strategy_planner(state: dict) -> dict:
     t0 = time.time()
     intent = state.get("intent", "")
@@ -127,8 +152,17 @@ def response_strategy_planner(state: dict) -> dict:
     should_offer_next_step = True
     should_escalate = bool(customer_state.get("needs_human_review"))
     missing_slots: list[str] = []
+    contextual_reply_kind = _authoritative_contextual_reply_kind(state)
 
-    if _has_ambiguous_sidecar_product_name(state):
+    if contextual_reply_kind == "conversation_closure":
+        reply_goal = "acknowledge_conversation_closure"
+        tone = "warm"
+        empathy_level = "low"
+        should_answer_directly = True
+        should_offer_next_step = False
+        missing_slots = []
+
+    elif _has_ambiguous_sidecar_product_name(state):
         reply_goal = "clarify_product_identity"
         tone = "careful"
         empathy_level = "low"

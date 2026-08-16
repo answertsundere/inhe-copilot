@@ -59,6 +59,15 @@ ALLOWED_GOAL_KINDS = {
 
 ALLOWED_CLAIM_TYPE_STATUSES = {"canonical", "unmapped"}
 
+ALLOWED_CONTEXTUAL_SEMANTIC_KEYS = {
+    "acknowledgement",
+    "confirmation",
+    "conversation_closure",
+    "correction",
+    "deferment",
+    "rejection",
+}
+
 _LLM_RESULT_FIELDS = {"goals"}
 
 _RAW_GOAL_FIELDS = {
@@ -238,8 +247,11 @@ For each goal:
   service outcome, policy, or eligibility applies.
 - A contextual_constraint always uses claim_type_status unmapped. It records
   only the current buyer's conversational boundary and must not carry a
-  claim_type or policy_intent_ref. When useful, semantic_key may describe the
-  boundary using a concise lowercase ASCII token.
+  claim_type or policy_intent_ref. Its semantic_key is required and must be
+  exactly one of acknowledgement, confirmation, conversation_closure,
+  correction, deferment, or rejection. Use conversation_closure only when the
+  buyer says there are no further issues or ends the current exchange; do not
+  use it for a correction, refusal, or answer that changes an open request.
 - When one buyer message contains both an outcome-selection question and a
   request to execute it, use distinct, non-overlapping source_text fragments:
   preserve the outcome-selection question as a customer_goal and record the
@@ -2306,6 +2318,19 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
     )
     if subject_scope_value.strip() and not normalized_subject_scope:
         return "dimension_subject_scope_invalid"
+
+    if goal_kind == "contextual_constraint":
+        policy_intent_ref = _bounded_text(
+            raw.get("policy_intent_ref"),
+            96,
+        ).lower()
+        if status != "unmapped" or claim_type or policy_intent_ref:
+            return "contextual_claim_identity_forbidden"
+        if semantic_key not in ALLOWED_CONTEXTUAL_SEMANTIC_KEYS:
+            return "contextual_semantic_key_invalid"
+        if normalized_subject_scope:
+            return "dimension_subject_scope_not_applicable"
+        return ""
 
     if status == "canonical":
         if not claim_type:
