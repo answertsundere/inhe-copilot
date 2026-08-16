@@ -30,7 +30,7 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-SCHEMA_VERSION = "turn-understanding-provider-qualification-v2"
+SCHEMA_VERSION = "turn-understanding-provider-qualification-v3"
 _SIGNATURE_FIELDS = (
     "goal_kind",
     "claim_type_status",
@@ -39,6 +39,11 @@ _SIGNATURE_FIELDS = (
     "subject_scope",
     "semantic_key",
     "policy_intent_ref",
+    "source_span_start",
+    "source_span_end",
+    "source_span_sha256",
+)
+_SOURCE_SIGNATURE_FIELDS = (
     "source_span_start",
     "source_span_end",
     "source_span_sha256",
@@ -213,15 +218,49 @@ def _semantic_matches(result: dict[str, Any], case: dict[str, Any]) -> bool:
     )
 
 
+def _signature_field_value(goal: dict[str, Any], key: str) -> Any:
+    if key != "semantic_key":
+        return goal.get(key)
+    semantic_key = str(goal.get("semantic_key") or "").strip()
+    if goal.get("goal_kind") == "contextual_constraint":
+        return semantic_key
+    if (
+        goal.get("goal_kind") == "customer_goal"
+        and goal.get("claim_type_status") == "unmapped"
+    ):
+        if str(goal.get("policy_intent_ref") or "").strip():
+            return semantic_key
+        return "present" if semantic_key else ""
+    return ""
+
+
 def _signature_projection(result: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
-            key: goal.get(key)
+            key: _signature_field_value(goal, key)
             for key in _SIGNATURE_FIELDS
         }
         for goal in result.get("customer_goals", [])
         if isinstance(goal, dict)
     ]
+
+
+def _subset_signature(
+    projection: list[dict[str, Any]],
+    fields: tuple[str, ...],
+) -> str:
+    subset = [
+        {field: row.get(field) for field in fields}
+        for row in projection
+    ]
+    return hashlib.sha256(
+        json.dumps(
+            subset,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _signature(result: dict[str, Any]) -> str:
@@ -290,6 +329,8 @@ def qualify(
     metadata = provider.metadata()
     errors: Counter[str] = Counter()
     signatures: dict[str, list[str]] = defaultdict(list)
+    semantic_signatures: dict[str, list[str]] = defaultdict(list)
+    source_signatures: dict[str, list[str]] = defaultdict(list)
     signature_projections: dict[
         str,
         list[list[dict[str, Any]]],
@@ -348,6 +389,7 @@ def qualify(
                         raw,
                         message=message,
                         history_texts=history_texts,
+                        canonicalize_source_clauses=True,
                     )
                     if not normalized or normalized.get(
                         "goal_understanding_status"
@@ -359,10 +401,21 @@ def qualify(
                         continue
                     semantic_success += 1
                     case_counts[alias]["semantic"] += 1
+                    projection = _signature_projection(normalized)
                     signatures[alias].append(_signature(normalized))
-                    signature_projections[alias].append(
-                        _signature_projection(normalized)
-                    )
+                    semantic_signatures[alias].append(_subset_signature(
+                        projection,
+                        tuple(
+                            field
+                            for field in _SIGNATURE_FIELDS
+                            if field not in _SOURCE_SIGNATURE_FIELDS
+                        ),
+                    ))
+                    source_signatures[alias].append(_subset_signature(
+                        projection,
+                        _SOURCE_SIGNATURE_FIELDS,
+                    ))
+                    signature_projections[alias].append(projection)
                     latency = provider.last_latency_ms
                     if isinstance(latency, (int, float)):
                         successful_latencies.append(float(latency))
@@ -370,6 +423,8 @@ def qualify(
                     errors[_safe_error(exc)] += 1
 
     stable_attempts = 0
+    semantic_stable_attempts = 0
+    source_stable_attempts = 0
     stable_denominator = 0
     for case in selected_cases:
         alias = str(case.get("alias") or "unnamed")
@@ -377,6 +432,16 @@ def qualify(
         stable_denominator += repeat_count
         if len(values) == repeat_count and values:
             stable_attempts += sum(value == values[0] for value in values)
+        semantic_values = semantic_signatures.get(alias, [])
+        if len(semantic_values) == repeat_count and semantic_values:
+            semantic_stable_attempts += sum(
+                value == semantic_values[0] for value in semantic_values
+            )
+        source_values = source_signatures.get(alias, [])
+        if len(source_values) == repeat_count and source_values:
+            source_stable_attempts += sum(
+                value == source_values[0] for value in source_values
+            )
 
     case_results = [
         {
@@ -433,6 +498,14 @@ def qualify(
         "semantic_success_rate": _rate(semantic_success, total_attempts),
         "repeat_stability_rate": _rate(
             stable_attempts,
+            stable_denominator,
+        ),
+        "semantic_repeat_stability_rate": _rate(
+            semantic_stable_attempts,
+            stable_denominator,
+        ),
+        "source_provenance_repeat_stability_rate": _rate(
+            source_stable_attempts,
             stable_denominator,
         ),
         "timeout_attempt_count": errors.get("timeout", 0),

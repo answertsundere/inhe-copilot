@@ -72,6 +72,30 @@
 - [ ] Implement the fictional matrix and deterministic report aggregation.
 - [ ] Run tests and confirm they pass.
 
+### Task 3A: Canonical Repeatability Closure
+
+**Files:**
+- Modify: `app/services/semantic_fact_type_service.py`
+- Modify: `scripts/qualify_turn_understanding_provider.py`
+- Test: `tests/test_atomic_goal_span_contract.py`
+- Test: `tests/test_qualify_turn_understanding_provider.py`
+
+**Interfaces:**
+- Consumes: exact current-message source substrings and canonical goal kind
+- Produces: deterministic clause-bounded provenance and role-aware stability
+
+- [ ] Add failing tests proving equivalent unique substrings in one clause
+  normalize to the same provenance while multiple goals in one clause retain
+  independent exact spans.
+- [ ] Add failing tests proving non-authoritative `service_action.semantic_key`
+  variation cannot fail semantic stability, while unmapped customer goals and
+  contextual constraints remain strict.
+- [ ] Keep history-only, repeated ambiguous, paraphrased, and cross-turn source
+  mutations fail-closed.
+- [ ] Implement the smallest owner-local normalization and qualifier projection.
+- [ ] Re-run the fixed fictional matrix once; do not retry for an accidental
+  Provider pass.
+
 ### Task 4: Provider And Runtime Gates
 
 **Files:**

@@ -95,6 +95,8 @@ def test_perfect_provider_qualifies_with_current_source_and_stability():
     assert report["current_source_success_rate"]["rate"] == 1.0
     assert report["semantic_success_rate"]["rate"] == 1.0
     assert report["repeat_stability_rate"]["rate"] == 1.0
+    assert report["semantic_repeat_stability_rate"]["rate"] == 1.0
+    assert report["source_provenance_repeat_stability_rate"]["rate"] == 1.0
     assert report["qualification_fingerprint"] == "f" * 64
     assert report["formal_kb_write_attempt_count"] == 0
     assert report["can_change_can_send_count"] == 0
@@ -199,16 +201,157 @@ def test_repeat_instability_reports_safe_case_and_changed_field_diagnostics():
 
     result = report["case_results"][0]
     assert report["schema_version"] == (
-        "turn-understanding-provider-qualification-v2"
+        "turn-understanding-provider-qualification-v3"
     )
     assert report["qualification_status"] == "not_qualified"
     assert result["signature_variant_count"] == 2
     assert result["stable_attempt_count"] == 2
     assert result["changed_field_names"] == ["attribute_key"]
+    assert report["semantic_repeat_stability_rate"]["rate"] == (2 / 3)
+    assert report["source_provenance_repeat_stability_rate"]["rate"] == 1.0
     serialized = str(report)
     assert case["customer_message"] not in serialized
     assert "width" not in serialized
     assert "height" not in serialized
+
+
+def test_equivalent_source_substrings_in_one_clause_are_repeat_stable():
+    case = {
+        **_case(),
+        "customer_message": "fictional product body material?",
+    }
+
+    def responder(call, index):
+        message = call["payload"]["customer_message"]
+        result = _canonical_goal(message)
+        result["goals"][0]["source_text"] = (
+            message if index != 2 else "body material"
+        )
+        return result
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=3,
+    )
+
+    assert report["qualification_status"] == "qualified"
+    assert report["repeat_stability_rate"]["rate"] == 1.0
+    assert report["case_results"][0]["signature_variant_count"] == 1
+
+
+def test_service_action_semantic_key_is_not_authoritative_for_stability():
+    case = {
+        "alias": "fictional-service-action",
+        "customer_message": "please contact the fictional carrier",
+        "current_intent": "logistics",
+        "recent_conversation": [],
+        "expected_claim_types": [],
+        "expected_goal_kinds": ["service_action"],
+    }
+
+    def responder(call, index):
+        return {
+            "goals": [{
+                "goal_kind": "service_action",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "subject_scope": "",
+                "semantic_key": (
+                    "contact_carrier" if index != 2 else "verify_carrier"
+                ),
+                "policy_intent_ref": "",
+                "source_text": call["payload"]["customer_message"],
+                "continued_from": "",
+            }]
+        }
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=3,
+    )
+
+    assert report["qualification_status"] == "qualified"
+    assert report["repeat_stability_rate"]["rate"] == 1.0
+    assert report["case_results"][0]["changed_field_names"] == []
+
+
+def test_unbound_unmapped_goal_semantic_key_wording_is_not_authoritative():
+    case = {
+        "alias": "fictional-unmapped-goal",
+        "customer_message": "fictional durability question",
+        "current_intent": "product_question",
+        "recent_conversation": [],
+        "expected_claim_types": [],
+        "expected_goal_kinds": ["customer_goal"],
+    }
+
+    def responder(call, index):
+        return {
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "durability",
+                "subject_scope": "",
+                "semantic_key": (
+                    "drop_durability" if index != 2 else "impact_durability"
+                ),
+                "policy_intent_ref": "",
+                "source_text": call["payload"]["customer_message"],
+                "continued_from": "",
+            }]
+        }
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=3,
+    )
+
+    assert report["qualification_status"] == "qualified"
+    assert report["repeat_stability_rate"]["rate"] == 1.0
+    assert report["case_results"][0]["changed_field_names"] == []
+
+
+def test_unbound_unmapped_goal_semantic_key_presence_remains_authoritative():
+    case = {
+        "alias": "fictional-unmapped-goal",
+        "customer_message": "fictional durability question",
+        "current_intent": "product_question",
+        "recent_conversation": [],
+        "expected_claim_types": [],
+        "expected_goal_kinds": ["customer_goal"],
+    }
+
+    def responder(call, index):
+        return {
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "durability",
+                "subject_scope": "",
+                "semantic_key": "drop_durability" if index != 2 else "",
+                "policy_intent_ref": "",
+                "source_text": call["payload"]["customer_message"],
+                "continued_from": "",
+            }]
+        }
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=3,
+    )
+
+    assert report["qualification_status"] == "not_qualified"
+    assert report["repeat_stability_rate"]["rate"] == (2 / 3)
+    assert report["case_results"][0]["changed_field_names"] == [
+        "semantic_key"
+    ]
 
 
 def test_default_provider_uses_turn_understanding_role_config(monkeypatch):

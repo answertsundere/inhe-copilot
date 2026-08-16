@@ -1141,11 +1141,18 @@ v2 diagnostic identified two real drifts: one material case changed its
 exact current-message source span, and one carrier-action case changed its
 optional semantic key. The transport already used temperature zero and
 disabled thinking, so no unsupported sampling adjustment or retry was added.
-The strict role therefore remains not qualified and disabled. This does not revoke
-the independently qualified DeepSeek V4 Flash Composer role. No isolated
-runtime, `1x1`, `3x1`, or authorized internal-conversation run was started, and
-P1 remains blocked on a repeat-stable, provenance-qualified Turn Understanding
-Provider.
+The original `22/24` result exposed two evaluator/normalizer boundary defects:
+equivalent unique substrings in one current-message clause produced different
+provenance, and a non-renderable service action's free semantic label was
+treated as authoritative. The strict-role-only clause normalizer now preserves
+legacy exact spans by default and retains independent exact spans when multiple
+atomic goals share one clause. Qualification v3 distinguishes exact
+policy/context keys from unbound semantic-key presence and reports semantic and
+provenance stability separately. DeepSeek V4 Pro then passed one fixed `8x3`:
+`24/24` execution, schema, current-source, semantic, combined stability,
+semantic stability, and provenance stability, with zero timeout, write, or send
+change. The role remains disabled pending isolated `1x1` and `3x1`; the
+independently qualified DeepSeek V4 Flash Composer role is unchanged.
 
 ## Definition Of Project Progress
 

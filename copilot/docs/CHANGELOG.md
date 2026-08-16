@@ -1,5 +1,16 @@
 # Change Log
 
+## 2026-08-16 - Turn Understanding canonical stability v3
+
+- Added strict-role-only, server-owned clause provenance normalization while
+  preserving exact legacy spans and independent same-clause atomic goals.
+- Made Provider stability follow actual semantic-key consumers: exact trusted
+  policy/context keys remain strict, unbound unmapped goals retain presence
+  stability, and non-renderable action labels are diagnostic-only.
+- DeepSeek V4 Pro passed one fixed fictional `8x3` with `24/24` execution,
+  schema, current-source, semantic, combined-repeat, semantic-repeat, and
+  source-repeat checks. Runtime flags remain disabled pending `1x1` and `3x1`.
+
 ## 2026-08-16 - Turn Understanding qualification diagnostics v2
 
 - Added anonymous per-case repeat-stability diagnostics to the existing

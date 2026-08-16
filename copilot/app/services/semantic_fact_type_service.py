@@ -1796,6 +1796,7 @@ def _classify_with_llm(
         preserve_unmapped_goal_authority=bool(
             recoverable_unmapped_goal_count
         ),
+        canonicalize_source_clauses=strict_provider is not None,
     )
     canonical_provenance = _canonical_provenance_violations(
         canonical_goals,
@@ -1887,6 +1888,7 @@ def _sanitize_llm_result(
     history_texts: list[str] | None = None,
     open_goal_candidates: list[dict[str, Any]] | None = None,
     preserve_unmapped_goal_authority: bool = False,
+    canonicalize_source_clauses: bool = False,
 ) -> dict[str, Any] | None:
     if not isinstance(data, dict) or set(data) != _LLM_RESULT_FIELDS:
         return None
@@ -1905,6 +1907,7 @@ def _sanitize_llm_result(
         history_texts=history_texts,
         open_goal_candidates=open_goal_candidates,
         lifecycle_continuations_sink=lifecycle_continuations,
+        canonicalize_source_clauses=canonicalize_source_clauses,
     )
     if (
         preserve_unmapped_goal_authority
@@ -2327,6 +2330,85 @@ def _resolve_source_span_provenance(
     )
 
 
+_SOURCE_CLAUSE_BOUNDARIES = frozenset(",，;；。.!！?？\n\r")
+
+
+def _source_clause_bounds(
+    message: str,
+    source_span_start: int,
+    source_span_end: int,
+) -> tuple[int, int]:
+    clause_start = 0
+    for index in range(source_span_start - 1, -1, -1):
+        if message[index] in _SOURCE_CLAUSE_BOUNDARIES:
+            clause_start = index + 1
+            break
+
+    clause_end = len(message)
+    for index in range(source_span_end, len(message)):
+        if message[index] in _SOURCE_CLAUSE_BOUNDARIES:
+            clause_end = index + 1
+            break
+
+    while clause_start < clause_end and message[clause_start].isspace():
+        clause_start += 1
+    while clause_end > clause_start and message[clause_end - 1].isspace():
+        clause_end -= 1
+    return clause_start, clause_end
+
+
+def _canonical_source_provenance_by_index(
+    value: list[Any],
+    *,
+    message: str,
+    history_texts: list[str] | None,
+) -> dict[int, tuple[dict[str, Any] | None, str]]:
+    resolved: dict[int, tuple[dict[str, Any] | None, str]] = {}
+    clause_exact_spans: dict[tuple[int, int], set[tuple[int, int]]] = {}
+
+    for index, raw in enumerate(value):
+        if not isinstance(raw, dict):
+            continue
+        provenance, reason = _resolve_source_span_provenance(
+            raw.get("source_text"),
+            message,
+            history_texts=history_texts,
+        )
+        resolved[index] = (provenance, reason)
+        if provenance is None:
+            continue
+        exact_span = (
+            provenance["source_span_start"],
+            provenance["source_span_end"],
+        )
+        clause_span = _source_clause_bounds(message, *exact_span)
+        clause_exact_spans.setdefault(clause_span, set()).add(exact_span)
+
+    for index, (provenance, reason) in list(resolved.items()):
+        if provenance is None:
+            continue
+        exact_span = (
+            provenance["source_span_start"],
+            provenance["source_span_end"],
+        )
+        clause_span = _source_clause_bounds(message, *exact_span)
+        if len(clause_exact_spans.get(clause_span, set())) != 1:
+            continue
+        clause_text = canonical_source_span_text(
+            message[clause_span[0]:clause_span[1]]
+        )
+        clause_sha256 = hashlib.sha256(
+            clause_text.encode("utf-8")
+        ).hexdigest()
+        resolved[index] = ({
+            "source_span_start": clause_span[0],
+            "source_span_end": clause_span[1],
+            "source_span_sha256": clause_sha256,
+            "source_text_sha256": clause_sha256,
+        }, reason)
+    return resolved
+
+
 def _source_span_provenance(
     source_text: Any,
     message: str,
@@ -2447,6 +2529,7 @@ def _sanitize_customer_goals(
     history_texts: list[str] | None = None,
     open_goal_candidates: list[dict[str, Any]] | None = None,
     lifecycle_continuations_sink: list[dict[str, str]] | None = None,
+    canonicalize_source_clauses: bool = False,
 ) -> tuple[list[dict[str, Any]], str, list[str]]:
     if value is None:
         return [], "degraded", ["customer_goals_missing"]
@@ -2504,7 +2587,17 @@ def _sanitize_customer_goals(
     used_continuation_aliases: set[str] = set()
     if len(value) > 12:
         diagnostics.append("customer_goals_limit_exceeded")
-    for raw in value[:12]:
+    bounded_value = value[:12]
+    canonical_source_by_index = (
+        _canonical_source_provenance_by_index(
+            bounded_value,
+            message=message,
+            history_texts=history_texts,
+        )
+        if canonicalize_source_clauses
+        else {}
+    )
+    for raw_index, raw in enumerate(bounded_value):
         if not isinstance(raw, dict):
             diagnostics.append("customer_goal_not_object")
             continue
@@ -2565,13 +2658,21 @@ def _sanitize_customer_goals(
                 invalid_lifecycle_reference = True
                 continue
 
-        source_provenance, resolution_reason = (
-            _resolve_source_span_provenance(
-                raw.get("source_text"),
-                message,
-                history_texts=history_texts,
+        if canonicalize_source_clauses:
+            source_provenance, resolution_reason = (
+                canonical_source_by_index.get(
+                    raw_index,
+                    (None, "source_text_schema_invalid"),
+                )
             )
-        )
+        else:
+            source_provenance, resolution_reason = (
+                _resolve_source_span_provenance(
+                    raw.get("source_text"),
+                    message,
+                    history_texts=history_texts,
+                )
+            )
         if source_provenance is None:
             diagnostics.append(resolution_reason)
             invalid_provenance = True
@@ -2708,7 +2809,10 @@ def _sanitize_customer_goals(
                 ):
                     derived_policy_intent_kind = next(iter(exact_intent_kinds))
         goal_summary = canonical_source_span_text(
-            raw.get("source_text")
+            message[
+                source_provenance["source_span_start"]:
+                source_provenance["source_span_end"]
+            ]
         )[:240]
         goal = {
             "schema_version": GOAL_IDENTITY_SCHEMA_VERSION,

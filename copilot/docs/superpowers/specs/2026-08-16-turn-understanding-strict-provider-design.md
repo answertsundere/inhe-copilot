@@ -82,6 +82,27 @@ The strict Provider returns only the existing minimal `goals` object. Server
 code derives span offsets, digests, goal references, owner metadata, and
 diagnostics. History remains context and never becomes evidence.
 
+### Canonical Stability Boundary
+
+Provider repeatability is measured only over fields that are authoritative for
+the goal kind. `semantic_key` remains exactly authoritative for a
+`contextual_constraint` and for an unmapped `customer_goal` bound to a trusted
+`policy_intent_ref`. An unbound unmapped customer goal requires stable
+presence, but its free wording is non-authoritative. The field is also
+diagnostic-only for non-renderable `service_action`, `media_request`, and
+`evidence_dependency` goals. Those non-renderable goals reach the Composer as
+opaque goal references and statuses; their free semantic labels cannot change
+evidence admission, action execution, reply delivery, or `can_send`.
+
+Exact current-turn source validation remains fail-closed. After a Provider
+substring is proven to occur exactly once in the current message, the existing
+Turn Understanding owner may normalize it to its deterministic punctuation
+bounded clause. If multiple distinct atomic source spans occupy the same
+clause, each exact span is retained so normalization cannot merge goals. Text
+from history, missing text, repeated ambiguous text, and paraphrased text are
+still rejected. This is a provenance normalization rule, not a semantic parser:
+it never invents text and never crosses a current-message clause boundary.
+
 ## Qualification Matrix
 
 The read-only qualifier uses fictional conversations only and repeats every
@@ -100,8 +121,9 @@ case three times. It covers:
 Qualification requires 100% execution, schema, current-source provenance,
 semantic expectation, and repeat stability, with zero timeout, truncation,
 free-text fallback, historical-source admission, knowledge writes, or send
-changes. Reports contain only safe Provider identity, model, hashes, metrics,
-latency, and reason codes.
+changes. Authoritative semantic stability and source-provenance stability are
+reported separately and both must reach 100%. Reports contain only safe
+Provider identity, model, hashes, metrics, latency, and reason codes.
 
 ## Runtime Gates
 

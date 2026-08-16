@@ -1021,7 +1021,8 @@ provenance checks, and canonical normalizer. Any configuration, transport,
 schema, provenance, or qualification failure remains observable and cannot
 fall back to the legacy Provider.
 
-The fictional read-only qualification gate currently remains not qualified.
+The fictional read-only qualification gate is qualified for DeepSeek V4 Pro,
+but the runtime role remains disabled pending isolated gates.
 GLM-4.6 reached the Provider but returned rate-limit errors for all `24/24`
 attempts; the account-listed GLM-5-Turbo candidate returned the same error for
 all `8/8` first-stage attempts. No semantic result can be inferred from those
@@ -1035,10 +1036,15 @@ the misses to different exact current-message source spans for one material
 goal and a different semantic key for one carrier service action, not to
 transport errors. The strict transport already fixes temperature at zero and
 disables thinking for this candidate.
-Provider qualification remains role-scoped, so this result does not invalidate
-the qualified DeepSeek V4 Flash Composer role. The project therefore did not
-start isolated `1x1`, `3x1`, or internal-conversation evaluation, and no
-runtime or production flag was changed.
+Qualification v3 closes those two authority mismatches without lowering the
+gate: strict-role source spans normalize only after exact current-message
+validation, multiple same-clause atomic spans remain exact, and semantic-key
+stability follows actual downstream consumers. One fixed post-change `8x3`
+reached `24/24` for execution, schema, current-source, semantics, combined
+repeatability, semantic repeatability, and provenance repeatability, with zero
+timeout, knowledge write, or send change. Provider qualification remains
+role-scoped and does not invalidate the qualified DeepSeek V4 Flash Composer
+role. No production flag changed; isolated `1x1` and `3x1` remain mandatory.
 
 ### Customer-Conditional Comparison Boundary
 

@@ -33,9 +33,11 @@ After implementation, update this index, `ROADMAP.md`, and
   `optimization_unverified=true` until the authorized E2 data and independent
   reviews are complete.
 - Strict Turn Understanding status: the default-off role and fictional
-  qualification harness exist, but no candidate is qualified. DeepSeek remains
-  available for its separately qualified Composer role; no Provider result has
-  changed formal replies or delivery.
+  qualification v3 harness exist. DeepSeek V4 Pro passed the fixed `8x3`
+  Provider matrix at `24/24` after owner-correct source/semantic stability
+  normalization; isolated `1x1` and `3x1` are still pending. DeepSeek remains
+  separately qualified for Composer; no result changed formal replies or
+  delivery.
 
 ## Active Documents
 

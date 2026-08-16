@@ -40,10 +40,13 @@
    safety smoke scored `3/5` and left both installation replies empty. The full
    22-scenario run was correctly not started. These reports are retained as
    failures, not rewritten as passing safety or quality evidence.
-6. The strict Turn Understanding role remains Provider-blocked. DeepSeek V4 Pro
-   passed `24/24` execution, schema, current-source, and semantic checks but
-   reached only `22/24` repeat stability; anonymous diagnostics confirmed both
-   source-span and service-action semantic-key drift. No runtime gate started.
+6. The strict Turn Understanding fictional Provider matrix is qualified.
+   Strict-role-only clause normalization and role-aware semantic signatures
+   corrected two non-authoritative stability mismatches without changing the
+   legacy path. DeepSeek V4 Pro then passed one fixed `8x3` at `24/24` across
+   execution, schema, current-source, semantics, and semantic/source
+   repeatability. The runtime role remains disabled until isolated `1x1` and
+   `3x1` pass.
 
 ## Immediate Queue
 
@@ -130,8 +133,10 @@
 - GLM candidates were rate-limited; DeepSeek V4 Flash passed `7/8`; DeepSeek V4
   Pro passed all `24/24` structural and semantic attempts but only `22/24`
   repeat stability.
-- Qualification report v2 adds privacy-safe per-case structural diagnostics;
-  it does not retain model output or field values and does not change the
-  `100%` gate.
-- No 5013, real conversation, formal-knowledge write, or send-authority change
-  occurred. The Composer role remains independent.
+- Qualification report v3 adds strict-role clause provenance normalization,
+  role-aware semantic-key authority, and separate semantic/source stability;
+  it retains no model output or field values and keeps the `100%` gate.
+- DeepSeek V4 Pro passed one fixed `8x3` with every rate at `100%`, zero
+  timeout/schema failure, zero formal-knowledge write, and zero send change.
+- No 5013 or real-conversation gate has run yet. The Composer role remains
+  independent.

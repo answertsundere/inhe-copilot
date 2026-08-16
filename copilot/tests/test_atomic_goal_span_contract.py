@@ -94,6 +94,78 @@ def test_distinct_atomic_spans_create_two_authoritative_claims(
     assert len(understanding["requested_claims"]) == 2
 
 
+def test_equivalent_unique_sources_in_one_clause_share_canonical_provenance():
+    message = "fictional product body material?"
+    narrow_source = "body material"
+
+    full_goals, full_status, full_diagnostics = (
+        service._sanitize_customer_goals(
+            [_raw_goal(
+                message,
+                message,
+                semantic_key="",
+                claim_type="material",
+            )],
+            message=message,
+            canonicalize_source_clauses=True,
+        )
+    )
+    narrow_goals, narrow_status, narrow_diagnostics = (
+        service._sanitize_customer_goals(
+            [_raw_goal(
+                message,
+                narrow_source,
+                semantic_key="",
+                claim_type="material",
+            )],
+            message=message,
+            canonicalize_source_clauses=True,
+        )
+    )
+
+    assert full_status == narrow_status == "valid"
+    assert full_diagnostics == narrow_diagnostics == []
+    assert full_goals == narrow_goals
+    assert full_goals[0]["source_span_start"] == 0
+    assert full_goals[0]["source_span_end"] == len(message)
+    assert full_goals[0]["goal_summary"] == message
+
+
+def test_multiple_atomic_sources_in_one_clause_keep_exact_provenance():
+    message = "confirm width and height"
+    width = "width"
+    height = "height"
+
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [
+            _raw_goal(
+                message,
+                width,
+                semantic_key="",
+                claim_type="dimensions",
+            ),
+            _raw_goal(
+                message,
+                height,
+                semantic_key="",
+                claim_type="dimensions",
+            ),
+        ],
+        message=message,
+        canonicalize_source_clauses=True,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert {
+        (goal["source_span_start"], goal["source_span_end"])
+        for goal in goals
+    } == {
+        (message.index(width), message.index(width) + len(width)),
+        (message.index(height), message.index(height) + len(height)),
+    }
+
+
 def test_media_request_stays_separate_from_factual_fallback():
     message = "send the dimension image or state the dimensions"
     goals, status, diagnostics = service._sanitize_customer_goals(

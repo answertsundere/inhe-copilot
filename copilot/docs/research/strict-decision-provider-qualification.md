@@ -180,7 +180,18 @@ current-message source span; one carrier-action case varied `semantic_key`.
 The role already used temperature zero and disabled thinking. The result is a
 real provenance/semantic stability failure, not a reason to weaken validation,
 retry for a lucky pass, or invalidate the separately qualified Composer role.
-No strict Turn Understanding runtime was started.
+The follow-up authority audit showed that the exact values were not equally
+authoritative: one unique source substring could be normalized to the same
+current-message clause, and a non-renderable action's free semantic label never
+reached action, evidence, reply, or delivery decisions. The strict-role-only
+normalizer now canonicalizes only exact unique current-message clauses and
+retains exact spans when several atomic goals share one clause. Qualification
+v3 also treats unbound unmapped semantic-key wording as diagnostic while still
+requiring stable presence and exact trusted policy/context keys. One fixed
+post-change `8x3` passed all `24/24` execution, schema, current-source,
+semantic, combined-repeat, semantic-repeat, and source-repeat checks, with zero
+timeout, truncation, schema failure, knowledge write, or send change. No strict
+Turn Understanding runtime has been promoted; isolated gates remain required.
 
 `scripts/qualify_unified_audit_role.py` is the reusable, read-only command for
 that Audit-side `5+5` gate. It reads only `COPILOT_UNIFIED_AUDIT_*`, invokes the

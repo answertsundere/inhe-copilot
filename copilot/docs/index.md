@@ -299,10 +299,14 @@ current-source, and semantic checks but only `22/24` repeat stability. The
 privacy-safe v2 diagnostic attributed the two misses to current-source span
 variation in one material case and semantic-key variation in one carrier-action
 case; it did not retain model output or field values. None of these candidates
-is qualified for the strict Turn Understanding role; the
-separate qualified V4 Flash Composer role is unchanged. No isolated runtime or
-long-conversation gate was started, and `real_customer_accuracy` remains
-`null` with `can_send=false`.
+was promoted from that report. A strict-role-only clause normalizer and
+role-aware qualification v3 subsequently closed the two non-authoritative
+stability mismatches without changing the legacy path. One fixed V4 Pro `8x3`
+then passed all `24/24` execution, schema, current-source, semantic,
+semantic-stability, and source-stability checks with zero knowledge write or
+send change. The fictional Provider matrix is qualified, but isolated runtime
+gates remain pending; the separate V4 Flash Composer role is unchanged,
+`real_customer_accuracy=null`, and `can_send=false`.
 
 ## Architecture Decisions And Research
 
