@@ -57,6 +57,36 @@ def _fallback_api_failed(tracking_no: str) -> str:
     return reply
 
 
+def _lookup_service_unavailable(state: dict) -> bool:
+    unavailable_reasons = {
+        "api_failed",
+        "config_missing",
+        "external_tools_disabled_for_replay",
+        "jst_api_error",
+        "jst_not_configured",
+        "jst_timeout",
+        "timeout",
+        "tool_timeout",
+    }
+    reasons = {str(state.get("jst_fallback_reason") or "").strip().lower()}
+    for tool_name in (
+        "jst_lookup_order_tool",
+        "jst_lookup_outbound_tool",
+        "jst_lookup_tracking_tool",
+    ):
+        result = (state.get("tool_results") or {}).get(tool_name)
+        if isinstance(result, dict) and not result.get("found"):
+            reasons.add(str(result.get("safe_fallback_reason") or "").strip().lower())
+    return bool(reasons & unavailable_reasons)
+
+
+def _fallback_lookup_service_unavailable() -> str:
+    return (
+        "亲，订单号已经收到。目前订单查询服务暂时不可用，"
+        "我这边为您转人工核实最新物流进度，您不用重复提供订单号。"
+    )
+
+
 def _is_address_change_request(msg: str) -> bool:
     return any(word in (msg or "") for word in (
         "\u6539\u5730\u5740",
@@ -551,6 +581,21 @@ def generate_logistics_reply(state: dict) -> dict:
     possible_numeric_id = slots.get("possible_numeric_id", "")
     lookup_id = order_id or possible_numeric_id
     if lookup_id and not order and not tracking_no:
+        if _lookup_service_unavailable(state):
+            return {
+                "suggested_reply": _fallback_lookup_service_unavailable(),
+                "answer_type": "human_review",
+                "requires_human_review": True,
+                "review_reason": "order_lookup_service_unavailable",
+                "trace_steps": state.get("trace_steps", []) + [{
+                    "node": "generate_logistics_reply",
+                    "status": "success",
+                    "duration_ms": 0,
+                    "cache_hit": False,
+                    "answer_type": "human_review",
+                    "summary": "订单标识已提供，查询服务不可用，转人工核实",
+                }],
+            }
         id_type = slots.get("identifier_type", "")
         if id_type == "order_id":
             reply = (

@@ -425,6 +425,54 @@ class TestGroundingGuardOrderHandling:
             f"Should not ask for order when already provided. Reply: {reply}"
         )
 
+
+class TestLogisticsLookupFailureSemantics:
+    """Tool availability failures must not be presented as customer ID errors."""
+
+    @staticmethod
+    def _state(reason: str) -> dict:
+        return {
+            "customer_message": "我的订单什么时候到",
+            "normalized_message": "我的订单什么时候到",
+            "intent": "logistics_eta",
+            "slots": {
+                "order_id": "",
+                "tracking_no": "",
+                "platform_trade_id": "masked-platform-order",
+                "possible_numeric_id": "masked-platform-order",
+                "identifier_type": "platform_trade_id",
+            },
+            "tool_results": {
+                "jst_lookup_outbound_tool": {
+                    "found": False,
+                    "safe_fallback_reason": reason,
+                },
+            },
+            "trace_steps": [],
+        }
+
+    def test_provider_not_configured_does_not_blame_order_number(self):
+        from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
+
+        result = generate_logistics_reply(self._state("jst_not_configured"))
+        reply = result["suggested_reply"]
+
+        assert "订单号已经收到" in reply
+        assert "不用重复提供" in reply
+        assert "是否正确" not in reply
+        assert result["requires_human_review"] is True
+        assert result["review_reason"] == "order_lookup_service_unavailable"
+
+    def test_real_not_found_can_still_request_order_screenshot(self):
+        from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
+
+        result = generate_logistics_reply(self._state("not_found"))
+        reply = result["suggested_reply"]
+
+        assert "订单截图" in reply
+        assert "是否正确" in reply
+        assert result.get("review_reason") != "order_lookup_service_unavailable"
+
     def test_rewrite_aftersales_with_order_id(self):
         from app.services.grounding_validation_service import _rewrite_fallback_reply
         state = {

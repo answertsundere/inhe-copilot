@@ -311,6 +311,11 @@ def test_interactive_platform_trade_lookup_skips_expensive_history_scans(monkeyp
     )
     monkeypatch.setattr(
         live_query,
+        "lookup_order_by_order_id",
+        lambda value: miss("order_id"),
+    )
+    monkeypatch.setattr(
+        live_query,
         "lookup_order_by_platform_order_id",
         lambda value: miss("platform_order_id"),
     )
@@ -342,3 +347,41 @@ def test_interactive_platform_trade_lookup_skips_expensive_history_scans(monkeyp
         "order_id",
         "platform_order_id",
     ]
+
+
+def test_interactive_platform_trade_lookup_preserves_provider_unavailable(monkeypatch):
+    from app.integrations.jst import live_query
+
+    unavailable = lambda query_type: {
+        "found": False,
+        "query_type": query_type,
+        "endpoint": "",
+        "duration_ms": 0,
+        "error_code": "config_missing",
+        "safe_fallback_reason": "config_missing",
+    }
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_so_id",
+        lambda value: unavailable("outbound_so_id"),
+    )
+    monkeypatch.setattr(
+        live_query,
+        "lookup_order_by_order_id",
+        lambda value: unavailable("order_id"),
+    )
+    monkeypatch.setattr(
+        live_query,
+        "lookup_order_by_platform_order_id",
+        lambda value: unavailable("platform_order_id"),
+    )
+
+    result = live_query.lookup_order_by_identifier(
+        "fixture-platform-trade-id",
+        "platform_trade_id",
+        exhaustive=False,
+    )
+
+    assert result["found"] is False
+    assert result["safe_fallback_reason"] == "jst_not_configured"
+    assert result["error_code"] == "config_missing"

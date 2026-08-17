@@ -931,6 +931,50 @@ def _attempt_debug(*results: dict) -> list:
     ]
 
 
+def _aggregate_lookup_failure(
+    *,
+    query_type: str,
+    results: tuple[dict, ...],
+    duration_ms: int,
+    not_found_reason: str,
+) -> dict:
+    """Keep infrastructure failures distinct from completed lookup misses."""
+    reasons = {
+        str(result.get("safe_fallback_reason") or "").strip().lower()
+        for result in results
+        if isinstance(result, dict)
+    }
+    error_codes = {
+        str(result.get("error_code") or "").strip().lower()
+        for result in results
+        if isinstance(result, dict)
+    }
+
+    if reasons & {"jst_not_configured", "config_missing"} or "config_missing" in error_codes:
+        fallback_reason = "jst_not_configured"
+        error_code = "config_missing"
+    elif reasons & {"jst_timeout", "timeout", "tool_timeout"} or "timeout" in error_codes:
+        fallback_reason = "jst_timeout"
+        error_code = "timeout"
+    elif reasons & {"jst_api_error", "api_failed"} or any(
+        code and code not in {"not_found", "not_found_fast_path"}
+        for code in error_codes
+    ):
+        fallback_reason = "jst_api_error"
+        error_code = next((code for code in error_codes if code), "api_error")
+    else:
+        fallback_reason = not_found_reason
+        error_code = None
+
+    return _make_result(
+        found=False,
+        query_type=query_type,
+        duration_ms=duration_ms,
+        error_code=error_code,
+        safe_fallback_reason=fallback_reason,
+    )
+
+
 # Keep this definition after the legacy dispatcher above so imports use the
 # full identifier surface, including JST outer_so_id ("external transaction no").
 def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaustive: bool = True) -> dict:
@@ -970,9 +1014,11 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
             return r3
 
         total_ms = r1.get("duration_ms", 0) + r2.get("duration_ms", 0) + r_out.get("duration_ms", 0) + r3.get("duration_ms", 0)
-        r = _make_result(
-            found=False, query_type="internal_order_id", duration_ms=total_ms,
-            safe_fallback_reason="not_found",
+        r = _aggregate_lookup_failure(
+            query_type="internal_order_id",
+            results=(r1, r2, r_out, r3),
+            duration_ms=total_ms,
+            not_found_reason="not_found",
         )
         r["attempted_paths"] = _attempt_debug(r1, r2, r_out, r3)
         return r
@@ -1014,9 +1060,11 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
             + r_out.get("duration_ms", 0)
             + r3.get("duration_ms", 0)
         )
-        r = _make_result(
-            found=False, query_type="platform_order_id", duration_ms=total_ms,
-            safe_fallback_reason="not_found",
+        r = _aggregate_lookup_failure(
+            query_type="platform_order_id",
+            results=(r1, r2, r_hist, r_out, r3),
+            duration_ms=total_ms,
+            not_found_reason="not_found",
         )
         r["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r3)
         return r
@@ -1041,11 +1089,11 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
                 r_so["query_type"] = "platform_trade_id->so_id_fallback"
                 r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
                 return r_so
-            r = _make_result(
-                found=False,
+            r = _aggregate_lookup_failure(
                 query_type="platform_trade_id",
+                results=(r_out, r_oid, r_so),
                 duration_ms=r_out.get("duration_ms", 0) + r_oid.get("duration_ms", 0) + r_so.get("duration_ms", 0),
-                safe_fallback_reason="not_found_fast_path",
+                not_found_reason="not_found_fast_path",
             )
             r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
             return r
@@ -1056,11 +1104,11 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
                 r_so["query_type"] = "platform_trade_id->so_id_fallback"
                 r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
                 return r_so
-            r = _make_result(
-                found=False,
+            r = _aggregate_lookup_failure(
                 query_type="platform_trade_id",
+                results=(r_out, r_oid, r_so),
                 duration_ms=r_out.get("duration_ms", 0) + r_oid.get("duration_ms", 0) + r_so.get("duration_ms", 0),
-                safe_fallback_reason="not_found_fast_path",
+                not_found_reason="not_found_fast_path",
             )
             r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
             return r
@@ -1091,9 +1139,11 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
             + r_hist.get("duration_ms", 0)
             + r_outer.get("duration_ms", 0)
         )
-        r = _make_result(
-            found=False, query_type="platform_trade_id", duration_ms=total_ms,
-            safe_fallback_reason="not_found",
+        r = _aggregate_lookup_failure(
+            query_type="platform_trade_id",
+            results=(r_out, r_oid, r_so, r_hist, r_outer),
+            duration_ms=total_ms,
+            not_found_reason="not_found",
         )
         r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so, r_hist, r_outer)
         return r
@@ -1124,15 +1174,15 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
     # scans are available to callers that explicitly request exhaustive lookup,
     # but are too expensive for the interactive product-resolution path.
     if not exhaustive:
-        r = _make_result(
-            found=False,
+        r = _aggregate_lookup_failure(
             query_type="unknown_identifier",
+            results=(r_out, r1, r2),
             duration_ms=(
                 r_out.get("duration_ms", 0)
                 + r1.get("duration_ms", 0)
                 + r2.get("duration_ms", 0)
             ),
-            safe_fallback_reason="not_found_fast_path",
+            not_found_reason="not_found_fast_path",
         )
         r["attempted_paths"] = _attempt_debug(r_out, r1, r2)
         return r
@@ -1163,11 +1213,11 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
         + r_outer.get("duration_ms", 0)
         + r3.get("duration_ms", 0)
     )
-    r = _make_result(
-        found=False,
+    r = _aggregate_lookup_failure(
         query_type="unknown_identifier",
+        results=(r_out, r1, r2, r_hist, r_outer, r3),
         duration_ms=total_ms,
-        safe_fallback_reason="not_found_by_any_path",
+        not_found_reason="not_found_by_any_path",
     )
     r["attempted_paths"] = _attempt_debug(r_out, r1, r2, r_hist, r_outer, r3)
     return r

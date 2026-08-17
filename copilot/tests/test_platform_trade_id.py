@@ -556,6 +556,7 @@ class TestUnknownIdentifierPerformance:
         with mock.patch("app.integrations.jst.live_query.lookup_outbound_by_so_id", return_value=slow_miss), \
              mock.patch("app.integrations.jst.live_query.lookup_order_by_order_id", return_value=slow_miss), \
              mock.patch("app.integrations.jst.live_query.lookup_order_by_platform_order_id", return_value=slow_miss), \
+             mock.patch("app.integrations.jst.live_query.lookup_order_by_platform_order_id_history", return_value=slow_miss), \
              mock.patch("app.integrations.jst.live_query.lookup_order_by_outer_so_id", return_value=slow_miss), \
              mock.patch("app.integrations.jst.live_query.lookup_logistics_by_tracking_no", return_value=slow_miss):
             result = lookup_order_by_identifier("9999999999999999999", "unknown_identifier")
@@ -565,7 +566,7 @@ class TestUnknownIdentifierPerformance:
         # Mock calls are instant, so elapsed should be very small.
         # The budget is about the accumulated duration_ms in the result.
         total_api_ms = result.get("duration_ms", 0)
-        assert total_api_ms <= 5 * 600  # 5 paths * 600ms max each = reasonable upper bound
+        assert total_api_ms <= 6 * 600  # Six bounded paths, each capped by its lookup budget.
 
     def test_fast_unknown_identifier_skips_historical_scan(self):
         """Interactive callers can reject an unresolved identifier without history scans."""
