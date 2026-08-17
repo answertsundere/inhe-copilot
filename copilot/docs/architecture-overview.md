@@ -1058,6 +1058,17 @@ evidence remained zero. This qualifies the role-scoped transport/provenance
 checkpoint only; it is not reply-quality evidence or real accuracy, and the
 production flag remains disabled.
 
+The follow-up evidence preflight distinguishes that disabled-flag result from
+the next input boundary. The authorized E2 candidate has no structured
+product/order identity in any of its 21 scenarios; only evidence-required flags
+are present. The query-only snapshot has formal product and knowledge rows, but
+the Pipeline cannot safely bind them without a reviewed exact-identity Sidecar.
+Consequently an evidence-enabled E2 run must fail before Agent execution when
+identity coverage is zero or ambiguous. Product titles, customer text,
+historical replies, and semantic similarity are not identity authority. This
+adds no Graph owner or production flag; it is the existing canonical-input and
+Product Context Pack contract applied to evaluation data.
+
 ### Customer-Conditional Comparison Boundary
 
 The current P1 vertical slice distinguishes a request for a product measurement

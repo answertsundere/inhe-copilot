@@ -80,6 +80,15 @@ and next owner here and in `docs/CHANGELOG.md`.
 - The same fixed-40 had `selected_evidence=0`. It does not qualify factual
   quality or real accuracy. The next owner is the reusable formal evidence
   supply/admission path, not another Composer phrase rule.
+- The authorized E2 `20x1` strict-understanding checkpoint also selected zero
+  evidence, but its Formal Evidence Convergence flag was deliberately disabled.
+  A subsequent local-only preflight traced the next earliest boundary before
+  retrieval: all 21 source scenarios have zero structured product/order
+  identity fields and carry only evidence-required flags. The query-only
+  snapshot itself contains 585 identified products, 1,743 published QA rows,
+  and 7,889 knowledge entries. The correct next owner is therefore the reviewed
+  identity Sidecar/input contract. No title, message, or historical-reply
+  matching may be used to manufacture coverage.
 - `P1-MULTIGOAL-001` repaired a deterministic scope-conflict path in the
   existing Turn Understanding owner. When the exact source span for a
   dimension goal unambiguously names packaging, the complete product, a
@@ -322,19 +331,22 @@ and next owner here and in `docs/CHANGELOG.md`.
 1. `P1-E2-001A` - Obtain data-owner authorization and create a deidentified,
    versioned, hashed long-conversation manifest. Keep raw content, direct
    identifiers, and label answers outside the repository and Agent prompt.
-2. `P1-E2-001B` - Run the existing formal Pipeline with a query-only snapshot
-   and review-only delivery. Compare only equivalent runtimes and preserve
-   `can_send=false`.
-3. `P1-E2-001C` - Independently review goal coverage, continuity, factual
+2. `P1-E2-001B` - Restore or independently review an exact, structured,
+   local-only identity Sidecar for the authorized conversations. Missing and
+   ambiguous mappings fail closed and are reported separately.
+3. `P1-E2-001B-RUN` - With nonzero exact identity coverage, run the existing
+   formal Pipeline against the query-only snapshot with isolated Formal
+   Evidence Convergence, review-only delivery, and `can_send=false`.
+4. `P1-E2-001C` - Independently review goal coverage, continuity, factual
    restraint, unresolved handling, and handoff necessity. Record failures by
    owner without modifying frozen owners.
-4. `P1-SERVICE-ACTION-HELPFULNESS-001` - Use the approved long-conversation
+5. `P1-SERVICE-ACTION-HELPFULNESS-001` - Use the approved long-conversation
    review to locate where unresolved order and after-sales goals lose concrete
    offered actions. Do not repair this with process-language templates.
-5. `P2-LIVE-EVIDENCE-DESIGN` - After P1 acceptance, create the source-of-truth
+6. `P2-LIVE-EVIDENCE-DESIGN` - After P1 acceptance, create the source-of-truth
    ADR and inventory read-only JST/platform authorities. Volatile product,
    price, promotion, order, and stock facts must be read at answer time.
-6. `P3-P4-CX-CONTRACT` - After P1/P2 gates, obtain an ADR for typed current
+7. `P3-P4-CX-CONTRACT` - After P1/P2 gates, obtain an ADR for typed current
    policy/service evidence, durable handoff receipts, non-factual action
    guidance, emotion-aware service strategy, and controlled recommendation.
    recommendation, and durable handoff only after P2/P4 prerequisites. The

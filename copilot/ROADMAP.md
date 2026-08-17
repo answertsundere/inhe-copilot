@@ -52,18 +52,32 @@
    The role remains production-disabled: Formal Evidence Convergence was off,
    selected evidence was zero, and this gate does not establish reply quality
    or real accuracy.
+7. The `P1-E2-001B` evidence preflight found an earlier input-contract gap.
+   The authorized candidate contains 21 conversations but zero structured
+   `sku`/`i_id`/`product_id`/order identities; its product and order context
+   contains only evidence-required flags. The query-only snapshot is not empty:
+   it contains 585 identified products, 1,743 published QA rows, and 7,889
+   knowledge entries. Therefore an evidence-enabled rerun cannot safely bind
+   these conversations to product truth. This is an input/Sidecar gap, not an
+   Evidence Admission failure. Title or conversation-text matching is forbidden.
 
 ## Immediate Queue
 
 1. `P1-FORMAL-KNOWLEDGE-REVIEW-002`: use the existing supervisor lifecycle to
    review identity-linked, high-frequency fact drafts. Do not bulk approve,
    infer missing material or dimensions, or use synthetic identities as truth.
-2. `P1-E2-001B`: use the completed strict-role `20x1` report only as a
-   provenance checkpoint; run the evidence-enabled Supervisor Assist quality
-   slice separately without changing production flags.
-3. `P1-E2-001C`: independent reviewers record completeness, continuity,
+2. `P1-E2-001B`: restore or independently review an exact structured identity
+   Sidecar for the authorized conversations before any evidence-enabled run.
+   The Sidecar must bind by durable source identity, remain outside Agent labels,
+   and fail closed on missing or ambiguous mappings. Do not infer identity from
+   titles or conversation text.
+3. `P1-E2-001B-RUN`: after the Sidecar preflight has nonzero exact coverage,
+   run the evidence-enabled Supervisor Assist quality slice separately without
+   changing production defaults. Report missing-identity and missing-fact cases
+   as context gaps rather than silently evaluating them as zero evidence.
+4. `P1-E2-001C`: independent reviewers record completeness, continuity,
    factual restraint, unresolved coverage, and handoff needs.
-4. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
+5. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
 
 ## Completion Record
 

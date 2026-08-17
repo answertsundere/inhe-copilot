@@ -1,5 +1,18 @@
 # Change Log
 
+## 2026-08-17 - E2 evidence identity preflight
+
+- Recomputed the authorized E2 evidence prerequisites locally without an Agent
+  or external-model call. All 21 scenarios contain zero structured product or
+  order identity fields; they carry only evidence-required flags.
+- Confirmed the query-only snapshot is populated: 585 identified products,
+  1,743 published QA rows, and 7,889 knowledge entries. The next earliest
+  blocker is therefore the reviewed identity Sidecar/input contract, not
+  Evidence Admission or an empty knowledge snapshot.
+- Updated the existing E2 contract to fail closed on missing or ambiguous
+  identity and to forbid title/message/history inference. No production code,
+  feature flag, formal knowledge, model call, reply, or send authority changed.
+
 ## 2026-08-17 - Strict Turn Understanding isolated runtime qualification
 
 - Bound the qualified DeepSeek V4 Pro Turn Understanding role to clean commit
