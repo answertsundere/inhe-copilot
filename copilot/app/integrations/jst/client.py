@@ -16,6 +16,9 @@ from app.integrations.jst.errors import JSTAPIError, JSTConfigError, JSTTimeoutE
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 2.5
+_RATE_LIMIT_CODES = {199, 200}
+_RATE_LIMIT_RETRY_DELAY_SECONDS = 1.0
+_MAX_RATE_LIMIT_RETRIES = 1
 
 
 class JSTClient:
@@ -42,36 +45,40 @@ class JSTClient:
         if not self.is_configured():
             raise JSTConfigError("聚水潭 API 凭证未配置")
 
-        ts = str(int(time.time()))
         biz_str = json.dumps(biz or {}, separators=(",", ":"), ensure_ascii=False)
-        params = {
-            "access_token": self._access_token,
-            "app_key": self._app_key,
-            "biz": biz_str,
-            "charset": "utf-8",
-            "timestamp": ts,
-            "version": "2",
-        }
-        params["sign"] = self._sign(params)
+        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
+            params = {
+                "access_token": self._access_token,
+                "app_key": self._app_key,
+                "biz": biz_str,
+                "charset": "utf-8",
+                "timestamp": str(int(time.time())),
+                "version": "2",
+            }
+            params["sign"] = self._sign(params)
 
-        try:
-            resp = requests.post(
-                f"{self._base_url}/{endpoint}",
-                data=params,
-                timeout=timeout,
-            )
-            result = resp.json()
-        except requests.Timeout:
-            raise JSTTimeoutError(f"聚水潭 API 超时 ({timeout}s): {endpoint}")
-        except requests.RequestException as e:
-            raise JSTTimeoutError(f"聚水潭请求失败: {e}")
+            try:
+                resp = requests.post(
+                    f"{self._base_url}/{endpoint}",
+                    data=params,
+                    timeout=timeout,
+                )
+                result = resp.json()
+            except requests.Timeout:
+                raise JSTTimeoutError(f"聚水潭 API 超时 ({timeout}s): {endpoint}")
+            except requests.RequestException as e:
+                raise JSTTimeoutError(f"聚水潭请求失败: {e}")
 
-        code = result.get("code", -1)
-        if code != 0:
+            code = result.get("code", -1)
+            if code == 0:
+                return result
+            if code in _RATE_LIMIT_CODES and attempt < _MAX_RATE_LIMIT_RETRIES:
+                time.sleep(_RATE_LIMIT_RETRY_DELAY_SECONDS)
+                continue
             raise JSTAPIError(
                 code=code,
                 message=result.get("msg", ""),
                 endpoint=endpoint,
             )
 
-        return result
+        raise JSTAPIError(code=-1, message="unexpected retry exhaustion", endpoint=endpoint)
