@@ -80,6 +80,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/superpowers/specs/2026-08-16-turn-understanding-strict-provider-design.md`
   - defines the default-off, role-scoped strict Turn Understanding transport,
     qualification gates, provenance boundary, and single-flag rollback.
+- `docs/superpowers/specs/2026-08-17-dynamic-product-fact-read-contract-design.md`
+  - defines the existing Product Context Pack as the single fresh-read owner
+    for mutable product/SKU facts, with versioned provenance, value-sensitive
+    evidence identity, exact SKU scope, and fail-closed deletion or mismatch.
 - `docs/superpowers/plans/2026-08-16-turn-understanding-strict-provider.md`
   - records the TDD sequence for role configuration, existing-schema reuse,
     fictional qualification, staged runtime gates, and regression checks.
