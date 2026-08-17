@@ -64,6 +64,13 @@ and next owner here and in `docs/CHANGELOG.md`.
   created 1,898 drafts on the first run and skipped all 1,898 on the second;
   published products, published entries, and chunks remained zero. The source
   candidate hash was unchanged.
+- A later query-only preflight confirmed that all 695 recovered color/weight
+  facts bind uniquely through the existing
+  `knowledge_entries.product_id == KBProduct.i_id` contract. A deterministic
+  local shortlist selects 20 color and 10 weight facts across 30 distinct
+  products using source confidence and a stable hash. It records zero
+  approvals, performs no database write, and does not infer missing material,
+  dimensions, safety, certification, or policy facts.
 - The focused import, lifecycle, Product Context Pack, Evidence Convergence,
   Pipeline-entry, Final Audit, database-guard, and documentation set passed
   `324/324`. The full repository collected 4,558 tests and retained exactly

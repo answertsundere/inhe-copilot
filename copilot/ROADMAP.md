@@ -8,8 +8,8 @@
 | Owner | Codex |
 | Goal | Make the existing product-fact review lifecycle fail closed before supervisors begin reviewing recovered identity drafts. |
 | Scope | Existing KBProduct repository, product management routes, structured backfill, Product Context Pack, lifecycle tests, and durable documentation. No Agent, Prompt, Graph, model, reply owner, or Delivery change. |
-| Status | Published identity, structured fact, logistics, warranty, SKU, or policy-binding changes now return the product to `pending_review`. HTTP create/update/publish and batch lifecycle operations cannot bypass the existing repository transitions, and draft structured fields can be staged for review. |
-| Gate | Only a dedicated supervisor approval can republish a changed product. Pending-review products disappear from Product Context Pack immediately. Recovered material and product-dimension coverage remains absent, so no fact is auto-approved or promoted. |
+| Status | Published identity, structured fact, logistics, warranty, SKU, or policy-binding changes now return the product to `pending_review`. HTTP create/update/publish and batch lifecycle operations cannot bypass the existing repository transitions, and a deterministic local shortlist now exposes 30 identity-bound color/weight drafts for supervisor review without approving them. |
+| Gate | Only a dedicated supervisor approval can republish a changed product or fact. The shortlist has `0` approvals and changes no database state. Pending-review products disappear from Product Context Pack immediately. Recovered material and product-dimension coverage remains absent, so no fact is auto-approved or promoted. |
 
 ## Phase Status
 
@@ -69,9 +69,12 @@
 
 ## Immediate Queue
 
-1. `P1-FORMAL-KNOWLEDGE-REVIEW-002`: use the existing supervisor lifecycle to
-   review identity-linked, high-frequency fact drafts. Do not bulk approve,
-   infer missing material or dimensions, or use synthetic identities as truth.
+1. `P1-FORMAL-KNOWLEDGE-REVIEW-002`: a query-only preflight confirmed 695/695
+   color/weight drafts have one exact `i_id` binding, and a deterministic
+   30-item local shortlist is ready with 20 color and 10 weight facts across
+   30 products. A supervisor must still review each item through the existing
+   lifecycle; do not bulk approve, infer missing material or dimensions, or
+   use synthetic identities as truth.
 2. `P1-E2-001B`: restore or independently review an exact structured identity
    Sidecar for the authorized conversations before any evidence-enabled run.
    The Sidecar must bind by durable source identity, remain outside Agent labels,

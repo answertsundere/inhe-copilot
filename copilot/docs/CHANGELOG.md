@@ -1,5 +1,17 @@
 # Change Log
 
+## 2026-08-17 - Formal knowledge supervisor shortlist
+
+- Read the isolated recovery candidate in query-only mode and confirmed that
+  all 695 color/weight draft facts bind uniquely through the existing
+  `knowledge_entries.product_id == KBProduct.i_id` identity contract.
+- Built a deterministic local supervisor shortlist of 30 distinct products:
+  20 color facts and 10 weight facts, following the observed aggregate demand
+  ordering. The shortlist remains outside Git and records zero approvals.
+- The shortlist did not modify the candidate database, formal knowledge,
+  Agent behavior, feature flags, or Delivery. Material, dimensions, safety,
+  certification, and other absent fact families were not inferred.
+
 ## 2026-08-17 - E2 evidence identity preflight
 
 - Recomputed the authorized E2 evidence prerequisites locally without an Agent
