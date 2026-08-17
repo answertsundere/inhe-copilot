@@ -84,6 +84,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - defines the existing Product Context Pack as the single fresh-read owner
     for mutable product/SKU facts, with versioned provenance, value-sensitive
     evidence identity, exact SKU scope, and fail-closed deletion or mismatch.
+- `docs/superpowers/plans/2026-08-17-dynamic-product-fact-read-contract.md`
+  - records the TDD sequence for fresh mutable-field reads, versioned evidence
+    identity, exact SKU scoping, deletion behavior, regression, and rollout-safe
+    documentation.
 - `docs/superpowers/plans/2026-08-16-turn-understanding-strict-provider.md`
   - records the TDD sequence for role configuration, existing-schema reuse,
     fictional qualification, staged runtime gates, and regression checks.
