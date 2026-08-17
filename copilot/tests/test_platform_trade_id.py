@@ -247,7 +247,7 @@ class TestGenerateLogisticsReplyOutbound:
         return generate_logistics_reply(state)
 
     def test_outbound_shipped_reply_contains_details(self):
-        """outbound 已发出回复包含快递公司、单号、发出时间"""
+        """outbound 已发出回复包含快递公司、脱敏单号、发出时间"""
         state = {
             "normalized_message": "5118207015382036103 快递到哪了",
             "live_order": {
@@ -281,7 +281,8 @@ class TestGenerateLogisticsReplyOutbound:
 
         # 必须包含的关键信息
         assert "顺丰" in reply or "快递" in reply
-        assert "SF0229477422177" in reply
+        assert "尾号2177" in reply
+        assert "SF0229477422177" not in reply
         assert "2026-06-01" in reply
         assert "已发出" in reply or "已经发出" in reply
 

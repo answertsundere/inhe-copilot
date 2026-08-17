@@ -780,6 +780,36 @@ def _extract_legacy_fields(tool_results: dict, state: dict | None = None) -> dic
         if live_order.get("l_id"):
             fields["tracking_no"] = live_order["l_id"]
 
+        current_state = state or {}
+        existing_identity = current_state.get("order_product_identity") or {}
+        if existing_identity.get("status") != "resolved":
+            slots = current_state.get("slots") or {}
+            identifier_type = str(slots.get("identifier_type") or "").strip()
+            identifier = str(
+                slots.get(identifier_type)
+                or slots.get("platform_trade_id")
+                or slots.get("order_id")
+                or slots.get("tracking_no")
+                or ""
+            ).strip()
+            from app.agent.nodes.order_product_resolver import (
+                build_order_product_identity_from_order_data,
+            )
+
+            identity = build_order_product_identity_from_order_data(
+                live_order,
+                current_state,
+                identifier=identifier,
+                identifier_type=identifier_type,
+            )
+            fields["order_product_identity"] = identity
+            fields["product_candidates"] = identity.get("candidates", [])
+            if identity.get("status") == "resolved":
+                fields["matched_product_name"] = identity.get("matched_product_name", "")
+                fields["need_clarification"] = False
+            elif identity.get("status") == "ambiguous":
+                fields["need_clarification"] = True
+
         # 只取第一个成功结果
         break
 

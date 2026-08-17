@@ -499,6 +499,77 @@ class TestToolResultsInEvidence:
         assert len(order_facts) >= 1
         assert any(f.get("source_type") == "jst_sales_out" for f in order_facts)
 
+    def test_outbound_tool_result_hydrates_single_product_identity_context(self):
+        """侧边栏订单查询结果应把商品身份留在内部上下文，不写入客户回复。"""
+        from app.agent.tools.executor import _extract_legacy_fields
+
+        fields = _extract_legacy_fields(
+            {
+                "jst_lookup_outbound_tool": {
+                    "found": True,
+                    "o_id": "internal-order-ref",
+                    "status": "Confirmed",
+                    "logistics_company": "测试快递",
+                    "l_id": "TRACKING1234567890",
+                    "items": [
+                        {
+                            "name": "内部商品名称",
+                            "sku_id": "SKU-INTERNAL-001",
+                            "i_id": "ITEM-INTERNAL-001",
+                            "qty": 1,
+                            "price": 99,
+                        }
+                    ],
+                    "endpoint": "orders/out/simple/query",
+                }
+            },
+            {
+                "slots": {
+                    "identifier_type": "platform_trade_id",
+                    "platform_trade_id": "platform-order-ref",
+                }
+            },
+        )
+
+        identity = fields["order_product_identity"]
+        assert identity["status"] == "resolved"
+        assert identity["source"] == "jst_order_items"
+        assert identity["matched_product_name"] == "内部商品名称"
+        assert identity["internal_product_name"] == "内部商品名称"
+        assert identity["sku_id"] == "SKU-INTERNAL-001"
+        assert identity["i_id"] == "ITEM-INTERNAL-001"
+        assert fields["matched_product_name"] == "内部商品名称"
+
+    def test_outbound_tool_result_does_not_guess_product_for_multiple_primary_items(self):
+        """多商品订单没有可靠上下文时不得随意选择第一项。"""
+        from app.agent.tools.executor import _extract_legacy_fields
+
+        fields = _extract_legacy_fields(
+            {
+                "jst_lookup_outbound_tool": {
+                    "found": True,
+                    "o_id": "internal-order-ref",
+                    "status": "Confirmed",
+                    "items": [
+                        {"name": "商品甲", "sku_id": "SKU-A", "i_id": "ITEM-A", "price": 10},
+                        {"name": "商品乙", "sku_id": "SKU-B", "i_id": "ITEM-B", "price": 20},
+                    ],
+                }
+            },
+            {
+                "normalized_message": "我的快递到哪里了",
+                "slots": {
+                    "identifier_type": "platform_trade_id",
+                    "platform_trade_id": "platform-order-ref",
+                },
+            },
+        )
+
+        identity = fields["order_product_identity"]
+        assert identity["status"] == "ambiguous"
+        assert identity["reason"] == "ambiguous_multi_item_order"
+        assert "matched_product_name" not in fields
+
     def test_sop_tool_result_generates_sop_evidence(self):
         """sop_lookup_tool 结果生成 sop_evidence"""
         from app.agent.nodes.evidence_builder import evidence_builder

@@ -851,6 +851,44 @@ def _unresolved(status: str, identifier: str = "", identifier_type: str = "", re
     }
 
 
+def build_order_product_identity_from_order_data(
+    order_data: dict,
+    state: dict,
+    *,
+    identifier: str = "",
+    identifier_type: str = "",
+) -> dict:
+    """Resolve product identity from an already-authorized order lookup result.
+
+    Tool execution and the dedicated resolver must share the same item-selection
+    contract. A multi-item order remains ambiguous unless the existing resolver
+    can identify one item from structured conversation context.
+    """
+    items = order_data.get("items", []) if isinstance(order_data, dict) else []
+    items = [item for item in items if isinstance(item, dict)]
+    if not items:
+        return _unresolved(
+            "unresolved",
+            identifier,
+            identifier_type,
+            "order_items_missing",
+        )
+
+    selected, confidence, reason = _pick_order_item(items, state)
+    if selected:
+        return _identity_from_item(
+            selected,
+            confidence,
+            reason,
+            order_data,
+            identifier,
+            identifier_type,
+        )
+
+    status = "ambiguous" if reason == "ambiguous_multi_item_order" else "unresolved"
+    return _unresolved(status, identifier, identifier_type, reason, items)
+
+
 def order_product_resolver(state: dict) -> dict:
     t0 = time.time()
     conversation_id = state.get("conversation_id") or "default"

@@ -405,7 +405,8 @@ class TestFallbackDiversity:
         """场景A: 有物流单号但聚水潭未查到 → 特定话术"""
         from app.agent.nodes.generate_logistics_reply import _fallback_tracking_no_only
         reply = _fallback_tracking_no_only("YT1234567890")
-        assert "YT1234567890" in reply
+        assert "尾号7890" in reply
+        assert "YT1234567890" not in reply
         assert "暂未在系统中查到" in reply or "未查到" in reply
         assert "订单号" in reply
 
@@ -423,7 +424,8 @@ class TestFallbackDiversity:
         from app.agent.nodes.generate_logistics_reply import _fallback_low_confidence_signed
         reply = _fallback_low_confidence_signed("ZT123456", "中通")
         assert "暂无法确认" in reply
-        assert "ZT123456" in reply
+        assert "尾号3456" in reply
+        assert "ZT123456" not in reply
         assert "核实" in reply or "订单号" in reply or "截图" in reply
         # 不应建议去快递官网/App
         assert "官方渠道" not in reply
@@ -434,7 +436,8 @@ class TestFallbackDiversity:
         from app.agent.nodes.generate_logistics_reply import _fallback_api_failed
         reply = _fallback_api_failed("SF1234567890")
         assert "不可用" in reply or "暂时" in reply
-        assert "SF1234567890" in reply
+        assert "尾号7890" in reply
+        assert "SF1234567890" not in reply
 
     def test_fallbacks_are_different(self):
         """4 种 fallback 话术互不相同"""

@@ -15,10 +15,21 @@ def _get_order_items_text(order: dict) -> str:
     return "、".join(item_names[:3]) if item_names else "您购买的商品"
 
 
+def _customer_visible_tracking_reference(tracking_no: str) -> str:
+    """Return a useful customer-visible reference without exposing the full ID."""
+    value = str(tracking_no or "").strip()
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return value
+    return f"尾号{value[-4:]}"
+
+
 def _fallback_tracking_no_only(tracking_no: str) -> str:
     """场景A: 有物流单号但聚水潭未查到关联订单"""
+    tracking_ref = _customer_visible_tracking_reference(tracking_no)
     return (
-        f"亲，我帮您查了一下快递单号{tracking_no}，"
+        f"亲，我帮您查了一下快递单号{tracking_ref}，"
         f"暂未在系统中查到对应的物流信息。\n"
         f"麻烦您发一下订单号或订单截图，我帮您继续核实～"
     )
@@ -31,7 +42,7 @@ def _fallback_order_shipped_no_sync(order, l_id: str, courier: str) -> str:
     if courier:
         reply += f"，由{courier}承运"
     if l_id:
-        reply += f"，物流单号：{l_id}"
+        reply += f"，物流单号{_customer_visible_tracking_reference(l_id)}"
     reply += "。\n"
     reply += "物流信息可能需要1-2个工作日同步更新，请您耐心等待。"
     reply += "\n如有疑问欢迎随时联系我们哦～"
@@ -42,7 +53,7 @@ def _fallback_low_confidence_signed(tracking_no: str, courier: str) -> str:
     """场景C: 物流数据返回签收但证据不足"""
     reply = "亲，我帮您查到的物流信息显示该包裹可能已送达，但暂无法确认具体签收状态。"
     if tracking_no:
-        reply += f"\n物流单号：{tracking_no}。"
+        reply += f"\n物流单号{_customer_visible_tracking_reference(tracking_no)}。"
     reply += "\n麻烦您发一下订单号或订单截图，我帮您进一步核实签收详情。"
     reply += "\n如需进一步帮助，也可以提供更多信息，我来帮您跟进。"
     return reply
@@ -52,7 +63,7 @@ def _fallback_api_failed(tracking_no: str) -> str:
     """场景D: 接口失败/超时"""
     reply = "亲，抱歉，物流查询服务暂时不可用，我们正在加紧恢复中。"
     if tracking_no:
-        reply += f"\n您的物流单号：{tracking_no}，建议您稍后再试或提供订单号让我帮您核实。"
+        reply += f"\n您的物流单号{_customer_visible_tracking_reference(tracking_no)}，建议您稍后再试或提供订单号让我帮您核实。"
     reply += "\n如需帮助欢迎随时联系我们哦～"
     return reply
 
@@ -186,7 +197,7 @@ def _address_or_intercept_reply(msg: str, order: dict, order_status: str, courie
         if courier:
             reply += f"\uff0c\u5feb\u9012\u662f{courier}"
         if l_id:
-            reply += f"\uff0c\u5355\u53f7\u662f{l_id}"
+            reply += f"\uff0c\u5355\u53f7{_customer_visible_tracking_reference(l_id)}"
         if send_date:
             reply += f"\uff0c\u53d1\u51fa\u65f6\u95f4\u662f{send_date}"
         reply += "\u3002"
@@ -397,7 +408,7 @@ def generate_logistics_reply(state: dict) -> dict:
             reply = f"亲，您的订单（{items_text}）已部分发货。"
             reply += "\n部分商品已发出，剩余商品正在仓库加紧备货中。"
             if l_id:
-                reply += f"\n已发包裹物流单号：{l_id}"
+                reply += f"\n已发包裹物流单号{_customer_visible_tracking_reference(l_id)}"
             reply += "\n具体送达时间以实际物流更新为准，如有疑问欢迎随时联系我们哦～"
             return {
                 "suggested_reply": reply,
@@ -424,7 +435,7 @@ def generate_logistics_reply(state: dict) -> dict:
                 if courier:
                     reply += f"，快递是{courier}"
                 if l_id:
-                    reply += f"，单号是{l_id}"
+                    reply += f"，单号{_customer_visible_tracking_reference(l_id)}"
                 if send_date:
                     reply += f"，发出时间是{send_date}"
                 reply += "。具体送达时间以实际物流更新为准～"
@@ -444,7 +455,7 @@ def generate_logistics_reply(state: dict) -> dict:
             if (order_status == "delivered" or logistics_trace.get("is_delivered")) and not low_conf:
                 reply = f"亲，您的订单（{items_text}）{courier}包裹已签收。"
                 if l_id:
-                    reply += f"（单号：{l_id}）"
+                    reply += f"（单号{_customer_visible_tracking_reference(l_id)}）"
                 if latest:
                     reply += f"\n签收时间：{latest.get('time', '')} {latest.get('context', '')}"
                 reply += "\n如对商品有任何问题，请及时联系我们处理哦。"
@@ -455,12 +466,12 @@ def generate_logistics_reply(state: dict) -> dict:
                 # 低可信度：不肯定签收，引导核实
                 reply = f"亲，您的订单（{items_text}）的物流信息更新较少，目前暂时无法确认具体状态。"
                 if l_id:
-                    reply += f"\n物流单号：{l_id}。"
+                    reply += f"\n物流单号{_customer_visible_tracking_reference(l_id)}。"
                 reply += "\n麻烦您发一下订单截图，我帮您进一步核实～"
             else:
                 reply = f"亲，您的订单（{items_text}）已由{courier}发货"
                 if l_id:
-                    reply += f"，物流单号：{l_id}"
+                    reply += f"，物流单号{_customer_visible_tracking_reference(l_id)}"
                 reply += "。"
                 if latest:
                     reply += f"\n最新物流：{latest.get('time', '')} {latest.get('context', '')}"
@@ -504,7 +515,7 @@ def generate_logistics_reply(state: dict) -> dict:
         trace_status = logistics_trace.get("status", "")
 
         if logistics_trace.get("is_delivered") and not low_conf:
-            reply = f"亲，我帮您查了一下，{courier}快递（单号：{l_id}）显示已签收。"
+            reply = f"亲，我帮您查了一下，{courier}快递（单号{_customer_visible_tracking_reference(l_id)}）显示已签收。"
             if latest:
                 reply += f"\n签收时间：{latest.get('time', '')} {latest.get('context', '')}"
             reply += "\n如对商品有任何问题，请及时联系我们处理哦。"
@@ -512,7 +523,7 @@ def generate_logistics_reply(state: dict) -> dict:
             # 场景C: 证据不足的签收
             reply = _fallback_low_confidence_signed(l_id, courier)
         elif low_conf:
-            reply = f"亲，我查到这个单号（{l_id}）目前物流信息较少，状态需要进一步核实。"
+            reply = f"亲，我查到这个单号（{_customer_visible_tracking_reference(l_id)}）目前物流信息较少，状态需要进一步核实。"
             reply += "\n麻烦您发一下订单号或订单截图，我帮您继续核实～"
         elif trace_status == "api_failed":
             # 场景D: 接口失败
@@ -520,7 +531,7 @@ def generate_logistics_reply(state: dict) -> dict:
         else:
             reply = f"亲，我帮您查了一下{courier}的物流动态哦～"
             if l_id:
-                reply += f"（单号：{l_id}）"
+                reply += f"（单号{_customer_visible_tracking_reference(l_id)}）"
             if latest:
                 reply += f"\n最新更新：{latest.get('time', '')} {latest.get('context', '')}"
             reply += "\n具体送达时间以实际物流更新为准，如有疑问欢迎随时联系我们哦～"
