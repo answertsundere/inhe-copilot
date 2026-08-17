@@ -280,3 +280,168 @@ def test_unknown_identifier_not_found_checks_outer_so_id_before_tracking(monkeyp
     )
     tracking_index = next(i for i, (endpoint, _) in enumerate(calls) if endpoint == "logistic/query")
     assert outer_scan_index < tracking_index
+
+
+def test_outer_so_id_scan_continues_past_legacy_five_page_limit(monkeypatch):
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "PLATFORM-ORDER-TARGET"
+    calls = []
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            assert endpoint == "orders/single/query"
+            calls.append(dict(params))
+            page_index = params["page_index"]
+            if page_index < 7:
+                return {
+                    "data": {
+                        "orders": [
+                            {
+                                "o_id": f"order-{page_index}-{row_index}",
+                                "outer_so_id": f"OTHER-{page_index}-{row_index}",
+                            }
+                            for row_index in range(100)
+                        ]
+                    }
+                }
+            if page_index == 7:
+                return {
+                    "data": {
+                        "orders": [
+                            {
+                                "o_id": "matched-order",
+                                "outer_so_id": target,
+                                "items": [{"name": "matched item"}],
+                            }
+                        ]
+                    }
+                }
+            raise AssertionError("scan must stop after the target is found")
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_order_by_outer_so_id(target)
+
+    assert result["found"] is True
+    assert result["data"]["o_id"] == "matched-order"
+    assert [call["page_index"] for call in calls] == list(range(1, 8))
+    assert result["scanned_pages"] == 7
+
+
+def test_outer_so_id_scan_fails_closed_when_provider_repeats_a_full_page(monkeypatch):
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    calls = []
+    repeated_orders = [
+        {"o_id": f"same-{row_index}", "outer_so_id": f"OTHER-{row_index}"}
+        for row_index in range(100)
+    ]
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            calls.append(dict(params))
+            return {"data": {"orders": repeated_orders}}
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_order_by_outer_so_id("MISSING-TARGET")
+
+    assert result["found"] is False
+    assert result["safe_fallback_reason"] == "pagination_stalled"
+    assert result["error_code"] == "pagination_stalled"
+    assert [call["page_index"] for call in calls] == [1, 2]
+
+
+def test_outer_so_id_scan_matches_exact_item_level_platform_identifier(monkeypatch):
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "ITEM-LEVEL-PLATFORM-ORDER"
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            return {
+                "data": {
+                    "orders": [
+                        {
+                            "o_id": "internal-order",
+                            "outer_so_id": "",
+                            "items": [
+                                {
+                                    "outer_oi_id": target,
+                                    "sku_id": "GENERIC-SKU",
+                                    "name": "generic item",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_order_by_outer_so_id(target)
+
+    assert result["found"] is True
+    assert result["data"]["o_id"] == "internal-order"
+    assert result["data"]["outer_so_id"] == target
+
+
+def test_platform_trade_dispatch_passes_explicit_jst_shop_to_complete_scan(monkeypatch):
+    from app.integrations.jst import live_query
+
+    miss = {"found": False, "duration_ms": 0, "safe_fallback_reason": "not_found"}
+    monkeypatch.setattr(live_query, "lookup_outbound_by_so_id", lambda *args, **kwargs: dict(miss))
+    monkeypatch.setattr(live_query, "lookup_order_by_order_id", lambda *args, **kwargs: dict(miss))
+    monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id", lambda *args, **kwargs: dict(miss))
+    monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id_history", lambda *args, **kwargs: dict(miss))
+    captured = []
+
+    def fake_outer(identifier, *, max_pages=None, shop_id=""):
+        captured.append((identifier, max_pages, shop_id))
+        return dict(miss)
+
+    monkeypatch.setattr(live_query, "lookup_order_by_outer_so_id", fake_outer)
+
+    result = live_query.lookup_order_by_identifier(
+        "PLATFORM-ORDER",
+        "platform_trade_id",
+        shop_id="JST-SHOP-42",
+    )
+
+    assert result["found"] is False
+    assert captured == [("PLATFORM-ORDER", None, "JST-SHOP-42")]
+
+
+def test_outer_so_id_scan_rejects_matching_identifier_from_another_shop(monkeypatch):
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "SAME-PLATFORM-ORDER"
+    calls = []
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            calls.append(dict(params))
+            return {
+                "data": {
+                    "orders": [
+                        {
+                            "o_id": "wrong-shop-order",
+                            "outer_so_id": target,
+                            "shop_id": "OTHER-SHOP",
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_order_by_outer_so_id(target, shop_id="EXPECTED-SHOP")
+
+    assert result["found"] is False
+    assert result["safe_fallback_reason"] == "outer_so_id_not_found_in_complete_recent_scan"
+    assert calls[0]["shop_id"] == "EXPECTED-SHOP"

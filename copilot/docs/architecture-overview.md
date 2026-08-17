@@ -195,6 +195,18 @@ state, and logistics identity can seed the same canonical turn without title
 guessing. Independently integrated stores therefore remain separated without
 coupling Agent reasoning to JST-specific IDs.
 
+The read-only JST fallback scans every page returned for the current provider
+window and stops only on an exact identifier match, the provider's reported
+last page, or an explicit pagination-integrity failure. It matches exact order-
+and item-level external identifiers and carries an explicit `jst_shop_id`
+through the fallback scan. A repeated full page is treated as
+`pagination_stalled`, not as a completed lookup miss. This does not imply that
+every platform identifier is visible to the generic JST OpenAPI: Taobao/Tmall
+orders require platform Sidecar context or an authorized Qimen adapter because
+the ordinary order API excludes those orders and sales-outbound responses omit
+their sensitive online order identifiers. Provider invisibility is therefore a
+context/capability gap, not evidence that an order does not exist.
+
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.
 

@@ -331,17 +331,26 @@ def lookup_order_by_platform_order_id_history(so_id: str, *, days: int = 75) -> 
     return r_copy
 
 
-def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict:
-    """Find an order by JST outer_so_id via a bounded recent order scan.
+def lookup_order_by_outer_so_id(
+    outer_so_id: str,
+    *,
+    max_pages: Optional[int] = None,
+    shop_id: str = "",
+) -> dict:
+    """Find an order by JST outer_so_id by scanning every returned page.
 
     The JST UI exposes "external transaction no" separately from so_id. The
     public order endpoint does not appear to support an exact outer_so_id
-    parameter, so this scans recent orders and matches the returned field.
+    parameter, so this scans recent orders and matches the returned field. By
+    default the scan stops only at the provider's real last page or when the
+    target is found. ``max_pages`` remains an explicit caller-side diagnostic
+    limit; it is not the interactive default.
     """
     if not outer_so_id:
         return _make_result(found=False, query_type="outer_so_id", safe_fallback_reason="empty_id")
 
-    cache_key = f"outer:{outer_so_id}"
+    normalized_shop_id = str(shop_id or "").strip()
+    cache_key = f"outer:{normalized_shop_id}:{outer_so_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
@@ -351,19 +360,66 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
     now = datetime.now()
     week_ago = now - timedelta(days=6)
     target = str(outer_so_id).strip()
+    page_index = 1
+    scanned_pages = 0
+    page_fingerprints: set[tuple[tuple[str, str, str], ...]] = set()
+    terminal_result: Optional[dict] = None
 
     try:
-        for page_index in range(1, max_pages + 1):
-            result = client.call("orders/single/query", {
+        while True:
+            if max_pages is not None and page_index > max_pages:
+                duration_ms = int((time.time() - t0) * 1000)
+                terminal_result = _make_result(
+                    found=False,
+                    endpoint="orders/single/query",
+                    query_type="outer_so_id_scan",
+                    duration_ms=duration_ms,
+                    error_code="scan_page_limit_reached",
+                    safe_fallback_reason="scan_page_limit_reached",
+                )
+                terminal_result["scanned_pages"] = scanned_pages
+                break
+
+            params = {
                 "page_index": page_index,
                 "page_size": 100,
                 "modified_begin": week_ago.strftime("%Y-%m-%d 00:00:00"),
                 "modified_end": now.strftime("%Y-%m-%d 23:59:59"),
-            })
-            orders = result.get("data", {}).get("orders", [])
+            }
+            if normalized_shop_id:
+                params["shop_id"] = normalized_shop_id
+            result = client.call("orders/single/query", params)
+            data = result.get("data", {}) or {}
+            orders = data.get("orders", []) or []
+            scanned_pages += 1
+
+            page_fingerprint = tuple(
+                (
+                    str(order.get("o_id") or ""),
+                    str(order.get("so_id") or ""),
+                    str(order.get("outer_so_id") or ""),
+                )
+                for order in orders
+                if isinstance(order, dict)
+            )
+            if orders and page_fingerprint in page_fingerprints:
+                duration_ms = int((time.time() - t0) * 1000)
+                terminal_result = _make_result(
+                    found=False,
+                    endpoint="orders/single/query",
+                    query_type="outer_so_id_scan",
+                    duration_ms=duration_ms,
+                    error_code="pagination_stalled",
+                    safe_fallback_reason="pagination_stalled",
+                )
+                terminal_result["scanned_pages"] = scanned_pages
+                break
+            page_fingerprints.add(page_fingerprint)
+
             for order in orders:
-                candidate = str(order.get("outer_so_id") or "").strip()
-                if candidate == target or (candidate and target in candidate):
+                if normalized_shop_id and str(order.get("shop_id") or "").strip() != normalized_shop_id:
+                    continue
+                if target in _outbound_identifiers(order):
                     duration_ms = int((time.time() - t0) * 1000)
                     r = _make_result(
                         found=True,
@@ -372,20 +428,30 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
                         query_type="outer_so_id_scan",
                         duration_ms=duration_ms,
                     )
+                    r["scanned_pages"] = scanned_pages
                     _cache_set(cache_key, r, True)
                     return r
 
-            if len(orders) < 100:
+            page_count = data.get("page_count") or data.get("page_total")
+            try:
+                reached_reported_end = bool(page_count) and page_index >= int(page_count)
+            except (TypeError, ValueError):
+                reached_reported_end = False
+            if reached_reported_end or len(orders) < 100:
                 break
+            page_index += 1
 
-        duration_ms = int((time.time() - t0) * 1000)
-        r = _make_result(
-            found=False,
-            endpoint="orders/single/query",
-            query_type="outer_so_id_scan",
-            duration_ms=duration_ms,
-            safe_fallback_reason="outer_so_id_not_found_in_recent_orders",
-        )
+        if terminal_result is None:
+            duration_ms = int((time.time() - t0) * 1000)
+            terminal_result = _make_result(
+                found=False,
+                endpoint="orders/single/query",
+                query_type="outer_so_id_scan",
+                duration_ms=duration_ms,
+                safe_fallback_reason="outer_so_id_not_found_in_complete_recent_scan",
+            )
+            terminal_result["scanned_pages"] = scanned_pages
+        r = terminal_result
 
     except (JSTConfigError, JSTTimeoutError, JSTAPIError) as e:
         duration_ms = int((time.time() - t0) * 1000)
@@ -401,6 +467,7 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
             error_message=str(e),
             safe_fallback_reason=code,
         )
+        r["scanned_pages"] = scanned_pages
 
     _cache_set(cache_key, r, r["found"])
     return r
@@ -1046,7 +1113,7 @@ def lookup_order_by_identifier(
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_out)
             return r_out
 
-        r3 = lookup_order_by_outer_so_id(identifier)
+        r3 = lookup_order_by_outer_so_id(identifier, shop_id=shop_id)
         if r3["found"]:
             r3["query_type"] = "internal_order_id->outer_so_id_fallback"
             r3["attempted_paths"] = _attempt_debug(r1, r2, r_out, r3)
@@ -1086,7 +1153,7 @@ def lookup_order_by_identifier(
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out)
             return r_out
 
-        r3 = lookup_order_by_outer_so_id(identifier)
+        r3 = lookup_order_by_outer_so_id(identifier, shop_id=shop_id)
         if r3["found"]:
             r3["query_type"] = "platform_order_id->outer_so_id_fallback"
             r3["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r3)
@@ -1165,7 +1232,7 @@ def lookup_order_by_identifier(
             return r_hist
 
         # Fallback: outer_so_id scan (orders/single/query 扫描)
-        r_outer = lookup_order_by_outer_so_id(identifier)
+        r_outer = lookup_order_by_outer_so_id(identifier, shop_id=shop_id)
         if r_outer["found"]:
             r_outer["query_type"] = "platform_trade_id->outer_so_id_scan"
             r_outer["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so, r_hist, r_outer)
@@ -1232,7 +1299,7 @@ def lookup_order_by_identifier(
         r_hist["attempted_paths"] = _attempt_debug(r_out, r1, r2) + r_hist.get("attempted_paths", [])
         return r_hist
 
-    r_outer = lookup_order_by_outer_so_id(identifier)
+    r_outer = lookup_order_by_outer_so_id(identifier, shop_id=shop_id)
     if r_outer["found"]:
         r_outer["query_type"] = "unknown->outer_so_id_scan"
         r_outer["attempted_paths"] = _attempt_debug(r_out, r1, r2, r_hist, r_outer)

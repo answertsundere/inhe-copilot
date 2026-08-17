@@ -19,7 +19,7 @@
 | **identifier_router** | `identifier_router.py` | test_identifier_isolation | 6 种 identifier_type 路由 |
 | **response_strategy_router** | `response_strategy_router.py` | test_tool_registry | 7 种策略 + allowed/required/forbidden 工具列表 |
 | **JST 客户端** | `app/integrations/jst/client.py` | - | MD5 签名，endpoint 白名单，超时控制 |
-| **JST 查询层** | `app/integrations/jst/live_query.py` | test_jst_outer_so_id_lookup | 5 个查询函数 + identifier dispatcher，TTL 缓存 |
+| **JST 查询层** | `app/integrations/jst/live_query.py` | test_jst_outer_so_id_lookup | identifier dispatcher、TTL 缓存、外部订单全页扫描、重复页停滞保护 |
 | **JST 实时查询节点** | `jst_live_query.py` | test_agent_graph, test_logistics_chain | 统一入口，状态映射（含销售出库状态） |
 | **销售出库查询** | `orders/out/simple/query` 链路 | test_platform_trade_id | platform_trade_id → outbound_so_id → outer_so_id scan |
 | **evidence_builder** | `evidence_builder.py` | test_platform_trade_id | 分层证据：order_facts / logistics_facts / product_facts / policy_facts / sop / template / faq |
@@ -44,7 +44,7 @@
 
 | 模块 | 说明 | 限制 |
 |---|---|---|
-| **物流查询（外部交易号）** | platform_trade_id → orders/out/simple/query | 仅限最近有出库记录的单号 |
+| **物流查询（外部交易号）** | platform_trade_id → 精确出库查询 → 全页外部标识扫描 | 普通 OpenAPI 不暴露淘系线上单号；淘系须由千牛 Sidecar 或已授权奇门适配器提供映射 |
 | **物流查询（内部订单号）** | internal_order_id → orders/single/query | 需要精确 o_id |
 | **物流查询（快递单号）** | tracking_no → logistic/query 扫描 | 仅扫描最近 7 天 100 条，大量单号查不到 |
 | **商品咨询** | RAG 知识库检索 | 依赖知识库内容质量 |
