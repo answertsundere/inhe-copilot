@@ -207,6 +207,38 @@ class TestPlannerNoDuplicateRequest:
         plan = result["response_strategy_plan"]
         assert "order_id" not in plan["missing_slots"]
 
+    def test_live_logistics_fact_overrides_eta_certainty_strategy(self):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "logistics_eta",
+            "customer_concern": "wants_eta_certainty",
+            "customer_state": {},
+            "conversation_context": {},
+            "normalized_message": "Where is the shipment now?",
+            "slots": {
+                "platform_trade_id": "PLATFORM-REFERENCE",
+                "identifier_type": "platform_trade_id",
+            },
+            "order_found": True,
+            "live_order": {
+                "status": "Confirmed",
+                "logistics_company": "carrier",
+                "l_id": "TRACKING-REFERENCE",
+            },
+            "logistics_trace": {
+                "found": True,
+                "latest_status": "shipped",
+            },
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["reply_goal"] == "query_order_status"
+        assert plan["should_answer_directly"] is True
+        assert plan["should_ask_slot"] is False
+        assert plan["missing_slots"] == []
+
     def test_aftersales_without_identifier_requests_one_order_reference(self):
         from app.agent.nodes.response_strategy_planner import response_strategy_planner
 

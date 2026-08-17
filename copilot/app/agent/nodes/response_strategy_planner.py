@@ -179,6 +179,18 @@ def response_strategy_planner(state: dict) -> dict:
         should_ask_slot = True
         missing_slots = ["product_link", "product_screenshot", "sku"]
 
+    elif (
+        intent in ("logistics_eta", "logistics_trace", "shipping", "logistics")
+        and (state.get("order_found") or state.get("live_order") or state.get("logistics_trace"))
+    ):
+        # A completed live lookup is authoritative for the current logistics
+        # turn. Customer concern may still influence tone, but it must not
+        # replace the tool-backed answer goal with a generic ETA boundary.
+        reply_goal = "query_order_status"
+        should_answer_directly = True
+        missing_slots = []
+        should_ask_slot = False
+
     elif concern == "wants_eta_certainty":
         reply_goal = "explain_no_guarantee"
         tone = "reassuring"
