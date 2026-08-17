@@ -7,6 +7,8 @@ nearby fields and it does not generate customer replies by itself.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from app.services.fact_type_alias_service import (
@@ -122,24 +124,38 @@ def build_product_spec_evidence_candidates(
     customer_text = _customer_text(field_fact_type, value_text)
     product_id = profile.get("product_id")
     source_field_keys = [key for key, _value in values]
-    sku_list = [
-        str(item.get("sku_code") or "").strip()
-        for item in profile.get("sku_list", [])
-        if isinstance(item, dict) and str(item.get("sku_code") or "").strip()
-    ]
-    sku = sku_list[0] if sku_list else ""
+    source_version = int(profile.get("source_version") or 0)
+    source_updated_at = str(profile.get("source_updated_at") or "").strip()
+    value_sha256 = hashlib.sha256(
+        json.dumps(
+            {"fields": source_field_keys, "value": value_text},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    sku_scope = _selected_sku_scope(profile, field_fact_type)
+    requested_sku = str(profile.get("requested_sku") or "").strip()
+    sku = requested_sku or (sku_scope[0] if sku_scope else "")
     return [{
-        "evidence_id": f"kbproduct:{product_id}:{requested}:{'|'.join(source_field_keys)}",
+        "evidence_id": (
+            f"kbproduct:{product_id}:{requested}:v{source_version}:"
+            f"{value_sha256}:{'|'.join(source_field_keys)}"
+        ),
         "source_type": "product_spec",
         "source_table": "kb_product",
         "source_id": str(product_id or ""),
         "product_id": product_id,
         "sku": sku,
+        "sku_scope": sku_scope,
         "item_id": profile.get("i_id", ""),
         "product_name": profile.get("product_name", ""),
         "fact_type": requested,
         "requested_fact_type": requested,
         "source_field_keys": source_field_keys,
+        "source_version": source_version,
+        "source_updated_at": source_updated_at,
+        "value_sha256": value_sha256,
         "value": value_text,
         "customer_text": customer_text,
         "verification_status": "verified",
@@ -243,7 +259,7 @@ def _pick_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str, Any
 def _pick_sku_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str, Any]]:
     if fact_type != "gross_weight":
         return []
-    sku_list = profile.get("sku_list") if isinstance(profile.get("sku_list"), list) else []
+    sku_list = _selected_sku_rows(profile)
     rows = []
     for item in sku_list:
         if not isinstance(item, dict):
@@ -270,6 +286,46 @@ def _pick_sku_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str,
     if len(rows) > 8:
         preview = f"{preview}；另有{len(rows) - 8}个规格需按具体规格核对"
     return [("sku_list.gross_weight_kg", f"不同规格毛重不同，{preview}")]
+
+
+def _selected_sku_rows(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    sku_list = profile.get("sku_list") if isinstance(profile.get("sku_list"), list) else []
+    rows = [item for item in sku_list if isinstance(item, dict)]
+    requested_sku = str(profile.get("requested_sku") or "").strip().casefold()
+    if not requested_sku:
+        return rows
+
+    matched = []
+    for item in rows:
+        identifiers = {
+            str(item.get(key) or "").strip().casefold()
+            for key in ("sku_code", "sku_id", "sku_variant_key")
+            if str(item.get(key) or "").strip()
+        }
+        if requested_sku in identifiers:
+            matched.append(item)
+    return matched
+
+
+def _selected_sku_scope(profile: dict[str, Any], fact_type: str) -> list[str]:
+    if fact_type != "gross_weight":
+        return []
+    requested_sku = str(profile.get("requested_sku") or "").strip()
+    rows = _selected_sku_rows(profile)
+    if requested_sku:
+        return [requested_sku] if rows else []
+
+    scope = []
+    for item in rows:
+        value = str(
+            item.get("sku_variant_key")
+            or item.get("sku_code")
+            or item.get("sku_id")
+            or ""
+        ).strip()
+        if value and value not in scope:
+            scope.append(value)
+    return scope
 
 
 def _format_values(values: list[tuple[str, Any]]) -> str:

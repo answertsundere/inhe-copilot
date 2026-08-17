@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -496,6 +497,113 @@ def test_product_context_pack_answers_gross_weight_from_product_card(product_con
     assert pack["product_first_evidence_pack"]["missing_required_evidence"] == []
 
 
+def test_product_context_pack_rereads_mutable_product_fact_with_versioned_evidence(
+    product_context_db,
+):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="DYNAMIC_WEIGHT_001",
+            product_name="dynamic product",
+            sku_list_json=json.dumps([{"sku_code": "DYNAMIC_WEIGHT_001-A"}]),
+            logistics_json=json.dumps({"package_weight": "7.5kg"}),
+            status="published",
+            version=1,
+            updated_at=datetime(2026, 8, 17, 8, 0, 0),
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    state = {
+        "i_id": "DYNAMIC_WEIGHT_001",
+        "slots": {"sku_code": "DYNAMIC_WEIGHT_001-A"},
+    }
+    first = build_product_context_pack(
+        state,
+        query="how much does it weigh",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+
+    db = product_context_db()
+    try:
+        product = db.query(KBProduct).filter(KBProduct.i_id == "DYNAMIC_WEIGHT_001").one()
+        product.set_logistics({"package_weight": "8.2kg"})
+        product.version = 2
+        product.updated_at = datetime(2026, 8, 17, 9, 0, 0)
+        db.commit()
+    finally:
+        db.close()
+
+    second = build_product_context_pack(
+        state,
+        query="how much does it weigh",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+
+    first_fact = first["facts"][0]
+    second_fact = second["facts"][0]
+    assert "7.5kg" in first_fact["chunk_text"]
+    assert "8.2kg" in second_fact["chunk_text"]
+    assert first_fact["evidence_id"] != second_fact["evidence_id"]
+    assert first_fact["value_sha256"] != second_fact["value_sha256"]
+    assert second_fact["source_version"] == 2
+    assert second_fact["source_updated_at"] == "2026-08-17T09:00:00"
+
+
+def test_product_context_pack_drops_deleted_mutable_product_fact(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="DYNAMIC_DELETE_001",
+            product_name="dynamic deletion product",
+            logistics_json=json.dumps({"package_weight": "6.4kg"}),
+            status="published",
+            version=1,
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    state = {"i_id": "DYNAMIC_DELETE_001"}
+    first = build_product_context_pack(
+        state,
+        query="how much does it weigh",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+    assert "6.4kg" in first["facts"][0]["chunk_text"]
+
+    db = product_context_db()
+    try:
+        product = db.query(KBProduct).filter(KBProduct.i_id == "DYNAMIC_DELETE_001").one()
+        product.set_logistics({})
+        product.version = 2
+        db.commit()
+    finally:
+        db.close()
+
+    second = build_product_context_pack(
+        state,
+        query="how much does it weigh",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+    assert second["facts"] == []
+    assert second["evidence_pack"]["answerability"] == "missing_product_fact"
+    assert second["evidence_pack"]["missing_fields"] == ["gross_weight"]
+
+
 def test_product_context_pack_answers_gross_weight_from_sku_variants(product_context_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack
@@ -542,6 +650,69 @@ def test_product_context_pack_answers_gross_weight_from_sku_variants(product_con
     assert "\u7ec4\u54081 \u767d\u8272\uff1a3.15kg" in pack["facts"][0]["chunk_text"]
     assert "\u7ec4\u54082 \u767d\u8272\uff1a4.2kg" in pack["facts"][0]["chunk_text"]
     assert "load_capacity" not in pack["evidence_pack"]["matched_fields"]
+
+
+def test_product_context_pack_limits_gross_weight_to_exact_sku(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="SKU_SCOPE_001",
+            product_name="sku scoped product",
+            sku_list_json=json.dumps([
+                {"sku_code": "SKU-SCOPE-A", "gross_weight_kg": "3.1"},
+                {"sku_code": "SKU-SCOPE-B", "gross_weight_kg": "4.2"},
+            ]),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"i_id": "SKU_SCOPE_001", "slots": {"sku_code": "SKU-SCOPE-A"}},
+        query="how much does this variant weigh",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+
+    assert "3.1kg" in pack["facts"][0]["chunk_text"]
+    assert "4.2kg" not in pack["facts"][0]["chunk_text"]
+    assert pack["facts"][0]["sku_scope"] == ["SKU-SCOPE-A"]
+    assert pack["evidence_pack"]["matched_facts"][0]["sku_scope"] == ["SKU-SCOPE-A"]
+
+
+def test_product_context_pack_does_not_borrow_weight_for_unknown_sku(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="SKU_SCOPE_002",
+            product_name="sku mismatch product",
+            sku_list_json=json.dumps([
+                {"sku_code": "SKU-SCOPE-A", "gross_weight_kg": "3.1"},
+                {"sku_code": "SKU-SCOPE-B", "gross_weight_kg": "4.2"},
+            ]),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"i_id": "SKU_SCOPE_002", "slots": {"sku_code": "SKU-SCOPE-UNKNOWN"}},
+        query="how much does this variant weigh",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+
+    assert pack["facts"] == []
+    assert pack["evidence_pack"]["answerability"] == "missing_product_fact"
+    assert pack["evidence_pack"]["missing_fields"] == ["gross_weight"]
 
 
 def test_product_context_pack_answers_accessory_availability_from_product_card(product_context_db):

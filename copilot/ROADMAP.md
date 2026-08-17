@@ -174,3 +174,22 @@
   timeout/schema failure, zero formal-knowledge write, and zero send change.
 - No 5013 or real-conversation gate has run yet. The Composer role remains
   independent.
+
+`P1-DYNAMIC-PRODUCT-FACT-READ-001` completed its deterministic contract gate on
+2026-08-17:
+
+- The existing Product Context Pack opens a fresh database session per request;
+  mutable published product facts are not copied into a second cache or held
+  behind a manual re-verification queue.
+- Structured product evidence now carries the source version, source update
+  time, and a value-sensitive digest. A value change produces a new evidence
+  UID, while deletion removes the direct fact on the next request.
+- SKU-derived facts require an exact `sku_code`, `sku_id`, or
+  `sku_variant_key` match. An unknown variant fails closed instead of borrowing
+  another variant's value; a product-level query may still expose explicitly
+  stored variant rows.
+- Focused and adjacent deterministic tests passed, with zero new Graph nodes,
+  services, model calls, writes, caches, reply owners, or send authority.
+- This establishes current-value read semantics only. It does not approve
+  recovered draft facts, qualify reply quality, or change
+  `real_customer_accuracy=null` / review-only delivery.

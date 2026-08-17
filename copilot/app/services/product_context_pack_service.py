@@ -66,7 +66,10 @@ def build_product_context_pack(
     try:
         candidates: list[dict[str, Any]] = []
         kb_product = _find_kb_product(db, KBProduct, identity)
-        structured_profile = _build_structured_profile(kb_product)
+        structured_profile = _build_structured_profile(
+            kb_product,
+            requested_sku=identity.get("sku", ""),
+        )
         activity_identity = {**identity, "product_id": structured_profile.get("product_id")}
         activity_rules = get_active_activity_rules_for_product(db, KBProductActivityRule, activity_identity, limit=5)
         generic_rules = search_generic_service_rules(
@@ -718,8 +721,15 @@ def _matched_profile_fields(
 ) -> list[str]:
     fields: list[str] = []
     answerable_fields = structured_profile.get("answerable_fields", []) if isinstance(structured_profile, dict) else []
+    requested_sku = str(structured_profile.get("requested_sku") or "").strip() if isinstance(structured_profile, dict) else ""
+    has_matching_structured_fact = any(
+        _is_product_structured_fact(item) and _fact_matches_query_type(query_fact_type, item)
+        for item in facts
+    )
     for field in answerable_fields:
         if not query_fact_type or field == query_fact_type:
+            if requested_sku and field == query_fact_type and not has_matching_structured_fact:
+                continue
             fields.append(field)
     for item in facts:
         fact_type = str(item.get("evidence_fact_type") or item.get("fact_type") or "").strip()
@@ -772,6 +782,9 @@ def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
         "protocol_source_type": item.get("protocol_source_type", ""),
         "source_table": item.get("source_table", ""),
         "source_id": item.get("source_id", ""),
+        "source_version": item.get("source_version", 0),
+        "source_updated_at": item.get("source_updated_at", ""),
+        "value_sha256": item.get("value_sha256", ""),
         "verification_status": item.get("verification_status", ""),
         "provisional_knowledge_used": bool(item.get("provisional_knowledge_used")),
         "provisional_draft_uid": item.get("provisional_draft_uid", ""),
@@ -914,7 +927,7 @@ def _candidate_kb_products(db, KBProduct, identity: dict[str, str]) -> list[Any]
     return rows
 
 
-def _build_structured_profile(product) -> dict[str, Any]:
+def _build_structured_profile(product, *, requested_sku: str = "") -> dict[str, Any]:
     if not product:
         return {}
     specs = _clean_mapping(product.get_specs())
@@ -937,6 +950,9 @@ def _build_structured_profile(product) -> dict[str, Any]:
         "logistics": logistics,
         "warranty": warranty,
         "status": product.status,
+        "source_version": int(product.version or 0),
+        "source_updated_at": product.updated_at.isoformat() if product.updated_at else "",
+        "requested_sku": str(requested_sku or "").strip(),
         "completeness_score": product.completeness_score,
         "missing_fields": product.get_missing_fields(),
     }
@@ -1065,6 +1081,9 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
             "source_table": protocol.get("source_table", "kb_product"),
             "source_id": protocol.get("source_id", ""),
             "source_field_keys": protocol.get("source_field_keys", []),
+            "source_version": protocol.get("source_version", 0),
+            "source_updated_at": protocol.get("source_updated_at", ""),
+            "value_sha256": protocol.get("value_sha256", ""),
             "material_provenance": protocol.get("material_provenance", ""),
             "verification_status": protocol.get("verification_status", ""),
             "can_direct_answer": bool(protocol.get("can_direct_answer")),
@@ -1077,13 +1096,16 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
         "entry_risk_level": "low",
         "source_sheet": "",
         "row_number": 0,
-        "sku_scope": [item.get("sku_code") for item in profile.get("sku_list", []) if isinstance(item, dict) and item.get("sku_code")],
+        "sku_scope": list(protocol.get("sku_scope") or []),
         "product_scope": [profile.get("i_id", ""), profile.get("product_name", "")],
         "product_context_pack": True,
         "evidence_id": protocol.get("evidence_id", f"kbproduct:{profile.get('product_id')}:{requested}"),
         "protocol_source_type": protocol.get("source_type", "product_spec"),
         "source_table": protocol.get("source_table", "kb_product"),
         "source_id": protocol.get("source_id", ""),
+        "source_version": protocol.get("source_version", 0),
+        "source_updated_at": protocol.get("source_updated_at", ""),
+        "value_sha256": protocol.get("value_sha256", ""),
         "requested_fact_type": protocol.get("requested_fact_type", requested),
         "verification_status": protocol.get("verification_status", ""),
         "material_provenance": protocol.get("material_provenance", ""),

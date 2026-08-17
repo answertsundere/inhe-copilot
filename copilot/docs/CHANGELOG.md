@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-08-17 - Dynamic product fact read contract
+
+- Reused the existing Product Context Pack and structured-evidence owner to
+  read published product values from a fresh database session for every
+  request; no parallel fact container, cache, service, or model call was added.
+- Added source version, update time, and a value-sensitive SHA-256 to structured
+  evidence. Updated values receive a different evidence UID and deleted values
+  disappear on the next request.
+- Required exact SKU identity for SKU-derived values. Unknown variants now
+  report missing evidence instead of inheriting another SKU's value, while
+  product-level multi-variant queries remain supported.
+- The earlier 30-item recovered-fact shortlist remains a non-blocking
+  diagnostic artifact. It is not required to verify every future database
+  value and still grants no publication or answer authority.
+- Product Context, admission, convergence, and documentation regressions passed.
+  Formal knowledge DML, Composer calls, `can_send`, and production feature flags
+  remain unchanged; real customer accuracy is still `null`.
+
 ## 2026-08-17 - Formal knowledge supervisor shortlist
 
 - Read the isolated recovery candidate in query-only mode and confirmed that

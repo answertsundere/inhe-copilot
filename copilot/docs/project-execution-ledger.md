@@ -380,6 +380,23 @@ and next owner here and in `docs/CHANGELOG.md`.
    design is documented in
    `docs/research/customer-experience-and-controlled-recommendation.md`.
 
+## 2026-08-17 Dynamic Product Fact Read Checkpoint
+
+- Reused `ProductContextPackService` and
+  `ProductStructuredEvidenceService`; owner count, Graph shape, model-call
+  count, reply ownership, Safety, Delivery, and `can_send` did not change.
+- Each request reads the current published `KBProduct` row in a fresh session.
+  Structured evidence records source version/update time and a value digest, so
+  a changed or deleted value cannot reuse the prior evidence identity.
+- SKU-derived values require an exact structured identifier match. Missing or
+  unknown SKU identity is reported as missing evidence, never filled from a
+  nearby variant, title, or customer text.
+- The recovered 30-item shortlist is retained only as provenance diagnostics;
+  it is not a gate for ordinary mutable database values.
+- Deterministic tests establish data-read correctness only. No approved real
+  Gold denominator was introduced, so `real_customer_accuracy=null` and
+  `optimization_unverified=true` remain authoritative.
+
 ## Non-Negotiable Customer Experience Rules
 
 - Solve the buyer's primary problem before considering a recommendation.
