@@ -431,14 +431,14 @@ def generate_logistics_reply(state: dict) -> dict:
 
             # Outbound (sales out) sourced: only say "已发出", never "已签收" without sign_time evidence
             if is_outbound and not sign_time:
-                reply = f"亲，帮您查到这笔订单已经发出"
+                reply = "亲，目前我这边能查到的最新物流记录是：这笔订单已经发出"
                 if courier:
                     reply += f"，快递是{courier}"
                 if l_id:
                     reply += f"，单号{_customer_visible_tracking_reference(l_id)}"
                 if send_date:
                     reply += f"，发出时间是{send_date}"
-                reply += "。具体送达时间以实际物流更新为准～"
+                reply += "。目前暂未同步到更后续的在途节点，具体送达时间以实际物流更新为准～"
                 return {
                     "suggested_reply": reply,
                     "answer_type": "verified",

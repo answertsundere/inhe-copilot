@@ -329,6 +329,44 @@ class TestGenerateLogisticsReplyOutbound:
         assert "一定送达" not in reply
         assert "一定到" not in reply
 
+    def test_outbound_reply_states_latest_available_trace_boundary(self):
+        """只有销售出库节点时，应直接说明当前最新节点和信息边界。"""
+        state = {
+            "normalized_message": "快递现在到哪了",
+            "live_order": {
+                "o_id": "1636367",
+                "status": "Confirmed",
+                "logistics_company": "顺丰速运",
+                "l_id": "SF0229477422177",
+                "send_date": "2026-06-01 13:22:39",
+                "sign_time": "",
+                "items": [{"name": "测试商品", "qty": 1}],
+            },
+            "order_status": "shipped",
+            "logistics_trace": {
+                "status": "shipped",
+                "carrier": "顺丰速运",
+                "tracking_no": "SF0229477422177",
+                "send_date": "2026-06-01 13:22:39",
+                "latest": {"time": "2026-06-01 13:22:39", "context": "包裹已发出"},
+            },
+            "slots": {
+                "identifier_type": "platform_trade_id",
+                "platform_trade_id": "5118207015382036103",
+                "order_id": "",
+                "tracking_no": "",
+            },
+            "used_endpoint": "orders/out/simple/query",
+            "trace_steps": [],
+        }
+
+        reply = self._reply(state)["suggested_reply"]
+
+        assert "最新" in reply
+        assert "已发出" in reply or "已经发出" in reply
+        assert "后续" in reply
+        assert "当前位置" not in reply
+
     def test_outbound_no_delivery_commitment(self):
         """outbound 回复不得承诺具体送达时间"""
         state = {
