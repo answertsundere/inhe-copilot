@@ -406,32 +406,59 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
     return r
 
 
-def lookup_outbound_by_so_id(so_id: str) -> dict:
+def _outbound_identifiers(row: dict) -> set[str]:
+    identifiers = {
+        str(row.get(key) or "").strip()
+        for key in ("so_id", "outer_so_id")
+        if str(row.get(key) or "").strip()
+    }
+    for item in row.get("items", []) or []:
+        if not isinstance(item, dict):
+            continue
+        for key in ("so_id", "outer_so_id", "outer_oi_id"):
+            value = str(item.get(key) or "").strip()
+            if value:
+                identifiers.add(value)
+    return identifiers
+
+
+def lookup_outbound_by_so_id(so_id: str, *, shop_id: str = "") -> dict:
     """Query JST sales outbound records by platform/external transaction id."""
     if not so_id:
         return _make_result(found=False, query_type="outbound_so_id", safe_fallback_reason="empty_id")
 
-    cache_key = f"outso:{so_id}"
+    normalized_shop_id = str(shop_id or "").strip()
+    cache_key = f"outso:{normalized_shop_id}:{so_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
 
     client = JSTClient()
     t0 = time.time()
-    modified_begin, modified_end = _recent_modified_range()
     try:
-        result = client.call("orders/out/simple/query", {
+        query = {
             "page_index": 1,
             "page_size": 20,
             "so_ids": [str(so_id)],
-            "modified_begin": modified_begin,
-            "modified_end": modified_end,
-        })
+        }
+        if normalized_shop_id:
+            query["shop_id"] = normalized_shop_id
+        result = client.call("orders/out/simple/query", query)
         rows = result.get("data", {}).get("datas", [])
         duration_ms = int((time.time() - t0) * 1000)
 
-        if rows:
-            row = rows[0]
+        target = str(so_id).strip()
+        matched = [
+            row for row in rows
+            if isinstance(row, dict)
+            and target in _outbound_identifiers(row)
+            and (
+                not normalized_shop_id
+                or str(row.get("shop_id") or "").strip() == normalized_shop_id
+            )
+        ]
+        if matched:
+            row = matched[0]
             data = _extract_order_info(row)
             r = _make_result(
                 found=True,
@@ -557,7 +584,13 @@ def lookup_logistics_by_tracking_no(tracking_no: str) -> dict:
         return r
 
 
-def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaustive: bool = True) -> dict:
+def lookup_order_by_identifier(
+    identifier: str,
+    identifier_type: str,
+    *,
+    exhaustive: bool = True,
+    shop_id: str = "",
+) -> dict:
     """根据 identifier_type 分发到对应查询函数。
     order_id 类型查不到时自动尝试 so_ids（用户给的平台订单号可能被识别为 order_id）。
     """
@@ -977,7 +1010,13 @@ def _aggregate_lookup_failure(
 
 # Keep this definition after the legacy dispatcher above so imports use the
 # full identifier surface, including JST outer_so_id ("external transaction no").
-def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaustive: bool = True) -> dict:
+def lookup_order_by_identifier(
+    identifier: str,
+    identifier_type: str,
+    *,
+    exhaustive: bool = True,
+    shop_id: str = "",
+) -> dict:
     """Dispatch identifier lookup across all known JST order id surfaces.
 
     Routing:
@@ -1001,7 +1040,7 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
             r2["attempted_paths"] = _attempt_debug(r1, r2)
             return r2
 
-        r_out = lookup_outbound_by_so_id(identifier)
+        r_out = lookup_outbound_by_so_id(identifier, shop_id=shop_id) if shop_id else lookup_outbound_by_so_id(identifier)
         if r_out["found"]:
             r_out["query_type"] = "internal_order_id->outbound_so_id_fallback"
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_out)
@@ -1041,7 +1080,7 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
             r_hist["attempted_paths"] = _attempt_debug(r1, r2) + r_hist.get("attempted_paths", [])
             return r_hist
 
-        r_out = lookup_outbound_by_so_id(identifier)
+        r_out = lookup_outbound_by_so_id(identifier, shop_id=shop_id) if shop_id else lookup_outbound_by_so_id(identifier)
         if r_out["found"]:
             r_out["query_type"] = "platform_order_id->outbound_so_id_fallback"
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out)
@@ -1071,7 +1110,7 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
 
     if identifier_type == "platform_trade_id":
         # Primary: orders/out/simple/query (销售出库查询)
-        r_out = lookup_outbound_by_so_id(identifier)
+        r_out = lookup_outbound_by_so_id(identifier, shop_id=shop_id) if shop_id else lookup_outbound_by_so_id(identifier)
         if r_out["found"]:
             r_out["query_type"] = "platform_trade_id->outbound_so_id"
             r_out["attempted_paths"] = _attempt_debug(r_out)
@@ -1152,7 +1191,7 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
         return lookup_logistics_by_tracking_no(identifier)
 
     # unknown_identifier: outbound → o_id → so_id → outer_so_id scan → tracking scan
-    r_out = lookup_outbound_by_so_id(identifier)
+    r_out = lookup_outbound_by_so_id(identifier, shop_id=shop_id) if shop_id else lookup_outbound_by_so_id(identifier)
     if r_out["found"]:
         r_out["query_type"] = "unknown->outbound_so_id"
         r_out["attempted_paths"] = _attempt_debug(r_out)

@@ -32,7 +32,34 @@ interface ViewTurn {
   retryMessage?: string
 }
 
+interface WorkbenchShop {
+  id: string
+  name: string
+}
+
+function loadConfiguredShops(): WorkbenchShop[] {
+  const raw = String(import.meta.env.VITE_SUPERVISOR_SHOPS_JSON || '').trim()
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => ({
+        id: String(item?.id || '').trim(),
+        name: String(item?.name || '').trim(),
+      }))
+      .filter((item) => item.id && item.name)
+  } catch {
+    return []
+  }
+}
+
+const configuredShops = loadConfiguredShops()
+const defaultShop = configuredShops[0] || { id: '', name: '' }
+
 const context = reactive<WorkbenchContext>({
+  shopId: defaultShop.id,
+  shopName: defaultShop.name,
   productName: '',
   skuCode: '',
   iId: '',
@@ -149,6 +176,10 @@ function formatDuration(durationMs?: number): string {
 
 function evidenceTitle(evidence: CandidateObservation['evidence'][number], index: number): string {
   return evidence.attribute || evidence.factType || evidence.role || `证据 ${index + 1}`
+}
+
+function selectShop(shopId: string) {
+  context.shopName = configuredShops.find((shop) => shop.id === shopId)?.name || ''
 }
 </script>
 
@@ -288,6 +319,21 @@ function evidenceTitle(evidence: CandidateObservation['evidence'][number], index
       </div>
 
       <el-form label-position="top" class="context-form">
+        <el-form-item label="店铺">
+          <el-select
+            v-model="context.shopId"
+            placeholder="选择订单所属店铺"
+            :disabled="configuredShops.length === 0"
+            @change="selectShop"
+          >
+            <el-option
+              v-for="shop in configuredShops"
+              :key="shop.id"
+              :label="shop.name"
+              :value="shop.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="商品标题">
           <el-input v-model="context.productName" placeholder="粘贴客户看到的商品标题" clearable />
         </el-form-item>

@@ -100,7 +100,11 @@ def jst_live_query(state: dict) -> dict:
         "summary": f"正在查询 {identifier} (type={identifier_type}) ...",
     }
 
-    result = lookup_order_by_identifier(identifier, identifier_type)
+    shop_id = str((state.get("copilot_context", {}) or {}).get("shop_id") or "").strip()
+    if shop_id:
+        result = lookup_order_by_identifier(identifier, identifier_type, shop_id=shop_id)
+    else:
+        result = lookup_order_by_identifier(identifier, identifier_type)
     duration_ms = int((time.time() - t0) * 1000)
 
     # 所有 trace 都包含 progress + result

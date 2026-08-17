@@ -198,7 +198,14 @@ def build_sidecar_context(payload: dict[str, Any], *, strict_conversation_histor
         "extract_status": payload.get("extract_status", ""),
     }
 
-    for key in ("order_id", "tracking_no", "platform_trade_id", "product_name"):
+    for key in (
+        "order_id",
+        "tracking_no",
+        "platform_trade_id",
+        "product_name",
+        "shop_id",
+        "shop_name",
+    ):
         explicit_value = (payload.get(key) or "").strip()
         if explicit_value:
             context[key] = explicit_value

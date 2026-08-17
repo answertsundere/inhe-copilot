@@ -4,6 +4,81 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def test_outbound_exact_lookup_uses_shop_without_recent_time_window(monkeypatch):
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "5118207015382036103"
+    calls = []
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            calls.append((endpoint, params))
+            return {
+                "data": {
+                    "datas": [
+                        {
+                            "o_id": "1636367",
+                            "shop_id": "13221776",
+                            "status": "Confirmed",
+                            "items": [{"outer_oi_id": target, "name": "test item"}],
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_outbound_by_so_id(target, shop_id="13221776")
+
+    assert result["found"] is True
+    assert result["data"]["shop_id"] == "13221776"
+    assert calls == [
+        (
+            "orders/out/simple/query",
+            {
+                "page_index": 1,
+                "page_size": 20,
+                "so_ids": [target],
+                "shop_id": "13221776",
+            },
+        )
+    ]
+
+
+def test_outbound_exact_lookup_rejects_other_shop_or_other_identifier(monkeypatch):
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "5118207015382036103"
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            return {
+                "data": {
+                    "datas": [
+                        {
+                            "o_id": "wrong-shop",
+                            "shop_id": "99999999",
+                            "items": [{"outer_oi_id": target}],
+                        },
+                        {
+                            "o_id": "wrong-order",
+                            "shop_id": "13221776",
+                            "items": [{"outer_oi_id": "OTHER"}],
+                        },
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_outbound_by_so_id(target, shop_id="13221776")
+
+    assert result["found"] is False
+    assert result["safe_fallback_reason"] == "not_found"
+
+
 def test_unknown_identifier_falls_back_to_outer_so_id_scan(monkeypatch):
     from app.integrations.jst import live_query
 

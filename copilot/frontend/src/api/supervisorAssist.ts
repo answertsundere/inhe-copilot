@@ -6,6 +6,8 @@ export interface ConversationTurn {
 }
 
 export interface WorkbenchContext {
+  shopId: string
+  shopName: string
   productName: string
   skuCode: string
   iId: string
@@ -22,6 +24,10 @@ export interface AnalyzeRequest {
   i_id?: string
   order_id?: string
   tracking_no?: string
+  copilot_context?: {
+    shop_id?: string
+    shop_name?: string
+  }
 }
 
 interface RawAnalyzeResponse {
@@ -91,6 +97,10 @@ export function buildAnalyzeRequest(
     i_id: optionalValue(context.iId),
     order_id: optionalValue(context.orderId),
     tracking_no: optionalValue(context.trackingNo),
+    copilot_context: {
+      shop_id: optionalValue(context.shopId),
+      shop_name: optionalValue(context.shopName),
+    },
   }
 }
 

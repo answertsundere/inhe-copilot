@@ -30,6 +30,18 @@ def test_build_sidecar_context_extracts_platform_trade_id():
     assert context["conversation_id"].startswith("qianniu-")
 
 
+def test_build_sidecar_context_preserves_structured_shop_identity():
+    context = build_sidecar_context({
+        "customer_message": "现在快递到哪里了",
+        "platform_trade_id": "5118207015382036103",
+        "shop_id": "13221776",
+        "shop_name": "天猫英禾旗舰店",
+    })
+
+    assert context["shop_id"] == "13221776"
+    assert context["shop_name"] == "天猫英禾旗舰店"
+
+
 def test_make_conversation_id_is_stable():
     assert make_conversation_id("千牛 - A", "buyer1") == make_conversation_id("千牛 - A", "buyer1")
 
