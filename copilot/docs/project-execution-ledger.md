@@ -77,6 +77,15 @@ and next owner here and in `docs/CHANGELOG.md`.
   shortlist had zero generated-field mismatch. This proves import integrity,
   not business truth: no shortlist item has an independent second source, so
   every item remains a manual supervisor decision and none is auto-approved.
+- A subsequent exact-identity cross-check read the existing formal knowledge
+  snapshot without mutation. Of the 30 shortlist candidates, 28 matched a
+  published product by exact `i_id`; only three color values also appeared in
+  the formal product `specs_json`. The remaining 25 identity-matched candidates
+  had no corresponding color/weight fact, and two had no formal product match.
+  Because the three matching values do not carry demonstrably independent
+  provenance, they remain corroboration-unproven rather than approved facts.
+  Both database hashes were unchanged, with zero formal DML, zero approvals,
+  and zero `can_send` change.
 - The focused import, lifecycle, Product Context Pack, Evidence Convergence,
   Pipeline-entry, Final Audit, database-guard, and documentation set passed
   `324/324`. The full repository collected 4,558 tests and retained exactly

@@ -14,6 +14,12 @@
   The 30-item shortlist therefore has complete import provenance, but no item
   has an independent second source. Import consistency does not authorize fact
   approval, so all 30 remain queued for manual semantic review.
+- Cross-checked the shortlist against the read-only formal knowledge snapshot
+  by exact `i_id` and FactType. Twenty-eight candidates matched a published
+  product identity, but only three color values matched structured formal
+  specs. Their source independence is unproven, so they remain review
+  candidates rather than automatic approvals; the other 27 have no usable
+  formal corroboration.
 - The shortlist did not modify the candidate database, formal knowledge,
   Agent behavior, feature flags, or Delivery. Material, dimensions, safety,
   certification, and other absent fact families were not inferred.
