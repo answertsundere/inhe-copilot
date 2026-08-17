@@ -1,5 +1,19 @@
 # Change Log
 
+## 2026-08-17 - Dynamic activity rule read contract
+
+- Replaced broad OR-based product/activity matching with a common-namespace
+  identity contract. Exact product or SKU identity cannot be overridden by a
+  same-title rule, and a rule scoped to one variant cannot satisfy another.
+- Preserved product-wide rules for exact products and title fallback only when
+  no structured identity is available.
+- Versioned each activity evidence UID with the current content hash and
+  projected source update time/value digest. Updated rows are visible on the
+  next request and expired rows are omitted.
+- Kept the existing activity rule, Product Context Pack, Evidence Admission,
+  Safety, and Delivery owners. No cache, Graph node, model call, review-status
+  promotion, or send authority was added.
+
 ## 2026-08-17 - Dynamic product fact read contract
 
 - Reused the existing Product Context Pack and structured-evidence owner to

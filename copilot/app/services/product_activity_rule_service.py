@@ -257,26 +257,65 @@ def get_active_activity_rules_for_product(db, ActivityModel, identity: dict[str,
         or_(ActivityModel.start_at.is_(None), ActivityModel.start_at <= now),
         or_(ActivityModel.end_at.is_(None), ActivityModel.end_at >= now),
     )
+    product_id = identity.get("product_id")
+    i_id = str(identity.get("i_id") or "").strip()
+    requested_sku = str(identity.get("sku") or identity.get("sku_family") or "").strip()
+    product_name = str(identity.get("product_name") or "").strip()
     conds = []
-    for key, column in (
-        ("product_id", ActivityModel.product_id),
-        ("i_id", ActivityModel.i_id),
-        ("sku", ActivityModel.sku_code),
-        ("sku_family", ActivityModel.sku_code),
-        ("product_name", ActivityModel.product_name),
-    ):
-        value = str(identity.get(key) or "").strip()
-        if value:
-            conds.append(column == value)
+    if product_id is not None:
+        conds.append(ActivityModel.product_id == product_id)
+    if i_id:
+        conds.append(ActivityModel.i_id == i_id)
+    if requested_sku:
+        conds.append(ActivityModel.sku_code == requested_sku)
+    if not conds and product_name:
+        conds.append(ActivityModel.product_name == product_name)
     if not conds:
         return []
-    rows = q.filter(or_(*conds)).order_by(ActivityModel.updated_at.desc()).limit(limit).all()
+    rows = q.filter(or_(*conds)).order_by(ActivityModel.updated_at.desc()).all()
     contexts = []
     for row in rows:
+        if not _activity_rule_matches_identity(row, identity):
+            continue
         item = row.customer_context()
         if is_customer_safe_text(item.get("customer_reply", "")):
             contexts.append(item)
+        if len(contexts) >= limit:
+            break
     return contexts
+
+
+def _activity_rule_matches_identity(row: Any, identity: dict[str, Any]) -> bool:
+    requested_product_id = identity.get("product_id")
+    requested_i_id = str(identity.get("i_id") or "").strip().casefold()
+    requested_sku = str(identity.get("sku") or identity.get("sku_family") or "").strip().casefold()
+    requested_name = str(identity.get("product_name") or "").strip().casefold()
+
+    row_product_id = getattr(row, "product_id", None)
+    row_i_id = str(getattr(row, "i_id", "") or "").strip().casefold()
+    row_sku = str(getattr(row, "sku_code", "") or "").strip().casefold()
+    row_name = str(getattr(row, "product_name", "") or "").strip().casefold()
+
+    shared_strong_identity = False
+    if requested_product_id is not None and row_product_id is not None:
+        if str(requested_product_id).strip() != str(row_product_id).strip():
+            return False
+        shared_strong_identity = True
+    if requested_i_id and row_i_id:
+        if requested_i_id != row_i_id:
+            return False
+        shared_strong_identity = True
+    if requested_sku and row_sku:
+        if requested_sku != row_sku:
+            return False
+        shared_strong_identity = True
+
+    request_has_strong_identity = bool(
+        requested_product_id is not None or requested_i_id or requested_sku
+    )
+    if request_has_strong_identity:
+        return shared_strong_identity
+    return bool(requested_name and row_name and requested_name == row_name)
 
 
 def _first_value(flat: dict[str, str], keys: tuple[str, ...]) -> str:

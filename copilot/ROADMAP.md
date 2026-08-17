@@ -193,3 +193,17 @@
 - This establishes current-value read semantics only. It does not approve
   recovered draft facts, qualify reply quality, or change
   `real_customer_accuracy=null` / review-only delivery.
+
+`P1-DYNAMIC-ACTIVITY-RULE-READ-001` completed its deterministic contract gate
+on 2026-08-17:
+
+- The existing activity-rule owner continues to query active rows at request
+  time. Expired rows disappear without a restart or cache invalidation.
+- When structured product/SKU identity is available, every populated common
+  namespace must match. A variant-scoped rule cannot be borrowed by another
+  SKU, and a same-title rule cannot override an exact product identity.
+- Activity evidence now binds its UID to the current content hash and carries
+  source update time/value digest. Updating a rule therefore produces a new
+  evidence identity on the next request.
+- The change does not promote `active` to a reviewed Evidence Admission status,
+  add a model/tool call, or alter Safety, Delivery, or `can_send`.

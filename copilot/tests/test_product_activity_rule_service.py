@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -134,6 +135,199 @@ def test_product_context_pack_returns_activity_rule_for_promotion_query(activity
     assert pack["facts"][0]["fact_type"] == "promotion_policy"
     assert "\u4f18\u60e0\u5238" in pack["facts"][0]["chunk_text"]
     assert "\u63a7\u4ef7" not in pack["facts"][0]["chunk_text"]
+
+
+def test_activity_rule_requires_exact_sku_when_rule_is_variant_scoped(activity_db):
+    from app.models.kb_tables import KBProduct, KBProductActivityRule
+    from app.services.product_activity_rule_service import normalize_activity_record, upsert_activity_rule
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = activity_db()
+    try:
+        product = KBProduct(
+            i_id="ACTIVITY_SCOPE_001",
+            product_name="activity scoped product",
+            sku_list_json=json.dumps([
+                {"sku_code": "ACTIVITY-SKU-A"},
+                {"sku_code": "ACTIVITY-SKU-B"},
+            ]),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        normalized = normalize_activity_record(
+            {
+                "i_id": "ACTIVITY_SCOPE_001",
+                "SKU": "ACTIVITY-SKU-B",
+                "\u4f18\u60e0": "\u9886\u53d630\u5143\u4f18\u60e0\u5238",
+            },
+            source_record_id="variant-b-rule",
+            source_sheet_id="activity-scope-sheet",
+        )
+        normalized["product_id"] = product.id
+        upsert_activity_rule(db, KBProductActivityRule, normalized)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"i_id": "ACTIVITY_SCOPE_001", "slots": {"sku_code": "ACTIVITY-SKU-A"}},
+        query="\u73b0\u5728\u6709\u4ec0\u4e48\u4f18\u60e0",
+        allowed_source_types=["product_facts"],
+        query_fact_type="promotion_policy",
+    )
+
+    assert pack["activity_rules"] == []
+    assert pack["facts"] == []
+
+
+def test_activity_rule_does_not_match_product_name_when_exact_identity_exists(activity_db):
+    from app.models.kb_tables import KBProduct, KBProductActivityRule
+    from app.services.product_activity_rule_service import normalize_activity_record, upsert_activity_rule
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = activity_db()
+    try:
+        product = KBProduct(
+            i_id="ACTIVITY_IDENTITY_001",
+            product_name="shared display title",
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        normalized = normalize_activity_record(
+            {
+                "i_id": "ACTIVITY_IDENTITY_OTHER",
+                "\u4ea7\u54c1\u540d\u79f0": "shared display title",
+                "\u4f18\u60e0": "\u9886\u53d640\u5143\u4f18\u60e0\u5238",
+            },
+            source_record_id="other-product-rule",
+            source_sheet_id="activity-identity-sheet",
+        )
+        upsert_activity_rule(db, KBProductActivityRule, normalized)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"i_id": "ACTIVITY_IDENTITY_001"},
+        query="\u73b0\u5728\u6709\u4ec0\u4e48\u4f18\u60e0",
+        allowed_source_types=["product_facts"],
+        query_fact_type="promotion_policy",
+    )
+
+    assert pack["activity_rules"] == []
+    assert pack["facts"] == []
+
+
+def test_activity_rule_reread_changes_value_sensitive_evidence_identity(activity_db):
+    from app.models.kb_tables import KBProduct, KBProductActivityRule
+    from app.services.product_activity_rule_service import normalize_activity_record, upsert_activity_rule
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = activity_db()
+    try:
+        product = KBProduct(
+            i_id="ACTIVITY_DYNAMIC_001",
+            product_name="dynamic activity product",
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        normalized = normalize_activity_record(
+            {
+                "i_id": "ACTIVITY_DYNAMIC_001",
+                "\u4f18\u60e0": "\u9886\u53d610\u5143\u4f18\u60e0\u5238",
+            },
+            source_record_id="dynamic-rule",
+            source_sheet_id="dynamic-sheet",
+        )
+        normalized["product_id"] = product.id
+        upsert_activity_rule(db, KBProductActivityRule, normalized)
+        db.commit()
+    finally:
+        db.close()
+
+    state = {"i_id": "ACTIVITY_DYNAMIC_001"}
+    first = build_product_context_pack(
+        state,
+        query="\u73b0\u5728\u6709\u4ec0\u4e48\u4f18\u60e0",
+        allowed_source_types=["product_facts"],
+        query_fact_type="promotion_policy",
+    )
+
+    db = activity_db()
+    try:
+        normalized = normalize_activity_record(
+            {
+                "i_id": "ACTIVITY_DYNAMIC_001",
+                "\u4f18\u60e0": "\u9886\u53d625\u5143\u4f18\u60e0\u5238",
+            },
+            source_record_id="dynamic-rule",
+            source_sheet_id="dynamic-sheet",
+        )
+        normalized["product_id"] = db.query(KBProduct).filter_by(i_id="ACTIVITY_DYNAMIC_001").one().id
+        row, action = upsert_activity_rule(db, KBProductActivityRule, normalized)
+        row.updated_at = datetime(2026, 8, 17, 10, 0, 0)
+        db.commit()
+        assert action == "updated"
+    finally:
+        db.close()
+
+    second = build_product_context_pack(
+        state,
+        query="\u73b0\u5728\u6709\u4ec0\u4e48\u4f18\u60e0",
+        allowed_source_types=["product_facts"],
+        query_fact_type="promotion_policy",
+    )
+
+    first_fact = first["facts"][0]
+    second_fact = second["facts"][0]
+    assert "10\u5143\u4f18\u60e0\u5238" in first_fact["chunk_text"]
+    assert "25\u5143\u4f18\u60e0\u5238" in second_fact["chunk_text"]
+    assert first_fact["evidence_id"] != second_fact["evidence_id"]
+    assert first_fact["value_sha256"] != second_fact["value_sha256"]
+    assert second_fact["source_updated_at"] == "2026-08-17T10:00:00"
+
+
+def test_product_context_pack_excludes_expired_activity_rule(activity_db):
+    from app.models.kb_tables import KBProduct, KBProductActivityRule
+    from app.services.product_activity_rule_service import normalize_activity_record, upsert_activity_rule
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = activity_db()
+    try:
+        product = KBProduct(
+            i_id="ACTIVITY_EXPIRED_001",
+            product_name="expired activity product",
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        normalized = normalize_activity_record(
+            {
+                "i_id": "ACTIVITY_EXPIRED_001",
+                "\u4f18\u60e0": "\u9886\u53d650\u5143\u4f18\u60e0\u5238",
+            },
+            source_record_id="expired-rule",
+            source_sheet_id="expired-sheet",
+        )
+        normalized["product_id"] = product.id
+        normalized["end_at"] = datetime.utcnow() - timedelta(seconds=1)
+        upsert_activity_rule(db, KBProductActivityRule, normalized)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {"i_id": "ACTIVITY_EXPIRED_001"},
+        query="\u73b0\u5728\u6709\u4ec0\u4e48\u4f18\u60e0",
+        allowed_source_types=["product_facts"],
+        query_fact_type="promotion_policy",
+    )
+
+    assert pack["activity_rules"] == []
+    assert pack["facts"] == []
 
 
 def test_media_ranking_prefers_size_image_for_dimension_fact_type(activity_db):

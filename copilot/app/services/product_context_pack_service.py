@@ -1155,6 +1155,9 @@ def _activity_facts_for_query(
         text = str(rule.get("customer_reply") or rule.get("customer_visible_benefit") or "").strip()
         if not text:
             continue
+        content_hash = str(rule.get("content_hash") or "").strip().lower()
+        source_updated_at = str(rule.get("updated_at") or "").strip()
+        evidence_id = f"activity:{rule.get('id')}:{content_hash}"
         title = str(rule.get("title") or "\u5546\u54c1\u6d3b\u52a8\u89c4\u5219")
         text_score = _text_overlap_score(query, title, text)
         score = 19.0 + text_score
@@ -1166,8 +1169,9 @@ def _activity_facts_for_query(
             "source_confidence": 0.9,
             "rerank_score": round(score, 4),
             "mismatch_reason": "",
-            "chunk_id": f"activity:{rule.get('id')}",
+            "chunk_id": evidence_id,
             "entry_id": f"activity:{rule.get('id')}",
+            "evidence_id": evidence_id,
             "title": title,
             "chunk_text": text,
             "chunk_index": 0,
@@ -1181,6 +1185,8 @@ def _activity_facts_for_query(
                 "source": "kb_product_activity_rule",
                 "activity_type": rule.get("activity_type", ""),
                 "auto_reply_allowed": bool(rule.get("auto_reply_allowed")),
+                "source_updated_at": source_updated_at,
+                "value_sha256": content_hash,
             },
             "semantic_alignment": _direct_semantic_alignment("promotion_policy", "promotion_policy"),
             "entry_status": rule.get("status", "active"),
@@ -1191,6 +1197,10 @@ def _activity_facts_for_query(
             "sku_scope": [rule.get("sku_code", "")] if rule.get("sku_code") else [],
             "product_scope": [v for v in (rule.get("i_id", ""), rule.get("product_name", "")) if v],
             "product_context_pack": True,
+            "source_table": "kb_product_activity_rule",
+            "source_id": str(rule.get("id") or ""),
+            "source_updated_at": source_updated_at,
+            "value_sha256": content_hash,
             "evidence_allowed_for_direct_answer": True,
             "evidence_allowed_for_exact_answer": True,
         })

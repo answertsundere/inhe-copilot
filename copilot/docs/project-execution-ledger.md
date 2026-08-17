@@ -397,6 +397,20 @@ and next owner here and in `docs/CHANGELOG.md`.
   Gold denominator was introduced, so `real_customer_accuracy=null` and
   `optimization_unverified=true` remain authoritative.
 
+## 2026-08-17 Dynamic Activity Rule Read Checkpoint
+
+- Reused `ProductActivityRuleService` and `ProductContextPackService`; no new
+  owner, Graph node, model call, cache, or reply path was introduced.
+- Active and unexpired activity rows are read per request. Exact product/SKU
+  identity takes precedence over display names, and all populated common
+  namespaces must agree before a rule is returned.
+- Activity evidence IDs now include the current content hash and expose only
+  safe update-time/value-digest provenance. A changed or expired rule cannot
+  silently reuse the previous answer evidence.
+- Existing review and Evidence Admission semantics remain unchanged. This is a
+  deterministic current-data integrity gate, not a promotion-quality or real
+  customer accuracy result.
+
 ## Non-Negotiable Customer Experience Rules
 
 - Solve the buyer's primary problem before considering a recommendation.

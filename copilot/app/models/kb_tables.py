@@ -270,6 +270,8 @@ class KBProductActivityRule(Base):
             "auto_reply_allowed": self.auto_reply_allowed,
             "start_at": self.start_at.isoformat() if self.start_at else None,
             "end_at": self.end_at.isoformat() if self.end_at else None,
+            "content_hash": self.content_hash,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def to_dict(self, include_internal=False):
