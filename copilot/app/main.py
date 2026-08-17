@@ -643,8 +643,8 @@ def create_app():
     # 让 kb-admin（base=/api/kb）也能访问素材库接口
     _clone_routes_under_prefix(app, "/api/media-assets/", "/api/kb/media-assets/")
 
-    @app.route("/real-test")
-    def real_test_panel():
+    @app.route("/real-test-legacy")
+    def real_test_panel_legacy():
         import json
         from flask import render_template, make_response
 
@@ -688,6 +688,7 @@ def create_app():
     @app.route("/qa")
     @app.route("/reviews")
     @app.route("/training-samples")
+    @app.route("/real-test")
     @app.route("/real-accuracy-labels")
     @app.route("/high-quality-conversation-review", endpoint="high_quality_conversation_review_spa")
     @app.route("/service-rules")

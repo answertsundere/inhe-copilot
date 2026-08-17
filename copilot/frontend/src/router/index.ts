@@ -114,6 +114,21 @@ const router = createRouter({
       ],
     },
     {
+      path: '/real-test',
+      component: WorkbenchLayout,
+      children: [
+        {
+          path: '',
+          name: 'real-test',
+          component: () => import('../views/SupervisorAssistWorkbenchPage.vue'),
+          meta: {
+            title: '智能回复体验台',
+            description: '连续输入客户消息，检查候选回复、上下文延续和证据使用。',
+          },
+        },
+      ],
+    },
+    {
       path: '/quality-replay',
       component: WorkbenchLayout,
       children: [
@@ -121,7 +136,10 @@ const router = createRouter({
           path: '',
           name: 'quality-replay',
           component: () => import('../views/RealConversationReplayPage.vue'),
-          meta: { title: '真实回放质检' },
+          meta: {
+            title: '真实回放质检',
+            description: '回放长对话样本，查看失败归因、证据与处理结果。',
+          },
         },
       ],
     },

@@ -77,14 +77,14 @@ class TestCopilotPanelPage:
         assert 'data.can_send ? (data.sendable_reply || "") : ""' in html
         assert 'var text = $("finalReply").value;' in html
 
-    def test_real_test_panel_copy_uses_sendable_reply_not_draft(self, client):
+    def test_real_test_panel_is_owned_by_vue_supervisor_workbench(self, client):
         resp = client.get("/real-test")
         html = resp.data.decode("utf-8")
 
-        assert "sendableTextFromLastResponse" in html
-        assert "lastResponse.sendable_reply" in html
-        assert "lastResponse.can_send" in html
-        assert "replyBlocksToClipboardText(lastResponse)||$('reply').textContent" not in html
+        assert resp.status_code == 200
+        assert '<div id="app"></div>' in html
+        assert "sendableTextFromLastResponse" not in html
+        assert "premium_manual_cases" not in html
 
 
 class TestCopilotContextAPI:

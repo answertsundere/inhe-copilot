@@ -15,9 +15,11 @@ const route = useRoute()
 const router = useRouter()
 
 const activeMenu = computed(() => route.path)
+const pageTitle = computed(() => String(route.meta.title || '智能客服工作台'))
+const pageDescription = computed(() => String(route.meta.description || ''))
 
 const menuItems = [
-  { index: '/real-test', icon: ChatDotRound, label: '智能回复建议区', external: true },
+  { index: '/real-test', icon: ChatDotRound, label: '智能回复体验台' },
   { index: '/quality-replay', icon: Checked, label: '质检测评' },
   { index: '/knowledge-search', icon: Search, label: '知识检索', disabled: true },
   { index: '/reports', icon: DataAnalysis, label: '报表分析', disabled: true },
@@ -27,10 +29,6 @@ const menuItems = [
 function handleMenuSelect(index: string) {
   const item = menuItems.find((entry) => entry.index === index)
   if (!item || item.disabled) return
-  if (item.external) {
-    window.location.href = `/ask${index}`
-    return
-  }
   router.push(index)
 }
 
@@ -81,8 +79,8 @@ function openWorkbench() {
       <el-main class="workbench-main">
         <div class="page-heading">
           <div>
-            <h1>真实回放质检</h1>
-            <p>基于真实长对话样本回放 Agent 回复，查看失败归因、Trace 和修复任务。</p>
+            <h1>{{ pageTitle }}</h1>
+            <p v-if="pageDescription">{{ pageDescription }}</p>
           </div>
         </div>
         <router-view />
@@ -203,6 +201,26 @@ function openWorkbench() {
   min-width: 0;
   padding: 16px;
   overflow: auto;
+}
+
+@media (max-width: 860px) {
+  .workbench-top {
+    padding: 0 10px;
+  }
+
+  .top-nav,
+  .workbench-top > .el-button,
+  .workbench-sidebar {
+    display: none;
+  }
+
+  .workbench-main {
+    padding: 10px;
+  }
+
+  .page-heading h1 {
+    font-size: 18px;
+  }
 }
 
 .page-heading {
