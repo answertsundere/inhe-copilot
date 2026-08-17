@@ -88,6 +88,11 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - records the TDD sequence for fresh mutable-field reads, versioned evidence
     identity, exact SKU scoping, deletion behavior, regression, and rollout-safe
     documentation.
+- `docs/superpowers/specs/2026-08-17-supervisor-assist-workbench-design.md`
+  - defines the Chinese, review-only `/ask/real-test` conversation workbench on
+    the existing formal Pipeline, with local multi-turn context and no delivery authority.
+- `docs/superpowers/plans/2026-08-17-supervisor-assist-workbench.md`
+  - records the route, API adapter, Vue workbench, build, and browser-verification sequence.
 - `docs/superpowers/plans/2026-08-16-turn-understanding-strict-provider.md`
   - records the TDD sequence for role configuration, existing-schema reuse,
     fictional qualification, staged runtime gates, and regression checks.
