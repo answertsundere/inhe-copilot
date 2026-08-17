@@ -11,6 +11,12 @@ from app.services.eval_sanitizer_service import sanitize_obj, sanitize_product_t
 
 INTERNAL_PRODUCT_CODE_RE = re.compile(r"^YH[A-Za-z0-9_-]{4,40}$", re.I)
 SKU_FAMILY_RE = re.compile(r"^(YH\d+K\d+)", re.I)
+LOCAL_TOOL_IDENTITY_FIELDS = (
+    "order_id",
+    "platform_order_id",
+    "platform_trade_id",
+    "tracking_no",
+)
 
 
 def build_real_context_product_identity(copilot_context: dict[str, Any] | None) -> dict[str, Any]:
@@ -156,7 +162,15 @@ def augment_copilot_context_with_real_identity(copilot_context: dict[str, Any] |
         ctx.setdefault("i_id", identity["i_id"])
     ctx["real_context_product_identity"] = identity
     ctx["conversation_media_reference"] = media_ref
-    return sanitize_obj(ctx)
+    sanitized = sanitize_obj(ctx)
+    # These typed identifiers are required by local read-only order tools.
+    # Keep unrelated PII sanitized here; the external LLM and trace boundaries
+    # apply their own privacy projection before data leaves the local pipeline.
+    for key in LOCAL_TOOL_IDENTITY_FIELDS:
+        value = ctx.get(key)
+        if isinstance(value, str) and value.strip():
+            sanitized[key] = value.strip()
+    return sanitized
 
 
 def augment_state_with_real_context_identity(state: dict[str, Any]) -> dict[str, Any]:

@@ -378,6 +378,57 @@ def test_order_product_resolver_uses_sidecar_order_to_resolve_internal_product(m
     assert result["product_identity_source"] == "jst_order_items"
 
 
+def test_order_product_resolver_separates_logical_and_jst_shop_identity(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    calls = []
+
+    def fake_lookup(identifier, identifier_type, **kwargs):
+        calls.append((identifier, identifier_type, kwargs))
+        return {
+            "found": True,
+            "endpoint": "orders/out/simple/query",
+            "duration_ms": 2,
+            "data": {
+                "items": [
+                    {
+                        "name": "通用商品",
+                        "sku_id": "SKU-001",
+                        "i_id": "ITEM-001",
+                        "qty": 1,
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        fake_lookup,
+    )
+
+    result = node.order_product_resolver({
+        "conversation_id": "resolver-shop-namespace",
+        "customer_message": "这个商品怎么样",
+        "normalized_message": "这个商品怎么样",
+        "intent": "product_question",
+        "slots": {},
+        "copilot_context": {
+            "platform_trade_id": "5118207015382036103",
+            "shop_id": "tmall-inhe",
+            "jst_shop_id": "13221776",
+        },
+        "conversation_context": {},
+        "trace_steps": [],
+    })
+
+    assert calls == [(
+        "5118207015382036103",
+        "platform_trade_id",
+        {"exhaustive": False, "shop_id": "13221776"},
+    )]
+    assert result["order_product_identity"]["status"] == "resolved"
+
+
 def test_order_product_resolver_uses_conversation_cache_without_requery(monkeypatch):
     from app.agent.nodes import order_product_resolver as node
 

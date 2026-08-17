@@ -988,7 +988,8 @@ def order_product_resolver(state: dict) -> dict:
     try:
         from app.integrations.jst.live_query import lookup_order_by_identifier
 
-        shop_id = str(ctx.get("shop_id") or "").strip()
+        provider_context = state.get("copilot_context", {}) or {}
+        shop_id = str(provider_context.get("jst_shop_id") or "").strip()
         lookup_kwargs = {"exhaustive": False}
         if shop_id:
             lookup_kwargs["shop_id"] = shop_id

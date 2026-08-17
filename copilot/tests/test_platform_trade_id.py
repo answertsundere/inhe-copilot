@@ -447,6 +447,10 @@ class TestEvidenceBuilderOutbound:
         # 有 logistics_facts
         assert len(evidence["logistics_facts"]) >= 1
         lf = evidence["logistics_facts"][0]
+        assert lf["evidence_role"] == "operational_fact_direct"
+        assert lf["fact_type"] == "stock_shipping"
+        assert lf["tool_execution_status"] == "completed"
+        assert lf["read_only"] is True
         assert "顺丰" in lf["fact"] or "SF0229477422177" in lf["fact"]
         assert lf.get("evidence_boundary") == "已发出"
 
@@ -510,7 +514,7 @@ class TestLiveQueryPlatformTradeIdRouting:
             assert "outbound" in result["query_type"]
             assert result["endpoint"] == "orders/out/simple/query"
 
-    def test_jst_node_passes_sidebar_shop_identity_to_lookup(self):
+    def test_jst_node_passes_explicit_jst_shop_identity_to_lookup(self):
         from app.agent.nodes.jst_live_query import jst_live_query
         import unittest.mock as mock
 
@@ -527,7 +531,8 @@ class TestLiveQueryPlatformTradeIdRouting:
                 "platform_trade_id": "5118207015382036103",
             },
             "copilot_context": {
-                "shop_id": "13221776",
+                "shop_id": "tmall-inhe",
+                "jst_shop_id": "13221776",
                 "shop_name": "天猫英禾旗舰店",
             },
             "trace_steps": [],
@@ -543,6 +548,40 @@ class TestLiveQueryPlatformTradeIdRouting:
             "5118207015382036103",
             "platform_trade_id",
             shop_id="13221776",
+        )
+
+    def test_jst_node_does_not_use_logical_shop_ref_as_provider_filter(self):
+        from app.agent.nodes.jst_live_query import jst_live_query
+        import unittest.mock as mock
+
+        lookup_miss = {
+            "found": False,
+            "duration_ms": 1,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "platform_trade_id",
+            "safe_fallback_reason": "not_found",
+        }
+        state = {
+            "slots": {
+                "identifier_type": "platform_trade_id",
+                "platform_trade_id": "5118207015382036103",
+            },
+            "copilot_context": {
+                "shop_id": "tmall-inhe",
+                "shop_name": "天猫英禾旗舰店",
+            },
+            "trace_steps": [],
+        }
+
+        with mock.patch(
+            "app.agent.nodes.jst_live_query.lookup_order_by_identifier",
+            return_value=lookup_miss,
+        ) as lookup:
+            jst_live_query(state)
+
+        lookup.assert_called_once_with(
+            "5118207015382036103",
+            "platform_trade_id",
         )
 
     def test_platform_trade_id_can_fallback_to_same_o_id(self):

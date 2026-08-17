@@ -634,6 +634,76 @@ def test_tool_executor_node_produces_traces():
             registry.get("rag_search_tool").handler = original_handler
 
 
+def test_tool_executor_rebuilds_product_context_with_same_turn_order_identity(
+    monkeypatch,
+):
+    from app.agent.tools.executor import tool_executor_node
+    from app.agent.tools.registry import get_tool_registry
+
+    registry = get_tool_registry()
+    outbound = registry.get("jst_lookup_outbound_tool")
+    rag = registry.get("rag_search_tool")
+    original_outbound_handler = outbound.handler
+    original_rag_handler = rag.handler
+    captured = {}
+
+    outbound.handler = lambda _inputs, _state: {
+        "found": True,
+        "o_id": "internal-order-ref",
+        "status": "Confirmed",
+        "items": [{
+            "name": "resolved fixture product",
+            "sku_id": "SKU-FIXTURE-001",
+            "i_id": "ITEM-FIXTURE-001",
+            "qty": 1,
+        }],
+        "endpoint": "orders/out/simple/query",
+    }
+    rag.handler = lambda _inputs, _state: {
+        "chunks": [],
+        "retrieval_mode": "fixture",
+    }
+
+    def fake_build_product_context_pack(state, **_kwargs):
+        captured.update(state)
+        return {"facts": [], "stats": {}}
+
+    monkeypatch.setattr(
+        "app.services.product_context_pack_service.build_product_context_pack",
+        fake_build_product_context_pack,
+    )
+
+    try:
+        result = tool_executor_node({
+            "tool_plan": [
+                {
+                    "tool_name": "jst_lookup_outbound_tool",
+                    "inputs": {"platform_trade_id": "platform-order-ref"},
+                },
+                {
+                    "tool_name": "rag_search_tool",
+                    "inputs": {"query": "general product assessment"},
+                },
+            ],
+            "customer_message": "general product assessment",
+            "normalized_message": "general product assessment",
+            "query_fact_type": "product_overview",
+            "allowed_source_types": ["product_facts"],
+            "slots": {
+                "identifier_type": "platform_trade_id",
+                "platform_trade_id": "platform-order-ref",
+            },
+            "trace_steps": [],
+        })
+    finally:
+        outbound.handler = original_outbound_handler
+        rag.handler = original_rag_handler
+
+    assert result["order_product_identity"]["status"] == "resolved"
+    assert captured["order_product_identity"] == result["order_product_identity"]
+    assert captured["matched_product_name"] == "resolved fixture product"
+
+
 # ---------------------------------------------------------------------------
 # G. ToolSpec 安全检查
 # ---------------------------------------------------------------------------

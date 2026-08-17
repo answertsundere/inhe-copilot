@@ -33,6 +33,7 @@ TEXT_PRODUCT_QUESTION_TERMS = (
 
 def _has_identifier(state: dict) -> bool:
     slots = state.get("slots", {})
+    context = state.get("copilot_context", {}) or {}
     return bool(
         state.get("order_id", "")
         or slots.get("order_id", "")
@@ -40,6 +41,42 @@ def _has_identifier(state: dict) -> bool:
         or slots.get("platform_order_id", "")
         or slots.get("tracking_no", "")
         or slots.get("possible_numeric_id", "")
+        or context.get("order_id", "")
+        or context.get("platform_trade_id", "")
+        or context.get("platform_order_id", "")
+        or context.get("tracking_no", "")
+    )
+
+
+def _structured_order_lookup_tool(state: dict) -> str:
+    """Select the JST read tool from structured identity provenance, not message text."""
+    context = state.get("copilot_context", {}) or {}
+    slots = state.get("slots", {}) or {}
+    if context.get("tracking_no") or slots.get("tracking_no"):
+        return "jst_lookup_tracking_tool"
+    if (
+        context.get("platform_trade_id")
+        or context.get("platform_order_id")
+        or slots.get("platform_trade_id")
+        or slots.get("platform_order_id")
+        or slots.get("identifier_type") in ("platform_trade_id", "platform_order_id")
+    ):
+        return "jst_lookup_outbound_tool"
+    if context.get("order_id") or state.get("order_id") or slots.get("order_id"):
+        return "jst_lookup_order_tool"
+    return ""
+
+
+def _has_jst_resolved_product_identity(state: dict) -> bool:
+    identity = state.get("order_product_identity") or {}
+    return bool(
+        identity.get("status") == "resolved"
+        and identity.get("source") in {
+            "jst_order_items",
+            "jst_sku_query",
+            "jst_product_query",
+            "jst_product_name_query",
+        }
     )
 
 
@@ -509,6 +546,18 @@ def _compute_tool_lists(state: dict, strategy: str, has_id: bool) -> tuple:
             "jst_lookup_order_tool", "jst_lookup_outbound_tool",
             "jst_lookup_tracking_tool",
         ]
+
+    # A structured sidebar order is the authoritative bridge from the current
+    # customer context to the product identity. If the earlier resolver could
+    # not resolve it through JST, require the matching read-only lookup here so
+    # an LLM tool plan cannot silently skip identity enrichment.
+    sidebar_lookup_tool = _structured_order_lookup_tool(state)
+    if sidebar_lookup_tool and not _has_jst_resolved_product_identity(state):
+        if sidebar_lookup_tool not in required:
+            required.append(sidebar_lookup_tool)
+        if sidebar_lookup_tool not in allowed:
+            allowed.append(sidebar_lookup_tool)
+        forbidden = [tool for tool in forbidden if tool != sidebar_lookup_tool]
 
     # Only override with full block when there is a SEPARATELY resolved identity
     # from a stronger source (SKU code, order items). In that case the

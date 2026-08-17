@@ -627,6 +627,8 @@ def _formal_evidence_convergence(
     product_facts: list[dict],
     policy_facts: list[dict],
     faq_evidence: list[dict],
+    order_facts: list[dict] | None = None,
+    logistics_facts: list[dict] | None = None,
 ) -> dict:
     """Converge already-gated evidence through the shared admission service."""
     if not _formal_evidence_convergence_enabled():
@@ -634,6 +636,8 @@ def _formal_evidence_convergence(
     candidates = [
         *(state.get("knowledge_evidence") or []),
         *(state.get("filtered_evidence") or []),
+        *(order_facts or []),
+        *(logistics_facts or []),
         *product_facts,
         *policy_facts,
         *faq_evidence,
@@ -750,6 +754,15 @@ def evidence_builder(state: dict) -> dict:
             "confidence": "high",
             "scope": "order",
             "endpoint": used_endpoint,
+            "evidence_role": "operational_fact_direct",
+            "fact_type": "stock_shipping",
+            "claim_types_supported": ["stock_shipping"],
+            "fact_review_status": "verified",
+            "gate_status": "allowed",
+            "direct_answer_allowed": True,
+            "operational_scope": "order",
+            "tool_execution_status": "completed",
+            "read_only": True,
         }
         order_facts.append(fact)
         verified_facts.append(fact)
@@ -796,6 +809,15 @@ def evidence_builder(state: dict) -> dict:
             "confidence": "medium" if logistics_trace.get("low_confidence") else "high",
             "scope": "logistics",
             "evidence_boundary": "已发出" if send_date and not logistics_trace.get("sign_time") else ("已签收" if logistics_trace.get("is_delivered") else "状态未知"),
+            "evidence_role": "operational_fact_direct",
+            "fact_type": "stock_shipping",
+            "claim_types_supported": ["stock_shipping"],
+            "fact_review_status": "verified",
+            "gate_status": "allowed",
+            "direct_answer_allowed": True,
+            "operational_scope": "logistics",
+            "tool_execution_status": "completed",
+            "read_only": True,
         }
         logistics_facts.append(fact)
         verified_facts.append(fact)
@@ -1264,6 +1286,8 @@ def evidence_builder(state: dict) -> dict:
 
     convergence = _formal_evidence_convergence(
         state,
+        order_facts=order_facts,
+        logistics_facts=logistics_facts,
         product_facts=product_facts,
         policy_facts=policy_facts,
         faq_evidence=faq_evidence,

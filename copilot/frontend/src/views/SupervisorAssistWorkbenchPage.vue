@@ -35,6 +35,7 @@ interface ViewTurn {
 interface WorkbenchShop {
   id: string
   name: string
+  jstShopId: string
 }
 
 function loadConfiguredShops(): WorkbenchShop[] {
@@ -47,6 +48,7 @@ function loadConfiguredShops(): WorkbenchShop[] {
       .map((item) => ({
         id: String(item?.id || '').trim(),
         name: String(item?.name || '').trim(),
+        jstShopId: String(item?.jst_shop_id || '').trim(),
       }))
       .filter((item) => item.id && item.name)
   } catch {
@@ -55,11 +57,12 @@ function loadConfiguredShops(): WorkbenchShop[] {
 }
 
 const configuredShops = loadConfiguredShops()
-const defaultShop = configuredShops[0] || { id: '', name: '' }
+const defaultShop = configuredShops[0] || { id: '', name: '', jstShopId: '' }
 
 const context = reactive<WorkbenchContext>({
   shopId: defaultShop.id,
   shopName: defaultShop.name,
+  jstShopId: defaultShop.jstShopId,
   productName: '',
   skuCode: '',
   iId: '',
@@ -346,7 +349,7 @@ function selectShop(shopId: string) {
           </el-form-item>
         </div>
         <el-form-item label="订单号">
-          <el-input v-model="context.orderId" placeholder="需要查询订单时填写" clearable />
+          <el-input v-model="context.orderId" placeholder="平台订单号" clearable />
         </el-form-item>
         <el-form-item label="物流单号">
           <el-input v-model="context.trackingNo" placeholder="需要查询物流时填写" clearable />

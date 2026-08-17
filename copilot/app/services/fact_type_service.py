@@ -15,6 +15,7 @@ from app.services.fact_type_alias_service import (
 
 
 FACT_TYPE_LABELS = {
+    "product_overview": "商品质量/综合情况（只汇总已核实的低风险直接事实，不代表质量、安全或耐用保证）",
     "material_composition": "\u6750\u8d28",
     "material_safety": "\u6750\u8d28\u548c\u5b89\u5168\u8bf4\u660e",
     "bite_or_toxicity": "\u8bef\u5165\u53e3/\u8bef\u54ac\u5b89\u5168\u5904\u7406",
@@ -36,7 +37,7 @@ FACT_TYPE_LABELS = {
     "installation": "安装",
     "detachable": "拆卸/可拆",
     "variant_compare": "款式差异",
-    "stock_shipping": "库存/发货",
+    "stock_shipping": "库存/发货/订单物流状态与轨迹",
     "return_pickup": "退货/售后取件",
     "invoice_policy": "发票政策",
     "price_protection": "价保政策",

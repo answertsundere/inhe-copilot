@@ -731,7 +731,12 @@ def tool_executor_node(state: dict) -> dict:
     # 从 JST 工具结果中提取 legacy 字段，供 generate_logistics_reply 等节点使用
     legacy = _extract_legacy_fields(exec_result["tool_results"], state)
     result.update(legacy)
-    result.update(_extract_rag_and_product_fields(exec_result["tool_results"], state))
+    result.update(
+        _extract_rag_and_product_fields(
+            exec_result["tool_results"],
+            {**state, **legacy},
+        )
+    )
 
     return result
 

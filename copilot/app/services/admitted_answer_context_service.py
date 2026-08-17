@@ -36,6 +36,7 @@ from app.services.semantic_fact_type_service import (
 
 DIRECT_PRODUCT_ROLES = {"product_fact_direct", "faq_direct"}
 DIRECT_POLICY_ROLES = {"policy_fact_direct"}
+DIRECT_OPERATIONAL_ROLES = {"operational_fact_direct"}
 ACTION_ROLES = {"service_action", "fallback_only"}
 MEDIA_ROLES = {"media_reference"}
 REJECTED_FACT_ROLES = {
@@ -68,8 +69,11 @@ PLACEHOLDER_TERMS = (
     "暂无明确",
     "暂未明确",
     "以详情页为准",
+    "以商品详情页为准",
     "以实物为准",
-    "已收录尺寸图",
+    "以说明书为准",
+    "以打包指南或实物包装为准",
+    "已收录",
     "以尺寸图或商品详情页标注为准",
 )
 # Variants where characters may intervene between the negation and the claim
@@ -308,6 +312,13 @@ def _normalise_formal_evidence_candidate(
     placeholder, and conflict checks still run below.
     """
     source_type = _source_type(item)
+    if _role(item) in DIRECT_OPERATIONAL_ROLES:
+        normalised = dict(item)
+        if not sanitize_text(normalised.get("content")):
+            normalised["content"] = sanitize_text(
+                item.get("fact") or item.get("text")
+            )
+        return normalised
     if source_type not in {"product_facts", "faq", "installation_guide", "policy", "policy_facts"}:
         return item
 
@@ -455,6 +466,11 @@ def _admission_reason(
     policy: bool = False,
 ) -> str:
     role = _role(item)
+    if role in DIRECT_OPERATIONAL_ROLES:
+        return _operational_admission_reason(
+            item,
+            requested_claim_types=requested_claim_types,
+        )
     gate = sanitize_text(item.get("gate_status")).lower()
     status = sanitize_text(
         item.get("fact_review_status") or item.get("review_status") or item.get("verification_status")
@@ -493,6 +509,52 @@ def _admission_reason(
     material_reason = material_evidence_admission_reason(item)
     if material_reason:
         return material_reason
+    return ""
+
+
+def _operational_admission_reason(
+    item: dict[str, Any],
+    *,
+    requested_claim_types: list[str],
+) -> str:
+    """Admit only facts emitted by a completed read-only operational tool."""
+
+    if _role(item) not in DIRECT_OPERATIONAL_ROLES:
+        return "operational_role_invalid"
+    if item.get("read_only") is not True:
+        return "operational_fact_not_read_only"
+    if sanitize_text(item.get("tool_execution_status")).lower() != "completed":
+        return "operational_tool_not_completed"
+    if sanitize_text(item.get("operational_scope")).lower() not in {
+        "order",
+        "logistics",
+    }:
+        return "operational_scope_missing"
+    if item.get("direct_answer_allowed") is not True:
+        return "not_direct_answerable"
+    if sanitize_text(item.get("gate_status")).lower() not in ALLOWED_GATES:
+        return "gate_not_allowed"
+    if sanitize_text(
+        item.get("fact_review_status")
+        or item.get("review_status")
+        or item.get("verification_status")
+    ).lower() not in REVIEWED_STATUSES:
+        return "review_status_missing"
+    text = _text(item)
+    if not text:
+        return "fact_text_missing"
+    if is_placeholder_evidence_text(text):
+        return "placeholder_evidence"
+    supported = _canonical_claim_types(_claim_types(item))
+    compatible = (
+        set().union(
+            *(_compatible_claim_types(claim) for claim in requested_claim_types)
+        )
+        if requested_claim_types
+        else supported
+    )
+    if not supported or supported.isdisjoint(compatible):
+        return "fact_type_incompatible"
     return ""
 
 
@@ -715,6 +777,8 @@ def collect_admitted_product_facts(
             pair[0],
         ),
     ):
+        if _role(item) in DIRECT_OPERATIONAL_ROLES:
+            continue
         text = _text(item)
         provenance = _provenance(source, item, text)
         dedupe_key = provenance["evidence_uid"]
@@ -831,6 +895,7 @@ def build_evidence_convergence_trace(
         for item in [
             *(admitted_context.get("direct_product_facts") or []),
             *(admitted_context.get("direct_policy_facts") or []),
+            *(admitted_context.get("direct_operational_facts") or []),
         ]
         if sanitize_text(item.get("evidence_uid"))
     }
@@ -965,6 +1030,7 @@ def build_turn_evidence_funnel(
         for item in [
             *(_as_list(admitted_context.get("direct_product_facts"))),
             *(_as_list(admitted_context.get("direct_policy_facts"))),
+            *(_as_list(admitted_context.get("direct_operational_facts"))),
         ]
         if isinstance(item, dict) and sanitize_text(item.get("evidence_uid"))
     }
@@ -1817,11 +1883,14 @@ class AdmittedAnswerContextService:
         rejected.extend(duplicate_origins)
 
         direct_policy: list[dict[str, Any]] = []
+        direct_operational: list[dict[str, Any]] = []
         actions: list[dict[str, Any]] = []
         media: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         for source, raw_item in _candidate_containers(response):
             item = _normalise_product_context_candidate(source, raw_item, identity)
+            if source == "response.formal_evidence_candidates":
+                item = _normalise_formal_evidence_candidate(item, identity)
             text = _text(item)
             provenance = _provenance(source, item, text)
             key = (provenance["evidence_uid"], source)
@@ -1830,7 +1899,47 @@ class AdmittedAnswerContextService:
             seen.add(key)
             role = _role(item)
             source_type = _source_type(item)
-            if role in DIRECT_POLICY_ROLES:
+            if role in DIRECT_OPERATIONAL_ROLES:
+                reason = _operational_admission_reason(
+                    item,
+                    requested_claim_types=requested_claim_types,
+                )
+                if reason:
+                    rejected.append({
+                        **provenance,
+                        "fact_type": _fact_type(item),
+                        "reason": reason,
+                    })
+                else:
+                    direct_operational.append({
+                        **provenance,
+                        "review_status": sanitize_text(
+                            item.get("fact_review_status")
+                            or item.get("review_status")
+                            or item.get("verification_status")
+                        ).lower(),
+                        "claim_types_supported": _claim_types(item),
+                        "fact_type": _fact_type(item),
+                        "attribute_key": _attribute_key(item),
+                        "text": _clip(text),
+                        "value": _clip(
+                            item.get("value")
+                            or item.get("fact_value")
+                            or text
+                        ),
+                        "original_value": _clip(
+                            item.get("value")
+                            or item.get("fact_value")
+                            or text
+                        ),
+                        "direct_answer_allowed": True,
+                        "operational_scope": sanitize_text(
+                            item.get("operational_scope")
+                        ).lower(),
+                        "tool_execution_status": "completed",
+                        "read_only": True,
+                    })
+            elif role in DIRECT_POLICY_ROLES:
                 reason = _admission_reason(
                     item,
                     product_identity=identity,
@@ -1857,7 +1966,7 @@ class AdmittedAnswerContextService:
         }]
         claim_resolutions = build_claim_resolutions(
             requested_claims,
-            direct_product_facts=direct_product,
+            direct_product_facts=[*direct_product, *direct_operational],
             direct_policy_facts=direct_policy,
             conflicts=conflicts,
             claim_policies=_as_dict(domain_policy_pack.get("claim_policies")),
@@ -1882,7 +1991,11 @@ class AdmittedAnswerContextService:
             tool_requirement_status=_as_dict(
                 eligibility_inputs.get("tool_requirement_status")
             ),
-            admitted_direct_facts=[*direct_product, *direct_policy],
+            admitted_direct_facts=[
+                *direct_product,
+                *direct_policy,
+                *direct_operational,
+            ],
             product_identity=identity,
             has_actions=bool(actions),
             has_media=bool(media),
@@ -1923,6 +2036,7 @@ class AdmittedAnswerContextService:
             "schema_version": "admitted-answer-context-v1",
             "direct_product_facts": direct_product,
             "direct_policy_facts": direct_policy,
+            "direct_operational_facts": direct_operational,
             "handoff_action_guidance": actions[:12],
             "media_candidates": media[:12],
             "rejected_evidence": rejected[:40],
@@ -1962,6 +2076,7 @@ def canonical_selected_evidence(admitted_context: dict[str, Any]) -> list[dict[s
     for item in [
         *(_as_list(admitted_context.get("direct_product_facts"))),
         *(_as_list(admitted_context.get("direct_policy_facts"))),
+        *(_as_list(admitted_context.get("direct_operational_facts"))),
     ]:
         if not isinstance(item, dict):
             continue

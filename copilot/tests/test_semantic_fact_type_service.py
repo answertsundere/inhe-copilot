@@ -109,6 +109,42 @@ def test_llm_first_fact_type_classification(monkeypatch):
     assert result["secondary_fact_types"] == []
 
 
+def test_product_overview_is_a_canonical_model_selectable_fact_type(monkeypatch):
+    message = "Give me a general assessment of the identified product."
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service,
+        "get_llm_client",
+        lambda: _FakeLLMClient(_complete_llm_payload(**{
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "product_overview",
+                "attribute_key": "",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": message,
+            }],
+        })),
+    )
+
+    result = service.classify_query_fact_type_llm_first({
+        "customer_message": message,
+        "intent": "product_question",
+    })
+
+    assert result["query_fact_type"] == "product_overview"
+    assert result["customer_goals"][0]["claim_type"] == "product_overview"
+    overview = next(
+        item
+        for item in service._canonical_fact_type_candidates()
+        if item["fact_type_id"] == "product_overview"
+    )
+    assert overview["meaning"].startswith("商品质量/综合情况")
+    assert "broad" in overview["classification_boundary"].lower()
+    assert "guarantee" in overview["classification_boundary"].lower()
+
+
 def test_strict_turn_understanding_reuses_schema_prompt_and_normalizer(
     monkeypatch,
 ):
@@ -342,6 +378,14 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "classification metadata, not evidence, a conclusion, or authorization" in prompt
 
 
+def test_turn_understanding_prompt_maps_broad_assessment_to_overview_contract():
+    prompt = " ".join(service.SYSTEM_PROMPT.split())
+
+    assert "broad assessment" in prompt
+    assert "product_overview" in prompt
+    assert "does not authorize a quality" in prompt
+
+
 def test_turn_understanding_candidates_expose_one_canonical_material_choice():
     candidates = service._canonical_fact_type_candidates()
     material_candidates = [
@@ -380,6 +424,16 @@ def test_turn_understanding_candidates_expose_one_canonical_material_choice():
         "overall_dimensions",
     }
     assert len({item["fact_type_id"] for item in candidates}) == len(candidates)
+
+
+def test_turn_understanding_candidates_describe_live_logistics_status_explicitly():
+    candidates = {
+        item["fact_type_id"]: item
+        for item in service._canonical_fact_type_candidates()
+    }
+
+    assert "物流" in candidates["stock_shipping"]["meaning"]
+    assert "轨迹" in candidates["stock_shipping"]["meaning"]
 
 
 def test_fact_type_candidates_distinguish_measurements_from_fit_conclusions():

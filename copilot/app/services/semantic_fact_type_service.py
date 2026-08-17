@@ -193,6 +193,14 @@ _POLICY_INTENT_DESCRIPTIONS = {
 }
 
 _FACT_TYPE_CLASSIFICATION_BOUNDARIES = {
+    "product_overview": (
+        "A broad product-quality assessment, overall assessment, or general "
+        "introduction of the identified product when the buyer did not name "
+        "one concrete defect, performance condition, or specific property. "
+        "It may summarize verified low-risk direct facts, but it is not a "
+        "quality, durability, safety, suitability, certification, or "
+        "performance guarantee."
+    ),
     "dimensions": (
         "A request for a product measurement value; not a conclusion about "
         "whether it fits a supplied space."
@@ -274,6 +282,11 @@ For each goal:
   directly expresses the requested concept, set claim_type_status to canonical
   and copy that candidate ID into claim_type; do not restate that candidate as
   a semantic_key.
+- A broad assessment or general introduction of an identified product, with no
+  single requested property, directly matches product_overview. This
+  classification does not authorize a quality, durability, safety,
+  suitability, certification, or performance guarantee; it only selects the
+  reviewed low-risk overview evidence contract.
 - Match claim type and policy intent independently for each enumerated goal;
   the classification of one goal must not determine, merge, or erase another.
 - For a comparison, implication, or causal question, separate the conclusion

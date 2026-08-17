@@ -19,8 +19,10 @@ for the current reply.
 The existing `evidence_builder` node may opt in through
 `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED`. It passes already-gated retrieval
 candidates and Product Context Pack candidates to that service, then emits a
-deterministic canonical `selected_evidence` list from admitted direct product
-and direct policy facts only.
+deterministic canonical `selected_evidence` list from admitted direct product,
+direct policy, and completed read-only operational facts. Operational facts are
+restricted to explicit `order` or `logistics` scope and remain a distinct role;
+they are not promoted into product knowledge.
 
 The canonical selection is the only additional factual input that formal
 generation may consume while the flag is enabled. It preserves evidence UID,
@@ -35,6 +37,13 @@ The following roles or states never enter canonical selected evidence:
 - missing, mismatched, or namespace-incompatible product identity;
 - insufficient review status; and
 - candidates blocked by an attribute conflict.
+
+A live tool result enters only as `operational_fact_direct` when the tool
+execution is completed and read-only, the scope is exactly `order` or
+`logistics`, the claim type is compatible, the value is non-placeholder, and
+direct-answer permission is explicit. A planned, failed, write-capable, or
+unscoped tool result remains excluded. This amendment does not admit service
+actions or media references and does not grant delivery authority.
 
 The same service also produces a bounded `minimal_decision_context` for the
 strict Decision Proposal shadow. It contains requested claims, compact
@@ -79,6 +88,8 @@ promise without an attached reply block.
 - Final orchestration remains the sole owner of final delivery decisions.
 - This decision does not relax `can_send`, media, identity, review, or conflict
   requirements.
+- Read-only operational facts can support an order/logistics clause but cannot
+  write formal knowledge, satisfy a product fact, or authorize a side effect.
 - API, copilot, replay, and benchmark reach the same graph stage through the
   existing AnalysisPipeline.
 

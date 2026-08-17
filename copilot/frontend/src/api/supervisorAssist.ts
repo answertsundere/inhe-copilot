@@ -8,6 +8,7 @@ export interface ConversationTurn {
 export interface WorkbenchContext {
   shopId: string
   shopName: string
+  jstShopId: string
   productName: string
   skuCode: string
   iId: string
@@ -22,11 +23,12 @@ export interface AnalyzeRequest {
   product_name?: string
   sku_code?: string
   i_id?: string
-  order_id?: string
+  platform_trade_id?: string
   tracking_no?: string
   copilot_context?: {
     shop_id?: string
     shop_name?: string
+    jst_shop_id?: string
   }
 }
 
@@ -95,11 +97,15 @@ export function buildAnalyzeRequest(
     product_name: optionalValue(context.productName),
     sku_code: optionalValue(context.skuCode),
     i_id: optionalValue(context.iId),
-    order_id: optionalValue(context.orderId),
+    // The workbench sidebar contains the marketplace order number, not JST's
+    // internal order id. Preserve that provenance so the backend selects the
+    // outbound-order lookup deterministically for every shop.
+    platform_trade_id: optionalValue(context.orderId),
     tracking_no: optionalValue(context.trackingNo),
     copilot_context: {
       shop_id: optionalValue(context.shopId),
       shop_name: optionalValue(context.shopName),
+      jst_shop_id: optionalValue(context.jstShopId),
     },
   }
 }

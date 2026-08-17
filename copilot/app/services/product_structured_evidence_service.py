@@ -92,6 +92,24 @@ _FIELD_TOKENS = {
     "aftersales_policy": ("warranty", "\u8d28\u4fdd", "\u552e\u540e"),
 }
 
+_PRODUCT_OVERVIEW_FACT_TYPES = (
+    "material",
+    "dimensions",
+    "installation",
+    "detachable",
+    "accessories",
+    "cleaning_care",
+)
+
+_PRODUCT_OVERVIEW_LABELS = {
+    "material": "材质",
+    "dimensions": "尺寸/规格",
+    "installation": "安装方式",
+    "detachable": "拆装说明",
+    "accessories": "配件清单",
+    "cleaning_care": "清洁保养",
+}
+
 
 def build_product_spec_evidence_candidates(
     profile: dict[str, Any],
@@ -110,7 +128,16 @@ def build_product_spec_evidence_candidates(
         == "material_composition"
         else requested
     )
-    values = _pick_values(profile, field_fact_type)
+    overview_components: list[tuple[str, list[tuple[str, Any]]]] = []
+    if field_fact_type == "product_overview":
+        overview_components = _pick_product_overview_components(profile)
+        values = [
+            item
+            for _component_type, component_values in overview_components
+            for item in component_values
+        ]
+    else:
+        values = _pick_values(profile, field_fact_type)
     if not values:
         return []
 
@@ -120,8 +147,12 @@ def build_product_spec_evidence_candidates(
     ):
         return []
 
-    value_text = _format_values(values)
-    customer_text = _customer_text(field_fact_type, value_text)
+    if field_fact_type == "product_overview":
+        value_text = _format_product_overview(overview_components)
+        customer_text = f"这款商品已核实的低风险资料包括：{value_text}。"
+    else:
+        value_text = _format_values(values)
+        customer_text = _customer_text(field_fact_type, value_text)
     product_id = profile.get("product_id")
     source_field_keys = [key for key, _value in values]
     source_version = int(profile.get("source_version") or 0)
@@ -159,7 +190,12 @@ def build_product_spec_evidence_candidates(
         "value": value_text,
         "customer_text": customer_text,
         "verification_status": "verified",
-        "material_provenance": structured_field_source_kind(profile, "material") if field_fact_type == "material" else "",
+        "material_provenance": (
+            structured_field_source_kind(profile, "material")
+            if field_fact_type == "material"
+            or any(item[0] == "material" for item in overview_components)
+            else ""
+        ),
         "source_confidence": 0.85,
         "can_direct_answer": True,
         "needs_human_review": False,
@@ -167,6 +203,52 @@ def build_product_spec_evidence_candidates(
         "media_url": "",
         "block_reasons": [],
     }]
+
+
+def _pick_product_overview_components(
+    profile: dict[str, Any],
+) -> list[tuple[str, list[tuple[str, Any]]]]:
+    """Collect only explicit low-risk fields for a broad product summary."""
+
+    # A broad overview is admitted as one evidence item. Filter each component
+    # first so one reference-only field cannot either contaminate or suppress
+    # the direct facts in the same overview.
+    from app.services.admitted_answer_context_service import is_placeholder_evidence_text
+
+    components: list[tuple[str, list[tuple[str, Any]]]] = []
+    used_keys: set[str] = set()
+    for fact_type in _PRODUCT_OVERVIEW_FACT_TYPES:
+        values = [
+            (key, value)
+            for key, value in _pick_values(profile, fact_type)
+            if key not in used_keys
+        ]
+        if fact_type == "material" and material_direct_answer_block_reason(
+            profile,
+            values,
+        ):
+            continue
+        if not values:
+            continue
+        if is_placeholder_evidence_text(_format_values(values)):
+            continue
+        components.append((fact_type, values))
+        used_keys.update(key for key, _value in values)
+    return components
+
+
+def _format_product_overview(
+    components: list[tuple[str, list[tuple[str, Any]]]],
+) -> str:
+    parts = []
+    for fact_type, values in components:
+        value_text = _format_values(values)
+        if not value_text:
+            continue
+        parts.append(
+            f"{_PRODUCT_OVERVIEW_LABELS.get(fact_type, fact_type)}：{value_text}"
+        )
+    return "；".join(parts)
 
 
 def structured_field_source_kind(profile: dict[str, Any], field_name: str) -> str:

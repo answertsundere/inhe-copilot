@@ -185,6 +185,16 @@ refund, replacement, and other live state use the appropriate read or action
 tool. Media references remain candidates until an actual role-compatible block
 is delivered.
 
+Channel context keeps store identity platform-neutral. `shop_id` identifies the
+logical integrated store used by the Agent and future channel adapters; it is
+not implicitly a JST provider identifier. An adapter may additionally provide
+an explicit `jst_shop_id` when the JST API must be provider-scoped. A sidebar
+platform trade identifier is resolved through the read-only order tool before
+product answering, so the resulting internal product name, SKU, `i_id`, order
+state, and logistics identity can seed the same canonical turn without title
+guessing. Independently integrated stores therefore remain separated without
+coupling Agent reasoning to JST-specific IDs.
+
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.
 
@@ -201,6 +211,15 @@ used to change planner behavior.
 review status, direct-answer permission, identity scope, claim compatibility,
 placeholder rejection, conflict handling, and provenance-preserving
 deduplication.
+
+Completed read-only order and logistics tool results may enter that boundary as
+`operational_fact_direct`. They remain separate from reviewed product facts and
+must carry a completed execution status, a closed `order` or `logistics` scope,
+direct-answer permission, and compatible claim type. Planned or failed tools,
+service actions, media references, placeholders, and write-capable operations
+remain non-factual and cannot enter canonical `selected_evidence`. Operational
+fact admission adds no delivery authority: Supervisor Assist remains
+`can_send=false` and requires human review.
 
 Formal Evidence Convergence is implemented but disabled in production. Enabling
 it in an isolated slice does not change the evidence contract.

@@ -452,6 +452,56 @@ def test_product_context_pack_turns_exact_profile_field_into_fact(product_contex
     assert pack["evidence_pack"]["matched_facts"][0]["fact_type"] == "installation"
 
 
+def test_product_context_pack_builds_low_risk_product_overview(product_context_db):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="OVERVIEW_PRODUCT_001",
+            product_name="overview fixture product",
+            sku_list_json=json.dumps([
+                {"sku_code": "OVERVIEW_PRODUCT_001-A"},
+            ]),
+            specs_json=json.dumps({
+                "material": "PP",
+                "size": "60*40*90cm",
+                "install_method": "卡扣式组装",
+                "load_capacity": "100kg",
+                "certification": "检测合格",
+            }, ensure_ascii=False),
+            status="published",
+        )
+        db.add(product)
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "i_id": "OVERVIEW_PRODUCT_001",
+            "slots": {"sku_code": "OVERVIEW_PRODUCT_001-A"},
+        },
+        query="general product assessment",
+        allowed_source_types=["product_facts"],
+        query_fact_type="product_overview",
+    )
+
+    product_first = pack["product_first_evidence_pack"]
+    assert product_first["answerability"] == "direct_answer"
+    assert product_first["requested_fact_type"] == "product_overview"
+    assert product_first["matched_fields"] == ["product_overview"]
+    assert len(product_first["product_structured_facts"]) == 1
+    fact = product_first["product_structured_facts"][0]
+    assert fact["fact_type"] == "product_overview"
+    assert "PP" in fact["customer_text"]
+    assert "60*40*90cm" in fact["customer_text"]
+    assert "卡扣式组装" in fact["customer_text"]
+    assert "100kg" not in fact["customer_text"]
+    assert "检测合格" not in fact["customer_text"]
+
+
 def test_product_context_pack_answers_gross_weight_from_product_card(product_context_db):
     from app.models.kb_tables import KBProduct
     from app.services.product_context_pack_service import build_product_context_pack

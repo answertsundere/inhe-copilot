@@ -48,6 +48,8 @@ def test_placeholder_semantics_reject_verification_copy_without_rejecting_real_v
         "\u4ee5\u8be6\u60c5\u9875\u4e3a\u51c6",
         "\u4ee5\u5b9e\u7269\u4e3a\u51c6",
         "\u5df2\u6536\u5f55\u5c3a\u5bf8\u56fe\uff0c\u5177\u4f53\u5c3a\u5bf8\u4ee5\u5c3a\u5bf8\u56fe\u6216\u5546\u54c1\u8be6\u60c5\u9875\u6807\u6ce8\u4e3a\u51c6",
+        "\u5df2\u6536\u5f55\u5b89\u88c5\u89c6\u9891\uff0c\u5efa\u8bae\u6309\u5b89\u88c5\u89c6\u9891\u6216\u8bf4\u660e\u4e66\u6b65\u9aa4\u7ec4\u88c5",
+        "\u5177\u4f53\u914d\u4ef6\u6e05\u5355\u4ee5\u6253\u5305\u6307\u5357\u6216\u5b9e\u7269\u5305\u88c5\u4e3a\u51c6",
         "\u5f85\u786e\u8ba4",
         "\u6682\u65e0\u660e\u786e\u6570\u636e",
     )
@@ -68,6 +70,60 @@ def test_admits_reviewed_scoped_direct_product_fact():
     assert context["unresolved_claims"] == []
     assert context["read_only"] is True
     assert context["can_change_can_send"] is False
+
+
+def _operational_fact(**overrides):
+    value = {
+        "evidence_uid": "live-logistics-fact",
+        "source_type": "erp_live_logistics",
+        "evidence_role": "operational_fact_direct",
+        "fact_type": "stock_shipping",
+        "claim_types_supported": ["stock_shipping"],
+        "fact": "承运商已接收包裹，当前状态为已发出。",
+        "fact_review_status": "verified",
+        "gate_status": "allowed",
+        "direct_answer_allowed": True,
+        "operational_scope": "logistics",
+        "tool_execution_status": "completed",
+        "read_only": True,
+    }
+    value.update(overrides)
+    return value
+
+
+def test_admits_completed_read_only_operational_fact_separately_from_product_facts():
+    context = AdmittedAnswerContextService().build_for_response(
+        {"formal_evidence_candidates": [_operational_fact()]},
+        product_identity={},
+        understanding=_understanding("stock_shipping"),
+    )
+
+    assert context["direct_product_facts"] == []
+    assert [item["evidence_uid"] for item in context["direct_operational_facts"]] == [
+        "live-logistics-fact"
+    ]
+    assert context["claim_resolutions"][0]["status"] == "supported"
+    assert context["unresolved_claims"] == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        ({"tool_execution_status": "planned"}, "operational_tool_not_completed"),
+        ({"read_only": False}, "operational_fact_not_read_only"),
+        ({"operational_scope": ""}, "operational_scope_missing"),
+    ],
+)
+def test_operational_fact_fails_closed_without_completed_read_contract(overrides, reason):
+    context = AdmittedAnswerContextService().build_for_response(
+        {"formal_evidence_candidates": [_operational_fact(**overrides)]},
+        product_identity={},
+        understanding=_understanding("stock_shipping"),
+    )
+
+    assert context["direct_operational_facts"] == []
+    assert context["claim_resolutions"][0]["status"] == "unresolved"
+    assert any(item["reason"] == reason for item in context["rejected_evidence"])
 
 
 def test_same_origin_transport_copies_do_not_make_dimension_claim_ambiguous():

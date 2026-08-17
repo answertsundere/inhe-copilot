@@ -69,6 +69,19 @@ def test_augment_context_merges_candidates_and_keeps_historical_media_separate()
     assert media_ref["media_context_count"] == 2
 
 
+def test_augment_context_preserves_structured_order_id_for_local_tools_only():
+    platform_order_id = "6926666820903533935"
+    raw_phone = "13812345678"
+
+    augmented = augment_copilot_context_with_real_identity({
+        "platform_order_id": platform_order_id,
+        "customer_phone": raw_phone,
+    })
+
+    assert augmented["platform_order_id"] == platform_order_id
+    assert augmented["customer_phone"] != raw_phone
+
+
 def test_repository_scope_scoring_accepts_structured_scope_candidates():
     from app.repositories.knowledge_chunk_repository import _compute_scope_score
 

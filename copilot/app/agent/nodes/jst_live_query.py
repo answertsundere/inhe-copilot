@@ -100,9 +100,17 @@ def jst_live_query(state: dict) -> dict:
         "summary": f"正在查询 {identifier} (type={identifier_type}) ...",
     }
 
-    shop_id = str((state.get("copilot_context", {}) or {}).get("shop_id") or "").strip()
-    if shop_id:
-        result = lookup_order_by_identifier(identifier, identifier_type, shop_id=shop_id)
+    # ``shop_id`` is the platform-neutral store reference used by the control
+    # plane. Only an explicit provider-scoped id may filter JST records.
+    jst_shop_id = str(
+        (state.get("copilot_context", {}) or {}).get("jst_shop_id") or ""
+    ).strip()
+    if jst_shop_id:
+        result = lookup_order_by_identifier(
+            identifier,
+            identifier_type,
+            shop_id=jst_shop_id,
+        )
     else:
         result = lookup_order_by_identifier(identifier, identifier_type)
     duration_ms = int((time.time() - t0) * 1000)
