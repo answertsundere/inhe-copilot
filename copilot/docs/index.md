@@ -278,15 +278,14 @@ review and service-action/business-helpfulness diagnosis.
 The current role-aware follow-up checkpoint keeps the same P1 owner chain. Turn
 Understanding sees bounded role-preserving history but must bind every goal to
 the current buyer message; closed contextual confirmations and conversation
-closures remain non-factual and use the existing response owners. The first
-closure case passed, while the fixed `3x1` gate stopped at an elliptical
-logistics follow-up because the Provider copied a historical source span. The
-validator rejected it and a synthetic strict-transport probe did not qualify
-the Provider for this role. The 20-case E2 run was not started. This is a
-fail-closed Provider/transport finding with `real_customer_accuracy=null`,
-formal knowledge query-only, mandatory human review, and `can_send=false`. A
-separate versioned synthetic safety run passed smoke `5/5` and full `22/22`
-with no send authority; it does not change the real-conversation conclusion.
+closures remain non-factual and use the existing response owners. DeepSeek V4
+Pro passed qualification v3 and the isolated clean-runtime sequence
+`1x1 -> 3x1 -> 20x1`; the prior elliptical logistics provenance failure no
+longer reproduced. All cases remained query-only and review-only with zero
+knowledge writes and `can_send=false`. Formal Evidence Convergence was still
+disabled, selected evidence was zero, and Composer was therefore not part of
+this gate. The result closes a Provider/provenance blocker but leaves
+`real_customer_accuracy=null` and does not qualify reply quality.
 
 The next default-off engineering slice introduced a role-scoped strict Turn
 Understanding configuration and a fictional, read-only qualification script

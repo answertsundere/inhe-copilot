@@ -1,5 +1,18 @@
 # Change Log
 
+## 2026-08-17 - Strict Turn Understanding isolated runtime qualification
+
+- Bound the qualified DeepSeek V4 Pro Turn Understanding role to clean commit
+  `cf70c453d07e` and completed the isolated `1x1`, fixed `3x1`, and authorized
+  deidentified internal `20x1` gates without retrying a passed stage.
+- Strict understanding passed `20/20`; all cases retained human review,
+  `can_send=0`, zero formal-knowledge DML, and an unchanged query-only snapshot.
+- Corrected a repository-external gate that had incorrectly required Composer
+  acceptance while Formal Evidence Convergence was deliberately disabled. The
+  original observation was deterministically rescored without another model
+  call. Selected evidence remained zero, so this is transport/provenance
+  qualification only, not reply quality or real accuracy.
+
 ## 2026-08-16 - Turn Understanding canonical stability v3
 
 - Added strict-role-only, server-owned clause provenance normalization while

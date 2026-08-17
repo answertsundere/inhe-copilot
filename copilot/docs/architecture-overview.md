@@ -1044,7 +1044,19 @@ reached `24/24` for execution, schema, current-source, semantics, combined
 repeatability, semantic repeatability, and provenance repeatability, with zero
 timeout, knowledge write, or send change. Provider qualification remains
 role-scoped and does not invalidate the qualified DeepSeek V4 Flash Composer
-role. No production flag changed; isolated `1x1` and `3x1` remain mandatory.
+role. No production flag changed; the required isolated runtime results are
+recorded below.
+The isolated current-source runtime gates have now completed on clean commit
+`cf70c453d07e`: the corrected `1x1` observation passed without reinvoking the
+Provider, the fixed `3x1` passed once, and the authorized deidentified internal
+E2 set completed `20/20`. Strict Turn Understanding passed every case with no
+retry, repair, provenance blocker, knowledge change, or send authority.
+Pipeline p50/p95 was `5981/7689 ms`; the strict role itself was
+`1522.25/1967.42 ms`. Formal Evidence Convergence remained disabled, so all 20
+Composer observations were expectedly blocked at that boundary and selected
+evidence remained zero. This qualifies the role-scoped transport/provenance
+checkpoint only; it is not reply-quality evidence or real accuracy, and the
+production flag remains disabled.
 
 ### Customer-Conditional Comparison Boundary
 

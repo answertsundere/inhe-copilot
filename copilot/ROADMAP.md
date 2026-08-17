@@ -26,8 +26,9 @@
 
 ## Current Blockers
 
-1. `P1-E2-001` cannot claim real quality until a data owner authorizes a
-   deidentified long-conversation review package and independent labels.
+1. `P1-E2-001` has data-owner authorization for the deidentified internal
+   package, but cannot claim real quality until independent human labels and an
+   evidence-enabled Supervisor Assist quality run exist.
 2. The P1 frozen-owner boundary prevents inventing a policy outcome, product
    fact, compensation, refund, replacement, or promised completion step.
 3. No test result may promote the current Supervisor Assist runtime to
@@ -45,22 +46,24 @@
    corrected two non-authoritative stability mismatches without changing the
    legacy path. DeepSeek V4 Pro then passed one fixed `8x3` at `24/24` across
    execution, schema, current-source, semantics, and semantic/source
-   repeatability. The runtime role remains disabled until isolated `1x1` and
-   `3x1` pass.
+   repeatability. The isolated clean-runtime sequence subsequently passed
+   `1x1`, fixed `3x1`, and the authorized deidentified internal `20x1`, with
+   strict understanding `20/20`, formal-knowledge DML `0`, and `can_send=0`.
+   The role remains production-disabled: Formal Evidence Convergence was off,
+   selected evidence was zero, and this gate does not establish reply quality
+   or real accuracy.
 
 ## Immediate Queue
 
 1. `P1-FORMAL-KNOWLEDGE-REVIEW-002`: use the existing supervisor lifecycle to
    review identity-linked, high-frequency fact drafts. Do not bulk approve,
    infer missing material or dimensions, or use synthetic identities as truth.
-2. `P1-E2-001A`: data owner creates an authorized, versioned, hashed,
-   deidentified review package outside the repository; no raw conversations or
-   label answers enter an Agent prompt.
-3. `P1-E2-001B`: run the existing formal Pipeline on a query-only snapshot,
-   retaining `can_send=false` and human review.
-4. `P1-E2-001C`: independent reviewers record completeness, continuity,
+2. `P1-E2-001B`: use the completed strict-role `20x1` report only as a
+   provenance checkpoint; run the evidence-enabled Supervisor Assist quality
+   slice separately without changing production flags.
+3. `P1-E2-001C`: independent reviewers record completeness, continuity,
    factual restraint, unresolved coverage, and handoff needs.
-5. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
+4. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
 
 ## Completion Record
 

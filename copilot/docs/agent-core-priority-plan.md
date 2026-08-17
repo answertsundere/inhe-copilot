@@ -1151,8 +1151,20 @@ policy/context keys from unbound semantic-key presence and reports semantic and
 provenance stability separately. DeepSeek V4 Pro then passed one fixed `8x3`:
 `24/24` execution, schema, current-source, semantic, combined stability,
 semantic stability, and provenance stability, with zero timeout, write, or send
-change. The role remains disabled pending isolated `1x1` and `3x1`; the
-independently qualified DeepSeek V4 Flash Composer role is unchanged.
+change. The role remains production-disabled, and the independently qualified
+DeepSeek V4 Flash Composer role is unchanged.
+The isolated runtime sequence is now complete on clean commit `cf70c453d07e`.
+The `1x1` observation passed after correcting a repository-external evaluator
+that had incorrectly required Composer acceptance while Formal Evidence
+Convergence was deliberately disabled. No Provider was reinvoked for that
+rescore. The fixed `3x1` then passed once, including the prior elliptical
+logistics counterexample, and the authorized deidentified internal set passed
+the same infrastructure/provenance gate `20/20`. All 20 remained review-only,
+`can_send=0`, formal-knowledge DML was zero, and the snapshot did not change.
+Because selected evidence was zero and Composer was intentionally gated in all
+20 cases, this closes the strict Turn Understanding Provider blocker but does
+not establish goal completion, business helpfulness, reply quality, or real
+accuracy. Production enablement remains prohibited.
 
 ## Definition Of Project Progress
 
