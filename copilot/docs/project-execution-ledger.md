@@ -89,6 +89,11 @@ and next owner here and in `docs/CHANGELOG.md`.
   and 7,889 knowledge entries. The correct next owner is therefore the reviewed
   identity Sidecar/input contract. No title, message, or historical-reply
   matching may be used to manufacture coverage.
+- The original QA SQLite that created the candidate is not in the current local
+  SQLite set or the NAS extracted-asset inventory. Its required source schema
+  is `chats` + `quality_scores` + `chat_messages`. The NAS full-drive image may
+  contain the deleted source, but image mounting/scanning remains a separate
+  recovery task. Agent evaluation must not operate directly on that image.
 - `P1-MULTIGOAL-001` repaired a deterministic scope-conflict path in the
   existing Turn Understanding owner. When the exact source span for a
   dimension goal unambiguously names packaging, the complete product, a

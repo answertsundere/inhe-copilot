@@ -12,6 +12,10 @@
 - Updated the existing E2 contract to fail closed on missing or ambiguous
   identity and to forbid title/message/history inference. No production code,
   feature flag, formal knowledge, model call, reply, or send authority changed.
+- Confirmed the original three-table QA source is absent from the current local
+  SQLite set and the NAS extracted-asset inventory. Recovery from the retained
+  physical image is tracked as an external asset dependency, not performed by
+  the Agent evaluation runtime.
 
 ## 2026-08-17 - Strict Turn Understanding isolated runtime qualification
 

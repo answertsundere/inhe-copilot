@@ -60,6 +60,12 @@
    knowledge entries. Therefore an evidence-enabled rerun cannot safely bind
    these conversations to product truth. This is an input/Sidecar gap, not an
    Evidence Admission failure. Title or conversation-text matching is forbidden.
+8. The source QA SQLite needed to reconstruct the exact Sidecar is not present
+   in the current local database set or the NAS extracted-asset inventory. The
+   candidate builder requires `chats`, `quality_scores`, and `chat_messages`;
+   none of the available extracted databases has that schema. The NAS retains a
+   full physical-drive image, but mounting or scanning that recovery image is a
+   separate recovery responsibility and is not part of the Agent runtime task.
 
 ## Immediate Queue
 
@@ -71,6 +77,10 @@
    The Sidecar must bind by durable source identity, remain outside Agent labels,
    and fail closed on missing or ambiguous mappings. Do not infer identity from
    titles or conversation text.
+   The preferred recovery input is the original read-only QA SQLite with its
+   existing alias key; otherwise a source-system supervisor must create the
+   mapping from durable source records. Do not use the physical image directly
+   from an Agent evaluation process.
 3. `P1-E2-001B-RUN`: after the Sidecar preflight has nonzero exact coverage,
    run the evidence-enabled Supervisor Assist quality slice separately without
    changing production defaults. Report missing-identity and missing-fact cases
