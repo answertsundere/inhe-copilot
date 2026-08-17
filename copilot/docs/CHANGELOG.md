@@ -8,6 +8,12 @@
 - Built a deterministic local supervisor shortlist of 30 distinct products:
   20 color facts and 10 weight facts, following the observed aggregate demand
   ordering. The shortlist remains outside Git and records zero approvals.
+- Reconstructed all 695 color/weight drafts from the current recovered
+  `product_cards.json` through the existing importer with `695/695` exact
+  field matches; all 1,898 identity drafts also match their recovered cards.
+  The 30-item shortlist therefore has complete import provenance, but no item
+  has an independent second source. Import consistency does not authorize fact
+  approval, so all 30 remain queued for manual semantic review.
 - The shortlist did not modify the candidate database, formal knowledge,
   Agent behavior, feature flags, or Delivery. Material, dimensions, safety,
   certification, and other absent fact families were not inferred.

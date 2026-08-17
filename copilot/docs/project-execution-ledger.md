@@ -71,6 +71,12 @@ and next owner here and in `docs/CHANGELOG.md`.
   products using source confidence and a stable hash. It records zero
   approvals, performs no database write, and does not infer missing material,
   dimensions, safety, certification, or policy facts.
+- Source reconstruction then compared the candidate against the current
+  recovered `product_cards.json` and the existing importer. Color/weight facts
+  matched `695/695`, identity drafts matched `1,898/1,898`, and the 30-item
+  shortlist had zero generated-field mismatch. This proves import integrity,
+  not business truth: no shortlist item has an independent second source, so
+  every item remains a manual supervisor decision and none is auto-approved.
 - The focused import, lifecycle, Product Context Pack, Evidence Convergence,
   Pipeline-entry, Final Audit, database-guard, and documentation set passed
   `324/324`. The full repository collected 4,558 tests and retained exactly
