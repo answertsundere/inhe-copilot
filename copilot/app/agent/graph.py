@@ -175,6 +175,17 @@ def _route_after_tool_executor(state: dict) -> str:
         if isinstance(tr, dict) and tr.get("found"):
             return "tool_success"
 
+    # A completed provider lookup miss is authoritative for this request. The
+    # legacy node uses the same JST dispatcher, so repeating it only adds
+    # latency and cannot recover a different result. Infrastructure failures
+    # and intentionally bounded fast-path misses still retain the fallback.
+    if all(
+        isinstance(tool_results.get(jst_tool), dict)
+        and tool_results[jst_tool].get("lookup_complete") is True
+        for jst_tool in jst_required
+    ):
+        return "tool_success"
+
     if state.get("tool_planner_source") == "explicit_logistics_identifier_fast_path":
         return "tool_success"
 

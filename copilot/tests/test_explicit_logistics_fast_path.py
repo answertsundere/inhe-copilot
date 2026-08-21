@@ -385,3 +385,20 @@ def test_interactive_platform_trade_lookup_preserves_provider_unavailable(monkey
     assert result["found"] is False
     assert result["safe_fallback_reason"] == "jst_not_configured"
     assert result["error_code"] == "config_missing"
+
+
+def test_completed_registry_lookup_miss_does_not_repeat_legacy_jst_query():
+    from app.agent.graph import _route_after_tool_executor
+
+    state = {
+        "required_tools": ["jst_lookup_outbound_tool"],
+        "tool_results": {
+            "jst_lookup_outbound_tool": {
+                "found": False,
+                "lookup_complete": True,
+                "safe_fallback_reason": "not_found",
+            }
+        },
+    }
+
+    assert _route_after_tool_executor(state) == "tool_success"

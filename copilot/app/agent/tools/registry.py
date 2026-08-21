@@ -307,6 +307,31 @@ def _register_default_tools(registry: ToolRegistry):
 # 每个 handler: (inputs: dict, state: dict) -> dict
 # 内部调用现有函数，不重写底层逻辑。
 
+_JST_INCOMPLETE_LOOKUP_REASONS = {
+    "config_missing",
+    "jst_api_error",
+    "jst_not_configured",
+    "jst_timeout",
+    "not_found_fast_path",
+    "timeout",
+    "tool_timeout",
+}
+
+
+def _jst_shop_id_from_state(state: dict) -> str:
+    context = state.get("copilot_context") if isinstance(state, dict) else {}
+    if not isinstance(context, dict):
+        return ""
+    return str(context.get("jst_shop_id") or "").strip()
+
+
+def _jst_lookup_complete(result: dict) -> bool:
+    if result.get("found"):
+        return True
+    reason = str(result.get("safe_fallback_reason") or "").strip().lower()
+    error_code = str(result.get("error_code") or "").strip().lower()
+    return bool(reason) and not error_code and reason not in _JST_INCOMPLETE_LOOKUP_REASONS
+
 def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
     """调用 lookup_order_by_order_id 或 lookup_order_by_platform_order_id"""
     from app.integrations.jst.live_query import (
@@ -316,7 +341,11 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
     identifier = inputs.get("identifier", "")
     identifier_type = inputs.get("identifier_type", "internal_order_id")
 
-    result = lookup_order_by_identifier(identifier, identifier_type)
+    lookup_kwargs = {}
+    jst_shop_id = _jst_shop_id_from_state(state)
+    if jst_shop_id:
+        lookup_kwargs["shop_id"] = jst_shop_id
+    result = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
     if result.get("found"):
         data = result["data"]
         return {
@@ -335,6 +364,7 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
         }
     return {
         "found": False,
+        "lookup_complete": _jst_lookup_complete(result),
         "endpoint": result.get("endpoint", ""),
         "duration_ms": result.get("duration_ms", 0),
         "query_type": result.get("query_type", ""),
@@ -347,8 +377,16 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
     """调用 lookup_outbound_by_so_id"""
     from app.integrations.jst.live_query import lookup_order_by_identifier
 
-    outer_so_id = inputs.get("outer_so_id", "")
-    result = lookup_order_by_identifier(outer_so_id, "platform_trade_id")
+    outer_so_id = inputs.get("outer_so_id") or inputs.get("platform_trade_id", "")
+    lookup_kwargs = {}
+    jst_shop_id = _jst_shop_id_from_state(state)
+    if jst_shop_id:
+        lookup_kwargs["shop_id"] = jst_shop_id
+    result = lookup_order_by_identifier(
+        outer_so_id,
+        "platform_trade_id",
+        **lookup_kwargs,
+    )
     if result.get("found"):
         data = result["data"]
         return {
@@ -365,6 +403,7 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
         }
     return {
         "found": False,
+        "lookup_complete": _jst_lookup_complete(result),
         "endpoint": result.get("endpoint", ""),
         "duration_ms": result.get("duration_ms", 0),
         "query_type": result.get("query_type", ""),

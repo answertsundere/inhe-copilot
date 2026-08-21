@@ -182,7 +182,9 @@ function evidenceTitle(evidence: CandidateObservation['evidence'][number], index
 }
 
 function selectShop(shopId: string) {
-  context.shopName = configuredShops.find((shop) => shop.id === shopId)?.name || ''
+  const selected = configuredShops.find((shop) => shop.id === shopId)
+  context.shopName = selected?.name || ''
+  context.jstShopId = selected?.jstShopId || ''
 }
 </script>
 
@@ -327,6 +329,7 @@ function selectShop(shopId: string) {
             v-model="context.shopId"
             placeholder="选择订单所属店铺"
             :disabled="configuredShops.length === 0"
+            filterable
             @change="selectShop"
           >
             <el-option

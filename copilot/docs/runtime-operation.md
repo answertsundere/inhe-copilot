@@ -229,6 +229,15 @@ login, application JWT/RBAC, then reviewer/supervisor workflow.
 
 ## Ports And Health
 
+The local supervisor-assist workbench may receive a runtime-only shop list via
+`VITE_SUPERVISOR_SHOPS_JSON`. Populate it from the read-only JST `shops/query`
+endpoint and expose only a platform-neutral logical `id`, display `name`, and
+provider-scoped `jst_shop_id`. Do not commit the generated shop list or JST
+credentials. The UI must keep the logical and provider identifiers synchronized
+when the operator changes stores; only `jst_shop_id` may filter a JST request.
+Large shop lists remain searchable. A configured default store is a deployment
+choice, not an Agent-domain branch.
+
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the
 backend. Start Vite with `VITE_API_PROXY_TARGET=http://127.0.0.1:5012` and a
 different development port. Verify `http://127.0.0.1:5012/health` before
