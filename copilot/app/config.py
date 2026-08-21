@@ -192,6 +192,17 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+# ============ 货品资料规范库（只读身份参考） ============
+COPILOT_PRODUCT_DATA_HUB_ENABLED = _env_bool("COPILOT_PRODUCT_DATA_HUB_ENABLED", False)
+COPILOT_PRODUCT_DATA_HUB_BASE_URL = os.environ.get(
+    "COPILOT_PRODUCT_DATA_HUB_BASE_URL",
+    "http://127.0.0.1:8795",
+).strip()
+COPILOT_PRODUCT_DATA_HUB_TIMEOUT_SECONDS = float(
+    os.environ.get("COPILOT_PRODUCT_DATA_HUB_TIMEOUT_SECONDS", "2")
+)
+
+
 # ============ Grounded Generation 配置 ============
 USE_LLM_FOR_EXACT_FAQ = _env_bool("COPILOT_USE_LLM_FOR_EXACT_FAQ", False)
 USE_LLM_FOR_PRODUCT_FACTS = _env_bool("COPILOT_USE_LLM_FOR_PRODUCT_FACTS", False)

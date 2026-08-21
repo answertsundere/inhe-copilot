@@ -26,6 +26,7 @@ from app.services.real_context_product_identity_service import (
     augment_state_with_real_context_identity,
     build_conversation_media_reference,
 )
+from app.integrations.product_data_hub.read_client import lookup_product_data_hub_reference
 
 
 def build_product_context_pack(
@@ -46,6 +47,16 @@ def build_product_context_pack(
             _empty_pack(identity, "no_product_identity"),
             conversation_media_reference,
         )
+
+    catalog_reference = lookup_product_data_hub_reference(
+        i_id=identity.get("i_id", ""),
+        sku_id=identity.get("sku", ""),
+    )
+    if catalog_reference.get("status") == "resolved" and not identity.get("product_name"):
+        identity = {
+            **identity,
+            "product_name": str((catalog_reference.get("product") or {}).get("product_name") or ""),
+        }
 
     try:
         from app.db import SessionLocal
@@ -307,6 +318,7 @@ def build_product_context_pack(
         )
         return _attach_media_context_trace({
             "identity": identity,
+            "catalog_reference": catalog_reference,
             "structured_profile": structured_profile,
             "facts": returned_facts,
             "media_assets": media_assets,
@@ -327,6 +339,8 @@ def build_product_context_pack(
                 "query_fact_type": query_fact_type,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
                 "knowledge_mode": evidence_pack.get("knowledge_mode", "verified_only"),
+                "catalog_reference_status": catalog_reference.get("status", ""),
+                "catalog_reference_used_for_fact": False,
             },
         }, conversation_media_reference)
     finally:
@@ -337,6 +351,7 @@ def _empty_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
     evidence_pack = _empty_evidence_pack(identity, reason)
     return {
         "identity": identity,
+        "catalog_reference": _empty_catalog_reference(reason),
         "structured_profile": {},
         "facts": [],
         "media_assets": [],
@@ -355,6 +370,19 @@ def _empty_pack(identity: dict[str, str], reason: str) -> dict[str, Any]:
             "reason": reason,
             "evidence_pack_answerability": evidence_pack.get("answerability", ""),
         },
+    }
+
+
+def _empty_catalog_reference(reason: str = "") -> dict[str, Any]:
+    return {
+        "status": "not_queried",
+        "reason": reason,
+        "match_reason": "",
+        "product": {},
+        "sku": {},
+        "reference_only": True,
+        "used_for_fact": False,
+        "source": "product_data_hub",
     }
 
 

@@ -185,6 +185,17 @@ refund, replacement, and other live state use the appropriate read or action
 tool. Media references remain candidates until an actual role-compatible block
 is delivered.
 
+The existing Product Data Hub may be consulted through its read-only v2 API as
+an optional identity directory. The adapter accepts only exact product or SKU
+codes, verifies that both identifiers resolve to the same active parent, and
+projects only identity/display metadata into `ProductContextPackService` as
+`reference_only`. Hub notes, free-form SKU attributes, image labels, and its
+keyword-based customer-service endpoint are excluded. A Hub result cannot enter
+`facts`, canonical `selected_evidence`, the Composer's factual premise set, or
+Delivery. Reviewed formal knowledge remains the only product-fact authority.
+The integration is disabled by default and fails closed on missing, ambiguous,
+conflicting, malformed, or unavailable catalog data.
+
 Channel context keeps store identity platform-neutral. `shop_id` identifies the
 logical integrated store used by the Agent and future channel adapters; it is
 not implicitly a JST provider identifier. An adapter may additionally provide

@@ -1535,3 +1535,86 @@ def test_product_first_pack_requires_clear_identity_before_using_similar_product
     assert pack["facts"] == []
     assert pack["product_first_evidence_pack"]["answerability"] == "no_product_identity"
     assert pack["product_first_evidence_pack"]["product_structured_facts"] == []
+
+
+def test_catalog_identity_is_reference_only_and_never_becomes_fact(product_context_db, monkeypatch):
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_reference",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-1",
+                "product_code": "P100",
+                "product_name": "内部商品甲",
+                "brand": "英禾",
+                "category_code": "HOME-1",
+                "category_name": "家居用品",
+                "status": "active",
+                "updated_at": "2026-08-21T10:00:00Z",
+            },
+            "sku": {
+                "hub_sku_id": "hub-sku-1",
+                "sku_code": "S100-WHITE",
+                "color": "白色",
+                "size": "",
+                "spec": "标准款",
+                "status": "active",
+            },
+            "reference_only": True,
+            "used_for_fact": False,
+            "source": "product_data_hub",
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {
+            "i_id": "P100",
+            "slots": {"sku_code": "S100-WHITE"},
+        },
+        query="这个商品是什么",
+        allowed_source_types=["product_facts"],
+        query_fact_type="product_identity",
+    )
+
+    assert pack["catalog_reference"]["status"] == "resolved"
+    assert pack["catalog_reference"]["product"]["product_name"] == "内部商品甲"
+    assert pack["catalog_reference"]["reference_only"] is True
+    assert pack["catalog_reference"]["used_for_fact"] is False
+    assert pack["facts"] == []
+    assert pack["evidence_pack"]["product_structured_facts"] == []
+    assert pack["stats"]["catalog_reference_status"] == "resolved"
+    assert pack["stats"]["catalog_reference_used_for_fact"] is False
+
+
+def test_catalog_identity_conflict_does_not_replace_existing_identity(product_context_db, monkeypatch):
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_reference",
+        lambda **_kwargs: {
+            "status": "identity_conflict",
+            "reason": "product_sku_parent_mismatch",
+            "product": {},
+            "sku": {},
+            "reference_only": True,
+            "used_for_fact": False,
+            "source": "product_data_hub",
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"i_id": "P100", "slots": {"sku_code": "S200-GREEN"}},
+        query="这个商品是什么",
+        allowed_source_types=["product_facts"],
+        query_fact_type="product_identity",
+    )
+
+    assert pack["identity"]["i_id"] == "P100"
+    assert pack["identity"]["sku"] == "S200-GREEN"
+    assert pack["catalog_reference"]["status"] == "identity_conflict"
+    assert pack["facts"] == []
