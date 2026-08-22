@@ -646,6 +646,7 @@ def _formal_evidence_convergence(
         "product_context_pack": state.get("product_context_pack") or {},
         "selected_evidence": state.get("selected_evidence") or [],
         "formal_evidence_candidates": candidates,
+        "tool_results": state.get("tool_results") or {},
     }
     identity = _formal_product_identity(state)
     copilot_context = (

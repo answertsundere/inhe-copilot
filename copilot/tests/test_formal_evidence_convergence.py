@@ -314,6 +314,37 @@ def test_feature_flag_produces_supervisor_only_preview(monkeypatch):
     assert "Material is PP." in result["supervisor_candidate_preview"]["candidate_text"]
 
 
+def test_formal_convergence_preserves_completed_empty_lookup_as_service_action(
+    monkeypatch,
+):
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    result = _formal_evidence_convergence(
+        {
+            "customer_message": "现在快递到哪里了",
+            "query_fact_type": "stock_shipping",
+            "tool_results": {
+                "jst_lookup_outbound_tool": {
+                    "found": False,
+                    "lookup_complete": True,
+                    "safe_fallback_reason": "not_found",
+                    "query_type": "platform_trade_id",
+                }
+            },
+        },
+        product_facts=[],
+        policy_facts=[],
+        faq_evidence=[],
+    )
+
+    actions = result["minimal_decision_context"]["service_actions"]
+    assert len(actions) == 1
+    assert actions[0]["action_type"] == "inform_lookup_completed_no_record"
+    assert actions[0]["source_owner"] == "tool_router_and_executor"
+    assert actions[0]["completed"] is True
+    assert actions[0]["non_fact"] is True
+    assert actions[0]["can_change_can_send"] is False
+
+
 def test_formal_convergence_propagates_canonical_history_to_minimal_context(
     monkeypatch,
 ):
