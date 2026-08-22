@@ -95,10 +95,6 @@ class LLMClient:
                 int(request.get("max_tokens") or 0),
                 self.minimum_output_tokens,
             )
-        if self.transport_thinking == "disabled":
-            extra_body = dict(request.get("extra_body") or {})
-            extra_body.setdefault("thinking", {"type": "disabled"})
-            request["extra_body"] = extra_body
         if self.provider_name == "minimax":
             temperature = float(request.get("temperature", 0.3) or 0)
             request["temperature"] = max(temperature, 0.1)
@@ -111,7 +107,7 @@ class LLMClient:
             )
             extra_body = dict(request.get("extra_body") or {})
             extra_body.setdefault("reasoning_split", True)
-            if is_m3:
+            if is_m3 or self.transport_thinking == "disabled":
                 extra_body.setdefault("thinking", {"type": "disabled"})
             request["extra_body"] = extra_body
         elif self.provider_name == "deepseek":
@@ -119,6 +115,14 @@ class LLMClient:
             # bounded JSON contract, so reserve its output budget for that contract.
             extra_body = dict(request.get("extra_body") or {})
             extra_body.setdefault("thinking", {"type": "disabled"})
+            request["extra_body"] = extra_body
+        elif self.transport_thinking == "disabled":
+            # Qwen/vLLM and other compatible local servers use chat-template
+            # kwargs rather than DeepSeek's transport-specific thinking field.
+            extra_body = dict(request.get("extra_body") or {})
+            extra_body.setdefault(
+                "chat_template_kwargs", {"enable_thinking": False}
+            )
             request["extra_body"] = extra_body
 
         if single_attempt_no_repair:

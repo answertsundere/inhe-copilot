@@ -199,7 +199,7 @@ def test_other_transport_is_not_rewritten():
     assert "extra_body" not in request
 
 
-def test_explicit_composer_transport_capabilities_disable_thinking_and_expand_budget():
+def test_explicit_generic_transport_capabilities_disable_thinking_with_chat_template_and_expand_budget():
     client, completions = _client(
         "https://api.example.test/v1",
         _response(content='{"suggested_reply":"ok"}'),
@@ -216,7 +216,9 @@ def test_explicit_composer_transport_capabilities_disable_thinking_and_expand_bu
 
     request = completions.calls[0]
     assert request["max_tokens"] == 1200
-    assert request["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert request["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
 
 
 def test_formal_client_uses_explicit_transport_capabilities(monkeypatch):
