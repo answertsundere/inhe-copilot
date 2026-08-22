@@ -56,6 +56,12 @@ export interface EvidenceSummary {
   reviewStatus: string
 }
 
+export interface ServiceActionSummary {
+  type: string
+  label: string
+  completed: boolean
+}
+
 export interface CandidateObservation {
   reply: string
   returnedCanSend: boolean
@@ -64,6 +70,7 @@ export interface CandidateObservation {
   riskLevel: string
   intent: string
   evidence: EvidenceSummary[]
+  serviceActions: ServiceActionSummary[]
   reviewReasons: string[]
 }
 
@@ -154,6 +161,29 @@ function normalizeEvidence(row: Record<string, unknown>): EvidenceSummary {
   }
 }
 
+const serviceActionLabels: Record<string, string> = {
+  inform_lookup_completed_no_record: '订单查询已完成：暂无可见出库或物流记录',
+}
+
+function serviceActionRows(data: RawAnalyzeResponse): ServiceActionSummary[] {
+  const debug = recordOf(data.evidence_debug)
+  const minimalContext = recordOf(debug.minimal_decision_context)
+  if (!Array.isArray(minimalContext.service_actions)) return []
+
+  return minimalContext.service_actions
+    .map(recordOf)
+    .filter((row) => row.non_fact === true)
+    .map((row) => {
+      const type = textOf(row.action_type)
+      return {
+        type,
+        label: serviceActionLabels[type] || '实时业务查询已执行',
+        completed: row.completed === true,
+      }
+    })
+    .filter((row) => row.type)
+}
+
 function issueTexts(value: unknown): string[] {
   const record = recordOf(value)
   const issues = Array.isArray(record.issues) ? record.issues : []
@@ -193,6 +223,7 @@ export function normalizeCandidate(data: RawAnalyzeResponse): CandidateObservati
     riskLevel: textOf(data.risk_level),
     intent: textOf(data.intent),
     evidence: evidenceRows(data).map(normalizeEvidence),
+    serviceActions: serviceActionRows(data),
     reviewReasons: [...new Set(reviewReasons)],
   }
 }

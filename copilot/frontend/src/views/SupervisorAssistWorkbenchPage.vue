@@ -242,6 +242,9 @@ function selectShop(shopId: string) {
               <span class="review-badge"><el-icon><CircleCheck /></el-icon>需人工确认</span>
               <span><el-icon><Timer /></el-icon>{{ formatDuration(turn.durationMs) }}</span>
               <span><el-icon><DocumentChecked /></el-icon>{{ turn.observation.evidence.length }} 条正式证据</span>
+              <span v-if="turn.observation.serviceActions.length" class="lookup-badge">
+                <el-icon><CircleCheck /></el-icon>实时查询已完成
+              </span>
               <span v-if="turn.observation.riskLevel">风险：{{ turn.observation.riskLevel }}</span>
             </div>
 
@@ -263,6 +266,13 @@ function selectShop(shopId: string) {
                   </div>
                 </div>
                 <p v-else class="empty-evidence">本轮未选中正式证据，候选回复不可直接发送。</p>
+                <div v-if="turn.observation.serviceActions.length" class="service-action-list">
+                  <strong>实时查询状态</strong>
+                  <span
+                    v-for="action in turn.observation.serviceActions"
+                    :key="action.type"
+                  >{{ action.label }}</span>
+                </div>
                 <div v-if="turn.observation.reviewReasons.length" class="review-reasons">
                   <strong>需复核原因</strong>
                   <span v-for="reason in turn.observation.reviewReasons" :key="reason">{{ reason }}</span>
@@ -563,6 +573,14 @@ function selectShop(shopId: string) {
   font-weight: 600;
 }
 
+.lookup-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #ecfdf3;
+  color: #067647;
+  font-weight: 600;
+}
+
 .evidence-collapse {
   margin-top: 8px;
   border-top: 0;
@@ -617,6 +635,24 @@ function selectShop(shopId: string) {
   background: #f8fafc;
   color: #64748b;
   font-size: 12px;
+}
+
+.service-action-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 12px;
+}
+
+.service-action-list strong {
+  width: 100%;
+  color: #14532d;
 }
 
 .runtime-warning {

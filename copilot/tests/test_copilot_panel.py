@@ -86,6 +86,30 @@ class TestCopilotPanelPage:
         assert "sendableTextFromLastResponse" not in html
         assert "premium_manual_cases" not in html
 
+    def test_real_test_panel_distinguishes_completed_live_lookup_from_formal_evidence(self):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        api_source = open(
+            os.path.join(project_root, "frontend", "src", "api", "supervisorAssist.ts"),
+            encoding="utf-8",
+        ).read()
+        page_source = open(
+            os.path.join(
+                project_root,
+                "frontend",
+                "src",
+                "views",
+                "SupervisorAssistWorkbenchPage.vue",
+            ),
+            encoding="utf-8",
+        ).read()
+
+        assert "serviceActions: ServiceActionSummary[]" in api_source
+        assert "inform_lookup_completed_no_record" in api_source
+        assert "订单查询已完成：暂无可见出库或物流记录" in api_source
+        assert "turn.observation.serviceActions" in page_source
+        assert "实时查询状态" in page_source
+        assert "本轮未选中正式证据" in page_source
+
 
 class TestCopilotContextAPI:
     def test_missing_message_returns_400(self, client):
