@@ -793,7 +793,14 @@ def evidence_builder(state: dict) -> dict:
         status = logistics_trace.get("status", "")
         is_outbound = "out/simple" in state.get("used_endpoint", "")
         source_label = "jst_sales_out_logistics" if is_outbound else "jst_logistics"
-        fact_parts = [f"聚水潭物流信息: {carrier} {tracking_no}"]
+        # Tracking identity remains server-side provenance. It must not enter
+        # customer-answerable prose where privacy projection would expose an
+        # internal redaction marker to the Composer.
+        fact_parts = [
+            f"聚水潭物流信息: 承运商 {carrier}"
+            if carrier
+            else "聚水潭物流信息"
+        ]
         if send_date:
             fact_parts.append(f"发货时间 {send_date}")
         if order_status:
@@ -801,7 +808,14 @@ def evidence_builder(state: dict) -> dict:
         elif status:
             fact_parts.append(f"物流状态 {status}")
         latest = logistics_trace.get("latest", {})
-        if latest:
+        latest_time = str(latest.get("time", "")) if latest else ""
+        latest_context = str(latest.get("context", "")) if latest else ""
+        latest_duplicates_shipped_boundary = bool(
+            send_date
+            and latest_time == str(send_date)
+            and latest_context in {"已发出", "包裹已发出"}
+        )
+        if latest and not latest_duplicates_shipped_boundary:
             fact_parts.append(f"最新 {latest.get('time', '')} {latest.get('context', '')}")
         fact = {
             "fact": ", ".join(fact_parts),

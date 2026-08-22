@@ -3836,6 +3836,23 @@ def test_composer_selects_one_of_multiple_goal_scoped_safe_options():
     )
 
 
+def test_composer_rejects_customer_clause_with_internal_redaction_marker():
+    response = _bounded_inference_response()
+    payload = _bounded_inference_payload(response)
+    payload["clauses"][1]["text"] = (
+        "物流单号为[LONG_ID_REDACTED:0123456789]，已经发出。"
+    )
+
+    updated, result, client = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_internal_redaction_marker"
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+    assert result["provider_diagnostics"]["retry_count"] == 0
+    assert result["provider_diagnostics"]["repair_count"] == 0
+
+
 def test_composer_rejects_policy_offered_only_to_another_goal():
     response = _bounded_inference_response()
     _add_alternate_safe_option(

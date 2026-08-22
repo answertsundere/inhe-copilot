@@ -451,7 +451,10 @@ class TestEvidenceBuilderOutbound:
         assert lf["fact_type"] == "stock_shipping"
         assert lf["tool_execution_status"] == "completed"
         assert lf["read_only"] is True
-        assert "顺丰" in lf["fact"] or "SF0229477422177" in lf["fact"]
+        assert "顺丰" in lf["fact"]
+        assert "SF0229477422177" not in lf["fact"]
+        assert "包裹已发出" not in lf["fact"]
+        assert lf["source"] == "SF0229477422177"
         assert lf.get("evidence_boundary") == "已发出"
 
     def test_evidence_boundary_no_sign_time(self):

@@ -110,6 +110,7 @@ _OPTION_SELECTION_MODES = {
     "optional",
     "required",
 }
+_INTERNAL_REDACTION_MARKER = "_REDACTED"
 COMPOSER_CLAUSE_FIELD_OWNERSHIP = {
     "model_owned": (
         "goal_ref",
@@ -3904,6 +3905,7 @@ class ModelFirstAnswerComposerService:
             "不要说“没有证据”“缺少证据”或“人工审核”，不要重复完整商品标题。"
             "多目标 clause 各自只回答对应 goal，拼接后应自然、礼貌、简洁，"
             "避免重复主语、边界、法务声明、报告字段、机器人语气和内部处理语言。"
+            "任何方括号中包含 REDACTED 的内容都是内部隐私占位符，绝不能复制到客户可见文字。"
             "结构优先：只返回一个 JSON object；只使用 schema 定义字段；"
             "每个 clause 只使用 clause schema 字段；不得增加说明、reasoning、metadata"
             " 或 diagnostics；结构义务优先于表达风格；客户可见文字只放在 text；"
@@ -4095,6 +4097,18 @@ class ModelFirstAnswerComposerService:
                 )
             goal_ref = goal_ref_value.strip()
             text = text_value.strip()
+            if (
+                _INTERNAL_REDACTION_MARKER in text
+                and "[" in text
+                and "]" in text
+            ):
+                return {}, "composer_internal_redaction_marker", ModelFirstAnswerComposerService._diagnostics(
+                    "internal_language_exposure",
+                    parsed=parsed,
+                    json_path=f"{path}.text",
+                    expected_type="customer_visible_text_without_redaction_marker",
+                    actual_type="internal_redaction_marker",
+                )
             selected_option_refs = clause.get("selected_option_refs")
             if goal_ref not in goals_by_ref:
                 if goal_ref in (non_renderable_goal_refs or set()):

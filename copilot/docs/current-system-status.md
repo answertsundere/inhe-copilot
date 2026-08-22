@@ -5,6 +5,11 @@
 > 测试: 532 passed / 0 failed / 35 test files
 > 编译: python -m py_compile app/main.py OK
 
+> 2026-08-22 物流回复边界补充：完整快递单号只保留在服务器内部
+> provenance/source，不进入模型可见的物流事实文本；客户候选只可使用承运商、
+> 已验证发货时间和物流状态。任何内部 `*_REDACTED` 占位符都不得作为客户可见
+> 文本，Composer 会在候选接纳前 fail-closed。
+
 ---
 
 ## 一、模块清单
