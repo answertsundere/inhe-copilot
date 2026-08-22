@@ -657,6 +657,7 @@ def lookup_order_by_identifier(
     *,
     exhaustive: bool = True,
     shop_id: str = "",
+    shop_platform: str = "",
 ) -> dict:
     """根据 identifier_type 分发到对应查询函数。
     order_id 类型查不到时自动尝试 so_ids（用户给的平台订单号可能被识别为 order_id）。
@@ -1083,6 +1084,7 @@ def lookup_order_by_identifier(
     *,
     exhaustive: bool = True,
     shop_id: str = "",
+    shop_platform: str = "",
 ) -> dict:
     """Dispatch identifier lookup across all known JST order id surfaces.
 
@@ -1181,7 +1183,25 @@ def lookup_order_by_identifier(
         if r_out["found"]:
             r_out["query_type"] = "platform_trade_id->outbound_so_id"
             r_out["attempted_paths"] = _attempt_debug(r_out)
+            if str(shop_platform or "").strip().lower() in {"taobao", "tmall", "taobao_tmall"}:
+                r_out["source_capability"] = "sales_outbound_only"
             return r_out
+
+        normalized_platform = str(shop_platform or "").strip().lower()
+        if normalized_platform in {"taobao", "tmall", "taobao_tmall"}:
+            # JST's ordinary order query does not expose Taobao/Tmall orders.
+            # The standard read-only surface can only resolve an exact sales
+            # outbound record, so do not scan unsupported order endpoints.
+            r = _aggregate_lookup_failure(
+                query_type="platform_trade_id",
+                results=(r_out,),
+                duration_ms=r_out.get("duration_ms", 0),
+                not_found_reason="sales_outbound_record_not_visible",
+            )
+            r["attempted_paths"] = _attempt_debug(r_out)
+            r["source_capability"] = "sales_outbound_only"
+            r["lookup_complete"] = not bool(r.get("error_code"))
+            return r
 
         r_oid = lookup_order_by_order_id(identifier)
         if r_oid["found"]:

@@ -533,6 +533,7 @@ class TestLiveQueryPlatformTradeIdRouting:
             "copilot_context": {
                 "shop_id": "tmall-inhe",
                 "jst_shop_id": "13221776",
+                "shop_platform": "tmall",
                 "shop_name": "天猫英禾旗舰店",
             },
             "trace_steps": [],
@@ -548,6 +549,7 @@ class TestLiveQueryPlatformTradeIdRouting:
             "5118207015382036103",
             "platform_trade_id",
             shop_id="13221776",
+            shop_platform="tmall",
         )
 
     def test_jst_node_does_not_use_logical_shop_ref_as_provider_filter(self):

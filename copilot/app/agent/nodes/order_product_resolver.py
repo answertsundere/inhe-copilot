@@ -999,11 +999,18 @@ def order_product_resolver(state: dict) -> dict:
 
         provider_context = state.get("copilot_context", {}) or {}
         shop_id = str(provider_context.get("jst_shop_id") or "").strip()
+        shop_platform = str(provider_context.get("shop_platform") or "").strip().lower()
         lookup_kwargs = {"exhaustive": False}
         if shop_id:
             lookup_kwargs["shop_id"] = shop_id
+        if shop_platform:
+            lookup_kwargs["shop_platform"] = shop_platform
         lookup = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
-        if not lookup.get("found") and identifier_type != "unknown_identifier":
+        if (
+            not lookup.get("found")
+            and identifier_type != "unknown_identifier"
+            and lookup.get("safe_fallback_reason") != "sales_outbound_record_not_visible"
+        ):
             fallback_lookup = lookup_order_by_identifier(
                 identifier,
                 "unknown_identifier",

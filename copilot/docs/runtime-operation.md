@@ -231,12 +231,14 @@ login, application JWT/RBAC, then reviewer/supervisor workflow.
 
 The local supervisor-assist workbench may receive a runtime-only shop list via
 `VITE_SUPERVISOR_SHOPS_JSON`. Populate it from the read-only JST `shops/query`
-endpoint and expose only a platform-neutral logical `id`, display `name`, and
-provider-scoped `jst_shop_id`. Do not commit the generated shop list or provider
-credentials. The UI must keep these identifiers synchronized when the operator
-changes stores; only `jst_shop_id` may filter provider records. Large shop lists
-remain searchable. A configured default store is a deployment choice, not an
-Agent-domain branch.
+endpoint and expose only a platform-neutral logical `id`, display `name`,
+provider-scoped `jst_shop_id`, and controlled `platform` capability code. Do not
+derive that code from the shop display name. Do not commit the generated shop
+list or provider credentials. The UI must keep these identifiers synchronized
+when the operator changes stores; only `jst_shop_id` may filter provider records,
+while `platform` selects an adapter capability contract. Large shop lists remain
+searchable. A configured default store is a deployment choice, not an Agent-domain
+branch.
 
 Taobao/Tmall customer-service lookup does not use QianNiu Sidecar or Qimen. The
 runtime calls the ordinary read-only JST sales-outbound endpoint
@@ -246,7 +248,9 @@ identity and item `sku_id`/`i_id`/internal name. Buyer, receiver, amount and
 other sensitive fields must not enter reports, traces or Agent context. A zero-
 row result only proves that no matching sales-outbound record is currently
 visible; it must not be rewritten as proof that the platform order itself does
-not exist. When the provider marks that empty lookup as complete, the runtime
+not exist. For an explicit `tmall` or `taobao` platform capability, the adapter
+does not fall back to ordinary order endpoints that do not support those
+platforms. When the provider marks that empty lookup as complete, the runtime
 projects a completed, non-factual service action into the existing Composer
 context. The review-only reply must acknowledge the completed lookup, explain
 that outbound/logistics data is not yet visible, and must not request the same

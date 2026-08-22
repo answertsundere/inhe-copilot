@@ -324,6 +324,13 @@ def _jst_shop_id_from_state(state: dict) -> str:
     return str(context.get("jst_shop_id") or "").strip()
 
 
+def _jst_shop_platform_from_state(state: dict) -> str:
+    context = state.get("copilot_context") if isinstance(state, dict) else {}
+    if not isinstance(context, dict):
+        return ""
+    return str(context.get("shop_platform") or "").strip().lower()
+
+
 def _jst_lookup_complete(result: dict) -> bool:
     if result.get("found"):
         return True
@@ -339,7 +346,12 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
     identifier_type = inputs.get("identifier_type", "internal_order_id")
 
     jst_shop_id = _jst_shop_id_from_state(state)
-    lookup_kwargs = {"shop_id": jst_shop_id} if jst_shop_id else {}
+    shop_platform = _jst_shop_platform_from_state(state)
+    lookup_kwargs = {}
+    if jst_shop_id:
+        lookup_kwargs["shop_id"] = jst_shop_id
+    if shop_platform:
+        lookup_kwargs["shop_platform"] = shop_platform
     result = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
     if result.get("found"):
         data = result["data"]
@@ -365,6 +377,7 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
         "query_type": result.get("query_type", ""),
         "attempted_paths": result.get("attempted_paths", []),
         "safe_fallback_reason": result.get("safe_fallback_reason", ""),
+        "source_capability": result.get("source_capability", ""),
     }
 
 
@@ -374,7 +387,12 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
 
     outer_so_id = inputs.get("outer_so_id") or inputs.get("platform_trade_id", "")
     jst_shop_id = _jst_shop_id_from_state(state)
-    lookup_kwargs = {"shop_id": jst_shop_id} if jst_shop_id else {}
+    shop_platform = _jst_shop_platform_from_state(state)
+    lookup_kwargs = {}
+    if jst_shop_id:
+        lookup_kwargs["shop_id"] = jst_shop_id
+    if shop_platform:
+        lookup_kwargs["shop_platform"] = shop_platform
     result = lookup_order_by_identifier(
         outer_so_id,
         "platform_trade_id",
@@ -403,6 +421,7 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
         "attempted_paths": result.get("attempted_paths", []),
         "safe_fallback_reason": result.get("safe_fallback_reason", ""),
         "error_code": result.get("error_code"),
+        "source_capability": result.get("source_capability", ""),
     }
 
 

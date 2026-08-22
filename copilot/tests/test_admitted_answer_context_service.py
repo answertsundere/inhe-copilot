@@ -141,6 +141,31 @@ def test_projects_completed_jst_no_record_outcome_as_non_fact_service_action():
     assert minimal["service_actions"][0]["completed"] is True
 
 
+def test_outbound_only_empty_lookup_explains_provider_capability_boundary():
+    response = {
+        "tool_results": {
+            "jst_lookup_outbound_tool": {
+                "found": False,
+                "lookup_complete": True,
+                "safe_fallback_reason": "sales_outbound_record_not_visible",
+            }
+        }
+    }
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={},
+        understanding=_understanding("stock_shipping"),
+    )
+    actions = admitted["handoff_action_guidance"]
+
+    assert actions[0]["action_type"] == "inform_sales_outbound_record_not_visible"
+    assert "销售出库" in actions[0]["text"]
+    assert "订单不存在" in actions[0]["text"]
+    assert actions[0]["non_fact"] is True
+    assert actions[0]["can_change_can_send"] is False
+
+
 def test_projects_completed_jst_no_record_from_graph_response_summary():
     response = {
         "evidence_debug": {

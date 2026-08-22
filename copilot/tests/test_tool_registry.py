@@ -775,6 +775,46 @@ def test_outbound_tool_uses_provider_scoped_shop_identity(monkeypatch):
     assert result["lookup_complete"] is True
 
 
+def test_outbound_tool_passes_structured_shop_platform(monkeypatch):
+    from app.agent.tools.registry import _handle_jst_lookup_outbound
+
+    captured = {}
+
+    def fake_lookup(identifier, identifier_type, **kwargs):
+        captured.update({"identifier": identifier, "identifier_type": identifier_type, **kwargs})
+        return {
+            "found": False,
+            "query_type": "platform_trade_id",
+            "duration_ms": 10,
+            "safe_fallback_reason": "sales_outbound_record_not_visible",
+        }
+
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        fake_lookup,
+    )
+
+    result = _handle_jst_lookup_outbound(
+        {"outer_so_id": "platform-order-ref"},
+        {
+            "copilot_context": {
+                "shop_id": "logical-store",
+                "jst_shop_id": "provider-store",
+                "shop_platform": "tmall",
+            }
+        },
+    )
+
+    assert captured == {
+        "identifier": "platform-order-ref",
+        "identifier_type": "platform_trade_id",
+        "shop_id": "provider-store",
+        "shop_platform": "tmall",
+    }
+    assert result["found"] is False
+    assert result["lookup_complete"] is True
+
+
 def test_outbound_tool_does_not_mark_malformed_miss_complete(monkeypatch):
     from app.agent.tools.registry import _handle_jst_lookup_outbound
 

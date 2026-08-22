@@ -36,6 +36,7 @@ interface WorkbenchShop {
   id: string
   name: string
   jstShopId: string
+  platform: string
 }
 
 function loadConfiguredShops(): WorkbenchShop[] {
@@ -49,6 +50,7 @@ function loadConfiguredShops(): WorkbenchShop[] {
         id: String(item?.id || '').trim(),
         name: String(item?.name || '').trim(),
         jstShopId: String(item?.jst_shop_id || '').trim(),
+        platform: String(item?.platform || item?.shop_platform || '').trim().toLowerCase(),
       }))
       .filter((item) => item.id && item.name)
   } catch {
@@ -57,12 +59,13 @@ function loadConfiguredShops(): WorkbenchShop[] {
 }
 
 const configuredShops = loadConfiguredShops()
-const defaultShop = configuredShops[0] || { id: '', name: '', jstShopId: '' }
+const defaultShop = configuredShops[0] || { id: '', name: '', jstShopId: '', platform: '' }
 
 const context = reactive<WorkbenchContext>({
   shopId: defaultShop.id,
   shopName: defaultShop.name,
   jstShopId: defaultShop.jstShopId,
+  shopPlatform: defaultShop.platform,
   productName: '',
   skuCode: '',
   iId: '',
@@ -185,6 +188,7 @@ function selectShop(shopId: string) {
   const selected = configuredShops.find((shop) => shop.id === shopId)
   context.shopName = selected?.name || ''
   context.jstShopId = selected?.jstShopId || ''
+  context.shopPlatform = selected?.platform || ''
 }
 </script>
 

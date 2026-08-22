@@ -106,6 +106,11 @@ class TestCopilotPanelPage:
         assert "serviceActions: ServiceActionSummary[]" in api_source
         assert "inform_lookup_completed_no_record" in api_source
         assert "订单查询已完成：暂无可见出库或物流记录" in api_source
+        assert "shopPlatform" in api_source
+        assert "shop_platform" in api_source
+        assert "inform_sales_outbound_record_not_visible" in api_source
+        assert "当前数据源仅能读取销售出库记录" in api_source
+        assert "platform: String(item?.platform || item?.shop_platform" in page_source
         assert "turn.observation.serviceActions" in page_source
         assert "实时查询状态" in page_source
         assert "本轮未选中正式证据" in page_source

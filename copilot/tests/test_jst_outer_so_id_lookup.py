@@ -416,6 +416,72 @@ def test_platform_trade_dispatch_passes_explicit_jst_shop_to_complete_scan(monke
     assert captured == [("PLATFORM-ORDER", None, "JST-SHOP-42")]
 
 
+def test_tmall_platform_trade_id_uses_sales_outbound_only(monkeypatch):
+    from app.integrations.jst import live_query
+
+    calls = []
+
+    def fail_unsupported(*_args, **_kwargs):
+        raise AssertionError("Tmall ordinary order API is unsupported")
+
+    def fake_outbound(identifier, *, shop_id=""):
+        calls.append((identifier, shop_id))
+        return {
+            "found": False,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "outbound_so_id",
+            "duration_ms": 17,
+            "safe_fallback_reason": "not_found",
+        }
+
+    monkeypatch.setattr(live_query, "lookup_outbound_by_so_id", fake_outbound)
+    monkeypatch.setattr(live_query, "lookup_order_by_order_id", fail_unsupported)
+    monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id", fail_unsupported)
+    monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id_history", fail_unsupported)
+    monkeypatch.setattr(live_query, "lookup_order_by_outer_so_id", fail_unsupported)
+
+    result = live_query.lookup_order_by_identifier(
+        "PLATFORM-ORDER",
+        "platform_trade_id",
+        shop_id="JST-SHOP-42",
+        shop_platform="tmall",
+    )
+
+    assert calls == [("PLATFORM-ORDER", "JST-SHOP-42")]
+    assert result["found"] is False
+    assert result["lookup_complete"] is True
+    assert result["safe_fallback_reason"] == "sales_outbound_record_not_visible"
+    assert result["source_capability"] == "sales_outbound_only"
+    assert [path["query_type"] for path in result["attempted_paths"]] == ["outbound_so_id"]
+
+
+def test_tmall_platform_trade_id_preserves_found_sales_outbound(monkeypatch):
+    from app.integrations.jst import live_query
+
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_so_id",
+        lambda identifier, *, shop_id="": {
+            "found": True,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "outbound_so_id",
+            "duration_ms": 11,
+            "data": {"so_id": identifier, "shop_id": shop_id},
+        },
+    )
+
+    result = live_query.lookup_order_by_identifier(
+        "PLATFORM-ORDER",
+        "platform_trade_id",
+        shop_id="JST-SHOP-42",
+        shop_platform="tmall",
+    )
+
+    assert result["found"] is True
+    assert result["query_type"] == "platform_trade_id->outbound_so_id"
+    assert result["source_capability"] == "sales_outbound_only"
+
+
 def test_outer_so_id_scan_rejects_matching_identifier_from_another_shop(monkeypatch):
     from app.integrations.jst import live_query
 

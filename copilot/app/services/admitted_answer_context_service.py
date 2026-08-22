@@ -657,7 +657,13 @@ def _completed_lookup_outcome_actions(
             and result.get("lookup_complete") is True
         ):
             continue
-        action_type = "inform_lookup_completed_no_record"
+        reason = str(result.get("safe_fallback_reason") or "").strip().lower()
+        outbound_only = reason == "sales_outbound_record_not_visible"
+        action_type = (
+            "inform_sales_outbound_record_not_visible"
+            if outbound_only
+            else "inform_lookup_completed_no_record"
+        )
         uid_seed = f"{tool_name}:{action_type}"
         actions.append({
             "evidence_uid": (
@@ -665,9 +671,18 @@ def _completed_lookup_outcome_actions(
             ),
             "action_type": action_type,
             "text": (
-                "只读订单查询已经完成，当前未返回可见的销售出库或物流记录。"
-                "零结果不能解释为订单不存在，也不要要求客户重复提供当前编号；"
-                "应说明可能尚未出库或尚未同步，并转人工继续核实。"
+                (
+                    "当前店铺的普通只读数据源仅能读取销售出库记录；"
+                    "本次查询未返回可见的销售出库或物流记录。"
+                    "这不表示订单不存在，也不要要求客户重复提供当前编号；"
+                    "应转人工通过平台订单后台继续核实。"
+                )
+                if outbound_only
+                else (
+                    "只读订单查询已经完成，当前未返回可见的销售出库或物流记录。"
+                    "零结果不能解释为订单不存在，也不要要求客户重复提供当前编号；"
+                    "应说明可能尚未出库或尚未同步，并转人工继续核实。"
+                )
             ),
             "source_owner": "tool_router_and_executor",
             "completed": True,

@@ -9,6 +9,7 @@ export interface WorkbenchContext {
   shopId: string
   shopName: string
   jstShopId: string
+  shopPlatform: string
   productName: string
   skuCode: string
   iId: string
@@ -29,6 +30,7 @@ export interface AnalyzeRequest {
     shop_id?: string
     shop_name?: string
     jst_shop_id?: string
+    shop_platform?: string
   }
 }
 
@@ -113,6 +115,7 @@ export function buildAnalyzeRequest(
       shop_id: optionalValue(context.shopId),
       shop_name: optionalValue(context.shopName),
       jst_shop_id: optionalValue(context.jstShopId),
+      shop_platform: optionalValue(context.shopPlatform),
     },
   }
 }
@@ -163,6 +166,7 @@ function normalizeEvidence(row: Record<string, unknown>): EvidenceSummary {
 
 const serviceActionLabels: Record<string, string> = {
   inform_lookup_completed_no_record: '订单查询已完成：暂无可见出库或物流记录',
+  inform_sales_outbound_record_not_visible: '平台订单查询已完成：当前数据源仅能读取销售出库记录，暂未返回可见记录',
 }
 
 function serviceActionRows(data: RawAnalyzeResponse): ServiceActionSummary[] {

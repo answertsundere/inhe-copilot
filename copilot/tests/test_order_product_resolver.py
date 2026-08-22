@@ -425,6 +425,7 @@ def test_order_product_resolver_separates_logical_and_jst_shop_identity(monkeypa
             "platform_trade_id": "5118207015382036103",
             "shop_id": "tmall-inhe",
             "jst_shop_id": "13221776",
+            "shop_platform": "tmall",
         },
         "conversation_context": {},
         "trace_steps": [],
@@ -433,9 +434,51 @@ def test_order_product_resolver_separates_logical_and_jst_shop_identity(monkeypa
     assert calls == [(
         "5118207015382036103",
         "platform_trade_id",
-        {"exhaustive": False, "shop_id": "13221776"},
+        {"exhaustive": False, "shop_id": "13221776", "shop_platform": "tmall"},
     )]
     assert result["order_product_identity"]["status"] == "resolved"
+
+
+def test_order_product_resolver_does_not_scan_unknown_after_outbound_only_miss(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    calls = []
+
+    def fake_lookup(identifier, identifier_type, **kwargs):
+        calls.append((identifier, identifier_type, kwargs))
+        return {
+            "found": False,
+            "safe_fallback_reason": "sales_outbound_record_not_visible",
+            "source_capability": "sales_outbound_only",
+        }
+
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        fake_lookup,
+    )
+
+    result = node.order_product_resolver({
+        "conversation_id": "resolver-outbound-only-miss",
+        "customer_message": "这个商品怎么样",
+        "normalized_message": "这个商品怎么样",
+        "intent": "product_question",
+        "slots": {},
+        "copilot_context": {
+            "platform_trade_id": "PLATFORM-ORDER-NOT-OUTBOUND",
+            "shop_id": "tmall-inhe",
+            "jst_shop_id": "13221776",
+            "shop_platform": "tmall",
+        },
+        "conversation_context": {},
+        "trace_steps": [],
+    })
+
+    assert calls == [(
+        "PLATFORM-ORDER-NOT-OUTBOUND",
+        "platform_trade_id",
+        {"exhaustive": False, "shop_id": "13221776", "shop_platform": "tmall"},
+    )]
+    assert result["order_product_identity"]["status"] == "unavailable"
 
 
 def test_order_product_resolver_uses_conversation_cache_without_requery(monkeypatch):

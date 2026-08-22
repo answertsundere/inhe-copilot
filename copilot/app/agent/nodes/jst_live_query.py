@@ -105,14 +105,15 @@ def jst_live_query(state: dict) -> dict:
     jst_shop_id = str(
         (state.get("copilot_context", {}) or {}).get("jst_shop_id") or ""
     ).strip()
+    shop_platform = str(
+        (state.get("copilot_context", {}) or {}).get("shop_platform") or ""
+    ).strip().lower()
+    lookup_kwargs = {}
     if jst_shop_id:
-        result = lookup_order_by_identifier(
-            identifier,
-            identifier_type,
-            shop_id=jst_shop_id,
-        )
-    else:
-        result = lookup_order_by_identifier(identifier, identifier_type)
+        lookup_kwargs["shop_id"] = jst_shop_id
+    if shop_platform:
+        lookup_kwargs["shop_platform"] = shop_platform
+    result = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
     duration_ms = int((time.time() - t0) * 1000)
 
     # 所有 trace 都包含 progress + result
