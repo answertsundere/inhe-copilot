@@ -115,6 +115,22 @@ class TestAPIOrderIdEntersState:
         assert result.get("order_id") == "202501010001"
 
 
+class TestExplicitLogisticsIntentPrecedesVagueWording:
+    """明确物流语义不能被“帮我看一下”这类礼貌前缀降级。"""
+
+    def test_logistics_question_is_not_clarification_before_slot_extraction(self):
+        from app.agent.nodes.detect_intent import detect_intent
+
+        result = detect_intent({
+            "customer_message": "现在帮我看一下我的快递到哪里了",
+            "normalized_message": "现在帮我看一下我的快递到哪里了",
+            "trace_steps": [],
+        })
+
+        assert result["intent"] == "logistics_eta"
+        assert result["skill"] in {"shipping", "logistics"}
+
+
 # ===========================================================================
 # Test 2: Planner doesn't set order_id as missing when already provided
 # ===========================================================================

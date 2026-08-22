@@ -452,6 +452,20 @@ and next owner here and in `docs/CHANGELOG.md`.
   a typed completion receipt or a durable task. A sentence alone is not an
   action.
 
+## 2026-08-22 Explicit Logistics Routing Checkpoint
+
+- A real supervisor-assist trace carried the Tmall shop and platform order
+  identity correctly, but `detect_intent` treated the polite phrase "help me
+  check" as vague before evaluating the explicit logistics semantics. The
+  resulting sticky clarification prohibited every JST tool.
+- Vague clarification is now evaluated only after explicit installation,
+  logistics, and product intents. The existing slot extraction, JST lookup,
+  Evidence Admission, Composer, Final Audit, and Delivery owners remain
+  unchanged.
+- The affected request was replayed read-only: `logistics_eta` selected the JST
+  outbound tool, two shipment facts were admitted, both audits passed, formal
+  knowledge DML remained zero, and `can_send` stayed false.
+
 ## Reporting Rule
 
 All P1 reports state the runtime source hash, provider/model identity, enabled

@@ -632,24 +632,6 @@ def detect_intent(state: dict) -> dict:
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 
-    # 3.5 模糊问题：没有明确事实类型，不能拿任意商品字段回答
-    if _is_vague_question(msg) and not _has_text_product_question(msg):
-        intent = "needs_clarification"
-        duration_ms = int((time.time() - t0) * 1000)
-        trace = {
-            "node": "detect_intent",
-            "status": "success",
-            "duration_ms": duration_ms,
-            "cache_hit": False,
-            "summary": f"识别为 {intent}（问题描述过于模糊）",
-        }
-        return {
-            "intent": intent,
-            "skill": "clarification",
-            "matched_keywords": ["needs_clarification"],
-            "trace_steps": state.get("trace_steps", []) + [trace],
-        }
-
     # 4. 安装
     if _keyword_match(msg, _INSTALLATION_KEYWORDS):
         intent = "installation"
@@ -723,6 +705,29 @@ def detect_intent(state: dict) -> dict:
             "intent": intent,
             "skill": "product",
             "matched_keywords": [k for k in _PRODUCT_KEYWORDS if k in msg][:3],
+            "trace_steps": state.get("trace_steps", []) + [trace],
+        }
+
+    # 模糊澄清只能作为明确业务意图均未命中后的兜底。礼貌前缀中的
+    # “帮我看一下”不能覆盖同一句里的物流、安装或商品事实请求。
+    if (
+        _is_vague_question(msg)
+        and not _has_text_product_question(msg)
+        and not has_logistics_kw
+    ):
+        intent = "needs_clarification"
+        duration_ms = int((time.time() - t0) * 1000)
+        trace = {
+            "node": "detect_intent",
+            "status": "success",
+            "duration_ms": duration_ms,
+            "cache_hit": False,
+            "summary": f"识别为 {intent}（问题描述过于模糊）",
+        }
+        return {
+            "intent": intent,
+            "skill": "clarification",
+            "matched_keywords": ["needs_clarification"],
             "trace_steps": state.get("trace_steps", []) + [trace],
         }
 

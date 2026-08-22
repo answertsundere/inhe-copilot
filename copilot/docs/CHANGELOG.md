@@ -1,5 +1,17 @@
 # Change Log
 
+## 2026-08-22 - Explicit logistics intent before vague clarification
+
+- Moved vague-question clarification behind explicit installation, logistics,
+  and product intent recognition. A polite phrase such as "help me check" can
+  no longer suppress an explicit shipment-location request.
+- Preserved the existing Graph and JST tool ownership. The order identifier is
+  still extracted by the existing slot stage, then routed through the existing
+  outbound lookup; no reply template, service, node, or model call was added.
+- Replayed the affected review-only request against JST: the route selected the
+  outbound tool, admitted two shipment facts, and passed deterministic and
+  semantic final audit with `can_send=false`.
+
 ## 2026-08-22 - Customer-safe outbound logistics evidence
 
 - Kept JST sales-out identifiers, internal status and timestamps as server-side
