@@ -641,7 +641,10 @@ def _completed_lookup_outcome_actions(
     response: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Project completed empty live lookups as non-factual reply guidance."""
+    debug = _as_dict(response.get("evidence_debug"))
     tool_results = _as_dict(response.get("tool_results"))
+    if not tool_results:
+        tool_results = _as_dict(debug.get("tool_results_summary"))
     actions: list[dict[str, Any]] = []
     for tool_name in (
         "jst_lookup_order_tool",

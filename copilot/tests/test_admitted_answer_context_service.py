@@ -141,6 +141,32 @@ def test_projects_completed_jst_no_record_outcome_as_non_fact_service_action():
     assert minimal["service_actions"][0]["completed"] is True
 
 
+def test_projects_completed_jst_no_record_from_graph_response_summary():
+    response = {
+        "evidence_debug": {
+            "tool_results_summary": {
+                "jst_lookup_outbound_tool": {
+                    "found": False,
+                    "lookup_complete": True,
+                    "safe_fallback_reason": "not_found",
+                    "query_type": "platform_trade_id",
+                }
+            }
+        }
+    }
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={},
+        understanding=_understanding("stock_shipping"),
+    )
+
+    assert [
+        item["action_type"]
+        for item in admitted["handoff_action_guidance"]
+    ] == ["inform_lookup_completed_no_record"]
+
+
 @pytest.mark.parametrize(
     ("overrides", "reason"),
     [

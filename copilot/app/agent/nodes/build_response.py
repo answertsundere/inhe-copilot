@@ -267,6 +267,7 @@ def build_response(state: dict) -> dict:
     evidence_debug["tool_results_summary"] = {
         k: {
             "found": v.get("found"),
+            "lookup_complete": v.get("lookup_complete"),
             "count": v.get("count"),
             "endpoint": v.get("endpoint", ""),
             "query_type": v.get("query_type", ""),
