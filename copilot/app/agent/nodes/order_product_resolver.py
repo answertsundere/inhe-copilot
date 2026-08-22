@@ -832,6 +832,15 @@ def _lookup_local_order(identifier: str, identifier_type: str) -> dict | None:
     return None
 
 
+def _order_lookup_status(lookup: dict) -> str:
+    reason = str(lookup.get("safe_fallback_reason") or lookup.get("error_code") or "").strip().lower()
+    if reason in {"not_found", "order_not_found", "no_matching_record"}:
+        return "not_found"
+    if reason in {"ambiguous", "ambiguous_result"}:
+        return "ambiguous"
+    return "unavailable"
+
+
 def _unresolved(status: str, identifier: str = "", identifier_type: str = "", reason: str = "", items: list[dict] | None = None) -> dict:
     candidates = []
     for item in items or []:
@@ -986,19 +995,32 @@ def order_product_resolver(state: dict) -> dict:
         return _build_updates_from_identity(state, cached, t0, cache_hit=True)
 
     try:
-        from app.integrations.jst.live_query import lookup_order_by_identifier
+        from app.integrations.jst.order_query_router import lookup_order_by_provider
 
         provider_context = state.get("copilot_context", {}) or {}
         shop_id = str(provider_context.get("jst_shop_id") or "").strip()
-        lookup_kwargs = {"exhaustive": False}
-        if shop_id:
-            lookup_kwargs["shop_id"] = shop_id
-        lookup = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
-        if not lookup.get("found") and identifier_type != "unknown_identifier":
-            fallback_lookup = lookup_order_by_identifier(
+        provider = str(provider_context.get("order_lookup_provider") or "")
+        shop_ref = str(provider_context.get("shop_id") or "").strip()
+        lookup = lookup_order_by_provider(
+            identifier,
+            identifier_type,
+            provider=provider,
+            shop_ref=shop_ref,
+            shop_id=shop_id,
+            exhaustive=False,
+        )
+        if (
+            not lookup.get("found")
+            and identifier_type != "unknown_identifier"
+            and str(provider or "").strip().lower() != "qimen"
+        ):
+            fallback_lookup = lookup_order_by_provider(
                 identifier,
                 "unknown_identifier",
-                **lookup_kwargs,
+                provider=provider,
+                shop_ref=shop_ref,
+                shop_id=shop_id,
+                exhaustive=False,
             )
             if fallback_lookup.get("found"):
                 fallback_lookup["primary_lookup"] = {
@@ -1032,13 +1054,14 @@ def order_product_resolver(state: dict) -> dict:
             lookup["_from_current_slots"] = identifier_in_current_slots
             identifier_type = identifier_type or "internal_order_id"
         else:
+            lookup_status = _order_lookup_status(lookup)
             # Do not let a failed order lookup erase a sidecar product title.
             # In real QianNiu use, customers often ask "where is my package +
             # is this material safe" in one message; the order may miss while
             # the sidebar product is still the best product identity.
             sidecar_identity = _resolve_sidecar_product_name(state)
             if sidecar_identity and sidecar_identity.get("status") == "resolved":
-                sidecar_identity["order_lookup_status"] = "not_found"
+                sidecar_identity["order_lookup_status"] = lookup_status
                 sidecar_identity["order_identifier"] = identifier
                 sidecar_identity["order_identifier_type"] = identifier_type
                 sidecar_identity["order_lookup_reason"] = (
@@ -1050,14 +1073,15 @@ def order_product_resolver(state: dict) -> dict:
                 return _build_updates_from_identity(state, sidecar_identity, t0, cache_hit=False)
 
             identity = _unresolved(
-                "not_found",
+                lookup_status,
                 identifier,
                 identifier_type,
                 lookup.get("safe_fallback_reason") or lookup.get("error_code") or "order_not_found",
             )
             identity["lookup_endpoint"] = lookup.get("endpoint", "")
             identity["lookup_duration_ms"] = lookup.get("duration_ms", 0)
-            _cache_set(f"{conversation_id}|{current_key}", identity)
+            if lookup_status != "unavailable":
+                _cache_set(f"{conversation_id}|{current_key}", identity)
             return _build_updates_from_identity(state, identity, t0, cache_hit=False)
 
     order_data = lookup.get("data") or {}

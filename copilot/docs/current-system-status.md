@@ -44,7 +44,7 @@
 
 | 模块 | 说明 | 限制 |
 |---|---|---|
-| **物流查询（外部交易号）** | platform_trade_id → 精确出库查询 → 全页外部标识扫描 | 普通 OpenAPI 不暴露淘系线上单号；淘系须由千牛 Sidecar 或已授权奇门适配器提供映射 |
+| **物流查询（外部交易号）** | 店铺元数据选择普通 JST 或奇门；淘系走 `jushuitan.order.list.query` 精确 `so_id` 查询 | 普通 OpenAPI 不暴露淘系线上单号；奇门未授权时明确报告通道未配置，不误报订单不存在 |
 | **物流查询（内部订单号）** | internal_order_id → orders/single/query | 需要精确 o_id |
 | **物流查询（快递单号）** | tracking_no → logistic/query 扫描 | 仅扫描最近 7 天 100 条，大量单号查不到 |
 | **商品咨询** | RAG 知识库检索 | 依赖知识库内容质量 |

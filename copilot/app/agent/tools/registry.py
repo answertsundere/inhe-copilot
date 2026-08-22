@@ -325,6 +325,14 @@ def _jst_shop_id_from_state(state: dict) -> str:
     return str(context.get("jst_shop_id") or "").strip()
 
 
+def _order_lookup_provider_from_state(state: dict) -> str:
+    context = state.get("copilot_context") if isinstance(state, dict) else {}
+    if not isinstance(context, dict):
+        return "jst_standard"
+    value = str(context.get("order_lookup_provider") or "").strip().lower()
+    return value if value in {"jst_standard", "qimen"} else "jst_standard"
+
+
 def _jst_lookup_complete(result: dict) -> bool:
     if result.get("found"):
         return True
@@ -334,18 +342,20 @@ def _jst_lookup_complete(result: dict) -> bool:
 
 def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
     """调用 lookup_order_by_order_id 或 lookup_order_by_platform_order_id"""
-    from app.integrations.jst.live_query import (
-        lookup_order_by_order_id, lookup_order_by_platform_order_id, lookup_order_by_identifier,
-    )
+    from app.integrations.jst.order_query_router import lookup_order_by_provider
 
     identifier = inputs.get("identifier", "")
     identifier_type = inputs.get("identifier_type", "internal_order_id")
 
-    lookup_kwargs = {}
+    context = state.get("copilot_context") or {}
     jst_shop_id = _jst_shop_id_from_state(state)
-    if jst_shop_id:
-        lookup_kwargs["shop_id"] = jst_shop_id
-    result = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
+    result = lookup_order_by_provider(
+        identifier,
+        identifier_type,
+        provider=_order_lookup_provider_from_state(state),
+        shop_ref=str(context.get("shop_id") or "").strip(),
+        shop_id=jst_shop_id,
+    )
     if result.get("found"):
         data = result["data"]
         return {
@@ -375,17 +385,17 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
 
 def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
     """调用 lookup_outbound_by_so_id"""
-    from app.integrations.jst.live_query import lookup_order_by_identifier
+    from app.integrations.jst.order_query_router import lookup_order_by_provider
 
     outer_so_id = inputs.get("outer_so_id") or inputs.get("platform_trade_id", "")
-    lookup_kwargs = {}
+    context = state.get("copilot_context") or {}
     jst_shop_id = _jst_shop_id_from_state(state)
-    if jst_shop_id:
-        lookup_kwargs["shop_id"] = jst_shop_id
-    result = lookup_order_by_identifier(
+    result = lookup_order_by_provider(
         outer_so_id,
         "platform_trade_id",
-        **lookup_kwargs,
+        provider=_order_lookup_provider_from_state(state),
+        shop_ref=str(context.get("shop_id") or "").strip(),
+        shop_id=jst_shop_id,
     )
     if result.get("found"):
         data = result["data"]
@@ -409,6 +419,7 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
         "query_type": result.get("query_type", ""),
         "attempted_paths": result.get("attempted_paths", []),
         "safe_fallback_reason": result.get("safe_fallback_reason", ""),
+        "error_code": result.get("error_code"),
     }
 
 

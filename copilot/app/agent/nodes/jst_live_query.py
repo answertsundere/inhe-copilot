@@ -13,6 +13,7 @@ jst_live_query 节点 — 统一的聚水潭实时查询入口
 import logging
 import time
 
+from app.integrations.jst.order_query_router import lookup_order_by_provider
 from app.integrations.jst.live_query import lookup_order_by_identifier
 
 logger = logging.getLogger(__name__)
@@ -102,17 +103,16 @@ def jst_live_query(state: dict) -> dict:
 
     # ``shop_id`` is the platform-neutral store reference used by the control
     # plane. Only an explicit provider-scoped id may filter JST records.
-    jst_shop_id = str(
-        (state.get("copilot_context", {}) or {}).get("jst_shop_id") or ""
-    ).strip()
-    if jst_shop_id:
-        result = lookup_order_by_identifier(
-            identifier,
-            identifier_type,
-            shop_id=jst_shop_id,
-        )
-    else:
-        result = lookup_order_by_identifier(identifier, identifier_type)
+    provider_context = state.get("copilot_context", {}) or {}
+    jst_shop_id = str(provider_context.get("jst_shop_id") or "").strip()
+    result = lookup_order_by_provider(
+        identifier,
+        identifier_type,
+        provider=str(provider_context.get("order_lookup_provider") or ""),
+        shop_ref=str(provider_context.get("shop_id") or "").strip(),
+        shop_id=jst_shop_id,
+        standard_lookup=lookup_order_by_identifier,
+    )
     duration_ms = int((time.time() - t0) * 1000)
 
     # 所有 trace 都包含 progress + result

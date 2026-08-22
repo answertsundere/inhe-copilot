@@ -789,3 +789,50 @@ def test_outbound_tool_does_not_mark_malformed_miss_complete(monkeypatch):
     )
 
     assert result["lookup_complete"] is False
+
+
+def test_outbound_tool_routes_qimen_without_generic_jst_fallback(monkeypatch):
+    from app.agent.tools.registry import _handle_jst_lookup_outbound
+
+    captured = {}
+
+    def fake_qimen(identifier, **kwargs):
+        captured.update({"identifier": identifier, **kwargs})
+        return {
+            "found": False,
+            "endpoint": "jushuitan.order.list.query",
+            "query_type": "platform_trade_id",
+            "safe_fallback_reason": "provider_not_configured",
+            "error_code": "qimen_not_configured",
+        }
+
+    monkeypatch.setattr(
+        "app.integrations.jst.qimen_order_query.lookup_qimen_order_by_platform_trade_id",
+        fake_qimen,
+    )
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Qimen-routed orders must not fall back to generic JST")
+        ),
+    )
+
+    result = _handle_jst_lookup_outbound(
+        {"outer_so_id": "platform-order-ref"},
+        {
+            "copilot_context": {
+                "shop_id": "logical-store",
+                "jst_shop_id": "provider-store",
+                "order_lookup_provider": "qimen",
+            }
+        },
+    )
+
+    assert captured == {
+        "identifier": "platform-order-ref",
+        "shop_ref": "logical-store",
+        "shop_id": "provider-store",
+    }
+    assert result["found"] is False
+    assert result["lookup_complete"] is False
+    assert result["safe_fallback_reason"] == "provider_not_configured"
