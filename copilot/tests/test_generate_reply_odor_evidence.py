@@ -93,6 +93,31 @@ def test_exact_faq_odor_reply_does_not_move_non_odor_sentence_first():
     assert not reply.splitlines()[1].startswith("\u8868\u9762\u5149\u6ed1")
 
 
+def test_exact_product_hub_dimension_reply_keeps_attribute_label_with_value():
+    state = {
+        "query_fact_type": "dimensions",
+        "evidence": {
+            "product_facts": [
+                {
+                    "entry_id": "product_data_hub:dimension-1",
+                    "chunk_id": "product_data_hub:dimension-1",
+                    "source_type": "product_facts",
+                    "protocol_source_type": "product_data_hub",
+                    "title": "尺寸",
+                    "chunk_text": "36.5x22cm",
+                    "evidence_fact_type": "dimensions",
+                    "evidence_allowed_for_direct_answer": True,
+                    "direct_answer_allowed": True,
+                }
+            ]
+        },
+    }
+
+    reply = _render_product_facts(state, "测试商品")
+
+    assert "尺寸：36.5x22cm" in reply
+
+
 def test_odor_fallback_is_customer_facing_without_verify_handoff():
     reply = _odor_reply({"query_fact_type": "odor"})
 

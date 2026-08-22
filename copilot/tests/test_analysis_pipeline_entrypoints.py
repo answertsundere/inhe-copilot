@@ -1128,6 +1128,152 @@ def test_product_scoped_request_fails_closed_when_runtime_is_not_ready(monkeypat
     assert "knowledge_entries_empty" in response["evidence_debug"]["knowledge_db_unavailable"]
 
 
+def test_exact_confirmed_product_hub_fact_allows_product_request_when_legacy_kb_is_empty(monkeypatch):
+    import app.config as config
+    import app.services.analysis_execution_service as execution
+    from app.services import analysis_pipeline_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_DATA_HUB_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {
+            "ready": False,
+            "status": "not_ready",
+            "reasons": ["knowledge_entries_empty"],
+            "knowledge": {"entries": 0, "chunks": 0, "kb_qa": 0},
+            "database": {"basename": "knowledge_base.db"},
+        },
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"product_code": "P100"},
+            "sku": {"sku_code": "P100-SKU"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-1",
+                "review_status": "confirmed",
+                "identity_scope": {"product_code": "P100", "sku_code": "P100-SKU"},
+            }],
+        },
+        raising=False,
+    )
+    observed = {"executed": False}
+
+    def fake_execute_analysis(**_kwargs):
+        observed["executed"] = True
+        return {"suggested_reply": "候选", "can_send": False, "requires_human_review": True}
+
+    monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+    request = AnalysisPipelineRequest(
+        reply_service=object(),
+        customer_message="尺寸是多少",
+        product_candidates=[{"type": "sku_code", "value": "P100-SKU"}],
+        copilot_context={"i_id": "P100", "sku_code": "P100-SKU"},
+        source="api",
+    )
+
+    response = AnalysisPipelineService().run(request)
+
+    assert observed["executed"] is True
+    assert response["suggested_reply"] == "候选"
+
+
+def test_empty_or_unresolved_product_hub_bundle_does_not_bypass_legacy_kb_readiness(monkeypatch):
+    import app.config as config
+    from app.services import analysis_pipeline_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_DATA_HUB_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {
+            "ready": False,
+            "status": "not_ready",
+            "reasons": ["knowledge_entries_empty"],
+            "knowledge": {"entries": 0, "chunks": 0, "kb_qa": 0},
+            "database": {"basename": "knowledge_base.db"},
+        },
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {"status": "unresolved", "used_for_fact": False, "facts": []},
+        raising=False,
+    )
+    request = AnalysisPipelineRequest(
+        reply_service=object(),
+        customer_message="尺寸是多少",
+        product_candidates=[{"type": "sku_code", "value": "P100-SKU"}],
+        copilot_context={"i_id": "P100", "sku_code": "P100-SKU"},
+        source="api",
+    )
+
+    readiness = AnalysisPipelineService._knowledge_readiness_for_request(request)
+
+    assert readiness["ready"] is False
+    assert readiness["reasons"] == ["knowledge_entries_empty"]
+
+
+def test_mismatched_product_hub_identity_does_not_bypass_legacy_kb_readiness(monkeypatch):
+    import app.config as config
+    from app.services import analysis_pipeline_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_DATA_HUB_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",
+        lambda *_args, **_kwargs: {
+            "ready": False,
+            "status": "not_ready",
+            "reasons": ["knowledge_entries_empty"],
+            "knowledge": {"entries": 0, "chunks": 0, "kb_qa": 0},
+            "database": {"basename": "knowledge_base.db"},
+        },
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"product_code": "P200"},
+            "sku": {"sku_code": "P200-SKU"},
+            "facts": [{"review_status": "confirmed"}],
+        },
+    )
+    request = AnalysisPipelineRequest(
+        reply_service=object(),
+        customer_message="尺寸是多少",
+        product_candidates=[{"type": "sku_code", "value": "P100-SKU"}],
+        copilot_context={"i_id": "P100", "sku_code": "P100-SKU"},
+        source="api",
+    )
+
+    readiness = AnalysisPipelineService._knowledge_readiness_for_request(request)
+
+    assert readiness["ready"] is False
+    assert readiness["reasons"] == ["knowledge_entries_empty"]
+
+
 def test_product_context_does_not_block_explicit_aftersales_contract_when_runtime_is_not_ready(monkeypatch):
     monkeypatch.setattr(
         "app.services.runtime_knowledge_readiness_service.RuntimeKnowledgeReadinessService.inspect",

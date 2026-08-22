@@ -10,6 +10,9 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.integrations.product_data_hub.read_client import (
+    lookup_product_data_hub_bundle,
+)
 
 PIPELINE_VERSION = "analysis-pipeline-v1"
 PIPELINE_COMPOSER_ENTRY_DIAGNOSTICS_SCHEMA = (
@@ -540,7 +543,72 @@ class AnalysisPipelineService:
             return None
         from app.services.runtime_knowledge_readiness_service import RuntimeKnowledgeReadinessService
 
-        return RuntimeKnowledgeReadinessService().inspect()
+        readiness = RuntimeKnowledgeReadinessService().inspect()
+        if readiness.get("ready"):
+            return readiness
+        if AnalysisPipelineService._has_exact_confirmed_hub_fact(request):
+            return {
+                **readiness,
+                "ready": True,
+                "status": "ready_with_exact_product_hub_fact",
+                "reasons": [],
+                "product_data_hub": {
+                    "used_as_product_fact_source": True,
+                    "read_only": True,
+                },
+            }
+        return readiness
+
+    @staticmethod
+    def _has_exact_confirmed_hub_fact(request: AnalysisPipelineRequest) -> bool:
+        """Allow an empty legacy KB only when an exact Hub fact is available.
+
+        This is a request-scoped readiness exception, not a global readiness
+        change.  The same bundle is projected later by Product Context Pack and
+        still must pass the existing evidence admission contract.
+        """
+        from app import config
+
+        if not (
+            config.COPILOT_PRODUCT_DATA_HUB_ENABLED
+            and config.COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED
+        ):
+            return False
+        sku_values, iid_values = _collect_product_policy_identifiers(
+            request,
+            request.copilot_context or {},
+        )
+        if len(sku_values) > 1 or len(iid_values) > 1:
+            return False
+        i_id = next(iter(iid_values), "")
+        sku_id = next(iter(sku_values), "")
+        if not i_id and not sku_id:
+            return False
+        try:
+            bundle = lookup_product_data_hub_bundle(i_id=i_id, sku_id=sku_id)
+        except Exception:
+            return False
+        if not isinstance(bundle, dict) or bundle.get("status") != "resolved":
+            return False
+        if bundle.get("used_for_fact") is not True:
+            return False
+        product = bundle.get("product") or {}
+        sku = bundle.get("sku") or {}
+        if not isinstance(product, dict) or not isinstance(sku, dict):
+            return False
+        if i_id and _text_identifier(product.get("product_code")) != i_id:
+            return False
+        if sku_id and _text_identifier(sku.get("sku_code")) != sku_id:
+            return False
+        for fact in bundle.get("facts") or []:
+            if not isinstance(fact, dict):
+                continue
+            if str(fact.get("review_status") or "").strip().lower() != "confirmed":
+                continue
+            if fact.get("conflict") is True or fact.get("is_conflicted") is True:
+                continue
+            return True
+        return False
 
     @staticmethod
     def _request_query_fact_type(request: AnalysisPipelineRequest) -> str:

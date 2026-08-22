@@ -454,3 +454,23 @@ class TestGroundingValidationService:
         }
         result = validate_reply_grounding(state)
         assert result["passed"] is True
+
+    def test_accepts_exact_product_hub_attribute_title(self):
+        state = {
+            "suggested_reply": "亲，这款商品的尺寸为36.5x22cm。",
+            "intent": "product_question",
+            "evidence": {"product_facts": []},
+            "filtered_evidence": [],
+            "knowledge_evidence": [{
+                "source_type": "product_facts",
+                "protocol_source_type": "product_data_hub",
+                "title": "尺寸",
+                "chunk_text": "36.5x22cm",
+                "review_status": "confirmed",
+            }],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert result["passed"] is True
+        assert result["fallback_used"] is False

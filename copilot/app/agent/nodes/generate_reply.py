@@ -970,7 +970,7 @@ def _render_product_facts(state: dict, product_name: str) -> str:
     if state.get("query_fact_type") == "odor":
         return _render_odor_product_facts(state, product_name)
 
-    facts = [_fact_text(item) for item in _real_product_facts(state)]
+    facts = [_render_product_fact_line(item) for item in _real_product_facts(state)]
     facts = [f.strip() for f in facts if f and f.strip()]
     facts = list(dict.fromkeys(facts))
     if not facts:
@@ -1674,6 +1674,17 @@ def _can_use_llm_for_mode(answer_mode: str) -> bool:
 
 def _fact_text(item: dict[str, Any]) -> str:
     return str(item.get("chunk_text") or item.get("fact") or item.get("content") or item.get("preview") or "")
+
+
+def _render_product_fact_line(item: dict[str, Any]) -> str:
+    """Keep exact Hub attribute names next to their customer-facing values."""
+    text = _fact_text(item).strip()
+    if str(item.get("protocol_source_type") or "") != "product_data_hub":
+        return text
+    label = str(item.get("title") or item.get("attribute_key") or "").strip()
+    if not label or len(label) > 80 or label in text:
+        return text
+    return f"{label}：{text}"
 
 
 def _product_name(state: dict) -> str:

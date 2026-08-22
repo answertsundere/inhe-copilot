@@ -35,6 +35,12 @@ direct answer admission. Packaging, component, accessory, included-item, and
 product-overall measurements retain their declared subject scope and are not
 interchanged.
 
+For a directly admitted Hub fact, its customer-facing attribute label and
+value remain one evidence unit. Deterministic rendering and grounding retain
+the admitted `title`/`attribute_key` beside its value so a direct dimension
+answer is not misclassified as an unsupported assertion. Labels still cannot
+become facts before the existing admission checks.
+
 Labeled media is selected only after exact identity resolution and only for a
 compatible requested fact type. The label controls media role selection; it
 does not create a fact. Media still must pass the existing approval, usability,

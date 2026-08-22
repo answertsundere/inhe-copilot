@@ -48,6 +48,32 @@ def _has_any(text: str, keywords: list) -> bool:
     return any(kw in text for kw in keywords)
 
 
+def _has_admitted_product_fact_evidence(state: dict) -> bool:
+    """Recognize direct Product Hub facts after their existing evidence gate."""
+    for item in state.get("knowledge_evidence", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("protocol_source_type") or "") != "product_data_hub":
+            continue
+        if str(item.get("source_type") or "") != "product_facts":
+            continue
+        if item.get("reference_only") is True:
+            continue
+        if str(item.get("gate_status") or "").lower() in {"blocked", "reference_only"}:
+            continue
+        if item.get("evidence_allowed_for_direct_answer") is False:
+            continue
+        if item.get("direct_answer_allowed") is False:
+            continue
+        if str(item.get("review_status") or "").lower() not in {
+            "confirmed", "approved", "published", "reviewed", "verified",
+        }:
+            continue
+        if str(item.get("chunk_text") or item.get("fact") or "").strip():
+            return True
+    return False
+
+
 def factual_guard(state: dict) -> dict:
     """检查回复是否包含虚假信息（扩展版）"""
     t0 = time.time()
@@ -157,7 +183,8 @@ def factual_guard(state: dict) -> dict:
     # ========== C. 商品事实保护 ==========
     # C1. 没有 product_facts 不得说具体材质/尺寸/承重
     has_faq_evidence = bool(evidence.get("faq_evidence"))
-    if intent in ("product_question", "product_consult") and not product_facts and not has_faq_evidence:
+    has_admitted_product_fact = bool(product_facts) or _has_admitted_product_fact_evidence(state)
+    if intent in ("product_question", "product_consult") and not has_admitted_product_fact and not has_faq_evidence:
         if _has_any(reply, _PRODUCT_PARAMS):
             guard_warnings.append(
                 "无 product_facts 支撑但回复中出现了具体商品参数（材质/尺寸/承重等），疑似编造。"

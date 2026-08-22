@@ -228,6 +228,31 @@ def test_hallucination_guard_blocks_unsupported_product_terms():
     assert "商品链接" in result["suggested_reply"]
 
 
+def test_hallucination_guard_accepts_exact_product_hub_attribute_title():
+    state = {
+        "suggested_reply": "亲，这款商品的尺寸为36.5x22cm。",
+        "answer_mode": "product_fact_answer",
+        "generation_mode": "rule_based",
+        "intent": "product_question",
+        "evidence": {"product_facts": [], "faq_evidence": [], "unknowns": []},
+        "filtered_evidence": [],
+        "knowledge_evidence": [{
+            "source_type": "product_facts",
+            "protocol_source_type": "product_data_hub",
+            "title": "尺寸",
+            "chunk_text": "36.5x22cm",
+            "review_status": "confirmed",
+        }],
+        "trace_steps": [],
+    }
+
+    result = hallucination_guard(state)
+
+    assert result["hallucination_guard"]["passed"] is True
+    assert result["hallucination_guard"]["fallback_used"] is False
+    assert result["suggested_reply"] == state["suggested_reply"]
+
+
 def test_legacy_policy_mode_resolves_to_policy_grounded_answer():
     state = {
         "customer_message": "超过七天还能退吗？",

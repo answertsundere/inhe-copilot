@@ -198,6 +198,11 @@ disabled by default and fails closed on missing, ambiguous, conflicting,
 malformed, or unavailable catalog data. It adds no sender or `can_send`
 authority; automatic delivery remains separately gated.
 
+Each directly admitted Hub fact keeps its exact attribute label beside its
+value through deterministic rendering and grounding. This preserves the
+meaning of an admitted dimension without allowing the label itself to bypass
+identity, scope, review, or high-risk admission rules.
+
 Channel context keeps store identity platform-neutral. `shop_id` identifies the
 logical integrated store used by the Agent and future channel adapters; it is
 not implicitly a JST provider identifier. An adapter may additionally provide

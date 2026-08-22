@@ -136,6 +136,11 @@ def _evidence_text(state: dict) -> str:
             parts.append(str(item.get("fact") or item.get("chunk_text") or item.get("content") or ""))
     for item in state.get("filtered_evidence", []) + state.get("knowledge_evidence", []):
         parts.append(str(item.get("chunk_text") or item.get("fact") or item.get("content") or ""))
+        if (
+            item.get("source_type") == "product_facts"
+            and item.get("protocol_source_type") == "product_data_hub"
+        ):
+            parts.append(str(item.get("title") or item.get("attribute_key") or ""))
     for item in state.get("knowledge", []):
         parts.append(str(item.get("content") or ""))
     return "\n".join(parts)

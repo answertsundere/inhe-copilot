@@ -451,6 +451,8 @@ _HUB_DIMENSION_SUBJECT_SCOPES = {
     "随附物": "included_item",
 }
 
+_HUB_DIMENSION_SCOPE_VALUES = frozenset(_HUB_DIMENSION_SUBJECT_SCOPES.values())
+
 _HUB_BLOCKED_DIRECT_FACT_TYPES = {
     "age",
     "age_range",
@@ -474,6 +476,38 @@ _HUB_MEDIA_TYPES_BY_FACT_TYPE = {
 }
 
 
+def _requested_hub_dimension_scopes(
+    query_fact_type: str,
+    semantic_query: dict[str, Any],
+) -> set[str]:
+    """Resolve the authoritative target scope for a dimensional answer.
+
+    A plain dimensions question means the complete product by default.  Other
+    scopes are permitted only when an upstream semantic contract explicitly
+    supplies one, so carton and component measurements cannot silently answer
+    a question about the product itself.
+    """
+    explicit = (
+        semantic_query.get("subject_scope")
+        or semantic_query.get("requested_subject_scope")
+        or semantic_query.get("measurement_subject_scope")
+    )
+    values = explicit if isinstance(explicit, list) else [explicit]
+    normalized = {
+        _HUB_DIMENSION_SUBJECT_SCOPES.get(str(value or "").strip().lower(), str(value or "").strip().lower())
+        for value in values
+        if str(value or "").strip()
+    }
+    normalized &= _HUB_DIMENSION_SCOPE_VALUES
+    if normalized:
+        return normalized
+    if query_fact_type in {"dimensions", "space_fit"}:
+        return {"product"}
+    if query_fact_type == "packaging":
+        return {"packaging"}
+    return set()
+
+
 def _hub_bundle_facts_for_query(
     bundle: dict[str, Any],
     *,
@@ -487,6 +521,10 @@ def _hub_bundle_facts_for_query(
     if not enabled or bundle.get("status") != "resolved" or bundle.get("used_for_fact") is not True:
         return []
     results: list[dict[str, Any]] = []
+    requested_dimension_scopes = _requested_hub_dimension_scopes(
+        query_fact_type,
+        semantic_query,
+    )
     for raw in bundle.get("facts") or []:
         if not isinstance(raw, dict):
             continue
@@ -523,6 +561,12 @@ def _hub_bundle_facts_for_query(
             if evidence_fact_type == "dimensions"
             else ""
         )
+        if (
+            evidence_fact_type == "dimensions"
+            and requested_dimension_scopes
+            and subject_scope not in requested_dimension_scopes
+        ):
+            continue
         score = 18.0 + fact_score + _text_overlap_score(
             query,
             str(raw.get("attribute_key") or ""),

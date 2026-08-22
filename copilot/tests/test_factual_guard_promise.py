@@ -131,3 +131,67 @@ class TestSafePhrasesNotBlocked:
         """一般会按店铺规则安排 → 不拦截"""
         result = _run_guard("亲，一般会按店铺规则安排发货。")
         assert len(result["guard_warnings"]) == 0
+
+
+def test_exact_admitted_product_hub_fact_prevents_product_dimension_rewrite():
+    state = {
+        "suggested_reply": "亲，尺寸：36.5x22cm。",
+        "intent": "product_question",
+        "answer_mode": "product_fact_answer",
+        "logistics_trace": None,
+        "order": None,
+        "evidence": {
+            "order_facts": [],
+            "logistics_facts": [],
+            "product_facts": [],
+            "policy_facts": [],
+            "sop_evidence": [],
+            "unknowns": [],
+            "conflicts": [],
+        },
+        "knowledge_evidence": [{
+            "source_type": "product_facts",
+            "protocol_source_type": "product_data_hub",
+            "chunk_text": "36.5x22cm",
+            "evidence_allowed_for_direct_answer": True,
+            "direct_answer_allowed": True,
+            "reference_only": False,
+            "gate_status": "allowed",
+            "review_status": "confirmed",
+        }],
+        "slots": {"i_id": "P100", "sku_code": "P100-SKU"},
+        "matched_product_name": "测试商品",
+        "trace_steps": [],
+    }
+
+    result = factual_guard(state)
+
+    assert result["suggested_reply"] == "亲，尺寸：36.5x22cm。"
+
+
+def test_reference_only_product_hub_fact_does_not_prevent_product_dimension_rewrite():
+    state = {
+        "suggested_reply": "亲，尺寸：36.5x22cm。",
+        "intent": "product_question",
+        "answer_mode": "product_fact_answer",
+        "logistics_trace": None,
+        "order": None,
+        "evidence": {"order_facts": [], "logistics_facts": [], "product_facts": [], "policy_facts": [], "sop_evidence": [], "unknowns": [], "conflicts": []},
+        "knowledge_evidence": [{
+            "source_type": "product_facts",
+            "protocol_source_type": "product_data_hub",
+            "chunk_text": "36.5x22cm",
+            "evidence_allowed_for_direct_answer": True,
+            "direct_answer_allowed": True,
+            "reference_only": True,
+            "gate_status": "reference_only",
+            "review_status": "confirmed",
+        }],
+        "slots": {"i_id": "P100", "sku_code": "P100-SKU"},
+        "matched_product_name": "测试商品",
+        "trace_steps": [],
+    }
+
+    result = factual_guard(state)
+
+    assert result["suggested_reply"] != "亲，尺寸：36.5x22cm。"

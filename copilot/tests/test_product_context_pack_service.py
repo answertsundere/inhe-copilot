@@ -320,9 +320,10 @@ def test_hub_packaging_size_does_not_satisfy_product_dimensions(product_context_
         query_fact_type="dimensions",
     )
 
-    hub_fact = next(fact for fact in pack["facts"] if fact.get("source_table") == "product_data_hub")
-    assert hub_fact["fact_type"] == "dimensions"
-    assert hub_fact["subject_scope"] == "packaging"
+    assert not any(
+        fact.get("source_table") == "product_data_hub"
+        for fact in pack["facts"]
+    )
 
 
 def test_confirmed_exact_hub_material_carries_trusted_material_provenance(product_context_db, monkeypatch):
@@ -365,7 +366,7 @@ def test_confirmed_exact_hub_material_carries_trusted_material_provenance(produc
     assert hub_fact["metadata"]["material_provenance"] == "product_data_hub_confirmed"
 
 
-def test_hub_dimension_facts_preserve_product_and_packaging_subject_scope(product_context_db, monkeypatch):
+def test_hub_dimension_facts_default_to_product_scope_for_product_dimension_question(product_context_db, monkeypatch):
     import app.config as config
     from app.services import product_context_pack_service
 
@@ -418,6 +419,23 @@ def test_hub_dimension_facts_preserve_product_and_packaging_subject_scope(produc
     }
     assert scoped_facts == {
         "product_data_hub:fact-product-size": "product",
+    }
+
+    packaging_pack = product_context_pack_service.build_product_context_pack(
+        {
+            "slots": {"i_id": "YH91K01", "sku_code": "YH91K01B01S01"},
+            "semantic_query": {"subject_scope": "packaging"},
+        },
+        query="尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+    packaging_scopes = {
+        fact["chunk_id"]: fact.get("subject_scope")
+        for fact in packaging_pack["facts"]
+        if fact.get("source_table") == "product_data_hub"
+    }
+    assert packaging_scopes == {
         "product_data_hub:fact-package-size": "packaging",
     }
 

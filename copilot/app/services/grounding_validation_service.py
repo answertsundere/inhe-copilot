@@ -94,6 +94,13 @@ def _collect_evidence_text(state: dict) -> str:
         text = item.get("chunk_text") or item.get("fact") or item.get("content") or ""
         if text:
             parts.append(text)
+        if (
+            item.get("source_type") == "product_facts"
+            and item.get("protocol_source_type") == "product_data_hub"
+        ):
+            title = item.get("title") or item.get("attribute_key") or ""
+            if title:
+                parts.append(title)
 
     return "\n".join(parts)
 
