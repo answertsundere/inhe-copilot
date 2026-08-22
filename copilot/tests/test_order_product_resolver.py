@@ -5,7 +5,7 @@ def test_order_lookup_status_distinguishes_unavailable_from_not_found():
     from app.agent.nodes import order_product_resolver as node
 
     assert node._order_lookup_status({"safe_fallback_reason": "provider_not_configured"}) == "unavailable"
-    assert node._order_lookup_status({"error_code": "qimen_timeout"}) == "unavailable"
+    assert node._order_lookup_status({"error_code": "timeout"}) == "unavailable"
     assert node._order_lookup_status({"safe_fallback_reason": "provider_error"}) == "unavailable"
     assert node._order_lookup_status({"safe_fallback_reason": "not_found"}) == "not_found"
 

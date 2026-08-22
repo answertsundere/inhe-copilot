@@ -1,4 +1,4 @@
-"""Resolve internal product identity from the current QianNiu order context."""
+"""Resolve internal product identity from canonical workbench order context."""
 
 from __future__ import annotations
 
@@ -995,32 +995,19 @@ def order_product_resolver(state: dict) -> dict:
         return _build_updates_from_identity(state, cached, t0, cache_hit=True)
 
     try:
-        from app.integrations.jst.order_query_router import lookup_order_by_provider
+        from app.integrations.jst.live_query import lookup_order_by_identifier
 
         provider_context = state.get("copilot_context", {}) or {}
         shop_id = str(provider_context.get("jst_shop_id") or "").strip()
-        provider = str(provider_context.get("order_lookup_provider") or "")
-        shop_ref = str(provider_context.get("shop_id") or "").strip()
-        lookup = lookup_order_by_provider(
-            identifier,
-            identifier_type,
-            provider=provider,
-            shop_ref=shop_ref,
-            shop_id=shop_id,
-            exhaustive=False,
-        )
-        if (
-            not lookup.get("found")
-            and identifier_type != "unknown_identifier"
-            and str(provider or "").strip().lower() != "qimen"
-        ):
-            fallback_lookup = lookup_order_by_provider(
+        lookup_kwargs = {"exhaustive": False}
+        if shop_id:
+            lookup_kwargs["shop_id"] = shop_id
+        lookup = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
+        if not lookup.get("found") and identifier_type != "unknown_identifier":
+            fallback_lookup = lookup_order_by_identifier(
                 identifier,
                 "unknown_identifier",
-                provider=provider,
-                shop_ref=shop_ref,
-                shop_id=shop_id,
-                exhaustive=False,
+                **lookup_kwargs,
             )
             if fallback_lookup.get("found"):
                 fallback_lookup["primary_lookup"] = {
@@ -1055,10 +1042,9 @@ def order_product_resolver(state: dict) -> dict:
             identifier_type = identifier_type or "internal_order_id"
         else:
             lookup_status = _order_lookup_status(lookup)
-            # Do not let a failed order lookup erase a sidecar product title.
-            # In real QianNiu use, customers often ask "where is my package +
-            # is this material safe" in one message; the order may miss while
-            # the sidebar product is still the best product identity.
+            # Do not let a failed order lookup erase an independently supplied
+            # product title. Mixed logistics/product questions may still carry
+            # a separately verified product identity in canonical context.
             sidecar_identity = _resolve_sidecar_product_name(state)
             if sidecar_identity and sidecar_identity.get("status") == "resolved":
                 sidecar_identity["order_lookup_status"] = lookup_status

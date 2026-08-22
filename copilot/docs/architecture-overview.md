@@ -199,9 +199,7 @@ conflicting, malformed, or unavailable catalog data.
 Channel context keeps store identity platform-neutral. `shop_id` identifies the
 logical integrated store used by the Agent and future channel adapters; it is
 not implicitly a JST provider identifier. An adapter may additionally provide
-an explicit `jst_shop_id` when the JST API must be provider-scoped, plus an
-explicit `order_lookup_provider` chosen from deployment-owned store metadata.
-A sidebar
+an explicit `jst_shop_id` when the JST API must be provider-scoped. A sidebar
 platform trade identifier is resolved through the read-only order tool before
 product answering, so the resulting internal product name, SKU, `i_id`, order
 state, and logistics identity can seed the same canonical turn without title
@@ -214,17 +212,17 @@ last page, or an explicit pagination-integrity failure. It matches exact order-
 and item-level external identifiers and carries an explicit `jst_shop_id`
 through the fallback scan. A repeated full page is treated as
 `pagination_stalled`, not as a completed lookup miss. This does not imply that
-every platform identifier is visible to the generic JST OpenAPI: Taobao/Tmall
-orders use the authorized JST Qimen adapter because the ordinary order API
-excludes those orders and sales-outbound responses omit their sensitive online
-order identifiers. The adapter calls only `jushuitan.order.list.query`, performs
-an exact `so_id` match, and projects order status, logistics identifiers and the
-item `sku_id`/`i_id`/internal name while dropping receiver and buyer fields.
-Missing Qimen app credentials, router URL or JST `customer_id` is reported as
-`provider_not_configured`; it never falls back to a generic JST scan and never
-becomes an assertion that the order does not exist. The resulting SKU/product
-identity can select reviewed formal product facts, but the order payload itself
-does not become product-fact authority.
+every platform identifier is visible to the ordinary JST order-detail API.
+For Taobao/Tmall customer-service identity, the read-only dispatcher first uses
+the ordinary JST sales-outbound endpoint `orders/out/simple/query` with the
+exact sidebar online order number in `so_ids` and the provider-scoped
+`jst_shop_id`. This account-qualified route returns non-sensitive outbound
+state, logistics identity and item `sku_id`/`i_id`/internal name without buyer
+or receiver data. It does not require Qimen. An order that has not produced a
+sales-outbound record remains unresolved rather than being guessed from another
+store or product title. The resulting SKU/product identity can select reviewed
+formal product facts, but the outbound payload itself does not become product-
+fact authority.
 
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.

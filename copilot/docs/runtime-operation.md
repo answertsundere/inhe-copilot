@@ -232,24 +232,21 @@ login, application JWT/RBAC, then reviewer/supervisor workflow.
 The local supervisor-assist workbench may receive a runtime-only shop list via
 `VITE_SUPERVISOR_SHOPS_JSON`. Populate it from the read-only JST `shops/query`
 endpoint and expose only a platform-neutral logical `id`, display `name`, and
-provider-scoped `jst_shop_id`, plus the governed `order_lookup_provider`
-(`jst_standard` or `qimen`). Do not commit the generated shop list or provider
-credentials. The UI must keep all three identifiers synchronized when the
-operator changes stores; only `jst_shop_id` may filter provider records and the
-provider field may only select an existing read-only adapter. Large shop lists
+provider-scoped `jst_shop_id`. Do not commit the generated shop list or provider
+credentials. The UI must keep these identifiers synchronized when the operator
+changes stores; only `jst_shop_id` may filter provider records. Large shop lists
 remain searchable. A configured default store is a deployment choice, not an
 Agent-domain branch.
 
-Taobao/Tmall order lookup does not use QianNiu Sidecar. Configure the separate
-Qimen app key/secret, optional session, router URL and JST authorization
-`customer_id` through the process environment. The fixed target app key is
-`23060081`, as required by JST's Qimen documentation. The runtime calls only
-`jushuitan.order.list.query` with the sidebar online order number in `so_ids`.
-If any required setting is absent, the adapter reports
-`provider_not_configured`; do not retry the generic order or sales-outbound API,
-because those APIs cannot prove that a Taobao/Tmall online order is absent.
-Never expose Qimen credentials, router parameters, buyer fields or receiver
-fields in runtime reports, traces or Agent context.
+Taobao/Tmall customer-service lookup does not use QianNiu Sidecar or Qimen. The
+runtime calls the ordinary read-only JST sales-outbound endpoint
+`orders/out/simple/query` with the sidebar online order number in `so_ids` and
+the selected store's `jst_shop_id`. It projects only outbound status, logistics
+identity and item `sku_id`/`i_id`/internal name. Buyer, receiver, amount and
+other sensitive fields must not enter reports, traces or Agent context. A zero-
+row result only proves that no matching sales-outbound record is currently
+visible; it must not be rewritten as proof that the platform order itself does
+not exist.
 
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the
 backend. Start Vite with `VITE_API_PROXY_TARGET=http://127.0.0.1:5012` and a

@@ -791,30 +791,23 @@ def test_outbound_tool_does_not_mark_malformed_miss_complete(monkeypatch):
     assert result["lookup_complete"] is False
 
 
-def test_outbound_tool_routes_qimen_without_generic_jst_fallback(monkeypatch):
+def test_outbound_tool_ignores_legacy_qimen_metadata_and_uses_standard_jst(monkeypatch):
     from app.agent.tools.registry import _handle_jst_lookup_outbound
 
     captured = {}
 
-    def fake_qimen(identifier, **kwargs):
-        captured.update({"identifier": identifier, **kwargs})
+    def fake_lookup(identifier, identifier_type, **kwargs):
+        captured.update({"identifier": identifier, "identifier_type": identifier_type, **kwargs})
         return {
             "found": False,
-            "endpoint": "jushuitan.order.list.query",
+            "endpoint": "orders/out/simple/query",
             "query_type": "platform_trade_id",
-            "safe_fallback_reason": "provider_not_configured",
-            "error_code": "qimen_not_configured",
+            "safe_fallback_reason": "not_found",
         }
 
     monkeypatch.setattr(
-        "app.integrations.jst.qimen_order_query.lookup_qimen_order_by_platform_trade_id",
-        fake_qimen,
-    )
-    monkeypatch.setattr(
         "app.integrations.jst.live_query.lookup_order_by_identifier",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("Qimen-routed orders must not fall back to generic JST")
-        ),
+        fake_lookup,
     )
 
     result = _handle_jst_lookup_outbound(
@@ -830,9 +823,9 @@ def test_outbound_tool_routes_qimen_without_generic_jst_fallback(monkeypatch):
 
     assert captured == {
         "identifier": "platform-order-ref",
-        "shop_ref": "logical-store",
+        "identifier_type": "platform_trade_id",
         "shop_id": "provider-store",
     }
     assert result["found"] is False
-    assert result["lookup_complete"] is False
-    assert result["safe_fallback_reason"] == "provider_not_configured"
+    assert result["lookup_complete"] is True
+    assert result["safe_fallback_reason"] == "not_found"

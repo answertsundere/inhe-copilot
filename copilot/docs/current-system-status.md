@@ -44,7 +44,7 @@
 
 | 模块 | 说明 | 限制 |
 |---|---|---|
-| **物流查询（外部交易号）** | 店铺元数据选择普通 JST 或奇门；淘系走 `jushuitan.order.list.query` 精确 `so_id` 查询 | 普通 OpenAPI 不暴露淘系线上单号；奇门未授权时明确报告通道未配置，不误报订单不存在 |
+| **物流查询（外部交易号）** | 普通 JST `orders/out/simple/query` 按 `so_ids` 与 `jst_shop_id` 精确查询销售出库记录 | 已实测天猫英禾店铺可返回商品 `sku_id`/`i_id` 与物流身份；不使用千牛 Sidecar 或奇门。零行只表示当前无可见销售出库记录，不证明平台订单不存在 |
 | **物流查询（内部订单号）** | internal_order_id → orders/single/query | 需要精确 o_id |
 | **物流查询（快递单号）** | tracking_no → logistic/query 扫描 | 仅扫描最近 7 天 100 条，大量单号查不到 |
 | **商品咨询** | RAG 知识库检索 | 依赖知识库内容质量 |

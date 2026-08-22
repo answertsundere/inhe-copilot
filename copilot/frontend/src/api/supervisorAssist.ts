@@ -9,7 +9,6 @@ export interface WorkbenchContext {
   shopId: string
   shopName: string
   jstShopId: string
-  orderLookupProvider: string
   productName: string
   skuCode: string
   iId: string
@@ -30,7 +29,6 @@ export interface AnalyzeRequest {
     shop_id?: string
     shop_name?: string
     jst_shop_id?: string
-    order_lookup_provider?: string
   }
 }
 
@@ -108,7 +106,6 @@ export function buildAnalyzeRequest(
       shop_id: optionalValue(context.shopId),
       shop_name: optionalValue(context.shopName),
       jst_shop_id: optionalValue(context.jstShopId),
-      order_lookup_provider: optionalValue(context.orderLookupProvider),
     },
   }
 }
