@@ -477,6 +477,7 @@ class TestLogisticsLookupFailureSemantics:
             "tool_results": {
                 "jst_lookup_outbound_tool": {
                     "found": False,
+                    "lookup_complete": reason == "not_found",
                     "safe_fallback_reason": reason,
                 },
             },
@@ -495,15 +496,19 @@ class TestLogisticsLookupFailureSemantics:
         assert result["requires_human_review"] is True
         assert result["review_reason"] == "order_lookup_service_unavailable"
 
-    def test_real_not_found_can_still_request_order_screenshot(self):
+    def test_completed_not_found_preserves_received_identifier_and_handoff(self):
         from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
 
         result = generate_logistics_reply(self._state("not_found"))
         reply = result["suggested_reply"]
 
-        assert "订单截图" in reply
-        assert "是否正确" in reply
-        assert result.get("review_reason") != "order_lookup_service_unavailable"
+        assert "订单号已经收到" in reply
+        assert "销售出库" in reply or "物流记录" in reply
+        assert "暂未查到" in reply
+        assert "是否正确" not in reply
+        assert "重复提供" in reply
+        assert result["requires_human_review"] is True
+        assert result["review_reason"] == "order_lookup_completed_no_record"
 
     def test_rewrite_aftersales_with_order_id(self):
         from app.services.grounding_validation_service import _rewrite_fallback_reply

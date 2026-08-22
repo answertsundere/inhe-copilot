@@ -637,6 +637,44 @@ def _candidate_containers(response: dict[str, Any]) -> list[tuple[str, dict[str,
     return candidates
 
 
+def _completed_lookup_outcome_actions(
+    response: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Project completed empty live lookups as non-factual reply guidance."""
+    tool_results = _as_dict(response.get("tool_results"))
+    actions: list[dict[str, Any]] = []
+    for tool_name in (
+        "jst_lookup_order_tool",
+        "jst_lookup_outbound_tool",
+        "jst_lookup_tracking_tool",
+    ):
+        result = _as_dict(tool_results.get(tool_name))
+        if not (
+            result.get("found") is False
+            and result.get("lookup_complete") is True
+        ):
+            continue
+        action_type = "inform_lookup_completed_no_record"
+        uid_seed = f"{tool_name}:{action_type}"
+        actions.append({
+            "evidence_uid": (
+                f"action-{sha256(uid_seed.encode('utf-8')).hexdigest()[:16]}"
+            ),
+            "action_type": action_type,
+            "text": (
+                "只读订单查询已经完成，当前未返回可见的销售出库或物流记录。"
+                "零结果不能解释为订单不存在，也不要要求客户重复提供当前编号；"
+                "应说明可能尚未出库或尚未同步，并转人工继续核实。"
+            ),
+            "source_owner": "tool_router_and_executor",
+            "completed": True,
+            "non_fact": True,
+            "reference_only": True,
+            "can_change_can_send": False,
+        })
+    return actions
+
+
 def _product_context_capabilities(
     response: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -1961,6 +1999,16 @@ class AdmittedAnswerContextService:
                     "attached_reply_block": False,
                 })
 
+        action_uids = {
+            sanitize_text(item.get("evidence_uid"))
+            for item in actions
+            if sanitize_text(item.get("evidence_uid"))
+        }
+        for item in _completed_lookup_outcome_actions(response):
+            if item["evidence_uid"] not in action_uids:
+                actions.append(item)
+                action_uids.add(item["evidence_uid"])
+
         conflicts = [item for item in rejected if item.get("reason") in {
             "conflicting_evidence", "material_conflicting_evidence", "incomparable_unit_domain",
         }]
@@ -2146,7 +2194,23 @@ def build_minimal_decision_context(
         trim_reasons.append("admitted_evidence_limit")
         selected = selected[:6]
     actions = [
-        {"evidence_uid": sanitize_text(item.get("evidence_uid")), "text": _clip(item.get("text")), "non_fact": True}
+        {
+            "evidence_uid": sanitize_text(item.get("evidence_uid")),
+            "action_type": sanitize_text(item.get("action_type")),
+            "text": _clip(item.get("text")),
+            "source_owner": sanitize_text(item.get("source_owner")),
+            "accepted_input_slots": [
+                sanitize_text(value)
+                for value in _as_list(item.get("accepted_input_slots"))
+                if sanitize_text(value)
+            ],
+            "input_selection_mode": sanitize_text(
+                item.get("input_selection_mode")
+            ),
+            "completed": item.get("completed") is True,
+            "non_fact": True,
+            "can_change_can_send": False,
+        }
         for item in _as_list(admitted_context.get("handoff_action_guidance"))[:4]
         if isinstance(item, dict)
     ]

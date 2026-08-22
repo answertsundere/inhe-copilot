@@ -98,6 +98,31 @@ def _fallback_lookup_service_unavailable() -> str:
     )
 
 
+def _lookup_completed_without_record(state: dict) -> bool:
+    for tool_name in (
+        "jst_lookup_order_tool",
+        "jst_lookup_outbound_tool",
+        "jst_lookup_tracking_tool",
+    ):
+        result = (state.get("tool_results") or {}).get(tool_name)
+        if (
+            isinstance(result, dict)
+            and result.get("found") is False
+            and result.get("lookup_complete") is True
+        ):
+            return True
+    return False
+
+
+def _fallback_lookup_completed_without_record() -> str:
+    return (
+        "亲，订单号已经收到。我已经按当前订单信息查询，"
+        "现在暂未查到对应的销售出库或物流记录；这不代表订单不存在，"
+        "可能是订单尚未出库或物流信息还没有同步。"
+        "我这边为您转人工继续核实，您不用重复提供订单号。"
+    )
+
+
 def _is_address_change_request(msg: str) -> bool:
     return any(word in (msg or "") for word in (
         "\u6539\u5730\u5740",
@@ -590,7 +615,8 @@ def generate_logistics_reply(state: dict) -> dict:
 
     # ========== 5. 无订单 + 有订单号/编号但查不到订单 ==========
     possible_numeric_id = slots.get("possible_numeric_id", "")
-    lookup_id = order_id or possible_numeric_id
+    platform_trade_id = slots.get("platform_trade_id", "")
+    lookup_id = order_id or platform_trade_id or possible_numeric_id
     if lookup_id and not order and not tracking_no:
         if _lookup_service_unavailable(state):
             return {
@@ -605,6 +631,21 @@ def generate_logistics_reply(state: dict) -> dict:
                     "cache_hit": False,
                     "answer_type": "human_review",
                     "summary": "订单标识已提供，查询服务不可用，转人工核实",
+                }],
+            }
+        if _lookup_completed_without_record(state):
+            return {
+                "suggested_reply": _fallback_lookup_completed_without_record(),
+                "answer_type": "human_review",
+                "requires_human_review": True,
+                "review_reason": "order_lookup_completed_no_record",
+                "trace_steps": state.get("trace_steps", []) + [{
+                    "node": "generate_logistics_reply",
+                    "status": "success",
+                    "duration_ms": 0,
+                    "cache_hit": False,
+                    "answer_type": "human_review",
+                    "summary": "订单标识已提供，查询完成但暂无出库/物流记录",
                 }],
             }
         id_type = slots.get("identifier_type", "")

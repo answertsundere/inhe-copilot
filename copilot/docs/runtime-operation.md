@@ -246,7 +246,12 @@ identity and item `sku_id`/`i_id`/internal name. Buyer, receiver, amount and
 other sensitive fields must not enter reports, traces or Agent context. A zero-
 row result only proves that no matching sales-outbound record is currently
 visible; it must not be rewritten as proof that the platform order itself does
-not exist.
+not exist. When the provider marks that empty lookup as complete, the runtime
+projects a completed, non-factual service action into the existing Composer
+context. The review-only reply must acknowledge the completed lookup, explain
+that outbound/logistics data is not yet visible, and must not request the same
+sidebar order number again. Timeout, provider-error and incomplete-pagination
+results remain failed lookups and must not claim completion.
 
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the
 backend. Start Vite with `VITE_API_PROXY_TARGET=http://127.0.0.1:5012` and a

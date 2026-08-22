@@ -706,6 +706,46 @@ def test_tool_requirement_status_distinguishes_availability_from_requirement():
     )["status"] == "static_knowledge_completed"
 
 
+def test_completed_live_lookup_with_no_visible_record_is_not_a_tool_failure():
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="live", description="", freshness_class="live"))
+
+    status = build_tool_requirement_status(
+        ["live"],
+        {
+            "live": {
+                "found": False,
+                "lookup_complete": True,
+                "safe_fallback_reason": "not_found",
+            }
+        },
+        registry=registry,
+    )
+
+    assert status["status"] == "live_tool_completed"
+    assert status["completed_tool_refs"] == ["live"]
+
+
+def test_incomplete_live_lookup_still_fails_closed():
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="live", description="", freshness_class="live"))
+
+    status = build_tool_requirement_status(
+        ["live"],
+        {
+            "live": {
+                "found": False,
+                "lookup_complete": False,
+                "safe_fallback_reason": "jst_timeout",
+            }
+        },
+        registry=registry,
+    )
+
+    assert status["status"] == "live_tool_failed"
+    assert status["completed_tool_refs"] == []
+
+
 def test_unconfigured_tool_freshness_fails_closed():
     registry = ToolRegistry()
     registry.register(ToolSpec(name="legacy", description=""))

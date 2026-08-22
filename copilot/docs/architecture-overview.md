@@ -222,7 +222,11 @@ or receiver data. It does not require Qimen. An order that has not produced a
 sales-outbound record remains unresolved rather than being guessed from another
 store or product title. The resulting SKU/product identity can select reviewed
 formal product facts, but the outbound payload itself does not become product-
-fact authority.
+fact authority. A completed empty lookup is carried to the existing Composer as
+non-factual service-action guidance: it may say that the lookup completed and
+that no outbound/logistics record is currently visible, but it may not infer
+that the order does not exist or ask for an order identifier already present in
+canonical sidebar context. Incomplete or errored lookups remain fail-closed.
 
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.

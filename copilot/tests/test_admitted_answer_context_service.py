@@ -106,6 +106,41 @@ def test_admits_completed_read_only_operational_fact_separately_from_product_fac
     assert context["unresolved_claims"] == []
 
 
+def test_projects_completed_jst_no_record_outcome_as_non_fact_service_action():
+    response = {
+        "tool_results": {
+            "jst_lookup_outbound_tool": {
+                "found": False,
+                "lookup_complete": True,
+                "safe_fallback_reason": "not_found",
+                "query_type": "platform_trade_id",
+            }
+        }
+    }
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        response,
+        product_identity={},
+        understanding=_understanding("stock_shipping"),
+    )
+    actions = admitted["handoff_action_guidance"]
+    assert len(actions) == 1
+    assert actions[0]["action_type"] == "inform_lookup_completed_no_record"
+    assert actions[0]["completed"] is True
+    assert actions[0]["non_fact"] is True
+    assert actions[0]["can_change_can_send"] is False
+    assert "订单号" not in actions[0]["text"]
+
+    minimal = build_minimal_decision_context(
+        admitted,
+        customer_message="现在快递到哪里了",
+    )
+    assert minimal["service_actions"][0]["action_type"] == (
+        "inform_lookup_completed_no_record"
+    )
+    assert minimal["service_actions"][0]["completed"] is True
+
+
 @pytest.mark.parametrize(
     ("overrides", "reason"),
     [

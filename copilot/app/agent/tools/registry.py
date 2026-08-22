@@ -163,14 +163,13 @@ def _tool_result_failed(value: object) -> bool:
         "failed",
         "error",
         "timeout",
-        "not_found",
     }:
         return True
-    return bool(
-        value.get("error")
-        or value.get("error_code")
-        or value.get("safe_fallback_reason")
-    )
+    if value.get("error") or value.get("error_code"):
+        return True
+    if value.get("lookup_complete") is True:
+        return False
+    return bool(value.get("safe_fallback_reason"))
 
 
 _registry: Optional[ToolRegistry] = None
