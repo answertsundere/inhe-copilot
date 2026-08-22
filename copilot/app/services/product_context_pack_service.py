@@ -1039,6 +1039,7 @@ def _answerable_fields(
                 haystack[f"sku_list.{key}".lower()] = value
     mapping = {
         "material": ("material", "材质", "材料", "用料"),
+        "color_options": ("sku_list.color", "color_options", "available_colors", "可选颜色", "配色"),
         "dimensions": ("size", "尺寸", "长宽高", "height", "width", "length"),
         "space_fit": ("size", "尺寸", "长宽高", "height", "width", "length"),
         "placement_scene": ("usage_scene", "scene", "room", "适用场景", "摆放", "卧室", "客厅", "书房", "厨房", "阳台"),
@@ -1256,6 +1257,7 @@ def _activity_query_requested(query: str, query_fact_type: str) -> bool:
 def _infer_profile_fact_type_from_query(query: str) -> str:
     text = str(query or "")
     cues = (
+        ("color_options", ("颜色", "配色", "色号", "什么色", "哪种色")),
         ("space_fit", ("放得下", "放的下", "摆得下", "摆的下", "空间够", "够不够放", "几平方", "平方", "占空间", "占地方", "预留")),
         ("placement_scene", ("卧室", "客厅", "书房", "厨房", "阳台", "卫生间", "可以放", "可以用", "适合放")),
         ("installation", ("安装", "组装", "怎么装", "打孔", "租房")),

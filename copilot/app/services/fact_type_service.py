@@ -37,6 +37,7 @@ FACT_TYPE_LABELS = {
     "installation": "安装",
     "detachable": "拆卸/可拆",
     "variant_compare": "款式差异",
+    "color_options": "颜色/可选配色",
     "stock_shipping": "库存/发货/订单物流状态与轨迹",
     "return_pickup": "退货/售后取件",
     "invoice_policy": "发票政策",
@@ -59,6 +60,7 @@ FACT_TYPE_LABELS.update({
 _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("safety_small_parts", ("误吞", "吞了", "吞到", "卡喉", "窒息", "电池盖", "电池仓", "小零件", "零件松", "宝宝受伤", "孩子受伤", "夹到手", "夹手", "被夹", "夹到", "夹到了", "夹住")),
     ("certification_report", ("甲醛", "检测报告", "检查报告", "质检报告", "检验报告", "合格证", "环保证书", "认证", "证书", "3C", "食品级")),
+    ("color_options", ("颜色", "配色", "色号", "什么色", "哪种色")),
     ("variant_compare", ("基础款", "升级款", "升级版", "差什么", "区别", "差别", "差异", "对比", "哪个更好")),
     ("price_protection", ("价保", "保价", "价格保护", "买贵", "降价")),
     ("invoice_policy", ("发票", "开发票", "开票", "电子发票", "抬头", "税号")),
@@ -92,6 +94,7 @@ _QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
 
 _EVIDENCE_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("certification_report", ("甲醛", "检测报告", "检查报告", "质检报告", "检验报告", "合格证", "环保证书", "认证", "证书", "3C", "食品级")),
+    ("color_options", ("颜色", "配色", "色号", "可选颜色")),
     ("variant_compare", ("基础款", "升级款", "升级版", "差别", "区别", "差异", "对比", "款式")),
     ("cleaning_care", ("清洁", "清理", "水洗", "擦拭", "酒精", "保养")),
     ("odor", ("味道", "异味", "刺鼻", "散味", "通风")),

@@ -882,6 +882,25 @@ provenance stores a source digest as internal metadata rather than a local file
 path; internal and legacy backfill metadata are removed from model-facing
 structured profiles.
 
+The same owner now covers published SKU color options. Turn Understanding uses
+the canonical `color_options` FactType; Product Context Pack admits only
+explicit `color` fields from active SKU rows on a published `KBProduct` and
+deduplicates their values deterministically. It does not derive colors from SKU
+names, product titles, recovered drafts, or the reference-only Product Data
+Hub. Legacy reviewed `color`/`colour` facts normalize to `color_options` during
+Claim Resolution, while missing or unpublished color data remains unresolved.
+This extends fact coverage without adding a retrieval owner or changing
+Safety, Delivery, or `can_send`.
+
+Operational JST evidence uses the same convergence path but has a stricter
+customer projection. Sales-out identifiers, internal order status and exact
+backend timestamps remain provenance; the Composer receives only the verified
+shipment boundary, carrier when present, and whether later carrier trace nodes
+exist. Canonical selected evidence preserves that boundary for Deterministic
+Final, which rejects pickup, transit, station, delivery, or receipt claims when
+the source proves only outbound shipment. This does not add a tool, evidence
+owner, reply owner, Graph node, or send condition.
+
 The next component gate closed the recurring oral-exposure handling gap. The
 trusted Pack now keeps toxicity and ingestion safety unresolved while allowing
 only immediate risk-reduction steps owned by the same authoritative customer

@@ -750,6 +750,14 @@ def evidence_builder(state: dict) -> dict:
         source_label = "jst_sales_out" if is_outbound else "jst_order"
         fact = {
             "fact": f"聚水潭查到订单 {live_order.get('o_id', '')}, 状态 {live_order.get('status', '')}",
+            # Sales-out fields are internal operational provenance.  The
+            # Composer may use only this customer-safe meaning; an outbound
+            # row proves shipment, not carrier pickup or a live transit node.
+            "customer_text": (
+                "订单已发出。"
+                if is_outbound
+                else ""
+            ),
             "source": live_order.get("o_id", ""),
             "source_type": source_label,
             "confidence": "high",
@@ -817,13 +825,27 @@ def evidence_builder(state: dict) -> dict:
         )
         if latest and not latest_duplicates_shipped_boundary:
             fact_parts.append(f"最新 {latest.get('time', '')} {latest.get('context', '')}")
+        if is_outbound:
+            carrier_clause = f"，由{carrier}承运" if carrier else ""
+            customer_text = (
+                f"订单已发出{carrier_clause}；"
+                "目前未有中转、派送或签收轨迹，暂时无法确认包裹当前位置。"
+            )
+        else:
+            customer_text = ""
         fact = {
             "fact": ", ".join(fact_parts),
+            "customer_text": customer_text,
             "source": tracking_no,
             "source_type": source_label,
             "confidence": "medium" if logistics_trace.get("low_confidence") else "high",
             "scope": "logistics",
             "evidence_boundary": "已发出" if send_date and not logistics_trace.get("sign_time") else ("已签收" if logistics_trace.get("is_delivered") else "状态未知"),
+            "latest_trace_available": bool(
+                not is_outbound
+                and latest
+                and not latest_duplicates_shipped_boundary
+            ),
             "evidence_role": "operational_fact_direct",
             "fact_type": "stock_shipping",
             "claim_types_supported": ["stock_shipping"],

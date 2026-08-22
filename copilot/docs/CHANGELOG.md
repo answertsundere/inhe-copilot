@@ -1,5 +1,46 @@
 # Change Log
 
+## 2026-08-22 - Customer-safe outbound logistics evidence
+
+- Kept JST sales-out identifiers, internal status and timestamps as server-side
+  provenance while projecting only customer-safe shipment meaning into formal
+  admitted evidence.
+- Preserved the structured `evidence_boundary` and trace-availability fields
+  through canonical selected evidence and Composer decision input. A sales-out
+  row proves only `shipped`; it does not prove carrier pickup, current transit,
+  delivery, or receipt.
+- Added a deterministic final contract that rejects model-first pickup,
+  in-transit, station, delivery, receipt, internal-order-state, and second-level
+  timestamp claims when the selected source is outbound-only.
+- Real read-only verification resolved the supplied Tmall order through JST and
+  returned an accepted, review-only answer stating shipment by the carrier and
+  the absence of later transit nodes. `can_send` remained false.
+- Focused and adjacent Agent tests passed. The versioned synthetic benchmark
+  executed `5` and `22` scenarios but scored `3/5` and `8/22`; every scenario
+  remained review-only and `can_send=true` stayed zero. Failures resolved
+  anonymized fixture identities to an unrelated published runtime product, so
+  this run is reported as a pre-existing benchmark context/isolation gap rather
+  than evidence of factual-quality qualification. `real_accuracy` remains
+  `null`.
+
+## 2026-08-22 - Published SKU color-options answer contract
+
+- Added `color_options` to the existing canonical FactType vocabulary so the
+  model-first understanding result can request color evidence without falling
+  back to an empty claim.
+- Reused Product Context Pack and structured product evidence to read only
+  explicit `color` values from active SKU rows of a published product. Disabled
+  rows are excluded, duplicates are collapsed, and SKU names or free-form
+  labels are never parsed to invent colors.
+- Unified legacy `color`/`colour` evidence with the canonical
+  `color_options` claim during admission and Claim Resolution. Product Hub
+  references and recovered drafts remain non-authoritative.
+- No Graph node, service, model call, reply owner, knowledge write, or
+  `can_send` condition was added.
+- A real read-only order-to-product request then selected two published
+  `color_options` facts and returned the explicit options through the existing
+  Composer and both final audits. It remained review-only.
+
 ## 2026-08-17 - Dynamic activity rule read contract
 
 - Replaced broad OR-based product/activity matching with a common-namespace

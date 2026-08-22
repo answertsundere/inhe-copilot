@@ -246,8 +246,8 @@ class TestGenerateLogisticsReplyOutbound:
         from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
         return generate_logistics_reply(state)
 
-    def test_outbound_shipped_reply_contains_details(self):
-        """outbound 已发出回复包含快递公司、脱敏单号、发出时间"""
+    def test_outbound_shipped_reply_contains_customer_useful_boundary(self):
+        """销售出库只证明已发出，不把后台标识和秒级时间当客户答案。"""
         state = {
             "normalized_message": "5118207015382036103 快递到哪了",
             "live_order": {
@@ -279,12 +279,17 @@ class TestGenerateLogisticsReplyOutbound:
         result = self._reply(state)
         reply = result["suggested_reply"]
 
-        # 必须包含的关键信息
+        # 必须直接说明已知状态和当前数据边界。
         assert "顺丰" in reply or "快递" in reply
-        assert "尾号2177" in reply
-        assert "SF0229477422177" not in reply
-        assert "2026-06-01" in reply
         assert "已发出" in reply or "已经发出" in reply
+        assert "中转" in reply or "派送" in reply
+        assert "不能准确" in reply or "暂时无法" in reply
+
+        # 内部物流身份和后台秒级时间不是本问题需要的客户答案。
+        assert "SF0229477422177" not in reply
+        assert "尾号2177" not in reply
+        assert "2026-06-01 13:22:39" not in reply
+        assert "最新物流记录" not in reply
 
     def test_outbound_no_sign_time_no_delivered_claim(self):
         """outbound 无 sign_time 时不能说已签收"""
@@ -330,7 +335,7 @@ class TestGenerateLogisticsReplyOutbound:
         assert "一定到" not in reply
 
     def test_outbound_reply_states_latest_available_trace_boundary(self):
-        """只有销售出库节点时，应直接说明当前最新节点和信息边界。"""
+        """只有销售出库节点时，不得把它描述成最新在途轨迹。"""
         state = {
             "normalized_message": "快递现在到哪了",
             "live_order": {
@@ -362,9 +367,9 @@ class TestGenerateLogisticsReplyOutbound:
 
         reply = self._reply(state)["suggested_reply"]
 
-        assert "最新" in reply
         assert "已发出" in reply or "已经发出" in reply
-        assert "后续" in reply
+        assert "中转" in reply or "派送" in reply
+        assert "最新物流记录" not in reply
         assert "当前位置" not in reply
 
     def test_outbound_no_delivery_commitment(self):
@@ -398,8 +403,13 @@ class TestGenerateLogisticsReplyOutbound:
         result = self._reply(state)
         reply = result["suggested_reply"]
 
-        # 必须提到"以实际物流更新为准"或类似表述
-        assert "实际物流" in reply or "以实际" in reply
+        assert "已经发出" in reply or "已发出" in reply
+        assert "不能准确判断" in reply
+        assert "中转" in reply or "派送" in reply
+        assert "SF0229477422177" not in reply
+        assert "22177" not in reply
+        assert "2026-06-01 13:22:39" not in reply
+        assert "最新物流记录" not in reply
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +466,17 @@ class TestEvidenceBuilderOutbound:
         assert "包裹已发出" not in lf["fact"]
         assert lf["source"] == "SF0229477422177"
         assert lf.get("evidence_boundary") == "已发出"
+        assert lf["customer_text"] == (
+            "订单已发出，由顺丰速运承运；"
+            "目前未有中转、派送或签收轨迹，暂时无法确认包裹当前位置。"
+        )
+        assert "Confirmed" not in lf["customer_text"]
+        assert "2026-06-01 13:22:39" not in lf["customer_text"]
+
+        order_fact = evidence["order_facts"][0]
+        assert order_fact["customer_text"] == "订单已发出。"
+        assert "1636367" not in order_fact["customer_text"]
+        assert "Confirmed" not in order_fact["customer_text"]
 
     def test_evidence_boundary_no_sign_time(self):
         """无 sign_time 时 evidence_boundary 应为"已发出"而非"已签收" """

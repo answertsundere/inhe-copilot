@@ -41,6 +41,13 @@ UNTRUSTED_STRUCTURED_FIELD_SOURCES = {
 
 _FIELD_TOKENS = {
     "material": ("material", "\u6750\u8d28", "\u6750\u6599", "\u7528\u6599"),
+    "color_options": (
+        "color_options",
+        "available_colors",
+        "available_colours",
+        "可选颜色",
+        "可选配色",
+    ),
     "dimensions": (
         "size",
         "\u5c3a\u5bf8",
@@ -339,6 +346,13 @@ def _pick_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str, Any
 
 
 def _pick_sku_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str, Any]]:
+    if fact_type == "color_options":
+        colors = []
+        for item in _active_color_sku_rows(profile):
+            color = str(item.get("color") or "").strip()
+            if color and color not in colors:
+                colors.append(color)
+        return [("sku_list.color", colors)] if colors else []
     if fact_type != "gross_weight":
         return []
     sku_list = _selected_sku_rows(profile)
@@ -370,6 +384,30 @@ def _pick_sku_values(profile: dict[str, Any], fact_type: str) -> list[tuple[str,
     return [("sku_list.gross_weight_kg", f"不同规格毛重不同，{preview}")]
 
 
+def _sku_row_is_enabled(item: dict[str, Any]) -> bool:
+    if "enabled" not in item:
+        return True
+    value = item.get("enabled")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().casefold() not in {
+        "0", "false", "no", "off", "disabled", "inactive",
+    }
+
+
+def _active_color_sku_rows(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    sku_list = profile.get("sku_list") if isinstance(profile.get("sku_list"), list) else []
+    return [
+        item
+        for item in sku_list
+        if isinstance(item, dict)
+        and _sku_row_is_enabled(item)
+        and str(item.get("color") or "").strip()
+    ]
+
+
 def _selected_sku_rows(profile: dict[str, Any]) -> list[dict[str, Any]]:
     sku_list = profile.get("sku_list") if isinstance(profile.get("sku_list"), list) else []
     rows = [item for item in sku_list if isinstance(item, dict)]
@@ -390,6 +428,19 @@ def _selected_sku_rows(profile: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _selected_sku_scope(profile: dict[str, Any], fact_type: str) -> list[str]:
+    if fact_type == "color_options":
+        rows = _active_color_sku_rows(profile)
+        scope = []
+        for item in rows:
+            value = str(
+                item.get("sku_variant_key")
+                or item.get("sku_code")
+                or item.get("sku_id")
+                or ""
+            ).strip()
+            if value and value not in scope:
+                scope.append(value)
+        return scope
     if fact_type != "gross_weight":
         return []
     requested_sku = str(profile.get("requested_sku") or "").strip()
@@ -427,6 +478,7 @@ def _format_values(values: list[tuple[str, Any]]) -> str:
 def _customer_text(fact_type: str, value_text: str) -> str:
     labels = {
         "material": "\u8fd9\u6b3e\u5546\u54c1\u7684\u6750\u8d28\u4fe1\u606f\u4e3a",
+        "color_options": "这款商品当前已发布的颜色选项为",
         "dimensions": "\u8fd9\u6b3e\u5546\u54c1\u7684\u5c3a\u5bf8/\u89c4\u683c\u4e3a",
         "space_fit": "\u8fd9\u6b3e\u5546\u54c1\u7684\u5c3a\u5bf8/\u89c4\u683c\u4e3a",
         "placement_scene": "\u8fd9\u6b3e\u5546\u54c1\u7684\u9002\u7528\u6446\u653e\u573a\u666f\u4e3a",

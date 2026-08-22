@@ -14,6 +14,7 @@ from typing import Any
 from app.services.eval_sanitizer_service import sanitize_obj, sanitize_text
 from app.services.fact_type_alias_service import (
     canonical_attribute_slot,
+    canonical_color_options_claim_type,
     canonical_dimension_subject_scope,
     canonical_material_composition_claim_type,
     is_dimension_claim_type,
@@ -128,8 +129,10 @@ def _claim_types(fact: dict[str, Any]) -> set[str]:
 
 
 def _canonical_claim_type(value: str) -> str:
-    """Unify only the explicit legacy material/composition aliases."""
-    return canonical_material_composition_claim_type(value)
+    """Unify the explicit legacy aliases used by admitted facts."""
+    return canonical_color_options_claim_type(
+        canonical_material_composition_claim_type(value)
+    )
 
 
 def _original_attribute_key(item: dict[str, Any]) -> str:

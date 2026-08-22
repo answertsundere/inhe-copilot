@@ -25,6 +25,33 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 ## Current Evidence
 
+- A 2026-08-22 real read-only request confirmed that order-to-product
+  resolution and the existing Composer were active, but the color question
+  arrived with an empty canonical claim. The resolved published profile also
+  exposed one SKU row with zero explicit colors, so the conservative reply was
+  an upstream vocabulary and data-coverage gap rather than loss of the Agent.
+- The `color_options` FactType now reuses Product Context Pack to admit only
+  explicit colors from active SKU rows on published products. Legacy reviewed
+  color facts resolve through one centralized alias; SKU names, disabled rows,
+  Product Hub references, and recovered drafts remain blocked. The observed
+  product was then verified through a real read-only request: two published
+  color facts were selected and the existing Composer returned the explicit
+  options with both audits passing.
+- A separate real logistics request exposed that JST sales-out provenance was
+  entering model context as raw internal status and a second-level timestamp.
+  The operational evidence owner now projects only the customer-safe shipped
+  boundary and carrier, preserves trace availability through canonical
+  evidence, and Deterministic Final blocks expansion into pickup, transit,
+  delivery, receipt, or current-location claims. The same order now returns an
+  accepted review-only reply with no identifier or timestamp leakage.
+- The same source tree ran the pinned synthetic safety fixture. Smoke/full
+  executed all `5/22` rows and preserved `can_send=0` plus mandatory review,
+  but quality scores were `3/5` and `8/22`. The first failures show anonymized
+  fixture identity being replaced by an unrelated published runtime product;
+  therefore the benchmark is a context-isolation blocker and does not qualify
+  or invalidate the two scoped real read-only corrections. Real customer
+  accuracy remains unavailable.
+
 - `P1-FORMAL-KNOWLEDGE-REVIEW-002` found the earliest governance bypass before
   any Agent stage: published products retained `published` after structured
   fact backfill or generic updates, and product publish routes wrote status

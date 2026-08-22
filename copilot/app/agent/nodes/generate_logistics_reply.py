@@ -456,14 +456,15 @@ def generate_logistics_reply(state: dict) -> dict:
 
             # Outbound (sales out) sourced: only say "已发出", never "已签收" without sign_time evidence
             if is_outbound and not sign_time:
-                reply = "亲，目前我这边能查到的最新物流记录是：这笔订单已经发出"
+                reply = "亲，帮您查到了：这笔订单已经发出"
                 if courier:
-                    reply += f"，快递是{courier}"
-                if l_id:
-                    reply += f"，单号{_customer_visible_tracking_reference(l_id)}"
-                if send_date:
-                    reply += f"，发出时间是{send_date}"
-                reply += "。目前暂未同步到更后续的在途节点，具体送达时间以实际物流更新为准～"
+                    reply += f"，由{courier}承运"
+                reply += (
+                    "。\n目前只查到发出记录，暂时还看不到新的中转或派送节点，"
+                    "所以还不能准确判断包裹现在到哪一站。"
+                    "\n如果物流长时间没有更新，建议联系承运方核查最新轨迹；"
+                    "当前订单信息已经保留，您不用重复提供。"
+                )
                 return {
                     "suggested_reply": reply,
                     "answer_type": "verified",

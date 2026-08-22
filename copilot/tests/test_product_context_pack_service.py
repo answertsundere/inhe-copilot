@@ -382,6 +382,84 @@ def test_product_context_pack_returns_structured_profile(product_context_db):
     assert pack["evidence_pack"]["matched_fields"] == ["installation"]
 
 
+def test_product_context_pack_answers_color_options_from_active_explicit_sku_fields(
+    product_context_db,
+):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="COLOR_PRODUCT_001",
+            product_name="color fixture product",
+            sku_list_json=json.dumps([
+                {"sku_code": "COLOR-A", "color": "奶油白", "enabled": True},
+                {"sku_code": "COLOR-B", "color": "薄荷绿", "enabled": "true"},
+                {"sku_code": "COLOR-C", "color": "奶油白", "enabled": 1},
+                {"sku_code": "COLOR-D", "color": "下架灰", "enabled": False},
+            ], ensure_ascii=False),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "i_id": "COLOR_PRODUCT_001",
+            "slots": {"sku_code": "COLOR-A"},
+        },
+        query="这款还有其他颜色吗",
+        allowed_source_types=["product_facts"],
+        query_fact_type="color_options",
+    )
+
+    assert pack["facts"]
+    assert pack["facts"][0]["fact_type"] == "color_options"
+    assert "奶油白、薄荷绿" in pack["facts"][0]["chunk_text"]
+    assert "下架灰" not in pack["facts"][0]["chunk_text"]
+    assert pack["facts"][0]["sku_scope"] == ["COLOR-A", "COLOR-B", "COLOR-C"]
+    assert "color_options" in pack["structured_profile"]["answerable_fields"]
+    assert pack["evidence_pack"]["matched_fields"] == ["color_options"]
+
+
+def test_product_context_pack_does_not_infer_color_from_sku_name(
+    product_context_db,
+):
+    from app.models.kb_tables import KBProduct
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="COLOR_PRODUCT_002",
+            product_name="color inference guard product",
+            sku_list_json=json.dumps([
+                {"sku_code": "COLOR-NAME-A", "sku_name": "升级款奶油白"},
+                {"sku_code": "COLOR-NAME-B", "name": "薄荷绿组合"},
+            ], ensure_ascii=False),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "i_id": "COLOR_PRODUCT_002",
+            "slots": {"sku_code": "COLOR-NAME-A"},
+        },
+        query="有哪些颜色可选",
+        allowed_source_types=["product_facts"],
+        query_fact_type="color_options",
+    )
+
+    assert pack["facts"] == []
+    assert "color_options" not in pack["structured_profile"]["answerable_fields"]
+    assert pack["evidence_pack"]["missing_fields"] == ["color_options"]
+
+
 def test_structured_profile_excludes_internal_backfill_provenance():
     from app.services.product_context_pack_service import _clean_mapping
 

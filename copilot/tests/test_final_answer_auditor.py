@@ -515,6 +515,86 @@ def test_model_first_final_audit_only_exposes_canonical_selected_evidence(monkey
     assert audited["final_answer_audit"]["model_call_count"] == 0
 
 
+def _outbound_only_model_first_response(reply: str) -> dict:
+    return {
+        "intent": "logistics_eta",
+        "query_fact_type": "stock_shipping",
+        "suggested_reply": reply,
+        "requires_human_review": True,
+        "can_send": False,
+        "selected_evidence": [{
+            "evidence_uid": "outbound-logistics",
+            "evidence_role": "operational_fact_direct",
+            "source_type": "jst_sales_out_logistics",
+            "fact_type": "stock_shipping",
+            "content": (
+                "订单已发出，由德邦快递承运；"
+                "目前未有中转、派送或签收轨迹，暂时无法确认包裹当前位置。"
+            ),
+            "evidence_boundary": "shipped_outbound_only",
+            "latest_trace_available": False,
+        }],
+        "minimal_decision_context": {
+            "requested_claims": [{"claim_type": "stock_shipping"}],
+            "claim_resolutions": [{
+                "claim_uid": "claim-logistics",
+                "claim_type": "stock_shipping",
+                "status": "supported",
+                "support_basis": "direct_evidence",
+                "evidence_uids": ["outbound-logistics"],
+            }],
+            "admitted_evidence": [],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "clauses": [{
+                "clause_ref": "C1",
+                "goal_ref": "claim-logistics",
+                "clause_kind": "supported_fact",
+                "text": reply,
+                "evidence_uids": ["outbound-logistics"],
+            }],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "reply",
+    (
+        "您的包裹已由德邦快递揽收。",
+        "您的包裹正在运输中。",
+        "您的包裹已到达派送站点。",
+        "您的包裹已签收。",
+        "您的订单已确认，发货时间为2026-08-22 10:52:49。",
+    ),
+)
+def test_model_first_final_audit_blocks_status_beyond_outbound_boundary(reply):
+    audited = audit_final_answer(
+        _outbound_only_model_first_response(reply),
+        customer_message="我的快递到哪里了",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "unsupported_operational_status_claim" in audited[
+        "final_answer_audit"
+    ]["issues"]
+    assert audited["can_send"] is False
+
+
+def test_model_first_final_audit_allows_honest_outbound_boundary():
+    reply = (
+        "您的订单已发出，由德邦快递承运。"
+        "目前还没有返回中转或派送轨迹，所以暂时无法确认包裹到了哪个站点。"
+    )
+    audited = audit_final_answer(
+        _outbound_only_model_first_response(reply),
+        customer_message="我的快递到哪里了",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["can_send"] is False
+
+
 def _customer_condition_audit_response(*, status: str, clause_kind: str) -> dict:
     return {
         "intent": "product_question",

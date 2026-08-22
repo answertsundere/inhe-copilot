@@ -349,3 +349,29 @@ class TestReplySafety:
         assert "系统提示" not in reply
         assert "快递100" not in reply
         assert "low_confidence" not in reply
+
+    def test_e3_outbound_rewrite_does_not_expose_identifier_or_fake_trace(self):
+        """销售出库记录只能证明已发出，不能冒充快递在途节点。"""
+        from app.agent.nodes.factual_guard import _rewrite_safe_reply
+
+        reply = _rewrite_safe_reply({
+            "intent": "logistics",
+            "order_status": "shipped",
+            "live_order": {
+                "o_id": "INTERNAL-ORDER",
+                "items": [{"name": "测试商品"}],
+                "logistics_company": "德邦快递",
+                "l_id": "DPK379205847601",
+                "send_date": "2026-08-22 10:52:49",
+            },
+            "slots": {},
+        }, "")
+
+        assert "已经发出" in reply
+        assert "德邦快递" in reply
+        assert "中转" in reply or "派送" in reply
+        assert "不能准确判断" in reply
+        assert "DPK379205847601" not in reply
+        assert "47601" not in reply
+        assert "2026-08-22 10:52:49" not in reply
+        assert "最新物流记录" not in reply

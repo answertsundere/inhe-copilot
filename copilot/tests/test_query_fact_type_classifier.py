@@ -94,6 +94,8 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u8fd9\u4e2a\u591a\u91cd": "gross_weight",
         "\u5c0f\u7bee\u5b50\u914d\u4ef6\u6709\u5356\u5417": "accessory_availability",
         "\u914d\u4ef6\u80fd\u5355\u72ec\u4e70\u5417": "accessory_availability",
+        "\u8fd9\u6b3e\u8fd8\u6709\u5176\u4ed6\u989c\u8272\u5417": "color_options",
+        "\u6709\u54ea\u4e9b\u914d\u8272\u53ef\u9009": "color_options",
         "\u4ec0\u4e48\u5851\u6599": "material",
         "\u8d34\u7eb8\u8d34\u54ea\uff1f": "installation",
         "\u8fd9\u4e2a\u4e0d\u662f\u80cc\u80f6\u5417": "installation",

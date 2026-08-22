@@ -83,6 +83,7 @@ _PLACEHOLDER_PATTERNS = (
 )
 
 COMPATIBLE_FACT_TYPES = {
+    "color_options": {"color_options", "color", "colour"},
     "installation_media": {"installation", "installation_media", "installation_media_request"},
     # High-risk claims require evidence explicitly reviewed for that claim.
     # A composition fact can answer "what is it made of", but cannot establish
@@ -314,10 +315,16 @@ def _normalise_formal_evidence_candidate(
     source_type = _source_type(item)
     if _role(item) in DIRECT_OPERATIONAL_ROLES:
         normalised = dict(item)
-        if not sanitize_text(normalised.get("content")):
-            normalised["content"] = sanitize_text(
-                item.get("fact") or item.get("text")
-            )
+        # Operational records retain raw ``fact`` for server-side provenance,
+        # but customer/model-facing admission must prefer the source-owned safe
+        # projection.  This prevents ERP status codes, identifiers and
+        # outbound timestamps from becoming customer claims.
+        normalised["content"] = sanitize_text(
+            item.get("customer_text")
+            or item.get("content")
+            or item.get("fact")
+            or item.get("text")
+        )
         return normalised
     if source_type not in {"product_facts", "faq", "installation_guide", "policy", "policy_facts"}:
         return item
@@ -1992,6 +1999,12 @@ class AdmittedAnswerContextService:
                         "operational_scope": sanitize_text(
                             item.get("operational_scope")
                         ).lower(),
+                        "evidence_boundary": sanitize_text(
+                            item.get("evidence_boundary")
+                        ),
+                        "latest_trace_available": (
+                            item.get("latest_trace_available") is True
+                        ),
                         "tool_execution_status": "completed",
                         "read_only": True,
                     })
@@ -2162,6 +2175,15 @@ def canonical_selected_evidence(admitted_context: dict[str, Any]) -> list[dict[s
             "identity_scopes": _as_list(item.get("identity_scopes")),
             "fact_type": sanitize_text(item.get("fact_type")),
             "attribute_key": sanitize_text(item.get("attribute_key")),
+            "operational_scope": sanitize_text(
+                item.get("operational_scope")
+            ),
+            "evidence_boundary": sanitize_text(
+                item.get("evidence_boundary")
+            ),
+            "latest_trace_available": (
+                item.get("latest_trace_available") is True
+            ),
             "content": sanitize_text(item.get("text")),
             "value": sanitize_text(item.get("value")),
             "original_value": sanitize_text(item.get("original_value")),

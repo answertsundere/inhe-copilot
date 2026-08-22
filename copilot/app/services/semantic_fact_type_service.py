@@ -3086,5 +3086,6 @@ def _retrieval_focus_for_fact_type(fact_type: str) -> str:
         "detachable": "detachable structure and related size/install image",
         "odor": "new product smell and ventilation guidance",
         "material": "product material and verified material notes",
+        "color_options": "published product color options and active SKU colors",
         "load_capacity": "load capacity and what items can be placed",
     }.get(fact_type, fact_type)

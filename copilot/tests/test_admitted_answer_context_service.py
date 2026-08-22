@@ -7,6 +7,7 @@ import pytest
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
     build_minimal_decision_context,
+    canonical_selected_evidence,
     is_placeholder_evidence_text,
     project_response_strategy_actions,
 )
@@ -104,6 +105,41 @@ def test_admits_completed_read_only_operational_fact_separately_from_product_fac
     ]
     assert context["claim_resolutions"][0]["status"] == "supported"
     assert context["unresolved_claims"] == []
+
+
+def test_operational_fact_prefers_customer_safe_projection_and_preserves_boundary():
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "formal_evidence_candidates": [
+                _operational_fact(
+                    source_type="jst_sales_out_logistics",
+                    fact=(
+                        "聚水潭物流信息: 承运商 德邦快递, "
+                        "发货时间 2026-08-22 10:52:49, 订单状态 Confirmed"
+                    ),
+                    customer_text=(
+                        "订单已发出，由德邦快递承运；"
+                        "目前未有中转、派送或签收轨迹，暂时无法确认包裹当前位置。"
+                    ),
+                    evidence_boundary="shipped_outbound_only",
+                    latest_trace_available=False,
+                )
+            ]
+        },
+        product_identity={},
+        understanding=_understanding("stock_shipping"),
+    )
+
+    fact = context["direct_operational_facts"][0]
+    assert fact["text"].startswith("订单已发出")
+    assert "Confirmed" not in fact["text"]
+    assert "2026-08-22 10:52:49" not in fact["text"]
+    assert fact["evidence_boundary"] == "shipped_outbound_only"
+    assert fact["latest_trace_available"] is False
+
+    selected = canonical_selected_evidence(context)
+    assert selected[0]["evidence_boundary"] == "shipped_outbound_only"
+    assert selected[0]["latest_trace_available"] is False
 
 
 def test_projects_completed_jst_no_record_outcome_as_non_fact_service_action():
@@ -1169,6 +1205,27 @@ def test_reviewed_structured_pack_fact_enters_shadow_context_with_explicit_scope
     assert record["shadow_admission"] == "admitted"
     assert record["llm_context"] is True
     assert trace["summary"]["context_pack_not_formal_selected_count"] == 1
+
+
+def test_reviewed_legacy_color_fact_can_support_canonical_color_options_claim():
+    color_fact = _fact(
+        evidence_uid="fact-color",
+        fact_type="color",
+        attribute_key="color",
+        content="当前已发布颜色包括奶油白和薄荷绿。",
+        material_provenance="",
+    )
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [color_fact]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("color_options"),
+    )
+
+    assert [item["evidence_uid"] for item in context["direct_product_facts"]] == [
+        "fact-color"
+    ]
+    assert context["unresolved_claims"] == []
 
 
 def test_structured_pack_fact_with_nonmatching_explicit_scope_stays_rejected():

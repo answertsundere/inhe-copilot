@@ -709,6 +709,7 @@ def _hard_safety_issues(
         issues.append("asks_for_existing_order_id")
     if _customer_reply_contains_private_value(reply):
         issues.append("customer_reply_identity_leakage")
+    issues.extend(_unsupported_operational_status_claims(reply, response))
     if _product_card_missing_fact_but_reply_answers(response, reply):
         issues.append("product_card_missing_fact_answered_as_direct")
     if _unsupported_installation_structure_claim(reply, response, copilot_context=copilot_context):
@@ -722,6 +723,45 @@ def _hard_safety_issues(
     except Exception:
         pass
     return _dedupe(issues)
+
+
+_OUTBOUND_ONLY_UNSUPPORTED_STATUS_PATTERNS = (
+    re.compile(r"已(?:由.{0,16})?揽收"),
+    re.compile(r"(?:正在运输|运输中|已在途|运输途中)"),
+    re.compile(r"已(?:到达|进入).{0,16}(?:站点|网点|中转|派送)"),
+    re.compile(r"(?:正在派送|开始派送|已进入派送)"),
+    re.compile(r"已签收"),
+    re.compile(r"订单已确认"),
+)
+_SECOND_LEVEL_TIMESTAMP_PATTERN = re.compile(
+    r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T]\d{1,2}:\d{2}:\d{2}\b"
+)
+
+
+def _unsupported_operational_status_claims(
+    reply: str,
+    response: dict[str, Any],
+) -> list[str]:
+    """Reject carrier-state expansion beyond an outbound-only ERP record."""
+
+    outbound_only = any(
+        str(item.get("evidence_role") or "").strip().lower()
+        == "operational_fact_direct"
+        and str(item.get("source_type") or "").strip().lower()
+        in {"jst_sales_out", "jst_sales_out_logistics"}
+        and str(item.get("evidence_boundary") or "").strip()
+        in {"已发出", "shipped_outbound_only"}
+        and item.get("latest_trace_available") is not True
+        for item in _model_first_selected_evidence(response)
+    )
+    if not outbound_only:
+        return []
+    value = str(reply or "")
+    if _SECOND_LEVEL_TIMESTAMP_PATTERN.search(value):
+        return ["unsupported_operational_status_claim"]
+    if any(pattern.search(value) for pattern in _OUTBOUND_ONLY_UNSUPPORTED_STATUS_PATTERNS):
+        return ["unsupported_operational_status_claim"]
+    return []
 
 
 def _customer_reply_contains_private_value(reply: str) -> bool:

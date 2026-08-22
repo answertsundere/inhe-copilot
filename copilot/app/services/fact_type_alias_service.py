@@ -121,6 +121,18 @@ _BASE_MATERIAL_COMPOSITION_ALIASES = frozenset({
     "material_composition",
 })
 
+_COLOR_OPTIONS_ALIASES = frozenset({
+    "color",
+    "colour",
+    "color_options",
+})
+
+
+def canonical_color_options_claim_type(value: Any) -> str:
+    """Unify explicit legacy color facts with the color-options claim."""
+    cleaned = _clean(value).lower()
+    return "color_options" if cleaned in _COLOR_OPTIONS_ALIASES else cleaned
+
 _DIMENSION_FACT_TYPE_ALIASES = frozenset({
     "dimensions",
     "size",

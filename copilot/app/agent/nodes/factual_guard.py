@@ -504,16 +504,20 @@ def _rewrite_safe_reply(state: dict, original_reply: str) -> str:
             reply += "\n如您对订单有任何疑问，请随时联系我们处理。"
             return reply
 
-        # Shipped with carrier info
+        # A sales-outbound record proves shipment, not the carrier's current
+        # transit node. Keep the useful boundary without exposing identifiers
+        # or presenting backend timestamps as customer-facing tracking facts.
         if carrier or l_id or send_date:
-            reply = f"亲，帮您查到订单（{item_names}）已经发出"
+            reply = f"亲，帮您查到了：您的订单（{item_names}）已经发出"
             if carrier:
-                reply += f"，快递是{carrier}"
-            if l_id:
-                reply += f"，单号是{l_id}"
-            if send_date:
-                reply += f"，发出时间是{send_date}"
-            reply += "。具体送达时间以实际物流更新为准～"
+                reply += f"，由{carrier}承运"
+            reply += "。"
+            reply += (
+                "\n目前只查到发出记录，还没有新的中转或派送节点，"
+                "所以暂时不能准确判断包裹到了哪一站。"
+                "\n如果物流长时间没有更新，建议联系承运方核查最新轨迹；"
+                "当前订单信息已经保留，您不用重复提供。"
+            )
             return reply
 
         return (
