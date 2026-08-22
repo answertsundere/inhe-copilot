@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -323,3 +324,99 @@ def test_exact_bundle_exposes_only_confirmed_scope_compatible_facts_and_labeled_
         "sku_code": "S100-WHITE",
         "auto_send_level": "auto",
     }]
+
+
+def test_exact_bundle_projects_confirmed_active_sibling_colors_as_product_options(product_hub_url, monkeypatch):
+    """A color-options query may use confirmed colors from active sibling SKUs only."""
+    from app.integrations.product_data_hub.read_client import ProductDataHubReadClient
+
+    client = ProductDataHubReadClient(product_hub_url, timeout_seconds=2)
+    sibling = {
+        "id": "sku-1-black",
+        "productId": "product-1",
+        "skuCode": "S100-BLACK",
+        "color": "黑色",
+        "size": "",
+        "spec": "标准款",
+        "status": "active",
+    }
+    inactive = {
+        "id": "sku-1-retired",
+        "productId": "product-1",
+        "skuCode": "S100-RETIRED",
+        "color": "红色",
+        "size": "",
+        "spec": "旧款",
+        "status": "inactive",
+    }
+
+    def fake_get_json(path):
+        if path == "/api/v2/products":
+            return {"ok": True, "items": _HubHandler.products}
+        if path == "/api/v2/skus":
+            return {"ok": True, "items": [*_HubHandler.skus, sibling, inactive]}
+        if path == "/api/v2/products/product-1/facts":
+            return {
+                "ok": True,
+                "facts": [
+                    {
+                        "id": "color-white",
+                        "productId": "product-1",
+                        "skuId": "sku-1",
+                        "type": "color",
+                        "attr": "颜色",
+                        "value": "白色",
+                        "scope": "商品变体",
+                        "status": "confirmed",
+                        "conflict": False,
+                        "updatedAt": "2026-08-22T10:00:00Z",
+                    },
+                    {
+                        "id": "color-black",
+                        "productId": "product-1",
+                        "skuId": "sku-1-black",
+                        "type": "color",
+                        "attr": "颜色",
+                        "value": "黑色",
+                        "scope": "商品变体",
+                        "status": "confirmed",
+                        "conflict": False,
+                        "updatedAt": "2026-08-23T10:00:00Z",
+                    },
+                    {
+                        "id": "color-retired",
+                        "productId": "product-1",
+                        "skuId": "sku-1-retired",
+                        "type": "color",
+                        "attr": "颜色",
+                        "value": "红色",
+                        "scope": "商品变体",
+                        "status": "confirmed",
+                        "conflict": False,
+                    },
+                ],
+            }
+        if path == "/api/v2/products/product-1/labeled-images":
+            return {"ok": True, "items": []}
+        raise AssertionError(f"unexpected Hub path: {path}")
+
+    monkeypatch.setattr(client, "_get_json", fake_get_json)
+
+    result = client.lookup_exact_bundle(i_id="P100", sku_id="S100-WHITE")
+
+    assert [fact["value"] for fact in result["facts"]] == ["白色", "黑色、白色"]
+    assert result["facts"][-1] == {
+        "fact_uid": "product_data_hub:product-1:color-options:"
+        + sha256("黑色、白色".encode("utf-8")).hexdigest()[:16],
+        "fact_type": "colors",
+        "attribute_key": "可选颜色",
+        "value": "黑色、白色",
+        "unit": "",
+        "scope": "商品整体",
+        "applies": "",
+        "source": "product_data_hub:confirmed_sku_colors",
+        "source_detail": "",
+        "review_status": "confirmed",
+        "identity_scope": {"hub_product_id": "product-1"},
+        "updated_at": "2026-08-23T10:00:00Z",
+    }

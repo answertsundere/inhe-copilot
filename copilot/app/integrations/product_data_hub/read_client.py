@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
@@ -154,6 +155,12 @@ class ProductDataHubReadClient:
             for row in facts
             if isinstance(row, dict)
         ]
+        product_color_options = self._product_color_options_projection(
+            facts,
+            product_id=product_id,
+        )
+        if product_color_options:
+            projected_facts.append(product_color_options)
         projected_assets = [
             self._asset_projection(
                 row,
@@ -169,6 +176,78 @@ class ProductDataHubReadClient:
             "used_for_fact": True,
             "facts": [row for row in projected_facts if row],
             "assets": [row for row in projected_assets if row],
+        }
+
+    def _product_color_options_projection(
+        self,
+        facts: list[dict[str, Any]],
+        *,
+        product_id: str,
+    ) -> dict[str, Any] | None:
+        """Aggregate only confirmed colors for active variants of one product."""
+        try:
+            skus_payload = self._get_json("/api/v2/skus")
+            skus = skus_payload.get("items")
+            if skus_payload.get("ok") is not True or not isinstance(skus, list):
+                return None
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
+            return None
+
+        active_skus = sorted(
+            (
+                row
+                for row in skus
+                if isinstance(row, dict)
+                and _active(row)
+                and str(row.get("productId") or "") == product_id
+                and str(row.get("id") or "").strip()
+            ),
+            key=lambda row: _code(row.get("skuCode")),
+        )
+        if len(active_skus) < 2:
+            return None
+
+        confirmed_colors: dict[str, tuple[str, str]] = {}
+        for row in facts:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("productId") or "") != product_id:
+                continue
+            if str(row.get("type") or "").strip().lower() not in {"color", "colors"}:
+                continue
+            if str(row.get("status") or "").strip().lower() != "confirmed" or bool(row.get("conflict")):
+                continue
+            sku_id = str(row.get("skuId") or "").strip()
+            value = str(row.get("value") or "").strip()
+            if sku_id and value:
+                confirmed_colors[sku_id] = (value, str(row.get("updatedAt") or "").strip())
+
+        values: list[str] = []
+        updated_at: list[str] = []
+        for sku in active_skus:
+            color = confirmed_colors.get(str(sku.get("id") or ""))
+            if color and color[0] not in values:
+                values.append(color[0])
+                if color[1]:
+                    updated_at.append(color[1])
+        if len(values) < 2:
+            return None
+
+        value = "、".join(values)
+        digest = sha256(value.encode("utf-8")).hexdigest()[:16]
+        return {
+            "fact_uid": f"product_data_hub:{product_id}:color-options:{digest}",
+            "fact_type": "colors",
+            "attribute_key": "可选颜色",
+            "value": value,
+            "unit": "",
+            "scope": "商品整体",
+            "applies": "",
+            "source": "product_data_hub:confirmed_sku_colors",
+            "source_detail": "",
+            "review_status": "confirmed",
+            "identity_scope": {"hub_product_id": product_id},
+            "updated_at": max(updated_at, default=""),
         }
 
     def _get_json(self, path: str) -> dict[str, Any]:
