@@ -1207,6 +1207,39 @@ def test_reviewed_structured_pack_fact_enters_shadow_context_with_explicit_scope
     assert trace["summary"]["context_pack_not_formal_selected_count"] == 1
 
 
+def test_confirmed_exact_hub_material_fact_enters_context_with_explicit_provenance():
+    hub_material_fact = {
+        "evidence_id": "product_data_hub:fact-42",
+        "source_type": "product_facts",
+        "protocol_source_type": "product_data_hub",
+        "source_table": "product_data_hub",
+        "fact_type": "material",
+        "attribute_key": "material",
+        "chunk_text": "PP",
+        "sku_scope": ["SKU-A"],
+        "product_scope": ["IID-A"],
+        "metadata": {
+            "product_evidence_protocol": True,
+            "trusted_product_hub_fact": True,
+            "verification_status": "verified",
+            "can_direct_answer": True,
+            "material_provenance": "product_data_hub_confirmed",
+        },
+    }
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"facts": [hub_material_fact]}},
+        product_identity={"sku_code": "SKU-A", "i_id": "IID-A"},
+        understanding=_understanding("material_composition"),
+    )
+
+    assert len(context["direct_product_facts"]) == 1
+    admitted = context["direct_product_facts"][0]
+    assert admitted["source_table"] == "product_data_hub"
+    assert admitted["protocol_source_type"] == "product_data_hub"
+    assert context["rejected_evidence"] == []
+
+
 def test_reviewed_legacy_color_fact_can_support_canonical_color_options_claim():
     color_fact = _fact(
         evidence_uid="fact-color",

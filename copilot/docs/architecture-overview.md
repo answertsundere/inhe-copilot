@@ -186,15 +186,17 @@ tool. Media references remain candidates until an actual role-compatible block
 is delivered.
 
 The existing Product Data Hub may be consulted through its read-only v2 API as
-an optional identity directory. The adapter accepts only exact product or SKU
-codes, verifies that both identifiers resolve to the same active parent, and
-projects only identity/display metadata into `ProductContextPackService` as
-`reference_only`. Hub notes, free-form SKU attributes, image labels, and its
-keyword-based customer-service endpoint are excluded. A Hub result cannot enter
-`facts`, canonical `selected_evidence`, the Composer's factual premise set, or
-Delivery. Reviewed formal knowledge remains the only product-fact authority.
-The integration is disabled by default and fails closed on missing, ambiguous,
-conflicting, malformed, or unavailable catalog data.
+an optional exact product/SKU adapter. The adapter accepts only exact active
+parent/SKU matches and, when explicitly enabled, projects confirmed,
+non-conflicting identity-aligned fields into the existing Product Context Pack
+product-fact channel. Existing Evidence Filter, Evidence Builder, and admitted
+evidence contracts remain the sole authority for factual use. Hub labels select
+only role-compatible media candidates and cannot become facts. High-risk labels
+and claims remain excluded; product, packaging, component, accessory, and
+included-item dimensions retain explicit subject scope. The integration is
+disabled by default and fails closed on missing, ambiguous, conflicting,
+malformed, or unavailable catalog data. It adds no sender or `can_send`
+authority; automatic delivery remains separately gated.
 
 Channel context keeps store identity platform-neutral. `shop_id` identifies the
 logical integrated store used by the Agent and future channel adapters; it is
@@ -1174,6 +1176,7 @@ claim. The qualification is synthetic and `real_customer_accuracy=null`.
 - ADR 0007: formal evidence convergence.
 - ADR 0008: management access boundary.
 - ADR 0009: Agent Core capability mainline.
+- ADR 0010: exact Product Hub fact and media projection.
 - `docs/langgraph-architecture.md`: runtime-specific boundary.
 - `docs/omnichannel-control-plane.md`: platform-neutral operations target.
 - `docs/research/mature-customer-service-systems.md`: mature-system patterns.

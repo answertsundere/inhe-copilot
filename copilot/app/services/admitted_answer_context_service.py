@@ -388,6 +388,8 @@ def _provenance(source: str, item: dict[str, Any], text: str) -> dict[str, Any]:
     return {
         "evidence_uid": _evidence_uid(source, item, text),
         "source_type": _source_type(item),
+        "protocol_source_type": sanitize_text(item.get("protocol_source_type")),
+        "source_table": sanitize_text(item.get("source_table")),
         "source_id": sanitize_text(item.get("source_id") or item.get("entry_id") or item.get("id")),
         "source_container": source,
         "source": legacy_source,

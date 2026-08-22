@@ -223,6 +223,205 @@ def test_product_context_pack_does_not_use_structured_facts_for_ambiguous_title(
     assert product_first["evidence_pack_trace"]["ambiguous_candidates"]
 
 
+def test_product_context_pack_admits_exact_hub_facts_and_labeled_media_when_enabled(product_context_db, monkeypatch):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "reason": "",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {"hub_product_id": "hub-product-1", "product_code": "YH91K01", "product_name": "测试收纳柜"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "YH91K01B01S01"},
+            "reference_only": False,
+            "used_for_fact": True,
+            "source": "product_data_hub",
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-1",
+                "fact_type": "dimensions",
+                "attribute_key": "width",
+                "value": "42",
+                "unit": "cm",
+                "scope": "商品整体",
+                "applies": "",
+                "source": "product_data_hub:ai-label",
+                "source_detail": "尺寸参数图",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                "updated_at": "2026-08-22T10:00:00Z",
+            }],
+            "assets": [{
+                "asset_id": "hub-asset-1",
+                "asset_type": "size_image",
+                "labels": ["尺寸参数图"],
+                "label_note": "整体宽度尺寸",
+                "spec_ref": "42cm",
+                "asset_title": "尺寸图",
+                "asset_url": "http://127.0.0.1:8795/api/v2/media/preview/hub-asset-1",
+                "source": "product_data_hub",
+                "product_code": "YH91K01",
+                "sku_code": "YH91K01B01S01",
+                "auto_send_level": "auto",
+            }],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "YH91K01", "sku_code": "YH91K01B01S01"}},
+        query="这个尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    assert pack["stats"]["catalog_reference_used_for_fact"] is True
+    assert pack["facts"][0]["source_type"] == "product_facts"
+    assert pack["facts"][0]["protocol_source_type"] == "product_data_hub"
+    assert pack["facts"][0]["chunk_text"] == "42cm"
+    assert pack["recommended_assets"][0]["asset_id"] == "hub-asset-1"
+    assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
+
+
+def test_hub_packaging_size_does_not_satisfy_product_dimensions(product_context_db, monkeypatch):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "YH91K01"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "YH91K01B01S01"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-pack-size",
+                "fact_type": "pack_size",
+                "attribute_key": "carton_size",
+                "value": "71x43x16.5",
+                "unit": "cm",
+                "scope": "packaging",
+                "applies": "carton",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+            }],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "YH91K01", "sku_code": "YH91K01B01S01"}},
+        query="商品整体尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    hub_fact = next(fact for fact in pack["facts"] if fact.get("source_table") == "product_data_hub")
+    assert hub_fact["fact_type"] == "dimensions"
+    assert hub_fact["subject_scope"] == "packaging"
+
+
+def test_confirmed_exact_hub_material_carries_trusted_material_provenance(product_context_db, monkeypatch):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "YH91K01"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "YH91K01B01S01"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-material",
+                "fact_type": "material",
+                "attribute_key": "material",
+                "value": "PP",
+                "unit": "",
+                "scope": "product",
+                "applies": "body",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+            }],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "YH91K01", "sku_code": "YH91K01B01S01"}},
+        query="这款是什么材质",
+        allowed_source_types=["product_facts"],
+        query_fact_type="material",
+    )
+
+    hub_fact = next(fact for fact in pack["facts"] if fact.get("source_table") == "product_data_hub")
+    assert hub_fact["material_provenance"] == "product_data_hub_confirmed"
+    assert hub_fact["metadata"]["material_provenance"] == "product_data_hub_confirmed"
+
+
+def test_hub_dimension_facts_preserve_product_and_packaging_subject_scope(product_context_db, monkeypatch):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "YH91K01"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "YH91K01B01S01"},
+            "facts": [
+                {
+                    "fact_uid": "product_data_hub:fact-product-size",
+                    "fact_type": "size",
+                    "attribute_key": "size",
+                    "value": "45x42x70",
+                    "unit": "cm",
+                    "scope": "product",
+                    "review_status": "confirmed",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+                {
+                    "fact_uid": "product_data_hub:fact-package-size",
+                    "fact_type": "pack_size",
+                    "attribute_key": "carton_size",
+                    "value": "71x43x16.5",
+                    "unit": "cm",
+                    "scope": "packaging",
+                    "review_status": "confirmed",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+            ],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "YH91K01", "sku_code": "YH91K01B01S01"}},
+        query="尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    scoped_facts = {
+        fact["chunk_id"]: fact.get("subject_scope")
+        for fact in pack["facts"]
+        if fact.get("source_table") == "product_data_hub"
+    }
+    assert scoped_facts == {
+        "product_data_hub:fact-product-size": "product",
+        "product_data_hub:fact-package-size": "packaging",
+    }
+
+
 def test_product_context_pack_strict_fact_type_does_not_use_installation_for_detachable(product_context_db):
     from app.services.product_context_pack_service import build_product_context_pack
 

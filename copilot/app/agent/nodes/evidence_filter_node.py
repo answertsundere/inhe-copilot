@@ -28,6 +28,7 @@ SOURCE_TYPE_CONFIDENCE = {
 # fields cross the boundary; arbitrary metadata remains opaque.
 _FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
     "evidence_uid",
+    "evidence_id",
     "fact_type",
     "evidence_fact_type",
     "fact_review_status",
@@ -38,6 +39,9 @@ _FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
     "sku_scope",
     "i_id",
     "sku_code",
+    "source_table",
+    "source_id",
+    "protocol_source_type",
 )
 
 
@@ -348,6 +352,7 @@ def evidence_filter_node(state: dict) -> dict:
             "score": f.get("score", 0),
             "metadata": f.get("metadata", {}),
             "evidence_uid": _protocol_value(f, "evidence_uid", ""),
+            "evidence_id": _protocol_value(f, "evidence_id", ""),
             "fact_type": _protocol_value(f, "fact_type", ""),
             "evidence_fact_type": _protocol_value(f, "evidence_fact_type", evidence_fact_type),
             "fact_review_status": _protocol_value(f, "fact_review_status", ""),
@@ -358,6 +363,9 @@ def evidence_filter_node(state: dict) -> dict:
             "sku_scope": _protocol_value(f, "sku_scope", []),
             "i_id": _protocol_value(f, "i_id", ""),
             "sku_code": _protocol_value(f, "sku_code", ""),
+            "source_table": _protocol_value(f, "source_table", ""),
+            "source_id": _protocol_value(f, "source_id", ""),
+            "protocol_source_type": _protocol_value(f, "protocol_source_type", ""),
             "index_status": f.get("index_status", "unknown"),
             "fact_source_type": f.get("fact_source_type", ""),
             "material_provenance": f.get("material_provenance", ""),

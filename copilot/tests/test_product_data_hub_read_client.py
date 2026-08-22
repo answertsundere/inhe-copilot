@@ -193,3 +193,133 @@ def test_malformed_catalog_response_is_unavailable(product_hub_url, monkeypatch)
 
     assert result["status"] == "unavailable"
     assert result["reason"] == "invalid_products_contract"
+
+
+def test_exact_bundle_exposes_only_confirmed_scope_compatible_facts_and_labeled_assets(product_hub_url, monkeypatch):
+    """A resolved SKU must not admit pending, conflicting, or other-SKU Hub facts."""
+    from app.integrations.product_data_hub.read_client import ProductDataHubReadClient
+
+    client = ProductDataHubReadClient(product_hub_url, timeout_seconds=2)
+
+    def fake_get_json(path):
+        if path == "/api/v2/products":
+            return {"ok": True, "items": _HubHandler.products}
+        if path == "/api/v2/skus":
+            return {"ok": True, "items": _HubHandler.skus}
+        if path == "/api/v2/products/product-1/facts":
+            return {
+                "ok": True,
+                "facts": [
+                    {
+                        "id": "fact-confirmed",
+                        "productId": "product-1",
+                        "skuId": "sku-1",
+                        "type": "dimensions",
+                        "attr": "width",
+                        "value": "42",
+                        "unit": "cm",
+                        "scope": "商品整体",
+                        "applies": "",
+                        "source": "ai-label",
+                        "sourceDetail": "尺寸参数图",
+                        "status": "confirmed",
+                        "conflict": False,
+                        "updatedAt": "2026-08-22T10:00:00Z",
+                    },
+                    {
+                        "id": "fact-pending",
+                        "productId": "product-1",
+                        "skuId": "sku-1",
+                        "type": "dimensions",
+                        "attr": "height",
+                        "value": "70",
+                        "unit": "cm",
+                        "scope": "商品整体",
+                        "status": "pending",
+                        "conflict": False,
+                    },
+                    {
+                        "id": "fact-conflict",
+                        "productId": "product-1",
+                        "skuId": "sku-1",
+                        "type": "dimensions",
+                        "attr": "depth",
+                        "value": "28",
+                        "unit": "cm",
+                        "scope": "商品整体",
+                        "status": "confirmed",
+                        "conflict": True,
+                    },
+                    {
+                        "id": "fact-other-sku",
+                        "productId": "product-1",
+                        "skuId": "sku-2",
+                        "type": "color",
+                        "attr": "color",
+                        "value": "绿色",
+                        "unit": "",
+                        "scope": "SKU",
+                        "status": "confirmed",
+                        "conflict": False,
+                    },
+                ],
+            }
+        if path == "/api/v2/products/product-1/labeled-images":
+            return {
+                "ok": True,
+                "items": [
+                    {
+                        "assetId": "asset-size",
+                        "label": "尺寸参数图",
+                        "labels": ["尺寸参数图"],
+                        "labelNote": "整体宽高尺寸",
+                        "specRef": "42 x 70 cm",
+                        "canonicalName": "size.png",
+                        "previewUrl": "/api/v2/media/preview/asset-size",
+                    },
+                    {
+                        "assetId": "asset-unlabeled",
+                        "label": "",
+                        "labels": [],
+                        "labelNote": "",
+                        "specRef": "",
+                        "canonicalName": "other.png",
+                        "previewUrl": "/api/v2/media/preview/asset-unlabeled",
+                    },
+                ],
+            }
+        raise AssertionError(f"unexpected Hub path: {path}")
+
+    monkeypatch.setattr(client, "_get_json", fake_get_json)
+
+    result = client.lookup_exact_bundle(i_id="P100", sku_id="S100-WHITE")
+
+    assert result["status"] == "resolved"
+    assert result["used_for_fact"] is True
+    assert result["facts"] == [{
+        "fact_uid": "product_data_hub:fact-confirmed",
+        "fact_type": "dimensions",
+        "attribute_key": "width",
+        "value": "42",
+        "unit": "cm",
+        "scope": "商品整体",
+        "applies": "",
+        "source": "product_data_hub:ai-label",
+        "source_detail": "尺寸参数图",
+        "review_status": "confirmed",
+        "identity_scope": {"hub_product_id": "product-1", "hub_sku_id": "sku-1"},
+        "updated_at": "2026-08-22T10:00:00Z",
+    }]
+    assert result["assets"] == [{
+        "asset_id": "asset-size",
+        "asset_type": "size_image",
+        "labels": ["尺寸参数图"],
+        "label_note": "整体宽高尺寸",
+        "spec_ref": "42 x 70 cm",
+        "asset_title": "size.png",
+        "asset_url": f"{product_hub_url}/api/v2/media/preview/asset-size",
+        "source": "product_data_hub",
+        "product_code": "P100",
+        "sku_code": "S100-WHITE",
+        "auto_send_level": "auto",
+    }]

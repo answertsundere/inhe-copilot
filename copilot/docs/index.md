@@ -325,6 +325,14 @@ gates remain pending; the separate V4 Flash Composer role is unchanged,
 - `docs/adr/README.md` - ADR rules and required format.
 - `docs/adr/0001-unified-analysis-pipeline.md` - accepted decision establishing
   one formal AnalysisPipeline before any service decomposition.
+- `docs/adr/0010-exact-product-hub-fact-and-media-projection.md` - accepted
+  decision for default-off, exact-identity Product Hub fact projection through
+  the existing evidence admission and media-role contracts.
+- `docs/superpowers/specs/2026-08-22-exact-product-multimodal-delivery-design.md`
+  - bounded design for exact Product Hub facts, scope isolation, and labeled
+  media delivery candidates.
+- `docs/superpowers/plans/2026-08-22-exact-product-multimodal-delivery.md` -
+  implementation and verification plan for the default-off Product Hub slice.
 - `docs/research/mature-customer-service-systems.md` - official-source comparison of mature routing, handoff, task, AI, and self-hosted control-plane patterns.
 - `docs/research/customer-experience-and-controlled-recommendation.md` -
   mature-system findings and the proposed emotion, handoff, and

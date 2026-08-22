@@ -131,3 +131,45 @@ def test_published_rag_material_preserves_formal_chunk_provenance():
     fact = result["evidence"]["product_facts"][0]
     assert fact["material_provenance"] == "structured_product_profile"
     assert fact["evidence_allowed_for_direct_answer"] is True
+
+
+def test_exact_product_hub_fact_becomes_attributed_product_evidence():
+    result = evidence_builder_module.evidence_builder(
+        {
+            "intent": "product_question",
+            "query_fact_type": "dimensions",
+            "order_product_identity": {"i_id": "YH57K02", "sku_code": "YH57K02B03S26"},
+            "knowledge_evidence": [
+                {
+                    "entry_id": "product_data_hub:fact-width",
+                    "chunk_id": "product_data_hub:fact-width",
+                    "evidence_uid": "product_data_hub:fact-width",
+                    "source_type": "product_facts",
+                    "protocol_source_type": "product_data_hub",
+                    "source_table": "product_data_hub",
+                    "chunk_text": "36.5cm",
+                    "evidence_fact_type": "dimensions",
+                    "attribute_key": "width",
+                    "subject_scope": "product",
+                    "product_scope": ["YH57K02"],
+                    "sku_scope": ["YH57K02B03S26"],
+                    "entry_status": "published",
+                    "fact_review_status": "verified",
+                    "evidence_allowed_for_direct_answer": True,
+                    "direct_answer_allowed": True,
+                    "metadata": {
+                        "product_evidence_protocol": True,
+                        "trusted_product_hub_fact": True,
+                        "verification_status": "verified",
+                        "can_direct_answer": True,
+                    },
+                }
+            ],
+        }
+    )
+
+    fact = result["evidence"]["product_facts"][0]
+    assert fact["source_table"] == "product_data_hub"
+    assert fact["evidence_uid"] == "product_data_hub:fact-width"
+    assert fact["attribute_key"] == "width"
+    assert fact["evidence_allowed_for_direct_answer"] is True

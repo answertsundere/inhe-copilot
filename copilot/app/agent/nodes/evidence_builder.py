@@ -96,6 +96,7 @@ def _compact_value(value) -> str:
 # so opaque metadata never becomes answerable evidence.
 _FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
     "evidence_uid",
+    "evidence_id",
     "fact_type",
     "evidence_fact_type",
     "fact_review_status",
@@ -106,6 +107,9 @@ _FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
     "sku_scope",
     "i_id",
     "sku_code",
+    "source_table",
+    "source_id",
+    "protocol_source_type",
 )
 
 

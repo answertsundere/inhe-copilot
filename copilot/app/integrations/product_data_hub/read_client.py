@@ -107,6 +107,70 @@ class ProductDataHubReadClient:
         except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
             return _empty_result("unavailable", "read_failed")
 
+    def lookup_exact_bundle(self, *, i_id: str = "", sku_id: str = "") -> dict[str, Any]:
+        """Read fact and labeled-media candidates for one already exact identity.
+
+        The Hub remains read-only.  This boundary only projects explicit,
+        confirmed, non-conflicting facts that belong to the resolved product or
+        its exact SKU; it does not infer a product fact from an asset label.
+        """
+        resolved = self.lookup_exact(i_id=i_id, sku_id=sku_id)
+        if resolved.get("status") != "resolved":
+            return {
+                **resolved,
+                "facts": [],
+                "assets": [],
+            }
+
+        product = resolved.get("product") or {}
+        sku = resolved.get("sku") or {}
+        product_id = str(product.get("hub_product_id") or "")
+        sku_hub_id = str(sku.get("hub_sku_id") or "")
+        if not product_id:
+            return {
+                **_empty_result("unavailable", "resolved_product_id_missing"),
+                "facts": [],
+                "assets": [],
+            }
+
+        try:
+            facts_payload = self._get_json(f"/api/v2/products/{product_id}/facts")
+            assets_payload = self._get_json(f"/api/v2/products/{product_id}/labeled-images")
+            facts = facts_payload.get("facts")
+            assets = assets_payload.get("items")
+            if facts_payload.get("ok") is not True or not isinstance(facts, list):
+                raise ValueError("invalid_facts_contract")
+            if assets_payload.get("ok") is not True or not isinstance(assets, list):
+                raise ValueError("invalid_assets_contract")
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
+            return {
+                **_empty_result("unavailable", "bundle_read_failed"),
+                "facts": [],
+                "assets": [],
+            }
+
+        projected_facts = [
+            self._fact_projection(row, product_id=product_id, sku_id=sku_hub_id)
+            for row in facts
+            if isinstance(row, dict)
+        ]
+        projected_assets = [
+            self._asset_projection(
+                row,
+                product_code=str(product.get("product_code") or ""),
+                sku_code=str(sku.get("sku_code") or ""),
+            )
+            for row in assets
+            if isinstance(row, dict)
+        ]
+        return {
+            **resolved,
+            "reference_only": False,
+            "used_for_fact": True,
+            "facts": [row for row in projected_facts if row],
+            "assets": [row for row in projected_assets if row],
+        }
+
     def _get_json(self, path: str) -> dict[str, Any]:
         request = Request(f"{self.base_url}{path}", headers={"Accept": "application/json"}, method="GET")
         with urlopen(request, timeout=self.timeout_seconds) as response:
@@ -117,6 +181,76 @@ class ProductDataHubReadClient:
         if not isinstance(payload, dict):
             raise ValueError("invalid_json_root")
         return payload
+
+    @staticmethod
+    def _fact_projection(row: dict[str, Any], *, product_id: str, sku_id: str) -> dict[str, Any] | None:
+        if str(row.get("productId") or "") != product_id:
+            return None
+        if str(row.get("status") or "").strip().lower() != "confirmed" or bool(row.get("conflict")):
+            return None
+        row_sku_id = str(row.get("skuId") or "")
+        if row_sku_id and row_sku_id != sku_id:
+            return None
+        fact_id = str(row.get("id") or "").strip()
+        fact_type = str(row.get("type") or "").strip()
+        value = str(row.get("value") or "").strip()
+        if not fact_id or not fact_type or not value:
+            return None
+        return {
+            "fact_uid": f"product_data_hub:{fact_id}",
+            "fact_type": fact_type,
+            "attribute_key": str(row.get("attr") or "").strip(),
+            "value": value,
+            "unit": str(row.get("unit") or "").strip(),
+            "scope": str(row.get("scope") or "").strip(),
+            "applies": str(row.get("applies") or "").strip(),
+            "source": f"product_data_hub:{str(row.get('source') or 'unknown').strip()}",
+            "source_detail": str(row.get("sourceDetail") or "").strip(),
+            "review_status": "confirmed",
+            "identity_scope": {
+                "hub_product_id": product_id,
+                "hub_sku_id": sku_id,
+            },
+            "updated_at": str(row.get("updatedAt") or "").strip(),
+        }
+
+    def _asset_projection(self, row: dict[str, Any], *, product_code: str, sku_code: str) -> dict[str, Any] | None:
+        asset_id = str(row.get("assetId") or "").strip()
+        label = str(row.get("label") or "").strip()
+        preview_path = self._safe_preview_path(row.get("previewUrl"))
+        asset_type = _HUB_ASSET_TYPE_BY_LABEL.get(label, "")
+        if not asset_id or not label or not preview_path or not asset_type:
+            return None
+        labels = row.get("labels")
+        normalized_labels = [str(item).strip() for item in labels if str(item).strip()] if isinstance(labels, list) else [label]
+        if label not in normalized_labels:
+            normalized_labels.insert(0, label)
+        return {
+            "asset_id": asset_id,
+            "asset_type": asset_type,
+            "labels": normalized_labels,
+            "label_note": str(row.get("labelNote") or "").strip(),
+            "spec_ref": str(row.get("specRef") or "").strip(),
+            "asset_title": str(row.get("canonicalName") or "").strip(),
+            "asset_url": f"{self.base_url}{preview_path}",
+            "source": "product_data_hub",
+            "product_code": product_code,
+            "sku_code": sku_code,
+            "auto_send_level": "auto",
+        }
+
+    @staticmethod
+    def _safe_preview_path(value: Any) -> str:
+        try:
+            parsed = urlsplit(str(value or "").strip())
+        except ValueError:
+            return ""
+        if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
+            return ""
+        path = parsed.path
+        if not path.startswith("/api/v2/media/preview/"):
+            return ""
+        return path
 
     @staticmethod
     def _normalize_base_url(value: str) -> str:
@@ -159,6 +293,17 @@ class ProductDataHubReadClient:
         }
 
 
+_HUB_ASSET_TYPE_BY_LABEL = {
+    "产品信息图": "sku_image",
+    "白底单品图": "sku_image",
+    "尺寸参数图": "size_image",
+    "合格证质检": "certificate_image",
+    "材质说明": "material_image",
+    "安装说明": "install_image",
+    "包装清单": "pack_guide_image",
+}
+
+
 def lookup_product_data_hub_reference(*, i_id: str = "", sku_id: str = "") -> dict[str, Any]:
     from app import config
 
@@ -169,3 +314,15 @@ def lookup_product_data_hub_reference(*, i_id: str = "", sku_id: str = "") -> di
         timeout_seconds=config.COPILOT_PRODUCT_DATA_HUB_TIMEOUT_SECONDS,
     )
     return client.lookup_exact(i_id=i_id, sku_id=sku_id)
+
+
+def lookup_product_data_hub_bundle(*, i_id: str = "", sku_id: str = "") -> dict[str, Any]:
+    from app import config
+
+    if not config.COPILOT_PRODUCT_DATA_HUB_ENABLED:
+        return {**_empty_result("disabled", "feature_disabled"), "facts": [], "assets": []}
+    client = ProductDataHubReadClient(
+        config.COPILOT_PRODUCT_DATA_HUB_BASE_URL,
+        timeout_seconds=config.COPILOT_PRODUCT_DATA_HUB_TIMEOUT_SECONDS,
+    )
+    return client.lookup_exact_bundle(i_id=i_id, sku_id=sku_id)

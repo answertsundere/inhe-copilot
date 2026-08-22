@@ -26,7 +26,10 @@ from app.services.real_context_product_identity_service import (
     augment_state_with_real_context_identity,
     build_conversation_media_reference,
 )
-from app.integrations.product_data_hub.read_client import lookup_product_data_hub_reference
+from app.integrations.product_data_hub.read_client import (
+    lookup_product_data_hub_bundle,
+    lookup_product_data_hub_reference,
+)
 
 
 def build_product_context_pack(
@@ -48,9 +51,19 @@ def build_product_context_pack(
             conversation_media_reference,
         )
 
-    catalog_reference = lookup_product_data_hub_reference(
-        i_id=identity.get("i_id", ""),
-        sku_id=identity.get("sku", ""),
+    from app import config
+
+    hub_multimodal_enabled = bool(config.COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED)
+    catalog_reference = (
+        lookup_product_data_hub_bundle(
+            i_id=identity.get("i_id", ""),
+            sku_id=identity.get("sku", ""),
+        )
+        if hub_multimodal_enabled
+        else lookup_product_data_hub_reference(
+            i_id=identity.get("i_id", ""),
+            sku_id=identity.get("sku", ""),
+        )
     )
     if catalog_reference.get("status") == "resolved" and not identity.get("product_name"):
         identity = {
@@ -73,6 +86,22 @@ def build_product_context_pack(
 
     allowed = set(allowed_source_types or [])
     semantic_query = state.get("semantic_query") if isinstance(state.get("semantic_query"), dict) else {}
+    hub_facts = _hub_bundle_facts_for_query(
+        catalog_reference,
+        identity=identity,
+        query=query,
+        query_fact_type=query_fact_type,
+        semantic_query=semantic_query,
+        enabled=hub_multimodal_enabled,
+        align_evidence_to_query=align_evidence_to_query,
+    )
+    hub_media_assets = _hub_bundle_media_assets_for_query(
+        catalog_reference,
+        identity=identity,
+        query=query,
+        query_fact_type=query_fact_type,
+        enabled=hub_multimodal_enabled,
+    )
     db = SessionLocal()
     try:
         candidates: list[dict[str, Any]] = []
@@ -109,6 +138,9 @@ def build_product_context_pack(
         )
         media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
+        media_assets = _deduplicate_media_assets([*hub_media_assets, *media_assets])
+        recommended_assets = _deduplicate_media_assets([*hub_media_assets, *recommended_assets])[:1]
+        candidates.extend(hub_facts)
         candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
         candidates.extend(provisional_evidence)
         if not allowed or "product_facts" in allowed:
@@ -340,7 +372,11 @@ def build_product_context_pack(
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
                 "knowledge_mode": evidence_pack.get("knowledge_mode", "verified_only"),
                 "catalog_reference_status": catalog_reference.get("status", ""),
-                "catalog_reference_used_for_fact": False,
+                "catalog_reference_used_for_fact": bool(
+                    hub_multimodal_enabled
+                    and catalog_reference.get("status") == "resolved"
+                    and catalog_reference.get("used_for_fact") is True
+                ),
             },
         }, conversation_media_reference)
     finally:
@@ -384,6 +420,253 @@ def _empty_catalog_reference(reason: str = "") -> dict[str, Any]:
         "used_for_fact": False,
         "source": "product_data_hub",
     }
+
+
+_HUB_FACT_TYPE_ALIASES = {
+    "accessory": "accessories",
+    "accessories": "accessories",
+    "color": "color_options",
+    "colors": "color_options",
+    "dimension": "dimensions",
+    "dimensions": "dimensions",
+    "installation": "installation",
+    "material": "material",
+    "pack_size": "dimensions",
+    "packaging": "packaging",
+    "parts": "accessories",
+    "size": "dimensions",
+}
+
+_HUB_DIMENSION_SUBJECT_SCOPES = {
+    "product": "product",
+    "product_overall": "product",
+    "商品整体": "product",
+    "packaging": "packaging",
+    "包装": "packaging",
+    "component": "component",
+    "部件": "component",
+    "accessory": "accessory",
+    "配件": "accessory",
+    "included_item": "included_item",
+    "随附物": "included_item",
+}
+
+_HUB_BLOCKED_DIRECT_FACT_TYPES = {
+    "age",
+    "age_range",
+    "certification_report",
+    "child_safety",
+    "load_capacity",
+    "material_safety",
+    "medical",
+    "non_toxic",
+    "safety",
+}
+
+_HUB_MEDIA_TYPES_BY_FACT_TYPE = {
+    "accessories": ("accessory_image", "pack_guide_image"),
+    "color_options": ("sku_image",),
+    "dimensions": ("size_image",),
+    "installation": ("install_video", "install_image", "pack_guide_image"),
+    "material": ("material_image",),
+    "packaging": ("pack_guide_image",),
+    "space_fit": ("size_image",),
+}
+
+
+def _hub_bundle_facts_for_query(
+    bundle: dict[str, Any],
+    *,
+    identity: dict[str, str],
+    query: str,
+    query_fact_type: str,
+    semantic_query: dict[str, Any],
+    enabled: bool,
+    align_evidence_to_query,
+) -> list[dict[str, Any]]:
+    if not enabled or bundle.get("status") != "resolved" or bundle.get("used_for_fact") is not True:
+        return []
+    results: list[dict[str, Any]] = []
+    for raw in bundle.get("facts") or []:
+        if not isinstance(raw, dict):
+            continue
+        raw_fact_type = str(raw.get("fact_type") or "").strip().lower()
+        evidence_fact_type = _HUB_FACT_TYPE_ALIASES.get(raw_fact_type, raw_fact_type)
+        if not evidence_fact_type or evidence_fact_type in _HUB_BLOCKED_DIRECT_FACT_TYPES:
+            continue
+        fact_score, direct_allowed, skip = _fact_score(
+            query_fact_type,
+            evidence_fact_type,
+            align_evidence_to_query,
+            semantic_query,
+        )
+        if skip:
+            continue
+        value = str(raw.get("value") or "").strip()
+        unit = str(raw.get("unit") or "").strip()
+        if not value:
+            continue
+        text = f"{value}{unit}".strip()
+        uid = str(raw.get("fact_uid") or "").strip()
+        if not uid:
+            continue
+        semantic_alignment = align_evidence_to_query(
+            query_fact_type=query_fact_type,
+            evidence_fact_type=evidence_fact_type,
+            semantic_query=semantic_query,
+        )
+        material_provenance = (
+            "product_data_hub_confirmed" if evidence_fact_type == "material" else ""
+        )
+        subject_scope = (
+            _HUB_DIMENSION_SUBJECT_SCOPES.get(str(raw.get("scope") or "").strip().lower(), "")
+            if evidence_fact_type == "dimensions"
+            else ""
+        )
+        score = 18.0 + fact_score + _text_overlap_score(
+            query,
+            str(raw.get("attribute_key") or ""),
+            text,
+        )
+        results.append({
+            "score": round(score, 4),
+            "text_score": round(_text_overlap_score(query, str(raw.get("attribute_key") or ""), text), 4),
+            "vector_score": 0.0,
+            "scope_score": 1.0,
+            "source_confidence": 0.95,
+            "rerank_score": round(score, 4),
+            "mismatch_reason": "" if direct_allowed else "wrong_fact_type",
+            "semantic_alignment": semantic_alignment,
+            "chunk_id": uid,
+            "entry_id": uid,
+            "evidence_id": uid,
+            "title": str(raw.get("attribute_key") or evidence_fact_type),
+            "chunk_text": text,
+            "chunk_index": 0,
+            # Keep the established product-fact channel so the existing
+            # evidence filter, builder and admission contract see this as a
+            # fact rather than a new parallel source. Provenance remains
+            # explicit in protocol_source_type/source_table.
+            "source_type": "product_facts",
+            "protocol_source_type": "product_data_hub",
+            "source_table": "product_data_hub",
+            "source_id": uid,
+            "source_version": 0,
+            "source_updated_at": str(raw.get("updated_at") or ""),
+            "intent": "product_question",
+            "category": "exact_product_hub",
+            "category_l3": evidence_fact_type,
+            "fact_type": evidence_fact_type,
+            "evidence_fact_type": evidence_fact_type,
+            "attribute_key": str(raw.get("attribute_key") or ""),
+            "fact_value": value,
+            "fact_unit": unit,
+            "fact_scope": str(raw.get("scope") or ""),
+            "fact_applies": str(raw.get("applies") or ""),
+            "subject_scope": subject_scope,
+            "material_provenance": material_provenance,
+            "metadata": {
+                "structured_profile_fact": True,
+                "product_evidence_protocol": True,
+                "trusted_product_hub_fact": True,
+                "verification_status": "verified",
+                "can_direct_answer": bool(direct_allowed),
+                "material_provenance": material_provenance,
+                "source_table": "product_data_hub",
+                "source_id": uid,
+            },
+            "entry_status": "published",
+            "index_status": "ready",
+            "entry_risk_level": "low",
+            "review_status": "confirmed",
+            "verification_status": "verified",
+            "source_detail": str(raw.get("source_detail") or ""),
+            "identity_scope": raw.get("identity_scope") or {},
+            "sku_scope": [identity.get("sku")] if identity.get("sku") else [],
+            "product_scope": [identity.get("i_id")] if identity.get("i_id") else [],
+            "product_context_pack": True,
+            "evidence_allowed_for_direct_answer": bool(direct_allowed),
+            "evidence_allowed_for_exact_answer": bool(direct_allowed),
+            "can_direct_answer": bool(direct_allowed),
+            "needs_human_review": False,
+        })
+    return results
+
+
+def _hub_bundle_media_assets_for_query(
+    bundle: dict[str, Any],
+    *,
+    identity: dict[str, str],
+    query: str,
+    query_fact_type: str,
+    enabled: bool,
+) -> list[dict[str, Any]]:
+    if not enabled or bundle.get("status") != "resolved" or bundle.get("used_for_fact") is not True:
+        return []
+    wanted = _HUB_MEDIA_TYPES_BY_FACT_TYPE.get(query_fact_type or "", ())
+    if not wanted:
+        return []
+    order = {asset_type: index for index, asset_type in enumerate(wanted)}
+    product = bundle.get("product") if isinstance(bundle.get("product"), dict) else {}
+    results: list[dict[str, Any]] = []
+    for raw in bundle.get("assets") or []:
+        if not isinstance(raw, dict):
+            continue
+        asset_type = str(raw.get("asset_type") or "").strip()
+        if asset_type not in order:
+            continue
+        asset_sku = str(raw.get("sku_code") or "").strip()
+        expected_sku = str(identity.get("sku") or "").strip()
+        if expected_sku and asset_sku and asset_sku != expected_sku:
+            continue
+        asset_url = str(raw.get("asset_url") or "").strip()
+        asset_id = str(raw.get("asset_id") or "").strip()
+        if not asset_url or not asset_id:
+            continue
+        item = {
+            **raw,
+            "id": asset_id,
+            "product_name": str(product.get("product_name") or identity.get("product_name") or ""),
+            "i_id": str(raw.get("product_code") or identity.get("i_id") or ""),
+            "sku_code": asset_sku or expected_sku,
+            "status": "approved",
+            "audit_status": "confirmed",
+            "usable_for_agent": True,
+            "media_purpose": _normalized_media_type(asset_type),
+            "match_score_detail": {
+                "source": "product_data_hub_label",
+                "type_order": order[asset_type],
+                "label_overlap": _text_overlap_score(
+                    query,
+                    str(raw.get("label_note") or ""),
+                    str(raw.get("spec_ref") or ""),
+                ),
+            },
+        }
+        results.append(item)
+    results.sort(key=lambda item: (
+        int(item.get("match_score_detail", {}).get("type_order", 99)),
+        -float(item.get("match_score_detail", {}).get("label_overlap", 0.0)),
+        str(item.get("asset_id") or ""),
+    ))
+    return results[:1]
+
+
+def _deduplicate_media_assets(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduplicated: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = (
+            str(item.get("asset_id") or item.get("id") or "").strip(),
+            str(item.get("asset_url") or "").strip(),
+        )
+        if not all(key) or key in seen:
+            continue
+        seen.add(key)
+        deduplicated.append(item)
+    return deduplicated
 
 
 def _attach_media_context_trace(pack: dict[str, Any], conversation_media_reference: dict[str, Any]) -> dict[str, Any]:

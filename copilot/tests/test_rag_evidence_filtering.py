@@ -25,6 +25,9 @@ def test_formal_attribution_survives_retrieval_metadata_boundary():
                 "subject_scope": "product",
                 "product_scope": ["IID-A"],
                 "sku_scope": ["SKU-A"],
+                "source_table": "product_data_hub",
+                "source_id": "hub-fact-width",
+                "protocol_source_type": "product_data_hub",
             },
             "entry_status": "published",
             "entry_risk_level": "low",
@@ -42,6 +45,9 @@ def test_formal_attribution_survives_retrieval_metadata_boundary():
     assert evidence[0]["attribute_key"] == "width"
     assert evidence[0]["subject_scope"] == "product"
     assert evidence[0]["product_scope"] == ["IID-A"]
+    assert evidence[0]["source_table"] == "product_data_hub"
+    assert evidence[0]["source_id"] == "hub-fact-width"
+    assert evidence[0]["protocol_source_type"] == "product_data_hub"
 
 
 class TestEvidenceFilterNewFields:
