@@ -245,7 +245,7 @@ function selectShop(shopId: string) {
             <div v-if="turn.observation" class="observation-strip">
               <span class="review-badge"><el-icon><CircleCheck /></el-icon>需人工确认</span>
               <span><el-icon><Timer /></el-icon>{{ formatDuration(turn.durationMs) }}</span>
-              <span><el-icon><DocumentChecked /></el-icon>{{ turn.observation.evidence.length }} 条正式证据</span>
+              <span><el-icon><DocumentChecked /></el-icon>{{ turn.observation.evidence.length }} 条已核实依据</span>
               <span v-if="turn.observation.serviceActions.length" class="lookup-badge">
                 <el-icon><CircleCheck /></el-icon>实时查询已完成
               </span>
@@ -269,7 +269,7 @@ function selectShop(shopId: string) {
                     <code v-if="evidence.uid">{{ evidence.uid }}</code>
                   </div>
                 </div>
-                <p v-else class="empty-evidence">本轮未选中正式证据，候选回复不可直接发送。</p>
+                <p v-else class="empty-evidence">本轮未选中可展示的已核实依据，候选回复不可直接发送。</p>
                 <div v-if="turn.observation.serviceActions.length" class="service-action-list">
                   <strong>实时查询状态</strong>
                   <span

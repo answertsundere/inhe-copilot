@@ -285,6 +285,55 @@ def test_product_context_pack_admits_exact_hub_facts_and_labeled_media_when_enab
     assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
 
 
+def test_exact_hub_parts_fact_answers_included_items_not_accessory_availability(product_context_db, monkeypatch):
+    """A confirmed SKU packing list may answer contents, never purchase availability."""
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-included-items",
+                "fact_type": "parts",
+                "attribute_key": "configuration_contents",
+                "value": "main item x1; ball x2",
+                "unit": "",
+                "scope": "included_item",
+                "applies": "S100-COMBO",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+            }],
+            "assets": [],
+        },
+    )
+
+    contents_pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="what is included in this selected configuration",
+        allowed_source_types=["product_facts"],
+        query_fact_type="included_items",
+    )
+    availability_pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="can I purchase an accessory separately",
+        allowed_source_types=["product_facts"],
+        query_fact_type="accessory_availability",
+    )
+
+    assert [fact["fact_type"] for fact in contents_pack["facts"]] == ["included_items"]
+    assert contents_pack["facts"][0]["chunk_text"] == "main item x1; ball x2"
+    assert contents_pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
+    assert availability_pack["facts"] == []
+    assert availability_pack["product_first_evidence_pack"]["answerability"] != "direct_answer"
+
+
 def test_hub_packaging_size_does_not_satisfy_product_dimensions(product_context_db, monkeypatch):
     import app.config as config
     from app.services import product_context_pack_service

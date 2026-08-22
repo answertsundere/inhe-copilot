@@ -521,6 +521,14 @@ def _semantic_consistency_guard(
         return None
 
     incompatible = {
+        "included_items": {
+            "accessory_availability",
+            "accessory_usage",
+            "dimensions",
+            "installation",
+            "material",
+            "load_capacity",
+        },
         "material": {"load_capacity", "installation", "dimensions"},
         "installation": {"load_capacity", "material", "dimensions"},
         "dimensions": {"load_capacity", "material", "installation"},

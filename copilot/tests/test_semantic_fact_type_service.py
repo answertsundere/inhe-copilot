@@ -1134,3 +1134,23 @@ def test_fact_type_falls_back_when_llm_unavailable(monkeypatch):
 
     assert result["query_fact_type"] == ""
     assert result["source"] == "rule_fallback"
+
+
+def test_selected_configuration_contents_rejects_an_off_topic_material_classification():
+    guarded = service._semantic_consistency_guard(
+        {
+            "query_fact_type": "included_items",
+            "confidence": 0.88,
+            "secondary_fact_types": [],
+        },
+        {
+            "query_fact_type": "material",
+            "confidence": 0.9,
+            "secondary_fact_types": [],
+        },
+    )
+
+    assert guarded is not None
+    assert guarded["query_fact_type"] == "included_items"
+    assert guarded["source"] == "semantic_consistency_guard"
+    assert guarded["llm_rejected_fact_type"] == "material"

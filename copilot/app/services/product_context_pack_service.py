@@ -433,7 +433,10 @@ _HUB_FACT_TYPE_ALIASES = {
     "material": "material",
     "pack_size": "dimensions",
     "packaging": "packaging",
-    "parts": "accessories",
+    # A confirmed packing/configuration list answers what the selected SKU
+    # includes. It must not be conflated with a separate-purchase accessory
+    # policy, which has its own fact type and evidence contract.
+    "parts": "included_items",
     "size": "dimensions",
 }
 

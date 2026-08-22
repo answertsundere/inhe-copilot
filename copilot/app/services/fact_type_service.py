@@ -38,6 +38,7 @@ FACT_TYPE_LABELS = {
     "detachable": "拆卸/可拆",
     "variant_compare": "款式差异",
     "color_options": "颜色/可选配色",
+    "included_items": "所选规格/套装内包含的商品与随附物",
     "stock_shipping": "库存/发货/订单物流状态与轨迹",
     "return_pickup": "退货/售后取件",
     "invoice_policy": "发票政策",
@@ -208,6 +209,19 @@ _RETURN_PICKUP_MARKERS = (
 
 
 _UNICODE_QUERY_RULES: list[tuple[str, tuple[str, ...]]] = [
+    (
+        "included_items",
+        (
+            "里面包含",
+            "包含什么",
+            "包含哪些",
+            "都有什么",
+            "附带什么",
+            "套装内",
+            "组合内",
+            "规格内",
+        ),
+    ),
     ("pinch_safety", ("\u9632\u5939", "\u5939\u624b", "\u5939\u5230", "\u88ab\u5939", "\u5939\u4f4f", "\u5b89\u5168\u9690\u60a3")),
     ("safety_small_parts", ("\u5c0f\u96f6\u4ef6", "\u8bef\u541e", "\u541e\u4e86", "\u5361\u5589", "\u7a92\u606f", "\u7535\u6c60", "\u7535\u6c60\u4ed3", "\u7535\u6c60\u76d6")),
     ("certification_report", ("\u7532\u919b", "\u68c0\u6d4b\u62a5\u544a", "\u8d28\u68c0", "\u8ba4\u8bc1", "\u5408\u683c\u8bc1", "\u73af\u4fdd")),
@@ -419,10 +433,43 @@ _STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长�
 _MATERIAL_CONTEXT_TERMS = ("材质", "材料", "用料", "什么料", "板材")
 _MATERIAL_SAFETY_TERMS = ("安全", "有害", "有毒", "无毒", "甲醛")
 _BITE_OR_TOXICITY_TERMS = ("误入口", "误食", "吞咽", "吞了", "啃咬", "咬到", "咬了一下")
+_INCLUDED_ITEMS_SCOPE_TERMS = (
+    "套装",
+    "组合",
+    "规格里",
+    "规格内",
+    "当前规格",
+    "所选规格",
+    "选的",
+)
+_INCLUDED_ITEMS_CONTENT_TERMS = (
+    "包含",
+    "附带",
+    "都有什么",
+    "有哪些东西",
+    "有什么东西",
+    "内含",
+    "含有什么",
+)
 
 
 def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
     text = str(msg or "").lower()
+    if _is_included_items_query(msg):
+        matched = [
+            term
+            for term in (*_INCLUDED_ITEMS_SCOPE_TERMS, *_INCLUDED_ITEMS_CONTENT_TERMS)
+            if term in msg
+        ]
+        return {
+            "query_fact_type": "included_items",
+            "query_fact_type_label": FACT_TYPE_LABELS.get(
+                "included_items", "included_items"
+            ),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
     if any(term in msg for term in _BITE_OR_TOXICITY_TERMS):
         matched = [term for term in _BITE_OR_TOXICITY_TERMS if term in msg]
         return {
@@ -491,6 +538,15 @@ def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
             "source": "product_fact_boundary_rule",
         }
     return None
+
+
+def _is_included_items_query(msg: str) -> bool:
+    """Recognize a selected configuration's contents without inferring sales policy."""
+    value = str(msg or "")
+    return (
+        any(term in value for term in _INCLUDED_ITEMS_SCOPE_TERMS)
+        and any(term in value for term in _INCLUDED_ITEMS_CONTENT_TERMS)
+    )
 
 
 def _is_structure_function_query(msg: str) -> bool:

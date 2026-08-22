@@ -139,25 +139,39 @@ function firstText(record: Record<string, unknown>, keys: string[]): string {
 }
 
 function evidenceRows(data: RawAnalyzeResponse): Record<string, unknown>[] {
-  if (Array.isArray(data.selected_evidence)) {
-    return data.selected_evidence.map(recordOf).filter((item) => Object.keys(item).length > 0)
+  const selected = Array.isArray(data.selected_evidence)
+    ? data.selected_evidence.map(recordOf).filter((item) => Object.keys(item).length > 0)
+    : []
+  if (selected.length > 0) {
+    return selected
   }
   const debug = recordOf(data.evidence_debug)
-  if (Array.isArray(debug.selected_evidence)) {
-    return debug.selected_evidence.map(recordOf).filter((item) => Object.keys(item).length > 0)
+  const debugSelected = Array.isArray(debug.selected_evidence)
+    ? debug.selected_evidence.map(recordOf).filter((item) => Object.keys(item).length > 0)
+    : []
+  if (debugSelected.length > 0) {
+    return debugSelected
   }
   const admitted = recordOf(debug.admitted_answer_context)
   if (Array.isArray(admitted.admitted_evidence)) {
-    return admitted.admitted_evidence.map(recordOf).filter((item) => Object.keys(item).length > 0)
+    const admittedRows = admitted.admitted_evidence
+      .map(recordOf)
+      .filter((item) => Object.keys(item).length > 0)
+    if (admittedRows.length > 0) return admittedRows
+  }
+  if (Array.isArray(debug.filtered_evidence_summary)) {
+    return debug.filtered_evidence_summary
+      .map(recordOf)
+      .filter((item) => item.direct_answer_allowed === true)
   }
   return []
 }
 
 function normalizeEvidence(row: Record<string, unknown>): EvidenceSummary {
   return {
-    uid: firstText(row, ['evidence_uid', 'uid']),
+    uid: firstText(row, ['evidence_uid', 'uid', 'chunk_id', 'entry_id']),
     role: firstText(row, ['evidence_role', 'role']),
-    factType: firstText(row, ['fact_type', 'claim_type']),
+    factType: firstText(row, ['fact_type', 'claim_type', 'evidence_fact_type']),
     attribute: firstText(row, ['attribute_key', 'attribute']),
     source: firstText(row, ['source', 'source_type', 'provider_name']),
     reviewStatus: firstText(row, ['review_status', 'status']),

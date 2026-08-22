@@ -105,6 +105,11 @@ def test_query_fact_type_classifier_high_frequency_fields():
         "\u9001\u8d27\u4e0a\u95e8\u5417": "stock_shipping",
         "\u8fd9\u4e24\u6b3e\u54ea\u4e2a\u627f\u653e\u7684\u6570\u91cf\u66f4\u591a": "variant_compare",
     }
+    cases.update({
+        "\u6211\u9009\u7684\u8fd9\u4e2a\u5957\u88c5\u91cc\u9762\u5305\u542b\u4ec0\u4e48": "included_items",
+        "\u5f53\u524d\u89c4\u683c\u91cc\u90fd\u6709\u54ea\u4e9b\u4e1c\u897f": "included_items",
+        "\u8fd9\u4e2a\u7ec4\u5408\u4f1a\u9644\u5e26\u4ec0\u4e48": "included_items",
+    })
     for message, expected in cases.items():
         result = classify_query_fact_type(message, "product_question")
         assert result["query_fact_type"] == expected
@@ -121,6 +126,12 @@ def test_accessory_installation_question_is_not_availability():
 
     assert result["query_fact_type"] in {"installation", "accessory_usage"}
     assert result["query_fact_type"] != "accessory_availability"
+
+
+def test_selected_configuration_contents_does_not_steal_a_dimension_question():
+    result = classify_query_fact_type("\u8fd9\u4e2a\u89c4\u683c\u91cc\u5c3a\u5bf8\u6709\u591a\u5927", "product_question")
+
+    assert result["query_fact_type"] == "dimensions"
 
 
 def test_service_aliases_do_not_steal_ambiguous_short_turns():
