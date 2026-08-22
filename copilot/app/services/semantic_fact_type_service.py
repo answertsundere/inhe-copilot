@@ -26,6 +26,7 @@ from app.services.fact_type_alias_service import (
     declared_attribute_candidates,
     DIMENSION_SUBJECT_SCOPES,
     explicit_dimension_subject_scope_from_text,
+    high_risk_claim_types,
     is_dimension_claim_type,
 )
 from app.services.fact_type_service import FACT_TYPE_LABELS, classify_query_fact_type
@@ -44,11 +45,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_FACT_TYPES = set(FACT_TYPE_LABELS)
 
-HIGH_RISK_BOUNDARY_TYPES = {
-    "certification_report",
-    "pinch_safety",
-    "safety_small_parts",
-    "stability",
+HIGH_RISK_BOUNDARY_TYPES = set(high_risk_claim_types()) | {
     "aftersales_policy",
     "invoice_policy",
     "price_protection",
@@ -539,6 +536,8 @@ def _semantic_consistency_guard(
         "odor": {"load_capacity", "installation", "dimensions"},
         "pinch_safety": {"load_capacity", "material", "installation", "safety_small_parts"},
         "safety_small_parts": {"load_capacity", "material", "installation", "pinch_safety"},
+        "child_safety": {"load_capacity", "material", "material_safety", "installation"},
+        "safety_claim": {"load_capacity", "material", "material_safety", "installation"},
         "aftersales_policy": {"installation", "load_capacity", "material"},
     }
     if llm_type not in incompatible.get(rule_type, set()):

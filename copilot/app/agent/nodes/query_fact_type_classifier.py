@@ -19,6 +19,7 @@ _RESTRICTED_POLICY_INTENT_KINDS = {
 }
 _LOW_OR_MEDIUM_RISK_LEVELS = {"low", "medium"}
 _NON_DOWNGRADABLE_TURN_RISK_LEVELS = {"critical", "prohibited"}
+_HIGHER_TURN_RISK_LEVELS = {"high", "critical", "prohibited"}
 
 
 def _requested_claim_risk_level(goal: dict, *, risk_hint: str) -> str:
@@ -176,6 +177,41 @@ def _turn_understanding_from_result(state: dict, result: dict) -> dict:
     return turn_understanding
 
 
+def _risk_promotion_from_classification(
+    state: dict,
+    result: dict,
+) -> dict[str, str | bool]:
+    """Promote, but never weaken, an earlier lexical turn-risk verdict.
+
+    ``risk_check`` runs before semantic fact classification.  A validated
+    high-risk fact type or restricted request discovered later must therefore
+    be reflected in the same canonical turn state.  This preserves the
+    existing graph and delivery contract while preventing a material fallback
+    from relabeling a child-safety request as low risk.
+    """
+    current_risk = str(state.get("risk_level") or "low").strip().lower()
+    fact_type = str(result.get("query_fact_type") or "").strip().lower()
+    classified_risk = str(result.get("risk_hint") or "").strip().lower()
+
+    if current_risk in _NON_DOWNGRADABLE_TURN_RISK_LEVELS:
+        return {}
+    if fact_type in high_risk_claim_types() or bool(
+        normalize_high_risk_claim_type(fact_type)
+    ):
+        return {
+            "risk_level": "high",
+            "requires_human_review": True,
+            "risk_promotion_reason": "high_risk_fact_type",
+        }
+    if classified_risk in _HIGHER_TURN_RISK_LEVELS:
+        return {
+            "risk_level": "high",
+            "requires_human_review": True,
+            "risk_promotion_reason": "restricted_request_boundary",
+        }
+    return {}
+
+
 def query_fact_type_classifier(state: dict) -> dict:
     t0 = time.time()
     if get_semantic_free_logistics_identifier(state):
@@ -225,6 +261,7 @@ def query_fact_type_classifier(state: dict) -> dict:
 
     duration_ms = int((time.time() - t0) * 1000)
     turn_understanding = _turn_understanding_from_result(state, result)
+    risk_promotion = _risk_promotion_from_classification(state, result)
     trace = {
         "node": "query_fact_type_classifier",
         "status": "success",
@@ -238,6 +275,7 @@ def query_fact_type_classifier(state: dict) -> dict:
         "semantic_query": result.get("semantic_query", {}),
         "goal_count": len(turn_understanding.get("customer_goals") or []),
         "goal_understanding_status": turn_understanding.get("goal_understanding_status", ""),
+        "risk_promotion_reason": risk_promotion.get("risk_promotion_reason", ""),
         "summary": (
             f"query_fact_type={result.get('query_fact_type', '') or 'unknown'} "
             f"source={result.get('source', '')}"
@@ -246,6 +284,7 @@ def query_fact_type_classifier(state: dict) -> dict:
 
     return {
         **result,
+        **risk_promotion,
         "query_fact_type_confidence": result.get("confidence", 0),
         "query_fact_type_source": result.get("source", ""),
         "query_fact_type_terms": result.get("matched_terms", []),

@@ -202,6 +202,38 @@ def test_bite_or_toxicity_is_a_distinct_high_risk_fact_type():
     assert result["query_fact_type"] == "bite_or_toxicity"
 
 
+def test_child_safety_request_never_falls_back_to_material_composition():
+    """A child-safety question is not a request for the product's material."""
+    for message in (
+        "\u5c0f\u670b\u53cb\u7528\u5b89\u5168\u5417\uff1f",
+        "\u513f\u7ae5\u4f7f\u7528\u662f\u5426\u5b89\u5168\uff1f",
+    ):
+        result = classify_query_fact_type(message, "product_question")
+
+        assert result["query_fact_type"] == "child_safety"
+        assert result["query_fact_type"] != "material"
+
+
+def test_high_risk_fact_type_promotes_the_existing_turn_risk(monkeypatch):
+    monkeypatch.setattr(
+        semantic_fact_type_service.config,
+        "COPILOT_FACT_TYPE_LLM_ENABLED",
+        False,
+    )
+
+    result = query_fact_type_classifier({
+        "customer_message": "儿童使用是否安全？",
+        "risk_level": "low",
+        "requires_human_review": False,
+        "trace_steps": [],
+    })
+
+    assert result["query_fact_type"] == "child_safety"
+    assert result["risk_level"] == "high"
+    assert result["requires_human_review"] is True
+    assert result["risk_promotion_reason"] == "high_risk_fact_type"
+
+
 def test_api_exposes_query_fact_type_debug(monkeypatch):
     message = "\u6ca1\u6709\u7532\u919b\u7684\u68c0\u67e5\u62a5\u544a\u5417\uff1f"
     def fake_classify(_state, _message, _intent, **kwargs):

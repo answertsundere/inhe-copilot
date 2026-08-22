@@ -24,6 +24,7 @@ FACT_TYPE_LABELS = {
     "child_suitability": "\u513f\u7ae5\u9002\u7528\u60c5\u51b5",
     "installation_media": "\u5b89\u88c5\u8d44\u6599",
     "material": "材质",
+    "safety_claim": "安全结论（需专项正式证据）",
     "certification_report": "检测/认证报告",
     "load_capacity": "承重",
     "stability": "\u7a33\u5b9a/\u9632\u503e\u5012",
@@ -432,6 +433,8 @@ _STRUCTURE_SCENE_BLOCKERS = ("卧室", "客厅", "书房", "厨房", "阳台", "
 _STRUCTURE_SPACE_BLOCKERS = ("空间", "空间小", "放不下", "尺寸", "长宽高", "几平方", "平方", "占地方", "预留")
 _MATERIAL_CONTEXT_TERMS = ("材质", "材料", "用料", "什么料", "板材")
 _MATERIAL_SAFETY_TERMS = ("安全", "有害", "有毒", "无毒", "甲醛")
+_CHILD_SAFETY_REFERENT_TERMS = ("孩子", "儿童", "小朋友", "小孩", "宝宝")
+_GENERIC_SAFETY_TERMS = ("安全", "安全性", "安不安全", "是否安全")
 _BITE_OR_TOXICITY_TERMS = ("误入口", "误食", "吞咽", "吞了", "啃咬", "咬到", "咬了一下")
 _INCLUDED_ITEMS_SCOPE_TERMS = (
     "套装",
@@ -475,6 +478,22 @@ def _classify_product_fact_boundary(msg: str) -> dict[str, Any] | None:
         return {
             "query_fact_type": "bite_or_toxicity",
             "query_fact_type_label": FACT_TYPE_LABELS.get("bite_or_toxicity", "bite_or_toxicity"),
+            "confidence": 0.88,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
+    if (
+        any(term in msg for term in _CHILD_SAFETY_REFERENT_TERMS)
+        and any(term in msg for term in _GENERIC_SAFETY_TERMS)
+    ):
+        matched = [
+            term
+            for term in (*_CHILD_SAFETY_REFERENT_TERMS, *_GENERIC_SAFETY_TERMS)
+            if term in msg
+        ]
+        return {
+            "query_fact_type": "child_safety",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("child_safety", "child_safety"),
             "confidence": 0.88,
             "matched_terms": matched[:5],
             "source": "product_fact_boundary_rule",
@@ -624,6 +643,15 @@ def classify_query_fact_type(message: str, intent: str = "") -> dict[str, Any]:
                 "secondary_fact_types": _secondary_fact_types(msg, fact_type),
                 "source": "unicode_rule",
             }
+    if any(term in msg for term in _GENERIC_SAFETY_TERMS):
+        matched = [term for term in _GENERIC_SAFETY_TERMS if term in msg]
+        return {
+            "query_fact_type": "safety_claim",
+            "query_fact_type_label": FACT_TYPE_LABELS.get("safety_claim", "safety_claim"),
+            "confidence": 0.82,
+            "matched_terms": matched[:5],
+            "source": "product_fact_boundary_rule",
+        }
     for fact_type, keywords in _QUERY_RULES:
         matched = [kw for kw in keywords if kw in msg]
         if matched:

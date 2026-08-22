@@ -109,6 +109,29 @@ def test_polisher_keeps_material_safety_consultation_out_of_complaint_rewrite():
     assert "非常抱歉让您有这么不好的体验" not in reply
 
 
+def test_polisher_keeps_child_safety_consultation_out_of_complaint_rewrite():
+    response = {
+        "suggested_reply": (
+            "亲，宝宝适用和安全说明我帮您按这款商品的适用年龄、材质和结构资料核对一下，"
+            "避免说错。"
+        ),
+        "intent": "high_risk",
+        "risk_level": "high",
+        "requires_human_review": True,
+        "evidence_debug": {"query_fact_type": "child_safety"},
+    }
+
+    polished = polish_customer_reply(
+        response,
+        customer_message="小朋友使用安全吗？日常磕碰会不会容易损坏？",
+    )
+    reply = polished["suggested_reply"]
+
+    assert "宝宝适用和安全说明" in reply
+    assert "订单号或购买记录" not in reply
+    assert "非常抱歉让您有这么不好的体验" not in reply
+
+
 def test_polisher_still_rewrites_real_complaint_with_material_risk_terms():
     response = {
         "suggested_reply": "亲，材质和安全说明要以资料为准，我帮您核对。",

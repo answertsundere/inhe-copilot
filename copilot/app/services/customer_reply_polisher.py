@@ -350,11 +350,13 @@ def _is_complaint_or_quality_service_turn(response: dict[str, Any], customer_mes
 
 
 def _is_material_safety_consultation(response: dict[str, Any], customer_message: str) -> bool:
-    """Product material/safety questions should not be polished as complaints.
+    """Product-safety consultations should not be polished as complaints.
 
     Phrases like “什么材质，有毒吗” are high-risk enough to require review, but
     they are still presales product-safety consultations unless the buyer is
-    explicitly threatening投诉/差评/平台介入.
+    explicitly threatening投诉/差评/平台介入. The same boundary applies to
+    structured child-safety and pinch-safety requests: their high risk means
+    "do not assert", not "treat this as an after-sales complaint".
     """
     text = str(customer_message or "")
     debug = response.get("evidence_debug") or {}
@@ -368,6 +370,8 @@ def _is_material_safety_consultation(response: dict[str, Any], customer_message:
     escalation_terms = ("投诉", "差评", "12315", "平台介入", "曝光", "举报", "律师", "起诉")
     if any(term in text for term in escalation_terms):
         return False
+    if fact_type in {"child_safety", "child_suitability", "age_range", "pinch_safety", "safety_claim"}:
+        return True
     if fact_type in {"material", "material_safety", "certification_report"}:
         return any(term in text for term in material_terms)
     return (

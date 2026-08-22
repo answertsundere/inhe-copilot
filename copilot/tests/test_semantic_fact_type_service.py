@@ -1154,3 +1154,22 @@ def test_selected_configuration_contents_rejects_an_off_topic_material_classific
     assert guarded["query_fact_type"] == "included_items"
     assert guarded["source"] == "semantic_consistency_guard"
     assert guarded["llm_rejected_fact_type"] == "material"
+
+
+def test_child_safety_rejects_an_off_topic_material_classification():
+    guarded = service._semantic_consistency_guard(
+        {
+            "query_fact_type": "child_safety",
+            "confidence": 0.88,
+        },
+        {
+            "query_fact_type": "material",
+            "confidence": 0.9,
+            "secondary_fact_types": [],
+        },
+    )
+
+    assert guarded is not None
+    assert guarded["query_fact_type"] == "child_safety"
+    assert guarded["source"] == "semantic_consistency_guard"
+    assert guarded["llm_rejected_fact_type"] == "material"
