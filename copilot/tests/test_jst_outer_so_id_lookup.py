@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def test_outbound_exact_lookup_uses_shop_without_recent_time_window(monkeypatch):
+def test_outbound_exact_lookup_uses_shop_and_recent_time_window(monkeypatch):
     from app.integrations.jst import live_query
 
     live_query._cache.clear()
@@ -33,17 +33,250 @@ def test_outbound_exact_lookup_uses_shop_without_recent_time_window(monkeypatch)
 
     assert result["found"] is True
     assert result["data"]["shop_id"] == "13221776"
+    assert len(calls) == 1
+    endpoint, params = calls[0]
+    assert endpoint == "orders/out/simple/query"
+    assert params["page_index"] == 1
+    assert params["page_size"] == 20
+    assert params["so_ids"] == [target]
+    assert params["shop_id"] == "13221776"
+    assert params["modified_begin"]
+    assert params["modified_end"]
+
+
+def test_outbound_exact_lookup_includes_required_recent_modified_window(monkeypatch):
+    """Sales-outbound exact lookup keeps the provider-required time scope."""
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    calls = []
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            calls.append((endpoint, params))
+            return {"data": {"datas": []}}
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    live_query.lookup_outbound_by_so_id("PLATFORM-ORDER", shop_id="JST-SHOP-42")
+
+    assert calls[0][0] == "orders/out/simple/query"
+    assert calls[0][1]["modified_begin"]
+    assert calls[0][1]["modified_end"]
+
+
+def test_outbound_recent_scan_matches_selected_shop_on_later_page(monkeypatch):
+    """A sales-outbound scan keeps paging until the target is found."""
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "PLATFORM-ORDER"
+    calls = []
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            calls.append((endpoint, dict(params)))
+            if params["page_index"] == 1:
+                return {
+                    "data": {
+                        "datas": [
+                            {
+                                "o_id": f"other-{index}",
+                                "shop_id": "JST-SHOP-42",
+                                "outer_so_id": f"OTHER-{index}",
+                            }
+                            for index in range(100)
+                        ],
+                        "page_count": 2,
+                    }
+                }
+            return {
+                "data": {
+                    "datas": [
+                        {
+                            "o_id": "matched-order",
+                            "shop_id": "JST-SHOP-42",
+                            "items": [{"outer_oi_id": target}],
+                        }
+                    ],
+                    "page_count": 2,
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_outbound_by_identifier_scan(
+        target,
+        shop_id="JST-SHOP-42",
+    )
+
+    assert result["found"] is True
+    assert result["data"]["o_id"] == "matched-order"
+    assert result["scanned_pages"] == 2
+    assert [params["page_index"] for _, params in calls] == [1, 2]
+    assert all(params["modified_begin"] and params["modified_end"] for _, params in calls)
+    assert all(params["shop_id"] == "JST-SHOP-42" for _, params in calls)
+
+
+def test_outbound_recent_scan_matches_item_raw_platform_order_id(monkeypatch):
+    """JST sales-outbound rows may retain the marketplace order on an item."""
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "PLATFORM-ORDER"
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            assert endpoint == "orders/out/simple/query"
+            return {
+                "data": {
+                    "datas": [
+                        {
+                            "o_id": "matched-order",
+                            "shop_id": "JST-SHOP-42",
+                            "items": [{"raw_so_id": target}],
+                        }
+                    ],
+                    "page_count": 1,
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+
+    result = live_query.lookup_outbound_by_identifier_scan(
+        target,
+        shop_id="JST-SHOP-42",
+    )
+
+    assert result["found"] is True
+    assert result["data"]["o_id"] == "matched-order"
+
+
+def test_tmall_trade_lookup_falls_back_to_recent_sales_outbound_scan(monkeypatch):
+    """Tmall remains sales-outbound-only but does not rely on an undocumented exact filter."""
+    from app.integrations.jst import live_query
+
+    target = "PLATFORM-ORDER"
+    miss = {
+        "found": False,
+        "endpoint": "orders/out/simple/query",
+        "query_type": "outbound_so_id",
+        "duration_ms": 1,
+        "safe_fallback_reason": "not_found",
+    }
+    hit = {
+        "found": True,
+        "endpoint": "orders/out/simple/query",
+        "query_type": "outbound_recent_scan",
+        "duration_ms": 2,
+        "data": {"o_id": "matched-order"},
+        "scanned_pages": 2,
+    }
+    monkeypatch.setattr(live_query, "lookup_outbound_by_so_id", lambda *_args, **_kwargs: dict(miss))
+    calls = []
+
+    def fake_scan(identifier, *, shop_id=""):
+        calls.append((identifier, shop_id))
+        return dict(hit)
+
+    monkeypatch.setattr(live_query, "lookup_outbound_by_identifier_scan", fake_scan)
+
+    result = live_query.lookup_order_by_identifier(
+        target,
+        "platform_trade_id",
+        shop_id="JST-SHOP-42",
+        shop_platform="tmall",
+    )
+
+    assert calls == [(target, "JST-SHOP-42")]
+    assert result["found"] is True
+    assert result["query_type"] == "platform_trade_id->outbound_recent_scan"
+    assert result["source_capability"] == "sales_outbound_only"
+
+
+def test_tmall_platform_order_lookup_stays_on_sales_outbound_surface(monkeypatch):
+    """The sidebar order field must not probe unsupported ordinary Tmall orders."""
+    from app.integrations.jst import live_query
+
+    calls = []
+
+    def fail_unsupported(*_args, **_kwargs):
+        raise AssertionError("Tmall ordinary order API is unsupported")
+
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_so_id",
+        lambda identifier, *, shop_id="": calls.append(("exact", identifier, shop_id)) or {
+            "found": False,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "outbound_so_id",
+            "duration_ms": 1,
+            "safe_fallback_reason": "not_found",
+        },
+    )
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_identifier_scan",
+        lambda identifier, *, shop_id="": calls.append(("scan", identifier, shop_id)) or {
+            "found": False,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "outbound_recent_scan",
+            "duration_ms": 2,
+            "safe_fallback_reason": "outbound_identifier_not_found_in_complete_recent_scan",
+        },
+    )
+    monkeypatch.setattr(live_query, "lookup_order_by_order_id", fail_unsupported)
+    monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id", fail_unsupported)
+    monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id_history", fail_unsupported)
+    monkeypatch.setattr(live_query, "lookup_order_by_outer_so_id", fail_unsupported)
+
+    result = live_query.lookup_order_by_identifier(
+        "PLATFORM-ORDER",
+        "platform_order_id",
+        shop_id="JST-SHOP-42",
+        shop_platform="tmall",
+    )
+
     assert calls == [
-        (
-            "orders/out/simple/query",
-            {
-                "page_index": 1,
-                "page_size": 20,
-                "so_ids": [target],
-                "shop_id": "13221776",
-            },
-        )
+        ("exact", "PLATFORM-ORDER", "JST-SHOP-42"),
+        ("scan", "PLATFORM-ORDER", "JST-SHOP-42"),
     ]
+    assert result["found"] is False
+    assert result["lookup_complete"] is True
+    assert result["source_capability"] == "sales_outbound_only"
+    assert [path["query_type"] for path in result["attempted_paths"]] == [
+        "outbound_so_id",
+        "outbound_recent_scan",
+    ]
+
+
+def test_jst_live_node_propagates_completed_miss_to_reply_layer(monkeypatch):
+    """A completed provider miss is not the same as an unavailable provider."""
+    from app.agent.nodes.jst_live_query import jst_live_query
+
+    monkeypatch.setattr(
+        "app.agent.nodes.jst_live_query.lookup_order_by_identifier",
+        lambda *_args, **_kwargs: {
+            "found": False,
+            "query_type": "platform_order_id",
+            "safe_fallback_reason": "sales_outbound_record_not_visible",
+            "lookup_complete": True,
+            "duration_ms": 3,
+        },
+    )
+
+    result = jst_live_query({
+        "slots": {
+            "identifier_type": "platform_order_id",
+            "platform_order_id": "PLATFORM-ORDER",
+        },
+        "copilot_context": {"jst_shop_id": "JST-SHOP-42", "shop_platform": "tmall"},
+        "trace_steps": [],
+    })
+
+    assert result["order_found"] is False
+    assert result["jst_lookup_complete"] is True
+    assert result["jst_fallback_reason"] == "sales_outbound_record_not_visible"
 
 
 def test_outbound_exact_lookup_rejects_other_shop_or_other_identifier(monkeypatch):
@@ -435,6 +668,18 @@ def test_tmall_platform_trade_id_uses_sales_outbound_only(monkeypatch):
         }
 
     monkeypatch.setattr(live_query, "lookup_outbound_by_so_id", fake_outbound)
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_identifier_scan",
+        lambda identifier, *, shop_id="": {
+            "found": False,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "outbound_recent_scan",
+            "duration_ms": 19,
+            "safe_fallback_reason": "outbound_identifier_not_found_in_complete_recent_scan",
+            "scanned_pages": 2,
+        },
+    )
     monkeypatch.setattr(live_query, "lookup_order_by_order_id", fail_unsupported)
     monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id", fail_unsupported)
     monkeypatch.setattr(live_query, "lookup_order_by_platform_order_id_history", fail_unsupported)
@@ -452,7 +697,10 @@ def test_tmall_platform_trade_id_uses_sales_outbound_only(monkeypatch):
     assert result["lookup_complete"] is True
     assert result["safe_fallback_reason"] == "sales_outbound_record_not_visible"
     assert result["source_capability"] == "sales_outbound_only"
-    assert [path["query_type"] for path in result["attempted_paths"]] == ["outbound_so_id"]
+    assert [path["query_type"] for path in result["attempted_paths"]] == [
+        "outbound_so_id",
+        "outbound_recent_scan",
+    ]
 
 
 def test_tmall_platform_trade_id_preserves_found_sales_outbound(monkeypatch):

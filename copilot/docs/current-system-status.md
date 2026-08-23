@@ -26,7 +26,7 @@
 | **JST 客户端** | `app/integrations/jst/client.py` | - | MD5 签名，endpoint 白名单，超时控制 |
 | **JST 查询层** | `app/integrations/jst/live_query.py` | test_jst_outer_so_id_lookup | identifier dispatcher、TTL 缓存、外部订单全页扫描、重复页停滞保护 |
 | **JST 实时查询节点** | `jst_live_query.py` | test_agent_graph, test_logistics_chain | 统一入口，状态映射（含销售出库状态） |
-| **销售出库查询** | `orders/out/simple/query` 链路 | test_platform_trade_id | platform_trade_id → outbound_so_id；显式淘宝/天猫平台能力在零行后停止，不进入不支持的平台订单扫描 |
+| **销售出库查询** | `orders/out/simple/query` 链路 | test_platform_trade_id | 显式淘宝/天猫平台能力先按 `so_ids` 精确读取，再完成同一销售出库接口的最近窗口分页扫描；不进入不支持的平台订单接口 |
 | **evidence_builder** | `evidence_builder.py` | test_platform_trade_id | 分层证据：order_facts / logistics_facts / product_facts / policy_facts / sop / template / faq |
 | **generate_logistics_reply** | `generate_logistics_reply.py` | test_logistics_chain, test_platform_trade_id | 10+ 场景分支，outbound 已发出模板，禁止签收承诺 |
 | **generate_reply** | `generate_reply.py` | test_grounded_generation | grounded generation，FAQ 直出 / LLM 重写 |
@@ -49,7 +49,7 @@
 
 | 模块 | 说明 | 限制 |
 |---|---|---|
-| **物流查询（外部交易号）** | 普通 JST `orders/out/simple/query` 按 `so_ids` 与 `jst_shop_id` 精确查询销售出库记录；结构化 `shop_platform` 选择适配器能力 | 已实测天猫英禾店铺可返回商品 `sku_id`/`i_id` 与物流身份；不使用千牛 Sidecar 或奇门。显式淘宝/天猫店铺的零行结果会停止在销售出库能力边界，不再调用不支持的平台订单接口；零行不证明平台订单不存在 |
+| **物流查询（外部交易号）** | JST `orders/out/simple/query` 先按 `so_ids` 与 `jst_shop_id` 精确查询，未命中时在该接口要求的最近七天修改窗口内完成分页扫描；结构化 `shop_platform` 选择适配器能力 | 已实测天猫英禾店铺可返回商品 `sku_id`/`i_id` 与物流身份；不使用千牛 Sidecar 或奇门。显式淘宝/天猫店铺仅使用销售出库能力，不进入不支持的平台订单接口；完成扫描仍为零行时不证明平台订单不存在，但回复不得再索要侧边栏已给出的订单号 |
 | **物流查询（内部订单号）** | internal_order_id → orders/single/query | 需要精确 o_id |
 | **物流查询（快递单号）** | tracking_no → logistic/query 扫描 | 仅扫描最近 7 天 100 条，大量单号查不到 |
 | **商品咨询** | RAG 知识库检索 | 依赖知识库内容质量 |

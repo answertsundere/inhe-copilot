@@ -99,6 +99,8 @@ def _fallback_lookup_service_unavailable() -> str:
 
 
 def _lookup_completed_without_record(state: dict) -> bool:
+    if state.get("jst_lookup_complete") is True:
+        return True
     for tool_name in (
         "jst_lookup_order_tool",
         "jst_lookup_outbound_tool",

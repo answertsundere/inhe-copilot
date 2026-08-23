@@ -241,21 +241,24 @@ searchable. A configured default store is a deployment choice, not an Agent-doma
 branch.
 
 Taobao/Tmall customer-service lookup does not use QianNiu Sidecar or Qimen. The
-runtime calls the ordinary read-only JST sales-outbound endpoint
-`orders/out/simple/query` with the sidebar online order number in `so_ids` and
-the selected store's `jst_shop_id`. It projects only outbound status, logistics
-identity and item `sku_id`/`i_id`/internal name. Buyer, receiver, amount and
-other sensitive fields must not enter reports, traces or Agent context. A zero-
-row result only proves that no matching sales-outbound record is currently
-visible; it must not be rewritten as proof that the platform order itself does
-not exist. For an explicit `tmall` or `taobao` platform capability, the adapter
-does not fall back to ordinary order endpoints that do not support those
-platforms. When the provider marks that empty lookup as complete, the runtime
-projects a completed, non-factual service action into the existing Composer
-context. The review-only reply must acknowledge the completed lookup, explain
-that outbound/logistics data is not yet visible, and must not request the same
-sidebar order number again. Timeout, provider-error and incomplete-pagination
-results remain failed lookups and must not claim completion.
+runtime starts on the read-only JST sales-outbound endpoint
+`orders/out/simple/query`, scoped by the selected store's `jst_shop_id`. It
+first makes the available exact `so_ids` attempt, then, on a miss, scans every
+provider-returned page in the endpoint's required recent seven-day modified
+window and compares only returned order/item identifiers. The scan stops on an
+exact match, the provider's final/short page, a repeated page, or an API error;
+it never derives an identity from a product title or customer text. It projects
+only outbound status, logistics identity and item `sku_id`/`i_id`/internal name.
+Buyer, receiver, amount and other sensitive fields must not enter reports,
+traces or Agent context. A completed zero-row result only proves that no
+matching sales-outbound record is currently visible; it must not be rewritten
+as proof that the platform order itself does not exist. For an explicit `tmall`
+or `taobao` platform capability, the adapter does not fall back to ordinary
+order endpoints that do not support those platforms. The review-only reply must
+acknowledge the completed lookup, explain that outbound/logistics data is not
+yet visible, and must not request the same sidebar order number again. Timeout,
+provider-error and incomplete-pagination results remain failed lookups and must
+not claim completion.
 
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the
 backend. Start Vite with `VITE_API_PROXY_TARGET=http://127.0.0.1:5012` and a

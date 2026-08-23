@@ -169,6 +169,7 @@ def jst_live_query(state: dict) -> dict:
     }
     return {
         "order_found": False,
+        "jst_lookup_complete": bool(result.get("lookup_complete")),
         "jst_fallback_reason": reason,
         "used_fact_tool": "jst_live_query",
         "used_identifier_type": identifier_type,

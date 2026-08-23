@@ -1,5 +1,5 @@
 """
-聚水潭实时查询层 — 每个函数只做一次精确 API 调用，不做慢速扫描。
+聚水潭实时查询层 — 精确读取优先，必要时在官方允许的时间窗口内完整分页扫描。
 
 API 能力说明（基于 2026-05-31 实测）：
 - o_ids 参数（orders/single/query）：实测可用精确查询，~400ms，无需时间范围。
@@ -7,8 +7,9 @@ API 能力说明（基于 2026-05-31 实测）：
   会返回 code!=0 或 found=0，此时直接安全 fallback，不做慢扫。
 - so_ids 参数（orders/single/query）：实测可用精确查询，~450ms，需搭配最近7天时间范围。
   同上，属于实测能力。
-- so_ids 参数（orders/out/simple/query）：销售出库查询，支持 so_ids 精确查询。
-  用于 platform_trade_id / outer_so_id 类型的单号查询。
+- so_ids 参数（orders/out/simple/query）：销售出库查询的精确读取尝试。
+  该参数不是公开稳定的外部交易号过滤合同，因此精确未命中后必须在
+  官方要求的最近 7 天 modified 窗口中按页精确匹配返回字段。
 - sku_ids 参数（sku/query）：实测可用精确查询。
 - l_id 参数（logistic/query）：实测 API 忽略此参数，不支持精确查询。
 - tracking_no：聚水潭无任何 API 支持按 tracking_no 精确查询。
@@ -16,8 +17,9 @@ API 能力说明（基于 2026-05-31 实测）：
 查询策略：
 1. internal_order_id (o_id)  → orders/single/query + o_ids（单次调用）
 2. platform_order_id (so_id) → orders/single/query + so_ids + 最近7天（单次调用）
-3. platform_trade_id (outer_so_id) → orders/out/simple/query + so_ids（单次调用）
-   fallback → orders/single/query outer_so_id scan
+3. 天猫/淘宝的 platform_order_id / platform_trade_id → sales-outbound exact
+   attempt → sales-outbound recent-window complete scan；不调用不支持的平台
+   ordinary-order surface。
 4. tracking_no → logistic/query 单页扫描（l_id 匹配）
 5. unknown_identifier → outbound_so_id → o_ids → so_ids → outer_so_id scan → logistic/query scan
 """
@@ -482,7 +484,7 @@ def _outbound_identifiers(row: dict) -> set[str]:
     for item in row.get("items", []) or []:
         if not isinstance(item, dict):
             continue
-        for key in ("so_id", "outer_so_id", "outer_oi_id"):
+        for key in ("so_id", "outer_so_id", "outer_oi_id", "raw_so_id"):
             value = str(item.get(key) or "").strip()
             if value:
                 identifiers.add(value)
@@ -502,11 +504,15 @@ def lookup_outbound_by_so_id(so_id: str, *, shop_id: str = "") -> dict:
 
     client = JSTClient()
     t0 = time.time()
+    now = datetime.now()
+    week_ago = now - timedelta(days=6)
     try:
         query = {
             "page_index": 1,
             "page_size": 20,
             "so_ids": [str(so_id)],
+            "modified_begin": week_ago.strftime("%Y-%m-%d 00:00:00"),
+            "modified_end": now.strftime("%Y-%m-%d 23:59:59"),
         }
         if normalized_shop_id:
             query["shop_id"] = normalized_shop_id
@@ -557,6 +563,133 @@ def lookup_outbound_by_so_id(so_id: str, *, shop_id: str = "") -> dict:
             error_message=str(e),
             safe_fallback_reason=code,
         )
+
+    _cache_set(cache_key, r, r["found"])
+    return r
+
+
+def lookup_outbound_by_identifier_scan(identifier: str, *, shop_id: str = "") -> dict:
+    """Find a sales-outbound record by scanning its provider-bounded time window.
+
+    ``orders/out/simple/query`` requires a recent ``modified`` window.  Its
+    documented surface does not guarantee support for an exact external-order
+    filter, so an exact miss is followed by a read-only, shop-scoped page scan.
+    The scan stops at the provider's final page, a short page, a repeated page,
+    or an API error.  It never guesses from product names or customer text.
+    """
+    if not identifier:
+        return _make_result(
+            found=False,
+            query_type="outbound_recent_scan",
+            safe_fallback_reason="empty_id",
+        )
+
+    normalized_shop_id = str(shop_id or "").strip()
+    target = str(identifier).strip()
+    cache_key = f"outscan:{normalized_shop_id}:{target}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    client = JSTClient()
+    t0 = time.time()
+    now = datetime.now()
+    week_ago = now - timedelta(days=6)
+    page_index = 1
+    scanned_pages = 0
+    page_fingerprints: set[tuple[tuple[str, str, str], ...]] = set()
+    terminal_result: Optional[dict] = None
+
+    try:
+        while True:
+            params = {
+                "page_index": page_index,
+                "page_size": 100,
+                "modified_begin": week_ago.strftime("%Y-%m-%d 00:00:00"),
+                "modified_end": now.strftime("%Y-%m-%d 23:59:59"),
+            }
+            if normalized_shop_id:
+                params["shop_id"] = normalized_shop_id
+
+            result = client.call("orders/out/simple/query", params)
+            data = result.get("data", {}) or {}
+            rows = data.get("datas", []) or []
+            scanned_pages += 1
+
+            page_fingerprint = tuple(
+                (
+                    str(row.get("o_id") or ""),
+                    str(row.get("so_id") or ""),
+                    str(row.get("outer_so_id") or ""),
+                )
+                for row in rows
+                if isinstance(row, dict)
+            )
+            if rows and page_fingerprint in page_fingerprints:
+                terminal_result = _make_result(
+                    found=False,
+                    endpoint="orders/out/simple/query",
+                    query_type="outbound_recent_scan",
+                    duration_ms=int((time.time() - t0) * 1000),
+                    error_code="pagination_stalled",
+                    safe_fallback_reason="pagination_stalled",
+                )
+                terminal_result["scanned_pages"] = scanned_pages
+                break
+            page_fingerprints.add(page_fingerprint)
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                if normalized_shop_id and str(row.get("shop_id") or "").strip() != normalized_shop_id:
+                    continue
+                if target not in _outbound_identifiers(row):
+                    continue
+                r = _make_result(
+                    found=True,
+                    data=_extract_order_info(row),
+                    endpoint="orders/out/simple/query",
+                    query_type="outbound_recent_scan",
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
+                r["scanned_pages"] = scanned_pages
+                _cache_set(cache_key, r, True)
+                return r
+
+            page_count = data.get("page_count") or data.get("page_total")
+            try:
+                reached_reported_end = bool(page_count) and page_index >= int(page_count)
+            except (TypeError, ValueError):
+                reached_reported_end = False
+            if reached_reported_end or len(rows) < 100:
+                break
+            page_index += 1
+
+        if terminal_result is None:
+            terminal_result = _make_result(
+                found=False,
+                endpoint="orders/out/simple/query",
+                query_type="outbound_recent_scan",
+                duration_ms=int((time.time() - t0) * 1000),
+                safe_fallback_reason="outbound_identifier_not_found_in_complete_recent_scan",
+            )
+            terminal_result["scanned_pages"] = scanned_pages
+        r = terminal_result
+
+    except (JSTConfigError, JSTTimeoutError, JSTAPIError) as e:
+        if isinstance(e, JSTAPIError):
+            _log_api_error(e)
+        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        r = _make_result(
+            found=False,
+            endpoint="orders/out/simple/query",
+            query_type="outbound_recent_scan",
+            duration_ms=int((time.time() - t0) * 1000),
+            error_code=code,
+            error_message=str(e),
+            safe_fallback_reason=code,
+        )
+        r["scanned_pages"] = scanned_pages
 
     _cache_set(cache_key, r, r["found"])
     return r
@@ -1132,6 +1265,36 @@ def lookup_order_by_identifier(
         return r
 
     if identifier_type == "platform_order_id":
+        normalized_platform = str(shop_platform or "").strip().lower()
+        if normalized_platform in {"taobao", "tmall", "taobao_tmall"}:
+            # The selected store determines the readable identifier surface.
+            # Keep Tmall side-panel order ids on sales outbound data rather
+            # than trying the ordinary-order endpoint with a different schema.
+            r_out = lookup_outbound_by_so_id(identifier, shop_id=shop_id)
+            if r_out["found"]:
+                r_out["query_type"] = "platform_order_id->outbound_so_id"
+                r_out["attempted_paths"] = _attempt_debug(r_out)
+                r_out["source_capability"] = "sales_outbound_only"
+                return r_out
+
+            r_out_scan = lookup_outbound_by_identifier_scan(identifier, shop_id=shop_id)
+            if r_out_scan["found"]:
+                r_out_scan["query_type"] = "platform_order_id->outbound_recent_scan"
+                r_out_scan["attempted_paths"] = _attempt_debug(r_out, r_out_scan)
+                r_out_scan["source_capability"] = "sales_outbound_only"
+                return r_out_scan
+
+            r = _aggregate_lookup_failure(
+                query_type="platform_order_id",
+                results=(r_out, r_out_scan),
+                duration_ms=r_out.get("duration_ms", 0) + r_out_scan.get("duration_ms", 0),
+                not_found_reason="sales_outbound_record_not_visible",
+            )
+            r["attempted_paths"] = _attempt_debug(r_out, r_out_scan)
+            r["source_capability"] = "sales_outbound_only"
+            r["lookup_complete"] = not bool(r.get("error_code"))
+            return r
+
         r1 = lookup_order_by_order_id(identifier)
         if r1["found"]:
             r1["query_type"] = "platform_order_id->same_order_id"
@@ -1155,10 +1318,16 @@ def lookup_order_by_identifier(
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out)
             return r_out
 
+        r_out_scan = lookup_outbound_by_identifier_scan(identifier, shop_id=shop_id)
+        if r_out_scan["found"]:
+            r_out_scan["query_type"] = "platform_order_id->outbound_recent_scan"
+            r_out_scan["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r_out_scan)
+            return r_out_scan
+
         r3 = lookup_order_by_outer_so_id(identifier, shop_id=shop_id)
         if r3["found"]:
             r3["query_type"] = "platform_order_id->outer_so_id_fallback"
-            r3["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r3)
+            r3["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r_out_scan, r3)
             return r3
 
         total_ms = (
@@ -1166,15 +1335,16 @@ def lookup_order_by_identifier(
             + r2.get("duration_ms", 0)
             + r_hist.get("duration_ms", 0)
             + r_out.get("duration_ms", 0)
+            + r_out_scan.get("duration_ms", 0)
             + r3.get("duration_ms", 0)
         )
         r = _aggregate_lookup_failure(
             query_type="platform_order_id",
-            results=(r1, r2, r_hist, r_out, r3),
+            results=(r1, r2, r_hist, r_out, r_out_scan, r3),
             duration_ms=total_ms,
             not_found_reason="not_found",
         )
-        r["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r3)
+        r["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r_out_scan, r3)
         return r
 
     if identifier_type == "platform_trade_id":
@@ -1190,15 +1360,23 @@ def lookup_order_by_identifier(
         normalized_platform = str(shop_platform or "").strip().lower()
         if normalized_platform in {"taobao", "tmall", "taobao_tmall"}:
             # JST's ordinary order query does not expose Taobao/Tmall orders.
-            # The standard read-only surface can only resolve an exact sales
-            # outbound record, so do not scan unsupported order endpoints.
+            # Keep the lookup on the read-only sales-outbound surface.  The
+            # exact filter is not documented as reliable, so scan its required
+            # recent modified window before concluding that the record is not
+            # visible.  Do not fall through to unsupported ordinary orders.
+            r_out_scan = lookup_outbound_by_identifier_scan(identifier, shop_id=shop_id)
+            if r_out_scan["found"]:
+                r_out_scan["query_type"] = "platform_trade_id->outbound_recent_scan"
+                r_out_scan["attempted_paths"] = _attempt_debug(r_out, r_out_scan)
+                r_out_scan["source_capability"] = "sales_outbound_only"
+                return r_out_scan
             r = _aggregate_lookup_failure(
                 query_type="platform_trade_id",
-                results=(r_out,),
-                duration_ms=r_out.get("duration_ms", 0),
+                results=(r_out, r_out_scan),
+                duration_ms=r_out.get("duration_ms", 0) + r_out_scan.get("duration_ms", 0),
                 not_found_reason="sales_outbound_record_not_visible",
             )
-            r["attempted_paths"] = _attempt_debug(r_out)
+            r["attempted_paths"] = _attempt_debug(r_out, r_out_scan)
             r["source_capability"] = "sales_outbound_only"
             r["lookup_complete"] = not bool(r.get("error_code"))
             return r

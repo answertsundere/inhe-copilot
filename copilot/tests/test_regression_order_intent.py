@@ -526,6 +526,31 @@ class TestLogisticsLookupFailureSemantics:
         assert result["requires_human_review"] is True
         assert result["review_reason"] == "order_lookup_completed_no_record"
 
+    def test_completed_jst_lookup_from_main_graph_preserves_received_identifier(self):
+        """The legacy JST node must retain completion state for the reply node."""
+        from app.agent.nodes.generate_logistics_reply import generate_logistics_reply
+
+        state = {
+            "customer_message": "我的订单什么时候到",
+            "normalized_message": "我的订单什么时候到",
+            "intent": "logistics_eta",
+            "slots": {
+                "order_id": "",
+                "tracking_no": "",
+                "platform_trade_id": "masked-platform-order",
+                "identifier_type": "platform_trade_id",
+            },
+            "jst_lookup_complete": True,
+            "jst_fallback_reason": "sales_outbound_record_not_visible",
+            "trace_steps": [],
+        }
+
+        result = generate_logistics_reply(state)
+
+        assert "订单号已经收到" in result["suggested_reply"]
+        assert "不用重复提供" in result["suggested_reply"]
+        assert result["review_reason"] == "order_lookup_completed_no_record"
+
     def test_rewrite_aftersales_with_order_id(self):
         from app.services.grounding_validation_service import _rewrite_fallback_reply
         state = {
