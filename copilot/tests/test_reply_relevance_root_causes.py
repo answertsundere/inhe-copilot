@@ -111,6 +111,23 @@ def test_product_card_load_capacity_never_uses_product_weight():
     assert "2.65" not in text
 
 
+def test_unknown_product_question_does_not_label_weight_as_load_capacity():
+    text, _missing = _profile_fact_text(
+        {
+            "product_name": "通用测试商品",
+            "specs": {
+                "weight": "14.156",
+                "load_capacity": "",
+            },
+        },
+        "",
+        "这个 SKU 对应哪种配置？",
+    )
+
+    assert "商品重量: 14.156" in text
+    assert "承重/容量: 14.156" not in text
+
+
 def test_gift_missing_with_order_does_not_ask_for_order_screenshot():
     from app.agent.nodes.generate_reply import _gift_missing_reply
 

@@ -321,7 +321,10 @@ def _profile_fact_text(profile: dict, query_fact_type: str, msg: str, source: st
         else:
             add("材质", "material", "材质", "材料", "材质说明")
             add("尺寸", "size", "尺寸")
-            add("承重/容量", "weight", "load_capacity", "承重/容量", "承重")
+            # `weight` is a product/package mass field.  It must never be
+            # relabelled as load capacity when understanding is unavailable.
+            add("商品重量", "weight", "商品重量", "重量")
+            add("承重/容量", "load_capacity", "承重/容量", "承重")
             add("适用年龄", "age_range", "适用年龄")
             add("配件清单", "accessories", "配件清单")
             add("安装方式", "install_method", "安装方式")
