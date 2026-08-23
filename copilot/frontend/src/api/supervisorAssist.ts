@@ -24,7 +24,7 @@ export interface AnalyzeRequest {
   product_name?: string
   sku_code?: string
   i_id?: string
-  platform_trade_id?: string
+  platform_order_id?: string
   tracking_no?: string
   copilot_context?: {
     shop_id?: string
@@ -106,10 +106,10 @@ export function buildAnalyzeRequest(
     product_name: optionalValue(context.productName),
     sku_code: optionalValue(context.skuCode),
     i_id: optionalValue(context.iId),
-    // The workbench sidebar contains the marketplace order number, not JST's
-    // internal order id. Preserve that provenance so the backend selects the
-    // outbound-order lookup deterministically for every shop.
-    platform_trade_id: optionalValue(context.orderId),
+    // The workbench sidebar contains a marketplace order number, not JST's
+    // internal order id or a verified sales-outbound reference. Keep that
+    // distinction so the backend starts from the ordinary order lookup.
+    platform_order_id: optionalValue(context.orderId),
     tracking_no: optionalValue(context.trackingNo),
     copilot_context: {
       shop_id: optionalValue(context.shopId),

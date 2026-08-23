@@ -487,18 +487,33 @@ def _build_default_inputs(state: dict) -> dict:
         explicit_identifier = {}
     explicit_type = explicit_identifier.get("identifier_type", "")
     explicit_value = explicit_identifier.get("identifier_value", "")
-    order_identifier = slots.get("order_id") or state.get("order_id") or ""
-    order_identifier_type = slots.get("identifier_type") or "internal_order_id"
+    context = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
+    order_identifier = slots.get("platform_order_id") or slots.get("order_id") or state.get("order_id") or ""
+    order_identifier_type = (
+        "platform_order_id" if slots.get("platform_order_id")
+        else slots.get("identifier_type") or "internal_order_id"
+    )
+    if not order_identifier and context.get("platform_order_id"):
+        order_identifier = context.get("platform_order_id")
+        order_identifier_type = "platform_order_id"
+    elif not order_identifier and context.get("order_id"):
+        order_identifier = context.get("order_id")
+        order_identifier_type = "internal_order_id"
     if explicit_value and explicit_type in ("internal_order_id", "order_id", "platform_order_id"):
         order_identifier = explicit_value
         order_identifier_type = explicit_type
     elif not order_identifier and slots.get("possible_numeric_id"):
         order_identifier = slots.get("possible_numeric_id")
         order_identifier_type = "internal_order_id"
-    platform_trade_id = slots.get("platform_trade_id") or state.get("platform_trade_id") or ""
+    platform_trade_id = (
+        slots.get("platform_trade_id")
+        or state.get("platform_trade_id")
+        or context.get("platform_trade_id")
+        or ""
+    )
     if explicit_value and explicit_type == "platform_trade_id":
         platform_trade_id = explicit_value
-    tracking_no = slots.get("tracking_no") or state.get("tracking_no") or ""
+    tracking_no = slots.get("tracking_no") or state.get("tracking_no") or context.get("tracking_no") or ""
     if explicit_value and explicit_type == "tracking_no":
         tracking_no = explicit_value
 

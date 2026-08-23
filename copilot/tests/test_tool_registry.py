@@ -116,6 +116,30 @@ class TestToolRegistry:
 
         assert "freshness_class" not in captured["messages"][0]["content"]
 
+    def test_default_jst_inputs_use_structured_sidebar_identifiers(self):
+        from app.agent.tools.executor import _build_default_inputs
+
+        inputs = _build_default_inputs({
+            "customer_message": "现在到哪里了",
+            "slots": {},
+            "copilot_context": {
+                "platform_order_id": "platform-order-ref",
+                "platform_trade_id": "platform-trade-ref",
+                "tracking_no": "tracking-ref",
+            },
+        })
+
+        assert inputs["jst_lookup_order_tool"] == {
+            "identifier": "platform-order-ref",
+            "identifier_type": "platform_order_id",
+        }
+        assert inputs["jst_lookup_outbound_tool"] == {
+            "outer_so_id": "platform-trade-ref",
+        }
+        assert inputs["jst_lookup_tracking_tool"] == {
+            "tracking_no": "tracking-ref",
+        }
+
 
 # ---------------------------------------------------------------------------
 # B. response_strategy_router: allowed/required/forbidden

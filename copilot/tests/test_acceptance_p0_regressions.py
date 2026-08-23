@@ -110,7 +110,7 @@ def test_platform_order_intercept_can_use_deterministic_fast_path():
     }
 
 
-def test_platform_order_id_uses_outbound_tool_for_order_operation():
+def test_platform_order_id_uses_order_tool_for_order_operation():
     from app.agent.nodes.response_strategy_router import response_strategy_router
 
     result = response_strategy_router({
@@ -125,7 +125,7 @@ def test_platform_order_id_uses_outbound_tool_for_order_operation():
     })
 
     assert result["response_strategy"] == "logistics_with_order"
-    assert result["required_tools"] == ["jst_lookup_outbound_tool"]
+    assert result["required_tools"] == ["jst_lookup_order_tool"]
 
 
 def test_intercept_with_order_cannot_be_downgraded_to_generic_aftersales():

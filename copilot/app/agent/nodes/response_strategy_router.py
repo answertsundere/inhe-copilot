@@ -54,15 +54,16 @@ def _structured_order_lookup_tool(state: dict) -> str:
     slots = state.get("slots", {}) or {}
     if context.get("tracking_no") or slots.get("tracking_no"):
         return "jst_lookup_tracking_tool"
-    if (
-        context.get("platform_trade_id")
-        or context.get("platform_order_id")
-        or slots.get("platform_trade_id")
-        or slots.get("platform_order_id")
-        or slots.get("identifier_type") in ("platform_trade_id", "platform_order_id")
-    ):
+    if context.get("platform_trade_id") or slots.get("platform_trade_id") or slots.get("identifier_type") == "platform_trade_id":
         return "jst_lookup_outbound_tool"
-    if context.get("order_id") or state.get("order_id") or slots.get("order_id"):
+    if (
+        context.get("platform_order_id")
+        or slots.get("platform_order_id")
+        or slots.get("identifier_type") == "platform_order_id"
+        or context.get("order_id")
+        or state.get("order_id")
+        or slots.get("order_id")
+    ):
         return "jst_lookup_order_tool"
     return ""
 
@@ -499,7 +500,7 @@ def _compute_tool_lists(state: dict, strategy: str, has_id: bool) -> tuple:
 
     elif strategy == "logistics_with_order":
         # 根据 identifier_type 选择正确的 JST 工具
-        if identifier_type in ("platform_trade_id", "platform_order_id"):
+        if identifier_type == "platform_trade_id":
             jst_tool = "jst_lookup_outbound_tool"
         elif identifier_type == "tracking_no":
             jst_tool = "jst_lookup_tracking_tool"

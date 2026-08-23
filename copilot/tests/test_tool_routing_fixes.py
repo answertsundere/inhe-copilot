@@ -141,7 +141,7 @@ class TestSingleCandidateNotAmbiguous:
 # ---------------------------------------------------------------------------
 
 class TestSidebarOrderIdentityEnrichment:
-    def test_product_question_requires_outbound_lookup_for_platform_order_context(self):
+    def test_product_question_requires_order_lookup_for_platform_order_context(self):
         from app.agent.nodes.response_strategy_router import response_strategy_router
 
         result = response_strategy_router({
@@ -159,9 +159,10 @@ class TestSidebarOrderIdentityEnrichment:
             "trace_steps": [],
         })
 
-        assert "jst_lookup_outbound_tool" in result["required_tools"]
-        assert "jst_lookup_outbound_tool" in result["allowed_tools"]
-        assert "jst_lookup_outbound_tool" not in result["forbidden_tools"]
+        assert "jst_lookup_order_tool" in result["required_tools"]
+        assert "jst_lookup_order_tool" in result["allowed_tools"]
+        assert "jst_lookup_order_tool" not in result["forbidden_tools"]
+        assert "jst_lookup_outbound_tool" in result["forbidden_tools"]
         assert "product_resolver_tool" in result["required_tools"]
         assert "rag_search_tool" in result["required_tools"]
 
