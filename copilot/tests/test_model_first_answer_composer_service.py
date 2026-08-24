@@ -397,6 +397,7 @@ def test_composer_allows_review_only_customer_conditional_comparison():
     assert prompt["current_customer_question"] == (
         "If the stated product height is 12 cm, will it fit?"
     )
+    assert prompt["customer_visible_language"] == "en"
     assert prompt["recent_conversation_turns"] == [{
         "role": "customer",
         "content": "The available height is 10 cm.",
@@ -1236,6 +1237,66 @@ def test_composer_rejects_english_clause_for_chinese_customer_goal():
     assert client.call_count == 1
 
 
+def test_composer_prompt_payload_declares_chinese_customer_visible_language():
+    _, result, client = _compose(_valid_payload())
+
+    assert result["status"] == "accepted"
+    prompt = json.loads(client.messages[1]["content"])
+    assert list(prompt)[:2] == [
+        "current_customer_question",
+        "customer_visible_language",
+    ]
+    assert prompt["customer_visible_language"] == "zh-CN"
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        (
+            "安装工具已经配齐，如需进一步帮助，please contact customer "
+            "service for detailed setup guidance."
+        ),
+        (
+            "材质已经确认，please follow the provided care instructions "
+            "during routine cleaning."
+        ),
+        (
+            "物流状态需要继续核对，please review the latest carrier "
+            "update before making arrangements."
+        ),
+    ),
+)
+def test_composer_rejects_english_prose_embedded_in_chinese_clause(text):
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = text
+
+    _, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == "composer_customer_language_mismatch"
+    match = result["validation_diagnostics"]["language_match"]
+    assert match["trigger_category"] == "english_prose_in_chinese_clause"
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "这款商品的主要材质是 PP、ABS 和 TPE。",
+        "充电接口为 Type-C，支持 Wi-Fi 连接。",
+        "这款属于 Little Tikes Cozy Coupe 系列。",
+    ),
+)
+def test_composer_allows_short_technical_or_brand_terms_in_chinese_clause(text):
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = text
+
+    _, result, client = _compose(payload)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
 def test_composer_internal_language_rule_spanning_clause_boundary_is_preserved():
     payload = _valid_payload()
     payload["clauses"][0]["text"] = "当前知"
@@ -1255,6 +1316,10 @@ def test_composer_prompt_requires_customer_visible_expression_stability():
 
     assert result["status"] == "accepted"
     prompt = client.messages[0]["content"]
+    language_priority = "中文回复不得夹入英文句段"
+    first_english_contract = (
+        "Only media_context.actual_attached_media_types authorizes wording"
+    )
     for required in (
         "按客户提问顺序先回答已支持事实",
         "自然、礼貌、简洁",
@@ -1262,8 +1327,13 @@ def test_composer_prompt_requires_customer_visible_expression_stability():
         "客户可见文字只放在 text",
         "缺少直接依据只表示当前没有可引用的直接依据",
         "不得把任何未知事实改写成否定事实",
+        "不得夹入英文句段",
+        "品牌、型号、单位和标准缩写可保留原文",
     ):
         assert required in prompt
+    assert prompt.index(language_priority) < prompt.index(
+        first_english_contract
+    )
     for prohibited in (
         "ABS",
         "硅胶",

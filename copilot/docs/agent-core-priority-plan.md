@@ -1222,6 +1222,20 @@ Because selected evidence was zero and Composer was intentionally gated in all
 not establish goal completion, business helpfulness, reply quality, or real
 accuracy. Production enablement remains prohibited.
 
+### Customer-Visible Language Checkpoint (2026-08-24)
+
+The existing Composer now projects a deterministic
+`customer_visible_language` next to the current customer question in its
+Provider payload. This is a presentation constraint derived from the current
+question, not evidence, a new intent classifier, or a new reply owner. Chinese
+customer goals reject long embedded English prose while preserving short
+brands, model names, units, and standard abbreviations. An isolated query-only
+installation run then produced an accepted all-Chinese candidate with one
+selected formal evidence item, zero formal-knowledge DML, `can_send=false`, and
+mandatory human review. The independent local Unified Audit remained advisory
+and schema-invalid, so Autonomous Send is still blocked and
+`real_customer_accuracy=null`.
+
 ## Definition Of Project Progress
 
 The project has progressed only when at least one of these becomes true without

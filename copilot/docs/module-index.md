@@ -222,6 +222,16 @@ canonical goals with resolved product context. Pure high-risk, untrusted, and
 identity-unresolved requests remain SOP-only, and Evidence Admission retains the
 exact compatibility decision.
 
+The existing Composer prompt projection now places a deterministic
+`customer_visible_language` beside the current question. The field is
+presentation-only and is never admitted as evidence or allowed to change
+delivery. Chinese goals reject long embedded English prose after generation,
+while short brands, model names, units, and standard abbreviations remain
+valid. The isolated query-only installation check returned an accepted
+all-Chinese candidate with one formal evidence item, zero knowledge DML,
+`can_send=false`, and mandatory human review; local Unified Audit remained an
+unqualified advisory result.
+
 The fresh query-only Fixed-8 completed `8/8`; selected evidence remains eight
 items across `3/8` scenarios. The after-sales turn now preserves three
 independent unresolved goals after rejecting an invalid policy nomination, and

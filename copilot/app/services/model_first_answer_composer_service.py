@@ -3630,10 +3630,29 @@ class ModelFirstAnswerComposerService:
         evidence: list[dict[str, Any]],
         partitions: dict[str, Any],
     ) -> dict[str, Any]:
+        current_customer_question = str(
+            minimal_context.get("customer_goal")
+            or customer_message
+            or ""
+        )
+        customer_visible_language = (
+            "zh-CN"
+            if re.search(
+                r"[\u4e00-\u9fff]",
+                current_customer_question,
+            )
+            else (
+                "en"
+                if re.search(
+                    r"[A-Za-z]",
+                    current_customer_question,
+                )
+                else "same-as-current-customer-question"
+            )
+        )
         return {
-            "current_customer_question": str(
-                minimal_context.get("customer_goal") or customer_message or ""
-            ),
+            "current_customer_question": current_customer_question,
+            "customer_visible_language": customer_visible_language,
             "recent_conversation_turns": list(
                 minimal_context.get("recent_conversation_turns") or []
             ),
@@ -3830,6 +3849,11 @@ class ModelFirstAnswerComposerService:
         schema_summary = cls._schema_prompt_contract()["summary"]
         return (
             "你是电商金牌客服，只负责一次性组织候选回复，不决定事实资格和发送权限。"
+            "prompt payload 的 customer_visible_language 是客户可见回复的目标语种，必须严格遵守。"
+            "客户可见 text 必须与当前 customer_goal 使用同一种自然语言；"
+            "当 customer_goal 使用中文时，text 必须使用中文，不得改为英文。"
+            "中文回复不得夹入英文句段；"
+            "品牌、型号、单位和标准缩写可保留原文。"
             "仅使用 admitted_evidence 中的商品事实；service_actions 不是商品事实。"
             "低风险解释不得升级为承重、无毒、食品级、认证、儿童安全、防倾倒、安装处方、"
             "订单状态、退款、补发或物流结论。"
@@ -3914,8 +3938,6 @@ class ModelFirstAnswerComposerService:
             "不要说“没有证据”“缺少证据”或“人工审核”，不要重复完整商品标题。"
             "多目标 clause 各自只回答对应 goal，拼接后应自然、礼貌、简洁，"
             "避免重复主语、边界、法务声明、报告字段、机器人语气和内部处理语言。"
-            "客户可见 text 必须与当前 customer_goal 使用同一种自然语言；"
-            "当 customer_goal 使用中文时，text 必须使用中文，不得改为英文。"
             "任何方括号中包含 REDACTED 的内容都是内部隐私占位符，绝不能复制到客户可见文字。"
             "结构优先：只返回一个 JSON object；只使用 schema 定义字段；"
             "每个 clause 只使用 clause schema 字段；不得增加说明、reasoning、metadata"
@@ -5094,6 +5116,40 @@ class ModelFirstAnswerComposerService:
         for clause_index, clause in enumerate(clauses):
             text = str(clause.get("text") or "").strip()
             if re.search(r"[\u4e00-\u9fff]", text):
+                for segment in re.split(r"[\u4e00-\u9fff]+", text):
+                    latin_tokens = re.findall(
+                        r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
+                        segment,
+                    )
+                    lowercase_tokens = [
+                        token
+                        for token in latin_tokens
+                        if token.islower()
+                    ]
+                    alphabetic_length = sum(
+                        len(re.sub(r"[^A-Za-z]", "", token))
+                        for token in latin_tokens
+                    )
+                    if (
+                        len(latin_tokens) < 5
+                        or len(lowercase_tokens) < 3
+                        or alphabetic_length < 20
+                    ):
+                        continue
+                    return {
+                        "detector_family": "customer_language_alignment",
+                        "reason_code": "customer_language_mismatch",
+                        "trigger_category": "english_prose_in_chinese_clause",
+                        "clause_index": clause_index,
+                        "goal_ref": str(clause.get("goal_ref") or ""),
+                        "json_path": f"$.clauses[{clause_index}].text",
+                        "text_sha256": hashlib.sha256(
+                            text.encode("utf-8")
+                        ).hexdigest(),
+                        "rule_sha256": hashlib.sha256(
+                            b"customer-language-alignment/v2"
+                        ).hexdigest(),
+                    }
                 continue
             if len(re.findall(r"[A-Za-z]{2,}", text)) < 2:
                 continue

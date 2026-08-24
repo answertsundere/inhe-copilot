@@ -816,6 +816,15 @@ advisory `7/8`，supported attribution `4/4`，Partial Answer `2/2`。正式知�
 业务质量 Owner 回到既有 evidence supply/admission 与 goal coverage，真实准确率仍为
 null，生产运行和 Autonomous Send 均未切换。
 
+同一既有 Composer 的 Provider 展示投影现在把确定性的
+`customer_visible_language` 放在当前问题旁边。该字段不进入
+`ComposerDecisionInput/v1`、Evidence Admission、Claim Resolution 或 Delivery，
+也不增加模型调用。中文目标的输出校验会拒绝夹入的长英文句段，同时允许短品牌、
+型号、单位和标准缩写。隔离的 query-only 安装场景随后生成了全中文 accepted 候选，
+使用 1 条正式证据，正式知识内容和 DML 均无变化，`can_send=false` 且必须人工复核。
+本地独立 Unified Audit 仍因 schema invalid 仅作 advisory，因此这只是 Supervisor
+Assist 质量修复，不构成 Autonomous Send 资格。
+
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
 失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，
 仍会仅因 `high_risk` 再次进入 `tool_planner`，形成六节点无界循环。当前路由只在
