@@ -98,6 +98,17 @@ Unified Audit role: it accepted all five safe audit fixtures but also accepted
 the first unsupported test-status counterexample. Its strict-tool transport is
 working, but its Audit semantic qualification is not.
 
+DeepSeek V4 Pro later passed the same isolated Composer five-run contract. A
+query-only reconstructed Fixed-8 comparison kept the formal Agent on V4 Flash
+and changed only the explicit Composer override. V4 Pro removed an unsupported
+history-derived product fact, improved Unified Audit advisory from `5/8` to
+`7/8`, supported attribution from `3/4` to `4/4`, and Partial Answer from `1/2`
+to `2/2`. Pipeline p50/p95 increased from about `11.1s/14.0s` to
+`13.6s/18.7s`. The sole remaining Audit failure was invalid judge schema, not a
+candidate-content rejection. This establishes a stronger review-only Composer
+candidate, not production enablement or real-customer accuracy; selected
+evidence still covered only `3/8` scenarios and `can_send` remained false.
+
 Initial loopback candidates then used Ollama's native `/api/chat` JSON Schema
 format through the same role boundary. Gemma4 12B, Qwen3-VL 8B/32B, Qwen3 30B,
 and Qwen3.6 35B either failed structure or the old semantic matrix. Enabling

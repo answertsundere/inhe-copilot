@@ -325,9 +325,16 @@ The fresh query-only Fixed-8 completed `8/8`. Selected evidence remains eight
 items in `3/8` scenarios. Composer was `8/8`, Deterministic Final `8/8`, Unified
 Audit advisory `5/8`, formal-knowledge DML `0`, `can_send=0`, and human review
 `8/8`. Exact goal identity is `5/16` and semantic goal identity is `13/16`.
-The next code Owner is the deterministic-pass / Unified-Audit-fail boundary.
-This remains reconstructed development evidence with
-`real_customer_accuracy=null`, not an Autonomous Send qualification.
+The two apparent Audit failures were then separated: one V4 Flash reply really
+asserted an unadmitted history-derived product fact, while the other was an
+Audit schema failure. DeepSeek V4 Pro passed the existing Composer-only `5/5`
+gate. Keeping the formal Agent on V4 Flash and overriding only Composer raised
+Audit advisory to `7/8`, supported attribution to `4/4`, and Partial Answer to
+`2/2`; Pipeline p50/p95 increased to about `13.6s/18.7s`. Evidence coverage and
+goal recall did not improve. The next P1 Owner is therefore existing evidence
+supply/admission and goal coverage. V4 Pro remains a disabled, review-only
+candidate; `real_customer_accuracy=null` and this is not an Autonomous Send
+qualification.
 
 During the same checkpoint, synthetic after-sales smoke exposed a separate
 high-risk JST fallback loop. The existing knowledge-scope route now performs

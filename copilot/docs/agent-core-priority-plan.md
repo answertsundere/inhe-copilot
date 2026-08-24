@@ -1085,7 +1085,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; after-sales goals and direct aggregate dimensions verified; Unified Audit advisory is the next code Owner; Autonomous Send provider-blocked | The fresh 2026-08-24 query-only Fixed-8 completed `8/8`, with Composer `8/8`, Deterministic Final `8/8`, Unified Audit advisory pass `5/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Exact atomic-span recall is `5/16` and provenance-valid semantic goal recall is `13/16`. Selected evidence remains eight items across `3/8` scenarios. The after-sales turn preserves three unresolved goals, and the dimension-scope turn now supports only the reviewed product-overall `45×42×70 cm` fact while leaving packaging dimensions unresolved because no packaging evidence exists. No policy, refund, replacement, compensation, tool, or send authority is created. Synthetic safety is `5/5` and `22/22`, all review-only with `can_send=0`. This remains a reconstructed engineering baseline with supervisor review pending and `real_customer_accuracy=null` | Freeze the two deterministic-pass / Unified-Audit-fail cases and distinguish false rejection from real unsupported inference. Do not change Composer, Final, Safety, Delivery, or `can_send`; packaging remains a data-coverage gap, not a reason to infer dimensions |
+| P1 Gold Conversation Quality | active; role-scoped Composer candidate verified; formal evidence and goal coverage are next; Autonomous Send provider-blocked | The 2026-08-24 query-only comparison kept the formal Agent on DeepSeek V4 Flash and used separately qualified DeepSeek V4 Pro only for Composer. Fixed-8 execution, Composer, and Deterministic Final were `8/8`; Unified Audit advisory pass improved from `5/8` to `7/8`, supported attribution from `3/4` to `4/4`, and Partial Answer from `1/2` to `2/2`. The remaining Audit failure was `semantic_judge_schema_invalid`, not a reply-content rejection. Exact atomic-span recall stayed `5/16`, provenance-valid semantic goal recall stayed `13/16`, and selected evidence stayed eight items across `3/8` scenarios. Pipeline p50/p95 increased from about `11.1s/14.0s` to `13.6s/18.7s`. Formal-knowledge DML remained `0`, `can_send=0`, and all eight required human review. This is reconstructed engineering evidence with `real_customer_accuracy=null`; no production model switch occurred | Improve the existing formal-knowledge supply/admission and Turn Understanding coverage without adding reply owners or weakening gates. Keep the V4 Pro Composer override candidate-only until a real approved dataset and operational latency gate exist; treat Unified Audit schema failure as Autonomous Send infrastructure, not a reason to change customer facts |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
@@ -1121,6 +1121,19 @@ same-scope `overall_dimensions` facts before its existing width/height/depth
 aggregation fallback. The scope case now answers the reviewed product size and
 keeps absent packaging size unresolved. The next code Owner is Unified Audit
 advisory false rejection, not a new router or reply owner.
+
+The follow-up separated the two apparent Audit failures instead of loosening
+the judge. One V4 Flash reply asserted a customer-reported material and a
+performance property despite zero admitted evidence, zero selected evidence,
+and zero eligible policy options; Unified Audit correctly rejected it. The
+other reply was evidence-faithful and failed only because the Audit Provider
+returned an invalid schema. DeepSeek V4 Pro then passed the existing Composer
+role qualification `5/5`. With only that role overridden, a fresh Fixed-8
+reached Unified Audit advisory `7/8`, supported attribution `4/4`, and Partial
+Answer `2/2`, while preserving zero DML, zero send authority, and mandatory
+human review. The higher latency and unchanged `3/8` evidence coverage keep
+the override candidate-only. The next P1 Owner is existing evidence/goal
+coverage, not another Prompt rule, Graph node, or deterministic text matcher.
 
 Update this ledger only when a gate changes. Dated run details remain in
 evaluation outputs, not in this durable plan.

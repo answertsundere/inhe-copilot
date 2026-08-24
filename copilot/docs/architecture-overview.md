@@ -781,9 +781,20 @@ Claim Resolution 随后修复同作用域直接聚合尺寸事实的选择顺序
 时仍复用原多轴完整性检查。尺寸作用域案例现在只回答 reviewed product 的
 `45×42×70 cm`，包装尺寸因没有 packaging evidence 保持 unresolved，包装/部件隔离
 未放宽。修复后的 Fixed-8 仍为执行、Composer、Deterministic Final `8/8`，Unified
-Audit advisory `5/8`，正式知识 DML 和 `can_send` 为 0。下一代码 Owner 是两条
-Deterministic Final 通过但 Unified Audit 拒绝的案例；该结果仍是重建开发诊断，
-`real_customer_accuracy=null`。
+Audit advisory `5/8`，正式知识 DML 和 `can_send` 为 0。后续逐层投影证明其中一条
+并非 Audit 误拒：V4 Flash 在无 admitted evidence、无 selected evidence、无 eligible
+policy option 时把历史客户自述材质改写为已确认商品事实，Audit 正确拦截。另一条仅为
+`semantic_judge_schema_invalid`，属于 Autonomous Send 的 Audit Provider 阻断。
+
+现有 role-scoped Composer override 随后用于同输入对比，没有新增 Pipeline 或回复
+Owner。DeepSeek V4 Pro 先通过 Composer-only `5/5`，再在保持正式 Agent 为 V4 Flash
+的隔离 Fixed-8 中完成执行、Composer 和 Deterministic Final `8/8`，Unified Audit
+advisory `7/8`，supported attribution `4/4`，Partial Answer `2/2`。正式知识 DML、
+`can_send` 仍为 0，人工复核 `8/8`。Pipeline p50/p95 从约 `11.1s/14.0s` 增至
+`13.6s/18.7s`，exact/semantic goal recall 仍为 `5/16`、`13/16`，selected evidence
+仍只覆盖 `3/8`。因此 V4 Pro 仅是 Supervisor Assist 的候选 Composer 配置；当前
+业务质量 Owner 回到既有 evidence supply/admission 与 goal coverage，真实准确率仍为
+null，生产运行和 Autonomous Send 均未切换。
 
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
 失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，
