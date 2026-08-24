@@ -311,8 +311,13 @@ selected SKU value. The unchanged three-query rerun completed `3/3`, kept
 aggregate-dimension alias correction was verified by deterministic replay but
 not by a third model run. This is engineering evidence only and
 `real_customer_accuracy=null`. The accompanying versioned synthetic smoke ran
-five cases and stopped at `3/5` because both installation cases produced an
-empty review-only draft; the full 22-case run was not started.
+five cases and initially stopped at `3/5`. Trace replay established that the
+external isolated knowledge snapshot was empty, so Runtime Readiness blocked
+the two product-scoped installation cases before Understanding; this was an
+input/context gap, not an installation-reply failure. An SQLite online backup
+of the populated formal database was used only as an external query-only
+snapshot. With Agent code and fixture unchanged, smoke passed `5/5` and full
+passed `22/22`, with all cases requiring human review and `can_send=0`.
 
 The next deterministic funnel check first repaired the existing
 `evidence_filter` and `evidence_builder` single-primary-FactType loss, then found
