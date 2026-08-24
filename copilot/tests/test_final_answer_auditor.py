@@ -215,6 +215,94 @@ def test_final_answer_auditor_allows_damaged_aftersales_handoff():
     assert audited["suggested_reply"] == response["suggested_reply"]
 
 
+def test_final_auditor_uses_authoritative_dimension_goal_without_inferring_space_fit_requirement():
+    response = {
+        "suggested_reply": "亲，这款外包装尺寸为长81cm、宽26cm、高65.5cm。",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "dimensions",
+            "turn_understanding": {
+                "goal_understanding_status": "valid",
+                "customer_goals": [{
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "dimensions",
+                    "subject_scope": "packaging",
+                }],
+            },
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="搬家要预留位置，麻烦告诉我外包装长宽高。",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert "missing_required_topic:space_fit" not in audited["final_answer_audit"]["issues"]
+
+
+def test_final_auditor_recognizes_direct_dimension_evidence_without_topic_keyword():
+    response = {
+        "suggested_reply": "亲，纸箱宽：26cm；纸箱长：81cm；纸箱高：65.5cm。",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "dimensions",
+            "turn_understanding": {
+                "goal_understanding_status": "valid",
+                "customer_goals": [{
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "dimensions",
+                    "subject_scope": "packaging",
+                }],
+            },
+            "product_facts": [{
+                "source_type": "product_facts",
+                "evidence_fact_type": "dimensions",
+                "fact": "81cm",
+                "direct_answer_allowed": True,
+                "evidence_allowed_for_direct_answer": True,
+            }],
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="麻烦告诉我外包装长宽高。",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert "missing_required_topic:dimensions" not in audited["final_answer_audit"]["issues"]
+
+
+def test_final_auditor_keeps_space_fit_required_when_authoritative_goal_requests_it():
+    response = {
+        "suggested_reply": "亲，这款外包装尺寸为长81cm、宽26cm、高65.5cm。",
+        "requires_human_review": True,
+        "evidence_debug": {
+            "query_fact_type": "space_fit",
+            "turn_understanding": {
+                "goal_understanding_status": "valid",
+                "customer_goals": [{
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "space_fit",
+                    "subject_scope": "product",
+                }],
+            },
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="这个预留位置能放得下吗？",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "missing_required_topic:space_fit" in audited["final_answer_audit"]["issues"]
+
+
 def test_final_answer_auditor_dimension_fallback_does_not_promise_media_without_block():
     response = {
         "intent": "product_question",

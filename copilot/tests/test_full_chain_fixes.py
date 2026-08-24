@@ -414,6 +414,23 @@ class TestRAGWithData:
             # Must include SKU and i_id
             assert "YHXXXK01B01S01" in sku_scope, f"sku_scope missing sku_id: {sku_scope}"
 
+    def test_rag_keeps_facts_for_all_authoritative_requested_fact_types(self):
+        from app.agent.nodes.rag_retrieve import _prefer_matching_fact_type
+
+        results = [
+            {"chunk_id": "dimensions", "fact_type": "dimensions"},
+            {"chunk_id": "material", "fact_type": "material"},
+            {"chunk_id": "unrequested", "fact_type": "load_capacity"},
+        ]
+
+        selected = _prefer_matching_fact_type(
+            results,
+            "dimensions",
+            requested_fact_types=["dimensions", "material_composition"],
+        )
+
+        assert [item["chunk_id"] for item in selected] == ["dimensions", "material"]
+
 
 # ============================================================================
 # H. Route invariants for all strategies

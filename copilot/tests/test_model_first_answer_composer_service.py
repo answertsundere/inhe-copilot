@@ -1226,6 +1226,16 @@ def test_composer_allows_normal_business_terms_in_customer_text():
     assert client.call_count == 1
 
 
+def test_composer_rejects_english_clause_for_chinese_customer_goal():
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = "I cannot confirm child safety."
+
+    _, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == "composer_customer_language_mismatch"
+    assert client.call_count == 1
+
+
 def test_composer_internal_language_rule_spanning_clause_boundary_is_preserved():
     payload = _valid_payload()
     payload["clauses"][0]["text"] = "当前知"

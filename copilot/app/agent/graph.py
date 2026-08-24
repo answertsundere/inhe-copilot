@@ -194,8 +194,7 @@ def _route_after_tool_executor(state: dict) -> str:
 
 
 def _route_after_knowledge_scope(state: dict) -> str:
-    """knowledge_scope_router 之后：高风险/售后 → tool_planner，其他 → rag_retrieve"""
-    strategy = state.get("response_strategy", "")
+    """Run required tools once, then continue through the evidence path."""
     tool_already_attempted = any(
         (step.get("node") or "") in ("tool_executor", "tool_executor_node")
         for step in state.get("trace_steps", []) or []
@@ -207,8 +206,6 @@ def _route_after_knowledge_scope(state: dict) -> str:
     if required_tools and all(t in tool_results for t in required_tools):
         tool_already_attempted = True
     if state.get("required_tools") and not tool_already_attempted:
-        return "tool_planner"
-    if strategy in ("high_risk",):
         return "tool_planner"
     return "rag_retrieve"
 

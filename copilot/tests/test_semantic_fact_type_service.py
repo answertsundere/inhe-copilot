@@ -79,6 +79,48 @@ def _complete_llm_payload(**overrides):
     return payload
 
 
+def test_semantic_query_preserves_unique_dimension_subject_scope():
+    semantic_query = service._semantic_query_from_result(
+        {
+            "query_fact_type": "dimensions",
+            "customer_goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "subject_scope": "packaging",
+            }],
+        },
+        "请告诉我外包装长宽高",
+    )
+
+    assert semantic_query["subject_scope"] == "packaging"
+
+
+def test_semantic_query_does_not_guess_between_multiple_dimension_subject_scopes():
+    semantic_query = service._semantic_query_from_result(
+        {
+            "query_fact_type": "dimensions",
+            "customer_goals": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "dimensions",
+                    "subject_scope": "product",
+                },
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "dimensions",
+                    "subject_scope": "packaging",
+                },
+            ],
+        },
+        "商品和外包装分别多大",
+    )
+
+    assert "subject_scope" not in semantic_query
+
+
 def test_llm_first_fact_type_classification(monkeypatch):
     message = "宝宝扶着它会不会翻？能不能保证不倒？"
     monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
@@ -384,6 +426,17 @@ def test_turn_understanding_prompt_maps_broad_assessment_to_overview_contract():
     assert "broad assessment" in prompt
     assert "product_overview" in prompt
     assert "does not authorize a quality" in prompt
+
+
+def test_turn_understanding_schema_places_dimension_scope_boundary_on_field():
+    goal_schema = service.MINIMAL_PROVIDER_OUTPUT_SCHEMA["properties"]["goals"][
+        "items"
+    ]
+    subject_scope_schema = goal_schema["properties"]["subject_scope"]
+
+    description = str(subject_scope_schema.get("description") or "")
+    assert "dimension request" in description
+    assert "non-dimension goal must use an empty string" in description
 
 
 def test_turn_understanding_candidates_expose_one_canonical_material_choice():

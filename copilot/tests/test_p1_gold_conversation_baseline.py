@@ -216,6 +216,12 @@ def test_goal_recall_diagnostic_separates_presence_identity_and_dimension_scope(
             "denominator": 2,
             "rate": 1.0,
         },
+        "semantic_customer_goal_recall": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1.0,
+            "unexpected_goal_count": 0,
+        },
         "explicit_request_recall": {
             "numerator": 3,
             "denominator": 3,
@@ -310,6 +316,94 @@ def test_goal_recall_uses_trusted_policy_identity_for_unmapped_goal():
         "numerator": 1,
         "denominator": 1,
         "rate": 1.0,
+    }
+
+
+def test_goal_recall_separates_exact_span_from_semantic_identity_overlap():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [{
+                "understanding_expectation": {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "installation",
+                    "attribute_key": "",
+                    "semantic_key": "",
+                    "subject_scope": "",
+                    "source_span_start": 4,
+                    "source_span_end": 10,
+                    "source_span_sha256": "a" * 64,
+                },
+            }],
+        },
+        {
+            "status": "valid",
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "installation",
+                "attribute_key": "",
+                "subject_scope": "",
+                "semantic_key": "",
+                "source_span_start": 0,
+                "source_span_end": 11,
+                "source_span_sha256": "b" * 64,
+            }],
+        },
+    )
+
+    assert diagnostic["numerator"] == 0
+    assert diagnostic["customer_goal_identity_recall"] == {
+        "numerator": 0,
+        "denominator": 1,
+        "rate": 0.0,
+    }
+    assert diagnostic["semantic_customer_goal_recall"] == {
+        "numerator": 1,
+        "denominator": 1,
+        "rate": 1.0,
+        "unexpected_goal_count": 0,
+    }
+
+
+def test_semantic_goal_recall_rejects_overlapping_wrong_identity():
+    diagnostic = p1_baseline._goal_recall_diagnostic(
+        {
+            "expected_claims": [{
+                "understanding_expectation": {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "installation",
+                    "attribute_key": "",
+                    "semantic_key": "",
+                    "subject_scope": "",
+                    "source_span_start": 4,
+                    "source_span_end": 10,
+                    "source_span_sha256": "a" * 64,
+                },
+            }],
+        },
+        {
+            "status": "valid",
+            "goals": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "material_composition",
+                "attribute_key": "material_composition",
+                "subject_scope": "",
+                "semantic_key": "",
+                "source_span_start": 0,
+                "source_span_end": 11,
+                "source_span_sha256": "b" * 64,
+            }],
+        },
+    )
+
+    assert diagnostic["semantic_customer_goal_recall"] == {
+        "numerator": 0,
+        "denominator": 1,
+        "rate": 0.0,
+        "unexpected_goal_count": 1,
     }
 
 
@@ -1486,6 +1580,11 @@ def test_summary_aggregates_atomic_goal_identity_and_scope_metrics():
                         "numerator": 1,
                         "denominator": 2,
                     },
+                    "semantic_customer_goal_recall": {
+                        "numerator": 2,
+                        "denominator": 2,
+                        "unexpected_goal_count": 1,
+                    },
                     "unscored_expected_claim_count": 1,
                 }
             }
@@ -1524,6 +1623,12 @@ def test_summary_aggregates_atomic_goal_identity_and_scope_metrics():
         "numerator": 1,
         "denominator": 2,
         "rate": 0.5,
+    }
+    assert metrics["semantic_customer_goal_recall"] == {
+        "numerator": 2,
+        "denominator": 2,
+        "rate": 1.0,
+        "unexpected_goal_count": 1,
     }
     assert metrics["unscored_expected_claim_count"] == 1
 

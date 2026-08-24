@@ -84,7 +84,7 @@ _DATASET_CONTRACTS = {
             "50d351316e87b0cce4d31ad5bf34a7eabf53cc1aca6c0d5355f23c366d7ff012"
         ),
         manifest_file_sha256=(
-            "4fc444b8ff79630c7b50cb77002b035b3ddcd54341c5d1204e90942d21db005f"
+            "489f0b38acb84643ca9489107acf9707a1408f8681c52380aa01f2a8c89aee51"
         ),
         source_class="conversation_reconstructed",
     ),
@@ -1576,6 +1576,13 @@ def _goal_identity_matches(
 ) -> bool:
     if not _goal_source_matches(expected, observed):
         return False
+    return _goal_contract_identity_matches(expected, observed)
+
+
+def _goal_contract_identity_matches(
+    expected: dict[str, Any],
+    observed: dict[str, Any],
+) -> bool:
     if expected["claim_type_status"] != observed["claim_type_status"]:
         return False
     if expected["claim_type_status"] == "canonical":
@@ -1589,6 +1596,31 @@ def _goal_identity_matches(
     if expected["policy_intent_ref"]:
         return expected["policy_intent_ref"] == observed["policy_intent_ref"]
     return expected["semantic_key"] == observed["semantic_key"]
+
+
+def _goal_semantic_identity_matches(
+    expected: dict[str, Any],
+    observed: dict[str, Any],
+) -> bool:
+    expected_start = expected.get("source_span_start")
+    expected_end = expected.get("source_span_end")
+    observed_start = observed.get("source_span_start")
+    observed_end = observed.get("source_span_end")
+    return (
+        expected["goal_kind"] == observed["goal_kind"]
+        and all(
+            isinstance(value, int) and not isinstance(value, bool)
+            for value in (
+                expected_start,
+                expected_end,
+                observed_start,
+                observed_end,
+            )
+        )
+        and max(expected_start, observed_start)
+        < min(expected_end, observed_end)
+        and _goal_contract_identity_matches(expected, observed)
+    )
 
 
 def _goal_recall_diagnostic(
@@ -1631,6 +1663,10 @@ def _goal_recall_diagnostic(
 
         presence_count = count_matches(expected_customer_goals, _goal_source_matches)
         identity_count = count_matches(expected_customer_goals, _goal_identity_matches)
+        semantic_identity_count = count_matches(
+            expected_customer_goals,
+            _goal_semantic_identity_matches,
+        )
         explicit_count = count_matches(expected_explicit_requests, _goal_source_matches)
         scoped_dimensions = [
             item
@@ -1665,6 +1701,21 @@ def _goal_recall_diagnostic(
                 "rate": (
                     identity_count / len(expected_customer_goals)
                     if expected_customer_goals else None
+                ),
+            },
+            "semantic_customer_goal_recall": {
+                "numerator": semantic_identity_count,
+                "denominator": len(expected_customer_goals),
+                "rate": (
+                    semantic_identity_count / len(expected_customer_goals)
+                    if expected_customer_goals else None
+                ),
+                "unexpected_goal_count": max(
+                    0,
+                    sum(
+                        item["goal_kind"] == "customer_goal"
+                        for item in observed_goals
+                    ) - semantic_identity_count,
                 ),
             },
             "explicit_request_recall": {
@@ -2161,6 +2212,7 @@ _RECONSTRUCTED_SUBJECT_SCOPES = {
     "product",
 }
 _RECONSTRUCTED_SEED_TIMESTAMP = "2000-01-01T00:00:00+00:00"
+_RECONSTRUCTED_DOMAIN_POLICY_ID = "maternal_child_home"
 
 
 def _reconstructed_snapshot_seed_projection(
@@ -2202,6 +2254,7 @@ def _reconstructed_snapshot_seed_projection(
         products.append({
             "i_id": i_id,
             "product_name": product_name,
+            "domain_policy_id": _RECONSTRUCTED_DOMAIN_POLICY_ID,
         })
 
         for candidate in _dicts(scenario.get("evidence_candidates")):
@@ -2322,17 +2375,18 @@ def _seed_reconstructed_snapshot(
                         i_id, product_name, brand, category_l1,
                         category_l2, category_l3, sku_list_json,
                         specs_json, logistics_json, warranty_json,
-                        completeness_score, missing_fields_json, status,
-                        version, created_by, updated_by, created_at,
-                        updated_at, import_batch_id
+                        domain_policy_id, completeness_score,
+                        missing_fields_json, status, version, created_by,
+                        updated_by, created_at, updated_at, import_batch_id
                     ) VALUES (?, ?, '', 'evaluation', '', '', '[]',
-                              '{}', '{}', '{}', 0, '[]', 'published',
-                              1, 'p1_eval_snapshot', 'p1_eval_snapshot',
-                              ?, ?, ?)
+                              '{}', '{}', '{}', ?, 0, '[]',
+                              'published', 1, 'p1_eval_snapshot',
+                              'p1_eval_snapshot', ?, ?, ?)
                     """,
                     (
                         product["i_id"],
                         product["product_name"],
+                        product["domain_policy_id"],
                         _RECONSTRUCTED_SEED_TIMESTAMP,
                         _RECONSTRUCTED_SEED_TIMESTAMP,
                         dataset_sha256,
@@ -2927,6 +2981,23 @@ def _summary_payload(
             "numerator": numerator,
             "denominator": denominator,
             "rate": numerator / denominator if denominator else None,
+        }
+    semantic_rows = [
+        _dict(item.get("semantic_customer_goal_recall"))
+        for item in goal_diagnostics
+        if isinstance(item.get("semantic_customer_goal_recall"), dict)
+    ]
+    if semantic_rows:
+        numerator = sum(int(item.get("numerator") or 0) for item in semantic_rows)
+        denominator = sum(int(item.get("denominator") or 0) for item in semantic_rows)
+        metrics["semantic_customer_goal_recall"] = {
+            "numerator": numerator,
+            "denominator": denominator,
+            "rate": numerator / denominator if denominator else None,
+            "unexpected_goal_count": sum(
+                int(item.get("unexpected_goal_count") or 0)
+                for item in semantic_rows
+            ),
         }
     if goal_contract == "atomic_goal_identity_and_effective_scope/v4":
         metrics["unscored_expected_claim_count"] = sum(

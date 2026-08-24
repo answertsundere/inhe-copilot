@@ -61,6 +61,13 @@ _PRODUCT_OVERALL_DIMENSION_ATTRIBUTES = frozenset({
     "overall_dimensions",
 })
 _PRODUCT_OVERALL_SUBJECT_SCOPES = frozenset({"product", "product_overall"})
+_DIMENSION_SPATIAL_AXES = frozenset({
+    "width",
+    "height",
+    "depth",
+    "length",
+    "diameter",
+})
 _RESTRICTED_REQUEST_INTENT_REASONS = {
     "absolute_guarantee": "absolute_guarantee_prohibited",
     "test_standard_request": "direct_test_evidence_required",
@@ -145,7 +152,9 @@ def _original_attribute_key(item: dict[str, Any]) -> str:
 
 
 def _attribute_key(item: dict[str, Any]) -> str:
-    value = _original_attribute_key(item).lower()
+    value = sanitize_text(
+        item.get("canonical_attribute_key") or _original_attribute_key(item)
+    ).lower()
     normalized_attribute = canonical_dimension_attribute(value) if value else ""
     claim_type = sanitize_text(item.get("claim_type") or item.get("fact_type")).lower()
     return canonical_attribute_slot(
@@ -200,6 +209,44 @@ def _matches_subject_scope(
     return subject_scope == required_scope
 
 
+def _select_aggregate_dimensions(
+    candidates: list[dict[str, Any]],
+    *,
+    required_subject_scope: str | None,
+) -> tuple[list[dict[str, Any]], str]:
+    """Select a complete, same-subject physical dimension set.
+
+    A broad dimensions request may be supported by separately stored axis
+    facts, but never by a partial set or measurements from mixed subjects.
+    """
+    scoped = [
+        fact
+        for fact in candidates
+        if _matches_subject_scope(fact, required_subject_scope)
+    ]
+    if required_subject_scope is not None and not scoped:
+        if not required_subject_scope:
+            return [], "subject_scope_missing"
+        if any(not sanitize_text(fact.get("subject_scope")) for fact in candidates):
+            return [], "subject_scope_evidence_missing"
+        return [], "subject_scope_mismatch"
+
+    axes = {
+        _attribute_key(fact)
+        for fact in scoped
+        if _attribute_key(fact) in _DIMENSION_SPATIAL_AXES
+    }
+    is_rectilinear_set = {"width", "height"}.issubset(axes) and bool(
+        axes.intersection({"length", "depth"})
+    )
+    is_round_set = {"diameter", "height"}.issubset(axes)
+    if not (is_rectilinear_set or is_round_set):
+        return [], "overall_dimensions_incomplete"
+    return [
+        fact for fact in scoped if _attribute_key(fact) in _DIMENSION_SPATIAL_AXES
+    ], ""
+
+
 def _select_for_attribute(
     requested_attribute: str,
     candidates: list[dict[str, Any]],
@@ -207,6 +254,11 @@ def _select_for_attribute(
     required_subject_scope: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Select evidence by declared attribute without inferring from free text."""
+    if requested_attribute == "overall_dimensions":
+        return _select_aggregate_dimensions(
+            candidates,
+            required_subject_scope=required_subject_scope,
+        )
     if requested_attribute:
         matching = [fact for fact in candidates if _attribute_key(fact) == requested_attribute]
         if matching:

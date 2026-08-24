@@ -95,8 +95,18 @@ def _merge_ranked_results(primary: list[dict], supplemental: list[dict], limit: 
     return merged[:limit]
 
 
-def _prefer_matching_fact_type(results: list[dict], query_fact_type: str) -> list[dict]:
-    if not query_fact_type or not results:
+def _prefer_matching_fact_type(
+    results: list[dict],
+    query_fact_type: str,
+    *,
+    requested_fact_types: list[str] | None = None,
+) -> list[dict]:
+    requested = list(dict.fromkeys(
+        str(item or "").strip()
+        for item in (requested_fact_types or [query_fact_type])
+        if str(item or "").strip()
+    ))
+    if not requested or not results:
         return results
     try:
         from app.services.fact_type_service import fact_type_matches
@@ -104,7 +114,13 @@ def _prefer_matching_fact_type(results: list[dict], query_fact_type: str) -> lis
         return results
     matched = [
         item for item in results
-        if fact_type_matches(query_fact_type, str(item.get("fact_type") or item.get("evidence_fact_type") or ""))
+        if any(
+            fact_type_matches(
+                requested_fact_type,
+                str(item.get("fact_type") or item.get("evidence_fact_type") or ""),
+            )
+            for requested_fact_type in requested
+        )
     ]
     return matched if matched else results
 
@@ -238,7 +254,14 @@ def rag_retrieve(state: dict) -> dict:
 
     product_context_pack = {"facts": [], "stats": {}}
     try:
-        from app.services.product_context_pack_service import build_product_context_pack
+        from app.services.product_context_pack_service import (
+            authoritative_requested_fact_types,
+            build_product_context_pack,
+        )
+        requested_fact_types = authoritative_requested_fact_types(
+            state,
+            query_fact_type,
+        )
         product_context_pack = build_product_context_pack(
             state,
             query=locals().get("search_query", msg),
@@ -247,7 +270,11 @@ def rag_retrieve(state: dict) -> dict:
             top_k=8,
         )
         results = _merge_ranked_results(results, product_context_pack.get("facts", []), limit=8)
-        results = _prefer_matching_fact_type(results, query_fact_type)
+        results = _prefer_matching_fact_type(
+            results,
+            query_fact_type,
+            requested_fact_types=requested_fact_types,
+        )
     except Exception as exc:
         logger.warning("Product context pack failed: %s", exc)
 
@@ -266,6 +293,10 @@ def rag_retrieve(state: dict) -> dict:
         "product_name": product_name,
         "sku_name": sku_name,
         "query_fact_type": query_fact_type,
+        "authoritative_requested_fact_types": locals().get(
+            "requested_fact_types",
+            [query_fact_type] if query_fact_type else [],
+        ),
         "product_context_pack_stats": product_context_pack.get("stats", {}),
         "product_card_evidence": product_context_pack.get("evidence_pack", {}),
         "product_first_evidence_pack": product_context_pack.get("product_first_evidence_pack") or product_context_pack.get("evidence_pack", {}),

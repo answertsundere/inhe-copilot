@@ -32,6 +32,54 @@ from app.integrations.product_data_hub.read_client import (
 )
 
 
+def authoritative_requested_fact_types(
+    state: dict[str, Any] | None,
+    primary_fact_type: str = "",
+) -> list[str]:
+    """Return fact types owned by a valid Turn Understanding result.
+
+    ``secondary_fact_types`` is only a retrieval hint and must not widen direct
+    evidence eligibility. The classifier-owned requested-claim projection is
+    the narrow authority for multi-goal evidence collection.
+    """
+    result: list[str] = []
+
+    def append(value: Any) -> None:
+        normalized = str(value or "").strip()
+        if normalized and normalized not in result:
+            result.append(normalized)
+
+    append(primary_fact_type)
+    state = state if isinstance(state, dict) else {}
+    understanding = state.get("turn_understanding")
+    if not isinstance(understanding, dict):
+        return result
+    if (
+        understanding.get("schema_version") != "turn-understanding/v2"
+        or understanding.get("owner") != "turn_understanding_owner"
+        or understanding.get("source_stage") != "query_fact_type_classifier"
+        or str(understanding.get("goal_understanding_status") or "").strip().lower()
+        != "valid"
+    ):
+        return result
+
+    requested_claims = understanding.get("requested_claims")
+    if not isinstance(requested_claims, list):
+        return result
+    for claim in requested_claims:
+        if not isinstance(claim, dict):
+            continue
+        if str(claim.get("goal_kind") or "").strip().lower() != "customer_goal":
+            continue
+        claim_type_status = str(
+            claim.get("claim_type_status") or ""
+        ).strip().lower()
+        if claim_type_status == "unmapped":
+            continue
+        append(claim.get("claim_type"))
+    return result
+
+
 def build_product_context_pack(
     state: dict,
     *,
@@ -86,11 +134,16 @@ def build_product_context_pack(
 
     allowed = set(allowed_source_types or [])
     semantic_query = state.get("semantic_query") if isinstance(state.get("semantic_query"), dict) else {}
+    requested_fact_types = authoritative_requested_fact_types(
+        state,
+        query_fact_type,
+    )
     hub_facts = _hub_bundle_facts_for_query(
         catalog_reference,
         identity=identity,
         query=query,
         query_fact_type=query_fact_type,
+        requested_fact_types=requested_fact_types,
         semantic_query=semantic_query,
         enabled=hub_multimodal_enabled,
         align_evidence_to_query=align_evidence_to_query,
@@ -194,19 +247,15 @@ def build_product_context_pack(
                 and _has_odor_signal(f"{getattr(entry, 'title', '')} {chunk.chunk_text}")
             ):
                 evidence_fact_type = "odor"
-            fact_score, direct_allowed, skip = _fact_score(
+            fact_score, direct_allowed, skip, semantic_alignment = _fact_score(
                 query_fact_type,
                 evidence_fact_type,
                 align_evidence_to_query,
                 semantic_query,
+                requested_fact_types=requested_fact_types,
             )
             if skip:
                 continue
-            semantic_alignment = align_evidence_to_query(
-                query_fact_type=query_fact_type,
-                evidence_fact_type=evidence_fact_type,
-                semantic_query=semantic_query,
-            )
             score = (
                 10.0
                 + _scope_score(identity, entry.get_product_scope(), entry.get_sku_scope(), getattr(entry, "title", ""))
@@ -276,19 +325,15 @@ def build_product_context_pack(
                     and _has_odor_signal(f"{qa.question} {qa.answer}")
                 ):
                     evidence_fact_type = "odor"
-                fact_score, direct_allowed, skip = _fact_score(
+                fact_score, direct_allowed, skip, semantic_alignment = _fact_score(
                     query_fact_type,
                     evidence_fact_type,
                     align_evidence_to_query,
                     semantic_query,
+                    requested_fact_types=requested_fact_types,
                 )
                 if skip:
                     continue
-                semantic_alignment = align_evidence_to_query(
-                    query_fact_type=query_fact_type,
-                    evidence_fact_type=evidence_fact_type,
-                    semantic_query=semantic_query,
-                )
                 text = _clean_qa_answer_text(qa.answer)
                 score = (
                     8.0
@@ -369,6 +414,7 @@ def build_product_context_pack(
                 "provisional_knowledge_count": len(provisional_evidence),
                 "has_structured_profile": bool(structured_profile),
                 "query_fact_type": query_fact_type,
+                "authoritative_requested_fact_types": requested_fact_types,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
                 "knowledge_mode": evidence_pack.get("knowledge_mode", "verified_only"),
                 "catalog_reference_status": catalog_reference.get("status", ""),
@@ -437,8 +483,37 @@ _HUB_FACT_TYPE_ALIASES = {
     # includes. It must not be conflated with a separate-purchase accessory
     # policy, which has its own fact type and evidence contract.
     "parts": "included_items",
+    # The exact SKU `spec` field identifies the selected configuration.  It
+    # may answer that configuration question, but not accessory availability.
+    "spec": "included_items",
     "size": "dimensions",
 }
+
+
+def _hub_evidence_fact_type(raw: dict[str, Any]) -> str:
+    """Normalize Product Hub's generic weight rows without conflating scopes.
+
+    Product Hub uses the broad ``weight`` fact type for both product net weight
+    and carton gross weight.  Only an explicitly named packing/gross field may
+    satisfy the established ``gross_weight`` contract; product net weight stays
+    unclassified for this request rather than being presented as carton weight.
+    """
+    raw_fact_type = str(raw.get("fact_type") or "").strip().lower()
+    if raw_fact_type != "weight":
+        return _HUB_FACT_TYPE_ALIASES.get(raw_fact_type, raw_fact_type)
+
+    attribute_key = str(raw.get("attribute_key") or "").strip().lower()
+    if attribute_key in {
+        "gross_weight",
+        "shipping_weight",
+        "packaging_weight",
+        "carton_weight",
+        "毛重",
+        "包装重量",
+        "外箱重量",
+    }:
+        return "gross_weight"
+    return raw_fact_type
 
 _HUB_DIMENSION_SUBJECT_SCOPES = {
     "product": "product",
@@ -455,6 +530,14 @@ _HUB_DIMENSION_SUBJECT_SCOPES = {
 }
 
 _HUB_DIMENSION_SCOPE_VALUES = frozenset(_HUB_DIMENSION_SUBJECT_SCOPES.values())
+_HUB_DIMENSION_AXIS_SUFFIXES = (
+    ("width", ("width", "宽度", "宽")),
+    ("height", ("height", "高度", "高")),
+    ("depth", ("depth", "深度", "深")),
+    ("length", ("length", "长度", "长")),
+    ("diameter", ("diameter", "直径")),
+    ("thickness", ("thickness", "厚度", "厚")),
+)
 
 _HUB_BLOCKED_DIRECT_FACT_TYPES = {
     "age",
@@ -511,12 +594,24 @@ def _requested_hub_dimension_scopes(
     return set()
 
 
+def _hub_canonical_dimension_attribute(raw: dict[str, Any]) -> str:
+    """Normalize a Product Hub dimension column without reading customer text."""
+    label = str(raw.get("attribute_key") or "").strip().casefold()
+    if not label:
+        return ""
+    for attribute, suffixes in _HUB_DIMENSION_AXIS_SUFFIXES:
+        if any(label == suffix or label.endswith(suffix) for suffix in suffixes):
+            return attribute
+    return ""
+
+
 def _hub_bundle_facts_for_query(
     bundle: dict[str, Any],
     *,
     identity: dict[str, str],
     query: str,
     query_fact_type: str,
+    requested_fact_types: list[str],
     semantic_query: dict[str, Any],
     enabled: bool,
     align_evidence_to_query,
@@ -531,15 +626,15 @@ def _hub_bundle_facts_for_query(
     for raw in bundle.get("facts") or []:
         if not isinstance(raw, dict):
             continue
-        raw_fact_type = str(raw.get("fact_type") or "").strip().lower()
-        evidence_fact_type = _HUB_FACT_TYPE_ALIASES.get(raw_fact_type, raw_fact_type)
+        evidence_fact_type = _hub_evidence_fact_type(raw)
         if not evidence_fact_type or evidence_fact_type in _HUB_BLOCKED_DIRECT_FACT_TYPES:
             continue
-        fact_score, direct_allowed, skip = _fact_score(
+        fact_score, direct_allowed, skip, semantic_alignment = _fact_score(
             query_fact_type,
             evidence_fact_type,
             align_evidence_to_query,
             semantic_query,
+            requested_fact_types=requested_fact_types,
         )
         if skip:
             continue
@@ -551,16 +646,16 @@ def _hub_bundle_facts_for_query(
         uid = str(raw.get("fact_uid") or "").strip()
         if not uid:
             continue
-        semantic_alignment = align_evidence_to_query(
-            query_fact_type=query_fact_type,
-            evidence_fact_type=evidence_fact_type,
-            semantic_query=semantic_query,
-        )
         material_provenance = (
             "product_data_hub_confirmed" if evidence_fact_type == "material" else ""
         )
         subject_scope = (
             _HUB_DIMENSION_SUBJECT_SCOPES.get(str(raw.get("scope") or "").strip().lower(), "")
+            if evidence_fact_type == "dimensions"
+            else ""
+        )
+        canonical_attribute_key = (
+            _hub_canonical_dimension_attribute(raw)
             if evidence_fact_type == "dimensions"
             else ""
         )
@@ -606,6 +701,7 @@ def _hub_bundle_facts_for_query(
             "fact_type": evidence_fact_type,
             "evidence_fact_type": evidence_fact_type,
             "attribute_key": str(raw.get("attribute_key") or ""),
+            "canonical_attribute_key": canonical_attribute_key,
             "fact_value": value,
             "fact_unit": unit,
             "fact_scope": str(raw.get("scope") or ""),
@@ -1153,6 +1249,8 @@ def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
         "block_reasons": item.get("block_reasons", []),
         "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
         "attribute_key": item.get("attribute_key") or item.get("field_name") or item.get("fact_key") or "",
+        "canonical_attribute_key": item.get("canonical_attribute_key") or "",
+        "subject_scope": item.get("subject_scope") or "",
         "score": item.get("rerank_score", item.get("score", 0)),
         "direct_answer_allowed": item.get("evidence_allowed_for_direct_answer") is not False,
         "customer_text": item.get("customer_text") or text,
@@ -2295,16 +2393,43 @@ def _fact_score(
     evidence_fact_type: str,
     align_evidence_to_query,
     semantic_query: dict[str, Any] | None = None,
-) -> tuple[float, bool, bool]:
-    alignment = align_evidence_to_query(
-        query_fact_type=query_fact_type,
-        evidence_fact_type=evidence_fact_type,
-        semantic_query=semantic_query,
+    *,
+    requested_fact_types: list[str] | None = None,
+) -> tuple[float, bool, bool, dict[str, Any]]:
+    alignments = [
+        align_evidence_to_query(
+            query_fact_type=requested_fact_type,
+            evidence_fact_type=evidence_fact_type,
+            semantic_query=(
+                semantic_query
+                if requested_fact_type == query_fact_type
+                else {}
+            ),
+        )
+        for requested_fact_type in (
+            requested_fact_types or [query_fact_type]
+        )
+        if requested_fact_type
+    ]
+    if not alignments:
+        alignments = [align_evidence_to_query(
+            query_fact_type=query_fact_type,
+            evidence_fact_type=evidence_fact_type,
+            semantic_query=semantic_query,
+        )]
+    alignment = next(
+        (
+            item
+            for item in alignments
+            if item.get("direct_answer_allowed") is True
+        ),
+        alignments[0],
     )
     return (
         float(alignment.get("score_delta", 0.0)),
         bool(alignment.get("direct_answer_allowed")),
-        not bool(alignment.get("allowed")),
+        not any(bool(item.get("allowed")) for item in alignments),
+        alignment,
     )
 
 

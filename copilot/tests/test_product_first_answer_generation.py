@@ -150,6 +150,30 @@ def test_generate_reply_uses_gross_weight_without_dimension_or_load_capacity():
     assert "20kg" not in result["suggested_reply"]
 
 
+def test_real_product_facts_uses_product_pack_when_formal_convergence_is_disabled(monkeypatch):
+    from app.agent.nodes.generate_reply import _real_product_facts
+
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "false")
+    state = _state_with_pack("gross_weight", "This product gross weight is 7.5kg.")
+    state["selected_evidence"] = []
+
+    facts = _real_product_facts(state)
+
+    assert [item["chunk_text"] for item in facts] == [
+        "This product gross weight is 7.5kg."
+    ]
+
+
+def test_real_product_facts_uses_empty_canonical_selection_when_formal_convergence_is_enabled(monkeypatch):
+    from app.agent.nodes.generate_reply import _real_product_facts
+
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    state = _state_with_pack("gross_weight", "This product gross weight is 7.5kg.")
+    state["selected_evidence"] = []
+
+    assert _real_product_facts(state) == []
+
+
 def test_generate_reply_uses_accessory_availability_not_installation():
     from app.agent.nodes.generate_reply import generate_reply
 

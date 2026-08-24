@@ -276,6 +276,37 @@ replies or delivery. This remains
 engineering evidence only: `real_customer_accuracy=null`,
 `optimization_unverified=true`, and `original_fixed8_restored=false`.
 
+The 2026-08-24 isolated follow-up is the current reconstructed Fixed-8 quality
+checkpoint. It completed `8/8` with formal-knowledge DML `0`, `can_send=0`, and
+mandatory human review. The evaluator now separates exact source-span identity
+(`4/16`) from provenance-valid semantic goal identity (`12/16`). Offline expert
+review found only one gold-quality reply, average business helpfulness
+`0.75/2`, and selected formal evidence in `2/8` scenarios. The active P1 Owner
+is therefore existing formal-knowledge supply/admission coverage; this result
+does not establish real accuracy or Autonomous Send readiness.
+
+The following formal-knowledge coverage repair located the first material-case
+breakpoint in the existing Product Context Pack/RAG single-primary-FactType
+filter. Valid owner-stamped multi-goal requested claims now retain their own
+direct facts, while secondary hints, unmapped goals, and untrusted injections
+remain ineligible. Query-only snapshot verification supports material and keeps
+safety/moisture unresolved. The required post-repair rerun has now completed
+`8/8`: Unified Audit advisory pass improved
+to `8/8`, but selected evidence remained six items across `2/8` scenarios and
+the material claim remained unresolved. The query-only snapshot and a direct
+Pack probe both return reviewed PP for the exact identity, narrowing the next
+breakpoint to the formal API Pack/RAG -> Admission -> canonical selected-evidence
+execution boundary. Offline review scored factual correctness `1.125/2`, goal
+completion `1.0/2`, naturalness `1.75/2`, and business helpfulness `0.75/2`.
+Knowledge DML and `can_send` remained `0`; `real_customer_accuracy=null`.
+
+During the same checkpoint, synthetic after-sales smoke exposed a separate
+high-risk JST fallback loop. The existing knowledge-scope route now performs
+required tool planning once and then proceeds through evidence and review. The
+unchanged versioned safety fixture passes `5/5` smoke and `22/22` full, with
+`can_send=0` and mandatory review for all 22 scenarios. This is a control-flow
+and safety-regression result, not a real-customer accuracy claim.
+
 The later fixed-40 source-faithfulness follow-up froze the first unsupported
 negative-absence reply and located the earliest malformed output at the
 existing Composer. Unresolved goals now carry an evidence-owned statement

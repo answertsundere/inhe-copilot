@@ -152,6 +152,11 @@ MINIMAL_PROVIDER_OUTPUT_SCHEMA = {
                     "subject_scope": {
                         "type": "string",
                         "enum": ["", *sorted(DIMENSION_SUBJECT_SCOPES)],
+                        "description": (
+                            "Use only when a dimension request explicitly "
+                            "identifies the measured object. Every "
+                            "non-dimension goal must use an empty string."
+                        ),
                     },
                     "semantic_key": {"type": "string"},
                     "policy_intent_ref": {"type": "string"},
@@ -3052,7 +3057,7 @@ def goal_understanding_eligibility_status(
 
 def _semantic_query_from_result(result: dict[str, Any], message: str) -> dict[str, Any]:
     fact_type = str(result.get("query_fact_type") or "")
-    return {
+    semantic_query = {
         "current_query": message,
         "primary_fact_type": fact_type,
         "secondary_fact_types": result.get("secondary_fact_types") or [],
@@ -3062,6 +3067,19 @@ def _semantic_query_from_result(result: dict[str, Any], message: str) -> dict[st
         "confidence": float(result.get("confidence") or 0),
         "reason": result.get("reason", ""),
     }
+    if is_dimension_claim_type(fact_type):
+        subject_scopes = {
+            canonical_dimension_subject_scope(goal.get("subject_scope", ""))
+            for goal in result.get("customer_goals") or []
+            if isinstance(goal, dict)
+            and goal.get("goal_kind") == "customer_goal"
+            and goal.get("claim_type_status") == "canonical"
+            and goal.get("claim_type") == fact_type
+        }
+        subject_scopes.discard("")
+        if len(subject_scopes) == 1:
+            semantic_query["subject_scope"] = subject_scopes.pop()
+    return semantic_query
 
 
 def _compact_hint(result: dict[str, Any]) -> dict[str, Any]:

@@ -8,6 +8,7 @@ generate_reply 节点 - 非物流场景回复生成。
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -652,10 +653,15 @@ def _real_product_facts(state: dict) -> list[dict]:
     facts = []
     query_fact_type = state.get("query_fact_type", "")
     query = state.get("normalized_message", state.get("customer_message", "")) or ""
-    if "selected_evidence" in state:
+    formal_convergence_enabled = str(
+        os.getenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "")
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    selected_evidence = list(state.get("selected_evidence") or [])
+    if formal_convergence_enabled or selected_evidence:
         # Formal convergence is opt-in.  Once enabled, only the canonical
-        # selection may supply customer-facing product facts.
-        candidate_items = list(state.get("selected_evidence") or [])
+        # selection may supply customer-facing product facts.  A non-empty
+        # selection remains authoritative for legacy callers too.
+        candidate_items = selected_evidence
     else:
         candidate_items = (
             _product_first_structured_facts(state)

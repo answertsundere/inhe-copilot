@@ -40,7 +40,17 @@ def product_context_db(monkeypatch):
     return session_factory
 
 
-def _add_chunked_entry(db, *, title, content, source_type, fact_type, product_scope, sku_scope):
+def _add_chunked_entry(
+    db,
+    *,
+    title,
+    content,
+    source_type,
+    fact_type,
+    product_scope,
+    sku_scope,
+    metadata=None,
+):
     from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
 
     entry = KnowledgeEntry(
@@ -65,7 +75,10 @@ def _add_chunked_entry(db, *, title, content, source_type, fact_type, product_sc
         intent="product_question",
         product_scope_json=json.dumps(product_scope, ensure_ascii=False),
         sku_scope_json=json.dumps(sku_scope, ensure_ascii=False),
-        metadata_json=json.dumps({"auto_reply_allowed": True}, ensure_ascii=False),
+        metadata_json=json.dumps(
+            {"auto_reply_allowed": True, **(metadata or {})},
+            ensure_ascii=False,
+        ),
         category="",
         category_l3="",
         search_keywords="",
@@ -334,6 +347,124 @@ def test_exact_hub_parts_fact_answers_included_items_not_accessory_availability(
     assert availability_pack["product_first_evidence_pack"]["answerability"] != "direct_answer"
 
 
+def test_exact_hub_selected_sku_spec_answers_selected_configuration(product_context_db, monkeypatch):
+    """A confirmed SKU specification may identify its selected configuration."""
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-selected-spec",
+                "fact_type": "spec",
+                "attribute_key": "selected_configuration",
+                "value": "configuration-1",
+                "unit": "",
+                "scope": "product",
+                "applies": "S100-COMBO",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+            }],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="which selected configuration does this SKU represent",
+        allowed_source_types=["product_facts"],
+        query_fact_type="included_items",
+    )
+
+    assert [fact["fact_type"] for fact in pack["facts"]] == ["included_items"]
+    assert pack["facts"][0]["chunk_text"] == "configuration-1"
+    assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
+
+
+def test_exact_hub_packaging_gross_weight_answers_gross_weight(product_context_db, monkeypatch):
+    """A verified packaging gross-weight field answers a packing-weight goal."""
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-gross-weight",
+                "fact_type": "weight",
+                "attribute_key": "毛重",
+                "value": "14.16",
+                "unit": "kg",
+                "scope": "packaging",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+            }],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="外箱大概多重",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+
+    assert [fact["fact_type"] for fact in pack["facts"]] == ["gross_weight"]
+    assert pack["facts"][0]["chunk_text"] == "14.16kg"
+    assert pack["facts"][0]["fact_scope"] == "packaging"
+    assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
+
+
+def test_exact_hub_net_product_weight_does_not_answer_gross_weight(product_context_db, monkeypatch):
+    """A product net weight cannot be presented as a packaging gross weight."""
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [{
+                "fact_uid": "product_data_hub:fact-net-weight",
+                "fact_type": "weight",
+                "attribute_key": "净重",
+                "value": "12.95",
+                "unit": "kg",
+                "scope": "product",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+            }],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="外箱大概多重",
+        allowed_source_types=["product_facts"],
+        query_fact_type="gross_weight",
+    )
+
+    assert pack["facts"] == []
+
+
 def test_hub_packaging_size_does_not_satisfy_product_dimensions(product_context_db, monkeypatch):
     import app.config as config
     from app.services import product_context_pack_service
@@ -486,6 +617,86 @@ def test_hub_dimension_facts_default_to_product_scope_for_product_dimension_ques
     }
     assert packaging_scopes == {
         "product_data_hub:fact-package-size": "packaging",
+    }
+
+
+def test_hub_packaging_axis_labels_project_canonical_dimension_attributes(product_context_db, monkeypatch):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [
+                {
+                    "fact_uid": "product_data_hub:pack-width",
+                    "fact_type": "pack_size",
+                    "attribute_key": "纸箱宽",
+                    "value": "26",
+                    "unit": "cm",
+                    "scope": "包装",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+                {
+                    "fact_uid": "product_data_hub:pack-length",
+                    "fact_type": "pack_size",
+                    "attribute_key": "纸箱长",
+                    "value": "81",
+                    "unit": "cm",
+                    "scope": "包装",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+                {
+                    "fact_uid": "product_data_hub:pack-height",
+                    "fact_type": "pack_size",
+                    "attribute_key": "纸箱高",
+                    "value": "65.5",
+                    "unit": "cm",
+                    "scope": "包装",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+            ],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {
+            "slots": {"i_id": "P100", "sku_code": "S100-COMBO"},
+            "semantic_query": {"subject_scope": "packaging"},
+        },
+        query="尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    projected = {
+        fact["chunk_id"]: fact.get("canonical_attribute_key")
+        for fact in pack["facts"]
+        if fact.get("source_table") == "product_data_hub"
+    }
+    assert projected == {
+        "product_data_hub:pack-width": "width",
+        "product_data_hub:pack-length": "length",
+        "product_data_hub:pack-height": "height",
+    }
+    compacted = {
+        fact["chunk_id"]: (
+            fact.get("canonical_attribute_key"),
+            fact.get("subject_scope"),
+        )
+        for fact in pack["evidence_pack"]["product_structured_facts"]
+    }
+    assert compacted == {
+        "product_data_hub:pack-width": ("width", "packaging"),
+        "product_data_hub:pack-length": ("length", "packaging"),
+        "product_data_hub:pack-height": ("height", "packaging"),
     }
 
 
@@ -1768,6 +1979,233 @@ def test_product_context_pack_placement_scene_drops_material_evidence(product_co
     assert {item["fact_type"] for item in pack["facts"]} == {"placement_scene"}
     assert "bedroom" in pack["facts"][0]["chunk_text"]
     assert pack["evidence_pack"]["matched_facts"][0]["semantic_alignment"]["alignment"] == "primary_match"
+
+
+def test_product_context_pack_keeps_direct_fact_for_each_authoritative_customer_goal(
+    product_context_db,
+):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="Demo material",
+            content="The reviewed product material is PP.",
+            source_type="product_facts",
+            fact_type="material",
+            product_scope=["TEST_MULTI_GOAL_001", "Demo household product"],
+            sku_scope=["TEST_MULTI_GOAL_001"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "TEST_MULTI_GOAL_001B01S01"},
+            "matched_product_name": "Demo household product",
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type": "material_composition",
+                    },
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type": "moisture_resistance",
+                    },
+                ],
+            },
+        },
+        query="What is it made from, and how does it handle moisture?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="moisture_resistance",
+    )
+
+    assert [item["fact_type"] for item in pack["facts"]] == ["material"]
+    assert pack["facts"][0]["evidence_allowed_for_direct_answer"] is True
+    assert pack["facts"][0]["semantic_alignment"]["query_fact_type"] == "material_composition"
+    assert pack["evidence_pack"]["matched_facts"][0]["direct_answer_allowed"] is True
+
+
+def test_product_context_pack_ignores_untrusted_requested_claim_injection(
+    product_context_db,
+):
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="Demo material",
+            content="The reviewed product material is PP.",
+            source_type="product_facts",
+            fact_type="material",
+            product_scope=["TEST_MULTI_GOAL_002", "Demo household product"],
+            sku_scope=["TEST_MULTI_GOAL_002"],
+        )
+    finally:
+        db.close()
+
+    pack = build_product_context_pack(
+        {
+            "slots": {"sku_code": "TEST_MULTI_GOAL_002B01S01"},
+            "matched_product_name": "Demo household product",
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "public_request",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type": "material_composition",
+                    }
+                ],
+            },
+        },
+        query="Can it handle moisture?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="moisture_resistance",
+    )
+
+    assert [item["fact_type"] for item in pack["facts"]] == ["material"]
+    assert pack["facts"][0]["evidence_allowed_for_direct_answer"] is False
+
+
+def test_authoritative_requested_fact_types_does_not_promote_unmapped_goal():
+    from app.services.product_context_pack_service import (
+        authoritative_requested_fact_types,
+    )
+
+    requested = authoritative_requested_fact_types(
+        {
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "unmapped",
+                        "claim_type": "material_composition",
+                    }
+                ],
+            }
+        },
+        "moisture_resistance",
+    )
+
+    assert requested == ["moisture_resistance"]
+
+
+def test_multi_goal_product_pack_converges_supported_and_unresolved_claims(
+    product_context_db,
+):
+    from app.services.admitted_answer_context_service import (
+        AdmittedAnswerContextService,
+    )
+    from app.services.product_context_pack_service import build_product_context_pack
+
+    db = product_context_db()
+    try:
+        _add_chunked_entry(
+            db,
+            title="Demo material",
+            content="The reviewed product material is PP.",
+            source_type="product_facts",
+            fact_type="material",
+            product_scope=["TEST_MULTI_GOAL_003", "Demo household product"],
+            sku_scope=["TEST_MULTI_GOAL_003"],
+            metadata={
+                "attribute_key": "material",
+                "can_direct_answer": True,
+                "direct_answer_allowed": True,
+                "evidence_role": "direct_product_fact",
+                "evidence_uid": "test-evidence-material",
+                "fact_review_status": "reviewed",
+                "material_provenance": "structured_product_record",
+                "product_evidence_protocol": True,
+                "reference_only": False,
+                "source_id": "test-evidence-material",
+                "source_table": "knowledge_entries",
+                "subject_scope": "product",
+                "value": "PP",
+                "verification_status": "reviewed",
+            },
+        )
+    finally:
+        db.close()
+
+    requested_claims = [
+        {
+            "goal_ref": "goal-material",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material_composition",
+            "attribute_key": "material_composition",
+        },
+        {
+            "goal_ref": "goal-safety",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "safety_claim",
+        },
+        {
+            "goal_ref": "goal-moisture",
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "moisture_resistance",
+        },
+    ]
+    understanding = {
+        "schema_version": "turn-understanding/v2",
+        "owner": "turn_understanding_owner",
+        "source_stage": "query_fact_type_classifier",
+        "goal_understanding_status": "valid",
+        "requested_claims": requested_claims,
+    }
+    pack = build_product_context_pack(
+        {
+            "slots": {"i_id": "TEST_MULTI_GOAL_003"},
+            "matched_product_name": "Demo household product",
+            "turn_understanding": understanding,
+        },
+        query="What is it made from, and can safety be guaranteed?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="safety_claim",
+    )
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": pack},
+        product_identity={
+            "i_id": "TEST_MULTI_GOAL_003",
+            "product_name": "Demo household product",
+        },
+        understanding=understanding,
+    )
+
+    assert [
+        item["fact_type"] for item in admitted["direct_product_facts"]
+    ] == ["material"], json.dumps(
+        admitted["rejected_evidence"],
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    resolutions = {
+        item["claim_type"]: item["status"]
+        for item in admitted["claim_resolutions"]
+    }
+    assert resolutions == {
+        "material_composition": "supported",
+        "safety_claim": "unresolved",
+        "moisture_resistance": "unresolved",
+    }
 
 
 def test_product_first_pack_does_not_promise_install_video_when_no_approved_media(product_context_db):

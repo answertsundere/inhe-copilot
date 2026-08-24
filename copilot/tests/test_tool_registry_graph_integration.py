@@ -484,3 +484,16 @@ class TestJSTFallback:
         has_tool_executor = "tool_executor" in steps or "tool_executor_node" in steps
         assert has_tool_executor, f"Missing tool_executor in trace: {steps}"
         assert result.get("suggested_reply"), f"Missing safe fallback reply: {steps}"
+
+    def test_high_risk_aftersales_jst_fallback_does_not_replan_tools(self):
+        """A completed high-risk tool attempt must not loop back into tool planning."""
+        result = self._invoke_with_jst_failure(
+            "收到商品后发现有破损，请协助核对售后处理。",
+            order_id="FIXTURE-ORDER-01",
+        )
+
+        steps = _steps(result)
+        assert steps.count("tool_planner") == 1, steps
+        assert "jst_live_query" in steps, steps
+        assert "evidence_builder" in steps, steps
+        assert result.get("suggested_reply")

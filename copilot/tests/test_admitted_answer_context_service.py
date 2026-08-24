@@ -73,6 +73,78 @@ def test_admits_reviewed_scoped_direct_product_fact():
     assert context["can_change_can_send"] is False
 
 
+def test_canonical_selection_preserves_explicit_dimension_subject_scope():
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(
+                    evidence_uid="packaging-width",
+                    fact_type="dimensions",
+                    attribute_key="width",
+                    subject_scope="packaging",
+                    content="外箱宽 26cm。",
+                    value="26cm",
+                )
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("dimensions"),
+    )
+
+    selected = canonical_selected_evidence(context)
+
+    assert selected[0]["subject_scope"] == "packaging"
+
+
+def test_canonical_selection_uses_normalized_attribute_key_for_matching():
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(
+                    evidence_uid="normalized-width",
+                    fact_type="dimensions",
+                    attribute_key="source_width_label",
+                    canonical_attribute_key="width",
+                    subject_scope="packaging",
+                    content="26cm",
+                    value="26cm",
+                )
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("dimensions"),
+    )
+
+    selected = canonical_selected_evidence(context)
+
+    assert selected[0]["attribute_key"] == "width"
+    assert selected[0]["original_evidence_attribute_key"] == "source_width_label"
+
+
+def test_canonical_selection_preserves_declared_supported_claim_types():
+    context = AdmittedAnswerContextService().build_for_response(
+        {
+            "selected_evidence": [
+                _fact(
+                    evidence_uid="dimension-fact",
+                    fact_type="dimensions",
+                    attribute_key="width",
+                    claim_types_supported=["dimensions"],
+                    subject_scope="packaging",
+                    content="26cm",
+                    value="26cm",
+                )
+            ]
+        },
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("dimensions"),
+    )
+
+    selected = canonical_selected_evidence(context)
+
+    assert selected[0]["claim_types_supported"] == ["dimensions"]
+
+
 def _operational_fact(**overrides):
     value = {
         "evidence_uid": "live-logistics-fact",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from copy import deepcopy
 from typing import Any
@@ -3908,6 +3909,8 @@ class ModelFirstAnswerComposerService:
             "不要说“没有证据”“缺少证据”或“人工审核”，不要重复完整商品标题。"
             "多目标 clause 各自只回答对应 goal，拼接后应自然、礼貌、简洁，"
             "避免重复主语、边界、法务声明、报告字段、机器人语气和内部处理语言。"
+            "客户可见 text 必须与当前 customer_goal 使用同一种自然语言；"
+            "当 customer_goal 使用中文时，text 必须使用中文，不得改为英文。"
             "任何方括号中包含 REDACTED 的内容都是内部隐私占位符，绝不能复制到客户可见文字。"
             "结构优先：只返回一个 JSON object；只使用 schema 定义字段；"
             "每个 clause 只使用 clause schema 字段；不得增加说明、reasoning、metadata"
@@ -4850,6 +4853,21 @@ class ModelFirstAnswerComposerService:
                 actual_type="process_language",
                 language_match=process_language_match,
             )
+        customer_language_match = (
+            ModelFirstAnswerComposerService._customer_language_mismatch(
+                ordered_output_clauses,
+                response=response,
+            )
+        )
+        if customer_language_match:
+            return "composer_customer_language_mismatch", ModelFirstAnswerComposerService._diagnostics(
+                "clause_content_invalid",
+                parsed=parsed,
+                json_path=customer_language_match["json_path"],
+                expected_type="customer_language_aligned_text",
+                actual_type="customer_language_mismatch",
+                language_match=customer_language_match,
+            )
         media_diagnostics = ModelFirstAnswerComposerService._media_claim_diagnostics(
             parsed,
             customer_goals=customer_goals,
@@ -5051,6 +5069,39 @@ class ModelFirstAnswerComposerService:
                 ).hexdigest(),
                 "rule_sha256": hashlib.sha256(
                     term.encode("utf-8")
+                ).hexdigest(),
+            }
+        return {}
+
+    @staticmethod
+    def _customer_language_mismatch(
+        clauses: list[dict[str, Any]],
+        *,
+        response: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Reject a prose language switch without treating facts as language rules."""
+        minimal_context = ModelFirstAnswerComposerService._minimal_context(
+            response
+        )
+        customer_goal = str(minimal_context.get("customer_goal") or "")
+        if not re.search(r"[\u4e00-\u9fff]", customer_goal):
+            return {}
+        for clause_index, clause in enumerate(clauses):
+            text = str(clause.get("text") or "").strip()
+            if re.search(r"[\u4e00-\u9fff]", text):
+                continue
+            if len(re.findall(r"[A-Za-z]{2,}", text)) < 2:
+                continue
+            return {
+                "detector_family": "customer_language_alignment",
+                "reason_code": "customer_language_mismatch",
+                "trigger_category": "non_chinese_clause_for_chinese_goal",
+                "clause_index": clause_index,
+                "goal_ref": str(clause.get("goal_ref") or ""),
+                "json_path": f"$.clauses[{clause_index}].text",
+                "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "rule_sha256": hashlib.sha256(
+                    b"customer-language-alignment/v1"
                 ).hexdigest(),
             }
         return {}

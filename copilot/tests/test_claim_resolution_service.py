@@ -163,6 +163,74 @@ def test_overall_dimension_goal_requires_explicit_product_scope():
     assert result["reason"] == "subject_scope_evidence_missing"
 
 
+def test_aggregate_dimension_goal_accepts_complete_packaging_axis_set():
+    result = build_claim_resolutions(
+        [_claim("overall_dimensions") | {"subject_scope": "packaging"}],
+        direct_product_facts=[
+            _fact("packaging-width", "width", subject_scope="packaging"),
+            _fact("packaging-length", "length", subject_scope="packaging"),
+            _fact("packaging-height", "height", subject_scope="packaging"),
+            _fact("product-width", "width", subject_scope="product"),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == [
+        "packaging-height",
+        "packaging-length",
+        "packaging-width",
+    ]
+
+
+def test_aggregate_dimension_goal_rejects_incomplete_axis_set():
+    result = build_claim_resolutions(
+        [_claim("overall_dimensions") | {"subject_scope": "packaging"}],
+        direct_product_facts=[
+            _fact("packaging-width", "width", subject_scope="packaging"),
+            _fact("packaging-height", "height", subject_scope="packaging"),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["reason"] == "overall_dimensions_incomplete"
+
+
+def test_dimension_resolution_uses_canonical_attribute_key_over_source_label():
+    result = build_claim_resolutions(
+        [_claim("overall_dimensions") | {"subject_scope": "packaging"}],
+        direct_product_facts=[
+            _fact(
+                "packaging-width",
+                "source_width_label",
+                subject_scope="packaging",
+            ) | {"canonical_attribute_key": "width"},
+            _fact(
+                "packaging-length",
+                "source_length_label",
+                subject_scope="packaging",
+            ) | {"canonical_attribute_key": "length"},
+            _fact(
+                "packaging-height",
+                "source_height_label",
+                subject_scope="packaging",
+            ) | {"canonical_attribute_key": "height"},
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == [
+        "packaging-height",
+        "packaging-length",
+        "packaging-width",
+    ]
+
+
 def test_unscoped_dimension_goal_never_selects_a_non_product_measurement():
     result = build_claim_resolutions(
         [_claim("width")],

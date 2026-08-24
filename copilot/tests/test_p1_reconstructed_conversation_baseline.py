@@ -42,6 +42,7 @@ def _create_empty_formal_knowledge_source(path: Path) -> None:
             specs_json TEXT NOT NULL DEFAULT '{}',
             logistics_json TEXT NOT NULL DEFAULT '{}',
             warranty_json TEXT NOT NULL DEFAULT '{}',
+            domain_policy_id TEXT NOT NULL DEFAULT '',
             completeness_score REAL NOT NULL DEFAULT 0,
             missing_fields_json TEXT NOT NULL DEFAULT '[]',
             status TEXT NOT NULL DEFAULT 'draft',
@@ -157,7 +158,8 @@ def _snapshot_rows(path: Path) -> dict[str, list[tuple]]:
     try:
         return {
             "products": connection.execute(
-                "SELECT i_id, product_name, status FROM kb_product ORDER BY i_id"
+                "SELECT i_id, product_name, status, domain_policy_id "
+                "FROM kb_product ORDER BY i_id"
             ).fetchall(),
             "entries": connection.execute(
                 "SELECT business_key, fact_type, fact_scope, content, product_scope_json "
@@ -243,6 +245,17 @@ def test_reconstructed_fixture_passes_runner_preflight():
     assert inventory["scenario_count"] == contract.case_count
     assert inventory["conversation_history_turn_count"] == 40
     assert manifest["content_sha256"] == contract.dataset_sha256
+
+
+def test_reconstructed_fixture_is_pinned_to_lf_bytes():
+    attributes = (_PROJECT_ROOT / ".gitattributes").read_text(encoding="utf-8")
+
+    assert (
+        "tests/fixtures/p1_conversation_reconstructed/*.json text eol=lf"
+        in attributes.splitlines()
+    )
+    assert b"\r\n" not in _DATASET_PATH.read_bytes()
+    assert b"\r\n" not in _MANIFEST_PATH.read_bytes()
 
 
 def test_reconstructed_labels_remain_outside_agent_payload():
@@ -434,6 +447,7 @@ def test_reconstructed_prepare_projects_only_reviewed_direct_evidence(
     rows = _snapshot_rows(snapshot)
     assert len(rows["products"]) == 8
     assert all(row[2] == "published" for row in rows["products"])
+    assert all(row[3] == "maternal_child_home" for row in rows["products"])
     assert len(rows["entries"]) == 7
     assert len(rows["chunks"]) == 7
     assert rows["qa"] == [

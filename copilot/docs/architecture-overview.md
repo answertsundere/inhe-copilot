@@ -723,6 +723,38 @@ explicit unresolved 为 `12/12`，并记录两条 Unified Audit advisory failure
 Send 继续需要独立 Audit、真实准确率、安全与 Delivery 资格。该数据集是重建开发
 诊断，八条人工质量审阅仍 pending，`real_customer_accuracy=null`。
 
+2026-08-24 的后续隔离运行补齐了两项评测边界。原子 source span 完全一致的旧指标
+继续保留为 provenance/切分诊断，结果为 `4/16`；新增的语义目标指标仍要求有效当前
+回合 provenance、相交文本范围和相同 canonical/policy identity，结果为 `12/16`，
+因此不能再把切分边界差异全部归因于理解失败。真正未覆盖的是售后三个目标和一个
+材质安全类型错配。八条离线主管复核仅有商品宽高达到金牌质量；平均事实正确性
+`1.125/2`、目标完成 `1.0/2`、自然度 `1.75/2`、商业帮助度 `0.75/2`。正式事实只在
+`2/8` 个场景进入 selected evidence，下一质量 Owner 为既有 formal knowledge
+tool/admission coverage，而不是新增 Prompt、Graph 或回复 Owner。运行保持 query-only、
+正式知识 DML `0`、`can_send=0`、人工复核 `8/8`；`real_customer_accuracy=null`。
+
+同日的 formal-knowledge coverage 修复把最早断点定位到既有 Product Context Pack
+与 RAG 的单一主 FactType 过滤：Turn Understanding 已产生多个有效客户事实目标时，
+非主目标的 reviewed direct fact 会在 Admission 之前失去 direct eligibility。修复后，
+只有 owner-stamped、`valid` 的 `turn-understanding/v2 requested_claims` 能扩展本轮
+证据类型；普通 `secondary_fact_types`、unmapped goal 和外部 owner 注入均不能扩大
+准入。隔离知识快照证明即使主问题是安全保证，已审核 PP 材质仍进入 Admission，
+材质为 supported，而安全与防潮继续 unresolved。该修复没有新增节点、服务、模型
+调用或回复 Owner，也不改变 Safety、Delivery 或 `can_send`。随后同一 Fixed-8 已按原
+数据和运行合同重跑一次：执行 `8/8`，但 selected evidence 仍只有 `6` 条、覆盖 `2/8`
+场景，材质仍被错误保留为 unresolved。只读快照和独立 Pack 探针均能按同一精确商品
+身份取得 reviewed PP 事实，因此 Pack 内部多目标过滤修复成立，但正式 API 执行中从
+Pack/RAG 到 Evidence Admission/canonical selected evidence 的后续断点仍未收口。该结果
+没有质量提升声明，`real_customer_accuracy=null`。
+
+同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
+失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，
+仍会仅因 `high_risk` 再次进入 `tool_planner`，形成六节点无界循环。当前路由只在
+必要工具尚未尝试时规划一次；fallback 返回后继续进入 RAG、证据构建、确定性门禁
+和人工复核。该修复不降低风险、不跳过首次工具调用，也不改变 Delivery。
+版本化 synthetic safety fixture 已通过 smoke `5/5` 和 full `22/22`，
+`can_send=0`、人工复核 `22/22`。
+
 A separate isolated candidate run also verified the service-result boundary
 through the formal Pipeline: a compound after-sales request retained its
 confirmation, outcome-selection, and compensation questions as separate

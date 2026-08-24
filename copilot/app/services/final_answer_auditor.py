@@ -310,6 +310,7 @@ def audit_final_answer(
 
     expected = _expected_topics(customer_message, response)
     actual = _detect_topics(reply, ignore_quoted_names=True)
+    actual.update(_direct_product_evidence_topics_in_reply(response, reply))
     model_first_candidate = (
         isinstance(response.get("model_first_answer_composer"), dict)
         and response["model_first_answer_composer"].get("status") == "accepted"
@@ -623,15 +624,67 @@ def _detect_topics(text: str, *, ignore_quoted_names: bool = False) -> set[str]:
     return found
 
 
+def _direct_product_evidence_topics_in_reply(
+    response: dict[str, Any],
+    reply: str,
+) -> set[str]:
+    """Recognize a topic only when its admitted direct value appears in text."""
+    debug = response.get("evidence_debug") or {}
+    facts = debug.get("product_facts")
+    if not isinstance(facts, list):
+        return set()
+    reply_folded = str(reply or "").casefold()
+    topics: set[str] = set()
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        if fact.get("source_type") != "product_facts":
+            continue
+        if fact.get("direct_answer_allowed") is False:
+            continue
+        if fact.get("evidence_allowed_for_direct_answer") is False:
+            continue
+        value = str(
+            fact.get("fact")
+            or fact.get("chunk_text")
+            or fact.get("content")
+            or ""
+        ).strip()
+        fact_type = str(
+            fact.get("evidence_fact_type") or fact.get("fact_type") or ""
+        )
+        topic = _FACT_TOPIC.get(fact_type)
+        if value and topic and value.casefold() in reply_folded:
+            topics.add(topic)
+    return topics
+
+
 def _required_topics_from_message(message: str, response: dict[str, Any]) -> set[str]:
     """Topics explicitly asked by the customer that the final reply must cover."""
     topics = _detect_topics(message)
     required = {topic for topic in topics if topic in _MESSAGE_REQUIRED_TOPICS}
+    debug = response.get("evidence_debug") or {}
+    understanding = debug.get("turn_understanding")
+    if not isinstance(understanding, dict):
+        understanding = response.get("turn_understanding") or {}
+    if understanding.get("goal_understanding_status") == "valid":
+        authoritative_goal_types = {
+            str(goal.get("claim_type") or "")
+            for goal in understanding.get("customer_goals") or []
+            if isinstance(goal, dict)
+            and goal.get("goal_kind") == "customer_goal"
+            and goal.get("claim_type_status") == "canonical"
+        }
+        # A location-reservation phrase can describe why the customer needs a
+        # measurement without becoming a second "will it fit" request.  The
+        # canonical goal owner is authoritative when it resolved the turn.
+        if authoritative_goal_types and "space_fit" not in authoritative_goal_types:
+            required.discard("space_fit")
     if "odor" in topics:
         required.add("odor")
     if "space_fit" in required:
         required.discard("placement_scene")
-    fact_type = str((response.get("evidence_debug") or {}).get("query_fact_type") or "")
+    fact_type = str(debug.get("query_fact_type") or "")
     mapped = _FACT_TOPIC.get(fact_type)
     if mapped and mapped in _MESSAGE_REQUIRED_TOPICS:
         required.add(mapped)

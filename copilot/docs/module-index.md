@@ -19,7 +19,7 @@ experiment results belong in evaluation reports, not in this ownership map.
 | Role-scoped strict model transport | `app/services/strict_decision_provider_service.py`, `app/config.py`, `scripts/qualify_unified_audit_role.py`, `scripts/qualify_turn_understanding_provider.py` | formal utility; Turn Understanding engineering-qualified but default-off; Unified Audit still provider-gated | One native strict-schema or strict-tool request for an explicitly configured role. Unified Audit and Turn Understanding credentials/model/capability never inherit the formal Agent or decision-shadow role; missing, unqualified, or fingerprint-mismatched configuration fails before a model call with no legacy fallback. The Turn Understanding qualifier reuses the formal Prompt, minimal schema, exact-current-source validator, and canonical normalizer against fictional cases only. Its strict-role source normalizer is server-owned and clause-bounded but preserves exact spans when multiple atomic goals occupy one clause; the legacy transport retains exact fragments. Qualification v3 records separate semantic/provenance stability and only consumed semantic-key authority, while retaining aliases, hashes, counters, changed field names, and safe Provider identity rather than raw conversations, model output, field values, or endpoints. DeepSeek V4 Pro passed the fixed fictional `8x3`, isolated `1x1`, fixed `3x1`, and authorized deidentified internal `20x1` provenance gates on clean commit `cf70c453d07e`, with zero retry/repair/write/send authority. The role remains production-disabled; zero selected evidence and deliberately disabled Formal Evidence Convergence mean these gates do not qualify reply quality or real accuracy |
 | Product/order identity | identity services, JST integration adapters and resolver nodes | formal | External references resolve to JST/internal scoped identity. A sidebar marketplace order identifier remains `platform_order_id`; the frontend never relabels it as a trade/outbound number. Controlled `shop_platform` selects the provider contract: explicit Taobao/Tmall stores remain on the read-only sales-outbound surface, first attempting exact `so_ids`, then repeating that exact query across bounded 75-day provider-compatible history windows, and only then completing a current provider-window page scan over returned order/item identifiers. Other stores retain the ordinary-order route. Public `shop_id` is platform-neutral; a separately configured `jst_shop_id` scopes provider records. The adapter requires neither QianNiu Sidecar nor Qimen and projects only customer-safe outbound/logistics state plus item internal name, `sku_id` and `i_id`. Buyer and receiver data are discarded. A completed zero-row result remains unresolved and is not proof that the platform order does not exist, but it is reply-strategy authority so the customer is not asked to repeat the sidebar order number. Product Hub resolves only returned exact identity as reference-only, while reviewed formal knowledge remains product-fact authority. Multi-item ambiguity, provider errors, incomplete pagination and identity conflicts fail closed. Full logistics identifiers stay in structured internal context and are excluded from model-visible fact prose. The JST transport retries official rate-limit codes `199/200` once after a bounded delay. Titles, conversation text, historical replies and semantic similarity have no identity authority. Missing or ambiguous mappings remain input/context gaps and fail before evidence-coverage conclusions |
 | Operational fact admission | `app/agent/nodes/evidence_builder.py`, `app/services/admitted_answer_context_service.py` | formal when Formal Evidence Convergence is enabled; review-only | Completed read-only order/logistics tool results may enter canonical evidence only as `operational_fact_direct`, with explicit completed execution status, closed operational scope, compatible claim type, and direct-answer permission. Full tracking identifiers remain server-side provenance in `source`; customer-answerable fact prose contains only the carrier and verified shipment state, and duplicate same-time shipped events are collapsed. They remain distinct from reviewed product facts and never write product knowledge. Planned/failed tools, write-capable operations, service actions, media candidates, placeholders, and incompatible facts fail closed. This role can support an order/logistics clause but cannot change `can_send`, delivery, or human-review requirements |
-| Retrieval | `app/retrieval/`, `app/repositories/knowledge_chunk_repository.py`, `app/agent/nodes/evidence_filter_node.py`, `app/agent/nodes/evidence_builder.py` | formal SQLite | Explicit backend and observable fail-closed retrieval; published chunk review state, fact type, attribute key, evidence UID, identity/subject scopes, source type/material provenance, and source confidence survive Repository -> Filter -> Builder through a narrow protocol allowlist while Evidence Gate retains admission authority |
+| Retrieval | `app/retrieval/`, `app/repositories/knowledge_chunk_repository.py`, `app/agent/nodes/rag_retrieve.py`, `app/services/product_context_pack_service.py`, `app/agent/nodes/evidence_filter_node.py`, `app/agent/nodes/evidence_builder.py` | formal SQLite | Explicit backend and observable fail-closed retrieval; published chunk review state, fact type, attribute key, evidence UID, identity/subject scopes, source type/material provenance, and source confidence survive Repository -> Filter -> Builder through a narrow protocol allowlist while Evidence Gate retains admission authority. Multi-goal retrieval may retain facts for every valid owner-stamped customer requested claim in `turn-understanding/v2`; one primary FactType still controls ordering, while secondary hints, unmapped goals, invalid understanding, and untrusted owner injection cannot widen direct evidence eligibility |
 | Product context candidates | `app/services/product_context_pack_service.py` | formal | Preserve role, review, identity, attribute, and provenance metadata |
 | Evidence admission | `app/services/admitted_answer_context_service.py` | formal utility; convergence opt-in | Single reusable review/identity/role/claim/conflict admission contract |
 | Claim resolution | `app/services/claim_resolution_service.py` | formal utility; bounded inference disabled with Composer path | Preserves supported, unresolved, conflicting, and prohibited direct-evidence state; for a scoped dimension goal, direct evidence must match both canonical attribute and canonical object scope. Aggregate `overall_dimensions` is a separate attribute and is never decomposed into width, height, depth, or any other axis. It keeps restricted request risk separate from low/medium answer-strategy risk and may project a practical alternative only from the deterministic trusted Domain Pack/admitted-premise/scope/conflict intersection for the same owner-stamped goal family. Missing goal-family authority yields no option; an already-supported goal remains direct-only unless an exact trusted practical intent was nominated. Claim Resolution never selects an option |
@@ -173,13 +173,35 @@ recall remains `4/18` with `13` unexpected goals. This remains a development
 diagnostic: `real_customer_accuracy=null` and Autonomous Send remain blocked.
 
 The current query-only `conversation-reconstructed-v1` Fixed-8 is the
-Supervisor Assist diagnostic baseline. It records `8/8` deterministic candidate
-eligibility, `16/16` goal-clause coverage, direct attribution `4/4`, explicit
-unresolved handling `12/12`, formal-knowledge DML `0`, `can_send=0`, and human
-review `8/8`. Unified Audit passed `6/8` calls and recorded two advisory
-failures in the same case observations; this neither qualifies the role nor
-changes the Autonomous Send block. The eight human-quality reviews are still
-pending and `real_customer_accuracy=null`.
+Supervisor Assist diagnostic baseline. Its latest complete run executed `8/8`,
+with Composer `7/8`, Deterministic Final `8/8`, Unified Audit advisory pass
+`7/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. The
+evaluation now reports exact atomic source-span recall (`4/16`) separately from
+provenance-valid semantic goal recall (`12/16`), so span widening cannot be
+misreported as semantic loss. Offline review is complete but not supervisor
+approval: only one reply met gold quality, business helpfulness averaged
+`0.75/2`, selected evidence appeared in only `2/8` scenarios, and the next
+existing Owner is formal knowledge tool/admission coverage. This neither
+qualifies Unified Audit nor changes the Autonomous Send block;
+`real_customer_accuracy=null`.
+
+The first formal-knowledge coverage repair remains inside the existing
+Retrieval/Product Context Pack owners. It removes the single-primary-FactType
+loss for authoritative multi-goal turns and is covered through Pack, RAG, and
+Admission integration tests. A query-only snapshot admits the reviewed material
+fact but leaves safety and moisture unresolved. The required post-repair rerun
+has now completed `8/8`, but selected evidence stayed
+at six items across `2/8` scenarios and material remained unresolved. The same
+query-only snapshot and exact product identity return reviewed PP through a
+direct Product Context Pack probe, so the next existing Owner is the formal API
+Pack/RAG -> Evidence Admission -> canonical selected-evidence execution boundary.
+No reply-quality gain or real accuracy is claimed.
+
+The existing Graph router also treats a completed required-tool attempt as a
+terminal planning boundary. High-risk after-sales fallback may continue into
+the evidence path but cannot re-plan the same tools indefinitely. No Graph node
+or owner was added; versioned safety regression is `5/5` smoke and `22/22` full,
+with all scenarios review-only and `can_send=0`.
 
 The P1 customer-conditional comparison slice remains within existing owners.
 `SemanticFactTypeService` exposes the semantic distinction between measurement

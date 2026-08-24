@@ -2164,6 +2164,13 @@ def canonical_selected_evidence(admitted_context: dict[str, Any]) -> list[dict[s
         uid = sanitize_text(item.get("evidence_uid"))
         if not uid:
             continue
+        canonical_attribute_key = sanitize_text(
+            item.get("canonical_attribute_key")
+        )
+        original_attribute_key = sanitize_text(
+            item.get("original_evidence_attribute_key")
+            or item.get("attribute_key")
+        )
         records.append({
             "evidence_uid": uid,
             "source": sanitize_text(item.get("source")),
@@ -2173,10 +2180,14 @@ def canonical_selected_evidence(admitted_context: dict[str, Any]) -> list[dict[s
             "fact_review_status": sanitize_text(item.get("review_status")),
             "gate_status": "allowed",
             "direct_answer_allowed": True,
+            "claim_types_supported": _as_list(item.get("claim_types_supported")),
             "product_identity_scope": _as_list(item.get("product_identity_scope")),
             "identity_scopes": _as_list(item.get("identity_scopes")),
             "fact_type": sanitize_text(item.get("fact_type")),
-            "attribute_key": sanitize_text(item.get("attribute_key")),
+            "attribute_key": canonical_attribute_key or original_attribute_key,
+            "canonical_attribute_key": canonical_attribute_key,
+            "original_evidence_attribute_key": original_attribute_key,
+            "subject_scope": sanitize_text(item.get("subject_scope")).lower(),
             "operational_scope": sanitize_text(
                 item.get("operational_scope")
             ),
