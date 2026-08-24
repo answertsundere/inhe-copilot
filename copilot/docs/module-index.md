@@ -201,10 +201,23 @@ The following funnel-level repair reuses that same request authority in the
 existing `evidence_filter` and `evidence_builder` gates. A non-primary direct
 fact is eligible only when it matches a canonical customer claim from valid,
 owner-stamped Turn Understanding; an untrusted owner, a secondary hint, or an
-unmapped goal cannot widen the gate. The unchanged query-only snapshot now
-reaches Claim Resolution with material supported while safety and moisture stay
-unresolved. Synthetic safety remains `5/5` and `22/22`, with human review for
-all cases and `can_send=0`. Fixed-8 reply-quality rerun remains pending.
+unmapped goal cannot widen the gate. A later check found an earlier source
+restriction in the existing Response Strategy Router: a high-risk turn always
+selected SOP-only retrieval. The same high-risk strategy may now add read-only
+RAG and `product_facts` only for an independent non-high-risk claim from trusted
+canonical goals with resolved product context. Pure high-risk, untrusted, and
+identity-unresolved requests remain SOP-only, and Evidence Admission retains the
+exact compatibility decision.
+
+The fresh query-only Fixed-8 completed `8/8`; selected evidence increased to
+eight items across `3/8` scenarios. The material clause is supported by reviewed
+PP, safety remains unresolved, and moisture receives only the existing bounded
+Domain Pack guidance. Composer is `7/8`, Deterministic Final `8/8`, Unified Audit
+advisory `7/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`.
+Semantic goal recall remains `12/16`; the next quality Owner is the empty
+after-sales goal set in Turn Understanding, while one advisory Audit rejection
+is tracked separately. This is still a reconstructed development diagnostic
+with `real_customer_accuracy=null`.
 
 The existing Graph router also treats a completed required-tool attempt as a
 terminal planning boundary. High-risk after-sales fallback may continue into

@@ -26,6 +26,16 @@ def _goal(*, semantic_key: str, goal_kind: str = "customer_goal") -> dict:
     }
 
 
+def _canonical_goal(claim_type: str) -> dict:
+    goal = _goal(semantic_key=claim_type)
+    return {
+        **goal,
+        "claim_type_status": "canonical",
+        "claim_type": claim_type,
+        "semantic_key": "",
+    }
+
+
 def _state(goal: dict, *, status: str = "valid") -> dict:
     return {
         "intent": "general",
@@ -68,3 +78,73 @@ def test_non_authoritative_or_non_fact_goal_stays_in_clarification(goal: dict, s
 
     assert result["response_strategy"] == "clarification"
     assert result["should_query_facts"] is False
+
+
+@pytest.mark.parametrize("direct_claim_type", ["material_composition", "dimensions"])
+def test_high_risk_multi_goal_keeps_direct_product_fact_source(direct_claim_type: str):
+    direct_goal = _canonical_goal(direct_claim_type)
+    restricted_goal = _canonical_goal("safety_claim")
+    state = _state(direct_goal)
+    state.update({
+        "intent": "high_risk",
+        "risk_level": "high",
+        "copilot_context": {"product_name": "Current resolved product"},
+    })
+    state["turn_understanding"]["customer_goals"] = [
+        direct_goal,
+        restricted_goal,
+    ]
+    state["turn_understanding"]["requested_claims"] = [
+        direct_goal,
+        restricted_goal,
+    ]
+
+    result = response_strategy_router(state)
+
+    assert result["response_strategy"] == "high_risk"
+    assert result["answer_mode"] == "human_review"
+    assert result["should_query_knowledge"] is True
+    assert "product_facts" in result["allowed_source_types"]
+    assert "high_risk_sop" in result["allowed_source_types"]
+    assert "rag_search_tool" in result["required_tools"]
+
+
+def test_high_risk_only_goal_does_not_widen_to_product_facts():
+    restricted_goal = _canonical_goal("safety_claim")
+    state = _state(restricted_goal)
+    state.update({
+        "intent": "high_risk",
+        "risk_level": "high",
+        "copilot_context": {"product_name": "Current resolved product"},
+    })
+    state["turn_understanding"]["customer_goals"] = [restricted_goal]
+    state["turn_understanding"]["requested_claims"] = [restricted_goal]
+
+    result = response_strategy_router(state)
+
+    assert result["response_strategy"] == "high_risk"
+    assert result["answer_mode"] == "human_review"
+    assert "product_facts" not in result["allowed_source_types"]
+    assert "rag_search_tool" not in result["required_tools"]
+
+
+def test_high_risk_untrusted_multi_goal_does_not_widen_to_product_facts():
+    direct_goal = _canonical_goal("material_composition")
+    restricted_goal = _canonical_goal("safety_claim")
+    state = _state(direct_goal)
+    state.update({
+        "intent": "high_risk",
+        "risk_level": "high",
+        "copilot_context": {"product_name": "Current resolved product"},
+    })
+    state["turn_understanding"].update({
+        "owner": "public_input",
+        "customer_goals": [direct_goal, restricted_goal],
+        "requested_claims": [direct_goal, restricted_goal],
+    })
+
+    result = response_strategy_router(state)
+
+    assert result["response_strategy"] == "high_risk"
+    assert "product_facts" not in result["allowed_source_types"]
+    assert "rag_search_tool" not in result["required_tools"]

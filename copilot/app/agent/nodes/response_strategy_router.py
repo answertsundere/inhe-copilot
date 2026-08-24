@@ -205,6 +205,30 @@ def _has_authoritative_customer_goal(state: dict) -> bool:
     return False
 
 
+def _has_authoritative_reviewable_product_claim(state: dict) -> bool:
+    """Return whether a high-risk turn also contains a bounded product claim.
+
+    Turn-level risk still owns the response strategy.  A separately requested
+    low/medium-risk product fact may nevertheless be retrieved for a partial
+    answer, provided both the goal projection and product context are trusted.
+    Evidence admission remains responsible for claim compatibility.
+    """
+    if not _has_authoritative_customer_goal(state):
+        return False
+    if not _has_sidecar_product_context(state):
+        return False
+
+    from app.services.fact_type_alias_service import is_high_risk_fact_type
+    from app.services.product_context_pack_service import (
+        authoritative_requested_fact_types,
+    )
+
+    return any(
+        fact_type and not is_high_risk_fact_type(fact_type)
+        for fact_type in authoritative_requested_fact_types(state)
+    )
+
+
 def _has_ambiguous_sidecar_product_name(state: dict) -> bool:
     """Check if there are truly multiple competing product candidates.
 
@@ -241,6 +265,9 @@ def response_strategy_router(state: dict) -> dict:
     has_embedded_product_question = _has_embedded_product_question(state)
     has_product_followup = _looks_like_product_followup(state)
     has_authoritative_customer_goal = _has_authoritative_customer_goal(state)
+    has_reviewable_product_claim = _has_authoritative_reviewable_product_claim(
+        state
+    )
     force_product_clarification = _has_ambiguous_sidecar_product_name(state)
 
     # 品类冲突检测：买家问的品类与当前商品不一致（如问“放多少本绘本”却是水龙头延长器）
@@ -281,7 +308,13 @@ def response_strategy_router(state: dict) -> dict:
         fact_tools = []
         should_query_knowledge = True
         allowed_source_types = ["high_risk_sop", "forbidden_rules", "response_templates"]
-        knowledge_timing = "sop_only"
+        if has_reviewable_product_claim:
+            allowed_source_types.append("product_facts")
+        knowledge_timing = (
+            "sop_and_product_facts"
+            if has_reviewable_product_claim
+            else "sop_only"
+        )
         answer_mode = "human_review"
 
     # 1.5 模糊问题/图片依赖：不查知识，直接要求补充信息
@@ -445,6 +478,8 @@ def _compute_tool_lists(state: dict, strategy: str, has_id: bool) -> tuple:
     if strategy == "high_risk":
         # 投诉/高风险：必须 SOP，禁止 JST 事实工具
         required = ["sop_lookup_tool"]
+        if _has_authoritative_reviewable_product_claim(state):
+            required.append("rag_search_tool")
         allowed = ["sop_lookup_tool"] + common_allowed
         forbidden = [
             "jst_lookup_order_tool", "jst_lookup_outbound_tool",

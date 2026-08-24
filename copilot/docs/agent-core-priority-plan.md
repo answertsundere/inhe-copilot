@@ -1085,7 +1085,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; downstream multi-goal evidence gate repaired; fresh Fixed-8 rerun pending; Autonomous Send provider-blocked | The 2026-08-24 query-only Fixed-8 baseline completed `8/8`, with Composer `7/8`, Deterministic Final `8/8`, Unified Audit advisory pass `8/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Exact atomic-span recall remains `4/16`, provenance-valid semantic goal recall is `12/16`, and only `2/8` scenarios selected six formal evidence items. Offline expert review scored factual correctness `1.125/2`, goal completion `1.0/2`, naturalness `1.75/2`, and business helpfulness `0.75/2`. The deterministic material funnel then proved retrieval succeeded before `evidence_filter` and `evidence_builder` reapplied the single primary FactType and blocked the non-primary material goal. Both existing gates now reuse valid owner-stamped requested claims; the unchanged snapshot reaches Claim Resolution with material supported while safety and moisture remain unresolved. Synthetic safety is `5/5` and `22/22`, all review-only with `can_send=0`. This remains a reconstructed engineering baseline with `real_customer_accuracy=null` | Run one fresh Fixed-8 against the unchanged snapshot and runtime contract. Verify selected-evidence coverage, material partial answer, unresolved safety/moisture boundaries, quality scores, DML `0`, and `can_send=0`. Do not modify Composer wording unless the rerun identifies it as the next earliest Owner |
+| P1 Gold Conversation Quality | active; bounded high-risk multi-goal retrieval verified; Turn Understanding is the next quality Owner; Autonomous Send provider-blocked | The fresh 2026-08-24 query-only Fixed-8 completed `8/8`, with Composer `7/8`, Deterministic Final `8/8`, Unified Audit advisory pass `7/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Exact atomic-span recall remains `4/16` and provenance-valid semantic goal recall `12/16`. Selected evidence improved to eight items across `3/8` scenarios. The material/high-risk turn now answers reviewed PP while safety stays unresolved and incidental-moisture guidance remains bounded by the existing Domain Pack. The overall high-risk strategy and review boundary are unchanged. Pure high-risk turns, untrusted goal projections, and unresolved product identity remain SOP-only. Synthetic safety is `5/5` and `22/22`, all review-only with `can_send=0`. This remains a reconstructed engineering baseline with supervisor review pending and `real_customer_accuracy=null` | Freeze the after-sales turn whose authoritative goal set is empty and locate the earliest Turn Understanding loss. Preserve the current evidence, Composer, Final, Safety, Delivery, and `can_send` contracts. Treat the one Unified Audit advisory rejection as a separate later Owner |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
@@ -1098,6 +1098,16 @@ planned once; after fallback the request proceeds through evidence and mandatory
 review. The versioned synthetic safety fixture passes `5/5` smoke and `22/22`
 full, with `can_send=0` and human review `22/22`. This does not replace the
 completed Fixed-8 reply-quality rerun or establish real-customer accuracy.
+
+The following Fixed-8 rerun closed a separate response-strategy source boundary.
+A high-risk turn previously forced all sibling requests into SOP-only retrieval,
+even when canonical Turn Understanding also contained an independent direct
+product-fact claim. The existing high-risk strategy may now add `product_facts`
+and the existing read-only RAG tool only when the goal projection is trusted,
+the product context is resolved, and at least one requested claim is outside the
+canonical high-risk registry. Evidence Admission still decides exact claim
+compatibility. This permits a review-only partial answer without weakening the
+restricted request, creating a second strategy, or changing Delivery.
 
 Update this ledger only when a gate changes. Dated run details remain in
 evaluation outputs, not in this durable plan.

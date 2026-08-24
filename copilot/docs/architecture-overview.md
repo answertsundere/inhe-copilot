@@ -754,8 +754,24 @@ Pack/RAG 到 Evidence Admission/canonical selected evidence 的后续断点仍�
 并按事实自己的 canonical/alias 类型执行 Evidence Gate；未受信 owner、普通
 secondary hint 和 unmapped goal 仍不能扩大准入。相同 query-only 快照的确定性
 漏斗已达到 material supported，safety/moisture unresolved，且 Synthetic safety
-保持 `5/5`、`22/22`、`can_send=0`。尚未运行新的 Fixed-8，因此不声明回复质量
-或真实准确率提升。
+保持 `5/5`、`22/22`、`can_send=0`。
+
+新的逐节点检查随后定位到一个更早的既有 Response Strategy 来源边界：只要整轮
+被判定为高风险，路由就会把允许来源固定为 SOP，即使同一可信 canonical goal 集合
+还包含独立的材质或尺寸请求。高风险策略现在仍保持 `human_review` 和 SOP 必选，
+但在目标投影可信、商品身份已解析且存在非高风险直接事实请求时，可以同时调用
+既有只读 RAG 并允许 `product_facts` 进入后续统一 Evidence Gate。纯高风险目标、
+非可信 owner 或缺少商品上下文时仍为 SOP-only；该路由不把商品事实当成安全事实，
+也不改变 Safety、Delivery 或 `can_send`。
+
+同一数据、知识快照和运行合同的全新 Fixed-8 已完成 `8/8`。材质/安全/防潮回合
+现在获得 reviewed PP 证据，只支持材质，安全继续 unresolved，防潮仅使用现有
+Domain Pack 的 incidental-moisture 有界说明。selected evidence 从六条、`2/8`
+场景提高到八条、`3/8` 场景；Composer `7/8`、Deterministic Final `8/8`、Unified
+Audit advisory `7/8`，正式知识 DML `0`、`can_send=0`、人工复核 `8/8`。语义目标
+召回仍为 `12/16`，售后案例仍没有 authoritative goals，因此下一最早质量 Owner
+是 Turn Understanding；另有一条 Unified Audit advisory 误拒绝需分开处理。
+该结果仍是重建开发诊断，`real_customer_accuracy=null`。
 
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
 失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，

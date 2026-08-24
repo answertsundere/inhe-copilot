@@ -300,15 +300,25 @@ execution boundary. Offline review scored factual correctness `1.125/2`, goal
 completion `1.0/2`, naturalness `1.75/2`, and business helpfulness `0.75/2`.
 Knowledge DML and `can_send` remained `0`; `real_customer_accuracy=null`.
 
-The next deterministic funnel check located that downstream breakpoint in the
-existing `evidence_filter` and `evidence_builder` gates: both compared every
-retrieved fact only with the single primary `query_fact_type`. They now reuse
-the same owner-stamped multi-goal request contract as Product Context Pack.
-Against the unchanged query-only snapshot, reviewed material stays direct and
-supports only `material_composition`; safety and moisture remain unresolved.
-Untrusted owners still cannot widen eligibility. Synthetic safety regression
-remains `5/5` and `22/22`, all review-only with `can_send=0`. A fresh Fixed-8
-reply-quality run is still required before claiming a customer-visible gain.
+The next deterministic funnel check first repaired the existing
+`evidence_filter` and `evidence_builder` single-primary-FactType loss, then found
+an earlier source restriction in the existing Response Strategy Router. A
+high-risk turn had forced every sibling request into SOP-only retrieval. The
+same high-risk, human-review strategy may now add read-only RAG and
+`product_facts` only for an independent non-high-risk claim from trusted
+canonical goals with resolved product context. Pure high-risk turns, untrusted
+owners, and unresolved identity remain SOP-only; Evidence Admission remains the
+sole exact compatibility gate.
+
+The fresh query-only Fixed-8 completed `8/8`. Reviewed PP now supports only the
+material clause; safety remains unresolved and moisture receives only existing
+bounded Domain Pack guidance. Selected evidence increased from six items in
+`2/8` scenarios to eight in `3/8`. Composer was `7/8`, Deterministic Final
+`8/8`, Unified Audit advisory `7/8`, formal-knowledge DML `0`, `can_send=0`,
+and human review `8/8`. Semantic goal recall remains `12/16`; the next earliest
+quality Owner is the after-sales Turn Understanding gap, with one separate
+advisory Audit rejection. This remains reconstructed development evidence with
+`real_customer_accuracy=null`, not an Autonomous Send qualification.
 
 During the same checkpoint, synthetic after-sales smoke exposed a separate
 high-risk JST fallback loop. The existing knowledge-scope route now performs
