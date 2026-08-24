@@ -141,6 +141,63 @@ def test_order_product_resolver_can_use_jst_i_id_lookup_when_local_missing(monke
     assert identity["lookup_endpoint"] == "mall/item/query"
 
 
+def test_order_product_resolver_preserves_exact_product_hub_i_id_before_title_fallback(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    node._RESOLUTION_CACHE.clear()
+    fallback_calls = []
+
+    monkeypatch.setattr("app.main.get_product_knowledge_repo", lambda: None)
+    monkeypatch.setattr("app.main.get_product_repo", lambda: None)
+    monkeypatch.setattr(
+        "app.db.SessionLocal",
+        lambda: (_ for _ in ()).throw(RuntimeError("no legacy kb in this unit test")),
+    )
+    monkeypatch.setattr(
+        "app.integrations.product_data_hub.read_client.lookup_product_data_hub_reference",
+        lambda *, i_id="", sku_id="": {
+            "status": "resolved",
+            "match_reason": "exact_product_code",
+            "source": "product_data_hub",
+            "product": {
+                "hub_product_id": "hub-product-1",
+                "product_code": i_id,
+                "product_name": "精确货号商品",
+                "status": "active",
+            },
+            "sku": {},
+            "reference_only": True,
+            "used_for_fact": False,
+        },
+    )
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_product_by_i_id",
+        lambda i_id: fallback_calls.append(("i_id", i_id)) or {"found": False},
+    )
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_product_by_name",
+        lambda name: fallback_calls.append(("name", name)) or {"found": False},
+    )
+
+    result = node.order_product_resolver({
+        "conversation_id": "resolver-exact-product-hub-i-id",
+        "customer_message": "这款商品尺寸是多少",
+        "normalized_message": "这款商品尺寸是多少",
+        "slots": {"i_id": "SFW001-004"},
+        "copilot_context": {
+            "product_candidates": [{"value": "旧库里的相似商品标题", "type": "product_candidate"}],
+        },
+        "conversation_context": {},
+        "trace_steps": [],
+    })
+
+    assert fallback_calls == []
+    assert result["matched_product_name"] == "精确货号商品"
+    assert result["slots"]["i_id"] == "SFW001-004"
+    assert result["order_product_identity"]["source"] == "product_data_hub_exact"
+    assert result["order_product_identity"]["i_id"] == "SFW001-004"
+
+
 def test_order_product_resolver_does_not_treat_platform_product_id_as_sku(monkeypatch):
     from app.agent.nodes import order_product_resolver as node
 

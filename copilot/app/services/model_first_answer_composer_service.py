@@ -405,6 +405,10 @@ _DECISION_STRUCTURED_HASH_FIELDS = {
     "source_text_sha256",
     "pack_content_sha256",
 }
+_DECISION_SERVER_CONTROLLED_ENUM_FIELDS = {
+    "asset_type",
+    "media_role",
+}
 _DIAGNOSTIC_GOAL_REFERENCE_FIELDS = {
     "goal_ref",
     "applicable_goal_ref",
@@ -1520,6 +1524,7 @@ class ModelFirstAnswerComposerService:
         if field_name in (
             _DECISION_CONTROLLED_REFERENCE_FIELDS
             | _DECISION_STRUCTURED_HASH_FIELDS
+            | _DECISION_SERVER_CONTROLLED_ENUM_FIELDS
         ):
             return deepcopy(value)
         if isinstance(value, dict):

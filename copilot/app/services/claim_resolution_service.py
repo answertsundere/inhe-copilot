@@ -175,6 +175,19 @@ def _facts_for_claim(claim_type: str, facts: list[dict[str, Any]]) -> list[dict[
     )
 
 
+def _selection_attribute_for_claim(
+    claim_type: str,
+    requested_attribute: str,
+    candidates: list[dict[str, Any]],
+) -> str:
+    if requested_attribute:
+        return requested_attribute
+    canonical_claim = _canonical_claim_type(claim_type)
+    if any(_attribute_key(fact) == canonical_claim for fact in candidates):
+        return canonical_claim
+    return ""
+
+
 def _requested_subject_scope(item: dict[str, Any]) -> str | None:
     """Return an explicit subject constraint encoded by a structured request."""
     claim_type = sanitize_text(item.get("claim_type")).lower()
@@ -863,23 +876,33 @@ def build_claim_resolutions(
         )
         requested_attribute = _attribute_key(requested)
         requested_subject_scope = _requested_subject_scope(requested)
-        matching_facts, fact_selection_reason = (
-            ([], "")
+        claim_candidates = (
+            []
             if unmapped_customer_goal
-            else _select_for_attribute(
-                requested_attribute,
-                _facts_for_claim(claim_type, direct_facts),
-                required_subject_scope=requested_subject_scope,
-            )
+            else _facts_for_claim(claim_type, direct_facts)
         )
         conflict_candidates = (
             []
             if unmapped_customer_goal
             else _facts_for_claim(claim_type, conflicts)
         )
+        selection_attribute = _selection_attribute_for_claim(
+            claim_type,
+            requested_attribute,
+            [*claim_candidates, *conflict_candidates],
+        )
+        matching_facts, fact_selection_reason = (
+            ([], "")
+            if unmapped_customer_goal
+            else _select_for_attribute(
+                selection_attribute,
+                claim_candidates,
+                required_subject_scope=requested_subject_scope,
+            )
+        )
         matching_conflicts, _conflict_selection_reason = (
             _select_for_attribute(
-                requested_attribute,
+                selection_attribute,
                 conflict_candidates,
                 required_subject_scope=requested_subject_scope,
             )

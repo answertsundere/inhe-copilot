@@ -2091,6 +2091,7 @@ def _state_identity(state: dict) -> dict[str, str]:
     i_id = (
         identity.get("i_id")
         or identity.get("internal_product_code")
+        or slots.get("i_id")
         or ctx.get("i_id")
         or real_identity.get("i_id")
         or _sku_family(sku)

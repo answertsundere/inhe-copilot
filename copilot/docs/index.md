@@ -300,6 +300,20 @@ execution boundary. Offline review scored factual correctness `1.125/2`, goal
 completion `1.0/2`, naturalness `1.75/2`, and business helpfulness `0.75/2`.
 Knowledge DML and `can_send` remained `0`; `real_customer_accuracy=null`.
 
+The latest P1 exact-catalog checkpoint keeps the same architecture and adds no
+reply or delivery Owner. A read-only Product Data Hub qualification resolved
+`10/10` anonymous products and projected 78 confirmed facts plus 132 labelled
+assets. Exact internal product/SKU identity now wins before legacy title
+similarity; aggregate dimensions and product option facts reach the existing
+Claim Resolution contract without absorbing package/component scope or the
+selected SKU value. The unchanged three-query rerun completed `3/3`, kept
+`can_send=0`, human review `3/3`, and formal-knowledge DML `0`; the final
+aggregate-dimension alias correction was verified by deterministic replay but
+not by a third model run. This is engineering evidence only and
+`real_customer_accuracy=null`. The accompanying versioned synthetic smoke ran
+five cases and stopped at `3/5` because both installation cases produced an
+empty review-only draft; the full 22-case run was not started.
+
 The next deterministic funnel check first repaired the existing
 `evidence_filter` and `evidence_builder` single-primary-FactType loss, then found
 an earlier source restriction in the existing Response Strategy Router. A

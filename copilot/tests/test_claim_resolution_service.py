@@ -259,6 +259,24 @@ def test_unscoped_dimension_goal_keeps_legacy_unscoped_evidence_compatibility():
     assert result["evidence_uids"] == ["legacy-width"]
 
 
+def test_product_aggregate_dimension_label_satisfies_overall_dimensions():
+    result = build_claim_resolutions(
+        [_claim("overall_dimensions")],
+        direct_product_facts=[
+            _fact(
+                "product-overall-dimensions",
+                "尺寸",
+                subject_scope="product",
+            ),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["product-overall-dimensions"]
+
+
 def test_ambiguous_unattributed_claim_does_not_absorb_multiple_attributes():
     result = build_claim_resolutions(
         [_claim()],
@@ -269,6 +287,31 @@ def test_ambiguous_unattributed_claim_does_not_absorb_multiple_attributes():
 
     assert result["status"] == "unresolved"
     assert result["reason"] == "selection_ambiguous"
+
+
+def test_unattributed_aggregate_claim_prefers_its_canonical_aggregate_fact():
+    result = build_claim_resolutions(
+        [_claim(claim_type="color_options")],
+        direct_product_facts=[
+            _fact(
+                "product-color-options",
+                "color_options",
+                claim_type="color_options",
+                subject_scope="product",
+            ),
+            _fact(
+                "current-sku-color",
+                "color",
+                claim_type="color_options",
+                subject_scope="product",
+            ),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["product-color-options"]
 
 
 def test_unmapped_customer_goal_stays_unresolved_with_semantic_provenance():

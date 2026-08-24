@@ -208,6 +208,36 @@ def test_already_projected_text_remains_idempotent():
     assert sink["privacy_projection_equal"] is True
 
 
+def test_server_controlled_media_enums_remain_idempotent_and_reach_provider():
+    response = _response()
+    response["minimal_decision_context"]["media_candidates"] = [{
+        "evidence_uid": "media-evidence-1",
+        "asset_type": "sku_image",
+        "media_role": "product_reference",
+        "non_fact": True,
+    }]
+    sink = {}
+
+    _, result, client = _compose(sink=sink, response=response)
+
+    assert result["status"] == "accepted"
+    assert client.call_count == 1
+    assert sink["privacy_projection_equal"] is True
+    decision_input, reason = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="current question",
+        )
+    )
+    assert reason == ""
+    assert decision_input["media_candidates"] == [{
+        "evidence_uid": "media-evidence-1",
+        "asset_type": "sku_image",
+        "media_role": "product_reference",
+        "non_fact": True,
+    }]
+
+
 @pytest.mark.parametrize(
     ("field_name", "first", "expected_role", "expected_trust"),
     [

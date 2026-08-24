@@ -426,6 +426,38 @@ def _identity_from_jst_product_lookup(product_data: dict, identifier: str, ident
     }
 
 
+def _identity_from_product_data_hub_reference(
+    reference: dict,
+    code: str,
+    code_type: str,
+) -> dict:
+    product = reference.get("product") if isinstance(reference.get("product"), dict) else {}
+    sku = reference.get("sku") if isinstance(reference.get("sku"), dict) else {}
+    name = str(product.get("product_name") or "").strip()
+    i_id = str(product.get("product_code") or "").strip()
+    sku_id = str(sku.get("sku_code") or "").strip()
+    candidates = []
+    for value in (name, sku_id, i_id, code):
+        if value and value not in candidates:
+            candidates.append(value)
+    return {
+        "status": "resolved",
+        "source": "product_data_hub_exact",
+        "identifier": code,
+        "identifier_type": code_type,
+        "internal_product_name": name,
+        "matched_product_name": name or sku_id or i_id or code,
+        "sku_id": sku_id or (code if code_type == "sku_id" else ""),
+        "i_id": i_id or (code if code_type == "i_id" else ""),
+        "confidence": 1.0,
+        "reason": str(reference.get("match_reason") or "exact_product_data_hub_identity"),
+        "item_count": 0,
+        "candidates": candidates,
+        "hub_product_id": str(product.get("hub_product_id") or ""),
+        "hub_sku_id": str(sku.get("hub_sku_id") or ""),
+    }
+
+
 def _identity_from_product_name_match(item: dict, query: str, confidence: float, reason: str) -> dict:
     name = str(item.get("name") or item.get("product_name") or item.get("sku_name") or "").strip()
     sku_id = str(item.get("sku_id") or "").strip()
@@ -715,6 +747,21 @@ def _resolve_direct_product_code(state: dict) -> dict | None:
                 db.close()
         except Exception:
             pass
+
+        from app.integrations.product_data_hub.read_client import (
+            lookup_product_data_hub_reference,
+        )
+
+        hub_reference = lookup_product_data_hub_reference(
+            i_id=code if code_type == "i_id" else "",
+            sku_id=code if code_type == "sku_id" else "",
+        )
+        if hub_reference.get("status") == "resolved":
+            return _identity_from_product_data_hub_reference(
+                hub_reference,
+                code,
+                code_type,
+            )
 
         if code_type == "sku_id":
             from app.integrations.jst.live_query import lookup_product_by_sku

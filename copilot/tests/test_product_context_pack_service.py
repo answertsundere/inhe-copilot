@@ -298,6 +298,72 @@ def test_product_context_pack_admits_exact_hub_facts_and_labeled_media_when_enab
     assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
 
 
+def test_product_context_pack_uses_product_only_i_id_from_slots_for_exact_hub_fact(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    observed_identity = {}
+
+    def lookup_bundle(**kwargs):
+        observed_identity.update(kwargs)
+        return {
+            "status": "resolved",
+            "reason": "",
+            "match_reason": "exact_product_code",
+            "product": {
+                "hub_product_id": "hub-product-only",
+                "product_code": "P-HUB-ONLY",
+                "product_name": "Product-only fact fixture",
+            },
+            "sku": {},
+            "reference_only": False,
+            "used_for_fact": True,
+            "source": "product_data_hub",
+            "facts": [{
+                "fact_uid": "product_data_hub:product-size",
+                "fact_type": "size",
+                "attribute_key": "overall_dimensions",
+                "value": "60x40x80",
+                "unit": "cm",
+                "scope": "product",
+                "applies": "",
+                "source": "product_data_hub:confirmed_record",
+                "source_detail": "",
+                "review_status": "confirmed",
+                "identity_scope": {"hub_product_id": "hub-product-only"},
+                "updated_at": "2026-08-24T10:00:00Z",
+            }],
+            "assets": [],
+        }
+
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lookup_bundle,
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P-HUB-ONLY"}},
+        query="What are the overall product dimensions?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    assert observed_identity == {"i_id": "P-HUB-ONLY", "sku_id": ""}
+    assert pack["stats"]["catalog_reference_used_for_fact"] is True
+    assert pack["facts"][0]["source_table"] == "product_data_hub"
+    assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
+
+
 def test_exact_hub_parts_fact_answers_included_items_not_accessory_availability(product_context_db, monkeypatch):
     """A confirmed SKU packing list may answer contents, never purchase availability."""
     import app.config as config

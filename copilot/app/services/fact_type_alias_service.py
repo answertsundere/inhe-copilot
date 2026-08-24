@@ -232,6 +232,15 @@ _DIMENSION_SUBJECT_SCOPE_CUES: tuple[tuple[str, tuple[str, ...]], ...] = (
 # requested overall-product scope separate, so a component or package width
 # cannot satisfy an overall-width request merely through this normalization.
 _OVERALL_DIMENSION_AXIS_ALIASES = {
+    "dimensions": "overall_dimensions",
+    "overall_dimensions": "overall_dimensions",
+    "overall_size": "overall_dimensions",
+    "product_dimensions": "overall_dimensions",
+    "size": "overall_dimensions",
+    "尺寸": "overall_dimensions",
+    "整体尺寸": "overall_dimensions",
+    "商品尺寸": "overall_dimensions",
+    "产品尺寸": "overall_dimensions",
     "overall_width": "width",
     "overall_height": "height",
     "overall_depth": "depth",
@@ -252,6 +261,27 @@ _DIMENSION_ATTRIBUTE_SLOTS = (
 )
 
 _CANONICAL_ATTRIBUTE_FAMILIES = (
+    {
+        "canonical_family": "color_options",
+        "fact_type_aliases": _COLOR_OPTIONS_ALIASES,
+        "canonical_default_attribute_slot": "color_options",
+        "accepted_self_attribute_aliases": frozenset({
+            "color_options",
+            "available_colors",
+            "可选颜色",
+            "颜色选项",
+            "可选配色",
+            "配色选项",
+        }),
+        "preserve_specific_attributes": frozenset({
+            "color",
+            "colour",
+            "current_color",
+            "selected_color",
+            "颜色",
+            "配色",
+        }),
+    },
     {
         "canonical_family": "material_composition",
         "fact_type_aliases": _BASE_MATERIAL_COMPOSITION_ALIASES,

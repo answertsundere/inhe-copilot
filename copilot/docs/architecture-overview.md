@@ -268,6 +268,17 @@ fact admission adds no delivery authority: Supervisor Assist remains
 Formal Evidence Convergence is implemented but disabled in production. Enabling
 it in an isolated slice does not change the evidence contract.
 
+An optional Product Data Hub read may participate only after the current turn
+already supplies an exact internal product or SKU code. A unique Hub result is
+an identity-preserving reference and therefore takes precedence over legacy
+title similarity; missing, ambiguous, or disabled Hub results retain the
+existing local/JST fallback. Confirmed Hub facts still pass through Product
+Context Pack, Evidence Admission, Claim Resolution, Composer, Deterministic
+Final, and human review. Aggregate dimension and option labels are normalized
+as attributes, while subject scope keeps product, package, and component
+measurements isolated. This adds no retrieval-by-title authority, write path,
+reply owner, or delivery permission.
+
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
 from trusted deployment configuration, a Pipeline-verified published-product
 mapping, or an explicit internal evaluation fixture. They contain
