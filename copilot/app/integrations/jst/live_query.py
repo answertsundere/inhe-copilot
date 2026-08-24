@@ -568,6 +568,128 @@ def lookup_outbound_by_so_id(so_id: str, *, shop_id: str = "") -> dict:
     return r
 
 
+def lookup_outbound_by_so_id_history(
+    so_id: str,
+    *,
+    shop_id: str = "",
+    days: int = 75,
+) -> dict:
+    """Search bounded sales-outbound history using only an exact identifier.
+
+    The sales-outbound API requires a short modified-time range even when a
+    platform order identifier is supplied.  This retries the *same exact*
+    query over provider-compatible historical windows; it never replaces the
+    identifier with product text or performs an unbounded table scan.
+    """
+    if not so_id:
+        return _make_result(
+            found=False,
+            query_type="outbound_so_id_history",
+            safe_fallback_reason="empty_id",
+        )
+
+    normalized_shop_id = str(shop_id or "").strip()
+    target = str(so_id).strip()
+    cache_key = f"outso_hist:{normalized_shop_id}:{days}:{target}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        cached_copy = dict(cached)
+        cached_copy["attempted_paths"] = list(cached.get("attempted_paths", []))
+        return cached_copy
+
+    client = JSTClient()
+    started_at = time.time()
+    attempted_paths: list[dict] = []
+    last_error_code = None
+    last_error_message = None
+
+    try:
+        for modified_begin, modified_end in _historical_modified_windows(days=days):
+            attempt_started_at = time.time()
+            params = {
+                "page_index": 1,
+                "page_size": 20,
+                "so_ids": [target],
+                "modified_begin": modified_begin,
+                "modified_end": modified_end,
+            }
+            if normalized_shop_id:
+                params["shop_id"] = normalized_shop_id
+            result = client.call("orders/out/simple/query", params)
+            rows = (result.get("data", {}) or {}).get("datas", []) or []
+            duration_ms = int((time.time() - attempt_started_at) * 1000)
+            match = next(
+                (
+                    row
+                    for row in rows
+                    if isinstance(row, dict)
+                    and target in _outbound_identifiers(row)
+                    and (
+                        not normalized_shop_id
+                        or str(row.get("shop_id") or "").strip() == normalized_shop_id
+                    )
+                ),
+                None,
+            )
+            attempted_paths.append({
+                "query_type": "outbound_so_id_history",
+                "endpoint": "orders/out/simple/query",
+                "found": bool(match),
+                "duration_ms": duration_ms,
+                "modified_begin": modified_begin,
+                "modified_end": modified_end,
+                "error_code": None,
+                "safe_fallback_reason": None if match else "not_found_in_window",
+            })
+            if match is not None:
+                response = _make_result(
+                    found=True,
+                    data=_extract_order_info(match),
+                    endpoint="orders/out/simple/query",
+                    query_type="outbound_so_id_history",
+                    duration_ms=int((time.time() - started_at) * 1000),
+                )
+                response["attempted_paths"] = attempted_paths
+                _cache_set(cache_key, response, True)
+                response_copy = dict(response)
+                response_copy["attempted_paths"] = list(attempted_paths)
+                return response_copy
+    except (JSTConfigError, JSTTimeoutError, JSTAPIError) as exc:
+        if isinstance(exc, JSTAPIError):
+            _log_api_error(exc)
+        last_error_code = (
+            "config_missing"
+            if isinstance(exc, JSTConfigError)
+            else "timeout"
+            if isinstance(exc, JSTTimeoutError)
+            else str(exc.code)
+        )
+        last_error_message = str(exc)
+        attempted_paths.append({
+            "query_type": "outbound_so_id_history",
+            "endpoint": "orders/out/simple/query",
+            "found": False,
+            "duration_ms": int((time.time() - started_at) * 1000),
+            "error_code": last_error_code,
+            "safe_fallback_reason": last_error_code,
+        })
+
+    response = _make_result(
+        found=False,
+        endpoint="orders/out/simple/query",
+        query_type="outbound_so_id_history",
+        duration_ms=int((time.time() - started_at) * 1000),
+        error_code=last_error_code,
+        error_message=last_error_message,
+        safe_fallback_reason=last_error_code or f"not_found_in_{days}d_history",
+    )
+    response["attempted_paths"] = attempted_paths
+    _cache_set(cache_key, response, False)
+    response_copy = dict(response)
+    response_copy["attempted_paths"] = list(attempted_paths)
+    return response_copy
+
+
 def lookup_outbound_by_identifier_scan(identifier: str, *, shop_id: str = "") -> dict:
     """Find a sales-outbound record by scanning its provider-bounded time window.
 
@@ -1277,20 +1399,31 @@ def lookup_order_by_identifier(
                 r_out["source_capability"] = "sales_outbound_only"
                 return r_out
 
+            r_out_history = lookup_outbound_by_so_id_history(identifier, shop_id=shop_id)
+            if r_out_history["found"]:
+                r_out_history["query_type"] = "platform_order_id->outbound_so_id_history"
+                r_out_history["attempted_paths"] = _attempt_debug(r_out) + r_out_history.get("attempted_paths", [])
+                r_out_history["source_capability"] = "sales_outbound_only"
+                return r_out_history
+
             r_out_scan = lookup_outbound_by_identifier_scan(identifier, shop_id=shop_id)
             if r_out_scan["found"]:
                 r_out_scan["query_type"] = "platform_order_id->outbound_recent_scan"
-                r_out_scan["attempted_paths"] = _attempt_debug(r_out, r_out_scan)
+                r_out_scan["attempted_paths"] = _attempt_debug(r_out) + r_out_history.get("attempted_paths", []) + _attempt_debug(r_out_scan)
                 r_out_scan["source_capability"] = "sales_outbound_only"
                 return r_out_scan
 
             r = _aggregate_lookup_failure(
                 query_type="platform_order_id",
-                results=(r_out, r_out_scan),
-                duration_ms=r_out.get("duration_ms", 0) + r_out_scan.get("duration_ms", 0),
+                results=(r_out, r_out_history, r_out_scan),
+                duration_ms=(
+                    r_out.get("duration_ms", 0)
+                    + r_out_history.get("duration_ms", 0)
+                    + r_out_scan.get("duration_ms", 0)
+                ),
                 not_found_reason="sales_outbound_record_not_visible",
             )
-            r["attempted_paths"] = _attempt_debug(r_out, r_out_scan)
+            r["attempted_paths"] = _attempt_debug(r_out) + r_out_history.get("attempted_paths", []) + _attempt_debug(r_out_scan)
             r["source_capability"] = "sales_outbound_only"
             r["lookup_complete"] = not bool(r.get("error_code"))
             return r

@@ -65,6 +65,100 @@ def test_outbound_exact_lookup_includes_required_recent_modified_window(monkeypa
     assert calls[0][1]["modified_end"]
 
 
+def test_outbound_exact_history_search_uses_bounded_windows_and_keeps_shop_scope(monkeypatch):
+    """Older outbound lookup stays exact, scoped, and bounded by provider windows."""
+    from app.integrations.jst import live_query
+
+    live_query._cache.clear()
+    target = "PLATFORM-ORDER"
+    calls = []
+
+    class FakeJSTClient:
+        def call(self, endpoint, params):
+            calls.append((endpoint, dict(params)))
+            if len(calls) == 1:
+                return {"data": {"datas": []}}
+            return {
+                "data": {
+                    "datas": [{
+                        "o_id": "matched-order",
+                        "shop_id": "JST-SHOP-42",
+                        "items": [{"raw_so_id": target}],
+                    }]
+                }
+            }
+
+    monkeypatch.setattr(live_query, "JSTClient", FakeJSTClient)
+    monkeypatch.setattr(
+        live_query,
+        "_historical_modified_windows",
+        lambda *, days=75, window_days=6: [
+            ("2026-01-01 00:00:00", "2026-01-06 23:59:59"),
+            ("2025-12-26 00:00:00", "2025-12-31 23:59:59"),
+        ],
+    )
+
+    result = live_query.lookup_outbound_by_so_id_history(
+        target,
+        shop_id="JST-SHOP-42",
+    )
+
+    assert result["found"] is True
+    assert result["data"]["o_id"] == "matched-order"
+    assert [endpoint for endpoint, _ in calls] == [
+        "orders/out/simple/query",
+        "orders/out/simple/query",
+    ]
+    assert all(params["so_ids"] == [target] for _, params in calls)
+    assert all(params["shop_id"] == "JST-SHOP-42" for _, params in calls)
+    assert result["attempted_paths"][0]["modified_begin"] == "2026-01-01 00:00:00"
+    assert result["attempted_paths"][1]["modified_end"] == "2025-12-31 23:59:59"
+
+
+def test_tmall_platform_order_uses_exact_history_before_recent_page_scan(monkeypatch):
+    """Tmall sidebar orders remain outbound-only while extending exact history."""
+    from app.integrations.jst import live_query
+
+    calls = []
+    miss = {
+        "found": False,
+        "endpoint": "orders/out/simple/query",
+        "query_type": "outbound_so_id",
+        "duration_ms": 1,
+        "safe_fallback_reason": "not_found",
+    }
+    hit = {
+        "found": True,
+        "endpoint": "orders/out/simple/query",
+        "query_type": "outbound_so_id_history",
+        "duration_ms": 2,
+        "data": {"o_id": "matched-order"},
+    }
+    monkeypatch.setattr(live_query, "lookup_outbound_by_so_id", lambda *_args, **_kwargs: dict(miss))
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_so_id_history",
+        lambda identifier, *, shop_id="": calls.append(("history", identifier, shop_id)) or dict(hit),
+    )
+    monkeypatch.setattr(
+        live_query,
+        "lookup_outbound_by_identifier_scan",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("recent scan should not run after history hit")),
+    )
+
+    result = live_query.lookup_order_by_identifier(
+        "PLATFORM-ORDER",
+        "platform_order_id",
+        shop_id="JST-SHOP-42",
+        shop_platform="tmall",
+    )
+
+    assert calls == [("history", "PLATFORM-ORDER", "JST-SHOP-42")]
+    assert result["found"] is True
+    assert result["query_type"] == "platform_order_id->outbound_so_id_history"
+    assert result["source_capability"] == "sales_outbound_only"
+
+
 def test_outbound_recent_scan_matches_selected_shop_on_later_page(monkeypatch):
     """A sales-outbound scan keeps paging until the target is found."""
     from app.integrations.jst import live_query
@@ -216,6 +310,18 @@ def test_tmall_platform_order_lookup_stays_on_sales_outbound_surface(monkeypatch
     )
     monkeypatch.setattr(
         live_query,
+        "lookup_outbound_by_so_id_history",
+        lambda identifier, *, shop_id="": calls.append(("history", identifier, shop_id)) or {
+            "found": False,
+            "endpoint": "orders/out/simple/query",
+            "query_type": "outbound_so_id_history",
+            "duration_ms": 2,
+            "safe_fallback_reason": "not_found_in_75d_history",
+            "attempted_paths": [],
+        },
+    )
+    monkeypatch.setattr(
+        live_query,
         "lookup_outbound_by_identifier_scan",
         lambda identifier, *, shop_id="": calls.append(("scan", identifier, shop_id)) or {
             "found": False,
@@ -239,6 +345,7 @@ def test_tmall_platform_order_lookup_stays_on_sales_outbound_surface(monkeypatch
 
     assert calls == [
         ("exact", "PLATFORM-ORDER", "JST-SHOP-42"),
+        ("history", "PLATFORM-ORDER", "JST-SHOP-42"),
         ("scan", "PLATFORM-ORDER", "JST-SHOP-42"),
     ]
     assert result["found"] is False

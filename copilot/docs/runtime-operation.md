@@ -243,10 +243,13 @@ branch.
 Taobao/Tmall customer-service lookup does not use QianNiu Sidecar or Qimen. The
 runtime starts on the read-only JST sales-outbound endpoint
 `orders/out/simple/query`, scoped by the selected store's `jst_shop_id`. It
-first makes the available exact `so_ids` attempt, then, on a miss, scans every
-provider-returned page in the endpoint's required recent seven-day modified
-window and compares only returned order/item identifiers. The scan stops on an
-exact match, the provider's final/short page, a repeated page, or an API error;
+first makes the available exact `so_ids` attempt. On a miss, it repeats that
+same exact identifier query across bounded provider-compatible six-day windows
+covering the previous 75 days, still scoped to the selected store. Only after
+those exact attempts miss does it scan every provider-returned page in the
+endpoint's required recent seven-day modified window and compare returned
+order/item identifiers. The scan stops on an exact match, the provider's
+final/short page, a repeated page, or an API error;
 it never derives an identity from a product title or customer text. It projects
 only outbound status, logistics identity and item `sku_id`/`i_id`/internal name.
 Buyer, receiver, amount and other sensitive fields must not enter reports,
