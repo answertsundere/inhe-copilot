@@ -180,8 +180,10 @@ evaluation reports exact atomic source-span recall (`5/16`) separately from
 provenance-valid semantic goal recall (`13/16`). Rejected optional Domain Policy
 nominations retain their reason code and no authority, but no longer remove
 otherwise valid current-turn customer goals. Selected evidence appears in
-`3/8` scenarios. Supervisor review remains pending, and the next existing Owner
-is product-overall dimension matching in Claim Resolution. This neither
+`3/8` scenarios. Direct reviewed `overall_dimensions` evidence is now selected
+before the existing multi-axis aggregation fallback, while wrong-scope package
+or component facts remain ineligible. Supervisor review remains pending, and
+the next code Owner is Unified Audit advisory false rejection. This neither
 qualifies Unified Audit nor changes the Autonomous Send block;
 `real_customer_accuracy=null`.
 
@@ -212,12 +214,12 @@ exact compatibility decision.
 The fresh query-only Fixed-8 completed `8/8`; selected evidence remains eight
 items across `3/8` scenarios. The after-sales turn now preserves three
 independent unresolved goals after rejecting an invalid policy nomination.
-Composer is `8/8`, Deterministic Final `8/8`, Unified Audit advisory `6/8`,
+Composer is `8/8`, Deterministic Final `8/8`, Unified Audit advisory `5/8`,
 formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Semantic goal
-recall is `13/16`; the next quality Owner is the product-overall dimension fact
-that is retrieved but remains unresolved in Claim Resolution. Two advisory
-Audit rejections are tracked separately. This is still a reconstructed
-development diagnostic with `real_customer_accuracy=null`.
+recall is `13/16`. The dimension-scope case now supports the product-overall
+fact and keeps absent packaging dimensions unresolved. The next code Owner is
+the deterministic-pass / Unified-Audit-fail boundary. This is still a
+reconstructed development diagnostic with `real_customer_accuracy=null`.
 
 The existing Graph router also treats a completed required-tool attempt as a
 terminal planning boundary. High-risk after-sales fallback may continue into

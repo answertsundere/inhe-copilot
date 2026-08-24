@@ -316,14 +316,18 @@ Policy nomination degraded the whole turn. The sanitizer now rejects and audits
 that policy reference without removing the independently sourced customer
 goals; it grants no policy, evidence, service-action, or send authority.
 
+Claim Resolution now selects a reviewed, same-scope direct
+`overall_dimensions` fact before falling back to its existing complete-axis
+aggregation. The scope case answers the reviewed product dimensions and leaves
+packaging unresolved because no packaging fact exists; it does not mix scopes.
+
 The fresh query-only Fixed-8 completed `8/8`. Selected evidence remains eight
 items in `3/8` scenarios. Composer was `8/8`, Deterministic Final `8/8`, Unified
-Audit advisory `6/8`, formal-knowledge DML `0`, `can_send=0`, and human review
+Audit advisory `5/8`, formal-knowledge DML `0`, `can_send=0`, and human review
 `8/8`. Exact goal identity is `5/16` and semantic goal identity is `13/16`.
-The next earliest functional Owner is product-overall dimension matching in
-Claim Resolution; two advisory Audit rejections remain separate. This remains
-reconstructed development evidence with `real_customer_accuracy=null`, not an
-Autonomous Send qualification.
+The next code Owner is the deterministic-pass / Unified-Audit-fail boundary.
+This remains reconstructed development evidence with
+`real_customer_accuracy=null`, not an Autonomous Send qualification.
 
 During the same checkpoint, synthetic after-sales smoke exposed a separate
 high-risk JST fallback loop. The existing knowledge-scope route now performs

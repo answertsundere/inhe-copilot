@@ -774,9 +774,15 @@ secondary hint 和 unmapped goal 仍不能扩大准入。相同 query-only 快�
 同一数据、知识快照和运行合同的全新 Fixed-8 已完成 `8/8`。selected evidence 为
 八条、覆盖 `3/8` 场景；Composer `8/8`、Deterministic Final `8/8`、Unified Audit
 advisory `6/8`，正式知识 DML `0`、`can_send=0`、人工复核 `8/8`。精确目标身份为
-`5/16`，provenance-valid 语义目标召回为 `13/16`。当前更早的功能缺口是已检索的
-商品整体尺寸事实仍被 Claim Resolution 判为 unresolved；两条 Unified Audit
-advisory 误拒绝作为后续独立 Owner。该结果仍是重建开发诊断，
+`5/16`，provenance-valid 语义目标召回为 `13/16`。
+
+Claim Resolution 随后修复同作用域直接聚合尺寸事实的选择顺序：正式事实已经声明
+`overall_dimensions` 时，不再错误要求它拆成宽、高、深三条轴事实；没有直接聚合事实
+时仍复用原多轴完整性检查。尺寸作用域案例现在只回答 reviewed product 的
+`45×42×70 cm`，包装尺寸因没有 packaging evidence 保持 unresolved，包装/部件隔离
+未放宽。修复后的 Fixed-8 仍为执行、Composer、Deterministic Final `8/8`，Unified
+Audit advisory `5/8`，正式知识 DML 和 `can_send` 为 0。下一代码 Owner 是两条
+Deterministic Final 通过但 Unified Audit 拒绝的案例；该结果仍是重建开发诊断，
 `real_customer_accuracy=null`。
 
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用

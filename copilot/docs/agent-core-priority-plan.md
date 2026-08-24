@@ -1085,7 +1085,7 @@ Changing priority order requires:
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
-| P1 Gold Conversation Quality | active; after-sales goal preservation verified; dimension evidence matching is the next quality Owner; Autonomous Send provider-blocked | The fresh 2026-08-24 query-only Fixed-8 completed `8/8`, with Composer `8/8`, Deterministic Final `8/8`, Unified Audit advisory pass `6/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Exact atomic-span recall is `5/16` and provenance-valid semantic goal recall is `13/16`. Selected evidence remains eight items across `3/8` scenarios. The after-sales turn now preserves crack confirmation, remedy selection, and compensation as three unresolved review-only goals after rejecting an invalid Domain Policy nomination. No refund, replacement, compensation, tool, or send authority is created. Synthetic safety is `5/5` and `22/22`, all review-only with `can_send=0`. This remains a reconstructed engineering baseline with supervisor review pending and `real_customer_accuracy=null` | Repair the existing Claim Resolution dimension scope/attribute match: a reviewed product-overall dimension fact is currently retrieved but remains unresolved. Preserve packaging/component separation, Evidence, Safety, Delivery, and `can_send`. Treat the two Unified Audit advisory rejections as a separate later Owner |
+| P1 Gold Conversation Quality | active; after-sales goals and direct aggregate dimensions verified; Unified Audit advisory is the next code Owner; Autonomous Send provider-blocked | The fresh 2026-08-24 query-only Fixed-8 completed `8/8`, with Composer `8/8`, Deterministic Final `8/8`, Unified Audit advisory pass `5/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Exact atomic-span recall is `5/16` and provenance-valid semantic goal recall is `13/16`. Selected evidence remains eight items across `3/8` scenarios. The after-sales turn preserves three unresolved goals, and the dimension-scope turn now supports only the reviewed product-overall `45×42×70 cm` fact while leaving packaging dimensions unresolved because no packaging evidence exists. No policy, refund, replacement, compensation, tool, or send authority is created. Synthetic safety is `5/5` and `22/22`, all review-only with `can_send=0`. This remains a reconstructed engineering baseline with supervisor review pending and `real_customer_accuracy=null` | Freeze the two deterministic-pass / Unified-Audit-fail cases and distinguish false rejection from real unsupported inference. Do not change Composer, Final, Safety, Delivery, or `can_send`; packaging remains a data-coverage gap, not a reason to infer dimensions |
 | P2 Domain Expertise And Portability | planned | Maternal-child/home policy pack exists; second-domain portability is unproven | Current-domain quality, then a data-only second-domain proof |
 | P3 Latency And Fast Path | planned | Eligibility is diagnostic; Fast Path disabled; latency remains high | P1 quality and P2 policy readiness |
 | P4 Supervisor-Assist And Handoff | planned | Review infrastructure exists, but Agent capability is not promoted | Qualified candidate plus durable handoff |
@@ -1116,9 +1116,11 @@ but that rejected optional metadata no longer removes otherwise valid
 current-turn goals. The frozen after-sales case preserved all three questions
 and produced only unresolved, review-only clauses. The full Fixed-8 then reached
 Composer `8/8`, exact goal identity `5/16`, and semantic goal identity `13/16`;
-formal DML and `can_send` remained zero. The next demonstrated functional gap is
-the existing product-overall dimension evidence match, not a new router or
-reply owner.
+formal DML and `can_send` remained zero. Claim Resolution then restored direct
+same-scope `overall_dimensions` facts before its existing width/height/depth
+aggregation fallback. The scope case now answers the reviewed product size and
+keeps absent packaging size unresolved. The next code Owner is Unified Audit
+advisory false rejection, not a new router or reply owner.
 
 Update this ledger only when a gate changes. Dated run details remain in
 evaluation outputs, not in this durable plan.

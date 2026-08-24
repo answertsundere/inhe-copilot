@@ -255,6 +255,14 @@ def _select_for_attribute(
 ) -> tuple[list[dict[str, Any]], str]:
     """Select evidence by declared attribute without inferring from free text."""
     if requested_attribute == "overall_dimensions":
+        direct_aggregate = [
+            fact
+            for fact in candidates
+            if _attribute_key(fact) == "overall_dimensions"
+            and _matches_subject_scope(fact, required_subject_scope)
+        ]
+        if direct_aggregate:
+            return direct_aggregate, ""
         return _select_aggregate_dimensions(
             candidates,
             required_subject_scope=required_subject_scope,
