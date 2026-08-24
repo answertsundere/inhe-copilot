@@ -174,14 +174,14 @@ diagnostic: `real_customer_accuracy=null` and Autonomous Send remain blocked.
 
 The current query-only `conversation-reconstructed-v1` Fixed-8 is the
 Supervisor Assist diagnostic baseline. Its latest complete run executed `8/8`,
-with Composer `7/8`, Deterministic Final `8/8`, Unified Audit advisory pass
-`7/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. The
-evaluation now reports exact atomic source-span recall (`4/16`) separately from
-provenance-valid semantic goal recall (`12/16`), so span widening cannot be
-misreported as semantic loss. Offline review is complete but not supervisor
-approval: only one reply met gold quality, business helpfulness averaged
-`0.75/2`, selected evidence appeared in only `2/8` scenarios, and the next
-existing Owner is formal knowledge tool/admission coverage. This neither
+with Composer `8/8`, Deterministic Final `8/8`, Unified Audit advisory pass
+`6/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. The
+evaluation reports exact atomic source-span recall (`5/16`) separately from
+provenance-valid semantic goal recall (`13/16`). Rejected optional Domain Policy
+nominations retain their reason code and no authority, but no longer remove
+otherwise valid current-turn customer goals. Selected evidence appears in
+`3/8` scenarios. Supervisor review remains pending, and the next existing Owner
+is product-overall dimension matching in Claim Resolution. This neither
 qualifies Unified Audit nor changes the Autonomous Send block;
 `real_customer_accuracy=null`.
 
@@ -209,15 +209,15 @@ canonical goals with resolved product context. Pure high-risk, untrusted, and
 identity-unresolved requests remain SOP-only, and Evidence Admission retains the
 exact compatibility decision.
 
-The fresh query-only Fixed-8 completed `8/8`; selected evidence increased to
-eight items across `3/8` scenarios. The material clause is supported by reviewed
-PP, safety remains unresolved, and moisture receives only the existing bounded
-Domain Pack guidance. Composer is `7/8`, Deterministic Final `8/8`, Unified Audit
-advisory `7/8`, formal-knowledge DML `0`, `can_send=0`, and human review `8/8`.
-Semantic goal recall remains `12/16`; the next quality Owner is the empty
-after-sales goal set in Turn Understanding, while one advisory Audit rejection
-is tracked separately. This is still a reconstructed development diagnostic
-with `real_customer_accuracy=null`.
+The fresh query-only Fixed-8 completed `8/8`; selected evidence remains eight
+items across `3/8` scenarios. The after-sales turn now preserves three
+independent unresolved goals after rejecting an invalid policy nomination.
+Composer is `8/8`, Deterministic Final `8/8`, Unified Audit advisory `6/8`,
+formal-knowledge DML `0`, `can_send=0`, and human review `8/8`. Semantic goal
+recall is `13/16`; the next quality Owner is the product-overall dimension fact
+that is retrieved but remains unresolved in Claim Resolution. Two advisory
+Audit rejections are tracked separately. This is still a reconstructed
+development diagnostic with `real_customer_accuracy=null`.
 
 The existing Graph router also treats a completed required-tool attempt as a
 terminal planning boundary. High-risk after-sales fallback may continue into

@@ -764,14 +764,20 @@ secondary hint 和 unmapped goal 仍不能扩大准入。相同 query-only 快�
 非可信 owner 或缺少商品上下文时仍为 SOP-only；该路由不把商品事实当成安全事实，
 也不改变 Safety、Delivery 或 `can_send`。
 
-同一数据、知识快照和运行合同的全新 Fixed-8 已完成 `8/8`。材质/安全/防潮回合
-现在获得 reviewed PP 证据，只支持材质，安全继续 unresolved，防潮仅使用现有
-Domain Pack 的 incidental-moisture 有界说明。selected evidence 从六条、`2/8`
-场景提高到八条、`3/8` 场景；Composer `7/8`、Deterministic Final `8/8`、Unified
-Audit advisory `7/8`，正式知识 DML `0`、`can_send=0`、人工复核 `8/8`。语义目标
-召回仍为 `12/16`，售后案例仍没有 authoritative goals，因此下一最早质量 Owner
-是 Turn Understanding；另有一条 Unified Audit advisory 误拒绝需分开处理。
-该结果仍是重建开发诊断，`real_customer_accuracy=null`。
+后续 Turn Understanding 诊断证明售后 Provider 已生成三个来源有效的目标；真正
+断点是其中一个错误 Domain Policy 提名把整轮标为 degraded。现有 sanitizer 仍会
+丢弃 unknown、wrong-kind、wrong-family 或 semantic-boundary-mismatched policy ref，
+但该无权元数据的拒绝不再清除独立客户目标，诊断 reason code 继续保留。冻结售后
+案例因此保留照片裂口确认、退款/换货结果选择和赔偿三个 unresolved 目标，未授权
+任何售后结论、工具动作或发送。
+
+同一数据、知识快照和运行合同的全新 Fixed-8 已完成 `8/8`。selected evidence 为
+八条、覆盖 `3/8` 场景；Composer `8/8`、Deterministic Final `8/8`、Unified Audit
+advisory `6/8`，正式知识 DML `0`、`can_send=0`、人工复核 `8/8`。精确目标身份为
+`5/16`，provenance-valid 语义目标召回为 `13/16`。当前更早的功能缺口是已检索的
+商品整体尺寸事实仍被 Claim Resolution 判为 unresolved；两条 Unified Audit
+advisory 误拒绝作为后续独立 Owner。该结果仍是重建开发诊断，
+`real_customer_accuracy=null`。
 
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
 失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，

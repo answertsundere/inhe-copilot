@@ -116,6 +116,13 @@ _CANONICAL_GOAL_FIELDS = {
 }
 
 _DIAGNOSTICS_SCHEMA_VERSION = "turn-understanding-diagnostics/v4"
+
+_RECOVERABLE_POLICY_NOMINATION_REJECTIONS = {
+    "customer_goal_policy_intent_ref_unknown",
+    "customer_goal_policy_intent_kind_invalid",
+    "customer_goal_policy_intent_family_mismatch",
+    "customer_goal_policy_intent_semantic_boundary_mismatch",
+}
 MINIMAL_PROVIDER_SCHEMA_VERSION = "turn-understanding-provider-output/v5"
 GOAL_IDENTITY_SCHEMA_VERSION = "turn-understanding-goal-identity/v2"
 JSON_ENVELOPE_CONTRACT_VERSION = "turn-understanding-json-envelope/v1"
@@ -901,6 +908,15 @@ def _new_turn_understanding_diagnostics(client: Any) -> dict[str, Any]:
             "downgraded_goal_count": 0,
             "recovered_goal_can_create_fact": False,
             "can_change_can_send": False,
+        },
+        "semantic_projection": {
+            "provider_goal_count": 0,
+            "provider_goal_kind_counts": {},
+            "provider_claim_type_status_counts": {},
+            "normalized_goal_count": 0,
+            "normalized_goal_kind_counts": {},
+            "goal_understanding_status": "",
+            "goal_understanding_reason_codes": [],
         },
         "response_content_length": 0,
         "response_content_sha256": "",
@@ -1823,6 +1839,56 @@ def _classify_with_llm(
         ),
         canonicalize_source_clauses=strict_provider is not None,
     )
+    provider_goals = [
+        goal
+        for goal in parsed.get("goals") or []
+        if isinstance(goal, dict)
+    ]
+    diagnostics["semantic_projection"] = {
+        "provider_goal_count": len(provider_goals),
+        "provider_goal_kind_counts": {
+            kind: sum(
+                str(goal.get("goal_kind") or "").strip().lower() == kind
+                for goal in provider_goals
+            )
+            for kind in sorted(ALLOWED_GOAL_KINDS)
+            if any(
+                str(goal.get("goal_kind") or "").strip().lower() == kind
+                for goal in provider_goals
+            )
+        },
+        "provider_claim_type_status_counts": {
+            status: sum(
+                str(goal.get("claim_type_status") or "").strip().lower()
+                == status
+                for goal in provider_goals
+            )
+            for status in sorted(ALLOWED_CLAIM_TYPE_STATUSES)
+            if any(
+                str(goal.get("claim_type_status") or "").strip().lower()
+                == status
+                for goal in provider_goals
+            )
+        },
+        "normalized_goal_count": len(canonical_goals),
+        "normalized_goal_kind_counts": {
+            kind: sum(goal.get("goal_kind") == kind for goal in canonical_goals)
+            for kind in sorted(ALLOWED_GOAL_KINDS)
+            if any(goal.get("goal_kind") == kind for goal in canonical_goals)
+        },
+        "goal_understanding_status": str(
+            result.get("goal_understanding_status") or ""
+        ) if isinstance(result, dict) else "",
+        "goal_understanding_reason_codes": list(dict.fromkeys(
+            str(reason).strip()
+            for reason in (
+                result.get("goal_understanding_diagnostics") or []
+                if isinstance(result, dict)
+                else []
+            )
+            if str(reason or "").strip()
+        )),
+    }
     canonical_provenance = _canonical_provenance_violations(
         canonical_goals,
         message=span_reference_text,
@@ -1963,6 +2029,18 @@ def _sanitize_llm_result(
             for goal in customer_goals
         )
     ):
+        goal_understanding_status = "valid"
+    if (
+        customer_goals
+        and goal_understanding_status == "degraded"
+        and goal_diagnostics
+        and set(goal_diagnostics).issubset(
+            _RECOVERABLE_POLICY_NOMINATION_REJECTIONS
+        )
+    ):
+        # A rejected policy nomination carries no authority after sanitization.
+        # Preserve the independently sourced customer goals while retaining the
+        # rejection diagnostics for audit.
         goal_understanding_status = "valid"
     if isinstance(canonical_goals_sink, list):
         canonical_goals_sink.clear()

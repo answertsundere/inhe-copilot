@@ -233,6 +233,18 @@ def test_valid_canonical_and_unmapped_output_passes_with_one_call(monkeypatch):
     assert client.kwargs["_single_attempt_no_repair"] is True
     assert "can_send" not in result
     assert diagnostics["can_change_can_send"] is False
+    assert diagnostics["semantic_projection"] == {
+        "provider_goal_count": 2,
+        "provider_goal_kind_counts": {"customer_goal": 2},
+        "provider_claim_type_status_counts": {
+            "canonical": 1,
+            "unmapped": 1,
+        },
+        "normalized_goal_count": 2,
+        "normalized_goal_kind_counts": {"customer_goal": 2},
+        "goal_understanding_status": "valid",
+        "goal_understanding_reason_codes": [],
+    }
 
 
 def test_optional_semantic_metadata_counts_do_not_change_validity(monkeypatch):
@@ -998,6 +1010,76 @@ def test_unknown_goal_downgrade_does_not_remove_independent_canonical_goal(
         for goal in result["customer_goals"]
     } == {("canonical", "material"), ("unmapped", "")}
     assert diagnostics["runtime_goal_continuity"]["downgraded_goal_count"] == 1
+
+
+def test_rejected_policy_nomination_does_not_remove_independent_customer_goals(
+    monkeypatch,
+):
+    message = (
+        "Can you confirm the visible condition, choose the applicable remedy, "
+        "and assess compensation?"
+    )
+    payload = {
+        "goals": [
+            _goal(
+                source_text="Can you confirm the visible condition",
+                status="unmapped",
+                claim_type="",
+                attribute_key="",
+                semantic_key="confirm_visible_condition",
+                policy_intent_ref="ordinary_use_practical_guidance",
+            ),
+            _goal(
+                source_text="choose the applicable remedy",
+                status="unmapped",
+                claim_type="",
+                attribute_key="",
+                semantic_key="service_outcome_selection",
+            ),
+            _goal(
+                source_text="assess compensation",
+                status="unmapped",
+                claim_type="",
+                attribute_key="",
+                semantic_key="compensation_eligibility",
+            ),
+        ]
+    }
+    client = _FakeClient(_response_for_payload(payload))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(
+        service,
+        "_policy_intent_candidates",
+        lambda _state: [{
+            "policy_intent_ref": "ordinary_use_practical_guidance",
+            "intent_kind": "practical_guidance",
+            "goal_family": "ordinary_use",
+            "canonical_claim_types": [],
+            "unmapped_semantic_keys": ["ordinary_use_confirmation"],
+        }],
+    )
+
+    diagnostics = {}
+    result = service._classify_with_llm(
+        {},
+        message,
+        "aftersales_question",
+        diagnostics_sink=diagnostics,
+    )
+
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert len(result["customer_goals"]) == 3
+    assert all(
+        goal["goal_kind"] == "customer_goal"
+        and goal["claim_type_status"] == "unmapped"
+        and not goal["policy_intent_ref"]
+        for goal in result["customer_goals"]
+    )
+    assert result["goal_understanding_diagnostics"] == [
+        "customer_goal_policy_intent_semantic_boundary_mismatch"
+    ]
+    assert diagnostics["semantic_projection"]["normalized_goal_count"] == 3
 
 
 def test_duplicate_goal_is_reported(monkeypatch):
