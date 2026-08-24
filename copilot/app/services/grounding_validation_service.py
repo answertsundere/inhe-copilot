@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,10 @@ _PRODUCT_FACT_TERMS = {
     "可水洗", "机洗", "手洗", "干洗",
     "枕芯采用", "适合几岁", "适用年龄",
 }
+
+# Single-character dimension markers are common Chinese characters. They are
+# product facts only when used as a dimension label or measurement expression.
+_SINGLE_CHARACTER_DIMENSION_TERMS = {"长", "宽", "高"}
 
 # ========== 物流状态关键词 ==========
 # 具体状态声明（需要证据支撑）
@@ -105,13 +109,37 @@ def _collect_evidence_text(state: dict) -> str:
     return "\n".join(parts)
 
 
-def _extract_claims(reply: str, terms: set) -> list[dict]:
+def _is_product_fact_occurrence(reply: str, term: str, match: re.Match) -> bool:
+    """Return whether a matched product term is used as a product-fact marker."""
+    if term not in _SINGLE_CHARACTER_DIMENSION_TERMS:
+        return True
+
+    start = max(0, match.start() - 12)
+    end = min(len(reply), match.end() + 16)
+    context = reply[start:end]
+    escaped = re.escape(term)
+
+    return bool(
+        re.search(rf"{escaped}\u5ea6", context)
+        or re.search(rf"{escaped}(?:\u4e3a|\u662f|\u7ea6|\u8fbe|[:\uff1a])?\s*\d", context)
+        or re.search(rf"\d+(?:\.\d+)?\s*(?:cm|CM|\u5398\u7c73|mm|MM|\u6beb\u7c73)?\s*{escaped}(?:\u5ea6)?", context)
+        or re.search(r"(?:\u957f|\u5bbd|\u9ad8)\s*[xX\u00d7*]\s*\d", context)
+    )
+
+
+def _extract_claims(
+    reply: str,
+    terms: set,
+    occurrence_filter: Optional[Callable[[str, str, re.Match], bool]] = None,
+) -> list[dict]:
     """从回复中提取包含指定术语的声明。"""
     claims = []
     for term in terms:
         if term in reply:
             # 提取包含该术语的上下文片段（前后各10字）
             for m in re.finditer(re.escape(term), reply):
+                if occurrence_filter and not occurrence_filter(reply, term, m):
+                    continue
                 start = max(0, m.start() - 10)
                 end = min(len(reply), m.end() + 10)
                 context = reply[start:end]
@@ -335,7 +363,11 @@ def _check_unsupported_facts_when_no_evidence(state: dict) -> list[dict]:
     unsupported = []
 
     # 检查商品事实
-    product_claims = _extract_claims(reply, _PRODUCT_FACT_TERMS)
+    product_claims = _extract_claims(
+        reply,
+        _PRODUCT_FACT_TERMS,
+        occurrence_filter=_is_product_fact_occurrence,
+    )
     for claim in product_claims:
         unsupported.append({
             "claim": claim["context"],
@@ -552,7 +584,11 @@ def validate_reply_grounding(state: dict) -> dict:
     else:
         # 有证据时：检查一致性
         # 1. 商品事实 grounding
-        product_claims = _extract_claims(reply, _PRODUCT_FACT_TERMS)
+        product_claims = _extract_claims(
+            reply,
+            _PRODUCT_FACT_TERMS,
+            occurrence_filter=_is_product_fact_occurrence,
+        )
         for claim in product_claims:
             if claim["term"] in evidence_text:
                 supported_claims.append({"claim": claim["context"], "fact_type": "product_fact"})

@@ -61,6 +61,40 @@ class TestGroundingValidationService:
         assert result["passed"] is False
         assert any(c["fact_type"] == "logistics_fact" for c in result["unsupported_claims"])
 
+    def test_logistics_uncertainty_with_non_dimension_high_character_is_not_product_fact(self):
+        """A common Chinese character must not turn a logistics caveat into a size claim."""
+        state = {
+            "suggested_reply": (
+                "亲，我目前无法确认包裹的具体位置，也不能保证物流会以最高频率更新，"
+                "请以最新轨迹为准。"
+            ),
+            "intent": "logistics_trace",
+            "evidence": {
+                "logistics_facts": [{"fact": "订单已生成物流记录"}],
+            },
+            "filtered_evidence": [],
+            "knowledge_evidence": [],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert result["passed"] is True
+        assert not any(c["fact_type"] == "product_fact" for c in result["unsupported_claims"])
+
+    def test_unverified_height_measurement_remains_product_fact(self):
+        state = {
+            "suggested_reply": "亲，这款产品高度为70厘米。",
+            "intent": "product_question",
+            "evidence": {"product_facts": []},
+            "filtered_evidence": [],
+            "knowledge_evidence": [],
+        }
+
+        result = validate_reply_grounding(state)
+
+        assert result["passed"] is False
+        assert any(c["fact_type"] == "product_fact" for c in result["unsupported_claims"])
+
     def test_customer_attributed_logistics_status_is_context_not_agent_fact(self):
         state = {
             "customer_message": "\u7269\u6d41\u663e\u793a\u5df2\u7b7e\u6536\uff0c\u4f46\u6211\u6ca1\u6536\u5230\u3002",
