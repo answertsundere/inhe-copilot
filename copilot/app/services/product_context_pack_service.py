@@ -50,10 +50,19 @@ def authoritative_requested_fact_types(
             result.append(normalized)
 
     append(primary_fact_type)
+    for claim in _authoritative_requested_claims(state):
+        append(claim.get("claim_type"))
+    return result
+
+
+def _authoritative_requested_claims(
+    state: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Return only customer goals owned by a valid understanding result."""
     state = state if isinstance(state, dict) else {}
     understanding = state.get("turn_understanding")
     if not isinstance(understanding, dict):
-        return result
+        return []
     if (
         understanding.get("schema_version") != "turn-understanding/v2"
         or understanding.get("owner") != "turn_understanding_owner"
@@ -61,23 +70,18 @@ def authoritative_requested_fact_types(
         or str(understanding.get("goal_understanding_status") or "").strip().lower()
         != "valid"
     ):
-        return result
+        return []
 
     requested_claims = understanding.get("requested_claims")
     if not isinstance(requested_claims, list):
-        return result
-    for claim in requested_claims:
-        if not isinstance(claim, dict):
-            continue
-        if str(claim.get("goal_kind") or "").strip().lower() != "customer_goal":
-            continue
-        claim_type_status = str(
-            claim.get("claim_type_status") or ""
-        ).strip().lower()
-        if claim_type_status == "unmapped":
-            continue
-        append(claim.get("claim_type"))
-    return result
+        return []
+    return [
+        claim
+        for claim in requested_claims
+        if isinstance(claim, dict)
+        and str(claim.get("goal_kind") or "").strip().lower() == "customer_goal"
+        and str(claim.get("claim_type_status") or "").strip().lower() != "unmapped"
+    ]
 
 
 def match_authoritative_requested_fact_type(
@@ -116,7 +120,35 @@ def build_product_context_pack(
     state = dict(state or {})
     if state.get("copilot_context"):
         augment_state_with_real_context_identity(state)
-    identity = _resolve_identity_for_pack(state, _state_identity(state))
+    from app import config
+
+    supplied_identity = _state_identity(state)
+    hub_multimodal_enabled = bool(config.COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED)
+    catalog_lookup = (
+        lookup_product_data_hub_bundle
+        if hub_multimodal_enabled
+        else lookup_product_data_hub_reference
+    )
+    catalog_reference: dict[str, Any] | None = None
+    identity = None
+    if (
+        config.COPILOT_PRODUCT_DATA_HUB_ENABLED
+        and supplied_identity.get("i_id")
+        and supplied_identity.get("sku")
+    ):
+        exact_reference = catalog_lookup(
+            i_id=supplied_identity["i_id"],
+            sku_id=supplied_identity["sku"],
+        )
+        identity = _identity_from_exact_hub_reference(
+            supplied_identity,
+            exact_reference,
+        )
+        if identity is not None:
+            catalog_reference = exact_reference
+
+    if identity is None:
+        identity = _resolve_identity_for_pack(state, supplied_identity)
     conversation_media_reference = build_conversation_media_reference(state.get("copilot_context") or {})
     if not (identity["sku"] or identity["i_id"] or identity["product_name"]):
         return _attach_media_context_trace(
@@ -124,20 +156,11 @@ def build_product_context_pack(
             conversation_media_reference,
         )
 
-    from app import config
-
-    hub_multimodal_enabled = bool(config.COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED)
-    catalog_reference = (
-        lookup_product_data_hub_bundle(
+    if catalog_reference is None:
+        catalog_reference = catalog_lookup(
             i_id=identity.get("i_id", ""),
             sku_id=identity.get("sku", ""),
         )
-        if hub_multimodal_enabled
-        else lookup_product_data_hub_reference(
-            i_id=identity.get("i_id", ""),
-            sku_id=identity.get("sku", ""),
-        )
-    )
     if catalog_reference.get("status") == "resolved" and not identity.get("product_name"):
         identity = {
             **identity,
@@ -165,6 +188,7 @@ def build_product_context_pack(
     )
     hub_facts = _hub_bundle_facts_for_query(
         catalog_reference,
+        state=state,
         identity=identity,
         query=query,
         query_fact_type=query_fact_type,
@@ -590,6 +614,7 @@ _HUB_MEDIA_TYPES_BY_FACT_TYPE = {
 def _requested_hub_dimension_scopes(
     query_fact_type: str,
     semantic_query: dict[str, Any],
+    state: dict[str, Any] | None = None,
 ) -> set[str]:
     """Resolve the authoritative target scope for a dimensional answer.
 
@@ -598,6 +623,20 @@ def _requested_hub_dimension_scopes(
     supplies one, so carton and component measurements cannot silently answer
     a question about the product itself.
     """
+    from app.services.fact_type_alias_service import is_dimension_claim_type
+
+    authoritative_scopes = {
+        _HUB_DIMENSION_SUBJECT_SCOPES.get(
+            str(claim.get("subject_scope") or "").strip().lower(),
+            "",
+        )
+        for claim in _authoritative_requested_claims(state)
+        if is_dimension_claim_type(claim.get("claim_type"))
+    }
+    authoritative_scopes &= _HUB_DIMENSION_SCOPE_VALUES
+    if authoritative_scopes:
+        return authoritative_scopes
+
     explicit = (
         semantic_query.get("subject_scope")
         or semantic_query.get("requested_subject_scope")
@@ -633,6 +672,7 @@ def _hub_canonical_dimension_attribute(raw: dict[str, Any]) -> str:
 def _hub_bundle_facts_for_query(
     bundle: dict[str, Any],
     *,
+    state: dict[str, Any] | None,
     identity: dict[str, str],
     query: str,
     query_fact_type: str,
@@ -647,6 +687,7 @@ def _hub_bundle_facts_for_query(
     requested_dimension_scopes = _requested_hub_dimension_scopes(
         query_fact_type,
         semantic_query,
+        state,
     )
     for raw in bundle.get("facts") or []:
         if not isinstance(raw, dict):
@@ -2181,6 +2222,50 @@ def _resolve_identity_for_pack(state: dict, identity: dict[str, str]) -> dict[st
     return {**identity, "product_identity_resolution": resolution}
 
 
+def _identity_from_exact_hub_reference(
+    identity: dict[str, str],
+    reference: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Preserve one caller-supplied product/SKU pair only after exact Hub verification."""
+    if reference.get("status") != "resolved":
+        return None
+    product = reference.get("product") if isinstance(reference.get("product"), dict) else {}
+    sku = reference.get("sku") if isinstance(reference.get("sku"), dict) else {}
+    supplied_i_id = str(identity.get("i_id") or "").strip()
+    supplied_sku = str(identity.get("sku") or "").strip()
+    resolved_i_id = str(product.get("product_code") or "").strip()
+    resolved_sku = str(sku.get("sku_code") or "").strip()
+    if not supplied_i_id or not supplied_sku:
+        return None
+    if resolved_i_id != supplied_i_id or resolved_sku != supplied_sku:
+        return None
+
+    product_name = str(product.get("product_name") or identity.get("product_name") or "").strip()
+    resolution = {
+        "status": "resolved",
+        "source": "product_data_hub_exact",
+        "confidence": 1.0,
+        "internal_i_id": supplied_i_id,
+        "i_id": supplied_i_id,
+        "sku_id": supplied_sku,
+        "sku_code": supplied_sku,
+        "canonical_product_name": product_name,
+        "display_product_name": product_name,
+        "match_reason": str(reference.get("match_reason") or "exact_product_and_sku_code"),
+        "identity_sources": ["product_data_hub_exact"],
+        "unresolved_reason": "",
+        "ambiguous_candidates": [],
+    }
+    return {
+        **identity,
+        "sku": supplied_sku,
+        "sku_family": _sku_family(supplied_sku),
+        "i_id": supplied_i_id,
+        "product_name": product_name,
+        "product_identity_resolution": resolution,
+    }
+
+
 def _identity_resolution_signals(state: dict, identity: dict[str, str]) -> dict[str, Any]:
     slots = state.get("slots") if isinstance(state.get("slots"), dict) else {}
     ctx = state.get("copilot_context") if isinstance(state.get("copilot_context"), dict) else {}
@@ -2299,7 +2384,15 @@ def _code_matches(target: str, candidate: str) -> bool:
         return True
     family = _sku_family(target)
     candidate_family = _sku_family(candidate)
-    return bool(family and candidate_family and family == candidate_family)
+    if family and candidate_family and family == candidate_family:
+        return True
+    target_prefix = _variant_prefix(target)
+    candidate_prefix = _variant_prefix(candidate)
+    return bool(
+        (target_prefix and target_prefix == candidate.lower())
+        or (candidate_prefix and candidate_prefix == target.lower())
+        or (target_prefix and candidate_prefix and target_prefix == candidate_prefix)
+    )
 
 
 def _text_matches(target: str, candidate: str) -> bool:
@@ -2372,6 +2465,14 @@ def _scope_matches(
     title: str,
 ) -> bool:
     codes = [identity.get("sku", ""), identity.get("sku_family", ""), identity.get("i_id", "")]
+    explicit_sku_scope = [sku_id, *sku_scope]
+    explicit_sku_scope = [value for value in explicit_sku_scope if str(value or "").strip()]
+    if identity.get("sku") and explicit_sku_scope and not any(
+        _code_matches(code, scoped_value)
+        for code in codes
+        for scoped_value in explicit_sku_scope
+    ):
+        return False
     for code in codes:
         if any(_code_matches(code, item) for item in [product_id, sku_id, *sku_scope, *product_scope]):
             return True

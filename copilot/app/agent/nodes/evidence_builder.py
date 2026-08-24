@@ -100,6 +100,9 @@ def _compact_value(value) -> str:
 _FORMAL_EVIDENCE_PROTOCOL_FIELDS = (
     "evidence_uid",
     "evidence_id",
+    "origin_evidence_key",
+    "chunk_id",
+    "entry_id",
     "fact_type",
     "evidence_fact_type",
     "fact_review_status",
@@ -1001,6 +1004,8 @@ def evidence_builder(state: dict) -> dict:
             "source_sheet": source_sheet,
             "row_number": row_number,
             "matched_entry_id": ke.get("entry_id"),
+            "entry_id": ke.get("entry_id"),
+            "chunk_id": ke.get("chunk_id"),
             "matched_title": ke.get("title", ""),
             "query_fact_type": gate_query_fact_type,
             "primary_query_fact_type": query_fact_type,

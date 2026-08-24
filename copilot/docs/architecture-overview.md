@@ -279,6 +279,15 @@ as attributes, while subject scope keeps product, package, and component
 measurements isolated. This adds no retrieval-by-title authority, write path,
 reply owner, or delivery permission.
 
+For an owner-stamped multi-goal turn, Product Context Pack may collect every
+explicitly requested dimension subject scope while retaining the same
+product/package/component isolation. Retrieval evidence preserves only its
+source-owned product and SKU namespaces: request identity is never merged into
+an evidence record. An explicit source-SKU conflict therefore wins over fuzzy
+title similarity. RAG and Product Context Pack copies keep the same source
+entry/chunk origin so formal convergence can deterministically deduplicate them
+without changing the underlying fact or weakening admission.
+
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
 from trusted deployment configuration, a Pipeline-verified published-product
 mapping, or an explicit internal evaluation fixture. They contain

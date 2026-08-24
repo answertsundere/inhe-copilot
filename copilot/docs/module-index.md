@@ -199,6 +199,17 @@ direct Product Context Pack probe, so the next existing Owner is the formal API
 Pack/RAG -> Evidence Admission -> canonical selected-evidence execution boundary.
 No reply-quality gain or real accuracy is claimed.
 
+That execution boundary now preserves source-owned identity and provenance.
+`ProductContextPackService` keeps an exact Hub-verified product/SKU pair ahead
+of legacy similarity and collects all explicit dimension scopes from valid,
+owner-stamped goals. `CurrentSQLiteRetriever` no longer merges request SKU or
+product-name terms into FAQ source scope, and an explicit source-SKU mismatch
+cannot fall back to fuzzy product-name matching. `evidence_builder` carries the
+original entry/chunk identity so RAG and Product Context Pack copies converge to
+one record. These are existing Retrieval, Pack, and Admission responsibilities;
+they add no service, Graph node, model call, reply owner, write authority, or
+`can_send` condition.
+
 The following funnel-level repair reuses that same request authority in the
 existing `evidence_filter` and `evidence_builder` gates. A non-primary direct
 fact is eligible only when it matches a canonical customer claim from valid,

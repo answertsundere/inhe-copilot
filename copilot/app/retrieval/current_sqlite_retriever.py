@@ -160,8 +160,13 @@ def _retrieve_from_kbqa(
         for qa, product in rows:
             qa_skus = {str(s).strip().upper() for s in _json_list(qa.sku_codes_json) if str(s).strip()}
             qa_skus.update({s.upper() for s in _product_sku_codes(product)})
+            product_i_id = str(getattr(product, "i_id", "") or "").strip().upper()
+            if product_i_id:
+                qa_skus.add(product_i_id)
+            qa_skus.update({_sku_family(s) for s in list(qa_skus)})
 
             sku_match = bool(sku_candidates and qa_skus and (sku_candidates & qa_skus))
+            sku_conflict = bool(sku_candidates and qa_skus and not sku_match)
             product_name = product.product_name if product else ""
             product_match = bool(
                 product_terms
@@ -169,6 +174,10 @@ def _retrieve_from_kbqa(
                 and any(term in product_name or product_name in term for term in product_terms)
             )
 
+            # An explicit source SKU namespace is authoritative. Similar names
+            # cannot convert evidence owned by another product into this request.
+            if sku_conflict:
+                continue
             if (sku_candidates or product_terms) and not (sku_match or product_match):
                 continue
 
@@ -247,8 +256,8 @@ def _retrieve_from_kbqa(
                 "entry_risk_level": qa.risk_level or "low",
                 "source_sheet": qa.import_batch_id or "",
                 "row_number": qa.id,
-                "sku_scope": sorted(qa_skus | sku_candidates),
-                "product_scope": [p for p in [product_name, *product_terms] if p],
+                "sku_scope": sorted(qa_skus),
+                "product_scope": [p for p in [product_name, product_i_id] if p],
             })
 
         results.sort(key=lambda x: -x["rerank_score"])

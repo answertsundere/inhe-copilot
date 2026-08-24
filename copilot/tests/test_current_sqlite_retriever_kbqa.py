@@ -61,3 +61,74 @@ def test_kbqa_fallback_matches_sku_family_and_ranks_material_first(monkeypatch, 
     assert results
     assert results[0]["entry_id"].startswith("kbqa:")
     assert "\u6750\u8d28" in results[0]["title"]
+
+
+def test_kbqa_fallback_preserves_source_scope_and_rejects_explicit_sku_conflict(
+    monkeypatch,
+    tmp_path,
+):
+    import app.db as db_module
+    from app.models.kb_tables import KBProduct, KBQA
+    from app.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
+    from app.retrieval.current_sqlite_retriever import CurrentSQLiteRetriever
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'kbqa-scope.db'}", connect_args={"check_same_thread": False})
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(KnowledgeChunkRepository, "search_hybrid", lambda **kwargs: [])
+
+    db_module.Base.metadata.create_all(bind=engine)
+    db = session_factory()
+    try:
+        target = KBProduct(
+            i_id="YH06K07",
+            product_name="\u751c\u70b9\u5c4b\u94c1\u6746\u6536\u7eb3\u67b6",
+            sku_list_json=json.dumps([{"sku_code": "YH06K07"}]),
+            status="published",
+        )
+        other = KBProduct(
+            i_id="YH06K40",
+            product_name="A\u751c\u70b9\u5c4b\u94c1\u6746\u6536\u7eb3\u67b6",
+            sku_list_json=json.dumps([{"sku_code": "YH06K40"}]),
+            status="published",
+        )
+        db.add_all([target, other])
+        db.flush()
+        db.add_all([
+            KBQA(
+                question="\u751c\u70b9\u5c4b\u94c1\u6746\u6536\u7eb3\u67b6\u600e\u4e48\u5b89\u88c5\uff1f",
+                answer="\u5305\u88c5\u5185\u6709\u5b89\u88c5\u8bf4\u660e\u3002",
+                product_id=target.id,
+                sku_codes_json=json.dumps(["YH06K07"]),
+                status="published",
+                auto_reply=True,
+            ),
+            KBQA(
+                question="A\u751c\u70b9\u5c4b\u94c1\u6746\u6536\u7eb3\u67b6\u600e\u4e48\u5b89\u88c5\uff1f",
+                answer="\u53e6\u4e00\u6b3e\u5546\u54c1\u7684\u5b89\u88c5\u8bf4\u660e\u3002",
+                product_id=other.id,
+                sku_codes_json=json.dumps(["YH06K40"]),
+                status="published",
+                auto_reply=True,
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    results = CurrentSQLiteRetriever().retrieve(
+        query="\u8fd9\u6b3e\u5177\u4f53\u600e\u4e48\u5b89\u88c5\uff1f",
+        product_scope=["\u751c\u70b9\u5c4b\u94c1\u6746\u6536\u7eb3\u67b6"],
+        sku_scope=["YH06K07B01S04"],
+        source_types=["faq"],
+        fact_type="installation",
+        top_k=5,
+    )
+
+    assert len(results) == 1
+    assert results[0]["sku_scope"] == ["YH06K07"]
+    assert results[0]["product_scope"] == [
+        "\u751c\u70b9\u5c4b\u94c1\u6746\u6536\u7eb3\u67b6",
+        "YH06K07",
+    ]

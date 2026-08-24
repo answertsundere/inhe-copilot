@@ -298,6 +298,127 @@ def test_product_context_pack_admits_exact_hub_facts_and_labeled_media_when_enab
     assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
 
 
+def test_exact_product_hub_pair_wins_before_legacy_identity_resolution(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.services import product_context_pack_service
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    hub_calls = []
+    legacy_calls = []
+
+    def lookup_bundle(*, i_id="", sku_id=""):
+        hub_calls.append({"i_id": i_id, "sku_id": sku_id})
+        if (i_id, sku_id) != ("HUB-PRODUCT", "SHARED-SKU"):
+            return {
+                "status": "not_found",
+                "reason": "product_code_not_found",
+                "facts": [],
+                "assets": [],
+            }
+        return {
+            "status": "resolved",
+            "reason": "",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-exact",
+                "product_code": "HUB-PRODUCT",
+                "product_name": "Exact Hub Product",
+            },
+            "sku": {
+                "hub_sku_id": "hub-sku-exact",
+                "sku_code": "SHARED-SKU",
+            },
+            "reference_only": False,
+            "used_for_fact": True,
+            "source": "product_data_hub",
+            "facts": [{
+                "fact_uid": "product_data_hub:exact-width",
+                "fact_type": "size",
+                "attribute_key": "width",
+                "value": "42",
+                "unit": "cm",
+                "scope": "product",
+                "applies": "",
+                "source": "product_data_hub:confirmed_record",
+                "source_detail": "",
+                "review_status": "confirmed",
+                "identity_scope": {
+                    "hub_product_id": "hub-product-exact",
+                    "hub_sku_id": "hub-sku-exact",
+                },
+                "updated_at": "2026-08-24T10:00:00Z",
+            }],
+            "assets": [],
+        }
+
+    def legacy_resolve(_self, **kwargs):
+        legacy_calls.append(kwargs)
+        return {
+            "status": "resolved",
+            "source": "sku_exact",
+            "sku_code": "SHARED-SKU",
+            "i_id": "LEGACY-PRODUCT",
+            "canonical_product_name": "Legacy Product",
+            "resolved_product_id": 41,
+        }
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_DATA_HUB_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lookup_bundle,
+    )
+    monkeypatch.setattr(ProductIdentityResolver, "resolve", legacy_resolve)
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "HUB-PRODUCT", "sku_code": "SHARED-SKU"}},
+        query="What is the product width?",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    assert legacy_calls == []
+    assert hub_calls == [{"i_id": "HUB-PRODUCT", "sku_id": "SHARED-SKU"}]
+    assert pack["identity"]["i_id"] == "HUB-PRODUCT"
+    assert pack["identity"]["sku"] == "SHARED-SKU"
+    assert pack["facts"][0]["evidence_id"] == "product_data_hub:exact-width"
+    assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        {"status": "ambiguous", "product": {}, "sku": {}},
+        {
+            "status": "resolved",
+            "product": {"product_code": "OTHER-PRODUCT"},
+            "sku": {"sku_code": "SHARED-SKU"},
+        },
+        {
+            "status": "resolved",
+            "product": {"product_code": "HUB-PRODUCT"},
+            "sku": {"sku_code": "OTHER-SKU"},
+        },
+    ],
+)
+def test_exact_product_hub_identity_does_not_trust_ambiguous_or_mismatched_pair(reference):
+    from app.services.product_context_pack_service import _identity_from_exact_hub_reference
+
+    assert _identity_from_exact_hub_reference(
+        {"i_id": "HUB-PRODUCT", "sku": "SHARED-SKU", "product_name": ""},
+        reference,
+    ) is None
+
+
 def test_product_context_pack_uses_product_only_i_id_from_slots_for_exact_hub_fact(
     product_context_db,
     monkeypatch,
@@ -683,6 +804,124 @@ def test_hub_dimension_facts_default_to_product_scope_for_product_dimension_ques
     }
     assert packaging_scopes == {
         "product_data_hub:fact-package-size": "packaging",
+    }
+
+
+def test_hub_dimension_facts_include_every_authoritative_requested_subject_scope(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_DATA_HUB_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-1",
+                "product_code": "P100",
+                "product_name": "Multi-scope product",
+            },
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [
+                {
+                    "fact_uid": "product_data_hub:product-size",
+                    "fact_type": "size",
+                    "attribute_key": "size",
+                    "value": "45x42x70",
+                    "unit": "cm",
+                    "scope": "product",
+                    "review_status": "confirmed",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+                {
+                    "fact_uid": "product_data_hub:pack-width",
+                    "fact_type": "pack_size",
+                    "attribute_key": "纸箱宽",
+                    "value": "26",
+                    "unit": "cm",
+                    "scope": "packaging",
+                    "review_status": "confirmed",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+                {
+                    "fact_uid": "product_data_hub:pack-length",
+                    "fact_type": "pack_size",
+                    "attribute_key": "纸箱长",
+                    "value": "81",
+                    "unit": "cm",
+                    "scope": "packaging",
+                    "review_status": "confirmed",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+                {
+                    "fact_uid": "product_data_hub:pack-height",
+                    "fact_type": "pack_size",
+                    "attribute_key": "纸箱高",
+                    "value": "65.5",
+                    "unit": "cm",
+                    "scope": "packaging",
+                    "review_status": "confirmed",
+                    "identity_scope": {"hub_product_id": "hub-product-1", "hub_sku_id": "hub-sku-1"},
+                },
+            ],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {
+            "slots": {"i_id": "P100", "sku_code": "S100-COMBO"},
+            "semantic_query": {"subject_scope": "product"},
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type": "dimensions",
+                        "claim_type_status": "canonical",
+                        "attribute_key": "overall_dimensions",
+                        "subject_scope": "product",
+                    },
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type": "dimensions",
+                        "claim_type_status": "canonical",
+                        "attribute_key": "overall_dimensions",
+                        "subject_scope": "packaging",
+                    },
+                ],
+            },
+        },
+        query="Compare the two requested dimension scopes",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    projected = {
+        fact["chunk_id"]: fact.get("subject_scope")
+        for fact in pack["facts"]
+        if fact.get("source_table") == "product_data_hub"
+    }
+    assert projected == {
+        "product_data_hub:product-size": "product",
+        "product_data_hub:pack-width": "packaging",
+        "product_data_hub:pack-length": "packaging",
+        "product_data_hub:pack-height": "packaging",
     }
 
 
@@ -2383,6 +2622,34 @@ def test_product_first_pack_requires_clear_identity_before_using_similar_product
     assert pack["facts"] == []
     assert pack["product_first_evidence_pack"]["answerability"] == "no_product_identity"
     assert pack["product_first_evidence_pack"]["product_structured_facts"] == []
+
+
+def test_exact_sku_scope_mismatch_cannot_fall_back_to_similar_product_name():
+    from app.services.product_context_pack_service import _scope_matches
+
+    identity = {
+        "sku": "YH06K07B01S04",
+        "sku_family": "YH06K07",
+        "i_id": "YH06K07",
+        "product_name": "Sweet-house storage rack",
+    }
+
+    assert _scope_matches(
+        identity,
+        product_scope=["YH06K40", "A Sweet-house storage rack"],
+        sku_scope=["YH06K40"],
+        product_id="YH06K40",
+        sku_id="",
+        title="A Sweet-house storage rack installation",
+    ) is False
+    assert _scope_matches(
+        identity,
+        product_scope=["YH06K07", "Sweet-house storage rack"],
+        sku_scope=["YH06K07"],
+        product_id="YH06K07",
+        sku_id="",
+        title="Sweet-house storage rack installation",
+    ) is True
 
 
 def test_catalog_identity_is_reference_only_and_never_becomes_fact(product_context_db, monkeypatch):

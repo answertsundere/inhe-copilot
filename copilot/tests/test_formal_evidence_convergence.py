@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.agent.nodes.evidence_builder import _formal_evidence_convergence
+from app.agent.nodes.evidence_builder import _formal_evidence_convergence, evidence_builder
 from app.agent.nodes.generate_reply import _real_product_facts
 from app.agent.nodes.build_response import build_response
 from app.models.reply import ReplySuggestion
@@ -246,6 +246,44 @@ def test_convergence_deduplicates_rag_and_pack_copies_with_one_origin_key():
     )
 
     assert len(canonical_selected_evidence(context)) == 1
+
+
+def test_evidence_builder_preserves_rag_entry_origin_for_pack_deduplication(
+    monkeypatch,
+):
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    text = "The package includes the reviewed installation guide."
+    source = {
+        "entry_id": "kbqa:1681",
+        "source_type": "faq",
+        "chunk_text": text,
+        "entry_status": "published",
+        "fact_review_status": "published",
+        "evidence_fact_type": "installation",
+        "evidence_allowed_for_direct_answer": True,
+        "evidence_allowed_for_exact_answer": True,
+        "product_scope": ["P-A"],
+        "sku_scope": ["SKU-A"],
+    }
+    result = evidence_builder({
+        "customer_message": "How do I install it?",
+        "normalized_message": "How do I install it?",
+        "query_fact_type": "installation",
+        "slots": {"sku_code": "SKU-A"},
+        "i_id": "P-A",
+        "knowledge_evidence": [source],
+        "product_context_pack": {
+            "facts": [{
+                **source,
+                "chunk_id": "kbqa:1681",
+                "product_context_pack": True,
+            }],
+        },
+        "turn_understanding": _understanding("installation"),
+    })
+
+    assert len(result["selected_evidence"]) == 1
+    assert result["selected_evidence"][0]["provenance"]["origin_evidence_key"] == "faq:kbqa:1681"
 
 
 def test_conflicting_candidates_are_excluded_with_provenance():

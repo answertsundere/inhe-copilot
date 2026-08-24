@@ -1092,6 +1092,19 @@ Changing priority order requires:
 | P5 Low-Risk Automation | planned | `can_send` remains application-owned and disabled for candidate work | Real canary evidence |
 | P6 Omnichannel Expansion | planned | Architecture defined; adapters and operations incomplete | Qualified Agent Core and handoff operations |
 
+The latest P1 identity/evidence checkpoint closed four earlier boundaries
+without adding an owner. An exact Hub-verified `i_id`/SKU pair is preserved
+before legacy resolution; owner-stamped multi-goal dimension requests retain
+all explicit subject scopes; RAG evidence no longer inherits the request SKU;
+and Pack/RAG copies preserve one origin key for convergence deduplication. In a
+query-only isolated installation turn, cross-product FAQ evidence fell from two
+records to zero while the one exact-product FAQ remained supported. Deterministic
+Final passed, formal-knowledge content and DML were unchanged, `can_send=0`, and
+human review remained required. The local-model candidate still contained a
+mixed-language phrase and Unified Audit returned a truncated invalid schema, so
+this is evidence correctness progress rather than Gold Conversation or
+Autonomous Send qualification; `real_customer_accuracy=null`.
+
 The 2026-08-24 P1 checkpoint also repaired an independent high-risk after-sales
 JST fallback recursion in the existing knowledge-scope route. Required tools are
 planned once; after fallback the request proceeds through evidence and mandatory
