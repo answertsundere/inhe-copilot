@@ -80,6 +80,31 @@ def authoritative_requested_fact_types(
     return result
 
 
+def match_authoritative_requested_fact_type(
+    state: dict[str, Any] | None,
+    evidence_fact_type: str,
+    primary_fact_type: str = "",
+) -> str:
+    """Match evidence to one authoritative requested claim without widening it.
+
+    A multi-goal turn may have one primary retrieval type while also requesting
+    other facts. Only the owner-stamped Turn Understanding projection can make
+    those additional facts eligible.
+    """
+    from app.services.fact_type_service import fact_type_matches
+
+    evidence_type = str(evidence_fact_type or "").strip()
+    if not evidence_type:
+        return ""
+    for requested_type in authoritative_requested_fact_types(
+        state,
+        primary_fact_type,
+    ):
+        if fact_type_matches(requested_type, evidence_type):
+            return requested_type
+    return ""
+
+
 def build_product_context_pack(
     state: dict,
     *,

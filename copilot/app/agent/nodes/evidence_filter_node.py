@@ -187,9 +187,11 @@ def evidence_filter_node(state: dict) -> dict:
     query_fact_type = state.get("query_fact_type", "")
     resolved_product_names = _resolved_product_names(state)
     from app.services.fact_type_service import (
-        fact_type_matches,
         infer_evidence_fact_type,
         is_strict_fact_type,
+    )
+    from app.services.product_context_pack_service import (
+        match_authoritative_requested_fact_type,
     )
 
     filtered = []
@@ -309,14 +311,26 @@ def evidence_filter_node(state: dict) -> dict:
         ):
             evidence_fact_type = "odor"
             f["evidence_fact_type_source"] = "material_contains_odor_signal"
-        f["query_fact_type"] = query_fact_type
+        matched_requested_fact_type = match_authoritative_requested_fact_type(
+            state,
+            evidence_fact_type,
+            query_fact_type,
+        )
+        gate_query_fact_type = (
+            evidence_fact_type
+            if matched_requested_fact_type
+            else query_fact_type
+        )
+        f["primary_query_fact_type"] = query_fact_type
+        f["matched_requested_fact_type"] = matched_requested_fact_type
+        f["query_fact_type"] = gate_query_fact_type
         f["evidence_fact_type"] = evidence_fact_type
         if query_fact_type == "installation" and evidence_fact_type == "installation":
             new_text, sanitized = sanitize_risky_convenience_claim(f.get("chunk_text", ""))
             if sanitized:
                 f["chunk_text"] = new_text
                 f["sanitized_risky_convenience_claim"] = True
-        if query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type):
+        if query_fact_type and not matched_requested_fact_type:
             evidence_allowed_for_exact_answer = False
             f["evidence_allowed_for_direct_answer"] = False
             mismatch_reason = mismatch_reason or "wrong_fact_type"
@@ -332,7 +346,7 @@ def evidence_filter_node(state: dict) -> dict:
                 **f,
                 "scope_match": scope_match,
                 "source_confidence": source_confidence,
-                "query_fact_type": query_fact_type,
+                "query_fact_type": gate_query_fact_type,
                 "evidence_fact_type": evidence_fact_type,
                 "rerank_score": rerank_score,
                 "mismatch_reason": mismatch_reason,
@@ -379,7 +393,9 @@ def evidence_filter_node(state: dict) -> dict:
             "row_number": f.get("row_number", 0),
             "scope_match": scope_match,
             "source_confidence": source_confidence,
-            "query_fact_type": query_fact_type,
+            "query_fact_type": gate_query_fact_type,
+            "primary_query_fact_type": query_fact_type,
+            "matched_requested_fact_type": matched_requested_fact_type,
             "evidence_fact_type": evidence_fact_type,
             "rerank_score": rerank_score,
             "mismatch_reason": mismatch_reason,

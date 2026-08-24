@@ -300,6 +300,16 @@ execution boundary. Offline review scored factual correctness `1.125/2`, goal
 completion `1.0/2`, naturalness `1.75/2`, and business helpfulness `0.75/2`.
 Knowledge DML and `can_send` remained `0`; `real_customer_accuracy=null`.
 
+The next deterministic funnel check located that downstream breakpoint in the
+existing `evidence_filter` and `evidence_builder` gates: both compared every
+retrieved fact only with the single primary `query_fact_type`. They now reuse
+the same owner-stamped multi-goal request contract as Product Context Pack.
+Against the unchanged query-only snapshot, reviewed material stays direct and
+supports only `material_composition`; safety and moisture remain unresolved.
+Untrusted owners still cannot widen eligibility. Synthetic safety regression
+remains `5/5` and `22/22`, all review-only with `can_send=0`. A fresh Fixed-8
+reply-quality run is still required before claiming a customer-visible gain.
+
 During the same checkpoint, synthetic after-sales smoke exposed a separate
 high-risk JST fallback loop. The existing knowledge-scope route now performs
 required tool planning once and then proceeds through evidence and review. The

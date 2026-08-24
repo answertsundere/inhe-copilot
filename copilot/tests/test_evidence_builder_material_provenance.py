@@ -133,6 +133,111 @@ def test_published_rag_material_preserves_formal_chunk_provenance():
     assert fact["evidence_allowed_for_direct_answer"] is True
 
 
+def test_builder_preserves_fact_for_authoritative_secondary_goal():
+    result = evidence_builder_module.evidence_builder(
+        {
+            "intent": "product_question",
+            "query_fact_type": "moisture_resistance",
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "canonical",
+                        "claim_type": "material_composition",
+                    },
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "canonical",
+                        "claim_type": "moisture_resistance",
+                    },
+                ],
+            },
+            "knowledge_evidence": [
+                {
+                    "entry_id": "entry-material",
+                    "chunk_id": "chunk-material",
+                    "evidence_uid": "evidence-material",
+                    "source_type": "product_facts",
+                    "chunk_text": "Material: PP.",
+                    "fact_type": "material",
+                    "evidence_fact_type": "material",
+                    "entry_status": "published",
+                    "fact_review_status": "reviewed",
+                    "material_provenance": "structured_product_profile",
+                    "evidence_allowed_for_direct_answer": True,
+                    "evidence_allowed_for_exact_answer": True,
+                    "direct_answer_allowed": True,
+                }
+            ],
+        }
+    )
+
+    fact = result["evidence"]["product_facts"][0]
+    assert fact["evidence_allowed_for_direct_answer"] is True
+    assert fact["evidence_allowed_for_exact_answer"] is True
+    assert fact.get("mismatch_reason", "") == ""
+
+
+def test_builder_tool_result_uses_same_authoritative_secondary_goal_contract():
+    result = evidence_builder_module.evidence_builder(
+        {
+            "intent": "product_question",
+            "query_fact_type": "installation",
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "canonical",
+                        "claim_type": "dimensions",
+                    },
+                    {
+                        "goal_kind": "customer_goal",
+                        "claim_type_status": "canonical",
+                        "claim_type": "installation",
+                    },
+                ],
+            },
+            "tool_results": {
+                "rag_search_tool": {
+                    "chunks": [
+                        {
+                            "entry_id": "entry-height",
+                            "chunk_id": "chunk-height",
+                            "evidence_uid": "evidence-height",
+                            "source_type": "product_facts",
+                            "chunk_text": "Height: 70 cm.",
+                            "fact_type": "dimensions",
+                            "evidence_fact_type": "dimensions",
+                            "attribute_key": "height",
+                            "score": 0.9,
+                            "scope_score": 1.0,
+                            "entry_status": "published",
+                            "fact_review_status": "reviewed",
+                            "evidence_allowed_for_direct_answer": True,
+                            "evidence_allowed_for_exact_answer": True,
+                            "metadata": {"auto_reply_allowed": True},
+                        }
+                    ]
+                }
+            },
+        }
+    )
+
+    fact = result["evidence"]["product_facts"][0]
+    assert fact["attribute_key"] == "height"
+    assert fact["evidence_allowed_for_direct_answer"] is True
+    assert fact["evidence_allowed_for_exact_answer"] is True
+    assert fact.get("mismatch_reason", "") == ""
+
+
 def test_exact_product_hub_fact_becomes_attributed_product_evidence():
     result = evidence_builder_module.evidence_builder(
         {

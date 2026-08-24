@@ -50,6 +50,98 @@ def test_formal_attribution_survives_retrieval_metadata_boundary():
     assert evidence[0]["protocol_source_type"] == "product_data_hub"
 
 
+@pytest.mark.parametrize(
+    ("primary_fact_type", "requested_claim_type", "evidence_fact_type"),
+    [
+        ("moisture_resistance", "material_composition", "material"),
+        ("installation", "dimensions", "dimensions"),
+    ],
+)
+def test_authoritative_multigoal_evidence_is_not_blocked_by_primary_fact_type(
+    primary_fact_type,
+    requested_claim_type,
+    evidence_fact_type,
+):
+    from app.agent.nodes.evidence_filter_node import evidence_filter_node
+
+    result = evidence_filter_node({
+        "retrieved_chunks": [{
+            "score": 0.9,
+            "chunk_id": "chunk-secondary-goal",
+            "entry_id": "entry-secondary-goal",
+            "title": "Reviewed product fact",
+            "source_type": "product_facts",
+            "intent": "general",
+            "chunk_text": "Reviewed product value.",
+            "metadata": {"auto_reply_allowed": True},
+            "fact_type": evidence_fact_type,
+            "evidence_fact_type": evidence_fact_type,
+            "material_provenance": "structured_product_profile",
+            "entry_status": "published",
+            "fact_review_status": "reviewed",
+        }],
+        "intent": "product_question",
+        "allowed_source_types": ["product_facts"],
+        "query_fact_type": primary_fact_type,
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "requested_claims": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": requested_claim_type,
+            }],
+        },
+    })
+
+    evidence = result["knowledge_evidence"][0]
+    assert evidence["gate_status"] == "allowed"
+    assert evidence["direct_answer_allowed"] is True
+    assert evidence["mismatch_reason"] == ""
+
+
+def test_untrusted_multigoal_projection_cannot_widen_evidence_eligibility():
+    from app.agent.nodes.evidence_filter_node import evidence_filter_node
+
+    result = evidence_filter_node({
+        "retrieved_chunks": [{
+            "score": 0.9,
+            "chunk_id": "chunk-untrusted-goal",
+            "entry_id": "entry-untrusted-goal",
+            "title": "Reviewed material fact",
+            "source_type": "product_facts",
+            "intent": "general",
+            "chunk_text": "Reviewed material value.",
+            "metadata": {"auto_reply_allowed": True},
+            "fact_type": "material",
+            "evidence_fact_type": "material",
+            "entry_status": "published",
+            "fact_review_status": "reviewed",
+        }],
+        "intent": "product_question",
+        "allowed_source_types": ["product_facts"],
+        "query_fact_type": "moisture_resistance",
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "untrusted_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "requested_claims": [{
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "material_composition",
+            }],
+        },
+    })
+
+    evidence = result["knowledge_evidence"][0]
+    assert evidence["gate_status"] == "blocked"
+    assert evidence["direct_answer_allowed"] is False
+    assert "wrong_fact_type" in evidence["gate_reasons"]
+
+
 class TestEvidenceFilterNewFields:
     """测试 evidence_filter_node 输出的新字段"""
 

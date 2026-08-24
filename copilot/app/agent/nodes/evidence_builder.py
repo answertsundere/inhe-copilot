@@ -29,7 +29,10 @@ from app.services.product_structured_evidence_service import (
     material_direct_answer_block_reason,
     structured_field_source_kind,
 )
-from app.services.fact_type_service import fact_type_matches, infer_evidence_fact_type, is_strict_fact_type
+from app.services.fact_type_service import infer_evidence_fact_type, is_strict_fact_type
+from app.services.product_context_pack_service import (
+    match_authoritative_requested_fact_type,
+)
 from app.services.admitted_answer_context_service import (
     AdmittedAnswerContextService,
     build_minimal_decision_context,
@@ -961,7 +964,17 @@ def evidence_builder(state: dict) -> dict:
         )
         if odor_material_bridge:
             evidence_fact_type = "odor"
-        wrong_fact_type = bool(query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type))
+        matched_requested_fact_type = match_authoritative_requested_fact_type(
+            state,
+            evidence_fact_type,
+            query_fact_type,
+        )
+        gate_query_fact_type = (
+            evidence_fact_type
+            if matched_requested_fact_type
+            else query_fact_type
+        )
+        wrong_fact_type = bool(query_fact_type and not matched_requested_fact_type)
 
         # 检测高风险字段
         risk_fields = _detect_high_risk_fields(text)
@@ -989,7 +1002,9 @@ def evidence_builder(state: dict) -> dict:
             "row_number": row_number,
             "matched_entry_id": ke.get("entry_id"),
             "matched_title": ke.get("title", ""),
-            "query_fact_type": query_fact_type,
+            "query_fact_type": gate_query_fact_type,
+            "primary_query_fact_type": query_fact_type,
+            "matched_requested_fact_type": matched_requested_fact_type,
             "evidence_fact_type": evidence_fact_type,
             "evidence_allowed_for_exact_answer": ke.get("evidence_allowed_for_exact_answer", True),
             "material_provenance": ke.get("material_provenance", ""),
@@ -1158,13 +1173,23 @@ def evidence_builder(state: dict) -> dict:
                 )
                 if odor_material_bridge:
                     evidence_fact_type = "odor"
+                matched_requested_fact_type = match_authoritative_requested_fact_type(
+                    state,
+                    evidence_fact_type,
+                    query_fact_type,
+                )
+                gate_query_fact_type = (
+                    evidence_fact_type
+                    if matched_requested_fact_type
+                    else query_fact_type
+                )
                 _sanitized = False
                 if query_fact_type == "installation" and evidence_fact_type == "installation":
                     _new_text, _did = sanitize_risky_convenience_claim(text)
                     if _did:
                         text = _new_text
                         _sanitized = True
-                wrong_fact_type = bool(query_fact_type and not fact_type_matches(query_fact_type, evidence_fact_type))
+                wrong_fact_type = bool(query_fact_type and not matched_requested_fact_type)
                 ref_only = not meta.get("auto_reply_allowed", True)
                 if chunk.get("evidence_allowed_for_direct_answer") is False and not odor_material_bridge:
                     ref_only = True
@@ -1189,7 +1214,9 @@ def evidence_builder(state: dict) -> dict:
                     "rerank_score": chunk.get("rerank_score", score),
                     "mismatch_reason": chunk.get("mismatch_reason", ""),
                     "scope_match": chunk.get("scope_score", 0) >= 0,
-                    "query_fact_type": query_fact_type,
+                    "query_fact_type": gate_query_fact_type,
+                    "primary_query_fact_type": query_fact_type,
+                    "matched_requested_fact_type": matched_requested_fact_type,
                     "evidence_fact_type": evidence_fact_type,
                     "material_provenance": chunk.get("material_provenance", ""),
                     "evidence_allowed_for_exact_answer": chunk.get(
@@ -1222,7 +1249,7 @@ def evidence_builder(state: dict) -> dict:
                     base["mismatch_reason"] = ""
 
                 # 统一证据门控：gate_status / gate_reasons / direct_answer_allowed
-                base["query_fact_type"] = query_fact_type
+                base["query_fact_type"] = gate_query_fact_type
                 base["evidence_fact_type"] = evidence_fact_type
                 _gate = evaluate_evidence_item(base, state)
                 base["gate_status"] = _gate["gate_status"]

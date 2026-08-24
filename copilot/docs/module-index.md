@@ -197,6 +197,15 @@ direct Product Context Pack probe, so the next existing Owner is the formal API
 Pack/RAG -> Evidence Admission -> canonical selected-evidence execution boundary.
 No reply-quality gain or real accuracy is claimed.
 
+The following funnel-level repair reuses that same request authority in the
+existing `evidence_filter` and `evidence_builder` gates. A non-primary direct
+fact is eligible only when it matches a canonical customer claim from valid,
+owner-stamped Turn Understanding; an untrusted owner, a secondary hint, or an
+unmapped goal cannot widen the gate. The unchanged query-only snapshot now
+reaches Claim Resolution with material supported while safety and moisture stay
+unresolved. Synthetic safety remains `5/5` and `22/22`, with human review for
+all cases and `can_send=0`. Fixed-8 reply-quality rerun remains pending.
+
 The existing Graph router also treats a completed required-tool attempt as a
 terminal planning boundary. High-risk after-sales fallback may continue into
 the evidence path but cannot re-plan the same tools indefinitely. No Graph node

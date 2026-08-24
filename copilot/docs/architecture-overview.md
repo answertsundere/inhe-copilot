@@ -747,6 +747,16 @@ tool/admission coverage，而不是新增 Prompt、Graph 或回复 Owner。运�
 Pack/RAG 到 Evidence Admission/canonical selected evidence 的后续断点仍未收口。该结果
 没有质量提升声明，`real_customer_accuracy=null`。
 
+后续逐节点漏斗确认更早的 Pack/RAG 修复并未覆盖两个既有下游门禁：
+`evidence_filter` 和 `evidence_builder` 仍把所有事实只与单一主
+`query_fact_type` 比较，导致已检索的非主目标 direct fact 被重新标记为
+`wrong_fact_type`。这两个既有 Owner 现在复用同一 owner-stamped 多目标请求合同，
+并按事实自己的 canonical/alias 类型执行 Evidence Gate；未受信 owner、普通
+secondary hint 和 unmapped goal 仍不能扩大准入。相同 query-only 快照的确定性
+漏斗已达到 material supported，safety/moisture unresolved，且 Synthetic safety
+保持 `5/5`、`22/22`、`can_send=0`。尚未运行新的 Fixed-8，因此不声明回复质量
+或真实准确率提升。
+
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
 失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，
 仍会仅因 `high_risk` 再次进入 `tool_planner`，形成六节点无界循环。当前路由只在
