@@ -1,5 +1,25 @@
 # Change Log
 
+## 2026-08-25 - Customer-Visible Service-Action Execution Contract
+
+- Split the Composer's selected service-action references from their
+  customer-visible execution. Response v6 requires one explicit
+  `service_action_requests` item for every selected planner-owned input action,
+  with an exact anonymous action reference, non-empty customer text, and input
+  slots constrained by the action's `any_of` or `all_of` contract.
+- Deterministic Final independently rejects an accepted Composer result when a
+  required Minimal Decision Context action is omitted, malformed, bound to the
+  wrong slots, or absent from the exact reconstructed customer reply.
+- Extended the existing Composer qualification matrix from four profiles and
+  20 attempts to five profiles and 25 attempts. DeepSeek V4 Flash passed the
+  changed-source matrix `25/25` with no retry, repair, or fallback. The
+  after-sales canary rendered the required customer-input request, and the
+  subsequent Fixed-8 completed Composer and Deterministic Final `8/8`, while
+  preserving human review `8/8`, zero automatic sends, and zero formal DML.
+  Raw goal recall remained `9/16`; this is not Gold-quality qualification or
+  real-customer accuracy. Versioned Synthetic regression remained `5/5` and
+  `22/22` against the canonical isolated knowledge snapshot.
+
 ## 2026-08-25 - Explicit Attached-Media Response Obligation
 
 - Preserved a fully provenance-valid current-turn `media_request` through the

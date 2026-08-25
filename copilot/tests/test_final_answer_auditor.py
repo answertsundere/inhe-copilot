@@ -683,6 +683,142 @@ def test_model_first_final_audit_allows_honest_outbound_boundary():
     assert audited["can_send"] is False
 
 
+def test_model_first_final_audit_rejects_reply_missing_rendered_service_action():
+    goal_text = "退款或换货需要先核实订单信息，目前无法直接承诺。"
+    action_text = "麻烦您提供订单号，我继续为您核实。"
+    response = {
+        "intent": "aftersales",
+        "suggested_reply": goal_text,
+        "requires_human_review": True,
+        "can_send": False,
+        "selected_evidence": [],
+        "minimal_decision_context": {
+            "requested_claims": [{
+                "goal_ref": "goal-aftersales",
+                "goal_kind": "customer_goal",
+                "claim_type": "",
+            }],
+            "claim_resolutions": [{
+                "claim_uid": "claim-aftersales",
+                "goal_ref": "goal-aftersales",
+                "goal_kind": "customer_goal",
+                "claim_type": "",
+                "status": "unresolved",
+                "support_basis": "none",
+                "evidence_uids": [],
+            }],
+            "admitted_evidence": [],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "candidate_reply": goal_text + action_text,
+            "covered_goal_refs": ["claim-aftersales"],
+            "clauses": [{
+                "clause_ref": "C1",
+                "goal_ref": "claim-aftersales",
+                "clause_kind": "unresolved",
+                "text": goal_text,
+                "evidence_uids": [],
+            }],
+            "selected_service_actions": [{
+                "action_type": "request_customer_input",
+                "accepted_input_slots": ["order_id"],
+                "input_selection_mode": "all_of",
+                "source_owner": "response_strategy_planner",
+                "non_fact": True,
+                "completed": False,
+                "can_change_can_send": False,
+            }],
+            "selected_service_action_refs": ["action-fixture"],
+            "service_action_requests": [{
+                "action_ref": "action-fixture",
+                "text": action_text,
+                "requested_input_slots": ["order_id"],
+            }],
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="现在直接退款还是换货？",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "model_first_candidate_reply_contract_mismatch" in audited[
+        "final_answer_audit"
+    ]["issues"]
+    assert audited["can_send"] is False
+
+    response["suggested_reply"] = goal_text + action_text
+    audited = audit_final_answer(
+        response,
+        customer_message="现在直接退款还是换货？",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is True
+    assert audited["can_send"] is False
+
+
+def test_model_first_final_audit_rejects_omitted_required_context_service_action():
+    goal_text = "退款或换货需要先核实订单信息，目前无法直接承诺。"
+    response = {
+        "intent": "aftersales",
+        "suggested_reply": goal_text,
+        "requires_human_review": True,
+        "can_send": False,
+        "selected_evidence": [],
+        "minimal_decision_context": {
+            "requested_claims": [{
+                "goal_ref": "goal-aftersales",
+                "goal_kind": "customer_goal",
+                "claim_type": "",
+            }],
+            "claim_resolutions": [{
+                "claim_uid": "claim-aftersales",
+                "goal_ref": "goal-aftersales",
+                "goal_kind": "customer_goal",
+                "claim_type": "",
+                "status": "unresolved",
+                "support_basis": "none",
+                "evidence_uids": [],
+            }],
+            "admitted_evidence": [],
+            "service_actions": [{
+                "action_type": "request_customer_input",
+                "accepted_input_slots": ["order_id"],
+                "input_selection_mode": "all_of",
+                "source_owner": "response_strategy_planner",
+                "non_fact": True,
+                "completed": False,
+                "can_change_can_send": False,
+            }],
+        },
+        "model_first_answer_composer": {
+            "status": "accepted",
+            "candidate_reply": goal_text,
+            "covered_goal_refs": ["claim-aftersales"],
+            "clauses": [{
+                "clause_ref": "C1",
+                "goal_ref": "claim-aftersales",
+                "clause_kind": "unresolved",
+                "text": goal_text,
+                "evidence_uids": [],
+            }],
+        },
+    }
+
+    audited = audit_final_answer(
+        response,
+        customer_message="现在直接退款还是换货？",
+    )
+
+    assert audited["final_answer_audit"]["passed"] is False
+    assert "model_first_service_action_request_missing" in audited[
+        "final_answer_audit"
+    ]["issues"]
+    assert audited["can_send"] is False
+
+
 def _customer_condition_audit_response(*, status: str, clause_kind: str) -> dict:
     return {
         "intent": "product_question",

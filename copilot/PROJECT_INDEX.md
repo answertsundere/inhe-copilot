@@ -58,10 +58,13 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The required service-action and attached-media response boundaries now close
-two shared helpfulness defects without changing factual or delivery authority.
-The next P1 run should use the existing frozen long-conversation set to improve
-the earliest remaining goal-understanding, evidence-coverage, continuity, or
-naturalness Owner. Unified Audit stays advisory for Supervisor Assist and
-mandatory for any future Autonomous Send qualification. Synthetic `5/5` and
-`22/22` results remain safety regression only; `real_customer_accuracy=null`.
+The service-action boundary is being tightened from internal selection to
+customer-visible execution. Composer response v6 and Deterministic Final now
+require one slot-valid visible request per required action; deterministic tests
+and versioned Synthetic `5/5` plus `22/22` pass, while changed-source Provider
+qualification and the fresh Fixed-8 remain pending. After those gates, P1
+returns to the earliest remaining
+goal-understanding, evidence-coverage, continuity, or naturalness Owner.
+Unified Audit stays advisory for Supervisor Assist and mandatory for any future
+Autonomous Send qualification. Synthetic results remain safety regression only;
+`real_customer_accuracy=null`.

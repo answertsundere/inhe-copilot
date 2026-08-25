@@ -1401,8 +1401,10 @@ and therefore establishes neither reply quality nor real accuracy.
 customer-input requirements. A valid incomplete `request_customer_input`
 action is projected to the existing Composer with a stable anonymous action
 reference and a required response obligation. Composer must select the exact
-required reference set and express the request naturally inside an existing
-customer-goal clause; it cannot create a service-action goal or clause.
+required reference set and return one separate customer-visible request per
+selected action. Each request is bound to the anonymous action reference and
+may ask only for the action's accepted input slots under its `any_of` or
+`all_of` rule; it cannot create a service-action goal or clause.
 
 Input-action eligibility is scoped by the structured current intent, not by a
 customer-emotion label. Product-consultation intents keep their existing
@@ -1414,10 +1416,12 @@ requirements, but cannot manufacture anger, delay, or logistics semantics.
 
 The action remains explicitly non-factual, cannot satisfy Claim Resolution,
 cannot authorize a tool outcome, and cannot change Delivery or `can_send`.
-Missing, duplicate, unknown, or untrusted action references fail closed. Free
-SOP prose is guidance only and is not a typed `action_proposal`. This is an
-existing-owner contract refinement: no Graph node, service, model call, retry,
-repair, fallback, or reply owner was added.
+Missing, duplicate, unknown, untrusted, or non-rendered action references fail
+closed. Deterministic Final reconstructs the exact customer reply from goal
+clauses plus those visible action requests and rejects omission or downstream
+mutation. Free SOP prose is guidance only and is not a typed
+`action_proposal`. This is an existing-owner contract refinement: no Graph
+node, service, model call, retry, repair, fallback, or reply owner was added.
 
 The same existing Composer now carries a separate attached-media response
 obligation. Admitted Answer Context may retain a current-turn non-factual media
@@ -1433,7 +1437,7 @@ Actual reply blocks remain the sole delivery authority. A media candidate,
 requested role, or candidate count never authorizes wording that promises a
 future send. The selected reference instead requires a natural customer-visible
 acknowledgement that the attachment is included in the current reply. This is
-implemented in `model-first-answer-composer-v8` / `composer-response/v5` and
+implemented in `model-first-answer-composer-v9` / `composer-response/v6` and
 adds no Graph node, service, model call, reply owner, Evidence role, or
 `can_send` condition.
 

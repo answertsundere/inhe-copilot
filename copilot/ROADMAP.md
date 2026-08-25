@@ -282,3 +282,28 @@ on 2026-08-17:
   after-sales alias drift is an evaluator issue and was not used to alter the
   production owner contract. Synthetic safety regression remains `5/5` and
   `22/22`, all review-only.
+
+## 2026-08-25 Customer-Visible Service-Action Execution Checkpoint
+
+- A selected action reference alone did not prove the customer had actually
+  been asked for the required input. Composer v9 / response v6 now returns
+  separately structured visible action requests and validates their exact
+  action references and input-slot selection.
+- Deterministic Final independently catches malformed or omitted required
+  requests and reconstructs the exact visible reply from goal clauses plus
+  action requests. No new owner, model call, Evidence role, or send authority
+  was added.
+- The existing qualification harness now covers five profiles and 25 attempts.
+  DeepSeek V4 Flash passed the changed-source matrix `25/25`, with one Provider
+  call per attempt, no retry/repair/fallback, and p50/p95 `1.566s/2.695s`.
+  The after-sales canary then rendered the required order-or-tracking request,
+  and the unchanged Fixed-8 completed Pipeline, Composer, and Deterministic
+  Final `8/8`, with 22 selected evidence rows, formal DML `0`, human review
+  `8/8`, and automatic sends `0`.
+- The Fixed-8 remains a failed Gold-quality baseline: raw goal recall is
+  `9/16` with 11 unexpected identities. It also exposed admitted generic
+  installation FAQ prose being used as exact product guidance and an overall
+  dimensions query with no selected Product Hub evidence. The next P1 Owner is
+  evidence relevance/admission and exact product fact coverage, not another
+  Composer wording rule. `real_customer_accuracy=null` and Autonomous Send
+  remains unqualified.

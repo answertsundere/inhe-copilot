@@ -28,7 +28,7 @@ from app.services.no_evidence_reply_policy_service import (
 )
 
 
-COMPOSER_VERSION = "model-first-answer-composer-v8"
+COMPOSER_VERSION = "model-first-answer-composer-v9"
 COMPOSER_ENVELOPE_CONTRACT_VERSION = "bounded-json-envelope-v1"
 COMPOSER_DECISION_INPUT_SCHEMA = "composer-decision-input/v1"
 COMPOSER_DECISION_INPUT_OWNER = "model_first_answer_composer"
@@ -37,7 +37,7 @@ COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA = (
 )
 COMPOSER_PRIVACY_DIAGNOSTICS_OWNER = COMPOSER_DECISION_INPUT_OWNER
 COMPOSER_PRIVACY_DIAGNOSTICS_MAX_DIFFS = 32
-COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v5"
+COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v6"
 COMPOSER_RESPONSE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": COMPOSER_RESPONSE_SCHEMA_VERSION,
@@ -60,6 +60,37 @@ COMPOSER_RESPONSE_SCHEMA = {
                 "minLength": 1,
             },
             "uniqueItems": True,
+        },
+        "service_action_requests": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "action_ref",
+                    "text",
+                    "requested_input_slots",
+                ],
+                "additionalProperties": False,
+                "properties": {
+                    "action_ref": {
+                        "type": "string",
+                        "minLength": 1,
+                    },
+                    "text": {
+                        "type": "string",
+                        "minLength": 1,
+                    },
+                    "requested_input_slots": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "minLength": 1,
+                        },
+                        "uniqueItems": True,
+                        "minItems": 1,
+                    },
+                },
+            },
         },
         "clauses": {
             "type": "array",
@@ -97,6 +128,9 @@ COMPOSER_RESPONSE_SCHEMA = {
 _CLAUSE_RESPONSE_SCHEMA = COMPOSER_RESPONSE_SCHEMA[
     "properties"
 ]["clauses"]["items"]
+_SERVICE_ACTION_REQUEST_RESPONSE_SCHEMA = COMPOSER_RESPONSE_SCHEMA[
+    "properties"
+]["service_action_requests"]["items"]
 _ALLOWED_OUTPUT_FIELDS = frozenset(
     COMPOSER_RESPONSE_SCHEMA["properties"]
 )
@@ -105,6 +139,12 @@ _REQUIRED_OUTPUT_FIELDS = frozenset(
 )
 _ALLOWED_CLAUSE_FIELDS = frozenset(
     _CLAUSE_RESPONSE_SCHEMA["properties"]
+)
+_ALLOWED_SERVICE_ACTION_REQUEST_FIELDS = frozenset(
+    _SERVICE_ACTION_REQUEST_RESPONSE_SCHEMA["properties"]
+)
+_REQUIRED_SERVICE_ACTION_REQUEST_FIELDS = frozenset(
+    _SERVICE_ACTION_REQUEST_RESPONSE_SCHEMA["required"]
 )
 _CANONICAL_CLAUSE_FIELDS = frozenset({
     "goal_ref",
@@ -1456,8 +1496,12 @@ class ModelFirstAnswerComposerService:
         selected_media_request_refs = list(
             parsed.get("selected_media_request_refs") or []
         )
+        service_action_requests = list(
+            parsed.get("service_action_requests") or []
+        )
         reply = "".join(
-            str(item["text"]).strip() for item in ordered_clauses
+            str(item["text"]).strip()
+            for item in [*ordered_clauses, *service_action_requests]
         )
         goals_by_ref = {
             str(goal["goal_ref"]): goal for goal in customer_goals
@@ -1519,6 +1563,12 @@ class ModelFirstAnswerComposerService:
                 deepcopy(service_action_bindings[action_ref])
                 for action_ref in selected_service_action_refs
             ],
+            "selected_service_action_refs": list(
+                selected_service_action_refs
+            ),
+            "service_action_requests": deepcopy(
+                service_action_requests
+            ),
             "selected_media_request_refs": (
                 selected_media_request_refs
             ),
@@ -3939,12 +3989,30 @@ class ModelFirstAnswerComposerService:
             if isinstance(clause_schema, dict)
             else None
         )
+        action_requests_schema = (
+            top_properties.get("service_action_requests")
+            if isinstance(top_properties, dict)
+            else None
+        )
+        action_request_schema = (
+            action_requests_schema.get("items")
+            if isinstance(action_requests_schema, dict)
+            else None
+        )
+        action_request_properties = (
+            action_request_schema.get("properties")
+            if isinstance(action_request_schema, dict)
+            else None
+        )
         if (
             response_schema.get("type") != "object"
             or not isinstance(top_properties, dict)
             or not isinstance(clause_schema, dict)
             or clause_schema.get("type") != "object"
             or not isinstance(clause_properties, dict)
+            or not isinstance(action_request_schema, dict)
+            or action_request_schema.get("type") != "object"
+            or not isinstance(action_request_properties, dict)
         ):
             raise ValueError("composer_response_schema_invalid")
         schema_sha256 = _canonical_json_sha256(response_schema)
@@ -3958,6 +4026,11 @@ class ModelFirstAnswerComposerService:
             str(item)
             for item in clause_schema.get("required") or []
         ]
+        action_request_fields = list(action_request_properties)
+        action_request_required = [
+            str(item)
+            for item in action_request_schema.get("required") or []
+        ]
         top_types = [
             f"{name}:{cls._schema_type_summary(top_properties[name])}"
             for name in top_fields
@@ -3965,6 +4038,10 @@ class ModelFirstAnswerComposerService:
         clause_types = [
             f"{name}:{cls._schema_type_summary(clause_properties[name])}"
             for name in clause_fields
+        ]
+        action_request_types = [
+            f"{name}:{cls._schema_type_summary(action_request_properties[name])}"
+            for name in action_request_fields
         ]
         summary = (
             f"唯一输出结构（schema_sha256={schema_sha256}）："
@@ -3975,7 +4052,12 @@ class ModelFirstAnswerComposerService:
             f"clauses[*]字段=[{','.join(clause_types)}]，"
             f"required=[{','.join(clause_required)}]，"
             "additionalProperties="
-            f"{str(clause_schema.get('additionalProperties')).lower()}。"
+            f"{str(clause_schema.get('additionalProperties')).lower()}；"
+            "service_action_requests[*]字段="
+            f"[{','.join(action_request_types)}]，"
+            f"required=[{','.join(action_request_required)}]，"
+            "additionalProperties="
+            f"{str(action_request_schema.get('additionalProperties')).lower()}。"
         )
         return {
             "schema_sha256": schema_sha256,
@@ -3992,6 +4074,11 @@ class ModelFirstAnswerComposerService:
             "clause_required": clause_required,
             "clause_additional_properties": clause_schema.get(
                 "additionalProperties"
+            ),
+            "service_action_request_fields": action_request_fields,
+            "service_action_request_required": action_request_required,
+            "service_action_request_additional_properties": (
+                action_request_schema.get("additionalProperties")
             ),
         }
 
@@ -4020,11 +4107,23 @@ class ModelFirstAnswerComposerService:
             "clause_additional_properties": schema_contract[
                 "clause_additional_properties"
             ],
+            "service_action_request_fields": schema_contract[
+                "service_action_request_fields"
+            ],
+            "service_action_request_required": schema_contract[
+                "service_action_request_required"
+            ],
+            "service_action_request_additional_properties": schema_contract[
+                "service_action_request_additional_properties"
+            ],
             "selected_option_refs_semantics": (
                 "zero_or_one_goal_scoped_request_option_alias"
             ),
             "selected_service_action_refs_semantics": (
                 "exact_required_non_fact_response_obligation_aliases"
+            ),
+            "service_action_requests_semantics": (
+                "one_customer_visible_request_per_selected_action_alias"
             ),
             "selected_media_request_refs_semantics": (
                 "exact_required_non_fact_attached_media_request_aliases"
@@ -4089,9 +4188,13 @@ class ModelFirstAnswerComposerService:
             "When no media request has response_obligation=required, selected_media_request_refs may be omitted or must be empty. "
             "For a request_customer_input service action, ask naturally only for the accepted_input_slots. "
             "input_selection_mode=any_of means one listed input is sufficient; all_of means every listed input is required. "
-            "Every service action with response_obligation=required must be naturally completed in an existing goal clause, "
-            "and selected_service_action_refs must contain its action_ref exactly once. Do not add a service-action clause. "
-            "When there is no required response obligation, selected_service_action_refs may be omitted or must be empty. "
+            "Every service action with response_obligation=required must have exactly one service_action_requests item. "
+            "Copy its action_ref exactly, choose requested_input_slots within accepted_input_slots according to input_selection_mode, "
+            "and write a separate text that directly and naturally asks the customer for those inputs. "
+            "selected_service_action_refs must contain the same action_ref exactly once. "
+            "Do not hide the action in a goal clause and do not duplicate its request text there. "
+            "When there is no required response obligation, selected_service_action_refs and service_action_requests "
+            "may be omitted or must both be empty. "
             "Do not ask the customer for any new input unless service_actions contains a request_customer_input action "
             "that explicitly authorizes the corresponding accepted_input_slots. "
             "When product_scope.resolved is true, do not request product identity again. "
@@ -4244,6 +4347,137 @@ class ModelFirstAnswerComposerService:
         return validation_error, diagnostics
 
     @staticmethod
+    def _normalize_service_action_requests(
+        rows: Any,
+        *,
+        service_action_bindings: dict[str, dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
+        if not isinstance(rows, list):
+            return [], "composer_service_action_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                "service_action_request_schema_invalid",
+                json_path="$.service_action_requests",
+                expected_type="array_of_customer_visible_action_requests",
+                actual_type=ModelFirstAnswerComposerService._type_name(rows),
+            )
+        normalized: list[dict[str, Any]] = []
+        seen_refs: set[str] = set()
+        for index, raw in enumerate(rows):
+            path = f"$.service_action_requests[{index}]"
+            if not isinstance(raw, dict):
+                return [], "composer_service_action_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "service_action_request_schema_invalid",
+                    json_path=path,
+                    expected_type="object_with_exact_fields",
+                    actual_type=ModelFirstAnswerComposerService._type_name(raw),
+                )
+            fields = set(raw)
+            if (
+                not _REQUIRED_SERVICE_ACTION_REQUEST_FIELDS <= fields
+                or not fields <= _ALLOWED_SERVICE_ACTION_REQUEST_FIELDS
+            ):
+                return [], "composer_service_action_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "service_action_request_schema_invalid",
+                    parsed=raw,
+                    json_path=path,
+                    expected_type="object_with_exact_fields",
+                    actual_type="object",
+                    missing_field_count=len(
+                        _REQUIRED_SERVICE_ACTION_REQUEST_FIELDS - fields
+                    ),
+                    extra_field_count=len(
+                        fields - _ALLOWED_SERVICE_ACTION_REQUEST_FIELDS
+                    ),
+                )
+            action_ref = str(raw.get("action_ref") or "").strip()
+            text = str(raw.get("text") or "").strip()
+            requested_slots = raw.get("requested_input_slots")
+            if (
+                not action_ref
+                or not text
+                or not isinstance(requested_slots, list)
+                or not requested_slots
+                or any(
+                    not isinstance(slot, str) or not slot.strip()
+                    for slot in requested_slots
+                )
+            ):
+                return [], "composer_service_action_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "service_action_request_schema_invalid",
+                    parsed=raw,
+                    json_path=path,
+                    expected_type="non_empty_action_ref_text_and_slot_array",
+                    actual_type="invalid_action_request",
+                )
+            normalized_slots = [
+                str(slot).strip() for slot in requested_slots
+            ]
+            if len(normalized_slots) != len(set(normalized_slots)):
+                return [], "composer_service_action_request_slots_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "duplicate_service_action_request_slot",
+                    parsed=raw,
+                    json_path=f"{path}.requested_input_slots",
+                    expected_type="unique_accepted_input_slots",
+                    actual_type="array_with_duplicates",
+                )
+            if action_ref in seen_refs:
+                return [], "composer_duplicate_service_action_request", ModelFirstAnswerComposerService._diagnostics(
+                    "duplicate_service_action_request_ref",
+                    parsed=raw,
+                    json_path=f"{path}.action_ref",
+                    expected_type="unique_required_service_action_ref",
+                    actual_type="duplicate_reference",
+                )
+            binding = service_action_bindings.get(action_ref)
+            if not isinstance(binding, dict):
+                return [], "composer_unknown_service_action_request_reference", ModelFirstAnswerComposerService._diagnostics(
+                    "unknown_service_action_request_ref",
+                    parsed=raw,
+                    json_path=f"{path}.action_ref",
+                    expected_type="required_service_action_ref",
+                    actual_type="unknown_reference",
+                )
+            accepted_slots = {
+                str(slot).strip()
+                for slot in binding.get("accepted_input_slots") or []
+                if str(slot).strip()
+            }
+            requested_slot_set = set(normalized_slots)
+            mode = str(binding.get("input_selection_mode") or "").strip()
+            valid_slot_selection = (
+                requested_slot_set == accepted_slots
+                if mode == "all_of"
+                else bool(requested_slot_set)
+                and requested_slot_set <= accepted_slots
+            )
+            if not valid_slot_selection:
+                return [], "composer_service_action_request_slots_invalid", ModelFirstAnswerComposerService._diagnostics(
+                    "service_action_request_slots_invalid",
+                    parsed=raw,
+                    json_path=f"{path}.requested_input_slots",
+                    expected_type=f"{mode}_accepted_input_slots",
+                    actual_type="invalid_slot_selection",
+                )
+            seen_refs.add(action_ref)
+            normalized.append({
+                "action_ref": action_ref,
+                "text": text,
+                "requested_input_slots": sorted(requested_slot_set),
+            })
+        if seen_refs != set(service_action_bindings):
+            return [], "composer_required_service_action_not_rendered", ModelFirstAnswerComposerService._diagnostics(
+                "required_service_action_not_rendered",
+                parsed={"service_action_requests": normalized},
+                json_path="$.service_action_requests",
+                expected_type="one_visible_request_per_required_service_action",
+                actual_type="missing_or_incomplete_action_request_set",
+            )
+        normalized.sort(key=lambda item: item["action_ref"])
+        return normalized, "", ModelFirstAnswerComposerService._diagnostics(
+            "service_action_requests_accepted",
+            parsed={"service_action_requests": normalized},
+        )
+
+    @staticmethod
     def _reconstruct_canonical_output_with_diagnostics(
         parsed: Any,
         *,
@@ -4339,6 +4573,20 @@ class ModelFirstAnswerComposerService:
                 json_path="$.selected_service_action_refs",
                 expected_type="exact_required_service_action_refs",
                 actual_type="missing_or_incomplete_array",
+            )
+        (
+            service_action_requests,
+            service_action_request_error,
+            service_action_request_diagnostics,
+        ) = ModelFirstAnswerComposerService._normalize_service_action_requests(
+            parsed.get("service_action_requests", []),
+            service_action_bindings=service_action_bindings,
+        )
+        if service_action_request_error:
+            return (
+                {},
+                service_action_request_error,
+                service_action_request_diagnostics,
             )
         selected_media_field_present = (
             "selected_media_request_refs" in parsed
@@ -4757,6 +5005,13 @@ class ModelFirstAnswerComposerService:
             canonical["selected_service_action_refs"] = sorted(
                 selected_action_refs
             )
+        if (
+            "service_action_requests" in parsed
+            or required_action_refs
+        ):
+            canonical["service_action_requests"] = (
+                service_action_requests
+            )
         if selected_media_field_present or required_media_refs:
             canonical["selected_media_request_refs"] = sorted(
                 selected_media_refs
@@ -4838,6 +5093,26 @@ class ModelFirstAnswerComposerService:
                 json_path="$.selected_service_action_refs",
                 expected_type="exact_required_service_action_refs",
                 actual_type="different_reference_set",
+            )
+        (
+            normalized_action_requests,
+            action_request_error,
+            action_request_diagnostics,
+        ) = ModelFirstAnswerComposerService._normalize_service_action_requests(
+            parsed.get("service_action_requests", []),
+            service_action_bindings=service_action_bindings,
+        )
+        if action_request_error:
+            return action_request_error, action_request_diagnostics
+        if normalized_action_requests != list(
+            parsed.get("service_action_requests") or []
+        ):
+            return "composer_service_action_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                "service_action_request_not_canonical",
+                parsed=parsed,
+                json_path="$.service_action_requests",
+                expected_type="canonical_service_action_requests",
+                actual_type="non_canonical_service_action_requests",
             )
         selected_media_refs = parsed.get(
             "selected_media_request_refs",

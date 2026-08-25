@@ -10,6 +10,14 @@ from app import config
 from scripts import qualify_model_first_composer_role as qualification
 
 
+def test_qualification_module_documents_current_profile_matrix() -> None:
+    description = qualification.__doc__ or ""
+
+    assert "five profiles" in description
+    assert "five attempts per profile" in description
+    assert "identical synthetic requests" not in description
+
+
 class _FakeClient:
     api_key = "configured"
     api_base = "https://provider.invalid/v1"
@@ -43,7 +51,19 @@ class _FakeClient:
             for item in material["media_context"]["request_refs"]
             if item.get("response_obligation") == "required"
         ]
+        required_actions = list(material.get("service_actions") or [])
         payload = {"clauses": clauses}
+        if required_actions:
+            payload["selected_service_action_refs"] = [
+                item["action_ref"] for item in required_actions
+            ]
+            payload["service_action_requests"] = [{
+                "action_ref": item["action_ref"],
+                "text": "麻烦您提供订单号，我继续为您核实。",
+                "requested_input_slots": [
+                    item["accepted_input_slots"][0]
+                ],
+            } for item in required_actions]
         if required_media_refs:
             payload["selected_media_request_refs"] = required_media_refs
         return SimpleNamespace(choices=[SimpleNamespace(
@@ -141,6 +161,7 @@ def test_qualification_profiles_include_a_standalone_unresolved_only_case():
         "unresolved_only",
         "unadmitted_history_fact",
         "fact_bounded_and_unresolved",
+        "customer_input_service_action",
         "attached_media_request",
     ]
     unresolved = profiles[0]["response"]["minimal_decision_context"]
@@ -165,7 +186,26 @@ def test_qualification_profiles_include_a_standalone_unresolved_only_case():
     assert material["prompt_payload"][
         "non_authoritative_recent_conversation_turns"
     ] == []
-    media_response = profiles[3]["response"]
+    action_response = profiles[3]["response"]
+    action_decision_input, action_decision_error = (
+        service.build_composer_decision_input(
+            action_response,
+            customer_message=(
+                action_response["minimal_decision_context"]["customer_goal"]
+            ),
+        )
+    )
+    action_material, action_material_error = (
+        service.build_provider_material_from_decision_input(
+            action_decision_input
+        )
+    )
+    assert action_decision_error == action_material_error == ""
+    assert len(action_material["service_action_bindings"]) == 1
+    assert action_material["partitions"]["service_actions"][0][
+        "accepted_input_slots"
+    ] == ["order_id", "tracking_no"]
+    media_response = profiles[4]["response"]
     media_decision_input, media_decision_error = (
         service.build_composer_decision_input(
             media_response,
@@ -193,11 +233,11 @@ def test_role_qualification_accepts_five_single_call_attempts_per_profile():
 
     assert exit_code == 0
     assert report["status"] == "qualified"
-    assert report["attempted"] == 20
-    assert report["provider_call_count"] == 20
+    assert report["attempted"] == 25
+    assert report["provider_call_count"] == 25
     assert len(report["qualification_fingerprint"]) == 64
-    assert len(client.calls) == 20
-    assert report["profile_count"] == 4
+    assert len(client.calls) == 25
+    assert report["profile_count"] == 5
     assert report["attempts_per_profile"] == 5
     assert all(record["qualified"] for record in report["records"])
     assert all(
@@ -206,6 +246,10 @@ def test_role_qualification_accepts_five_single_call_attempts_per_profile():
     )
     assert all(
         record["checks"]["required_media_requests_selected"]
+        for record in report["records"]
+    )
+    assert all(
+        record["checks"]["required_service_actions_rendered"]
         for record in report["records"]
     )
     assert report["can_change_can_send"] is False

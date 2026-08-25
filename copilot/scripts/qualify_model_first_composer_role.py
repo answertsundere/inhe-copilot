@@ -1,4 +1,4 @@
-"""Qualify an explicit Composer role with five identical synthetic requests.
+"""Qualify an explicit Composer role across five profiles and five attempts per profile.
 
 This evaluation-only command never enables a role, changes a feature flag,
 uses formal knowledge, or changes a customer reply or ``can_send``.
@@ -42,9 +42,9 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-REPORT_SCHEMA_VERSION = "composer-role-qualification/v4"
+REPORT_SCHEMA_VERSION = "composer-role-qualification/v5"
 _FIXTURE_PACK_SHA256 = hashlib.sha256(
-    b"composer-role-qualification-fixture-v4"
+    b"composer-role-qualification-fixture-v5"
 ).hexdigest()
 _QUALIFICATION_CUSTOMER_MESSAGE = (
     "请说明这款商品已确认的材质，并给出日常轻微碰撞的有边界判断，"
@@ -59,6 +59,9 @@ _HISTORY_FACT_CUSTOMER_MESSAGE = (
 _UNADMITTED_HISTORY_FACT_MARKER = "合成材质甲"
 _ATTACHED_MEDIA_CUSTOMER_MESSAGE = (
     "请说明当前能否拆洗，并把对应的安装视频附在本次回复里。"
+)
+_SERVICE_ACTION_CUSTOMER_MESSAGE = (
+    "请继续处理退款或换货，需要我提供什么信息？"
 )
 
 
@@ -497,6 +500,49 @@ def attached_media_request_qualification_response() -> dict[str, Any]:
     }
 
 
+def customer_input_service_action_qualification_response() -> dict[str, Any]:
+    goal = _goal(
+        "goal-aftersales-outcome",
+        claim_type="",
+        attribute_key="",
+        source_text="退款或换货",
+        customer_message=_SERVICE_ACTION_CUSTOMER_MESSAGE,
+        claim_type_status="unmapped",
+        semantic_key="aftersales_outcome",
+    )
+    return {
+        "suggested_reply": "prior reply",
+        "can_send": True,
+        "requires_human_review": False,
+        "reply_blocks": [{"type": "text", "content": "prior reply"}],
+        "minimal_decision_context": {
+            "customer_goal": _SERVICE_ACTION_CUSTOMER_MESSAGE,
+            "product_identity": {"resolved": True},
+            "requested_claims": [goal],
+            "admitted_evidence": [],
+            "claim_resolutions": [_unresolved_resolution(
+                "goal-aftersales-outcome",
+                semantic_key="aftersales_outcome",
+                requested_claim_risk="medium",
+            )],
+            "bounded_inference_policies": [],
+            "service_actions": [{
+                "action_type": "request_customer_input",
+                "accepted_input_slots": ["order_id", "tracking_no"],
+                "input_selection_mode": "any_of",
+                "source_owner": "response_strategy_planner",
+                "non_fact": True,
+                "completed": False,
+                "can_change_can_send": False,
+            }],
+            "answer_eligibility_context": {
+                "goal_understanding_status": {"status": "valid"},
+            },
+            "context_stats": {"estimated_token_count": 35},
+        },
+    }
+
+
 def qualification_profiles() -> list[dict[str, Any]]:
     return [
         {
@@ -514,6 +560,11 @@ def qualification_profiles() -> list[dict[str, Any]]:
         {
             "name": "fact_bounded_and_unresolved",
             "response": qualification_response(),
+            "forbidden_reply_markers": [],
+        },
+        {
+            "name": "customer_input_service_action",
+            "response": customer_input_service_action_qualification_response(),
             "forbidden_reply_markers": [],
         },
         {
@@ -625,6 +676,34 @@ def _record(
     expected_media_request_refs = sorted(
         material["media_request_bindings"]
     )
+    expected_service_action_refs = sorted(
+        material["service_action_bindings"]
+    )
+    service_action_requests = [
+        item
+        for item in result.get("service_action_requests") or []
+        if isinstance(item, dict)
+    ]
+    request_by_ref = {
+        str(item.get("action_ref") or ""): item
+        for item in service_action_requests
+        if str(item.get("action_ref") or "")
+    }
+
+    def service_action_request_is_valid(action_ref: str) -> bool:
+        binding = material["service_action_bindings"].get(action_ref) or {}
+        request = request_by_ref.get(action_ref) or {}
+        accepted_slots = set(binding.get("accepted_input_slots") or [])
+        requested_slots = set(request.get("requested_input_slots") or [])
+        mode = str(binding.get("input_selection_mode") or "")
+        slots_valid = (
+            requested_slots == accepted_slots
+            if mode == "all_of"
+            else bool(requested_slots) and requested_slots <= accepted_slots
+        )
+        request_text = str(request.get("text") or "")
+        return bool(request_text) and request_text in reply and slots_valid
+
     reply = str(result.get("candidate_reply") or "")
     forbidden_markers = [
         str(item).strip()
@@ -677,6 +756,15 @@ def _record(
         "required_media_requests_selected": (
             sorted(result.get("selected_media_request_refs") or [])
             == expected_media_request_refs
+        ),
+        "required_service_actions_rendered": (
+            sorted(result.get("selected_service_action_refs") or [])
+            == expected_service_action_refs
+            and sorted(request_by_ref) == expected_service_action_refs
+            and all(
+                service_action_request_is_valid(action_ref)
+                for action_ref in expected_service_action_refs
+            )
         ),
         "no_retry_or_repair": all(
             int(diagnostics.get(name, 0) or 0) == 0

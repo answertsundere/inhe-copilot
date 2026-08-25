@@ -1416,6 +1416,29 @@ advisory `8/8`; Autonomous Send remains blocked. Raw diagnostic goal recall is
 still `9/16` with `11` unexpected identities, including known after-sales alias
 drift, so no real-accuracy or overall Gold-quality claim is authorized.
 
+The subsequent full trace exposed a stricter presentation defect: selecting
+the action reference did not prove that its request was present in the visible
+reply. Composer v9 / response v6 now separates goal clauses from
+`service_action_requests`; every required action needs one exact visible
+request and a valid subset or complete set of its accepted slots. Deterministic
+Final also rejects a required context action when all Composer action fields
+are omitted. The existing qualification matrix now contains five profiles and
+25 attempts. DeepSeek V4 Flash passed the changed-source matrix `25/25` with
+one call per attempt, no retry/repair/fallback, and p50/p95
+`1.566s/2.695s`. The after-sales canary rendered the required order-or-tracking
+request. The unchanged Fixed-8 then completed Pipeline, Composer, and
+Deterministic Final `8/8`, with 22 selected evidence rows, formal DML `0`,
+human review `8/8`, and `can_send=0`.
+
+This closes the customer-visible service-action defect but does not qualify
+Gold quality. Raw diagnostic goal recall remains `9/16` with 11 unexpected
+identities. The same run exposed two earlier evidence defects: generic
+installation FAQ prose was admitted as exact product guidance, while an
+overall dimensions query received no selected Product Hub evidence. The next
+P1 work must repair evidence relevance/admission and exact product fact
+coverage through existing Owners; another Composer wording rule is not
+authorized. `real_customer_accuracy=null` and Autonomous Send remains blocked.
+
 ### Product Hub Scoped Dimension Publication Checkpoint (2026-08-25)
 
 The next dimensions failure was not owned by Turn Understanding, Claim

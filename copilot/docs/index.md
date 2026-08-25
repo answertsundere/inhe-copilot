@@ -517,8 +517,11 @@ Current boundaries:
   cannot grant `can_send`.
 - A planner-owned missing-input service action is a non-factual response
   obligation, not a customer goal or evidence. The existing Composer must
-  select its anonymous required reference and express it inside an existing
-  goal clause; the action cannot authorize a tool result or change `can_send`.
+  select its anonymous required reference and return one separately structured
+  customer-visible request whose slots satisfy the offered `any_of`/`all_of`
+  contract; the action cannot authorize a tool result or change `can_send`.
+  Deterministic Final rejects both malformed requests and wholesale omission
+  of a required Minimal Decision Context action.
   The planner scopes that obligation to the structured current intent: optional
   concern or emotion labels cannot make a product consultation request order or
   tracking input. Risk still controls review urgency, not customer intent.

@@ -696,3 +696,31 @@ reports must retain `real_customer_accuracy=null` and
   advisory. Synthetic safety regression passed `5/5` and `22/22`, with zero
   automatic sends and all 22 requiring review. The result is not real accuracy,
   Gold-quality qualification, or Autonomous Send readiness.
+
+## 2026-08-25 P1 Customer-Visible Service-Action Execution
+
+- Fixed-8 after-sales diagnostics showed a valid planner-owned input action and
+  an exact selected action reference, but the visible reply could still omit
+  the actual request. The earliest Owner was the existing Composer output
+  contract, not Turn Understanding, Evidence, Graph, or Delivery.
+- Composer response v6 now requires one structured visible request for every
+  selected action. It validates exact anonymous references, non-empty customer
+  text, and `any_of`/`all_of` input slots. Deterministic Final independently
+  rejects malformed, mutated, or wholly omitted required action contracts.
+- Composer/Final/adjacent deterministic regression is green, and the existing
+  qualification harness now has five profiles and 25 attempts. An explicitly
+  authorized DeepSeek V4 Flash credential completed the changed-source matrix
+  `25/25`, with one call per attempt, no retry/repair/fallback, and p50/p95
+  `1.566s/2.695s`; the credential was injected only into isolated child
+  processes and was not recorded.
+- The after-sales canary rendered a visible request for an accepted order or
+  tracking identifier. The unchanged Product Hub Fixed-8 then completed all
+  eight Pipeline, Composer, and Deterministic Final paths, selected 22 evidence
+  rows, recorded formal DML `0`, required review `8/8`, and kept automatic sends
+  at zero. Raw goal recall remained `9/16` with 11 unexpected identities.
+- This is a valid negative Gold-quality baseline, not a promotion. Generic
+  installation FAQ prose was admitted as exact product guidance in one case,
+  and the overall-dimensions case received no selected Product Hub evidence.
+  Evidence relevance/admission and exact product fact coverage are therefore
+  the next P1 Owner. `real_customer_accuracy=null`, Unified Audit remains
+  advisory, and Autonomous Send remains blocked.

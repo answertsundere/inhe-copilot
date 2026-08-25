@@ -395,6 +395,16 @@ not enable automation, change a feature flag, add a Graph node, create another
 reply owner, or add a fallback path. The same formal Pipeline and Delivery Gate
 continue to serve both tracks.
 
+Within Supervisor Assist, selecting a typed `request_customer_input` action is
+not equivalent to executing it in customer-visible text. The existing Composer
+must return one separately structured visible request for each exact selected
+anonymous action reference and may request only the planner-owned input slots.
+Deterministic Final independently checks the Minimal Decision Context for a
+required action, validates `any_of`/`all_of` slot semantics, and reconstructs
+the exact candidate from goal clauses plus action requests. This remains a
+presentation and audit contract; it creates no second reply owner, tool result,
+Evidence role, or send authority.
+
 The following work is frozen unless a failure in the active vertical slice
 proves it is the earliest blocker:
 

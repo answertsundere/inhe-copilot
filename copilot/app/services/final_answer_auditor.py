@@ -1473,6 +1473,152 @@ def _model_first_candidate_contract_issues(response: dict[str, Any]) -> list[str
             issues.append("model_first_candidate_unknown_evidence")
     if set(clauses_by_goal) != set(claims):
         issues.append("model_first_candidate_goal_set_mismatch")
+    selected_service_actions = composer.get("selected_service_actions") or []
+    selected_service_action_refs = (
+        composer.get("selected_service_action_refs") or []
+    )
+    service_action_requests = composer.get("service_action_requests") or []
+    required_context_service_actions = [
+        action
+        for action in minimal.get("service_actions") or []
+        if (
+            isinstance(action, dict)
+            and action.get("action_type") == "request_customer_input"
+            and action.get("source_owner") == "response_strategy_planner"
+            and action.get("non_fact") is True
+            and action.get("completed") is False
+            and action.get("can_change_can_send") is False
+            and action.get("input_selection_mode") in {"any_of", "all_of"}
+            and isinstance(action.get("accepted_input_slots"), list)
+            and bool(action.get("accepted_input_slots"))
+            and all(
+                isinstance(slot, str) and bool(slot.strip())
+                for slot in action.get("accepted_input_slots") or []
+            )
+            and len(action.get("accepted_input_slots") or [])
+            == len(set(action.get("accepted_input_slots") or []))
+        )
+    ]
+    if required_context_service_actions and not (
+        selected_service_actions
+        or selected_service_action_refs
+        or service_action_requests
+    ):
+        issues.append("model_first_service_action_request_missing")
+    if (
+        selected_service_actions
+        or selected_service_action_refs
+        or service_action_requests
+    ):
+        action_contract_valid = (
+            isinstance(selected_service_actions, list)
+            and isinstance(selected_service_action_refs, list)
+            and isinstance(service_action_requests, list)
+            and len(selected_service_actions)
+            == len(selected_service_action_refs)
+            == len(service_action_requests)
+            and len(selected_service_action_refs)
+            == len(set(map(str, selected_service_action_refs)))
+        )
+        requests_by_ref: dict[str, dict[str, Any]] = {}
+        if action_contract_valid:
+            for request in service_action_requests:
+                if not isinstance(request, dict):
+                    action_contract_valid = False
+                    break
+                action_ref = str(request.get("action_ref") or "").strip()
+                request_text = str(request.get("text") or "").strip()
+                requested_slots = request.get("requested_input_slots")
+                if (
+                    not action_ref
+                    or not request_text
+                    or action_ref in requests_by_ref
+                    or not isinstance(requested_slots, list)
+                    or not requested_slots
+                    or any(
+                        not isinstance(slot, str) or not slot.strip()
+                        for slot in requested_slots
+                    )
+                    or len(requested_slots)
+                    != len(set(map(str, requested_slots)))
+                ):
+                    action_contract_valid = False
+                    break
+                requests_by_ref[action_ref] = request
+        if action_contract_valid and set(requests_by_ref) != {
+            str(value).strip()
+            for value in selected_service_action_refs
+            if str(value).strip()
+        }:
+            action_contract_valid = False
+        if action_contract_valid:
+            actions_by_ref = {
+                str(action_ref).strip(): action
+                for action_ref, action in zip(
+                    selected_service_action_refs,
+                    selected_service_actions,
+                )
+                if isinstance(action, dict)
+            }
+            if len(actions_by_ref) != len(selected_service_actions):
+                action_contract_valid = False
+            else:
+                for action_ref, action in actions_by_ref.items():
+                    request = requests_by_ref.get(action_ref) or {}
+                    accepted_slots = {
+                        str(slot).strip()
+                        for slot in action.get("accepted_input_slots") or []
+                        if str(slot).strip()
+                    }
+                    requested_slots = {
+                        str(slot).strip()
+                        for slot in request.get("requested_input_slots") or []
+                        if str(slot).strip()
+                    }
+                    mode = str(
+                        action.get("input_selection_mode") or ""
+                    ).strip()
+                    if (
+                        action.get("action_type")
+                        != "request_customer_input"
+                        or action.get("source_owner")
+                        != "response_strategy_planner"
+                        or action.get("non_fact") is not True
+                        or action.get("completed") is not False
+                        or action.get("can_change_can_send") is not False
+                        or mode not in {"any_of", "all_of"}
+                        or not requested_slots
+                        or (
+                            requested_slots != accepted_slots
+                            if mode == "all_of"
+                            else not requested_slots <= accepted_slots
+                        )
+                    ):
+                        action_contract_valid = False
+                        break
+        if not action_contract_valid:
+            issues.append("model_first_service_action_request_invalid")
+        else:
+            expected_reply = "".join(
+                [
+                    str(clause.get("text") or "").strip()
+                    for clause in clauses
+                    if isinstance(clause, dict)
+                ]
+                + [
+                    str(request.get("text") or "").strip()
+                    for request in service_action_requests
+                ]
+            )
+            if (
+                str(response.get("suggested_reply") or "").strip()
+                != expected_reply
+                or str(composer.get("candidate_reply") or "").strip()
+                != expected_reply
+            ):
+                issues.append(
+                    "model_first_candidate_reply_contract_mismatch"
+                )
     for goal_ref in sorted(set(clauses_by_goal) & set(claims)):
         clause = clauses_by_goal[goal_ref]
         claim = claims[goal_ref]
