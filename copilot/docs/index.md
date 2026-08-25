@@ -320,6 +320,14 @@ of the populated formal database was used only as an external query-only
 snapshot. With Agent code and fixture unchanged, smoke passed `5/5` and full
 passed `22/22`, with all cases requiring human review and `can_send=0`.
 
+The 2026-08-25 Product Hub source correction now materializes reviewed A/B size
+annotations as named product/component axes with asset provenance. Copilot's
+existing read-only adapter admitted the target product width, height, and depth
+as direct-answer evidence while excluding component axes. Longer unlabeled
+number lists no longer become aggregate facts. This changes no Graph, reply
+owner, Safety, Delivery, or `can_send` contract; the model-backed Fixed-8
+follow-up remains pending because no approved Provider credential was available.
+
 The next deterministic funnel check first repaired the existing
 `evidence_filter` and `evidence_builder` single-primary-FactType loss, then found
 an earlier source restriction in the existing Response Strategy Router. A

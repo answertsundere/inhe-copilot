@@ -1382,3 +1382,21 @@ human review `8/8`, and `can_send=0`. Unified Audit remained unavailable and
 advisory `8/8`; Autonomous Send remains blocked. Raw diagnostic goal recall is
 still `9/16` with `11` unexpected identities, including known after-sales alias
 drift, so no real-accuracy or overall Gold-quality claim is authorized.
+
+### Product Hub Scoped Dimension Publication Checkpoint (2026-08-25)
+
+The next dimensions failure was not owned by Turn Understanding, Claim
+Resolution, or Composer. Product Hub had collapsed a reviewed main-product and
+component annotation into one six-number `商品整体` aggregate, which Copilot
+correctly rejected. The Hub generator now publishes explicit named axes under
+their source scope and retains asset provenance; unlabeled lists longer than
+three values fail closed. The live read-only Hub path now supplies the requested
+product width and height through the existing Product Context Pack without
+mixing carton or component dimensions.
+
+This closes the evidence-source break only. The follow-up model-backed Fixed-8
+did not run because the child process had no approved Provider credential.
+`can_send` remains false, Autonomous Send remains unqualified, and
+`real_customer_accuracy=null`. The next permitted gate is the unchanged
+dimensions cases followed by one Fixed-8 when the approved credential is
+available; no reply template or additional Agent owner is warranted.

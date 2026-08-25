@@ -601,3 +601,25 @@ reports must retain `real_customer_accuracy=null` and
   unqualified. Synthetic safety regression passed `5/5` and `22/22`, all
   review-only with zero automatic sends. Raw goal-identity recall remained
   `9/16`; `real_customer_accuracy=null` remains authoritative.
+
+## 2026-08-25 P1 Product Hub Scoped Dimension Publication
+
+- Root cause was upstream of Copilot: one approved size asset described a main
+  product and a component, while the Hub generator concatenated all six values
+  into one `商品整体` fact. Product Context Pack correctly rejected that value,
+  so the customer width/height goals had no selected evidence.
+- Product Hub commit `d2e1284` now publishes named A/B axes with explicit
+  product/component scope and asset provenance. Legacy one-object `spec_ref`
+  tuples remain compatible up to three axes; longer unlabeled lists emit no
+  fact. Its full suite passed `242` tests with one existing skip.
+- A consistent pre-change Hub backup passed `integrity_check`; the live `8795`
+  fact rebuild produced `19,048` generated facts. The target product now exposes
+  width `60 cm`, height `93 cm`, and depth `57 cm` as confirmed product-scope
+  facts, while the three chair axes remain component-scope. The source snapshot
+  hash was unchanged and Copilot's read-only Product Context Pack admitted only
+  the three product axes with `direct_answer`.
+- No Copilot code, Graph node, model call, reply owner, formal-knowledge row, or
+  `can_send` rule changed. A new model-backed Fixed-8 dimensions rerun did not
+  start because no approved DeepSeek credential was available to the child
+  process. This is a source/evidence correction, not a Gold-quality or real-
+  accuracy pass; `real_customer_accuracy=null` remains authoritative.

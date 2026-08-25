@@ -210,6 +210,15 @@ as rejected diagnostics and cannot satisfy Claim Resolution. The system never
 guesses how to split such a value; source data must publish separately scoped
 facts instead.
 
+Product Data Hub now performs that source-side publication for approved size
+annotations with explicit A/B subjects and named axes. Main-product axes are
+stored as `商品整体`; later subjects remain `部件`, with the originating asset
+preserved in provenance. A legacy `spec_ref` remains compatible only when it
+contains at most one two- or three-axis tuple. Longer unlabeled number lists do
+not produce a fact. Copilot still consumes the result through the same read-only
+Hub adapter and formal admission contracts; media labels do not become facts
+inside the Agent.
+
 Channel context keeps store identity platform-neutral. `shop_id` identifies the
 logical integrated store used by the Agent and future channel adapters; it is
 not implicitly a JST provider identifier. An adapter may additionally provide
