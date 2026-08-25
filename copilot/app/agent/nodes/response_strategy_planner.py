@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import time
 
+from app.agent.nodes.response_strategy_router import PRODUCT_QUESTION_INTENTS
+
 
 _ALTERNATIVE_CUSTOMER_INPUT_SLOT_GROUPS = (
     frozenset({"order_id", "tracking_no"}),
@@ -191,6 +193,24 @@ def response_strategy_planner(state: dict) -> dict:
         missing_slots = []
         should_ask_slot = False
 
+    elif intent in PRODUCT_QUESTION_INTENTS:
+        if _has_clear_product_identity(state) and _has_product_evidence(state):
+            reply_goal = "answer_product_fact"
+            should_answer_directly = True
+        elif _has_known_product_identity(state):
+            reply_goal = "escalate_safety_no_evidence" if intent in {
+                "child_safety",
+                "material_safety",
+            } else "escalate_no_evidence"
+            should_escalate = True
+            should_offer_next_step = True
+        else:
+            reply_goal = "clarify_product_identity"
+            should_ask_slot = True
+            missing_slots = _compute_missing_product_slots(state)
+        if intent in {"child_safety", "material_safety"}:
+            tone = "careful"
+
     elif concern == "wants_eta_certainty":
         reply_goal = "explain_no_guarantee"
         tone = "reassuring"
@@ -268,22 +288,6 @@ def response_strategy_planner(state: dict) -> dict:
         should_answer_directly = bool(state.get("order_found") or state.get("logistics_trace"))
         missing_slots = _compute_missing_order_slots(state) if not has_order else []
         should_ask_slot = bool(missing_slots)
-
-    elif intent == "product_question":
-        if _has_clear_product_identity(state) and _has_product_evidence(state):
-            reply_goal = "answer_product_fact"
-            should_answer_directly = True
-        elif _has_known_product_identity(state):
-            # 商品已识别但没有可用的审核证据：不再追问身份，直接升级人工核实
-            reply_goal = "escalate_no_evidence"
-            should_escalate = True
-            should_offer_next_step = True
-        else:
-            reply_goal = "clarify_product_identity"
-            should_ask_slot = True
-            missing_slots = _compute_missing_product_slots(state)
-        should_answer_directly = reply_goal == "answer_product_fact"
-        should_ask_slot = reply_goal == "clarify_product_identity"
 
     if ctx.get("has_already_asked_order_id") and missing_slots:
         tone = "patient"

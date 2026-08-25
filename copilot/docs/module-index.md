@@ -346,3 +346,9 @@ Before changing Agent behavior, verify:
   `can_send=0`. Unified Audit remains advisory/unavailable, so this qualifies
   only the Supervisor Assist candidate path, not Autonomous Send or real
   accuracy.
+- `customer_state_analyzer.py` keeps risk and concern as separate dimensions:
+  high risk still forces review but no longer invents a delay complaint during
+  deterministic fallback. `response_strategy_planner.py` reuses the router's
+  product-intent contract, so an incompatible concern cannot authorize an
+  order/tracking request for a resolved product consultation. Legitimate
+  logistics and after-sales input actions are unchanged.

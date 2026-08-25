@@ -1404,6 +1404,14 @@ reference and a required response obligation. Composer must select the exact
 required reference set and express the request naturally inside an existing
 customer-goal clause; it cannot create a service-action goal or clause.
 
+Input-action eligibility is scoped by the structured current intent, not by a
+customer-emotion label. Product-consultation intents keep their existing
+product fact or review boundary even if an optional concern classifier reports
+a logistics-shaped concern. Conversely, logistics and after-sales intents may
+still request an order or tracking reference when that input can advance the
+current operation. Risk level continues to raise urgency and human-review
+requirements, but cannot manufacture anger, delay, or logistics semantics.
+
 The action remains explicitly non-factual, cannot satisfy Claim Resolution,
 cannot authorize a tool outcome, and cannot change Delivery or `can_send`.
 Missing, duplicate, unknown, or untrusted action references fail closed. Free

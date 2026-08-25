@@ -519,6 +519,9 @@ Current boundaries:
   obligation, not a customer goal or evidence. The existing Composer must
   select its anonymous required reference and express it inside an existing
   goal clause; the action cannot authorize a tool result or change `can_send`.
+  The planner scopes that obligation to the structured current intent: optional
+  concern or emotion labels cannot make a product consultation request order or
+  tracking input. Risk still controls review urgency, not customer intent.
 
 ## Replay, Evaluation, And Training Data
 

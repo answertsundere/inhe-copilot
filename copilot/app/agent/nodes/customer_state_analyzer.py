@@ -7,6 +7,7 @@ import logging
 import time
 
 from app.llm.client import get_llm_client
+from app.agent.nodes.response_strategy_router import PRODUCT_QUESTION_INTENTS
 from app.services.logistics_fast_path import get_explicit_logistics_identifier
 
 logger = logging.getLogger(__name__)
@@ -175,10 +176,14 @@ def _fallback_analyze(state: dict) -> dict:
         concern = "social_frustration"
     elif intent == "delivery_not_received":
         concern = "worries_package_lost"
-    elif intent == "complaint" or risk_level in ("high", "critical"):
+    elif intent == "complaint":
         concern = "angry_about_delay"
-    elif intent == "product_question":
-        concern = "worries_material"
+    elif intent in PRODUCT_QUESTION_INTENTS:
+        concern = (
+            "worries_product_safety"
+            if intent in {"child_safety", "material_safety"}
+            else "worries_material"
+        )
     elif intent in ("logistics_eta", "logistics_trace"):
         concern = "wants_eta_certainty"
     return {

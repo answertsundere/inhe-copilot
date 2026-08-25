@@ -1483,3 +1483,21 @@ are infrastructure/role-qualification results, not Agent quality results. The
 next gate is one clean strict-role qualification followed by the same Fixed-8;
 `real_customer_accuracy=null`, Supervisor Assist remains review-only, and
 Autonomous Send remains disabled.
+
+### Customer Concern And Input-Action Scope Checkpoint (2026-08-25)
+
+The current-source Fixed-8 exposed a separate deterministic error after a
+successful product identity and evidence lookup. The customer-state fallback
+had converted every high-risk turn into `angry_about_delay`, and the response
+planner then treated that concern as authority to request an order or tracking
+reference during a material, moisture, and safety consultation.
+
+Risk and concern are now independent: high risk still forces human review, but
+only complaint semantics own the delay-complaint fallback. The planner reuses
+the existing product-intent set before optional concern handling, so product
+consultations keep their fact/partial-answer strategy and cannot inherit an
+unrelated order-input action. Logistics delay and after-sales controls remain
+positive controls. No Graph node, service, model call, reply owner, Evidence
+role, Safety rule, or `can_send` condition changed. This closes one deterministic
+quality defect; it does not qualify the Turn Provider, Fixed-8 quality, real
+accuracy, or Autonomous Send.

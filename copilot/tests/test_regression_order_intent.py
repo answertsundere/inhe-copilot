@@ -223,6 +223,62 @@ class TestPlannerNoDuplicateRequest:
         plan = result["response_strategy_plan"]
         assert "order_id" not in plan["missing_slots"]
 
+    @pytest.mark.parametrize(
+        ("intent", "customer_concern"),
+        [
+            ("material_safety", "angry_about_delay"),
+            ("cleaning_care", "wants_eta_certainty"),
+        ],
+    )
+    def test_product_consultation_does_not_request_order_input_from_incompatible_concern(
+        self,
+        intent,
+        customer_concern,
+    ):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": intent,
+            "customer_concern": customer_concern,
+            "customer_state": {"needs_human_review": True},
+            "conversation_context": {},
+            "normalized_message": "Please answer the current product consultation.",
+            "slots": {"sku_code": "SKU-REFERENCE"},
+            "order_product_identity": {
+                "status": "resolved",
+                "matched_product_name": "Resolved product",
+            },
+            "evidence": {
+                "product_facts": [{"evidence_uid": "verified-product-fact"}],
+            },
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["reply_goal"] == "answer_product_fact"
+        assert plan["should_ask_slot"] is False
+        assert plan["missing_slots"] == []
+        assert plan["missing_slot_mode"] == "none"
+        assert result["requires_human_review"] is True
+
+    def test_logistics_delay_without_identifier_still_requests_order_input(self):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "logistics_eta",
+            "customer_concern": "angry_about_delay",
+            "customer_state": {},
+            "conversation_context": {},
+            "normalized_message": "Please resolve the current delivery delay.",
+            "slots": {},
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["reply_goal"] == "deescalate_complaint"
+        assert plan["should_ask_slot"] is True
+        assert plan["missing_slots"] == ["order_id", "tracking_no"]
+        assert plan["missing_slot_mode"] == "any_of"
     def test_live_logistics_fact_overrides_eta_certainty_strategy(self):
         from app.agent.nodes.response_strategy_planner import response_strategy_planner
 
@@ -295,6 +351,45 @@ class TestPlannerNoDuplicateRequest:
         assert plan["missing_slots"] == []
         assert plan["missing_slot_mode"] == "none"
         assert result["requires_human_review"] is True
+
+
+class TestCustomerStateFallbackConcernScope:
+    def test_high_risk_product_consultation_does_not_impersonate_delay_complaint(self):
+        from app.agent.nodes.customer_state_analyzer import _fallback_analyze
+
+        result = _fallback_analyze({
+            "intent": "material_safety",
+            "risk_level": "high",
+            "normalized_message": "Please assess the current product question.",
+        })
+
+        assert result["customer_concern"] == "worries_product_safety"
+        assert result["needs_human_review"] is True
+        assert result["urgency_level"] == "high"
+
+    def test_high_risk_without_complaint_intent_keeps_concern_unknown(self):
+        from app.agent.nodes.customer_state_analyzer import _fallback_analyze
+
+        result = _fallback_analyze({
+            "intent": "high_risk",
+            "risk_level": "high",
+            "normalized_message": "Please assess the current request.",
+        })
+
+        assert result["customer_concern"] == "unknown"
+        assert result["needs_human_review"] is True
+
+    def test_complaint_intent_still_owns_delay_complaint_concern(self):
+        from app.agent.nodes.customer_state_analyzer import _fallback_analyze
+
+        result = _fallback_analyze({
+            "intent": "complaint",
+            "risk_level": "high",
+            "normalized_message": "Please handle the complaint.",
+        })
+
+        assert result["customer_concern"] == "angry_about_delay"
+        assert result["needs_human_review"] is True
 
 
 # ===========================================================================

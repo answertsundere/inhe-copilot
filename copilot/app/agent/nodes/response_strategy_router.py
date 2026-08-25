@@ -30,6 +30,16 @@ TEXT_PRODUCT_QUESTION_TERMS = (
     "\u6e05\u6d17", "\u9632\u6f6e",
 )
 
+PRODUCT_QUESTION_INTENTS = frozenset({
+    "product_question",
+    "product_consult",
+    "child_safety",
+    "competitor_compare",
+    "odor_question",
+    "cleaning_care",
+    "material_safety",
+})
+
 
 def _has_identifier(state: dict) -> bool:
     slots = state.get("slots", {})
@@ -148,10 +158,7 @@ def _looks_like_product_followup(state: dict) -> bool:
 
 
 def _is_product_question(state: dict) -> bool:
-    return state.get("intent", "") in (
-        "product_question", "product_consult", "child_safety",
-        "competitor_compare", "odor_question", "cleaning_care", "material_safety",
-    )
+    return state.get("intent", "") in PRODUCT_QUESTION_INTENTS
 
 
 def _is_clarification(state: dict) -> bool:
