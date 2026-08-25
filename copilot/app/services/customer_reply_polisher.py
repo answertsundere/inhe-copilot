@@ -674,7 +674,7 @@ def _internal_product_names(response: dict[str, Any]) -> list[str]:
 def _looks_like_internal_product_name(text: str) -> bool:
     if len(text) < 3 or len(text) > 24:
         return False
-    if re.match(r"^[一二三四五六七八九十]+号", text):
+    if re.match(r"^(?:[0-9]+|[一二三四五六七八九十]+)号", text):
         return True
     return any(token in text for token in (
         "一号", "二号", "三号", "四号", "五号", "六号",

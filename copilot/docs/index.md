@@ -522,6 +522,12 @@ Current boundaries:
   The planner scopes that obligation to the structured current intent: optional
   concern or emotion labels cannot make a product consultation request order or
   tracking input. Risk still controls review urgency, not customer intent.
+- Unselected Domain Policy metadata may auto-inherit only within an exact
+  canonical goal family. Cross-family policy applicability requires explicit
+  Turn Understanding nomination, and an exact bounded option is owned by one
+  non-restricted sibling goal when present. This prevents unrelated policy
+  premises and duplicate practical clauses without merging goals or changing
+  requested risk; see `docs/adr/0009-agent-core-capability-mainline.md`.
 
 ## Replay, Evaluation, And Training Data
 

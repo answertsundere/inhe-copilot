@@ -3228,6 +3228,9 @@ def _sanitize_customer_goals(
                     candidate,
                     claim_type,
                 )
+                and _bounded_text(
+                    candidate.get("goal_family"), 96
+                ).lower() == claim_type
             ]
             if exact_family_candidates:
                 exact_goal_families = {

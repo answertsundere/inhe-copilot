@@ -27,6 +27,9 @@ from app.services.fact_type_alias_service import (
     normalize_high_risk_claim_type,
 )
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
+from app.services.no_evidence_reply_policy_service import (
+    contains_unsupported_media_promise,
+)
 from app.services.semantic_fact_type_service import (
     ALLOWED_GOAL_KINDS,
     GOAL_IDENTITY_SCHEMA_VERSION,
@@ -505,6 +508,11 @@ def _admission_reason(
         return "fact_text_missing"
     if is_placeholder_evidence_text(text):
         return "placeholder_evidence"
+    if (
+        role in DIRECT_PRODUCT_ROLES
+        and contains_unsupported_media_promise(text, False)
+    ):
+        return "direct_evidence_contains_delivery_commitment"
     if not policy:
         identity_reason = _identity_reason(item, product_identity, allow_global=role == "faq_direct")
         if identity_reason:

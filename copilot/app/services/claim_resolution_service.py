@@ -392,6 +392,22 @@ def _policy_values(policy: dict[str, Any], key: str) -> list[str]:
     })
 
 
+def _bounded_option_semantic_identity(
+    option: dict[str, Any],
+) -> tuple[str, str, str, str, tuple[str, ...]]:
+    return (
+        sanitize_text(option.get("policy_ref")).lower(),
+        sanitize_text(option.get("pack_content_sha256")).lower(),
+        sanitize_text(option.get("allowed_scope")).lower(),
+        sanitize_text(option.get("allowed_conclusion_family")).lower(),
+        tuple(sorted(
+            sanitize_text(item)
+            for item in option.get("premise_evidence_refs") or []
+            if sanitize_text(item)
+        )),
+    )
+
+
 def _restricted_request_boundary(
     requested: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1063,6 +1079,39 @@ def build_claim_resolutions(
             ),
             "reason": reason,
         })
+    sibling_owned_options = {
+        _bounded_option_semantic_identity(option)
+        for result in results
+        if not result.get("restricted_request_boundary")
+        for option in result.get("eligible_policy_options") or []
+        if isinstance(option, dict)
+    }
+    for result in results:
+        boundary = result.get("restricted_request_boundary")
+        if (
+            not isinstance(boundary, dict)
+            or boundary.get("allows_bounded_alternative") is not True
+        ):
+            continue
+        options = [
+            option
+            for option in result.get("eligible_policy_options") or []
+            if isinstance(option, dict)
+        ]
+        retained = [
+            option
+            for option in options
+            if _bounded_option_semantic_identity(option)
+            not in sibling_owned_options
+        ]
+        if len(retained) == len(options):
+            continue
+        result["eligible_policy_options"] = retained
+        result["bounded_inference_rejection_reason"] = (
+            "bounded_inference_alternative_owned_by_sibling_goal"
+        )
+        if not retained:
+            result["bounded_inference_policy"] = ""
     return sanitize_obj(results)
 
 

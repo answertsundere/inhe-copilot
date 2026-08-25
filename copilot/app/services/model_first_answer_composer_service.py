@@ -468,6 +468,12 @@ _DIAGNOSTIC_OWNER_PROVENANCE_FIELDS = {
     "filter_owner",
     "premise_owner",
 }
+_MEASURED_QUANTITY_PATTERN = re.compile(
+    r"(?<!\d)\d+(?:[.,]\d+)?\s*"
+    r"(?:毫米|厘米|千克|公斤|mm|cm|kg|ml|克|斤|米|升|m|g|l)"
+    r"(?![A-Za-z])",
+    re.IGNORECASE,
+)
 _DIAGNOSTIC_FREE_TEXT_FIELDS = {
     "customer_goal",
     "content",
@@ -2528,9 +2534,6 @@ class ModelFirstAnswerComposerService:
             "service_actions": projected_service_actions,
             "service_action_bindings": service_action_bindings,
             "media_context": {
-                "candidate_count": len(
-                    minimal_context.get("media_candidates") or []
-                ),
                 "request_refs": [],
                 "actual_attached_media_types": list(actual_media_types),
             },
@@ -4079,7 +4082,7 @@ class ModelFirstAnswerComposerService:
             "Only media_context.actual_attached_media_types authorizes wording that a media asset is sent, "
             "attached, shown, or provided with this reply. When that list is empty, do not state or imply "
             "present delivery, attachment, display, availability in the reply, or a future send. "
-            "media_context.candidate_count is context only and never authorizes customer-facing delivery wording. "
+            "That list is exhaustive: never mention an image, video, manual, or other media type that is absent from it. "
             "A media_context.request_refs item with response_obligation=required means the requested media is already "
             "included with this reply. selected_media_request_refs must contain every such goal_ref exactly once, and "
             "the nearest related clause text must naturally acknowledge the current attachment without promising a future send. "
@@ -5236,6 +5239,55 @@ class ModelFirstAnswerComposerService:
                         expected_type="empty_array",
                         actual_type="non_empty_array",
                     )
+                quantity_source_texts = [
+                    str(goal.get("goal_summary") or "")
+                ]
+                if len(goals_by_ref) == 1:
+                    source_context = (
+                        ModelFirstAnswerComposerService._minimal_context(
+                            response
+                        )
+                    )
+                    quantity_source_texts.append(
+                        str(source_context.get("customer_goal") or "")
+                    )
+                    quantity_source_texts.extend(
+                        str(turn.get("content") or "")
+                        for turn in source_context.get(
+                            "recent_conversation_turns"
+                        )
+                        or []
+                        if (
+                            isinstance(turn, dict)
+                            and str(turn.get("role") or "").casefold()
+                            in {"buyer", "customer", "user"}
+                        )
+                    )
+                attributed_quantities = set().union(*(
+                    ModelFirstAnswerComposerService._measured_quantity_tokens(
+                        source_text
+                    )
+                    for source_text in quantity_source_texts
+                ))
+                unattributed_quantities = (
+                    ModelFirstAnswerComposerService._measured_quantity_tokens(
+                        text
+                    )
+                    - attributed_quantities
+                )
+                if unattributed_quantities:
+                    return "composer_unresolved_goal_contains_unattributed_quantity", ModelFirstAnswerComposerService._diagnostics(
+                        "unattributed_quantity",
+                        parsed=parsed,
+                        json_path=f"{path}.text",
+                        expected_type="goal_attributed_quantity_only",
+                        actual_type="unattributed_measured_quantity",
+                        invalid_reference_sha256=hashlib.sha256(
+                            "|".join(
+                                sorted(unattributed_quantities)
+                            ).encode("utf-8")
+                        ).hexdigest(),
+                    )
             clauses_by_ref[goal_ref] = {
                 "goal_ref": goal_ref,
                 "clause_kind": clause_kind,
@@ -5586,6 +5638,17 @@ class ModelFirstAnswerComposerService:
         )
 
     @staticmethod
+    def _measured_quantity_tokens(text: str) -> set[str]:
+        return {
+            re.sub(r"\s+", "", match.group(0))
+            .replace(",", ".")
+            .casefold()
+            for match in _MEASURED_QUANTITY_PATTERN.finditer(
+                str(text or "")
+            )
+        }
+
+    @staticmethod
     def _customer_language_mismatch(
         clauses: list[dict[str, Any]],
         *,
@@ -5753,10 +5816,6 @@ class ModelFirstAnswerComposerService:
             issue_codes = list(
                 media_delivery_claim_issues(response, reply=text)
             )
-            if not goal_is_media_request:
-                issue_codes.append("media_goal_missing")
-            if not actual_types:
-                issue_codes.append("actual_media_block_missing")
             fact_type = str(
                 response.get("query_fact_type")
                 or (response.get("evidence_debug") or {}).get(
@@ -5764,30 +5823,49 @@ class ModelFirstAnswerComposerService:
                 )
                 or ""
             ).strip()
-            if fact_type in {"dimensions", "space_fit"} and actual_types:
-                identity_context = (
-                    minimal_context.get("product_identity")
-                    if isinstance(
-                        minimal_context.get("product_identity"),
-                        dict,
-                    )
-                    else {}
+            identity_context = (
+                minimal_context.get("product_identity")
+                if isinstance(
+                    minimal_context.get("product_identity"),
+                    dict,
                 )
-                identity = {
-                    key: response.get(key) or identity_context.get(key)
-                    for key in ("product_id", "i_id", "sku_code")
-                }
-                attached_blocks = [
-                    block
-                    for block in response.get("reply_blocks") or []
-                    if (
-                        isinstance(block, dict)
-                        and block.get("type") in {"image", "video"}
-                        and str(
-                            block.get("url") or block.get("asset_url") or ""
-                        ).strip()
+                else {}
+            )
+            identity = {
+                key: response.get(key) or identity_context.get(key)
+                for key in ("product_id", "i_id", "sku_code")
+            }
+            attached_blocks = [
+                block
+                for block in response.get("reply_blocks") or []
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") in {"image", "video"}
+                    and str(
+                        block.get("url") or block.get("asset_url") or ""
+                    ).strip()
+                )
+            ]
+            goal_fact_type = str(
+                goal.get("claim_type") or goal.get("fact_type") or ""
+            ).strip()
+            attached_media_matches_goal = bool(
+                fact_type
+                and goal_fact_type == fact_type
+                and any(
+                    is_delivery_media_asset_eligible(
+                        block,
+                        query_fact_type=fact_type,
+                        product_identity=identity,
                     )
-                ]
+                    for block in attached_blocks
+                )
+            )
+            if not goal_is_media_request and not attached_media_matches_goal:
+                issue_codes.append("media_goal_missing")
+            if not actual_types:
+                issue_codes.append("actual_media_block_missing")
+            if fact_type in {"dimensions", "space_fit"} and actual_types:
                 if not any(
                     is_delivery_media_asset_eligible(
                         block,

@@ -280,6 +280,26 @@ identity recall, `11` unexpected raw identities; semantic recall `12/16`, `4`
 unexpected semantic goals). This distinction prevents a transport contract
 from being reported as semantic quality and leaves `can_send=false`.
 
+## Current Goal-Scoped Contract Refinements
+
+- `semantic_fact_type_service.py` may auto-inherit an unselected Domain Policy
+  family/kind only when one trusted candidate's `goal_family` exactly equals
+  the canonical claim family. Cross-family applicability remains available only
+  through an explicit Turn Understanding nomination.
+- `claim_resolution_service.py` preserves separate restricted and practical
+  customer goals, but an exact policy/premise/scope option has one owner. A
+  non-restricted sibling owns that option when present; the restricted sibling
+  keeps its unresolved boundary without duplicating the alternative.
+- `admitted_answer_context_service.py` rejects direct product or FAQ evidence
+  that mixes a fact with a future media-delivery commitment.
+- `model_first_answer_composer_service.py` exposes only goal/option-required
+  evidence, rejects unattributed measured quantities in unresolved clauses, and
+  may acknowledge only the exact type of an actual validated attachment for a
+  matching current product goal or authoritative media request.
+
+These are refinements inside existing owners. They add no Graph node, service,
+model call, reply owner, Evidence role, Delivery condition, or send authority.
+
 ## Frozen Shadow And Experimental Modules
 
 These modules may keep producing diagnostics. ADR 0009 freezes feature expansion

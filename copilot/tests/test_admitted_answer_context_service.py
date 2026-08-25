@@ -1412,6 +1412,45 @@ def test_confirmed_exact_hub_material_fact_enters_context_with_explicit_provenan
     assert context["rejected_evidence"] == []
 
 
+def test_rejects_direct_faq_mixed_with_future_media_delivery_commitment():
+    mixed = _fact(
+        evidence_uid="faq-installation-mixed-action",
+        evidence_role="faq_direct",
+        source_type="faq",
+        fact_type="installation",
+        attribute_key="",
+        content=(
+            "商品采用卡扣固定，随商品附有说明书。"
+            "如仍有问题，我们可以发安装视频给您参考。"
+        ),
+    )
+    direct = _fact(
+        evidence_uid="faq-installation-direct",
+        evidence_role="faq_direct",
+        source_type="faq",
+        fact_type="installation",
+        attribute_key="",
+        content="商品采用卡扣固定，随商品附有说明书。",
+    )
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": [mixed, direct]},
+        product_identity={"sku_code": "SKU-A"},
+        understanding=_understanding("installation"),
+    )
+
+    assert [
+        item["evidence_uid"]
+        for item in context["direct_product_facts"]
+    ] == ["faq-installation-direct"]
+    reasons = {
+        item["evidence_uid"]: item["reason"]
+        for item in context["rejected_evidence"]
+    }
+    assert reasons["faq-installation-mixed-action"] == (
+        "direct_evidence_contains_delivery_commitment"
+    )
+
 def test_reviewed_legacy_color_fact_can_support_canonical_color_options_claim():
     color_fact = _fact(
         evidence_uid="fact-color",

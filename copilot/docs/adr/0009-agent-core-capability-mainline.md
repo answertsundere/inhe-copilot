@@ -352,6 +352,19 @@ option. This
 prevents optional advice on a completed fact goal while preserving model-led
 selection on the customer's actual unresolved request.
 
+The same ownership boundary now distinguishes exact same-family inheritance
+from declared cross-family applicability. When Turn Understanding leaves
+`policy_intent_ref` empty, server normalization may inherit one unambiguous
+policy family and kind only when the trusted policy `goal_family` is exactly the
+canonical claim family. A policy that merely lists the claim under
+`canonical_claim_types` remains available for explicit model nomination but is
+not silently attached to a direct factual request. Claim Resolution also gives
+an exact policy/premise/scope option one customer-goal owner: when a
+non-restricted sibling already owns that option, a restricted sibling keeps its
+unresolved boundary but does not offer the same practical alternative again.
+This prevents cross-goal evidence exposure and duplicate clauses without
+merging customer goals, changing requested risk, or adding a reply owner.
+
 P1.2k subsequently tightened the same disabled owners around a canonical
 Composer Decision Input, minimal output reconstruction, semantic-budget
 metadata, and Unified Audit v2. P1.2k.6i records these changes as an

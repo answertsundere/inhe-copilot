@@ -1436,3 +1436,30 @@ acknowledgement that the attachment is included in the current reply. This is
 implemented in `model-first-answer-composer-v8` / `composer-response/v5` and
 adds no Graph node, service, model call, reply owner, Evidence role, or
 `can_send` condition.
+
+### Goal-Scoped Strategy And Candidate Faithfulness
+
+Turn Understanding no longer derives a cross-family practical strategy merely
+because a trusted policy declares the canonical claim under
+`canonical_claim_types`. Without an explicit `policy_intent_ref`, automatic
+family/kind inheritance is limited to one unambiguous policy whose
+`goal_family` exactly equals the canonical claim family. This keeps direct
+width/height lookup separate from an optional product-space comparison while
+retaining exact-family moisture and cleaning boundaries.
+
+Claim Resolution preserves every authoritative customer goal but assigns an
+identical policy/premise/scope option to one goal. If a non-restricted sibling
+already owns that exact option, a restricted sibling retains its prohibited or
+unresolved boundary and omits the duplicate alternative. Composer still writes
+one clause per goal, but no longer has to repeat the same bounded conclusion.
+
+The Composer Provider projection includes only evidence required by a
+renderable goal or its retained option. An unresolved clause cannot introduce a
+measured quantity that is absent from that goal's authoritative source; a
+single-goal customer-supplied measurement remains valid context, not evidence.
+An actual validated attachment may be acknowledged for the matching current
+product goal even without a separate media-request goal, but only its exact
+attached media type is authorized. Mixed FAQ/product text that combines a fact
+with a future media-delivery commitment is rejected at Evidence Admission.
+None of these contracts changes Formal Evidence Convergence defaults,
+Deterministic Final, Delivery, human review, or `can_send`.

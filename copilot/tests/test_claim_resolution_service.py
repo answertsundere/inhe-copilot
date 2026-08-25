@@ -1273,6 +1273,64 @@ def test_absolute_guarantee_keeps_restricted_boundary_and_offers_safe_strategy()
     assert option["option_provenance"]["intent_narrowed"] is False
 
 
+def test_explicit_practical_sibling_owns_duplicate_restricted_alternative():
+    absolute_policy = _bounded_policy(
+        policy_intent_ref="product_durability_absolute_guarantee",
+        intent_kind="absolute_guarantee",
+        allowed_scope="absolute_guarantee_disallowed",
+    )
+    absolute_goal = _bounded_goal(
+        goal_ref="goal-absolute",
+        risk_level="high",
+        policy_intent_ref="product_durability_absolute_guarantee",
+        policy_intent_kind="absolute_guarantee",
+    )
+    practical_goal = _bounded_goal(goal_ref="goal-practical")
+    kwargs = {
+        "direct_product_facts": [
+            _fact(
+                "material",
+                "material",
+                claim_type="material_composition",
+            )
+        ],
+        "direct_policy_facts": [],
+        "conflicts": [],
+        "bounded_inference_policies": [
+            absolute_policy,
+            _bounded_policy(),
+        ],
+        "context_capabilities": {
+            "product_category": {"available": True}
+        },
+        "policy_ref_prefix": "domain-policy:fixture@1.0.0",
+    }
+
+    first = build_claim_resolutions(
+        [absolute_goal, practical_goal],
+        **kwargs,
+    )
+    second = build_claim_resolutions(
+        [practical_goal, absolute_goal],
+        **kwargs,
+    )
+
+    assert first == second
+    by_goal = {item["goal_ref"]: item for item in first}
+    restricted = by_goal["goal-absolute"]
+    practical = by_goal["goal-practical"]
+    assert restricted["restricted_request_boundary"][
+        "must_remain_unresolved"
+    ] is True
+    assert restricted["eligible_policy_options"] == []
+    assert restricted["bounded_inference_rejection_reason"] == (
+        "bounded_inference_alternative_owned_by_sibling_goal"
+    )
+    assert _only_policy_option(practical)["policy_intent_ref"] == (
+        "product_durability_practical_guidance"
+    )
+
+
 def test_high_risk_practical_request_without_boundary_has_no_option():
     result = build_claim_resolutions(
         [_bounded_goal(

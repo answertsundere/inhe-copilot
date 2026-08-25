@@ -1206,7 +1206,30 @@ def _claimed_delivery_media_kinds(reply: str) -> set[str]:
     if not value:
         return set()
     delivery_cues = ("下面", "下方", "发您", "发给您", "给您发", "已发")
-    if not any(cue in value for cue in delivery_cues):
+    has_delivery_cue = any(cue in value for cue in delivery_cues)
+    if not has_delivery_cue:
+        media_terms = ("图片", "图纸", "安装图", "说明书", "视频", "安装视频")
+        recipient_cues = ("给您", "供您", "让您", "您参考", "您查看")
+        negations = ("不", "不能", "无法", "暂不能", "暂时不能")
+        for verb in ("发送", "发", "附上", "提供"):
+            offset = 0
+            while True:
+                index = value.find(verb, offset)
+                if index < 0:
+                    break
+                prefix = value[max(0, index - 5):index]
+                segment = value[index:index + 28]
+                if (
+                    not any(prefix.endswith(term) for term in negations)
+                    and any(term in segment for term in media_terms)
+                    and any(cue in segment for cue in recipient_cues)
+                ):
+                    has_delivery_cue = True
+                    break
+                offset = index + len(verb)
+            if has_delivery_cue:
+                break
+    if not has_delivery_cue:
         return set()
     kinds: set[str] = set()
     if any(term in value for term in ("图片", "图纸", "安装图", "说明书")):

@@ -1047,7 +1047,7 @@ def test_canonical_goal_rejects_nominated_policy_from_another_goal_family():
     assert goals[0]["policy_intent_kind"] == ""
 
 
-def test_canonical_goal_uses_declared_cross_family_policy_applicability():
+def test_canonical_goal_does_not_derive_cross_family_policy_without_nomination():
     policy = {
         **_policy_candidate(),
         "policy_intent_ref": "product_dimensions_practical_guidance",
@@ -1071,10 +1071,8 @@ def test_canonical_goal_uses_declared_cross_family_policy_applicability():
     assert status == "valid"
     assert diagnostics == []
     assert goals[0]["policy_intent_ref"] == ""
-    assert goals[0]["policy_goal_family"] == (
-        "product_dimensions_and_space"
-    )
-    assert goals[0]["policy_intent_kind"] == "practical_guidance"
+    assert goals[0]["policy_goal_family"] == ""
+    assert goals[0]["policy_intent_kind"] == ""
 
 
 def test_canonical_goal_rejects_policy_without_declared_applicability():

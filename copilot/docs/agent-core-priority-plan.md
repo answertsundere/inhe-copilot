@@ -1501,3 +1501,37 @@ positive controls. No Graph node, service, model call, reply owner, Evidence
 role, Safety rule, or `can_send` condition changed. This closes one deterministic
 quality defect; it does not qualify the Turn Provider, Fixed-8 quality, real
 accuracy, or Autonomous Send.
+
+### Goal-Scoped Strategy And Reply-Faithfulness Checkpoint (2026-08-25)
+
+The next current-source Fixed-8 exposed two ordered cross-goal defects. A direct
+overall-width/height request inherited a cross-family product-space strategy,
+which exposed unrelated length/depth premises to Composer. Separately, an
+absolute durability boundary and its explicit ordinary-use sibling both owned
+the same practical policy/premise option, forcing repetitive clauses.
+
+Turn Understanding normalization now derives an unselected family/kind only for
+one exact same-family trusted policy; cross-family applicability still requires
+an explicit model nomination. Claim Resolution gives one exact
+policy/premise/scope option to the non-restricted sibling and preserves the
+restricted boundary without a duplicate alternative. Evidence Admission also
+rejects direct FAQ/product text mixed with a future media-delivery commitment,
+and Composer validates goal-owned measured quantities and exact attached media
+types.
+
+DeepSeek V4 Flash requalified `20/20` on the changed source with one call per
+attempt, zero retry/repair/fallback, and p50/p95 about `1.347s/2.862s`. The
+width/height replay produced two accepted unresolved clauses without exposing
+`109cm` or `33cm` as answers. The durability replay retained both customer
+goals and reduced the duplicated policy rendering to one bounded explanation.
+Both remained review-only with `can_send=false`; no real-accuracy or Autonomous
+Send claim is authorized. The unchanged full Fixed-8 subsequently completed
+Pipeline and Composer `8/8`, kept human review `8/8` and `can_send=0`, and
+preserved 21 selected evidence rows. Its reconstructed exact-span scorer remains
+`9/16` with `11` unexpected identities, so the result is a Supervisor Assist
+engineering improvement, not Gold Conversation qualification or real accuracy.
+The versioned synthetic safety suite completed `5/5` smoke and `22/22` full on
+dataset hash `4c2156a1867df17bbb4e4ce4d2a5ca1fc0be1079671b1983055d3fcbef87574f`.
+All 22 results remained human-review-only and `can_send=true` stayed zero. This
+is safety regression evidence only; it does not change the reconstructed
+Fixed-8 limitations or establish real-customer accuracy.

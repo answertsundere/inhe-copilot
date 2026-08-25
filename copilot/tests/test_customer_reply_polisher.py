@@ -34,6 +34,40 @@ def test_polisher_preserves_product_names_with_bookshelf_and_bedrail_terms():
         assert "确认清楚" not in reply
 
 
+def test_polisher_replaces_arabic_series_internal_name_with_verified_display_name():
+    internal_name = "3号演示收纳柜"
+    display_name = "五号演示收纳柜"
+    response = {
+        "product_name": internal_name,
+        "matched_product_name": internal_name,
+        "display_product_name": display_name,
+        "suggested_reply": f"亲～\n关于「{internal_name}」：深度 33cm。",
+        "context_used": {
+            "conversation_context_summary": {
+                "confirmed_product": internal_name,
+            },
+            "product_context_pack": {
+                "identity": {
+                    "product_name": display_name,
+                },
+            },
+        },
+    }
+
+    polished = polish_customer_reply(
+        response,
+        customer_message="请告诉我商品尺寸。",
+        copilot_context={"explicit_product_name": display_name},
+    )
+    reply = polished["suggested_reply"]
+
+    assert internal_name not in reply
+    assert reply.count(display_name) == 1
+    assert polished["customer_reply_polish"]["internal_names_rewritten"] == [
+        internal_name,
+    ]
+
+
 def test_polisher_removes_internal_material_safety_process_language():
     response = {
         "suggested_reply": (

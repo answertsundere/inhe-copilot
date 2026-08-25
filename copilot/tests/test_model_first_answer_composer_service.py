@@ -1075,6 +1075,42 @@ def test_composer_rejects_model_owned_evidence_field():
     assert result["rejection_reason"] == "composer_clause_schema_invalid"
 
 
+def test_composer_rejects_cross_goal_quantity_in_unresolved_clause():
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = "儿童安全方面目前可确认80cm。"
+
+    updated, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == (
+        "composer_unresolved_goal_contains_unattributed_quantity"
+    )
+    assert result["validation_diagnostics"]["category"] == (
+        "unattributed_quantity"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+
+
+def test_composer_allows_customer_quantity_reference_in_unresolved_clause():
+    response = _response()
+    response["minimal_decision_context"]["requested_claims"][1][
+        "goal_summary"
+    ] = "80cm是否适合儿童使用"
+    response["minimal_decision_context"]["claim_resolutions"][1][
+        "goal_summary"
+    ] = "80cm是否适合儿童使用"
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = (
+        "您提到的80cm是否适合儿童使用，目前无法确认。"
+    )
+
+    _, result, client = _compose(payload, response)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
 def test_composer_rejects_media_promise_without_actual_block():
     payload = _valid_payload()
     payload["clauses"][0]["text"] = "儿童安全无法确认，安装视频已经发给您了。"
@@ -1324,10 +1360,18 @@ def test_composer_rejects_unattributed_lowercase_english_in_chinese_clause(
     ),
 )
 def test_composer_allows_short_technical_or_brand_terms_in_chinese_clause(text):
+    response = _response()
+    response["minimal_decision_context"]["customer_goal"] = text
+    response["minimal_decision_context"]["requested_claims"][1][
+        "goal_summary"
+    ] = text
+    response["minimal_decision_context"]["claim_resolutions"][1][
+        "goal_summary"
+    ] = text
     payload = _valid_payload()
     payload["clauses"][0]["text"] = text
 
-    _, result, client = _compose(payload)
+    _, result, client = _compose(payload, response)
 
     assert result["status"] == "accepted"
     assert result["rejection_reason"] == ""
@@ -1464,7 +1508,8 @@ def test_composer_prompt_uses_only_actual_blocks_as_media_delivery_authority():
     prompt = ModelFirstAnswerComposerService._system_prompt()
 
     assert "Only media_context.actual_attached_media_types authorizes wording" in prompt
-    assert "media_context.candidate_count is context only" in prompt
+    assert "candidate_count" not in prompt
+    assert "That list is exhaustive" in prompt
     assert "response_obligation=required" in prompt
     assert "selected_media_request_refs must contain every such goal_ref" in prompt
     assert "without promising a future send" in prompt
@@ -3271,6 +3316,70 @@ def test_composer_rejects_media_delivery_without_explicit_media_goal():
 
     assert result["rejection_reason"] == "composer_unsupported_media_promise"
     assert result["media_claim_diagnostics"]["goal_is_media_request"] is False
+
+
+def test_composer_accepts_attached_media_matching_current_product_goal():
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["customer_goal"] = "这款商品怎么安装"
+    context["requested_claims"] = [
+        _goal("goal-installation", "installation"),
+    ]
+    context["admitted_evidence"] = []
+    context["claim_resolutions"] = [
+        _resolution(
+            "claim-installation",
+            "installation",
+            "unresolved",
+        ),
+    ]
+    context["media_candidates"] = [{
+        "evidence_uid": "media-install-image",
+        "asset_type": "install_image",
+        "media_role": "installation_image",
+        "non_fact": True,
+    }]
+    response["query_fact_type"] = "installation"
+    response["sku_code"] = "private-sku"
+    response["reply_blocks"].append({
+        "type": "image",
+        "url": "https://static.invalid/install.png",
+        "asset_type": "install_image",
+        "status": "approved",
+        "usable_for_agent": True,
+        "sku_code": "private-sku",
+    })
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="这款商品怎么安装",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService.build_provider_material_from_decision_input(
+            decision_input
+        )
+    )
+    payload = {
+        "clauses": [{
+            "goal_ref": "goal_01",
+            "text": "具体安装顺序目前无法确认，下面安装图片可对照查看。",
+            "selected_option_refs": [],
+        }],
+    }
+
+    updated, result, client = _compose(payload, response)
+
+    assert decision_error == material_error == ""
+    assert len(decision_input["media_candidates"]) == 1
+    assert "candidate_count" not in material["partitions"]["media_context"]
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert result["media_claim_diagnostics"] == {}
+    assert "下面安装图片可对照查看" in updated["suggested_reply"]
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+    assert client.call_count == 1
 
 
 def test_composer_skips_provider_for_media_only_request_without_block():

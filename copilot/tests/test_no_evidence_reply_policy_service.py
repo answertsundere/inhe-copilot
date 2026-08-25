@@ -783,6 +783,15 @@ def test_media_delivery_claim_requires_each_attached_media_type():
 
     assert issues == ["missing_attached_video_block"]
 
+    assert media_delivery_claim_issues(
+        response,
+        "如果安装有问题，我们可以发安装视频给您参考。",
+    ) == ["missing_attached_video_block"]
+    assert media_delivery_claim_issues(
+        response,
+        "目前无法发安装视频给您参考。",
+    ) == []
+
 
 def test_media_delivery_claim_rejects_catalog_only_wrong_role_and_identity():
     catalog_only = {
