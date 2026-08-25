@@ -1298,6 +1298,34 @@ case where both the claim and clause evidence lists were empty. This adds no
 Graph node, service, model call, reply owner, delivery authority, or accuracy
 claim. The qualification is synthetic and `real_customer_accuracy=null`.
 
+### Composer Conversation Epistemic Boundary
+
+The existing Composer transport distinguishes continuity context from answer
+authority. Recent customer and assistant turns are projected as
+`non_authoritative_recent_conversation_turns` and each turn is tagged
+`conversation_context_only`; they never become admitted evidence. If every
+renderable customer goal is unresolved and has neither admitted evidence nor an
+eligible policy option, the Composer receives no recent turns and receives the
+structural mode `unresolved_boundary_only`. Supported or policy-backed turns may
+retain the tagged history for continuity, while their factual clauses remain
+bound to admitted evidence and server-owned policy references.
+
+This is an input projection inside the existing Composer. It adds no Graph node,
+service, model call, reply owner, retry, repair, fallback, Safety rule, or
+Delivery authority. The structural Provider matrix passed `15/15`, but a full
+Fixed-8 still produced one generic durability reason and advice outside the
+offered set. Consequently this checkpoint is not Gold Conversation Quality,
+semantic-Audit qualification, Autonomous Send readiness, or real accuracy.
+
+The same trace shows why no bounded alternative was offered. The legacy formal
+snapshot has no `kb_product.domain_policy_id`, and the exact Product Data Hub
+projection currently includes category metadata but no explicit policy ID.
+When exact identity exists, AnalysisPipeline intentionally does not apply a
+global policy fallback. A future bridge must therefore carry an explicit,
+reviewed Product Hub product-to-policy binding into the existing trusted Domain
+Policy selector. Inferring a policy from free-form category text in Copilot, or
+accepting public tenant/store/catalog metadata, remains prohibited.
+
 ## Decisions And References
 
 - ADR 0001: one formal AnalysisPipeline.

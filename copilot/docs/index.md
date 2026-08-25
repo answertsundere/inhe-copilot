@@ -478,6 +478,10 @@ Current boundaries:
 - Product media roles do not prove that image contents have been understood. Model-extracted OCR or visual observations require product scope, provenance, confidence, and review state before they can support formal claims.
 - Product Media Observation v3 resolves observed source bytes with SHA-256 provenance and uses deterministic panel proposals plus staged panel, object, label, and object-label binding only for shadow diagnostics. Its normalised regions and graph relations remain outside formal evidence, customer replies, and `can_send` until a separate reviewed-evidence promotion decision.
 - Low-risk bounded derivations must declare their inputs and assumptions. Dimensions or visible structure cannot be upgraded into load, child-safety, toxicity, certification, or installation-safety claims.
+- Recent conversation turns are continuity context, not factual authority. The
+  Composer receives them only through the explicitly non-authoritative
+  projection documented in `docs/architecture-overview.md`; they cannot replace
+  admitted evidence or an eligible Domain Policy option.
 
 ## Replay, Evaluation, And Training Data
 

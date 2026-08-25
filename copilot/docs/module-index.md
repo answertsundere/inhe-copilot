@@ -270,6 +270,16 @@ remains `unresolved`. `final_answer_auditor` requires every
 owner, call, send condition, or production flag and remains review-only with
 `real_customer_accuracy=null`.
 
+`ModelFirstAnswerComposerService` now also labels retained dialogue history as
+non-authoritative continuity context and omits it from all-unresolved/no-option
+requests. The same owner projects `composition_mode=unresolved_boundary_only`;
+Evidence Admission and Claim Resolution remain the only sources of factual and
+policy authority. Composer v3 structural qualification passed `15/15`, while
+the subsequent Fixed-8 quality gate remained not qualified (`9/16` raw goal
+identity recall, `11` unexpected raw identities; semantic recall `12/16`, `4`
+unexpected semantic goals). This distinction prevents a transport contract
+from being reported as semantic quality and leaves `can_send=false`.
+
 ## Frozen Shadow And Experimental Modules
 
 These modules may keep producing diagnostics. ADR 0009 freezes feature expansion

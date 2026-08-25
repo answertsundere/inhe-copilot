@@ -1283,6 +1283,36 @@ bounded-reasoning/Composer-Audit boundary, not another Turn Understanding
 prompt rule. `real_customer_accuracy=null` and
 `optimization_unverified=true` remain authoritative.
 
+### Composer Conversation-Fact Boundary Checkpoint (2026-08-25)
+
+Recent customer and assistant turns are now explicitly non-authoritative at the
+existing Composer boundary. They are exposed only as
+`non_authoritative_recent_conversation_turns` with a
+`conversation_context_only` epistemic tag, and they are omitted when all
+renderable goals are unresolved with no admitted evidence or eligible policy
+option. This prevents history from silently becoming a product-fact source and
+adds no owner, model call, retry, repair, or delivery authority.
+
+The role-scoped structural qualification passed `15/15`, but the comparable
+full Fixed-8 is not a quality pass. It completed Composer and Deterministic
+Final `8/8`, direct attribution `4/4`, unresolved declaration `12/12`, DML `0`,
+review `8/8`, and `can_send=0`; however, raw goal-identity recall was `9/16`
+with `11` unexpected identities, semantic recall was `12/16` with `4`
+unexpected semantic goals, and one all-unresolved durability response still
+added an unoffered generic reason and advice. Prompt-only constraint is therefore
+exhausted for this defect. P1 stays active and the next decision must use the
+existing semantic-Audit owner or an explicitly approved structural composition
+contract. No Autonomous Send or real-accuracy claim is authorized.
+
+The immediate upstream blocker is now explicit policy ownership. The current
+query-only formal snapshot predates `kb_product.domain_policy_id`, while Product
+Data Hub exposes exact product category metadata but no explicit policy ID.
+Exact identity deliberately suppresses the global fallback, leaving every
+durability policy option ineligible. The next design must add a reviewed
+product-to-policy control field at the Product Hub boundary and reuse the
+existing Pipeline selector. Category-text inference inside Copilot is not an
+acceptable substitute.
+
 ## Definition Of Project Progress
 
 The project has progressed only when at least one of these becomes true without

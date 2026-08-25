@@ -511,3 +511,41 @@ reports must retain `real_customer_accuracy=null` and
 - Raw source-identity recall remains affected by the known clause-normalization
   diagnostic. The durability reply still expands beyond an offered bounded
   option, so P1 remains active and real accuracy remains null.
+
+## 2026-08-25 P1 Composer Conversation-Fact Boundary
+
+- The earliest durability over-expansion started at the Composer transport:
+  an unverified material statement existed only in recent conversation history,
+  but that history was presented beside authoritative decision input without an
+  explicit epistemic boundary.
+- The existing Composer now receives such turns only as
+  `non_authoritative_recent_conversation_turns`, tagged
+  `conversation_context_only`. When every renderable goal is unresolved and no
+  policy option or admitted evidence is available, history is omitted entirely
+  and `composition_mode=unresolved_boundary_only` is projected. No Graph node,
+  service, model call, reply owner, retry, repair, or send authority was added.
+- DeepSeek V4 Flash passed the structural Composer v3 matrix `15/15` across
+  unresolved-only, unadmitted-history-fact, and mixed supported/unresolved
+  profiles, with zero retry, repair, or fallback. This validates transport and
+  reference handling only, not semantic answer quality.
+- The isolated durability case first returned only two unresolved boundaries,
+  proving the history material was no longer copied. The one permitted full
+  Fixed-8 run then completed execution, Composer, and Deterministic Final `8/8`,
+  supported attribution `4/4`, unresolved declaration `12/12`, DML `0`, review
+  `8/8`, and `can_send=0`. Raw goal-identity recall was `9/16` with `11`
+  unexpected identities; semantic recall remained `12/16` with `4` unexpected
+  semantic goals. Its durability reply again added a generic reason and advice
+  despite having no eligible policy option. P1 therefore remains not qualified; a
+  qualified semantic Audit or an approved structural composition contract is
+  needed instead of another prompt-only restriction.
+- Versioned synthetic safety regression remained `5/5` and `22/22`, entirely
+  review-only. `real_customer_accuracy=null` remains authoritative.
+- The next read-only trace located the missing bounded option before Composer.
+  The query-only formal snapshot has `585` product rows but its legacy
+  `kb_product` schema has no `domain_policy_id` column. Product Data Hub returns
+  `424` active products with category metadata, but no explicit
+  `domainPolicyId`. Because an exact product identity is present, the Pipeline
+  correctly refuses the global policy fallback. The next architecture decision
+  is therefore an explicit, reviewed Product Hub product-to-policy binding that
+  feeds the existing trusted selector; Copilot must not infer a policy from a
+  category name or customer text.

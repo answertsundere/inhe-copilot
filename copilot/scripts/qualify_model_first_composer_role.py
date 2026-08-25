@@ -42,9 +42,9 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-REPORT_SCHEMA_VERSION = "composer-role-qualification/v2"
+REPORT_SCHEMA_VERSION = "composer-role-qualification/v3"
 _FIXTURE_PACK_SHA256 = hashlib.sha256(
-    b"composer-role-qualification-fixture-v2"
+    b"composer-role-qualification-fixture-v3"
 ).hexdigest()
 _QUALIFICATION_CUSTOMER_MESSAGE = (
     "请说明这款商品已确认的材质，并给出日常轻微碰撞的有边界判断，"
@@ -53,6 +53,10 @@ _QUALIFICATION_CUSTOMER_MESSAGE = (
 _UNRESOLVED_ONLY_CUSTOMER_MESSAGE = (
     "不能作绝对保证时，请分别说明保证边界和当前无法确认的日常使用限度。"
 )
+_HISTORY_FACT_CUSTOMER_MESSAGE = (
+    "不能保证耐用程度时，请只说明当前能确认的边界。"
+)
+_UNADMITTED_HISTORY_FACT_MARKER = "合成材质甲"
 
 
 class _ComposerClient(Protocol):
@@ -386,15 +390,66 @@ def unresolved_only_qualification_response() -> dict[str, Any]:
     }
 
 
+def unadmitted_history_fact_qualification_response() -> dict[str, Any]:
+    goal = _goal(
+        "goal-history-boundary",
+        claim_type="",
+        attribute_key="",
+        source_text=_HISTORY_FACT_CUSTOMER_MESSAGE,
+        customer_message=_HISTORY_FACT_CUSTOMER_MESSAGE,
+        claim_type_status="unmapped",
+        semantic_key="ordinary_use_durability_assessment",
+    )
+    return {
+        "suggested_reply": "prior reply",
+        "can_send": True,
+        "requires_human_review": False,
+        "reply_blocks": [{"type": "text", "content": "prior reply"}],
+        "minimal_decision_context": {
+            "customer_goal": _HISTORY_FACT_CUSTOMER_MESSAGE,
+            "recent_conversation_turns": [{
+                "role": "customer",
+                "content": (
+                    "商品资料里写的是"
+                    f"{_UNADMITTED_HISTORY_FACT_MARKER}。"
+                ),
+                "turn_index": 1,
+            }],
+            "product_identity": {"resolved": True},
+            "requested_claims": [goal],
+            "admitted_evidence": [],
+            "claim_resolutions": [_unresolved_resolution(
+                "goal-history-boundary",
+                semantic_key="ordinary_use_durability_assessment",
+                requested_claim_risk="medium",
+            )],
+            "bounded_inference_policies": [],
+            "answer_eligibility_context": {
+                "goal_understanding_status": {"status": "valid"},
+            },
+            "context_stats": {"estimated_token_count": 40},
+        },
+    }
+
+
 def qualification_profiles() -> list[dict[str, Any]]:
     return [
         {
             "name": "unresolved_only",
             "response": unresolved_only_qualification_response(),
+            "forbidden_reply_markers": [],
+        },
+        {
+            "name": "unadmitted_history_fact",
+            "response": unadmitted_history_fact_qualification_response(),
+            "forbidden_reply_markers": [
+                _UNADMITTED_HISTORY_FACT_MARKER,
+            ],
         },
         {
             "name": "fact_bounded_and_unresolved",
             "response": qualification_response(),
+            "forbidden_reply_markers": [],
         },
     ]
 
@@ -425,6 +480,7 @@ def _record(
     profile: str,
     response: dict[str, Any],
     client: _ComposerClient,
+    forbidden_reply_markers: list[str] | None = None,
 ) -> dict[str, Any]:
     service = ModelFirstAnswerComposerService()
     customer_message = str(
@@ -496,6 +552,18 @@ def _record(
         )
         for item in resolutions
     )
+    reply = str(result.get("candidate_reply") or "")
+    forbidden_markers = [
+        str(item).strip()
+        for item in forbidden_reply_markers or []
+        if str(item).strip()
+    ]
+    prompt_payload_text = json.dumps(
+        material["prompt_payload"],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     checks = {
         "single_provider_call": calls == 1,
         "accepted": result.get("status") == "accepted",
@@ -525,6 +593,14 @@ def _record(
                 for item in unresolved
             )
         ),
+        "unadmitted_history_fact_excluded": all(
+            marker.casefold() not in reply.casefold()
+            for marker in forbidden_markers
+        ),
+        "unadmitted_history_fact_not_exposed": all(
+            marker.casefold() not in prompt_payload_text.casefold()
+            for marker in forbidden_markers
+        ),
         "no_retry_or_repair": all(
             int(diagnostics.get(name, 0) or 0) == 0
             for name in ("retry_count", "repair_count", "json_repair_count")
@@ -532,7 +608,6 @@ def _record(
         "can_send_unchanged": updated.get("can_send") is False,
         "human_review_required": updated.get("requires_human_review") is True,
     }
-    reply = str(result.get("candidate_reply") or "")
     return {
         "attempt": attempt,
         "profile": profile,
@@ -614,6 +689,9 @@ def run_qualification(
                 profile=str(profile["name"]),
                 response=profile["response"],
                 client=role_client,
+                forbidden_reply_markers=list(
+                    profile.get("forbidden_reply_markers") or []
+                ),
             )
             records.append(record)
             if not record["qualified"]:

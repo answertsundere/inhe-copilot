@@ -86,6 +86,25 @@ class _UnresolvedOnlyMixedLanguageClient(_FakeClient):
         )])
 
 
+class _HistoryFactRepeatingClient(_FakeClient):
+    def create_chat_completion(self, **kwargs: Any) -> Any:
+        material = json.loads(kwargs["messages"][1]["content"])
+        if material.get("current_customer_question") != (
+            qualification._HISTORY_FACT_CUSTOMER_MESSAGE
+        ):
+            return super().create_chat_completion(**kwargs)
+        self.calls.append(kwargs)
+        clauses = [{
+            "goal_ref": goal_ref,
+            "text": "商品可以确认为合成材质甲。",
+            "selected_option_refs": [],
+        } for goal_ref in material["presentation_order"]]
+        return SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="stop",
+            message=SimpleNamespace(content=json.dumps({"clauses": clauses})),
+        )])
+
+
 def test_qualification_fixture_covers_fact_option_and_unresolved_boundary():
     response = qualification.qualification_response()
     minimal = response["minimal_decision_context"]
@@ -104,6 +123,7 @@ def test_qualification_profiles_include_a_standalone_unresolved_only_case():
 
     assert [profile["name"] for profile in profiles] == [
         "unresolved_only",
+        "unadmitted_history_fact",
         "fact_bounded_and_unresolved",
     ]
     unresolved = profiles[0]["response"]["minimal_decision_context"]
@@ -115,20 +135,33 @@ def test_qualification_profiles_include_a_standalone_unresolved_only_case():
         and item["eligible_policy_options"] == []
         for item in unresolved["claim_resolutions"]
     )
+    history_response = profiles[1]["response"]
+    service = qualification.ModelFirstAnswerComposerService()
+    decision_input, decision_error = service.build_composer_decision_input(
+        history_response,
+        customer_message=qualification._HISTORY_FACT_CUSTOMER_MESSAGE,
+    )
+    material, material_error = (
+        service.build_provider_material_from_decision_input(decision_input)
+    )
+    assert decision_error == material_error == ""
+    assert material["prompt_payload"][
+        "non_authoritative_recent_conversation_turns"
+    ] == []
 
 
-def test_role_qualification_accepts_five_single_call_attempts():
+def test_role_qualification_accepts_five_single_call_attempts_per_profile():
     client = _FakeClient()
 
     report, exit_code = qualification.run_qualification(client=client)
 
     assert exit_code == 0
     assert report["status"] == "qualified"
-    assert report["attempted"] == 10
-    assert report["provider_call_count"] == 10
+    assert report["attempted"] == 15
+    assert report["provider_call_count"] == 15
     assert len(report["qualification_fingerprint"]) == 64
-    assert len(client.calls) == 10
-    assert report["profile_count"] == 2
+    assert len(client.calls) == 15
+    assert report["profile_count"] == 3
     assert report["attempts_per_profile"] == 5
     assert all(record["qualified"] for record in report["records"])
     assert all(
@@ -136,6 +169,22 @@ def test_role_qualification_accepts_five_single_call_attempts():
         for record in report["records"]
     )
     assert report["can_change_can_send"] is False
+
+
+def test_role_qualification_rejects_unadmitted_history_product_fact():
+    client = _HistoryFactRepeatingClient()
+
+    report, exit_code = qualification.run_qualification(client=client)
+
+    assert exit_code == 2
+    assert report["status"] == "not_qualified"
+    assert report["attempted"] == 6
+    assert report["records"][-1]["profile"] == (
+        "unadmitted_history_fact"
+    )
+    assert report["hard_stop_reason"] == (
+        "unadmitted_history_fact_excluded"
+    )
 
 
 def test_role_qualification_rejects_mixed_english_prose_for_chinese_fixture():
@@ -172,8 +221,8 @@ def test_role_qualification_stops_on_first_required_option_omission():
 
     assert exit_code == 2
     assert report["status"] == "not_qualified"
-    assert report["attempted"] == 6
-    assert report["provider_call_count"] == 6
+    assert report["attempted"] == 11
+    assert report["provider_call_count"] == 11
     assert report["hard_stop_reason"] == "composer_required_option_not_selected"
 
 

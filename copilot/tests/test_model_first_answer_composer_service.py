@@ -398,11 +398,9 @@ def test_composer_allows_review_only_customer_conditional_comparison():
         "If the stated product height is 12 cm, will it fit?"
     )
     assert prompt["customer_visible_language"] == "en"
-    assert prompt["recent_conversation_turns"] == [{
-        "role": "customer",
-        "content": "The available height is 10 cm.",
-        "turn_index": 1,
-    }]
+    assert prompt["composition_mode"] == "unresolved_boundary_only"
+    assert "recent_conversation_turns" not in prompt
+    assert prompt["non_authoritative_recent_conversation_turns"] == []
     assert "explicit customer-condition boundary" in client.messages[0][
         "content"
     ]
@@ -912,11 +910,10 @@ def test_unresolved_goal_projects_source_faithfulness_statement_contract(
         "negative_source_fact_allowed": False,
         "customer_visible_reason_mode": "none",
     }
-    assert material["prompt_payload"]["recent_conversation_turns"] == [{
-        "role": "customer",
-        "content": customer_observation,
-        "turn_index": 1,
-    }]
+    assert "recent_conversation_turns" not in material["prompt_payload"]
+    assert material["prompt_payload"][
+        "non_authoritative_recent_conversation_turns"
+    ] == []
     prompt = ModelFirstAnswerComposerService._system_prompt()
     for required_contract in (
         "fact_assertion_mode=admitted_evidence_only",
@@ -926,6 +923,20 @@ def test_unresolved_goal_projects_source_faithfulness_statement_contract(
         "customer_visible_reason_mode=none",
     ):
         assert required_contract in prompt
+
+
+def test_supported_goal_keeps_labeled_non_authoritative_history_context():
+    _, result, client = _compose(_valid_payload())
+
+    assert result["status"] == "accepted"
+    prompt = json.loads(client.messages[1]["content"])
+    assert prompt["non_authoritative_recent_conversation_turns"] == [{
+        "role": "customer",
+        "content": "我问的是宽度",
+        "turn_index": 1,
+        "epistemic_status": "conversation_context_only",
+    }]
+    assert prompt["composition_mode"] == "standard"
 
 
 @pytest.mark.parametrize(

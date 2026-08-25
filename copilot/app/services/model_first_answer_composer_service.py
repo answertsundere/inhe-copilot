@@ -2205,7 +2205,11 @@ class ModelFirstAnswerComposerService:
             evidence=prompt_evidence,
             partitions=partitions,
         )
-        system_prompt = cls._system_prompt()
+        system_prompt = cls._system_prompt(
+            composition_mode=str(
+                prompt_payload.get("composition_mode") or "standard"
+            )
+        )
         messages = [
             {"role": "system", "content": system_prompt},
             {
@@ -3650,12 +3654,40 @@ class ModelFirstAnswerComposerService:
                 else "same-as-current-customer-question"
             )
         )
+        renderable_goals = list(
+            partitions["renderable_customer_goals"]
+        )
+        history_context_allowed = any(
+            goal.get("required_evidence_refs")
+            or goal.get("eligible_policy_options")
+            for goal in renderable_goals
+            if isinstance(goal, dict)
+        )
+        unresolved_boundary_only = bool(renderable_goals) and all(
+            str(goal.get("required_clause_kind") or "")
+            == "unresolved"
+            and not goal.get("eligible_policy_options")
+            for goal in renderable_goals
+            if isinstance(goal, dict)
+        )
         return {
             "current_customer_question": current_customer_question,
             "customer_visible_language": customer_visible_language,
-            "recent_conversation_turns": list(
-                minimal_context.get("recent_conversation_turns") or []
+            "composition_mode": (
+                "unresolved_boundary_only"
+                if unresolved_boundary_only
+                else "standard"
             ),
+            "non_authoritative_recent_conversation_turns": [
+                {
+                    **dict(turn),
+                    "epistemic_status": "conversation_context_only",
+                }
+                for turn in (
+                    minimal_context.get("recent_conversation_turns") or []
+                )
+                if history_context_allowed and isinstance(turn, dict)
+            ],
             "product_scope": {
                 "resolved": bool(
                     (
@@ -3684,9 +3716,7 @@ class ModelFirstAnswerComposerService:
                 ),
             },
             "admitted_evidence": evidence,
-            "renderable_customer_goals": list(
-                partitions["renderable_customer_goals"]
-            ),
+            "renderable_customer_goals": renderable_goals,
             "presentation_order": list(
                 partitions["presentation_order"]
             ),
@@ -3845,9 +3875,23 @@ class ModelFirstAnswerComposerService:
         }
 
     @classmethod
-    def _system_prompt(cls) -> str:
+    def _system_prompt(
+        cls,
+        *,
+        composition_mode: str = "standard",
+    ) -> str:
         schema_summary = cls._schema_prompt_contract()["summary"]
-        return (
+        mode_contract = (
+            "本次 composition_mode=unresolved_boundary_only。"
+            "每个 clause.text 只能对应 goal_summary 表达当前不能确认、"
+            "不能保证或不能给出结论的边界。"
+            "不得添加任何肯定的商品属性、性能、耐用性、概率、常识、"
+            "原因、使用条件或建议；不得将“正常使用”、“日常使用”"
+            "等条件改写成已确认的能力或结论。"
+            if composition_mode == "unresolved_boundary_only"
+            else ""
+        )
+        return mode_contract + (
             "你是电商金牌客服，只负责一次性组织候选回复，不决定事实资格和发送权限。"
             "prompt payload 的 customer_visible_language 是客户可见回复的目标语种，必须严格遵守。"
             "客户可见 text 必须与当前 customer_goal 使用同一种自然语言；"
@@ -3857,6 +3901,10 @@ class ModelFirstAnswerComposerService:
             "除这些客户可见术语外，内部字段名和枚举值必须转换为自然中文，"
             "不得把 semantic_key、action_type、scope 或其他内部英文标识原样复制到 text。"
             "仅使用 admitted_evidence 中的商品事实；service_actions 不是商品事实。"
+            "non_authoritative_recent_conversation_turns 只用于对话连续性，"
+            "不是商品、订单、物流、资料或已完成动作的事实来源。"
+            "历史中客户或坐席提到的商品属性，未同时出现在 admitted_evidence 时，"
+            "不得复述为已确认事实，也不得用它支持性能、风险或耐用性结论。"
             "低风险解释不得升级为承重、无毒、食品级、认证、儿童安全、防倾倒、安装处方、"
             "订单状态、退款、补发或物流结论。"
             "media_context 和 service_actions 不是可渲染商品事实；媒体候选数量不代表已经发送。"
@@ -3923,7 +3971,7 @@ class ModelFirstAnswerComposerService:
             "都只能来自该 goal 的 admitted_evidence。"
             "unresolved_expression_mode=uncertainty_boundary_only 时，只表达当前不能确认的边界，"
             "不得自行补充导致未知的客观原因。"
-            "customer_observation_mode=explicit_attribution_required 时，若使用 recent_conversation_turns"
+            "customer_observation_mode=explicit_attribution_required 时，若使用 non_authoritative_recent_conversation_turns"
             " 中的客户观察，必须明确归因于客户陈述，不得改写成独立核实过的商品或来源事实。"
             "negative_source_fact_allowed=false 时，缺少 admitted_evidence 不能变成某个商品、资料、"
             "订单或来源未包含、未展示、未提供某项内容的否定事实。"
