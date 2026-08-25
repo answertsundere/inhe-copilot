@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-08-26 - After-Sales Action Continuity
+
+- Fixed the earliest after-sales progression break in the existing
+  `ResponseStrategyPlanner`: a risk-normalized `complaint` now retains the
+  typed request for either order or tracking identity when the authoritative
+  customer concern remains transactional after-sales.
+- Kept the action non-factual and review-only. Known identifiers suppress it;
+  unrelated product intents cannot inherit it; Safety, Evidence, Delivery and
+  `can_send` are unchanged.
+- Requalified DeepSeek Composer `25/25`, passed an anonymous after-sales canary,
+  completed Fixed-8 Pipeline/Composer/Final `8/8`, and preserved formal DML `0`,
+  human review `8/8`, and automatic sends `0`.
+- Synthetic safety passed `5/5` and `22/22`, and 808 associated regression
+  tests passed. Gold quality remains unqualified; the next owner is existing
+  formal knowledge/tool coverage and `real_customer_accuracy=null`.
+
 ## 2026-08-25 - DeepSeek Fixed-8 Supervisor-Assist Baseline
 
 - Qualified DeepSeek V4 Flash for the current Composer contract `25/25` across

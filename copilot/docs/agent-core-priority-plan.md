@@ -1581,3 +1581,37 @@ detachability, media, and after-sales context before changing Composer wording.
 No production flag or send authority is enabled. The source run is immutable;
 its separately hashed offline review is not supervisor approval, and
 `real_customer_accuracy=null` remains authoritative.
+
+### After-Sales Action Continuity (2026-08-26)
+
+The next anonymous after-sales canary isolated a narrower existing-owner break.
+Strict Turn Understanding correctly produced three current-turn goals and risk
+routing correctly normalized the operational intent from `aftersales` to
+`complaint`, while retaining `received_but_problem`. The existing response
+planner, however, offered an input action only for the pre-normalized intent;
+Composer therefore received no typed operation and could only repeat unresolved
+boundaries.
+
+`ResponseStrategyPlanner` now recognizes the closed authoritative combination
+of transactional after-sales intents and after-sales concern enums. It reuses
+the existing missing-order-slot computation and offers one non-factual
+`request_customer_input` action accepting either `order_id` or `tracking_no`.
+This is not customer-text keyword classification: Understanding still owns the
+semantic enums, and the planner cannot invent an outcome, satisfy evidence, or
+change Delivery. A known identifier suppresses the request, and product
+consultation intents cannot acquire it from an incompatible concern.
+
+DeepSeek V4 Flash requalified `25/25` over five Composer profiles with no retry,
+repair or fallback. The same anonymous canary then rendered the exact offered
+input request, while `can_send=false` and human review remained mandatory. A
+fresh reconstructed Fixed-8 completed Pipeline, Composer and Deterministic
+Final `8/8`; selected evidence totaled nine rows in four scenarios, formal DML
+was `0`, all eight required review, and automatic sends remained `0`. Offline
+expert averages were factual correctness `1.875/2`, goal completion `1.5/2`,
+naturalness `1.375/2`, empathy `1.0/2`, business helpfulness `1.0/2`, and
+bounded reasoning `1.875/2`. Synthetic safety remained `5/5` and `22/22`.
+
+This closes after-sales progression only. Exact installation, detachability and
+media coverage remain the earliest shared quality gap, so
+`formal_knowledge_tool_coverage` remains active. No production feature flag,
+Autonomous Send condition, or real-accuracy claim is authorized.

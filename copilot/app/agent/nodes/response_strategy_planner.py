@@ -13,6 +13,19 @@ _ALTERNATIVE_CUSTOMER_INPUT_SLOT_GROUPS = (
     frozenset({"product_link", "product_screenshot", "sku"}),
 )
 
+_TRANSACTIONAL_AFTERSALES_INTENTS = {
+    "aftersales",
+    "complaint",
+    "compensation_request",
+    "high_risk",
+    "refund_request",
+}
+_TRANSACTIONAL_AFTERSALES_CONCERNS = {
+    "received_but_problem",
+    "wants_compensation",
+    "worries_refund_loss",
+}
+
 
 MODEL_MARKER_RE = re.compile(r"([一二三四五六七八九十百千万两0-9]+号)")
 
@@ -109,6 +122,18 @@ def _missing_slot_mode(missing_slots: list[str]) -> str:
     ):
         return "any_of"
     return "all_of"
+
+
+def _is_transactional_aftersales_context(
+    *,
+    intent: str,
+    concern: str,
+) -> bool:
+    """Preserve after-sales progression after risk routing normalizes intent."""
+    return (
+        intent in _TRANSACTIONAL_AFTERSALES_INTENTS
+        and concern in _TRANSACTIONAL_AFTERSALES_CONCERNS
+    )
 
 
 def _authoritative_contextual_reply_kind(state: dict) -> str:
@@ -210,6 +235,18 @@ def response_strategy_planner(state: dict) -> dict:
             missing_slots = _compute_missing_product_slots(state)
         if intent in {"child_safety", "material_safety"}:
             tone = "careful"
+
+    elif _is_transactional_aftersales_context(
+        intent=intent,
+        concern=concern,
+    ):
+        reply_goal = "verify_aftersales_conditions"
+        tone = "careful"
+        empathy_level = "medium"
+        should_explain_reason = True
+        should_escalate = True
+        missing_slots = _compute_missing_order_slots(state)
+        should_ask_slot = bool(missing_slots)
 
     elif concern == "wants_eta_certainty":
         reply_goal = "explain_no_guarantee"

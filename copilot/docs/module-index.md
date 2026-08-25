@@ -372,3 +372,20 @@ Before changing Agent behavior, verify:
   product-intent contract, so an incompatible concern cannot authorize an
   order/tracking request for a resolved product consultation. Legitimate
   logistics and after-sales input actions are unchanged.
+
+## 2026-08-26 After-Sales Action Continuity
+
+- `app/agent/nodes/response_strategy_planner.py` remains the sole response
+  strategy owner. It now preserves the existing missing-order-input action when
+  an authoritative after-sales concern is carried under a risk-normalized
+  transactional intent such as `complaint`.
+- The action remains non-factual, accepts `order_id` or `tracking_no` in
+  `any_of` mode, is suppressed when an identifier is already known, and cannot
+  change `can_send`. Product intents cannot acquire the action from an
+  incompatible concern.
+- No Graph node, service, Provider call, Evidence role, reply owner, retry,
+  repair, fallback or delivery rule was added. The current anonymous canary,
+  DeepSeek `25/25`, Fixed-8 `8/8`, Synthetic `5/5` and `22/22`, and 808-test
+  associated regression all preserve review-only delivery and formal DML `0`.
+- This module fix does not provide product installation facts or media. The
+  next owner remains the existing formal knowledge/tool coverage path.

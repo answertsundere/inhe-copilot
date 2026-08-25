@@ -34,13 +34,14 @@ After implementation, update this index, `ROADMAP.md`, and
   logistics, policy, and service-outcome facts are resolved from approved
   current sources at answer time. They are never hardcoded into tests or
   prompts.
-- Current evidence checkpoint: Product Hub materializes explicit
-  product/component dimension subjects as atomic scoped facts. A fully
-  fictional isolated canary admitted product width/height/depth, excluded
-  component axes, and produced a grounded width/height reply with no send
-  authority. The current-source DeepSeek Composer qualification passed `25/25`;
-  the subsequent reconstructed Fixed-8 completed `8/8`, selected evidence in
-  only three scenarios, kept formal-knowledge DML at `0`, required review
+- Current evidence/action checkpoint: Product Hub still materializes explicit
+  product/component dimensions as atomic scoped facts. The after-sales funnel
+  now preserves one planner-owned, non-factual `request_customer_input` action
+  after risk routing normalizes `aftersales` to `complaint`; it accepts either
+  `order_id` or `tracking_no`, cannot satisfy a claim, and cannot change
+  `can_send`. Current DeepSeek Composer qualification passed `25/25`; the
+  subsequent reconstructed Fixed-8 completed `8/8`, selected nine evidence
+  rows across four scenarios, kept formal-knowledge DML at `0`, required review
   `8/8`, and kept `can_send=0`.
 - Accuracy status: `real_customer_accuracy=null` and
   `optimization_unverified=true` until the authorized E2 data and independent
@@ -66,12 +67,14 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The fresh Fixed-8 is complete and moves the active P1 owner to
-`formal_knowledge_tool_coverage`. Dimension and material facts were useful when
-admitted, but installation, detachability, installation media, and after-sales
-turns lacked a customer-visible fact or executable service action and fell back
-to repeated uncertainty. The next change must trace those existing source and
-tool paths into the canonical answer context before any wording work. Unified
-Audit stays advisory for Supervisor Assist and mandatory for future Autonomous
-Send qualification. This reconstructed baseline remains engineering evidence;
+The after-sales progression break is closed: the same current-turn complaint
+now requests an order or tracking reference through the existing typed-action
+contract instead of stopping at repeated uncertainty. The active P1 owner
+remains `formal_knowledge_tool_coverage`. Installation, detachability and
+installation-media turns still lack sufficient exact-product context, and the
+bounded-use case still lacks an eligible premise/policy option. The next change
+must trace those existing Product Context Pack, media and tool paths into the
+canonical answer context before any wording work. Unified Audit stays advisory
+for Supervisor Assist and mandatory for future Autonomous Send qualification.
+This reconstructed baseline remains engineering evidence;
 `real_customer_accuracy=null` and `optimization_unverified=true`.

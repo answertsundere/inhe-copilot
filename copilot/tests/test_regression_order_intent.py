@@ -228,6 +228,7 @@ class TestPlannerNoDuplicateRequest:
         [
             ("material_safety", "angry_about_delay"),
             ("cleaning_care", "wants_eta_certainty"),
+            ("material_safety", "received_but_problem"),
         ],
     )
     def test_product_consultation_does_not_request_order_input_from_incompatible_concern(
@@ -347,6 +348,62 @@ class TestPlannerNoDuplicateRequest:
         })
 
         plan = result["response_strategy_plan"]
+        assert plan["should_ask_slot"] is False
+        assert plan["missing_slots"] == []
+        assert plan["missing_slot_mode"] == "none"
+        assert result["requires_human_review"] is True
+
+    @pytest.mark.parametrize(
+        "customer_concern",
+        [
+            "received_but_problem",
+            "worries_refund_loss",
+            "wants_compensation",
+        ],
+    )
+    def test_transactional_aftersales_concern_survives_complaint_risk_routing(
+        self,
+        customer_concern,
+    ):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "complaint",
+            "customer_concern": customer_concern,
+            "customer_state": {"needs_human_review": True},
+            "conversation_context": {},
+            "normalized_message": "Please continue the current after-sales resolution.",
+            "slots": {},
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["reply_goal"] == "verify_aftersales_conditions"
+        assert plan["should_ask_slot"] is True
+        assert plan["missing_slots"] == ["order_id", "tracking_no"]
+        assert plan["missing_slot_mode"] == "any_of"
+        assert result["requires_human_review"] is True
+
+    def test_transactional_aftersales_concern_with_identifier_does_not_repeat_request(
+        self,
+    ):
+        from app.agent.nodes.response_strategy_planner import response_strategy_planner
+
+        result = response_strategy_planner({
+            "intent": "complaint",
+            "customer_concern": "received_but_problem",
+            "customer_state": {"needs_human_review": True},
+            "conversation_context": {},
+            "normalized_message": "Please continue the current after-sales resolution.",
+            "slots": {
+                "order_id": "ORDER-REFERENCE",
+                "identifier_type": "internal_order_id",
+            },
+            "trace_steps": [],
+        })
+
+        plan = result["response_strategy_plan"]
+        assert plan["reply_goal"] == "verify_aftersales_conditions"
         assert plan["should_ask_slot"] is False
         assert plan["missing_slots"] == []
         assert plan["missing_slot_mode"] == "none"

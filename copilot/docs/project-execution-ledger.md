@@ -776,3 +776,27 @@ reports must retain `real_customer_accuracy=null` and
   the judgment. The next P1 owner is `formal_knowledge_tool_coverage`.
   `real_customer_accuracy=null`, Supervisor Assist remains review-only, and
   Autonomous Send remains blocked.
+
+## 2026-08-26 After-Sales Action Continuity
+
+- Frozen canary diagnosis proved that Strict Turn Understanding and risk
+  routing were both correct: three customer goals survived, and the intent was
+  normalized to `complaint`. The earliest break was the existing response
+  planner dropping the after-sales input action after that normalization.
+- The planner now reuses structured intent/concern enums and the existing
+  missing-slot calculation to offer one `request_customer_input` action for
+  either order or tracking identity. No customer-text keyword, result promise,
+  new service or new reply owner was introduced.
+- DeepSeek Composer qualification passed `25/25`; retry, repair and fallback
+  were zero, with p50/p95 `1.606s/3.212s`. The anonymous canary rendered the
+  offered request and retained `can_send=false`.
+- Fresh Fixed-8 execution, Composer and Deterministic Final were `8/8`; Unified
+  Audit advisory was `7/8`; evidence totaled nine rows across four scenarios;
+  formal DML was `0`; human review was `8/8`; automatic sends were `0`.
+- Offline expert review scored factual correctness `1.875/2`, goal completion
+  `1.5/2`, naturalness `1.375/2`, empathy `1.0/2`, business helpfulness `1.0/2`
+  and bounded reasoning `1.875/2`. The next Owner remains
+  `formal_knowledge_tool_coverage`.
+- Versioned Synthetic safety passed smoke `5/5` and full `22/22`, with all
+  cases review-only and no automatic send. Associated regression passed 808
+  tests. These are engineering and safety results, not real-customer accuracy.

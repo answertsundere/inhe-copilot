@@ -1467,3 +1467,21 @@ attached media type is authorized. Mixed FAQ/product text that combines a fact
 with a future media-delivery commitment is rejected at Evidence Admission.
 None of these contracts changes Formal Evidence Convergence defaults,
 Deterministic Final, Delivery, human review, or `can_send`.
+
+### Risk-Normalized After-Sales Action Continuity
+
+The authoritative intent may be normalized from `aftersales` to `complaint`
+when the current request contains a high-risk outcome such as refund,
+replacement or compensation. That normalization does not erase the separately
+owned after-sales concern. The existing `ResponseStrategyPlanner` therefore
+uses the closed structured pair of transactional intent and after-sales concern
+to preserve one missing-input operation after routing.
+
+The operation is the existing non-factual `request_customer_input` contract. It
+accepts `order_id` or `tracking_no` only when neither is already known, remains
+incomplete until the customer supplies one, and has
+`can_change_can_send=false`. Composer may render only that offered action;
+Deterministic Final and Unified Audit retain their existing validation. Product
+consultation intents do not inherit the operation from an unrelated concern.
+No customer text matcher, Graph node, service, model call, Evidence role,
+reply owner, Safety rule or Delivery condition was added.

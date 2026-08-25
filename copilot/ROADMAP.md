@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-DEEPSEEK-FIXED8-BASELINE-004` |
+| Task ID | `P1-AFTERSALES-ACTION-CONTINUITY-005` |
 | Owner | Codex |
-| Goal | Qualify the current DeepSeek Composer role, verify atomic Product Hub scope with a fictional canary, and run one immutable reconstructed Fixed-8 to identify the next customer-quality owner. |
-| Scope | Repository-external qualification/canary orchestration, the existing formal Pipeline, offline expert review, and durable status documentation. No production Agent, Graph, Evidence, Safety, Delivery, or `can_send` change. |
-| Status | DeepSeek qualification `25/25`; synthetic Product Hub canary passed; Fixed-8 execution/Composer/Deterministic Final `8/8`, human review `8/8`, automatic send `0`, formal DML `0`. Offline review completed without mutating the immutable source report. |
-| Gate | Engineering baseline complete, Gold-quality gate not passed. Expert averages were factual correctness `1.875/2`, goal completion `1.375/2`, naturalness `1.375/2`, and business helpfulness `1.0/2`. The next owner is `formal_knowledge_tool_coverage`; `real_customer_accuracy=null` and Autonomous Send remain blocked. |
+| Goal | Preserve an actionable after-sales input request when authoritative Understanding is risk-normalized from `aftersales` to `complaint`, without adding a reply rule or changing delivery authority. |
+| Scope | Existing `ResponseStrategyPlanner`, direct contract tests, one anonymous canary, current DeepSeek Composer qualification, reconstructed Fixed-8, and versioned Synthetic safety regression. No Graph, service, model-call, Evidence, Safety, Delivery, or `can_send` owner change. |
+| Status | Earliest break fixed in the existing planner; DeepSeek qualification `25/25`; anonymous after-sales canary now offers and renders one `request_customer_input` action for `order_id` or `tracking_no`; Fixed-8 execution/Composer/Deterministic Final `8/8`, human review `8/8`, automatic send `0`, formal DML `0`; Synthetic `5/5` and `22/22`. |
+| Gate | Engineering slice passed, Gold-quality gate not passed. Expert averages are factual correctness `1.875/2`, goal completion `1.5/2`, naturalness `1.375/2`, empathy `1.0/2`, and business helpfulness `1.0/2`. The remaining earliest owner is `formal_knowledge_tool_coverage`; `real_customer_accuracy=null` and Autonomous Send remain blocked. |
 
 ## Phase Status
 
