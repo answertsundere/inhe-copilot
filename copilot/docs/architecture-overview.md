@@ -825,6 +825,12 @@ null，生产运行和 Autonomous Send 均未切换。
 本地独立 Unified Audit 仍因 schema invalid 仅作 advisory，因此这只是 Supervisor
 Assist 质量修复，不构成 Autonomous Send 资格。
 
+同一展示边界也会阻止内部小写字段名和枚举值作为孤立英文词进入中文 clause。
+小写术语只有在当前客户表达、正式准入证据中已有同词，或结构上紧邻数值作为单位时
+才可保留；大写和混合大小写的品牌、型号、标准缩写不受影响。Composer Prompt
+要求把其余内部标识转换为自然中文，既有确定性校验负责 fail-closed。该变化不改变
+Evidence、Graph、Final、Audit、Safety 或 Delivery 的职责。
+
 同一轮验证还暴露出一个独立的既有控制流缺陷：高风险售后在首次必要工具调用
 失败并经过旧 JST fallback 后，`knowledge_scope_router` 虽然已经看到工具调用记录，
 仍会仅因 `high_risk` 再次进入 `tool_planner`，形成六节点无界循环。当前路由只在

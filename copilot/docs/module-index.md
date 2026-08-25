@@ -232,6 +232,13 @@ all-Chinese candidate with one formal evidence item, zero knowledge DML,
 `can_send=false`, and mandatory human review; local Unified Audit remained an
 unqualified advisory result.
 
+Customer-language alignment in that same owner now rejects unattributed
+lowercase internal field or enum fragments in Chinese clauses. Lowercase terms
+already present in the customer question or admitted evidence, numeric units,
+and uppercase/mixed-case customer-visible terminology remain valid. The Prompt
+renders internal labels as natural Chinese; the deterministic validator adds no
+Provider call, retry, repair, evidence role, or delivery authority.
+
 The fresh query-only Fixed-8 completed `8/8`; selected evidence remains eight
 items across `3/8` scenarios. The after-sales turn now preserves three
 independent unresolved goals after rejecting an invalid policy nomination, and

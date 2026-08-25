@@ -473,3 +473,20 @@ flags, dataset identity, scorable/excluded counts, safety and handoff behavior,
 latency, `can_send`, and delivery outcome. Until approved real labels exist,
 reports must retain `real_customer_accuracy=null` and
 `optimization_unverified=true`.
+
+## 2026-08-25 P1 Composer Language Boundary
+
+- Root cause: the customer-language validator rejected only long English prose,
+  so isolated lowercase internal enum fragments could pass in Chinese clauses.
+- Existing Composer ownership was retained. The Prompt now requires natural
+  Chinese for internal fields/enums, and deterministic validation permits only
+  customer/evidence-attributed lowercase terms or numeric units.
+- Comparable Fixed-8: execution `8/8`, Composer `7/8`, Final `8/8`, clause
+  coverage `14/14`, supported attribution `5/5`, unresolved declaration `9/9`,
+  selected evidence `16`, DML `0`, review `8/8`, `can_send=0`.
+- One case remains pre-Composer because strict Turn Understanding failed exact
+  current-source provenance. This remains the next owner; goal recall is still
+  `3/16` and no real-accuracy claim is authorized.
+- Regression: Composer tests `211/211`, linked Pipeline/Final/Reply tests
+  `256/256`, synthetic smoke `5/5`, full `22/22`; every benchmark result stayed
+  review-only with zero automatic sends.

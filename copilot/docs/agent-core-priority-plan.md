@@ -1236,6 +1236,29 @@ mandatory human review. The independent local Unified Audit remained advisory
 and schema-invalid, so Autonomous Send is still blocked and
 `real_customer_accuracy=null`.
 
+### Customer-Visible Enum Isolation Checkpoint (2026-08-25)
+
+The same Composer presentation owner now distinguishes customer/evidence terms
+from internal lowercase schema labels. A lowercase Latin term in a Chinese
+clause is accepted only when the customer or admitted evidence already supplied
+that term, or when it is a unit attached to a numeric value. Uppercase and
+mixed-case brands, models, standards, and abbreviations remain valid. Other
+lowercase internal field or enum fragments fail closed, while the Composer
+Prompt requires their meaning to be expressed in natural Chinese. This adds no
+model call, retry, repair, reply owner, or delivery authority.
+
+The comparable Product Hub Fixed-8 completed `8/8`. Composer accepted `7/8`;
+the remaining case never reached Composer because strict Turn Understanding
+failed exact current-source provenance. The seven renderable cases reached
+goal-clause coverage `14/14`, supported attribution `5/5`, and unresolved
+boundary declaration `9/9`. Selected evidence was `16` across six cases,
+formal-knowledge DML was zero, all eight results required human review, and
+`can_send` remained false. Exact diagnostic goal recall remains only `3/16`, so
+the next existing owner is provenance-qualified Turn Understanding rather than
+another Composer wording rule. Versioned synthetic regression passed `5/5`
+smoke and `22/22` full, all review-only. These results remain reconstructed
+engineering evidence with `real_customer_accuracy=null`.
+
 ## Definition Of Project Progress
 
 The project has progressed only when at least one of these becomes true without

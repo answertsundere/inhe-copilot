@@ -1281,9 +1281,35 @@ def test_composer_rejects_english_prose_embedded_in_chinese_clause(text):
 @pytest.mark.parametrize(
     "text",
     (
+        "当前只能选择退款 or 换货。",
+        "这项处理的 eligibility 暂时无法确认。",
+        "物流状态为 pending，请稍后再看。",
+        "当前状态为 2 pending，请稍后再看。",
+    ),
+)
+def test_composer_rejects_unattributed_lowercase_english_in_chinese_clause(
+    text,
+):
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = text
+
+    _, result, client = _compose(payload)
+
+    assert result["rejection_reason"] == "composer_customer_language_mismatch"
+    match = result["validation_diagnostics"]["language_match"]
+    assert match["trigger_category"] == (
+        "unattributed_lowercase_latin_in_chinese_clause"
+    )
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
         "这款商品的主要材质是 PP、ABS 和 TPE。",
         "充电接口为 Type-C，支持 Wi-Fi 连接。",
         "这款属于 Little Tikes Cozy Coupe 系列。",
+        "商品宽度为 57 cm，重量约为 2.5 kg。",
     ),
 )
 def test_composer_allows_short_technical_or_brand_terms_in_chinese_clause(text):
@@ -1294,6 +1320,51 @@ def test_composer_allows_short_technical_or_brand_terms_in_chinese_clause(text):
 
     assert result["status"] == "accepted"
     assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("source_field", "source_text", "reply_text"),
+    (
+        ("customer_goal", "这个 inhe 系列怎么选", "这款属于 inhe 系列。"),
+        ("evidence", "商品支持 matter 协议", "这款支持 matter 协议。"),
+    ),
+)
+def test_composer_allows_lowercase_terms_attributed_to_customer_or_evidence(
+    source_field,
+    source_text,
+    reply_text,
+):
+    response = _response()
+    if source_field == "customer_goal":
+        response["minimal_decision_context"]["customer_goal"] = source_text
+    else:
+        response["minimal_decision_context"]["admitted_evidence"][0][
+            "content"
+        ] = source_text
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = reply_text
+
+    _, result, client = _compose(payload, response)
+
+    assert result["status"] == "accepted"
+    assert result["rejection_reason"] == ""
+    assert client.call_count == 1
+
+
+def test_composer_does_not_authorize_lowercase_terms_from_assistant_history():
+    response = _response()
+    response["minimal_decision_context"]["recent_conversation_turns"] = [{
+        "role": "assistant",
+        "content": "内部处理状态为 pending",
+        "turn_index": 1,
+    }]
+    payload = _valid_payload()
+    payload["clauses"][0]["text"] = "当前状态为 pending。"
+
+    _, result, client = _compose(payload, response)
+
+    assert result["rejection_reason"] == "composer_customer_language_mismatch"
     assert client.call_count == 1
 
 
@@ -1329,6 +1400,7 @@ def test_composer_prompt_requires_customer_visible_expression_stability():
         "不得把任何未知事实改写成否定事实",
         "不得夹入英文句段",
         "品牌、型号、单位和标准缩写可保留原文",
+        "内部字段名和枚举值必须转换为自然中文",
     ):
         assert required in prompt
     assert prompt.index(language_priority) < prompt.index(
@@ -2333,9 +2405,9 @@ def test_composer_covers_generic_supported_and_unresolved_goal_mixes(
             "goal_ref": f"goal_{index:02d}",
             "clause_kind": "supported_fact" if supported else "unresolved",
             "text": (
-                f"{resolution['claim_type']}为已确认信息。"
+                f"第{index}项已有明确依据。"
                 if supported
-                else f"{resolution['claim_type']}目前无法确认。"
+                else f"第{index}项目前无法确认。"
             ),
             "evidence_refs": [
                 evidence_ref_by_uid[uid]

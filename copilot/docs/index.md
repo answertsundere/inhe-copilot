@@ -43,7 +43,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   thin-LangGraph boundary, context-first reasoning model, and convergence order.
 - `docs/agent-core-priority-plan.md` - operational priority authority for the
   gold-service Agent Core, including the active priority, protocol-work budget,
-  promotion gates, domain portability, and required task header.
+  promotion gates, domain portability, required task header, and the current
+  customer-visible language/Turn Understanding quality checkpoint.
 - `docs/gold-customer-service-delivery-plan.md` - authoritative execution
   sequence for the Gold Customer Service Agent, including dynamic-truth source
   policy, P0-P7 gates, and the active P1 work queue.

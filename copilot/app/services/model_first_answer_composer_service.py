@@ -3854,6 +3854,8 @@ class ModelFirstAnswerComposerService:
             "当 customer_goal 使用中文时，text 必须使用中文，不得改为英文。"
             "中文回复不得夹入英文句段；"
             "品牌、型号、单位和标准缩写可保留原文。"
+            "除这些客户可见术语外，内部字段名和枚举值必须转换为自然中文，"
+            "不得把 semantic_key、action_type、scope 或其他内部英文标识原样复制到 text。"
             "仅使用 admitted_evidence 中的商品事实；service_actions 不是商品事实。"
             "低风险解释不得升级为承重、无毒、食品级、认证、儿童安全、防倾倒、安装处方、"
             "订单状态、退款、补发或物流结论。"
@@ -5101,6 +5103,61 @@ class ModelFirstAnswerComposerService:
         return {}
 
     @staticmethod
+    def _authorized_lowercase_latin_terms(
+        response: dict[str, Any],
+    ) -> set[str]:
+        """Return customer/evidence terms that may remain untranslated."""
+        minimal_context = ModelFirstAnswerComposerService._minimal_context(
+            response
+        )
+        source_texts = [
+            str(minimal_context.get("customer_goal") or ""),
+        ]
+        for turn in minimal_context.get("recent_conversation_turns") or []:
+            if not isinstance(turn, dict):
+                continue
+            if str(turn.get("role") or "").casefold() not in {
+                "buyer",
+                "customer",
+                "user",
+            }:
+                continue
+            source_texts.append(str(turn.get("content") or ""))
+        for evidence in minimal_context.get("admitted_evidence") or []:
+            if not isinstance(evidence, dict):
+                continue
+            for field in ("content", "value", "original_value"):
+                value = evidence.get(field)
+                if isinstance(value, str):
+                    source_texts.append(value)
+        return {
+            token.casefold()
+            for source_text in source_texts
+            for token in re.findall(
+                r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
+                source_text,
+            )
+            if token.islower()
+        }
+
+    @staticmethod
+    def _is_numeric_unit_token(
+        text: str,
+        *,
+        token: str,
+        token_start: int,
+    ) -> bool:
+        if not token.isalpha() or len(token) > 4:
+            return False
+        prefix = text[max(0, token_start - 24):token_start]
+        return bool(
+            re.search(
+                r"\d+(?:[.,]\d+)?\s*$",
+                prefix,
+            )
+        )
+
+    @staticmethod
     def _customer_language_mismatch(
         clauses: list[dict[str, Any]],
         *,
@@ -5113,6 +5170,10 @@ class ModelFirstAnswerComposerService:
         customer_goal = str(minimal_context.get("customer_goal") or "")
         if not re.search(r"[\u4e00-\u9fff]", customer_goal):
             return {}
+        authorized_lowercase_terms = (
+            ModelFirstAnswerComposerService
+            ._authorized_lowercase_latin_terms(response)
+        )
         for clause_index, clause in enumerate(clauses):
             text = str(clause.get("text") or "").strip()
             if re.search(r"[\u4e00-\u9fff]", text):
@@ -5148,6 +5209,37 @@ class ModelFirstAnswerComposerService:
                         ).hexdigest(),
                         "rule_sha256": hashlib.sha256(
                             b"customer-language-alignment/v2"
+                        ).hexdigest(),
+                    }
+                for token_match in re.finditer(
+                    r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
+                    text,
+                ):
+                    token = token_match.group(0)
+                    if not token.islower():
+                        continue
+                    if token.casefold() in authorized_lowercase_terms:
+                        continue
+                    if ModelFirstAnswerComposerService._is_numeric_unit_token(
+                        text,
+                        token=token,
+                        token_start=token_match.start(),
+                    ):
+                        continue
+                    return {
+                        "detector_family": "customer_language_alignment",
+                        "reason_code": "customer_language_mismatch",
+                        "trigger_category": (
+                            "unattributed_lowercase_latin_in_chinese_clause"
+                        ),
+                        "clause_index": clause_index,
+                        "goal_ref": str(clause.get("goal_ref") or ""),
+                        "json_path": f"$.clauses[{clause_index}].text",
+                        "text_sha256": hashlib.sha256(
+                            text.encode("utf-8")
+                        ).hexdigest(),
+                        "rule_sha256": hashlib.sha256(
+                            b"customer-language-alignment/v3"
                         ).hexdigest(),
                     }
                 continue

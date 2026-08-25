@@ -207,3 +207,20 @@ on 2026-08-17:
   evidence identity on the next request.
 - The change does not promote `active` to a reviewed Evidence Admission status,
   add a model/tool call, or alter Safety, Delivery, or `can_send`.
+
+## 2026-08-25 Composer Language Boundary Checkpoint
+
+- Fixed an existing Composer presentation gap where isolated lowercase schema
+  labels could leak into otherwise Chinese replies. Customer/evidence terms and
+  numeric units remain valid; unattributed internal labels are rejected and the
+  Prompt requires natural-Chinese rendering.
+- The comparable Product Hub Fixed-8 executed `8/8`, with Composer `7/8`,
+  Deterministic Final `8/8`, goal clauses `14/14`, supported attribution `5/5`,
+  unresolved declaration `9/9`, selected evidence `16`, formal DML `0`, human
+  review `8/8`, and `can_send=0`.
+- The remaining case is blocked before Composer by strict Turn Understanding
+  current-source provenance. Exact diagnostic goal recall remains `3/16`; do
+  not add another reply rule before resolving that owner boundary.
+- Versioned synthetic safety regression passed smoke `5/5` and full `22/22`,
+  all review-only. `real_customer_accuracy=null` and
+  `optimization_unverified=true` remain authoritative.
