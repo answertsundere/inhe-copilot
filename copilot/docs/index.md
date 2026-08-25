@@ -415,6 +415,17 @@ send change. The fictional Provider matrix is qualified, but isolated runtime
 gates remain pending; the separate V4 Flash Composer role is unchanged,
 `real_customer_accuracy=null`, and `can_send=false`.
 
+The 2026-08-25 contextual-role checkpoint records a later Provider boundary:
+the current local Fixed-8 completed `8/8` requests but three compound turns
+failed closed before Composer because the strict role omitted required
+conversation-boundary identity. The existing two-branch strict schema now
+requires one closed non-factual semantic role for both media requests and
+contextual constraints, with role-specific enforcement retained in the
+deterministic validator. Unit and cross-module contracts pass; live promotion
+is still blocked by current DeepSeek/GLM request failures and a saturated local
+qualification runtime. This is not a reply-quality, real-accuracy, or
+Autonomous Send qualification.
+
 ## Architecture Decisions And Research
 
 - `docs/adr/README.md` - ADR rules and required format.

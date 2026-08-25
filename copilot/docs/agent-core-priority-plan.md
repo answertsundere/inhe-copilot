@@ -1459,3 +1459,27 @@ knowledge DML `0`, and kept `can_send=false` with mandatory human review. The
 semantic judge was unavailable, so this is an engineering closure only.
 Synthetic `5/5` and `22/22` remained review-only safety regression;
 `real_customer_accuracy=null` and P1 remain authoritative.
+
+### Contextual Role Schema Checkpoint (2026-08-25)
+
+The next current-source reconstructed Fixed-8 completed all eight Pipeline
+requests, kept formal-knowledge DML at zero, required human review `8/8`, and
+kept `can_send=0`. It did not qualify reply quality: the local strict Turn
+Understanding role degraded three compound turns before Composer because it
+returned contextual constraints without a valid closed `semantic_key`. The
+affected turns then correctly failed closed into the legacy review-only path.
+
+The existing strict output schema now keeps its two-branch transport shape but
+requires media requests and contextual constraints to use one closed
+non-factual role branch. Missing semantic identity can no longer pass native
+schema validation and invalidate a complete turn later. The deterministic
+normalizer still enforces the separate media and conversation vocabularies;
+no fact, policy, evidence, reply, or delivery authority was added.
+
+Provider promotion remains blocked. DeepSeek currently returned only
+`provider_request_failed`, GLM-4.7-Flash rejected both strict transport probes,
+and the shared local runtime exceeded its bounded qualification window. These
+are infrastructure/role-qualification results, not Agent quality results. The
+next gate is one clean strict-role qualification followed by the same Fixed-8;
+`real_customer_accuracy=null`, Supervisor Assist remains review-only, and
+Autonomous Send remains disabled.

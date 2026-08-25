@@ -574,29 +574,66 @@ def test_strict_provider_schema_requires_media_request_role_identity():
     goal_variants = service.STRICT_PROVIDER_OUTPUT_SCHEMA["properties"][
         "goals"
     ]["items"]["oneOf"]
-    media_rule = next(
+    non_fact_role_rule = next(
         rule
         for rule in goal_variants
-        if rule["properties"]["goal_kind"].get("const") == "media_request"
+        if set(rule["properties"]["goal_kind"].get("enum") or [])
+        == {"contextual_constraint", "media_request"}
     )
     non_media_rule = next(
         rule
         for rule in goal_variants
-        if "enum" in rule["properties"]["goal_kind"]
+        if "media_request"
+        not in (rule["properties"]["goal_kind"].get("enum") or [])
     )
 
-    assert "semantic_key" in media_rule["required"]
-    assert media_rule["properties"]["claim_type_status"]["const"] == "unmapped"
-    assert media_rule["properties"]["claim_type"]["const"] == ""
-    assert "installation_video" in media_rule["properties"]["semantic_key"][
-        "enum"
-    ]
+    assert "semantic_key" in non_fact_role_rule["required"]
+    assert non_fact_role_rule["properties"]["claim_type_status"]["const"] == (
+        "unmapped"
+    )
+    assert non_fact_role_rule["properties"]["claim_type"]["const"] == ""
+    assert "installation_video" in non_fact_role_rule["properties"][
+        "semantic_key"
+    ]["enum"]
     assert "media_request" not in non_media_rule["properties"]["goal_kind"][
         "enum"
     ]
     assert all(rule["additionalProperties"] is False for rule in goal_variants)
     assert all("source_start_ref" in rule["properties"] for rule in goal_variants)
     assert all("source_end_ref" in rule["properties"] for rule in goal_variants)
+
+
+def test_strict_provider_schema_requires_contextual_boundary_identity():
+    goal_variants = service.STRICT_PROVIDER_OUTPUT_SCHEMA["properties"][
+        "goals"
+    ]["items"]["oneOf"]
+    non_fact_role_rule = next(
+        rule
+        for rule in goal_variants
+        if set(rule["properties"]["goal_kind"].get("enum") or [])
+        == {"contextual_constraint", "media_request"}
+    )
+    generic_rule = next(
+        rule
+        for rule in goal_variants
+        if "contextual_constraint"
+        not in (rule["properties"]["goal_kind"].get("enum") or [])
+    )
+
+    assert len(goal_variants) == 2
+    assert "semantic_key" in non_fact_role_rule["required"]
+    assert non_fact_role_rule["properties"]["claim_type_status"]["const"] == (
+        "unmapped"
+    )
+    assert non_fact_role_rule["properties"]["claim_type"]["const"] == ""
+    assert non_fact_role_rule["properties"]["policy_intent_ref"]["const"] == ""
+    assert set(non_fact_role_rule["properties"]["semantic_key"]["enum"]) == (
+        service.ALLOWED_CONTEXTUAL_SEMANTIC_KEYS
+        | service.ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS
+    )
+    assert "contextual_constraint" not in generic_rule["properties"][
+        "goal_kind"
+    ]["enum"]
 
 
 def test_turn_understanding_prompt_maps_broad_assessment_to_overview_contract():

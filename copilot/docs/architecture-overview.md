@@ -313,9 +313,12 @@ assets. This remains candidate selection only: media labels are not evidence,
 and actual blocks still require the existing media delivery, Final Audit,
 human-review, and channel-capability checks.
 
-The strict Turn Understanding transport expresses factual goals and media
-requests as mutually exclusive schema branches. A media request must carry one
-closed semantic role and cannot carry factual claim identity. The shared strict
+The strict Turn Understanding transport expresses factual goals and non-factual
+role requests as mutually exclusive schema branches. Media requests and
+contextual constraints share one transport-compatible non-factual branch that
+requires a closed semantic role and forbids factual claim identity or policy
+authority; the existing deterministic validator then enforces the role-specific
+media or conversation vocabulary. The shared strict
 transport also validates the returned object against the declared JSON Schema
 after parsing; syntactically valid but schema-invalid JSON fails closed without
 repair, retry, or free-text fallback. Product Context Pack preserves media

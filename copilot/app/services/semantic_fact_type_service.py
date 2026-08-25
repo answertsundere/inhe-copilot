@@ -245,28 +245,36 @@ _strict_goal_schema["properties"].update({
     },
 })
 _strict_goal_schema.pop("allOf", None)
-_strict_media_goal_schema = json.loads(json.dumps(_strict_goal_schema))
-_strict_media_goal_schema["required"] = sorted(
-    set(_strict_media_goal_schema["required"]) | {"semantic_key"}
+_strict_non_fact_role_goal_schema = json.loads(json.dumps(_strict_goal_schema))
+_strict_non_fact_role_goal_schema["required"] = sorted(
+    set(_strict_non_fact_role_goal_schema["required"]) | {"semantic_key"}
 )
-_strict_media_goal_schema["properties"].update({
-    "goal_kind": {"const": "media_request"},
+_strict_non_fact_role_goal_schema["properties"].update({
+    "goal_kind": {
+        "type": "string",
+        "enum": ["contextual_constraint", "media_request"],
+    },
     "claim_type_status": {"const": "unmapped"},
     "claim_type": {"const": ""},
     "semantic_key": {
         "type": "string",
-        "enum": sorted(ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS),
+        "enum": sorted(
+            ALLOWED_CONTEXTUAL_SEMANTIC_KEYS
+            | ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS
+        ),
     },
     "policy_intent_ref": {"const": ""},
 })
 _strict_non_media_goal_schema = json.loads(json.dumps(_strict_goal_schema))
 _strict_non_media_goal_schema["properties"]["goal_kind"] = {
     "type": "string",
-    "enum": sorted(ALLOWED_GOAL_KINDS - {"media_request"}),
+    "enum": sorted(
+        ALLOWED_GOAL_KINDS - {"contextual_constraint", "media_request"}
+    ),
 }
 STRICT_PROVIDER_OUTPUT_SCHEMA["properties"]["goals"]["items"] = {
     "oneOf": [
-        _strict_media_goal_schema,
+        _strict_non_fact_role_goal_schema,
         _strict_non_media_goal_schema,
     ],
 }
