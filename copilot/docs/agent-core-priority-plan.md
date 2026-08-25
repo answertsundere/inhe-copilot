@@ -1259,6 +1259,30 @@ another Composer wording rule. Versioned synthetic regression passed `5/5`
 smoke and `22/22` full, all review-only. These results remain reconstructed
 engineering evidence with `real_customer_accuracy=null`.
 
+### Turn Understanding And Aggregate Dimension Checkpoint (2026-08-25)
+
+The strict Turn Understanding qualification now uses an exact, order-
+independent semantic contract over twelve fictional cases rather than accepting
+expected subsets. DeepSeek V4 Flash passed the fixed `12x3` gate `36/36`,
+including coexisting conversational boundaries and separately scoped product
+and packaging aggregate dimensions. No strict role was promoted.
+
+A comparable reconstructed Fixed-8 run through the existing formal Pipeline
+then improved semantic customer-goal recall from `9/16` to `12/16` and reduced
+unexpected semantic goals from `7` to `4`. One Product Data Hub row contained
+six concatenated measurements but was labelled as one product-wide size. The
+existing Product Context Pack now preserves that row only as a rejected
+diagnostic; it cannot enter admitted evidence or Claim Resolution. The scoped
+dimension case now answers the verified carton axes and leaves the product
+overall size unresolved. All eight cases remained review-only, `can_send=0`,
+formal-knowledge DML was zero, and the knowledge snapshot was unchanged.
+
+Remaining misses include evaluator taxonomy/alias drift and a real downstream
+durability over-expansion. The next production-quality owner is the existing
+bounded-reasoning/Composer-Audit boundary, not another Turn Understanding
+prompt rule. `real_customer_accuracy=null` and
+`optimization_unverified=true` remain authoritative.
+
 ## Definition Of Project Progress
 
 The project has progressed only when at least one of these becomes true without

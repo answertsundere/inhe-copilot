@@ -490,3 +490,24 @@ reports must retain `real_customer_accuracy=null` and
 - Regression: Composer tests `211/211`, linked Pipeline/Final/Reply tests
   `256/256`, synthetic smoke `5/5`, full `22/22`; every benchmark result stayed
   review-only with zero automatic sends.
+
+## 2026-08-25 P1 Turn Understanding And Dimension Admission
+
+- Qualification v7 expanded the strict Turn Understanding matrix to twelve
+  fictional cases with exact goal-count and semantic-signature checks.
+  DeepSeek V4 Flash passed all `36/36` attempts with no retry, repair, timeout,
+  schema failure, knowledge write, or send change.
+- A malformed Hub aggregate `93x60x57x27.5x26x46cm` was traced before Composer.
+  Product Context Pack now marks concatenated multi-mode/multi-object aggregate
+  values `ambiguous_aggregate_dimensions` and removes their direct-answer
+  authority while retaining diagnostics. Coherent `2D/3D` tuples and explicit
+  packaging axes remain eligible.
+- The isolated dimensions case answered only verified packaging axes and left
+  product overall dimensions unresolved. The single comparable Fixed-8 run
+  completed `8/8`; semantic recall improved `9/16 -> 12/16`, unexpected
+  semantic goals fell `7 -> 4`, Pipeline p50 improved from about `9.375s` to
+  `6.083s`, formal knowledge/DML stayed unchanged/zero, all cases required
+  human review, and `can_send=0`.
+- Raw source-identity recall remains affected by the known clause-normalization
+  diagnostic. The durability reply still expands beyond an offered bounded
+  option, so P1 remains active and real accuracy remains null.

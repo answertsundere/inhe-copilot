@@ -17,10 +17,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.services.semantic_fact_type_service import (  # noqa: E402
-    MINIMAL_PROVIDER_OUTPUT_SCHEMA,
+    STRICT_PROVIDER_OUTPUT_SCHEMA,
     SYSTEM_PROMPT,
     _canonical_fact_type_candidates,
+    _materialize_strict_source_refs,
     _sanitize_llm_result,
+    _strict_source_units,
     _validate_raw_llm_result,
 )
 from app.services.strict_decision_provider_service import (  # noqa: E402
@@ -30,7 +32,7 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-SCHEMA_VERSION = "turn-understanding-provider-qualification-v3"
+SCHEMA_VERSION = "turn-understanding-provider-qualification-v7"
 _SIGNATURE_FIELDS = (
     "goal_kind",
     "claim_type_status",
@@ -73,6 +75,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         "recent_conversation": [],
         "expected_claim_types": ["material_composition"],
         "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 1,
     },
     {
         "alias": "fictional-dimensions-promotion",
@@ -81,6 +84,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         "recent_conversation": [],
         "expected_claim_types": ["dimensions", "promotion_policy"],
         "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 2,
     },
     {
         "alias": "fictional-confirmation-followup",
@@ -91,6 +95,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         ],
         "expected_claim_types": [],
         "expected_goal_kinds": ["contextual_constraint"],
+        "expected_goal_count": 1,
     },
     {
         "alias": "fictional-closure-followup",
@@ -101,6 +106,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         ],
         "expected_claim_types": [],
         "expected_goal_kinds": ["contextual_constraint"],
+        "expected_goal_count": 1,
     },
     {
         "alias": "fictional-installation-media",
@@ -109,6 +115,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         "recent_conversation": [],
         "expected_claim_types": [],
         "expected_goal_kinds": ["media_request"],
+        "expected_goal_count": 1,
     },
     {
         "alias": "fictional-carrier-action",
@@ -117,6 +124,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         "recent_conversation": [],
         "expected_claim_types": [],
         "expected_goal_kinds": ["service_action"],
+        "expected_goal_count": 1,
     },
     {
         "alias": "fictional-absolute-guarantee",
@@ -125,6 +133,7 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         "recent_conversation": [],
         "expected_claim_types": [],
         "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 1,
     },
     {
         "alias": "fictional-current-source-boundary",
@@ -136,6 +145,105 @@ DEFAULT_CASES: list[dict[str, Any]] = [
         ],
         "expected_claim_types": ["installation"],
         "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 1,
+    },
+    {
+        "alias": "fictional-scoped-overall-dimensions",
+        "customer_message": (
+            "这件虚构商品的外包装整体尺寸是多少，"
+            "完整商品展开后的整体尺寸是多少？"
+        ),
+        "current_intent": "product_question",
+        "recent_conversation": [],
+        "expected_claim_types": ["dimensions"],
+        "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 2,
+        "expected_goal_signatures": [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "packaging",
+            },
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "product",
+            },
+        ],
+    },
+    {
+        "alias": "fictional-colloquial-scoped-dimensions",
+        "customer_message": (
+            "虚构商品的发货包装多大？完整产品展开后的整体尺寸也分别告诉我，"
+            "不要把两类尺寸混为一谈。"
+        ),
+        "current_intent": "product_question",
+        "recent_conversation": [],
+        "expected_claim_types": ["dimensions"],
+        "expected_goal_kinds": [
+            "customer_goal",
+            "contextual_constraint",
+        ],
+        "expected_goal_count": 3,
+        "expected_goal_signatures": [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "packaging",
+            },
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "product",
+            },
+            {
+                "goal_kind": "contextual_constraint",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "subject_scope": "",
+                "semantic_key": "rejection",
+            },
+        ],
+    },
+    {
+        "alias": "fictional-installation-media-boundary",
+        "customer_message": (
+            "安装时先装哪一边？有视频的话也发我，"
+            "没有就不要说已经发了。"
+        ),
+        "current_intent": "installation",
+        "recent_conversation": [],
+        "expected_claim_types": ["installation"],
+        "expected_goal_kinds": [
+            "customer_goal",
+            "media_request",
+            "contextual_constraint",
+        ],
+        "expected_goal_count": 3,
+    },
+    {
+        "alias": "fictional-followup-detachable-reassembly",
+        "customer_message": (
+            "前面材质已经说清楚了，我现在追问的是能不能拆洗，"
+            "以及拆下来的部件怎么装回去。"
+        ),
+        "current_intent": "installation",
+        "recent_conversation": [
+            {"role": "customer", "content": "这个商品是什么材质？"},
+            {"role": "agent", "content": "材质信息已经说明。"},
+        ],
+        "expected_claim_types": ["detachable", "installation"],
+        "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 2,
     },
 ]
 
@@ -177,11 +285,13 @@ def _history_texts(case: dict[str, Any]) -> list[str]:
 
 
 def _payload(case: dict[str, Any]) -> dict[str, Any]:
+    message = str(case["customer_message"])
     payload: dict[str, Any] = {
-        "customer_message": str(case["customer_message"]),
+        "customer_message": message,
         "current_intent": str(case.get("current_intent") or "general"),
         "canonical_fact_type_candidates": _canonical_fact_type_candidates(),
         "policy_intent_candidates": [],
+        "source_units": _strict_source_units(message),
     }
     recent = case.get("recent_conversation")
     if isinstance(recent, list) and recent:
@@ -212,9 +322,34 @@ def _semantic_matches(result: dict[str, Any], case: dict[str, Any]) -> bool:
     }
     expected_claim_types = set(case.get("expected_claim_types") or [])
     expected_goal_kinds = set(case.get("expected_goal_kinds") or [])
+    expected_goal_count = case.get("expected_goal_count")
+    expected_goal_signatures = case.get("expected_goal_signatures") or []
+    remaining_goals = [goal for goal in goals if isinstance(goal, dict)]
+    signatures_match = True
+    for expected in expected_goal_signatures:
+        if not isinstance(expected, dict):
+            signatures_match = False
+            break
+        matched_index = next(
+            (
+                index
+                for index, goal in enumerate(remaining_goals)
+                if all(goal.get(key) == value for key, value in expected.items())
+            ),
+            None,
+        )
+        if matched_index is None:
+            signatures_match = False
+            break
+        remaining_goals.pop(matched_index)
     return (
         expected_claim_types.issubset(actual_claim_types)
         and expected_goal_kinds.issubset(actual_goal_kinds)
+        and (
+            expected_goal_count is None
+            or len(goals) == int(expected_goal_count)
+        )
+        and signatures_match
     )
 
 
@@ -352,7 +487,7 @@ def qualify(
                 try:
                     raw = provider.request(
                         name="turn_understanding",
-                        schema=MINIMAL_PROVIDER_OUTPUT_SCHEMA,
+                        schema=STRICT_PROVIDER_OUTPUT_SCHEMA,
                         system_prompt=SYSTEM_PROMPT,
                         payload=_payload(case),
                         max_tokens=1200,
@@ -360,6 +495,22 @@ def qualify(
                     )
                     execution_success += 1
                     case_counts[alias]["execution"] += 1
+                    raw, source_ref_violations = (
+                        _materialize_strict_source_refs(
+                            raw,
+                            message=message,
+                        )
+                    )
+                    if source_ref_violations:
+                        reason = str(
+                            source_ref_violations[0].get("reason_code")
+                            or "source_reference_invalid"
+                        )
+                        errors[reason] += 1
+                        continue
+                    if raw is None:
+                        errors["source_reference_invalid"] += 1
+                        continue
                     schema_violations, provenance_violations = (
                         _validate_raw_llm_result(
                             raw,

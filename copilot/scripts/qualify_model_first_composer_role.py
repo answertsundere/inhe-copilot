@@ -42,10 +42,17 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-REPORT_SCHEMA_VERSION = "composer-role-qualification/v1"
+REPORT_SCHEMA_VERSION = "composer-role-qualification/v2"
 _FIXTURE_PACK_SHA256 = hashlib.sha256(
-    b"composer-role-qualification-fixture-v1"
+    b"composer-role-qualification-fixture-v2"
 ).hexdigest()
+_QUALIFICATION_CUSTOMER_MESSAGE = (
+    "请说明这款商品已确认的材质，并给出日常轻微碰撞的有边界判断，"
+    "对于长期耐用程度，没有直接依据时请保留未决，且不要作绝对保证。"
+)
+_UNRESOLVED_ONLY_CUSTOMER_MESSAGE = (
+    "不能作绝对保证时，请分别说明保证边界和当前无法确认的日常使用限度。"
+)
 
 
 class _ComposerClient(Protocol):
@@ -72,19 +79,23 @@ def _goal(
     *,
     claim_type: str,
     attribute_key: str,
-    span_start: int,
-    span_end: int,
+    source_text: str,
+    customer_message: str = _QUALIFICATION_CUSTOMER_MESSAGE,
+    claim_type_status: str = "mapped",
+    semantic_key: str = "",
 ) -> dict[str, Any]:
-    source_hash = hashlib.sha256(goal_ref.encode("utf-8")).hexdigest()
+    span_start = customer_message.index(source_text)
+    span_end = span_start + len(source_text)
+    source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     return {
         "schema_version": "turn-understanding-goal-identity/v2",
         "goal_ref": goal_ref,
         "goal_kind": "customer_goal",
-        "claim_type_status": "mapped",
+        "claim_type_status": claim_type_status,
         "claim_type": claim_type,
         "attribute_key": attribute_key,
-        "semantic_key": attribute_key,
-        "goal_summary": "synthetic role qualification goal",
+        "semantic_key": semantic_key or attribute_key,
+        "goal_summary": "合成资格目标",
         "source": "current_customer_message",
         "source_span_start": span_start,
         "source_span_end": span_end,
@@ -196,37 +207,52 @@ def qualification_response() -> dict[str, Any]:
         "supporting_only": False,
         "supporting_for_goal_ref": "",
     }
+    unresolved_resolution = _unresolved_resolution(
+        "goal-long-term-limit",
+        semantic_key="long_term_durability_limit",
+        requested_claim_risk="medium",
+    )
     return {
         "suggested_reply": "prior reply",
         "can_send": True,
         "requires_human_review": False,
         "reply_blocks": [{"type": "text", "content": "prior reply"}],
         "minimal_decision_context": {
-            "customer_goal": "synthetic qualification request",
+            "customer_goal": _QUALIFICATION_CUSTOMER_MESSAGE,
             "product_identity": {"resolved": True},
             "requested_claims": [
                 _goal(
                     "goal-material",
                     claim_type="material_composition",
                     attribute_key="material",
-                    span_start=0,
-                    span_end=8,
+                    source_text="已确认的材质",
                 ),
                 _goal(
                     "goal-durability",
                     claim_type="ordinary_impact",
                     attribute_key="ordinary_impact",
-                    span_start=9,
-                    span_end=18,
+                    source_text="日常轻微碰撞的有边界判断",
+                ),
+                _goal(
+                    "goal-long-term-limit",
+                    claim_type="",
+                    attribute_key="",
+                    source_text="长期耐用程度",
+                    claim_type_status="unmapped",
+                    semantic_key="long_term_durability_limit",
                 ),
             ],
             "admitted_evidence": [{
                 "evidence_uid": "evidence-material",
                 "fact_type": "material_composition",
                 "attribute_key": "material",
-                "content": "verified synthetic material premise",
+                "content": "已确认的合成材质前提",
             }],
-            "claim_resolutions": [material_resolution, durability_resolution],
+            "claim_resolutions": [
+                material_resolution,
+                durability_resolution,
+                unresolved_resolution,
+            ],
             "bounded_inference_policies": [{
                 "policy_ref": policy_ref,
                 "pack_content_sha256": _FIXTURE_PACK_SHA256,
@@ -274,6 +300,105 @@ def qualification_response() -> dict[str, Any]:
     }
 
 
+def _unresolved_resolution(
+    goal_ref: str,
+    *,
+    semantic_key: str,
+    requested_claim_risk: str,
+) -> dict[str, Any]:
+    return {
+        "claim_uid": f"claim-{goal_ref}",
+        "goal_ref": goal_ref,
+        "goal_kind": "customer_goal",
+        "claim_type": "",
+        "claim_type_status": "unmapped",
+        "attribute_key": "",
+        "semantic_key": semantic_key,
+        "status": "unresolved",
+        "evidence_uids": [],
+        "support_basis": "none",
+        "premise_evidence_uids": [],
+        "inference_policy_refs": [],
+        "scope_qualifier": "",
+        "inference_risk_level": "",
+        "maximum_risk_level": "",
+        "inference_review_only": False,
+        "required_qualifiers": [],
+        "prohibited_extensions": [],
+        "eligible_policy_options": [],
+        "requested_claim_risk": requested_claim_risk,
+        "restricted_request_boundary": {},
+        "supporting_only": False,
+        "supporting_for_goal_ref": "",
+    }
+
+
+def unresolved_only_qualification_response() -> dict[str, Any]:
+    goals = [
+        _goal(
+            "goal-guarantee-boundary",
+            claim_type="",
+            attribute_key="",
+            source_text="不能作绝对保证",
+            customer_message=_UNRESOLVED_ONLY_CUSTOMER_MESSAGE,
+            claim_type_status="unmapped",
+            semantic_key="absolute_guarantee_boundary",
+        ),
+        _goal(
+            "goal-daily-use-limit",
+            claim_type="",
+            attribute_key="",
+            source_text="当前无法确认的日常使用限度",
+            customer_message=_UNRESOLVED_ONLY_CUSTOMER_MESSAGE,
+            claim_type_status="unmapped",
+            semantic_key="daily_use_limit",
+        ),
+    ]
+    resolutions = [
+        _unresolved_resolution(
+            "goal-guarantee-boundary",
+            semantic_key="absolute_guarantee_boundary",
+            requested_claim_risk="high",
+        ),
+        _unresolved_resolution(
+            "goal-daily-use-limit",
+            semantic_key="daily_use_limit",
+            requested_claim_risk="medium",
+        ),
+    ]
+    return {
+        "suggested_reply": "prior reply",
+        "can_send": True,
+        "requires_human_review": False,
+        "reply_blocks": [{"type": "text", "content": "prior reply"}],
+        "minimal_decision_context": {
+            "customer_goal": _UNRESOLVED_ONLY_CUSTOMER_MESSAGE,
+            "product_identity": {"resolved": True},
+            "requested_claims": goals,
+            "admitted_evidence": [],
+            "claim_resolutions": resolutions,
+            "bounded_inference_policies": [],
+            "answer_eligibility_context": {
+                "goal_understanding_status": {"status": "valid"},
+            },
+            "context_stats": {"estimated_token_count": 30},
+        },
+    }
+
+
+def qualification_profiles() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "unresolved_only",
+            "response": unresolved_only_qualification_response(),
+        },
+        {
+            "name": "fact_bounded_and_unresolved",
+            "response": qualification_response(),
+        },
+    ]
+
+
 def _provider_metadata(client: _ComposerClient) -> dict[str, Any]:
     identity = safe_provider_identity(
         provider_name=str(getattr(client, "provider_name", "unknown")),
@@ -297,13 +422,17 @@ def _role_override_requested() -> bool:
 def _record(
     *,
     attempt: int,
+    profile: str,
     response: dict[str, Any],
     client: _ComposerClient,
 ) -> dict[str, Any]:
     service = ModelFirstAnswerComposerService()
+    customer_message = str(
+        response["minimal_decision_context"]["customer_goal"]
+    )
     decision_input, decision_error = service.build_composer_decision_input(
         deepcopy(response),
-        customer_message="synthetic qualification request",
+        customer_message=customer_message,
     )
     if decision_error:
         raise ValueError(decision_error)
@@ -329,7 +458,7 @@ def _record(
     try:
         updated, result = service.compose(
             deepcopy(response),
-            customer_message="synthetic qualification request",
+            customer_message=customer_message,
             client=client,
         )
     finally:
@@ -342,15 +471,59 @@ def _record(
     validation = result.get("validation_diagnostics") or {}
     inference = [item for item in clauses if item.get("clause_kind") == "allowed_inference"]
     supported = [item for item in clauses if item.get("clause_kind") == "supported_fact"]
+    unresolved = [item for item in clauses if item.get("clause_kind") == "unresolved"]
+    resolutions = [
+        item
+        for item in response["minimal_decision_context"]["claim_resolutions"]
+        if isinstance(item, dict)
+    ]
+    expected_supported = sum(
+        item.get("status") == "supported" for item in resolutions
+    )
+    expected_inference = sum(
+        bool(item.get("eligible_policy_options")) for item in resolutions
+    )
+    expected_unresolved = sum(
+        item.get("status") in {"unresolved", "conflicting", "prohibited"}
+        and not item.get("eligible_policy_options")
+        for item in resolutions
+    )
+    expected_restricted = sum(
+        bool(
+            (item.get("restricted_request_boundary") or {}).get(
+                "must_remain_unresolved"
+            )
+        )
+        for item in resolutions
+    )
     checks = {
         "single_provider_call": calls == 1,
         "accepted": result.get("status") == "accepted",
         "validation_accepted": validation.get("category") == "accepted",
         "goal_order_exact": [item.get("goal_ref") for item in clauses] == expected_order,
-        "direct_fact_preserved": len(supported) == 1,
-        "required_option_selected": len(inference) == 1 and bool(inference[0].get("inference_policy_refs")),
-        "restricted_boundary_preserved": len(inference) == 1 and bool(
-            (inference[0].get("restricted_request_boundary") or {}).get("must_remain_unresolved")
+        "direct_fact_preserved": len(supported) == expected_supported,
+        "required_option_selected": (
+            len(inference) == expected_inference
+            and all(item.get("inference_policy_refs") for item in inference)
+        ),
+        "restricted_boundary_preserved": (
+            sum(
+                bool(
+                    (item.get("restricted_request_boundary") or {}).get(
+                        "must_remain_unresolved"
+                    )
+                )
+                for item in inference
+            )
+            == expected_restricted
+        ),
+        "unresolved_boundary_preserved": (
+            len(unresolved) == expected_unresolved
+            and all(not item.get("evidence_uids") for item in unresolved)
+            and all(
+                not item.get("inference_policy_refs")
+                for item in unresolved
+            )
         ),
         "no_retry_or_repair": all(
             int(diagnostics.get(name, 0) or 0) == 0
@@ -362,6 +535,7 @@ def _record(
     reply = str(result.get("candidate_reply") or "")
     return {
         "attempt": attempt,
+        "profile": profile,
         "qualified": all(checks.values()),
         "checks": checks,
         "status": result.get("status"),
@@ -417,7 +591,7 @@ def run_qualification(
             "real_customer_accuracy": None,
         }, 2
 
-    fixture = qualification_response()
+    profiles = qualification_profiles()
     qualification_fingerprint = composer_role_configuration_fingerprint(
         api_base=str(role_client.api_base or ""),
         model=str(role_client.model or ""),
@@ -431,13 +605,25 @@ def run_qualification(
     )
     records: list[dict[str, Any]] = []
     hard_stop_reason = ""
-    for attempt in range(1, repeat + 1):
-        record = _record(attempt=attempt, response=fixture, client=role_client)
-        records.append(record)
-        if not record["qualified"]:
-            hard_stop_reason = str(record["rejection_reason"] or next(
-                name for name, passed in record["checks"].items() if not passed
-            ))
+    global_attempt = 0
+    for profile in profiles:
+        for attempt in range(1, repeat + 1):
+            global_attempt += 1
+            record = _record(
+                attempt=global_attempt,
+                profile=str(profile["name"]),
+                response=profile["response"],
+                client=role_client,
+            )
+            records.append(record)
+            if not record["qualified"]:
+                hard_stop_reason = str(record["rejection_reason"] or next(
+                    name
+                    for name, passed in record["checks"].items()
+                    if not passed
+                ))
+                break
+        if hard_stop_reason:
             break
 
     latencies = [
@@ -445,14 +631,19 @@ def run_qualification(
         for item in records
         if isinstance(item["provider_latency_ms"], (int, float))
     ]
-    qualified = len(records) == repeat and all(item["qualified"] for item in records)
+    expected_attempts = repeat * len(profiles)
+    qualified = len(records) == expected_attempts and all(
+        item["qualified"] for item in records
+    )
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
         "status": "qualified" if qualified else "not_qualified",
         "source_tree_sha256": _source_tree_sha256(),
         "provider": metadata,
         "qualification_fingerprint": qualification_fingerprint,
-        "fixture_sha256": _canonical_hash(qualification_response()),
+        "fixture_sha256": _canonical_hash(profiles),
+        "profile_count": len(profiles),
+        "attempts_per_profile": repeat,
         "attempted": len(records),
         "provider_call_count": sum(int(item["provider_call_count"]) for item in records),
         "retry_count": 0,

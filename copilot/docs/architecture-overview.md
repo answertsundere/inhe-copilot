@@ -203,6 +203,13 @@ value through deterministic rendering and grounding. This preserves the
 meaning of an admitted dimension without allowing the label itself to bypass
 identity, scope, review, or high-risk admission rules.
 
+A Hub aggregate dimension label is canonicalized to `overall_dimensions`, but
+it remains direct-answerable only when its value is one coherent two- or
+three-axis tuple. Concatenated multi-mode or multi-object tuples remain visible
+as rejected diagnostics and cannot satisfy Claim Resolution. The system never
+guesses how to split such a value; source data must publish separately scoped
+facts instead.
+
 Channel context keeps store identity platform-neutral. `shop_id` identifies the
 logical integrated store used by the Agent and future channel adapters; it is
 not implicitly a JST provider identifier. An adapter may additionally provide

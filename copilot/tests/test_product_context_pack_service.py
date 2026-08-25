@@ -807,6 +807,114 @@ def test_hub_dimension_facts_default_to_product_scope_for_product_dimension_ques
     }
 
 
+def test_hub_ambiguous_aggregate_dimensions_are_not_direct_answerable(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [
+                {
+                    "fact_uid": "product_data_hub:ambiguous-product-size",
+                    "fact_type": "size",
+                    "attribute_key": "尺寸",
+                    "value": "93x60x57x27.5x26x46",
+                    "unit": "cm",
+                    "scope": "product",
+                    "review_status": "confirmed",
+                    "identity_scope": {
+                        "hub_product_id": "hub-product-1",
+                        "hub_sku_id": "hub-sku-1",
+                    },
+                },
+            ],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="商品整体尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    hub_fact = next(
+        fact
+        for fact in pack["facts"]
+        if fact.get("source_table") == "product_data_hub"
+    )
+    assert hub_fact["canonical_attribute_key"] == "overall_dimensions"
+    assert hub_fact["evidence_allowed_for_direct_answer"] is False
+    assert hub_fact["can_direct_answer"] is False
+    assert hub_fact["mismatch_reason"] == "ambiguous_aggregate_dimensions"
+    assert pack["evidence_pack"]["answerability"] != "direct_answer"
+
+
+def test_hub_coherent_aggregate_dimensions_remain_direct_answerable(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "used_for_fact": True,
+            "product": {"hub_product_id": "hub-product-1", "product_code": "P100"},
+            "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "S100-COMBO"},
+            "facts": [
+                {
+                    "fact_uid": "product_data_hub:coherent-product-size",
+                    "fact_type": "size",
+                    "attribute_key": "尺寸",
+                    "value": "45x42x70",
+                    "unit": "cm",
+                    "scope": "product",
+                    "review_status": "confirmed",
+                    "identity_scope": {
+                        "hub_product_id": "hub-product-1",
+                        "hub_sku_id": "hub-sku-1",
+                    },
+                },
+            ],
+            "assets": [],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {"slots": {"i_id": "P100", "sku_code": "S100-COMBO"}},
+        query="商品整体尺寸多大",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    hub_fact = next(
+        fact
+        for fact in pack["facts"]
+        if fact.get("source_table") == "product_data_hub"
+    )
+    assert hub_fact["canonical_attribute_key"] == "overall_dimensions"
+    assert hub_fact["evidence_allowed_for_direct_answer"] is True
+    assert hub_fact["can_direct_answer"] is True
+    assert hub_fact["mismatch_reason"] == ""
+    assert pack["evidence_pack"]["answerability"] == "direct_answer"
+
+
 def test_hub_dimension_facts_include_every_authoritative_requested_subject_scope(
     product_context_db,
     monkeypatch,

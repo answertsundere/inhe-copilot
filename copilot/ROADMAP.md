@@ -224,3 +224,20 @@ on 2026-08-17:
 - Versioned synthetic safety regression passed smoke `5/5` and full `22/22`,
   all review-only. `real_customer_accuracy=null` and
   `optimization_unverified=true` remain authoritative.
+
+## 2026-08-25 Turn Understanding And Dimension Admission Checkpoint
+
+- DeepSeek V4 Flash passed strict Turn Understanding qualification v7
+  `36/36` over twelve fictional cases repeated three times. The matrix now
+  checks exact goal count/signatures, coexisting speech boundaries, and scoped
+  aggregate dimensions.
+- The Product Data Hub admission boundary now canonicalizes aggregate dimension
+  labels but rejects concatenated values that are not one coherent two- or
+  three-axis tuple. It does not split or guess multi-mode values.
+- The comparable reconstructed Fixed-8 completed `8/8`: semantic goal recall
+  moved `9/16 -> 12/16`, unexpected semantic goals `7 -> 4`, Composer and
+  Deterministic Final passed `8/8`, selected evidence was `14`, formal DML was
+  `0`, all eight required review, and `can_send=0`.
+- The next true quality defect is unbound durability expansion at the existing
+  bounded-reasoning/Composer-Audit boundary. Evaluator alias drift must be kept
+  separate from production behavior.

@@ -334,7 +334,7 @@ def declared_attribute_candidates(fact_type: Any) -> tuple[str, ...]:
     if claim_type in _DIMENSION_FACT_TYPE_ALIASES:
         return (
             *_DIMENSION_ATTRIBUTE_SLOTS,
-            *sorted(_OVERALL_DIMENSION_AXIS_ALIASES),
+            *(f"overall_{axis}" for axis in _DIMENSION_ATTRIBUTE_SLOTS[:6]),
             "overall_dimensions",
         )
     if claim_type == "material_composition":

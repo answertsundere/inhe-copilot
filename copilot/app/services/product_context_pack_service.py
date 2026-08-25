@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from typing import Any
 
 from app.services.media_asset_service import (
@@ -666,7 +667,26 @@ def _hub_canonical_dimension_attribute(raw: dict[str, Any]) -> str:
     for attribute, suffixes in _HUB_DIMENSION_AXIS_SUFFIXES:
         if any(label == suffix or label.endswith(suffix) for suffix in suffixes):
             return attribute
+    from app.services.fact_type_alias_service import canonical_attribute_slot
+
+    canonical = canonical_attribute_slot(label, fact_type="dimensions")
+    if canonical == "overall_dimensions":
+        return canonical
     return ""
+
+
+def _hub_aggregate_dimensions_are_coherent(value: Any) -> bool:
+    """Accept one 2D/3D tuple, never concatenated multi-mode dimensions."""
+    text = unicodedata.normalize("NFKC", str(value or "")).strip()
+    if not text:
+        return False
+    number = r"(?:0|[1-9]\d*)(?:\.\d+)?"
+    unit = r"(?:毫米|厘米|公分|英寸|inch|mm|cm|in|m)?"
+    return re.fullmatch(
+        rf"\s*{number}\s*{unit}\s*(?:[xX×*]\s*{number}\s*{unit}\s*){{1,2}}",
+        text,
+        flags=re.IGNORECASE,
+    ) is not None
 
 
 def _hub_bundle_facts_for_query(
@@ -725,6 +745,14 @@ def _hub_bundle_facts_for_query(
             if evidence_fact_type == "dimensions"
             else ""
         )
+        mismatch_reason = "" if direct_allowed else "wrong_fact_type"
+        if (
+            evidence_fact_type == "dimensions"
+            and canonical_attribute_key == "overall_dimensions"
+            and not _hub_aggregate_dimensions_are_coherent(value)
+        ):
+            direct_allowed = False
+            mismatch_reason = "ambiguous_aggregate_dimensions"
         if (
             evidence_fact_type == "dimensions"
             and requested_dimension_scopes
@@ -743,7 +771,7 @@ def _hub_bundle_facts_for_query(
             "scope_score": 1.0,
             "source_confidence": 0.95,
             "rerank_score": round(score, 4),
-            "mismatch_reason": "" if direct_allowed else "wrong_fact_type",
+            "mismatch_reason": mismatch_reason,
             "semantic_alignment": semantic_alignment,
             "chunk_id": uid,
             "entry_id": uid,

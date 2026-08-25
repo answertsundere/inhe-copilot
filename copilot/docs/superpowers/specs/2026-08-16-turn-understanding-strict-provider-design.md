@@ -115,6 +115,10 @@ case three times. It covers:
 - an agent statement that must not become buyer truth;
 - a current correction that supersedes, but does not copy, history;
 - multiple atomic goals in one current message;
+- factual/media requests that coexist with an explicit customer-service speech
+  boundary;
+- separately scoped product and packaging aggregate-dimension requests,
+  including colloquial wording;
 - malformed schema, historical-source, timeout, truncation, and free-text
   counterexamples through deterministic tests.
 

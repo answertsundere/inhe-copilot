@@ -199,6 +199,38 @@ def test_other_transport_is_not_rewritten():
     assert "extra_body" not in request
 
 
+def test_single_attempt_contract_disables_openai_sdk_transport_retries():
+    client = LLMClient(
+        api_key="test-key",
+        api_base="https://api.example.test/v1",
+        model="generic-model",
+    )
+    completions = _FakeCompletions(
+        _response(content='{"suggested_reply":"ok"}')
+    )
+
+    class _Transport:
+        def __init__(self):
+            self.options = []
+            self.chat = SimpleNamespace(completions=completions)
+
+        def with_options(self, **kwargs):
+            self.options.append(kwargs)
+            return self
+
+    transport = _Transport()
+    client._client = transport
+
+    client.create_chat_completion(
+        model="generic-model",
+        messages=[{"role": "user", "content": "hello"}],
+        _single_attempt_no_repair=True,
+    )
+
+    assert transport.options == [{"max_retries": 0}]
+    assert len(completions.calls) == 1
+
+
 def test_explicit_generic_transport_capabilities_disable_thinking_with_chat_template_and_expand_budget():
     client, completions = _client(
         "https://api.example.test/v1",

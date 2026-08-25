@@ -48,7 +48,19 @@ class _FakeProvider:
         return response
 
 
-def _canonical_goal(message, *, claim_type="material_composition"):
+def _span_refs(call, source_text=None):
+    message = call["payload"]["customer_message"]
+    source_text = message if source_text is None else source_text
+    start = message.index(source_text)
+    end = start + len(source_text) - 1
+    units = call["payload"]["source_units"]
+    return {
+        "source_start_ref": units[start]["ref"],
+        "source_end_ref": units[end]["ref"],
+    }
+
+
+def _canonical_goal(call, *, claim_type="material_composition", source_text=None):
     return {
         "goals": [{
             "goal_kind": "customer_goal",
@@ -58,7 +70,7 @@ def _canonical_goal(message, *, claim_type="material_composition"):
             "subject_scope": "",
             "semantic_key": "",
             "policy_intent_ref": "",
-            "source_text": message,
+            **_span_refs(call, source_text),
             "continued_from": "",
         }]
     }
@@ -77,9 +89,7 @@ def _case():
 
 def test_perfect_provider_qualifies_with_current_source_and_stability():
     provider = _FakeProvider(
-        lambda call, _index: _canonical_goal(
-            call["payload"]["customer_message"]
-        )
+        lambda call, _index: _canonical_goal(call)
     )
 
     report = _MODULE.qualify(
@@ -111,9 +121,20 @@ def test_history_source_copy_is_rejected_even_when_schema_is_valid():
             {"role": "agent", "content": "我先核对。"},
         ],
     }
-    provider = _FakeProvider(
-        lambda _call, _index: _canonical_goal("上一轮虚构问题")
-    )
+    provider = _FakeProvider(lambda _call, _index: {
+        "goals": [{
+            "goal_kind": "customer_goal",
+            "claim_type_status": "canonical",
+            "claim_type": "material_composition",
+            "attribute_key": "",
+            "subject_scope": "",
+            "semantic_key": "",
+            "policy_intent_ref": "",
+            "source_start_ref": "char-9999",
+            "source_end_ref": "char-9999",
+            "continued_from": "",
+        }],
+    })
 
     report = _MODULE.qualify(
         provider=provider,
@@ -123,9 +144,7 @@ def test_history_source_copy_is_rejected_even_when_schema_is_valid():
 
     assert report["qualification_status"] == "not_qualified"
     assert report["current_source_success_rate"]["rate"] == 0.0
-    assert report["error_categories"] == {
-        "source_text_from_wrong_turn": 1
-    }
+    assert report["error_categories"] == {"source_reference_unknown": 1}
 
 
 def test_attempt_errors_are_counted_per_attempt_without_stale_latency():
@@ -148,9 +167,7 @@ def test_attempt_errors_are_counted_per_attempt_without_stale_latency():
 
 def test_report_contains_no_raw_messages_or_provider_secrets():
     provider = _FakeProvider(
-        lambda call, _index: _canonical_goal(
-            call["payload"]["customer_message"]
-        )
+        lambda call, _index: _canonical_goal(call)
     )
     case = _case()
 
@@ -188,7 +205,7 @@ def test_repeat_instability_reports_safe_case_and_changed_field_diagnostics():
                 "subject_scope": "product_overall",
                 "semantic_key": "",
                 "policy_intent_ref": "",
-                "source_text": call["payload"]["customer_message"],
+            **_span_refs(call),
                 "continued_from": "",
             }]
         }
@@ -201,7 +218,7 @@ def test_repeat_instability_reports_safe_case_and_changed_field_diagnostics():
 
     result = report["case_results"][0]
     assert report["schema_version"] == (
-        "turn-understanding-provider-qualification-v3"
+        "turn-understanding-provider-qualification-v7"
     )
     assert report["qualification_status"] == "not_qualified"
     assert result["signature_variant_count"] == 2
@@ -223,9 +240,11 @@ def test_equivalent_source_substrings_in_one_clause_are_repeat_stable():
 
     def responder(call, index):
         message = call["payload"]["customer_message"]
-        result = _canonical_goal(message)
-        result["goals"][0]["source_text"] = (
-            message if index != 2 else "body material"
+        result = _canonical_goal(
+            call,
+            source_text=(
+                message if index != 2 else "body material"
+            ),
         )
         return result
 
@@ -262,7 +281,7 @@ def test_service_action_semantic_key_is_not_authoritative_for_stability():
                     "contact_carrier" if index != 2 else "verify_carrier"
                 ),
                 "policy_intent_ref": "",
-                "source_text": call["payload"]["customer_message"],
+            **_span_refs(call),
                 "continued_from": "",
             }]
         }
@@ -300,7 +319,7 @@ def test_unbound_unmapped_goal_semantic_key_wording_is_not_authoritative():
                     "drop_durability" if index != 2 else "impact_durability"
                 ),
                 "policy_intent_ref": "",
-                "source_text": call["payload"]["customer_message"],
+            **_span_refs(call),
                 "continued_from": "",
             }]
         }
@@ -336,7 +355,7 @@ def test_unbound_unmapped_goal_semantic_key_presence_remains_authoritative():
                 "subject_scope": "",
                 "semantic_key": "drop_durability" if index != 2 else "",
                 "policy_intent_ref": "",
-                "source_text": call["payload"]["customer_message"],
+            **_span_refs(call),
                 "continued_from": "",
             }]
         }
@@ -358,9 +377,7 @@ def test_default_provider_uses_turn_understanding_role_config(monkeypatch):
     sentinel = object()
     captured = []
     provider = _FakeProvider(
-        lambda call, _index: _canonical_goal(
-            call["payload"]["customer_message"]
-        )
+        lambda call, _index: _canonical_goal(call)
     )
     monkeypatch.setattr(
         _MODULE.StrictDecisionProviderConfig,
@@ -377,3 +394,140 @@ def test_default_provider_uses_turn_understanding_role_config(monkeypatch):
 
     assert report["qualification_status"] == "qualified"
     assert captured == [sentinel]
+
+
+def test_default_matrix_covers_compound_goal_boundaries():
+    cases = {
+        case["alias"]: case
+        for case in _MODULE.DEFAULT_CASES
+    }
+
+    assert cases["fictional-installation-media-boundary"][
+        "expected_goal_count"
+    ] == 3
+    assert cases["fictional-followup-detachable-reassembly"][
+        "expected_goal_count"
+    ] == 2
+
+
+def test_semantic_expectation_rejects_extra_unique_goal():
+    case = {
+        **_case(),
+        "expected_goal_count": 1,
+    }
+
+    def responder(call, _index):
+        message = call["payload"]["customer_message"]
+        first = _canonical_goal(call, source_text=message[:5])["goals"][0]
+        second = {
+            **_canonical_goal(
+                call,
+                claim_type="dimensions",
+                source_text=message[5:],
+            )["goals"][0],
+            "subject_scope": "product_overall",
+        }
+        return {"goals": [first, second]}
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=1,
+    )
+
+    assert report["qualification_status"] == "not_qualified"
+    assert report["error_categories"] == {
+        "semantic_expectation_failed": 1,
+    }
+
+
+def test_semantic_expectation_rejects_wrong_scope_or_attribute():
+    case = {
+        "alias": "fictional-scoped-dimensions",
+        "customer_message": "包装整体尺寸和商品整体尺寸分别是多少？",
+        "current_intent": "product_question",
+        "recent_conversation": [],
+        "expected_claim_types": ["dimensions"],
+        "expected_goal_kinds": ["customer_goal"],
+        "expected_goal_count": 2,
+        "expected_goal_signatures": [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "packaging",
+            },
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "dimensions",
+                "attribute_key": "overall_dimensions",
+                "subject_scope": "product",
+            },
+        ],
+    }
+
+    def responder(call, _index):
+        message = call["payload"]["customer_message"]
+        first = {
+            **_canonical_goal(
+                call,
+                claim_type="dimensions",
+                source_text=message[:6],
+            )["goals"][0],
+            "attribute_key": "",
+            "subject_scope": "packaging",
+        }
+        second = {
+            **_canonical_goal(
+                call,
+                claim_type="dimensions",
+                source_text=message[6:],
+            )["goals"][0],
+            "attribute_key": "",
+            "subject_scope": "product",
+        }
+        return {"goals": [first, second]}
+
+    report = _MODULE.qualify(
+        provider=_FakeProvider(responder),
+        cases=[case],
+        repeats=1,
+    )
+
+    assert report["qualification_status"] == "not_qualified"
+    assert report["error_categories"] == {
+        "semantic_expectation_failed": 1,
+    }
+
+
+def test_default_matrix_covers_scoped_overall_dimensions():
+    case = next(
+        item
+        for item in _MODULE.DEFAULT_CASES
+        if item["alias"] == "fictional-scoped-overall-dimensions"
+    )
+
+    assert case["expected_goal_count"] == 2
+    assert {
+        (item["attribute_key"], item["subject_scope"])
+        for item in case["expected_goal_signatures"]
+    } == {
+        ("overall_dimensions", "packaging"),
+        ("overall_dimensions", "product"),
+    }
+
+
+def test_default_matrix_covers_colloquial_scoped_dimensions_with_boundary():
+    case = next(
+        item
+        for item in _MODULE.DEFAULT_CASES
+        if item["alias"] == "fictional-colloquial-scoped-dimensions"
+    )
+
+    assert case["expected_goal_count"] == 3
+    assert set(case["expected_goal_kinds"]) == {
+        "customer_goal",
+        "contextual_constraint",
+    }

@@ -204,6 +204,16 @@ semantic, combined-repeat, semantic-repeat, and source-repeat checks, with zero
 timeout, truncation, schema failure, knowledge write, or send change. No strict
 Turn Understanding runtime has been promoted; isolated gates remain required.
 
+The 2026-08-25 v7 follow-up tightened the semantic denominator instead of
+accepting subset-only matches. It added exact goal-count/signature checks for a
+coexisting customer-service boundary, detachable-installation follow-up, and
+product-versus-packaging aggregate dimensions. DeepSeek V4 Flash passed the
+fixed `12x3` matrix `36/36`, with `100%` execution, schema, current-source,
+semantic, repeat, semantic-repeat, and source-repeat rates; p50/p95 were about
+`1.311s/1.917s`. This qualifies that exact role configuration for isolated
+review-only evaluation only. It does not promote the role, change the formal
+reply owner, or authorize sending.
+
 `scripts/qualify_unified_audit_role.py` is the reusable, read-only command for
 that Audit-side `5+5` gate. It reads only `COPILOT_UNIFIED_AUDIT_*`, invokes the
 existing strict role transport with `allow_unqualified=true` only inside the

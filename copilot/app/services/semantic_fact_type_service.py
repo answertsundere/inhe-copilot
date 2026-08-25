@@ -124,6 +124,9 @@ _RECOVERABLE_POLICY_NOMINATION_REJECTIONS = {
     "customer_goal_policy_intent_semantic_boundary_mismatch",
 }
 MINIMAL_PROVIDER_SCHEMA_VERSION = "turn-understanding-provider-output/v5"
+STRICT_PROVIDER_SCHEMA_VERSION = (
+    "turn-understanding-provider-source-refs/v1"
+)
 GOAL_IDENTITY_SCHEMA_VERSION = "turn-understanding-goal-identity/v2"
 JSON_ENVELOPE_CONTRACT_VERSION = "turn-understanding-json-envelope/v1"
 ATOMIC_GOAL_SPAN_CONTRACT_VERSION = "turn-understanding-atomic-goal-span/v2"
@@ -183,6 +186,39 @@ MINIMAL_PROVIDER_OUTPUT_SCHEMA_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 
+STRICT_PROVIDER_OUTPUT_SCHEMA = json.loads(json.dumps(
+    MINIMAL_PROVIDER_OUTPUT_SCHEMA
+))
+_strict_goal_schema = STRICT_PROVIDER_OUTPUT_SCHEMA["properties"]["goals"][
+    "items"
+]
+_strict_goal_schema["required"] = sorted(
+    (
+        set(_strict_goal_schema["required"])
+        - {"source_text"}
+    )
+    | {"source_start_ref", "source_end_ref"}
+)
+del _strict_goal_schema["properties"]["source_text"]
+_strict_goal_schema["properties"].update({
+    "source_start_ref": {
+        "type": "string",
+        "pattern": r"^char-[0-9]{4,}$",
+    },
+    "source_end_ref": {
+        "type": "string",
+        "pattern": r"^char-[0-9]{4,}$",
+    },
+})
+STRICT_PROVIDER_OUTPUT_SCHEMA_SHA256 = hashlib.sha256(
+    json.dumps(
+        STRICT_PROVIDER_OUTPUT_SCHEMA,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
+
 _POLICY_INTENT_DESCRIPTIONS = {
     "practical_guidance": (
         "Low-risk practical guidance within the declared scope, without an "
@@ -228,10 +264,16 @@ the buyer and do not select evidence.
 When recent_conversation is supplied, use its role and order only to resolve
 ellipsis, acknowledgements, confirmations, rejections, and answers to the
 latest conversational question. A current message that explicitly constrains
-the ongoing conversation but asks for no new fact or action is a
-contextual_constraint. Its source_text must still come only from the current
-customer_message. Never revive an omitted historical request or treat an agent
-statement as product, order, policy, or completed-action truth.
+the ongoing conversation carries a contextual_constraint whether or not it
+also asks for a new fact or action. A conversational boundary may coexist with
+a factual, media, or service request; emit it as a separate
+contextual_constraint with its own non-overlapping current-message source
+range instead of merging or dropping it. An explicit instruction that forbids
+what customer service may say, claim, imply, promise, or represent as completed
+is a rejection contextual_constraint even when it qualifies another request.
+Its source_text must still come only from the current customer_message. Never
+revive an omitted historical request or treat an agent statement as product,
+order, policy, or completed-action truth.
 
 Treat each independently answerable request as a separate goal. Enumerate the
 requests before classifying them, and then silently verify that every explicit
@@ -316,6 +358,11 @@ For each goal:
 - When a canonical_fact_type_candidates item includes attribute_candidates, a
   nonempty attribute_key must be exactly one of those supplied tokens. Do not
   put free-form scope, packaging, component, or subject wording in attribute_key.
+- For a dimensions goal, attribute_key is required when the buyer asks for the
+  aggregate size of the scoped object rather than one named axis. Select the
+  supplied overall_dimensions token for that aggregate request; do not leave
+  attribute_key empty merely because dimensions already identifies the broad
+  fact family.
 - subject_scope is empty unless a dimension request explicitly identifies the
   complete product, packaging, a component, an accessory, or an included item.
   When nonempty, it must be exactly one of product, packaging, component,
@@ -362,12 +409,19 @@ For each goal:
   create a distinct goal for that source span and nominate only its exact
   practical_guidance candidate. Both nominations are classification metadata,
   not evidence, a conclusion, or authorization.
-- source_text must be a non-empty exact substring of customer_message. Use the
-  smallest continuous current-message span that expresses this one goal and
-  occurs exactly once. Copy it verbatim without normalization. Even when
-  recent conversation resolves an ellipsis or follow-up, source_text remains
-  the current phrase. Never copy source_text from recent_conversation.
-  Distinct goals must not reuse the same exact source fragment.
+- When source_units is absent, source_text must be a non-empty exact substring
+  of customer_message. Use the smallest continuous current-message span that
+  expresses this one goal and occurs exactly once. Copy it verbatim without
+  normalization. Even when recent conversation resolves an ellipsis or
+  follow-up, source_text remains the current phrase. Never copy source_text
+  from recent_conversation. Distinct goals must not reuse the same exact source
+  fragment.
+- When source_units is present, do not return source_text. Each source unit is
+  one exact character from the current customer_message with a server-owned
+  opaque ref. Return source_start_ref and source_end_ref for the smallest
+  continuous inclusive unit range that expresses this one goal. Use only refs
+  supplied in source_units, preserve their order, and never infer or copy a ref
+  from recent_conversation. Distinct goals must not reuse the same range.
 - open_goal_candidates, when present, are server-owned opaque aliases for
   unfinished goals in this conversation. Use continued_from only when the
   current source_text explicitly continues exactly one candidate with the same
@@ -375,11 +429,14 @@ For each goal:
   create, repeat, or infer an alias. Do not use an alias to revive an omitted
   historical request without a current-message source span.
 
-Return this allowed shape and no additional fields. semantic_key may be
-omitted:
+When source_units is absent, return this allowed shape and no additional
+fields. semantic_key may be omitted:
 {"goals":[{"goal_kind":"","claim_type_status":"","claim_type":"",
 "attribute_key":"","subject_scope":"","semantic_key":"","policy_intent_ref":"",
 "source_text":"","continued_from":""}]}
+
+When source_units is present, replace source_text with source_start_ref and
+source_end_ref. Do not return source_text in that mode.
 """
 
 
@@ -1521,6 +1578,10 @@ def _classify_with_llm(
         "canonical_fact_type_candidates": _canonical_fact_type_candidates(),
         "policy_intent_candidates": policy_intent_candidates,
     }
+    if strict_provider is not None:
+        payload["source_units"] = _strict_source_units(
+            span_reference_text
+        )
     recent_conversation = _recent_conversation_for_understanding(
         state,
         current_message=span_reference_text,
@@ -1534,18 +1595,36 @@ def _classify_with_llm(
     diagnostics["model_call_count"] = 1
     diagnostics["stage"] = "provider_request"
     provider_started = time.perf_counter()
+    strict_source_violations: list[dict[str, Any]] = []
+    provider_raw = ""
     try:
         if strict_provider is not None:
             strict_payload = strict_provider.request(
                 name="turn_understanding",
-                schema=MINIMAL_PROVIDER_OUTPUT_SCHEMA,
+                schema=STRICT_PROVIDER_OUTPUT_SCHEMA,
                 system_prompt=SYSTEM_PROMPT,
                 payload=payload,
                 max_tokens=1200,
             )
             response = None
-            raw = json.dumps(
+            provider_raw = json.dumps(
                 strict_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            materialized_payload, strict_source_violations = (
+                _materialize_strict_source_refs(
+                    strict_payload,
+                    message=span_reference_text,
+                )
+            )
+            raw = json.dumps(
+                (
+                    materialized_payload
+                    if materialized_payload is not None
+                    else strict_payload
+                ),
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
@@ -1601,17 +1680,23 @@ def _classify_with_llm(
         diagnostics["completion"].update({
             "choices_count": 1,
             "finish_reason": "tool_calls",
-            "content_present": bool(raw),
-            "content_char_count": len(raw),
+            "content_present": bool(provider_raw),
+            "content_char_count": len(provider_raw),
             "content_sha256": hashlib.sha256(
-                raw.encode("utf-8")
+                provider_raw.encode("utf-8")
             ).hexdigest(),
             "reasoning_content_present": False,
         })
-        diagnostics["response_content_length"] = len(raw)
+        diagnostics["response_content_length"] = len(provider_raw)
         diagnostics["response_content_sha256"] = diagnostics[
             "completion"
         ]["content_sha256"]
+        diagnostics["provider_output_schema_version"] = (
+            STRICT_PROVIDER_SCHEMA_VERSION
+        )
+        diagnostics["provider_output_schema_sha256"] = (
+            STRICT_PROVIDER_OUTPUT_SCHEMA_SHA256
+        )
     elif response is None:
         _set_failure(
             diagnostics,
@@ -1706,6 +1791,21 @@ def _classify_with_llm(
                 if reasoning_present
                 else "content_empty"
             ),
+        )
+        _finish_diagnostics(diagnostics, started_at=started_at)
+        return None
+
+    if strict_source_violations:
+        diagnostics["json_parse"].update({
+            "attempted": True,
+            "passed": True,
+            "root_type": "object",
+        })
+        diagnostics["json_parse_success"] = True
+        _append_validation_violations(
+            diagnostics,
+            section="provenance_validation",
+            violations=strict_source_violations,
         )
         _finish_diagnostics(diagnostics, started_at=started_at)
         return None
@@ -2151,6 +2251,94 @@ def canonical_source_span_text(value: Any) -> str:
     return str(value or "")
 
 
+def _strict_source_units(message: str) -> list[dict[str, str]]:
+    width = max(4, len(str(max(0, len(message) - 1))))
+    return [
+        {
+            "ref": f"char-{index:0{width}d}",
+            "text": character,
+        }
+        for index, character in enumerate(message)
+    ]
+
+
+def _materialize_strict_source_refs(
+    data: dict[str, Any],
+    *,
+    message: str,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    if not isinstance(data, dict):
+        return None, []
+    goals = data.get("goals")
+    if not isinstance(goals, list):
+        return data, []
+
+    units = _strict_source_units(message)
+    index_by_ref = {
+        unit["ref"]: index
+        for index, unit in enumerate(units)
+    }
+    materialized_goals: list[Any] = []
+    violations: list[dict[str, Any]] = []
+    for index, goal in enumerate(goals):
+        if not isinstance(goal, dict):
+            materialized_goals.append(goal)
+            continue
+        base = f"$.goals[{index}]"
+        start_ref = goal.get("source_start_ref")
+        end_ref = goal.get("source_end_ref")
+        if (
+            not isinstance(start_ref, str)
+            or not isinstance(end_ref, str)
+            or start_ref not in index_by_ref
+            or end_ref not in index_by_ref
+        ):
+            violations.append(_violation(
+                stage="source_provenance",
+                json_pointer=f"{base}.source_start_ref",
+                reason_code="source_reference_unknown",
+                expected_type="server_supplied_current_message_ref",
+                actual_value=start_ref,
+            ))
+            continue
+        start = index_by_ref[start_ref]
+        end_inclusive = index_by_ref[end_ref]
+        if end_inclusive < start:
+            violations.append(_violation(
+                stage="source_provenance",
+                json_pointer=f"{base}.source_end_ref",
+                reason_code="source_reference_range_invalid",
+                expected_type="ordered_inclusive_current_message_range",
+                actual_value=end_ref,
+            ))
+            continue
+        source_text = message[start:end_inclusive + 1]
+        if not source_text or len(source_text) > 240:
+            violations.append(_violation(
+                stage="source_provenance",
+                json_pointer=f"{base}.source_end_ref",
+                reason_code="source_reference_range_invalid",
+                expected_type="non_empty_range_max_240",
+                actual_value=end_ref,
+            ))
+            continue
+        materialized = {
+            key: value
+            for key, value in goal.items()
+            if key not in {"source_start_ref", "source_end_ref"}
+        }
+        materialized["source_text"] = source_text
+        materialized_goals.append(materialized)
+
+    if violations:
+        return None, _annotate_violation_shape(
+            violations,
+            root_key_count=len(data),
+            array_item_count=len(goals),
+        )
+    return {**data, "goals": materialized_goals}, []
+
+
 def _exact_source_text_matches(
     span_reference_text: str,
     source_text: str,
@@ -2448,10 +2636,16 @@ def _source_clause_bounds(
             break
 
     clause_end = len(message)
-    for index in range(source_span_end, len(message)):
-        if message[index] in _SOURCE_CLAUSE_BOUNDARIES:
-            clause_end = index + 1
-            break
+    if (
+        source_span_end > source_span_start
+        and message[source_span_end - 1] in _SOURCE_CLAUSE_BOUNDARIES
+    ):
+        clause_end = source_span_end
+    else:
+        for index in range(source_span_end, len(message)):
+            if message[index] in _SOURCE_CLAUSE_BOUNDARIES:
+                clause_end = index + 1
+                break
 
     while clause_start < clause_end and message[clause_start].isspace():
         clause_start += 1

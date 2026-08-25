@@ -200,7 +200,8 @@ def test_strict_turn_understanding_reuses_schema_prompt_and_normalizer(
             "subject_scope": "",
             "semantic_key": "confirmation",
             "policy_intent_ref": "",
-            "source_text": message,
+            "source_start_ref": "char-0000",
+            "source_end_ref": "char-0004",
             "continued_from": "",
         }],
     })
@@ -241,9 +242,15 @@ def test_strict_turn_understanding_reuses_schema_prompt_and_normalizer(
     )
 
     assert len(strict.calls) == 1
-    assert strict.calls[0]["schema"] == service.MINIMAL_PROVIDER_OUTPUT_SCHEMA
+    assert strict.calls[0]["schema"] == (
+        service.STRICT_PROVIDER_OUTPUT_SCHEMA
+    )
     assert strict.calls[0]["system_prompt"] == service.SYSTEM_PROMPT
     assert strict.calls[0]["payload"]["customer_message"] == message
+    assert strict.calls[0]["payload"]["source_units"] == [
+        {"ref": f"char-{index:04d}", "text": character}
+        for index, character in enumerate(message)
+    ]
     assert result["goal_understanding_status"] == "valid"
     goal = result["customer_goals"][0]
     assert goal["source_span_start"] == 0
@@ -252,6 +259,157 @@ def test_strict_turn_understanding_reuses_schema_prompt_and_normalizer(
     assert "source_text" not in goal
     assert diagnostics["provider"]["provider_family"] == "strict-turn-test"
     assert diagnostics["model_call_count"] == 1
+
+
+def test_turn_understanding_prompt_preserves_coexisting_customer_boundary():
+    normalized_prompt = " ".join(service.SYSTEM_PROMPT.split())
+    assert (
+        "A conversational boundary may coexist with a factual, media, or "
+        "service request"
+    ) in normalized_prompt
+    assert (
+        "emit it as a separate contextual_constraint"
+        in normalized_prompt
+    )
+    assert (
+        "forbids what customer service may say, claim, imply, promise, or "
+        "represent as completed"
+    ) in normalized_prompt
+
+
+def test_turn_understanding_prompt_requires_aggregate_dimension_attribute():
+    normalized_prompt = " ".join(service.SYSTEM_PROMPT.split())
+
+    assert (
+        "For a dimensions goal, attribute_key is required when the buyer "
+        "asks for the aggregate size of the scoped object"
+    ) in normalized_prompt
+    assert "overall_dimensions" in normalized_prompt
+
+
+def test_strict_source_refs_restore_two_exact_non_overlapping_spans(
+    monkeypatch,
+):
+    message = "能保证不坏吗？日常使用能确认到什么程度？"
+    strict = _FakeStrictTurnProvider({
+        "goals": [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "subject_scope": "",
+                "semantic_key": "absolute_guarantee",
+                "policy_intent_ref": "",
+                "source_start_ref": "char-0000",
+                "source_end_ref": "char-0006",
+                "continued_from": "",
+            },
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "subject_scope": "",
+                "semantic_key": "practical_guidance",
+                "policy_intent_ref": "",
+                "source_start_ref": "char-0007",
+                "source_end_ref": f"char-{len(message) - 1:04d}",
+                "continued_from": "",
+            },
+        ],
+    })
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service.config,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        service.StrictDecisionProviderConfig,
+        "from_turn_understanding_environment",
+        classmethod(lambda cls: object()),
+    )
+    monkeypatch.setattr(
+        service,
+        "StrictDecisionProviderService",
+        lambda config: strict,
+    )
+
+    result = service.classify_query_fact_type_llm_first({
+        "customer_message": message,
+        "intent": "product_question",
+    })
+
+    goals = result["customer_goals"]
+    assert result["goal_understanding_status"] == "valid"
+    assert [
+        message[goal["source_span_start"]:goal["source_span_end"]]
+        for goal in sorted(goals, key=lambda item: item["source_span_start"])
+    ] == ["能保证不坏吗？", "日常使用能确认到什么程度？"]
+
+
+def test_strict_source_refs_fail_closed_for_unknown_or_reversed_refs(
+    monkeypatch,
+):
+    message = "现在怎么说"
+    responses = [
+        {
+            "source_start_ref": "char-9999",
+            "source_end_ref": "char-0005",
+        },
+        {
+            "source_start_ref": "char-0005",
+            "source_end_ref": "char-0000",
+        },
+    ]
+    for source_refs in responses:
+        strict = _FakeStrictTurnProvider({
+            "goals": [{
+                "goal_kind": "contextual_constraint",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "subject_scope": "",
+                "semantic_key": "confirmation",
+                "policy_intent_ref": "",
+                **source_refs,
+                "continued_from": "",
+            }],
+        })
+        monkeypatch.setattr(
+            service.config,
+            "COPILOT_FACT_TYPE_LLM_ENABLED",
+            True,
+        )
+        monkeypatch.setattr(
+            service.config,
+            "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+            True,
+        )
+        monkeypatch.setattr(
+            service.StrictDecisionProviderConfig,
+            "from_turn_understanding_environment",
+            classmethod(lambda cls: object()),
+        )
+        monkeypatch.setattr(
+            service,
+            "StrictDecisionProviderService",
+            lambda config: strict,
+        )
+        diagnostics = {}
+
+        result = service.classify_query_fact_type_llm_first(
+            {"customer_message": message, "intent": "general"},
+            diagnostics_sink=diagnostics,
+        )
+
+        assert result["goal_understanding_status"] == "invalid"
+        assert result["customer_goals"] == []
+        assert diagnostics["reason_code"] in {
+            "source_reference_unknown",
+            "source_reference_range_invalid",
+        }
 
 
 def test_strict_turn_understanding_unqualified_fails_without_legacy_fallback(

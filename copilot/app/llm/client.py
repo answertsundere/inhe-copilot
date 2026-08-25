@@ -126,7 +126,10 @@ class LLMClient:
             request["extra_body"] = extra_body
 
         if single_attempt_no_repair:
-            return self.client.chat.completions.create(**request)
+            transport = self.client
+            if hasattr(transport, "with_options"):
+                transport = transport.with_options(max_retries=0)
+            return transport.chat.completions.create(**request)
 
         response_format = request.get("response_format") or {}
         max_attempts = 2 if (
