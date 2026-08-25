@@ -1615,3 +1615,21 @@ This closes after-sales progression only. Exact installation, detachability and
 media coverage remain the earliest shared quality gap, so
 `formal_knowledge_tool_coverage` remains active. No production feature flag,
 Autonomous Send condition, or real-accuracy claim is authorized.
+
+### Installation Fact Source Ownership (2026-08-26)
+
+The installation gap was traced beyond Copilot admission to Product Hub's
+deterministic fact builder. Approved installation assets and source notes were
+available, but the builder emitted no formal installation fact. Product Hub
+isolated commit `bf6df88` now generates one stable, provenance-preserving
+product-level installation fact only from approved/live exact-label notes.
+
+An isolated current-source database copy produced 57 such facts across 57
+products, and Copilot's unchanged read-only chain carried one through Product
+Context Pack, Admission, and Claim Resolution as supported. This closes the
+source-code contract only: the candidate database is not production, the Hub
+repository has no remote, and no external model quality run was performed with
+internal product data. The active priority remains
+`formal_knowledge_tool_coverage` until a backed-up audited rebuild and unchanged
+quality gate complete. Detachability, real accuracy, and Autonomous Send remain
+unqualified; `can_send` remains false.

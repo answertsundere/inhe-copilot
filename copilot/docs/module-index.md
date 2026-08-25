@@ -387,5 +387,22 @@ Before changing Agent behavior, verify:
   repair, fallback or delivery rule was added. The current anonymous canary,
   DeepSeek `25/25`, Fixed-8 `8/8`, Synthetic `5/5` and `22/22`, and 808-test
   associated regression all preserve review-only delivery and formal DML `0`.
-- This module fix does not provide product installation facts or media. The
-  next owner remains the existing formal knowledge/tool coverage path.
+- This module fix itself does not provide product installation facts or media.
+  Product Hub isolated commit `bf6df88` now supplies a governed installation
+  fact candidate from approved/live exact-label notes; production deployment is
+  still pending and the existing formal knowledge/tool path remains the owner.
+
+## 2026-08-26 Product Hub Installation Fact Supply
+
+- Upstream Product Hub `scripts/build-product-facts.cjs` is the source owner for
+  converting reviewed annotations into product facts. It now emits one stable,
+  confirmed product-level `installation` fact from approved/live assets with
+  the exact installation registry label and a non-empty note.
+- `ProductDataHubReadClient`, `ProductContextPackService`,
+  `AdmittedAnswerContextService`, and `ClaimResolutionService` require no new
+  owner or branch: the existing contracts already preserve source review,
+  identity, direct-answer role, provenance, and supported-claim attribution.
+- Media remains a distinct non-factual role. This source change adds no Copilot
+  Graph node, service, model call, reply owner, retry, fallback, Safety rule,
+  Delivery condition, or `can_send` authority. Runtime deployment and quality
+  evaluation are still pending.

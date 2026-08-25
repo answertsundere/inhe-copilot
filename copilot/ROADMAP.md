@@ -351,3 +351,29 @@ on 2026-08-17:
   process exited. A separately hashed schema-valid offline review records the
   quality judgment without fabricating runner finalization. This remains a
   reconstructed engineering baseline, not real-customer accuracy.
+
+## 2026-08-26 Product Hub Installation Fact Source Checkpoint
+
+- The earliest installation-answer break was upstream of Copilot: Product Hub
+  exposed approved installation media and notes but its deterministic fact
+  builder generated only size and material facts. Copilot correctly kept media
+  labels out of canonical factual evidence.
+- Product Hub isolated commit `bf6df88` reuses the existing label registry and
+  source review state. Only `approved`/`live` assets with the exact
+  `安装说明` label and a non-empty note are stably ordered, whitespace-normalized,
+  deduplicated, and collapsed into one confirmed product-level installation
+  fact with all source asset IDs retained. Pending, unrelated, and empty-note
+  assets remain excluded; images and videos retain their separate media role.
+- Full Product Hub regression passed `238/238` with one existing skip. Against
+  an isolated copy of the current source database, the builder added 57
+  installation facts from 168 eligible assets across 57 of 424 products. The
+  source database hash remained unchanged.
+- Copilot's existing read-only bridge resolved one exact product/SKU, exposed
+  the installation fact as direct Product Context, admitted it, and produced a
+  supported installation claim. No Copilot production code, Graph node,
+  service, model call, Evidence role, Delivery rule, or `can_send` condition
+  changed.
+- The Product Hub repository has no configured remote, so `bf6df88` is a local
+  isolated commit only. The candidate database is not production. A backed-up,
+  audited source rebuild plus query-only runtime verification is required before
+  any Fixed-8 quality rerun. Detachability and real accuracy remain unresolved.

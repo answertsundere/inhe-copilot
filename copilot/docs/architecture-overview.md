@@ -1485,3 +1485,22 @@ Deterministic Final and Unified Audit retain their existing validation. Product
 consultation intents do not inherit the operation from an unrelated concern.
 No customer text matcher, Graph node, service, model call, Evidence role,
 reply owner, Safety rule or Delivery condition was added.
+
+### Product Hub Installation Fact Source Ownership
+
+Approved media metadata is not itself canonical evidence. Product Hub owns the
+deterministic projection from source-governed product annotations into formal
+product facts. Its fact builder may create a product-level `installation` fact
+only when an asset is `approved` or `live`, carries the exact registered
+installation label, and has a non-empty source note. Multiple eligible notes
+are stably ordered and deduplicated, while provenance retains every source
+asset ID. Pending, unrelated, empty, identity-mismatched, or media-only records
+remain ineligible.
+
+Copilot does not add another registry or inference path for this projection. It
+continues to consume the resulting fact through the existing Product Context
+Pack, Product-first, Evidence Admission, Claim Resolution, Composer, and Final
+contracts. Images and videos remain separate media candidates and require their
+own delivery block. The isolated source and candidate-database verification
+does not deploy the fact to production, enable Formal Evidence Convergence,
+change `can_send`, or establish real-customer accuracy.

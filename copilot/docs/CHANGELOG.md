@@ -1,5 +1,22 @@
 # Change Log
 
+## 2026-08-26 - Product Hub Installation Fact Source Supply
+
+- Traced the missing installation answer through Product Hub, Product Context
+  Pack, Evidence Admission, and Claim Resolution. The first break was the Hub
+  source builder: approved installation labels existed, but no formal
+  installation fact was materialized.
+- Added Product Hub commit `bf6df88`, which deterministically creates one
+  confirmed product-level installation fact only from approved/live exact-label
+  notes, preserving stable provenance and keeping media separate.
+- Product Hub tests passed `238/238` with one skip. An isolated database copy
+  produced 57 facts from 168 eligible assets across 57 products; the source
+  database did not change. Copilot's existing read-only chain admitted a sample
+  fact and resolved its installation claim without production-code changes.
+- No external model received internal product data in this checkpoint. Formal
+  runtime deployment, Fixed-8 reply quality, detachability coverage, real
+  accuracy, and Autonomous Send remain unqualified. `can_send` is unchanged.
+
 ## 2026-08-26 - After-Sales Action Continuity
 
 - Fixed the earliest after-sales progression break in the existing

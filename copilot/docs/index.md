@@ -44,7 +44,9 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - `docs/agent-core-priority-plan.md` - operational priority authority for the
   gold-service Agent Core, including the active priority, protocol-work budget,
   promotion gates, domain portability, required task header, and the current
-  customer-visible language/Turn Understanding quality checkpoint.
+  customer-visible language/Turn Understanding quality checkpoint. Its latest
+  P1 checkpoint also records the upstream Product Hub installation-fact source
+  fix and the still-pending audited runtime deployment gate.
 - `docs/gold-customer-service-delivery-plan.md` - authoritative execution
   sequence for the Gold Customer Service Agent, including dynamic-truth source
   policy, P0-P7 gates, and the active P1 work queue.

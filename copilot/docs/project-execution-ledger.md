@@ -800,3 +800,21 @@ reports must retain `real_customer_accuracy=null` and
 - Versioned Synthetic safety passed smoke `5/5` and full `22/22`, with all
   cases review-only and no automatic send. Associated regression passed 808
   tests. These are engineering and safety results, not real-customer accuracy.
+
+## 2026-08-26 P1 Installation Fact Source Ownership
+
+- Read-only funnel tracing proved that Product Context Pack, Product-first,
+  Admitted Answer Context, and Claim Resolution already support a reviewed
+  direct `installation` fact. The first missing owner was Product Hub's source
+  fact builder, not Composer wording or Copilot admission.
+- Product Hub isolated commit `bf6df88` now converts only approved/live,
+  exact-label installation notes into one deterministic product-level fact.
+  Full Hub regression passed `238/238` with one skip.
+- A copied current database generated 57 installation facts from 168 eligible
+  assets across 57 products. Local query-only bridge verification reached one
+  supported installation claim while keeping media separate. The source DB,
+  formal Copilot knowledge DB, Delivery, and `can_send` were unchanged.
+- Status: source contract fixed; production deployment not performed. Product
+  Hub has no configured Git remote. Next gate is backup, audited fact rebuild,
+  query-only runtime verification, then the unchanged quality evaluation.
+  Detachability stays unresolved and `real_customer_accuracy=null`.

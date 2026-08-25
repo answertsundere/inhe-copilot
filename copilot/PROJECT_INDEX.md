@@ -34,15 +34,18 @@ After implementation, update this index, `ROADMAP.md`, and
   logistics, policy, and service-outcome facts are resolved from approved
   current sources at answer time. They are never hardcoded into tests or
   prompts.
-- Current evidence/action checkpoint: Product Hub still materializes explicit
-  product/component dimensions as atomic scoped facts. The after-sales funnel
-  now preserves one planner-owned, non-factual `request_customer_input` action
-  after risk routing normalizes `aftersales` to `complaint`; it accepts either
-  `order_id` or `tracking_no`, cannot satisfy a claim, and cannot change
-  `can_send`. Current DeepSeek Composer qualification passed `25/25`; the
-  subsequent reconstructed Fixed-8 completed `8/8`, selected nine evidence
-  rows across four scenarios, kept formal-knowledge DML at `0`, required review
-  `8/8`, and kept `can_send=0`.
+- Current evidence/action checkpoint: Product Hub continues to materialize
+  explicit product/component dimensions as atomic scoped facts. Its isolated
+  source commit `bf6df88` now also turns only approved/live assets carrying the
+  exact `安装说明` registry label and a non-empty note into one deterministic,
+  provenance-preserving product-level installation fact. An isolated source
+  snapshot produced 57 installation facts from 168 eligible assets across 57
+  products; the source database remained unchanged. Copilot's existing
+  read-only path then carried one such fact through Product Context Pack,
+  Product-first answerability, Admitted Answer Context, and Claim Resolution as
+  a supported installation claim. Media remained a separate non-factual role.
+  The after-sales funnel separately preserves its existing planner-owned input
+  action. Neither change grants send authority or changes `can_send`.
 - Accuracy status: `real_customer_accuracy=null` and
   `optimization_unverified=true` until the authorized E2 data and independent
   reviews are complete.
@@ -67,14 +70,13 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The after-sales progression break is closed: the same current-turn complaint
-now requests an order or tracking reference through the existing typed-action
-contract instead of stopping at repeated uncertainty. The active P1 owner
-remains `formal_knowledge_tool_coverage`. Installation, detachability and
-installation-media turns still lack sufficient exact-product context, and the
-bounded-use case still lacks an eligible premise/policy option. The next change
-must trace those existing Product Context Pack, media and tool paths into the
-canonical answer context before any wording work. Unified Audit stays advisory
-for Supervisor Assist and mandatory for future Autonomous Send qualification.
+The upstream installation-fact break is closed in an isolated Product Hub
+source branch and verified end to end against a candidate database. It is not
+yet deployed to the formal Product Hub database. The next P1 step is a backed-up,
+audited fact rebuild and query-only runtime verification before rerunning the
+same quality gate. Detachability still has no formal source fact and must remain
+unresolved; installation media remains governed by its separate delivery role.
+Unified Audit stays advisory for Supervisor Assist and mandatory for future
+Autonomous Send qualification.
 This reconstructed baseline remains engineering evidence;
 `real_customer_accuracy=null` and `optimization_unverified=true`.
