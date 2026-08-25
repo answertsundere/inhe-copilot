@@ -15,6 +15,10 @@ from app.services.customer_facing_safe_handoff_service import (
 from app.services.claim_resolution_service import (
     valid_restricted_request_boundary,
 )
+from app.services.admitted_answer_context_service import (
+    CUSTOMER_INPUT_SELECTION_MODES,
+    CUSTOMER_INPUT_SLOT_IDS,
+)
 from app.services.media_asset_service import is_delivery_media_asset_eligible
 from app.services.no_evidence_reply_policy_service import (
     _claimed_delivery_media_kinds,
@@ -24,7 +28,7 @@ from app.services.no_evidence_reply_policy_service import (
 )
 
 
-COMPOSER_VERSION = "model-first-answer-composer-v6"
+COMPOSER_VERSION = "model-first-answer-composer-v7"
 COMPOSER_ENVELOPE_CONTRACT_VERSION = "bounded-json-envelope-v1"
 COMPOSER_DECISION_INPUT_SCHEMA = "composer-decision-input/v1"
 COMPOSER_DECISION_INPUT_OWNER = "model_first_answer_composer"
@@ -33,7 +37,7 @@ COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA = (
 )
 COMPOSER_PRIVACY_DIAGNOSTICS_OWNER = COMPOSER_DECISION_INPUT_OWNER
 COMPOSER_PRIVACY_DIAGNOSTICS_MAX_DIFFS = 32
-COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v3"
+COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v4"
 COMPOSER_RESPONSE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": COMPOSER_RESPONSE_SCHEMA_VERSION,
@@ -41,6 +45,14 @@ COMPOSER_RESPONSE_SCHEMA = {
     "required": ["clauses"],
     "additionalProperties": False,
     "properties": {
+        "selected_service_action_refs": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1,
+            },
+            "uniqueItems": True,
+        },
         "clauses": {
             "type": "array",
             "items": {
@@ -79,6 +91,9 @@ _CLAUSE_RESPONSE_SCHEMA = COMPOSER_RESPONSE_SCHEMA[
 ]["clauses"]["items"]
 _ALLOWED_OUTPUT_FIELDS = frozenset(
     COMPOSER_RESPONSE_SCHEMA["properties"]
+)
+_REQUIRED_OUTPUT_FIELDS = frozenset(
+    COMPOSER_RESPONSE_SCHEMA["required"]
 )
 _ALLOWED_CLAUSE_FIELDS = frozenset(
     _CLAUSE_RESPONSE_SCHEMA["properties"]
@@ -1134,6 +1149,9 @@ class ModelFirstAnswerComposerService:
         offered_option_bindings = material[
             "offered_option_bindings"
         ]
+        service_action_bindings = material[
+            "service_action_bindings"
+        ]
         presentation_order = list(
             partitions.get("presentation_order") or []
         )
@@ -1174,7 +1192,22 @@ class ModelFirstAnswerComposerService:
             "offered_option_refs": sorted(
                 offered_option_bindings
             ),
+            "required_service_action_refs": sorted(
+                service_action_bindings
+            ),
         })
+
+        if not customer_goals and service_action_bindings:
+            result["rejection_reason"] = (
+                "composer_required_service_action_without_renderable_goal"
+            )
+            if diagnostics_enabled:
+                _privacy_diagnostic_finish(
+                    privacy_diagnostics_sink,
+                    result,
+                    stage="required_service_action_without_renderable_goal",
+                )
+            return original, result
 
         if not customer_goals:
             result["provider_diagnostics"][
@@ -1362,6 +1395,7 @@ class ModelFirstAnswerComposerService:
             customer_goals=customer_goals,
             presentation_order=presentation_order,
             offered_option_bindings=offered_option_bindings,
+            service_action_bindings=service_action_bindings,
             non_renderable_goal_refs=set(
                 partitions.get("non_renderable_goal_refs") or set()
             ),
@@ -1395,6 +1429,9 @@ class ModelFirstAnswerComposerService:
             "rate": 1.0 if customer_goals else None,
         }
         ordered_clauses = list(parsed["clauses"])
+        selected_service_action_refs = list(
+            parsed.get("selected_service_action_refs") or []
+        )
         reply = "".join(
             str(item["text"]).strip() for item in ordered_clauses
         )
@@ -1453,6 +1490,10 @@ class ModelFirstAnswerComposerService:
                     ),
                 }
                 for index, clause in enumerate(ordered_clauses, start=1)
+            ],
+            "selected_service_actions": [
+                deepcopy(service_action_bindings[action_ref])
+                for action_ref in selected_service_action_refs
             ],
             "used_for_final_reply": True,
             "composition_applicable": True,
@@ -2224,6 +2265,9 @@ class ModelFirstAnswerComposerService:
             "evidence": evidence,
             "uid_by_ref": uid_by_ref,
             "partitions": partitions,
+            "service_action_bindings": dict(
+                partitions.get("service_action_bindings") or {}
+            ),
             "goal_uid_by_ref": goal_uid_by_ref,
             "customer_goals": customer_goals,
             "offered_option_bindings": offered_option_bindings,
@@ -2244,6 +2288,7 @@ class ModelFirstAnswerComposerService:
             "unresolved_claim_types": [],
             "covered_goal_refs": [],
             "clauses": [],
+            "selected_service_actions": [],
             "context_metrics": dict(stats or {}),
             "used_for_final_reply": False,
             "can_change_can_send": False,
@@ -2273,6 +2318,7 @@ class ModelFirstAnswerComposerService:
                 "presentation_order": [],
                 "presentation_order_sha256": "",
                 "offered_option_refs": [],
+                "required_service_action_refs": [],
                 "model_name": "",
                 "decision_input_schema": "",
                 "decision_input_sha256": "",
@@ -2360,6 +2406,75 @@ class ModelFirstAnswerComposerService:
             if str(item["evidence_ref"]) in allowed_refs
         ], ""
 
+    @classmethod
+    def _project_service_actions(
+        cls,
+        rows: Any,
+    ) -> tuple[
+        list[dict[str, Any]],
+        dict[str, dict[str, Any]],
+        str,
+    ]:
+        """Project trusted response obligations without granting fact authority."""
+        projected: list[dict[str, Any]] = []
+        bindings: dict[str, dict[str, Any]] = {}
+        for raw in rows if isinstance(rows, list) else []:
+            if not isinstance(raw, dict):
+                continue
+            action = deepcopy(raw)
+            if str(action.get("action_type") or "").strip() != (
+                "request_customer_input"
+            ):
+                projected.append(action)
+                continue
+            slots = action.get("accepted_input_slots")
+            mode = str(
+                action.get("input_selection_mode") or ""
+            ).strip()
+            if (
+                action.get("source_owner")
+                != "response_strategy_planner"
+                or action.get("non_fact") is not True
+                or action.get("completed") is not False
+                or action.get("can_change_can_send") is not False
+                or not isinstance(slots, list)
+                or not slots
+                or any(
+                    not isinstance(slot, str)
+                    or not slot.strip()
+                    or slot.strip() not in CUSTOMER_INPUT_SLOT_IDS
+                    for slot in slots
+                )
+                or len(slots) != len({slot.strip() for slot in slots})
+                or mode not in CUSTOMER_INPUT_SELECTION_MODES
+            ):
+                return [], {}, "composer_service_action_authority_invalid"
+            normalized = {
+                "action_type": "request_customer_input",
+                "accepted_input_slots": [slot.strip() for slot in slots],
+                "input_selection_mode": mode,
+                "source_owner": "response_strategy_planner",
+                "non_fact": True,
+                "completed": False,
+                "can_change_can_send": False,
+            }
+            action_ref = cls._anonymous_reference(
+                "action",
+                normalized,
+            )
+            if action_ref in bindings:
+                continue
+            bindings[action_ref] = normalized
+            projected.append({
+                **normalized,
+                "action_ref": action_ref,
+                "response_obligation": "required",
+            })
+        projected.sort(
+            key=lambda item: _canonical_json_sha256(item)
+        )
+        return projected, bindings, ""
+
     @staticmethod
     def _partition_composer_inputs(
         minimal_context: dict[str, Any],
@@ -2368,13 +2483,21 @@ class ModelFirstAnswerComposerService:
         *,
         actual_media_types: list[str],
     ) -> tuple[dict[str, Any], dict[str, str], str]:
+        (
+            projected_service_actions,
+            service_action_bindings,
+            service_action_error,
+        ) = ModelFirstAnswerComposerService._project_service_actions(
+            minimal_context.get("service_actions")
+        )
+        if service_action_error:
+            return {}, {}, service_action_error
         partitions = {
             "renderable_customer_goals": [],
             "presentation_order": [],
             "supporting_dependencies": [],
-            "service_actions": list(
-                minimal_context.get("service_actions") or []
-            ),
+            "service_actions": projected_service_actions,
+            "service_action_bindings": service_action_bindings,
             "media_context": {
                 "candidate_count": len(
                     minimal_context.get("media_candidates") or []
@@ -3860,6 +3983,9 @@ class ModelFirstAnswerComposerService:
             "selected_option_refs_semantics": (
                 "zero_or_one_goal_scoped_request_option_alias"
             ),
+            "selected_service_action_refs_semantics": (
+                "exact_required_non_fact_response_obligation_aliases"
+            ),
             "evidence_refs_semantics": (
                 "server_restored_from_resolution_or_selected_option"
             ),
@@ -3871,6 +3997,7 @@ class ModelFirstAnswerComposerService:
             "one_clause_per_goal": True,
             "clauses_follow_presentation_order": True,
             "one_option_per_goal": True,
+            "required_service_actions_selected_exactly": True,
             "option_selection_modes": sorted(_OPTION_SELECTION_MODES),
         }
 
@@ -3915,6 +4042,9 @@ class ModelFirstAnswerComposerService:
             "customer-facing delivery wording."
             "For a request_customer_input service action, ask naturally only for the accepted_input_slots. "
             "input_selection_mode=any_of means one listed input is sufficient; all_of means every listed input is required. "
+            "Every service action with response_obligation=required must be naturally completed in an existing goal clause, "
+            "and selected_service_action_refs must contain its action_ref exactly once. Do not add a service-action clause. "
+            "When there is no required response obligation, selected_service_action_refs may be omitted or must be empty. "
             "Do not ask the customer for any new input unless service_actions contains a request_customer_input action "
             "that explicitly authorizes the corresponding accepted_input_slots. "
             "When product_scope.resolved is true, do not request product identity again. "
@@ -4004,6 +4134,7 @@ class ModelFirstAnswerComposerService:
         presentation_order: list[str] | None = None,
         response: dict[str, Any],
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
+        service_action_bindings: dict[str, dict[str, Any]] | None = None,
     ) -> str:
         reason, _ = ModelFirstAnswerComposerService._validate_output_with_diagnostics(
             parsed,
@@ -4012,6 +4143,7 @@ class ModelFirstAnswerComposerService:
             presentation_order=presentation_order,
             response=response,
             offered_option_bindings=offered_option_bindings,
+            service_action_bindings=service_action_bindings,
         )
         return reason
 
@@ -4024,6 +4156,7 @@ class ModelFirstAnswerComposerService:
         presentation_order: list[str] | None = None,
         response: dict[str, Any],
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
+        service_action_bindings: dict[str, dict[str, Any]] | None = None,
         non_renderable_goal_refs: set[str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         canonical, reconstruction_error, diagnostics = (
@@ -4034,6 +4167,7 @@ class ModelFirstAnswerComposerService:
                 customer_goals=customer_goals,
                 presentation_order=presentation_order,
                 offered_option_bindings=offered_option_bindings,
+                service_action_bindings=service_action_bindings,
                 non_renderable_goal_refs=non_renderable_goal_refs,
             )
         )
@@ -4048,6 +4182,7 @@ class ModelFirstAnswerComposerService:
                 presentation_order=presentation_order,
                 response=response,
                 offered_option_bindings=offered_option_bindings,
+                service_action_bindings=service_action_bindings,
                 non_renderable_goal_refs=non_renderable_goal_refs,
             )
         )
@@ -4064,10 +4199,14 @@ class ModelFirstAnswerComposerService:
         customer_goals: list[dict[str, Any]],
         presentation_order: list[str] | None = None,
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
+        service_action_bindings: dict[str, dict[str, Any]] | None = None,
         non_renderable_goal_refs: set[str] | None = None,
     ) -> tuple[dict[str, Any], str, dict[str, Any]]:
         offered_option_bindings = dict(
             offered_option_bindings or {}
+        )
+        service_action_bindings = dict(
+            service_action_bindings or {}
         )
         if not isinstance(parsed, dict):
             return {}, "composer_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
@@ -4077,9 +4216,12 @@ class ModelFirstAnswerComposerService:
                 actual_type=ModelFirstAnswerComposerService._type_name(parsed),
             )
         top_fields = set(parsed)
-        if top_fields != _ALLOWED_OUTPUT_FIELDS:
+        if (
+            not _REQUIRED_OUTPUT_FIELDS <= top_fields
+            or not top_fields <= _ALLOWED_OUTPUT_FIELDS
+        ):
             extra = top_fields - _ALLOWED_OUTPUT_FIELDS
-            missing = _ALLOWED_OUTPUT_FIELDS - top_fields
+            missing = _REQUIRED_OUTPUT_FIELDS - top_fields
             category = "extra_field" if extra else "top_level_schema_invalid"
             return {}, "composer_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
                 category,
@@ -4088,6 +4230,61 @@ class ModelFirstAnswerComposerService:
                 actual_type="object",
                 missing_field_count=len(missing),
                 extra_field_count=len(extra),
+            )
+        selected_action_field_present = (
+            "selected_service_action_refs" in parsed
+        )
+        selected_action_refs = parsed.get(
+            "selected_service_action_refs",
+            [],
+        )
+        if not isinstance(selected_action_refs, list) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in selected_action_refs
+        ):
+            return {}, "composer_service_action_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                "top_level_schema_invalid",
+                parsed=parsed,
+                json_path="$.selected_service_action_refs",
+                expected_type="array_of_non_empty_strings",
+                actual_type=ModelFirstAnswerComposerService._type_name(
+                    selected_action_refs
+                ),
+            )
+        selected_action_refs = [
+            str(item).strip() for item in selected_action_refs
+        ]
+        if len(selected_action_refs) != len(set(selected_action_refs)):
+            return {}, "composer_duplicate_service_action_reference", ModelFirstAnswerComposerService._diagnostics(
+                "duplicate_service_action_ref",
+                parsed=parsed,
+                json_path="$.selected_service_action_refs",
+                expected_type="unique_required_service_action_refs",
+                actual_type="array_with_duplicates",
+            )
+        required_action_refs = set(service_action_bindings)
+        selected_action_ref_set = set(selected_action_refs)
+        if selected_action_ref_set - required_action_refs:
+            return {}, "composer_unknown_service_action_reference", ModelFirstAnswerComposerService._diagnostics(
+                "unknown_service_action_ref",
+                parsed=parsed,
+                json_path="$.selected_service_action_refs",
+                expected_type="required_service_action_refs",
+                actual_type="array_with_unknown_reference",
+            )
+        if (
+            required_action_refs
+            and (
+                not selected_action_field_present
+                or selected_action_ref_set != required_action_refs
+            )
+        ):
+            return {}, "composer_required_service_action_not_selected", ModelFirstAnswerComposerService._diagnostics(
+                "required_service_action_not_selected",
+                parsed=parsed,
+                json_path="$.selected_service_action_refs",
+                expected_type="exact_required_service_action_refs",
+                actual_type="missing_or_incomplete_array",
             )
         clauses = parsed.get("clauses")
         if not isinstance(clauses, list):
@@ -4447,6 +4644,10 @@ class ModelFirstAnswerComposerService:
                 for goal_ref in actual_presentation_order
             ]
         }
+        if selected_action_field_present or required_action_refs:
+            canonical["selected_service_action_refs"] = sorted(
+                selected_action_refs
+            )
         return canonical, "", ModelFirstAnswerComposerService._diagnostics(
             "canonical_reconstruction_accepted",
             parsed=canonical,
@@ -4461,10 +4662,14 @@ class ModelFirstAnswerComposerService:
         presentation_order: list[str] | None = None,
         response: dict[str, Any],
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
+        service_action_bindings: dict[str, dict[str, Any]] | None = None,
         non_renderable_goal_refs: set[str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         offered_option_bindings = dict(
             offered_option_bindings or {}
+        )
+        service_action_bindings = dict(
+            service_action_bindings or {}
         )
         if not isinstance(parsed, dict):
             return "composer_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
@@ -4474,9 +4679,12 @@ class ModelFirstAnswerComposerService:
                 actual_type=ModelFirstAnswerComposerService._type_name(parsed),
             )
         top_fields = set(parsed)
-        if top_fields != _ALLOWED_OUTPUT_FIELDS:
+        if (
+            not _REQUIRED_OUTPUT_FIELDS <= top_fields
+            or not top_fields <= _ALLOWED_OUTPUT_FIELDS
+        ):
             extra = top_fields - _ALLOWED_OUTPUT_FIELDS
-            missing = _ALLOWED_OUTPUT_FIELDS - top_fields
+            missing = _REQUIRED_OUTPUT_FIELDS - top_fields
             category = "extra_field" if extra else "top_level_schema_invalid"
             return "composer_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
                 category,
@@ -4485,6 +4693,36 @@ class ModelFirstAnswerComposerService:
                 actual_type="object",
                 missing_field_count=len(missing),
                 extra_field_count=len(extra),
+            )
+        selected_action_refs = parsed.get(
+            "selected_service_action_refs",
+            [],
+        )
+        if (
+            not isinstance(selected_action_refs, list)
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in selected_action_refs
+            )
+            or len(selected_action_refs)
+            != len(set(selected_action_refs))
+        ):
+            return "composer_service_action_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                "top_level_schema_invalid",
+                parsed=parsed,
+                json_path="$.selected_service_action_refs",
+                expected_type="unique_required_service_action_refs",
+                actual_type=ModelFirstAnswerComposerService._type_name(
+                    selected_action_refs
+                ),
+            )
+        if set(selected_action_refs) != set(service_action_bindings):
+            return "composer_required_service_action_not_selected", ModelFirstAnswerComposerService._diagnostics(
+                "required_service_action_not_selected",
+                parsed=parsed,
+                json_path="$.selected_service_action_refs",
+                expected_type="exact_required_service_action_refs",
+                actual_type="different_reference_set",
             )
         clauses = parsed.get("clauses")
         if not isinstance(clauses, list):

@@ -574,3 +574,30 @@ reports must retain `real_customer_accuracy=null` and
   RAG latency warnings of roughly `4-6.6s` remain a performance risk, not a
   contract pass for Gold quality. `real_customer_accuracy=null` and
   `optimization_unverified=true` remain authoritative.
+
+## 2026-08-25 P1 Required Service-Action Selection
+
+- Root cause was downstream of Understanding and Claim Resolution. The
+  existing response strategy emitted a valid `request_customer_input` action,
+  but the Composer contract merely permitted the request and did not require a
+  selection. The same run exposed a separate metadata defect where a free-form
+  SOP heading became `action_proposal`.
+- Composer response v4 adds an optional top-level action-selection field for
+  backward compatibility. When the existing planner supplies a valid
+  incomplete customer-input action, the field becomes mandatory and must equal
+  the exact stable anonymous action-reference set. Invalid authority, slots,
+  modes, missing selections, duplicate references, and unknown references fail
+  closed before a candidate is accepted.
+- One frozen after-sales replay changed the useful next step from no action to
+  a natural request for an order or tracking identifier. The action remained
+  non-factual, no extra goal or clause was created, `action_proposal` remained
+  empty, Final passed, review stayed required, and `can_send=false`.
+- The unchanged Fixed-8 passed Composer and Deterministic Final `8/8`, selected
+  22 evidence rows across `6/8` cases, selected one required service action in
+  the after-sales case only, and preserved the formal knowledge snapshot with
+  DML `0`. Pipeline p50/p95 was about `5.46s/8.71s`; Composer p50/p95 was about
+  `1.68s/2.11s`.
+- Unified Audit was unavailable/advisory in `8/8`, so Autonomous Send remains
+  unqualified. Synthetic safety regression passed `5/5` and `22/22`, all
+  review-only with zero automatic sends. Raw goal-identity recall remained
+  `9/16`; `real_customer_accuracy=null` remains authoritative.

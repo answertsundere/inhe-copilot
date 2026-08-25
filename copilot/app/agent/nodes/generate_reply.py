@@ -1790,16 +1790,7 @@ def _policy_warnings(state: dict) -> list[str]:
 
 
 def _action_proposal(state: dict, default: dict) -> dict:
-    sops = state.get("sop_scenarios", [])
-    if not sops:
-        return default
-    valid_steps = [
-        step for step in sops[0].get("steps", [])
-        if isinstance(step, str) and len(step) < 50
-        and not any(b in step for b in ["Codex", ".py", "markdown", "```", "POST /", "GET /"])
-    ]
-    if valid_steps:
-        return {"action_type": valid_steps[0], "reason": f"根据SOP「{sops[0].get('scenario', '')}」"}
+    # SOP prose is guidance, not a typed or executed service action.
     return default
 
 

@@ -2519,12 +2519,21 @@ def test_composer_preserves_customer_input_action_without_treating_it_as_fact():
         "completed": False,
         "can_change_can_send": False,
     }]
-    assert material["partitions"]["service_actions"] == (
-        decision_input["service_actions"]
-    )
+    projected_action = material["partitions"]["service_actions"][0]
+    assert projected_action == {
+        **decision_input["service_actions"][0],
+        "action_ref": projected_action["action_ref"],
+        "response_obligation": "required",
+    }
+    assert projected_action["action_ref"].startswith("action-")
     assert material["prompt_payload"]["service_actions"] == (
-        decision_input["service_actions"]
+        material["partitions"]["service_actions"]
     )
+    assert material["service_action_bindings"] == {
+        projected_action["action_ref"]: decision_input[
+            "service_actions"
+        ][0]
+    }
     assert material["evidence"] == [{
         "evidence_ref": "E1",
         "fact_type": "dimensions",
@@ -2533,6 +2542,205 @@ def test_composer_preserves_customer_input_action_without_treating_it_as_fact():
             "admitted_evidence"
         ][0]["content"],
     }]
+
+
+def test_composer_rejects_omitted_required_customer_input_action():
+    response = _response()
+    response["minimal_decision_context"]["service_actions"] = [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id", "tracking_no"],
+        "input_selection_mode": "any_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+
+    updated, result, client = _compose(_valid_payload(), response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_required_service_action_not_selected"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("accepted_input_slots", "input_selection_mode"),
+    [
+        (["order_id", "tracking_no"], "any_of"),
+        (["product_link", "product_screenshot"], "any_of"),
+        (["order_id", "sku"], "all_of"),
+    ],
+)
+def test_composer_requires_exact_trusted_customer_input_action_selection(
+    accepted_input_slots: list[str],
+    input_selection_mode: str,
+):
+    response = _response()
+    response["minimal_decision_context"]["service_actions"] = [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": accepted_input_slots,
+        "input_selection_mode": input_selection_mode,
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="请继续处理当前问题。",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+    action = material["prompt_payload"]["service_actions"][0]
+    payload = _valid_payload()
+    payload["selected_service_action_refs"] = [
+        action["action_ref"]
+    ]
+    payload["clauses"][-1]["text"] = "请提供处理当前问题所需的信息。"
+
+    updated, result, client = _compose(payload, response)
+
+    assert decision_error == material_error == ""
+    assert action["response_obligation"] == "required"
+    assert action["accepted_input_slots"] == accepted_input_slots
+    assert result["status"] == "accepted"
+    assert result["selected_service_actions"] == [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": accepted_input_slots,
+        "input_selection_mode": input_selection_mode,
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+    assert result["used_evidence_uids"] == ["ev-width"]
+    assert client.call_count == 1
+
+
+def test_composer_rejects_untrusted_customer_input_action_before_model_call():
+    response = _response()
+    response["minimal_decision_context"]["service_actions"] = [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id"],
+        "input_selection_mode": "all_of",
+        "source_owner": "public_request",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+
+    updated, result, client = _compose(_valid_payload(), response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_service_action_authority_invalid"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 0
+
+
+@pytest.mark.parametrize(
+    ("selected_refs", "expected_reason"),
+    [
+        (
+            ["action-unknown"],
+            "composer_unknown_service_action_reference",
+        ),
+        (
+            ["{required}", "{required}"],
+            "composer_duplicate_service_action_reference",
+        ),
+    ],
+)
+def test_composer_rejects_invalid_service_action_references(
+    selected_refs: list[str],
+    expected_reason: str,
+):
+    response = _response()
+    response["minimal_decision_context"]["service_actions"] = [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id"],
+        "input_selection_mode": "all_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+    decision_input, _ = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="请继续处理当前问题。",
+        )
+    )
+    material, _ = (
+        ModelFirstAnswerComposerService
+        .build_provider_material_from_decision_input(decision_input)
+    )
+    action_ref = material["prompt_payload"]["service_actions"][0][
+        "action_ref"
+    ]
+    payload = _valid_payload()
+    payload["selected_service_action_refs"] = [
+        action_ref if item == "{required}" else item
+        for item in selected_refs
+    ]
+
+    updated, result, client = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == expected_reason
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+
+
+def test_required_service_action_without_renderable_goal_fails_closed():
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["requested_claims"] = [
+        _goal(
+            "goal-action",
+            "",
+            goal_kind="service_action",
+            claim_type_status="unmapped",
+        )
+    ]
+    context["claim_resolutions"] = [
+        _resolution(
+            "claim-action",
+            "",
+            "unresolved",
+            goal_ref="goal-action",
+            goal_kind="service_action",
+            claim_type_status="unmapped",
+        )
+    ]
+    context["service_actions"] = [{
+        "action_type": "request_customer_input",
+        "accepted_input_slots": ["order_id"],
+        "input_selection_mode": "all_of",
+        "source_owner": "response_strategy_planner",
+        "non_fact": True,
+        "completed": False,
+        "can_change_can_send": False,
+    }]
+
+    updated, result, client = _compose({"clauses": []}, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_required_service_action_without_renderable_goal"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 0
 
 
 def test_composer_requires_minimal_context():

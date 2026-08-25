@@ -329,3 +329,20 @@ Before changing Agent behavior, verify:
   DML was zero. The frozen quality scenario was not scorable because Turn
   Understanding failed at Provider transport, so P1 remains active and
   `real_customer_accuracy=null`.
+
+## 2026-08-25 Required Service-Action Selection
+
+- `admitted_answer_context_service.py` continues to project the existing
+  response strategy's missing-input action as non-factual context.
+- `model_first_answer_composer_service.py` owns only its presentation contract:
+  trusted incomplete input actions receive anonymous required references, and
+  Composer response v4 must select the exact set while retaining one clause per
+  authoritative customer goal. Invalid authority or references fail closed.
+- `generate_reply.py` no longer treats arbitrary SOP step text as a typed
+  `action_proposal`. Tool execution, Evidence, Final, Unified Audit, Delivery,
+  and `can_send` ownership are unchanged.
+- The unchanged Fixed-8 passed Composer/Final `8/8`; the single after-sales
+  action was selected, formal DML remained `0`, all cases required review, and
+  `can_send=0`. Unified Audit remains advisory/unavailable, so this qualifies
+  only the Supervisor Assist candidate path, not Autonomous Send or real
+  accuracy.

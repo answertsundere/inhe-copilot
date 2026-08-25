@@ -20,9 +20,10 @@ After implementation, update this index, `ROADMAP.md`, and
 ## Current State
 
 - Active priority: `P1 - Gold Conversation Quality`.
-- Current gate: `P1-E2-001`, an authorized, deidentified, review-only
-  long-conversation evaluation through the existing formal `/api/analyze`
-  pipeline.
+- Current gate: `P1 Gold Conversation Quality`, using the frozen reconstructed
+  Fixed-8 to locate the earliest existing Owner for factual coverage,
+  conversation continuity, and useful next actions. This is review-only
+  development evidence, not real-customer accuracy.
 - Delivery boundary: Supervisor Assist only. Every candidate remains
   `requires_human_review=true` and `can_send=false`.
 - Dynamic truth boundary: volatile product, price, stock, promotion, order,
@@ -53,10 +54,10 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The repeatable `scripts/run_p1_isolated_smoke.py` check has passed with an
-explicit query-only knowledge snapshot and a loopback model. It verifies
-readiness, no-send, human review, and nonempty review drafts without retaining
-reply content in its report. It is still regression and operability evidence,
-not real customer accuracy. E2 evaluation may start only when a data owner
-supplies the authorized, deidentified review package outside this repository
-and the existing validator accepts it.
+The required service-action selection boundary now closes the first shared
+after-sales helpfulness defect without changing factual or delivery authority.
+The next P1 run should use the existing frozen long-conversation set to improve
+the earliest remaining goal-understanding or evidence-coverage Owner, while
+keeping Unified Audit advisory for Supervisor Assist and mandatory for any
+future Autonomous Send qualification. Synthetic `5/5` and `22/22` results
+remain safety regression only; `real_customer_accuracy=null`.

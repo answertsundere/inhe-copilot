@@ -241,3 +241,27 @@ on 2026-08-17:
 - The next true quality defect is unbound durability expansion at the existing
   bounded-reasoning/Composer-Audit boundary. Evaluator alias drift must be kept
   separate from production behavior.
+
+## 2026-08-25 Required Service-Action Selection Checkpoint
+
+- The Frozen Fixed-8 after-sales case already reached the existing
+  `response_strategy_planner` with a typed `request_customer_input` action, but
+  Composer treated the action as optional context and returned three generic
+  unresolved clauses. Separately, legacy generation exposed an arbitrary SOP
+  heading as `action_proposal`.
+- Composer response v4 now gives only trusted, incomplete, non-factual
+  customer-input actions a stable anonymous reference. The Provider must select
+  every required reference exactly once and express it inside an existing goal
+  clause; missing, duplicate, unknown, or untrusted references fail closed.
+  This does not add a customer goal, evidence, Graph owner, model call, retry,
+  repair, or send authority.
+- The isolated after-sales replay now asks for one of the already-authorized
+  order or tracking identifiers. The unchanged full Fixed-8 completed `8/8`
+  Composer and Deterministic Final, retained 22 selected evidence rows, selected
+  the one required service action only in the after-sales case, kept formal DML
+  at `0`, required review `8/8`, and kept `can_send=0`.
+- Unified Audit remained unavailable/advisory in all eight cases, so Autonomous
+  Send stays blocked. Raw goal-identity recall remains `9/16`; the known
+  after-sales alias drift is an evaluator issue and was not used to alter the
+  production owner contract. Synthetic safety regression remains `5/5` and
+  `22/22`, all review-only.

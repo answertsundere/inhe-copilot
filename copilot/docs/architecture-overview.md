@@ -1361,3 +1361,19 @@ are unchanged, and this bridge grants no send authority. The live deterministic
 replay returned exact material premises with zero knowledge DML; the Fixed-8
 quality gate remains blocked by a Turn Understanding Provider transport failure
 and therefore establishes neither reply quality nor real accuracy.
+
+### Required Non-Fact Response Obligations
+
+`response_strategy_planner` remains the sole deterministic owner of missing
+customer-input requirements. A valid incomplete `request_customer_input`
+action is projected to the existing Composer with a stable anonymous action
+reference and a required response obligation. Composer must select the exact
+required reference set and express the request naturally inside an existing
+customer-goal clause; it cannot create a service-action goal or clause.
+
+The action remains explicitly non-factual, cannot satisfy Claim Resolution,
+cannot authorize a tool outcome, and cannot change Delivery or `can_send`.
+Missing, duplicate, unknown, or untrusted action references fail closed. Free
+SOP prose is guidance only and is not a typed `action_proposal`. This is an
+existing-owner contract refinement: no Graph node, service, model call, retry,
+repair, fallback, or reply owner was added.

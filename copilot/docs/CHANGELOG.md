@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-08-25 - Required Service-Action Selection
+
+- Upgraded the existing Composer contract to v4 so a trusted, incomplete
+  `request_customer_input` action must be selected by stable anonymous
+  reference and expressed inside an existing customer-goal clause.
+- Added fail-closed validation for untrusted actions and missing, duplicate, or
+  unknown action references. Actions remain non-factual and cannot alter
+  Evidence, tools, Delivery, or `can_send`.
+- Removed legacy promotion of free-form SOP steps into `action_proposal`.
+- Verified the frozen after-sales case and unchanged Fixed-8: Composer and
+  Deterministic Final `8/8`, one required action selected, 22 selected evidence
+  rows, formal-knowledge DML `0`, review `8/8`, and `can_send=0`. Synthetic
+  safety regression passed `5/5` and `22/22`; Unified Audit remains unavailable
+  and Autonomous Send remains unqualified.
+
 ## 2026-08-22 - Explicit logistics intent before vague clarification
 
 - Moved vague-question clarification behind explicit installation, logistics,

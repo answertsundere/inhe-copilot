@@ -1355,3 +1355,30 @@ case did not produce a valid quality result because Turn Understanding returned
 regression passed `5/5` smoke and `22/22` full, all review-only with
 `can_send=0`. The next gate is one provider-stable replay of the frozen first
 case, followed by the unchanged Fixed-8; it is not another reply rule.
+
+### Required Service-Action Selection Checkpoint (2026-08-25)
+
+The next comparable Fixed-8 run completed `8/8` after the Product Hub premise
+repair. It showed that after-sales goal recognition and unresolved boundaries
+were intact, but the existing structured `request_customer_input` action was
+only advisory in the Composer prompt. Composer therefore described every
+outcome as unresolved without asking for the one input needed to continue.
+Legacy generation also converted the first free-form SOP step into an
+`action_proposal`, even though no typed action had been selected or executed.
+
+The existing Composer now projects only a planner-owned, incomplete,
+non-factual customer-input action as a required anonymous action reference.
+Composer response v4 must select the exact required reference set while still
+returning one clause per authoritative customer goal. The server rejects
+missing, duplicate, unknown, and untrusted references; service actions remain
+outside Evidence and cannot change `can_send`. SOP prose is no longer promoted
+to typed action metadata.
+
+The frozen after-sales replay selected the existing order/tracking input action
+and asked for it naturally. The unchanged Fixed-8 then passed execution,
+Composer, and Deterministic Final `8/8`, with 22 selected evidence rows,
+supported attribution `4/4`, unresolved declarations `12/12`, formal DML `0`,
+human review `8/8`, and `can_send=0`. Unified Audit remained unavailable and
+advisory `8/8`; Autonomous Send remains blocked. Raw diagnostic goal recall is
+still `9/16` with `11` unexpected identities, including known after-sales alias
+drift, so no real-accuracy or overall Gold-quality claim is authorized.
