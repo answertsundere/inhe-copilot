@@ -12,6 +12,7 @@ from typing import Any
 
 from app.integrations.product_data_hub.read_client import (
     lookup_product_data_hub_bundle,
+    lookup_product_data_hub_reference,
 )
 
 PIPELINE_VERSION = "analysis-pipeline-v1"
@@ -151,23 +152,24 @@ def _product_contains_exact_sku(product: Any, sku: str) -> bool:
 def _verified_product_domain_policy_selector(
     request: "AnalysisPipelineRequest",
     context: dict[str, Any],
-) -> tuple[dict[str, Any], bool]:
+) -> tuple[dict[str, Any], bool, str]:
     """Resolve a policy only from one exact identifier and one published product.
 
-    The boolean marks that an identity was supplied. It prevents a global policy
-    from silently applying after an ambiguous, unpublished, or unbound product
-    identity was presented.
+    The boolean marks that an identity was supplied. The final value carries a
+    deterministic fail-closed reason when two authoritative mappings conflict.
+    Together they prevent a global policy from silently applying after an
+    ambiguous, unpublished, conflicting, or unbound product identity.
     """
     sku_values, iid_values = _collect_product_policy_identifiers(request, context)
     if not sku_values and not iid_values:
-        return {}, False
+        return {}, False, ""
     if len(sku_values) > 1 or len(iid_values) > 1:
-        return {}, True
+        return {}, True, ""
     try:
         from app.db import SessionLocal
         from app.models.kb_tables import KBProduct
     except Exception:
-        return {}, True
+        return {}, True, ""
 
     db = SessionLocal()
     try:
@@ -191,19 +193,41 @@ def _verified_product_domain_policy_selector(
             ):
                 if _product_contains_exact_sku(product, sku):
                     matches[product.id] = product
-        if len(matches) != 1:
-            return {}, True
-        product = next(iter(matches.values()))
-        domain_policy_id = _text_identifier(product.get_domain_policy_id())
-        if not domain_policy_id:
-            return {}, True
+        if len(matches) > 1:
+            return {}, True, ""
+        formal_policy_id = ""
+        if matches:
+            product = next(iter(matches.values()))
+            formal_policy_id = _text_identifier(product.get_domain_policy_id())
+
+        hub_result = lookup_product_data_hub_reference(
+            i_id=next(iter(iid_values), ""),
+            sku_id=next(iter(sku_values), ""),
+        )
+        hub_policy_id = ""
+        if str(hub_result.get("status") or "") == "resolved":
+            hub_product = hub_result.get("product")
+            if isinstance(hub_product, dict):
+                hub_policy_id = _text_identifier(
+                    hub_product.get("domain_policy_id")
+                )
+
+        selected = sorted({
+            value
+            for value in (formal_policy_id, hub_policy_id)
+            if value
+        })
+        if len(selected) > 1:
+            return {}, True, "domain_policy_id_conflict"
+        if not selected:
+            return {}, True, ""
         return {
             "catalog_metadata": {
-                "domain_policy_id": domain_policy_id,
+                "domain_policy_id": selected[0],
             },
-        }, True
+        }, True, ""
     except Exception:
-        return {}, True
+        return {}, True, ""
     finally:
         db.close()
 
@@ -725,11 +749,12 @@ class AnalysisPipelineService:
                 or {}
             )
         else:
-            domain_selector, product_identity_present = (
+            domain_selector, product_identity_present, product_invalid_reason = (
                 _verified_product_domain_policy_selector(request, context)
             )
             if product_identity_present:
                 owner_source = "verified_server_mapping"
+                invalid_owner_reason = product_invalid_reason
             else:
                 owner_source = "server_configuration"
                 configured_domain_policy_id = str(

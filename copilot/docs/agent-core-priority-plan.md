@@ -1330,3 +1330,28 @@ a safety regression:
 
 More tests, schemas, pages, providers, graph nodes, or reports are not progress
 unless they directly enable one of those outcomes.
+
+### Exact Product Policy Premise Retrieval Checkpoint (2026-08-25)
+
+Product Data Hub now owns the explicit per-product `domainPolicyId`; Copilot
+consumes only an exact, server-verified mapping through the existing
+AnalysisPipeline selector. A matching formal-knowledge mapping may corroborate
+the Hub value, while conflicting non-empty mappings fail closed. Category text,
+customer text, and public tenant/store/catalog fields remain ineligible.
+
+The earliest downstream break was the existing tool executor: it built Product
+Context Pack only after a RAG tool result, so an SOP-only policy plan skipped
+all product facts even when canonical product identity was already resolved.
+The same executor now builds the existing Pack for either a RAG result or an
+exact resolved product identity. Trusted Domain Policy premise fact families
+may narrow this product-context retrieval, but they do not become customer
+claims, admitted evidence, or answer authority by themselves.
+
+A query-only live replay resolved six direct `material_composition` facts for
+the exact product with zero formal-knowledge DML. The comparable first Fixed-8
+case did not produce a valid quality result because Turn Understanding returned
+`provider_request_failed`; no full Fixed-8 was run and
+`real_customer_accuracy=null` remains authoritative. Versioned synthetic
+regression passed `5/5` smoke and `22/22` full, all review-only with
+`can_send=0`. The next gate is one provider-stable replay of the frozen first
+case, followed by the unchanged Fixed-8; it is not another reply rule.

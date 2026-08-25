@@ -311,3 +311,21 @@ Before changing Agent behavior, verify:
 8. Did unsupported high-risk, media, or service actions remain blocked?
 9. Did unnecessary handoff, completion, naturalness, and latency improve?
 10. Were only the required durable documents updated?
+
+## 2026-08-25 Exact Product Policy Premise Retrieval
+
+- `ProductDataHubReadClient` validates and projects the Hub-owned
+  `domain_policy_id`; it does not infer policy from descriptive metadata.
+- `AnalysisPipelineService` reuses the existing verified selector. Matching Hub
+  and formal mappings are accepted, one available exact mapping is accepted,
+  and conflicting mappings fail closed.
+- The existing tool executor builds `ProductContextPackService` output for a
+  RAG result or an exact resolved product identity, closing the SOP-only plan
+  gap without a new owner or Graph node.
+- `ProductContextPackService` may use premise fact families from a trusted,
+  owner-stamped Domain Policy context to narrow retrieval. Those families are
+  not requested claims, evidence, or policy selection authority.
+- A query-only live replay returned six direct material facts; formal knowledge
+  DML was zero. The frozen quality scenario was not scorable because Turn
+  Understanding failed at Provider transport, so P1 remains active and
+  `real_customer_accuracy=null`.

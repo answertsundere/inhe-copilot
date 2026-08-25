@@ -728,6 +728,69 @@ def test_tool_executor_rebuilds_product_context_with_same_turn_order_identity(
     assert captured["matched_product_name"] == "resolved fixture product"
 
 
+def test_tool_executor_builds_product_context_for_exact_identity_without_rag_plan(
+    monkeypatch,
+):
+    from app.agent.tools.executor import tool_executor_node
+    from app.agent.tools.registry import get_tool_registry
+
+    registry = get_tool_registry()
+    sop = registry.get("sop_lookup_tool")
+    original_sop_handler = sop.handler
+    captured = {}
+
+    sop.handler = lambda _inputs, _state: {"sops": []}
+
+    def fake_build_product_context_pack(state, **_kwargs):
+        captured.update(state)
+        return {
+            "facts": [{"evidence_id": "hub-material-fact"}],
+            "stats": {"facts": 1},
+        }
+
+    monkeypatch.setattr(
+        "app.services.product_context_pack_service.build_product_context_pack",
+        fake_build_product_context_pack,
+    )
+
+    try:
+        result = tool_executor_node({
+            "tool_plan": [
+                {
+                    "tool_name": "sop_lookup_tool",
+                    "inputs": {"scenario": "review-only product guidance"},
+                },
+            ],
+            "customer_message": "Can you give bounded practical guidance?",
+            "normalized_message": "Can you give bounded practical guidance?",
+            "query_fact_type": "",
+            "allowed_source_types": ["faq", "response_templates"],
+            "order_product_identity": {
+                "status": "resolved",
+                "i_id": "PRODUCT-FIXTURE-001",
+                "sku_id": "SKU-FIXTURE-001",
+                "matched_product_name": "fixture product",
+            },
+            "slots": {
+                "i_id": "PRODUCT-FIXTURE-001",
+                "sku_code": "SKU-FIXTURE-001",
+            },
+            "copilot_context": {
+                "i_id": "PRODUCT-FIXTURE-001",
+                "sku_code": "SKU-FIXTURE-001",
+            },
+            "trace_steps": [],
+        })
+    finally:
+        sop.handler = original_sop_handler
+
+    assert captured["order_product_identity"]["status"] == "resolved"
+    assert result["product_context_pack"]["facts"] == [
+        {"evidence_id": "hub-material-fact"}
+    ]
+    assert result["product_context_pack_stats"] == {"facts": 1}
+
+
 # ---------------------------------------------------------------------------
 # G. ToolSpec 安全检查
 # ---------------------------------------------------------------------------

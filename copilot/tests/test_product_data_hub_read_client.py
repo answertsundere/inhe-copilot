@@ -18,6 +18,7 @@ class _HubHandler(BaseHTTPRequestHandler):
             "category": "家居用品",
             "catCode": "HOME-1",
             "catName": "家居用品",
+            "domainPolicyId": "maternal_child_home",
             "note": "不得成为正式客服事实",
             "status": "active",
             "updatedAt": "2026-08-21T10:00:00Z",
@@ -112,6 +113,7 @@ def test_exact_sku_and_product_codes_resolve_same_catalog_identity(product_hub_u
         "brand": "英禾",
         "category_code": "HOME-1",
         "category_name": "家居用品",
+        "domain_policy_id": "maternal_child_home",
         "status": "active",
         "updated_at": "2026-08-21T10:00:00Z",
     }
@@ -142,6 +144,28 @@ def test_exact_sku_resolves_its_parent_without_title_matching(product_hub_url):
     assert result["match_reason"] == "exact_sku_code"
     assert result["product"]["product_code"] == "P200"
     assert result["sku"]["sku_code"] == "S200-GREEN"
+    assert result["product"]["domain_policy_id"] == ""
+
+
+def test_product_policy_projection_ignores_category_and_rejects_malformed_control_metadata(
+    product_hub_url,
+):
+    from app.integrations.product_data_hub.read_client import ProductDataHubReadClient
+
+    client = ProductDataHubReadClient(product_hub_url, timeout_seconds=2)
+    original = _HubHandler.products[0].get("domainPolicyId")
+    try:
+        _HubHandler.products[0]["domainPolicyId"] = "../outside"
+        malformed = client.lookup_exact(i_id="P100")
+        assert malformed["status"] == "resolved"
+        assert malformed["product"]["domain_policy_id"] == ""
+
+        _HubHandler.products[0].pop("domainPolicyId", None)
+        missing = client.lookup_exact(i_id="P100")
+        assert missing["product"]["domain_policy_id"] == ""
+        assert missing["product"]["category_name"] == "家居用品"
+    finally:
+        _HubHandler.products[0]["domainPolicyId"] = original
 
 
 def test_mismatched_product_and_sku_fail_closed(product_hub_url):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from hashlib import sha256
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -32,6 +33,13 @@ def _code(value: Any) -> str:
 
 def _active(row: dict[str, Any]) -> bool:
     return str(row.get("status") or "").strip().lower() == "active"
+
+
+def _domain_policy_id(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", candidate):
+        return ""
+    return candidate
 
 
 class ProductDataHubReadClient:
@@ -356,6 +364,7 @@ class ProductDataHubReadClient:
             "brand": str(row.get("brand") or ""),
             "category_code": str(row.get("catCode") or ""),
             "category_name": str(row.get("catName") or row.get("category") or ""),
+            "domain_policy_id": _domain_policy_id(row.get("domainPolicyId")),
             "status": str(row.get("status") or ""),
             "updated_at": str(row.get("updatedAt") or ""),
         }

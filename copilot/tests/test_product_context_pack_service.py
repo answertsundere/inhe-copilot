@@ -2517,6 +2517,275 @@ def test_authoritative_requested_fact_types_does_not_promote_unmapped_goal():
     assert requested == ["moisture_resistance"]
 
 
+def _trusted_domain_policy_owner_context_for_product_pack() -> dict:
+    return {
+        "schema_version": "answer-eligibility-owner-context/v1",
+        "source": "evaluation_fixture",
+        "owner": "analysis_pipeline",
+        "provenance": {"boundary": "analysis_pipeline_internal"},
+        "domain_policy_context": {
+            "schema_version": "trusted-domain-policy-context/v1",
+            "status": "selected",
+            "trusted_owner": "analysis_pipeline",
+            "selection_source": "evaluation_fixture",
+            "pack_ref": "domain-policy:fixture_home@1.0.0",
+            "pack_schema_version": "domain-policy-pack/v1",
+            "pack_content_sha256": "a" * 64,
+            "domain_ref": "domain-" + "b" * 20,
+            "binding_summary": {
+                "tenant": False,
+                "store": False,
+                "catalog": True,
+            },
+            "provenance": {
+                "boundary": "analysis_pipeline_internal",
+                "selector_owner": "file_policy_repository",
+            },
+            "selected_at_stage": "canonical_input",
+            "validation_reasons": [],
+            "used_for_evidence": False,
+            "used_for_fact_support": False,
+            "can_change_can_send": False,
+        },
+    }
+
+
+def test_product_context_fact_types_include_trusted_policy_premise_only_for_retrieval(
+    monkeypatch,
+):
+    from app.repositories.file_policy_repository import FilePolicyRepository
+    from app.services.product_context_pack_service import (
+        authoritative_product_context_fact_types,
+        authoritative_requested_fact_types,
+    )
+
+    monkeypatch.setattr(
+        FilePolicyRepository,
+        "resolve_domain_policy_pack",
+        lambda _self, _context: {
+            "status": "loaded",
+            "bounded_inference_policies": [
+                {
+                    "policy_intent_ref": "fixture_practical_guidance",
+                    "goal_family": "fixture_durability",
+                    "intent_kind": "practical_guidance",
+                    "premise_fact_families": ["material_composition"],
+                    "review_only": True,
+                }
+            ],
+        },
+    )
+    state = {
+        "copilot_context": {
+            "_answer_eligibility_owner_context": (
+                _trusted_domain_policy_owner_context_for_product_pack()
+            )
+        },
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "requested_claims": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "",
+                    "claim_type_status": "unmapped",
+                    "policy_intent_ref": "fixture_practical_guidance",
+                    "policy_goal_family": "fixture_durability",
+                    "policy_intent_kind": "practical_guidance",
+                }
+            ],
+        },
+    }
+
+    assert authoritative_requested_fact_types(state) == []
+    assert authoritative_product_context_fact_types(state) == [
+        "material_composition"
+    ]
+
+
+def test_product_context_fact_types_ignore_untrusted_policy_context(monkeypatch):
+    from app.repositories.file_policy_repository import FilePolicyRepository
+    from app.services.product_context_pack_service import (
+        authoritative_product_context_fact_types,
+    )
+
+    monkeypatch.setattr(
+        FilePolicyRepository,
+        "resolve_domain_policy_pack",
+        lambda _self, _context: {
+            "status": "loaded",
+            "bounded_inference_policies": [
+                {
+                    "policy_intent_ref": "fixture_practical_guidance",
+                    "goal_family": "fixture_durability",
+                    "intent_kind": "practical_guidance",
+                    "premise_fact_families": ["material_composition"],
+                    "review_only": True,
+                }
+            ],
+        },
+    )
+
+    assert authoritative_product_context_fact_types({
+        "copilot_context": {
+            "_answer_eligibility_owner_context": {
+                "schema_version": "answer-eligibility-owner-context/v1",
+                "source": "public_request",
+                "owner": "public_request",
+                "provenance": {"boundary": "public_request"},
+                "domain_policy_context": {
+                    "catalog_metadata": {
+                        "domain_policy_id": "fixture_home"
+                    }
+                },
+            }
+        },
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "requested_claims": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "",
+                    "claim_type_status": "unmapped",
+                    "policy_intent_ref": "fixture_practical_guidance",
+                    "policy_goal_family": "fixture_durability",
+                    "policy_intent_kind": "practical_guidance",
+                }
+            ],
+        },
+    }) == []
+
+
+def test_product_context_pack_uses_trusted_policy_premise_to_rank_hub_facts(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.repositories.file_policy_repository import FilePolicyRepository
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(config, "COPILOT_PRODUCT_DATA_HUB_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        FilePolicyRepository,
+        "resolve_domain_policy_pack",
+        lambda _self, _context: {
+            "status": "loaded",
+            "bounded_inference_policies": [
+                {
+                    "policy_intent_ref": "fixture_practical_guidance",
+                    "goal_family": "fixture_durability",
+                    "intent_kind": "practical_guidance",
+                    "premise_fact_families": ["material_composition"],
+                    "review_only": True,
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-policy",
+                "product_code": "PRODUCT-POLICY-001",
+                "product_name": "Policy fixture product",
+            },
+            "sku": {
+                "hub_sku_id": "hub-sku-policy",
+                "sku_code": "SKU-POLICY-001",
+            },
+            "reference_only": False,
+            "used_for_fact": True,
+            "source": "product_data_hub",
+            "facts": [
+                {
+                    "fact_uid": "product_data_hub:age",
+                    "fact_type": "age_range",
+                    "attribute_key": "age_range",
+                    "value": "3+",
+                    "unit": "years",
+                    "scope": "product",
+                    "source": "product_data_hub:confirmed_record",
+                    "review_status": "confirmed",
+                    "identity_scope": {
+                        "hub_product_id": "hub-product-policy",
+                        "hub_sku_id": "hub-sku-policy",
+                    },
+                },
+                {
+                    "fact_uid": "product_data_hub:material",
+                    "fact_type": "material",
+                    "attribute_key": "material",
+                    "value": "PP",
+                    "unit": "",
+                    "scope": "product",
+                    "source": "product_data_hub:confirmed_record",
+                    "review_status": "confirmed",
+                    "identity_scope": {
+                        "hub_product_id": "hub-product-policy",
+                        "hub_sku_id": "hub-sku-policy",
+                    },
+                },
+            ],
+            "assets": [],
+        },
+    )
+    state = {
+        "slots": {
+            "i_id": "PRODUCT-POLICY-001",
+            "sku_code": "SKU-POLICY-001",
+        },
+        "copilot_context": {
+            "_answer_eligibility_owner_context": (
+                _trusted_domain_policy_owner_context_for_product_pack()
+            )
+        },
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "requested_claims": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type": "",
+                    "claim_type_status": "unmapped",
+                    "policy_intent_ref": "fixture_practical_guidance",
+                    "policy_goal_family": "fixture_durability",
+                    "policy_intent_kind": "practical_guidance",
+                }
+            ],
+        },
+    }
+
+    pack = product_context_pack_service.build_product_context_pack(
+        state,
+        query="Give bounded practical guidance.",
+        allowed_source_types=["faq", "response_templates"],
+        query_fact_type="",
+    )
+
+    assert pack["stats"]["authoritative_requested_fact_types"] == []
+    assert pack["stats"]["product_context_requested_fact_types"] == [
+        "material_composition"
+    ]
+    assert [item["fact_type"] for item in pack["facts"]] == ["material"]
+    assert pack["facts"][0]["evidence_id"] == "product_data_hub:material"
+
+
 def test_multi_goal_product_pack_converges_supported_and_unresolved_claims(
     product_context_db,
 ):

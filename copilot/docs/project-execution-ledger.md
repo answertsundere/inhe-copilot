@@ -549,3 +549,28 @@ reports must retain `real_customer_accuracy=null` and
   is therefore an explicit, reviewed Product Hub product-to-policy binding that
   feeds the existing trusted selector; Copilot must not infer a policy from a
   category name or customer text.
+
+## 2026-08-25 P1 Exact Product Policy Premise Retrieval
+
+- Product Data Hub deployed an explicit `maternal_child_home` policy binding
+  for all `424` active products. Copilot reads the exact mapping and rejects
+  malformed values or conflicts with formal knowledge; no category inference
+  was introduced.
+- Root cause: the existing executor constructed Product Context Pack only after
+  `rag_search_tool`. The frozen durability plan was SOP-only, despite having an
+  exact resolved product identity, so the Pack and every material premise were
+  absent before Claim Resolution.
+- The executor now invokes the same Pack for exact resolved identity. The Pack
+  uses only trusted selected Domain Policy premise fact families to narrow
+  product-context retrieval; the premise declarations do not become customer
+  claims or evidence.
+- A deterministic query-only live replay returned six direct
+  `material_composition` facts with stable provenance and zero formal-knowledge
+  DML. The first comparable Fixed-8 attempt stopped as non-scorable after one
+  Turn Understanding `provider_request_failed`; no full Fixed-8 was run and no
+  retry was used to chase a favorable model result.
+- Component regression passed `517` tests. Versioned Synthetic passed smoke
+  `5/5` and full `22/22`, with human review `22/22` and `can_send=0`. Repeated
+  RAG latency warnings of roughly `4-6.6s` remain a performance risk, not a
+  contract pass for Gold quality. `real_customer_accuracy=null` and
+  `optimization_unverified=true` remain authoritative.

@@ -996,6 +996,122 @@ def test_pipeline_keeps_legacy_query_only_catalog_usable_without_policy_column(
     assert owner_context["domain_policy_context"]["status"] == "missing"
 
 
+def _resolved_hub_policy(policy_id: str) -> dict:
+    return {
+        "status": "resolved",
+        "reason": "",
+        "match_reason": "exact_sku_code",
+        "product": {
+            "hub_product_id": "hub-product-1",
+            "product_code": "POLICY-PRODUCT-HUB",
+            "domain_policy_id": policy_id,
+            "status": "active",
+        },
+        "sku": {"hub_sku_id": "hub-sku-1", "sku_code": "POLICY-SKU-HUB"},
+        "reference_only": True,
+        "used_for_fact": False,
+        "source": "product_data_hub",
+    }
+
+
+def test_pipeline_uses_explicit_hub_policy_after_exact_identity_resolution(
+    monkeypatch,
+    published_product_policy_db,
+):
+    import app.services.analysis_pipeline_service as pipeline_module
+
+    monkeypatch.delenv("COPILOT_DOMAIN_POLICY_ID", raising=False)
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-HUB",
+        sku_code="POLICY-SKU-HUB",
+        domain_policy_id="",
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "lookup_product_data_hub_reference",
+        lambda **_kwargs: _resolved_hub_policy("maternal_child_home"),
+    )
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            product_candidates=[{"type": "sku_code", "value": "POLICY-SKU-HUB"}],
+        )
+    )
+
+    owner_context = prepared.copilot_context["_answer_eligibility_owner_context"]
+    assert owner_context["source"] == "verified_server_mapping"
+    assert owner_context["domain_policy_context"]["status"] == "selected"
+    assert owner_context["domain_policy_context"]["pack_ref"] == _current_domain_pack_ref()
+
+
+def test_pipeline_accepts_matching_formal_and_hub_policy_bindings(
+    monkeypatch,
+    published_product_policy_db,
+):
+    import app.services.analysis_pipeline_service as pipeline_module
+
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-HUB",
+        sku_code="POLICY-SKU-HUB",
+        domain_policy_id="maternal_child_home",
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "lookup_product_data_hub_reference",
+        lambda **_kwargs: _resolved_hub_policy("maternal_child_home"),
+    )
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            product_candidates=[{"type": "sku_code", "value": "POLICY-SKU-HUB"}],
+        )
+    )
+
+    domain_context = prepared.copilot_context["_answer_eligibility_owner_context"][
+        "domain_policy_context"
+    ]
+    assert domain_context["status"] == "selected"
+    assert domain_context["selection_source"] == "verified_server_mapping"
+
+
+def test_pipeline_rejects_conflicting_formal_and_hub_policy_bindings(
+    monkeypatch,
+    published_product_policy_db,
+):
+    import app.services.analysis_pipeline_service as pipeline_module
+
+    published_product_policy_db(
+        i_id="POLICY-PRODUCT-HUB",
+        sku_code="POLICY-SKU-HUB",
+        domain_policy_id="maternal_child_home",
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "lookup_product_data_hub_reference",
+        lambda **_kwargs: _resolved_hub_policy("other_policy"),
+    )
+
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="test",
+            copilot_context={"catalog_metadata": {"domain_policy_id": "public_injection"}},
+            product_candidates=[{"type": "sku_code", "value": "POLICY-SKU-HUB"}],
+        )
+    )
+
+    owner_context = prepared.copilot_context["_answer_eligibility_owner_context"]
+    assert owner_context["source"] == "verified_server_mapping"
+    assert owner_context["domain_policy_context"]["status"] == "invalid"
+    assert "domain_policy_id_conflict" in owner_context["domain_policy_context"][
+        "validation_reasons"
+    ]
+
+
 def test_disabled_decision_shadow_reports_provider_block_without_a_candidate_reply(pipeline_harness, monkeypatch):
     monkeypatch.delenv("COPILOT_LLM_DECISION_SHADOW_ENABLED", raising=False)
 

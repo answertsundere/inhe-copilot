@@ -56,10 +56,94 @@ def authoritative_requested_fact_types(
     return result
 
 
+def authoritative_product_context_fact_types(
+    state: dict[str, Any] | None,
+    primary_fact_type: str = "",
+) -> list[str]:
+    """Return direct claim types plus trusted policy premise retrieval types.
+
+    Domain policy premises may narrow product-context acquisition, but they do
+    not become requested customer claims or evidence by themselves.
+    """
+    result = authoritative_requested_fact_types(state, primary_fact_type)
+    state = state if isinstance(state, dict) else {}
+    context = (
+        state.get("copilot_context")
+        if isinstance(state.get("copilot_context"), dict)
+        else {}
+    )
+    try:
+        from app.repositories.file_policy_repository import FilePolicyRepository
+        from app.services.canonical_conversation_turn_service import (
+            normalize_trusted_answer_eligibility_owner_context,
+        )
+
+        owner_context = normalize_trusted_answer_eligibility_owner_context(
+            context.get("_answer_eligibility_owner_context")
+        )
+        trusted_context = owner_context.get("domain_policy_context")
+        trusted_context = (
+            trusted_context if isinstance(trusted_context, dict) else {}
+        )
+        if trusted_context.get("status") != "selected":
+            return result
+        domain_pack = FilePolicyRepository().resolve_domain_policy_pack(
+            trusted_context
+        )
+    except Exception:
+        return result
+    if str(domain_pack.get("status") or "").strip().lower() != "loaded":
+        return result
+
+    policies = [
+        item
+        for item in domain_pack.get("bounded_inference_policies") or []
+        if isinstance(item, dict) and item.get("review_only") is True
+    ]
+    premise_types: set[str] = set()
+    for goal in _authoritative_customer_goals(state):
+        intent_ref = str(goal.get("policy_intent_ref") or "").strip().lower()
+        goal_family = str(goal.get("policy_goal_family") or "").strip().lower()
+        intent_kind = str(goal.get("policy_intent_kind") or "").strip().lower()
+        if not intent_ref or not goal_family or not intent_kind:
+            continue
+        matches = [
+            policy
+            for policy in policies
+            if str(policy.get("policy_intent_ref") or "").strip().lower()
+            == intent_ref
+            and str(policy.get("goal_family") or "").strip().lower()
+            == goal_family
+            and str(policy.get("intent_kind") or "").strip().lower()
+            == intent_kind
+        ]
+        if len(matches) != 1:
+            continue
+        premise_types.update(
+            str(value or "").strip()
+            for value in matches[0].get("premise_fact_families") or []
+            if str(value or "").strip()
+        )
+    result.extend(sorted(premise_types - set(result)))
+    return result
+
+
 def _authoritative_requested_claims(
     state: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     """Return only customer goals owned by a valid understanding result."""
+    return [
+        claim
+        for claim in _authoritative_customer_goals(state)
+        if str(claim.get("claim_type_status") or "").strip().lower()
+        != "unmapped"
+    ]
+
+
+def _authoritative_customer_goals(
+    state: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Return valid owner-stamped customer goals, including policy goals."""
     state = state if isinstance(state, dict) else {}
     understanding = state.get("turn_understanding")
     if not isinstance(understanding, dict):
@@ -81,7 +165,6 @@ def _authoritative_requested_claims(
         for claim in requested_claims
         if isinstance(claim, dict)
         and str(claim.get("goal_kind") or "").strip().lower() == "customer_goal"
-        and str(claim.get("claim_type_status") or "").strip().lower() != "unmapped"
     ]
 
 
@@ -183,7 +266,11 @@ def build_product_context_pack(
 
     allowed = set(allowed_source_types or [])
     semantic_query = state.get("semantic_query") if isinstance(state.get("semantic_query"), dict) else {}
-    requested_fact_types = authoritative_requested_fact_types(
+    direct_requested_fact_types = authoritative_requested_fact_types(
+        state,
+        query_fact_type,
+    )
+    requested_fact_types = authoritative_product_context_fact_types(
         state,
         query_fact_type,
     )
@@ -464,7 +551,8 @@ def build_product_context_pack(
                 "provisional_knowledge_count": len(provisional_evidence),
                 "has_structured_profile": bool(structured_profile),
                 "query_fact_type": query_fact_type,
-                "authoritative_requested_fact_types": requested_fact_types,
+                "authoritative_requested_fact_types": direct_requested_fact_types,
+                "product_context_requested_fact_types": requested_fact_types,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
                 "knowledge_mode": evidence_pack.get("knowledge_mode", "verified_only"),
                 "catalog_reference_status": catalog_reference.get("status", ""),

@@ -482,6 +482,11 @@ Current boundaries:
   Composer receives them only through the explicitly non-authoritative
   projection documented in `docs/architecture-overview.md`; they cannot replace
   admitted evidence or an eligible Domain Policy option.
+- Product Data Hub owns explicit per-product Domain Policy bindings. Exact Hub
+  identity and trusted policy premise families may narrow Product Context Pack
+  retrieval through the existing Pipeline, but they do not create claims or
+  evidence. Conflicting formal and Hub mappings fail closed; see
+  `docs/architecture-overview.md` and `docs/module-index.md`.
 
 ## Replay, Evaluation, And Training Data
 

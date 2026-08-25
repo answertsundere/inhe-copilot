@@ -1338,3 +1338,26 @@ accepting public tenant/store/catalog metadata, remains prohibited.
 - `docs/research/mature-customer-service-systems.md`: mature-system patterns.
 - `docs/research/evidence-first-llm-decision-loop.md`: evidence/tool/model
   boundary research.
+
+### Exact Product Policy Premise Retrieval
+
+Product Data Hub is the current control-plane owner for an explicit product-to-
+Domain-Policy binding. The existing AnalysisPipeline selector accepts only an
+exact, validated Hub `domainPolicyId`; an optional formal-knowledge value must
+match it, and a conflict fails closed. Copilot does not derive the binding from
+category names, titles, buyer text, tenant metadata, or semantic similarity.
+
+The existing tool executor constructs Product Context Pack when the current
+tool result includes RAG or when canonical `order_product_identity` is already
+exactly resolved. This lets an SOP-only policy path retrieve current product
+facts without adding a Graph node, service, model call, registry, or reply
+owner. Trusted Domain Policy `premise_fact_families` are retrieval constraints
+only. They cannot create requested claims or satisfy Claim Resolution until the
+corresponding Product Hub facts pass the existing identity, review, role,
+conflict, and Evidence Admission contracts.
+
+Formal Evidence Convergence remains opt-in, Deterministic Final and Delivery
+are unchanged, and this bridge grants no send authority. The live deterministic
+replay returned exact material premises with zero knowledge DML; the Fixed-8
+quality gate remains blocked by a Turn Understanding Provider transport failure
+and therefore establishes neither reply quality nor real accuracy.

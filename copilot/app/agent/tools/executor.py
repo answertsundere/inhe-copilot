@@ -880,9 +880,17 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
         retry_rag = _retry_rag_after_product_resolver(state, resolver)
         if retry_rag.get("chunks"):
             rag = retry_rag
-    if isinstance(rag, dict):
-        chunks = rag.get("chunks", []) or []
-        product_context_pack = {"facts": [], "stats": {}}
+
+    product_context_pack = {"facts": [], "stats": {}}
+    identity = state.get("order_product_identity") or {}
+    should_build_product_context = (
+        isinstance(rag, dict)
+        or (
+            isinstance(identity, dict)
+            and identity.get("status") == "resolved"
+        )
+    )
+    if should_build_product_context:
         try:
             from app.services.product_context_pack_service import build_product_context_pack
             pack_state = {**state, **fields}
@@ -894,10 +902,15 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
                 query_fact_type=pack_state.get("query_fact_type", ""),
                 top_k=8,
             )
-            chunks = _merge_ranked_results(chunks, product_context_pack.get("facts", []), limit=8)
-            chunks = _prefer_matching_fact_type(chunks, pack_state.get("query_fact_type", ""))
+            fields["product_context_pack"] = product_context_pack
+            fields["product_context_pack_stats"] = product_context_pack.get("stats", {})
         except Exception as exc:
             logger.warning("Product context pack failed in tool executor: %s", exc)
+
+    if isinstance(rag, dict):
+        chunks = rag.get("chunks", []) or []
+        chunks = _merge_ranked_results(chunks, product_context_pack.get("facts", []), limit=8)
+        chunks = _prefer_matching_fact_type(chunks, state.get("query_fact_type", ""))
         try:
             from app.agent.nodes.evidence_filter_node import _has_compare_evidence, _is_compare_query
             from app.services.evidence_fact_gate_service import evaluate_evidence_item, sanitize_risky_convenience_claim
@@ -935,8 +948,6 @@ def _extract_rag_and_product_fields(tool_results: dict, state: dict) -> dict:
             pass
         fields["retrieved_chunks"] = chunks
         fields["rag_retrieval_mode"] = rag.get("retrieval_mode", "")
-        fields["product_context_pack"] = product_context_pack
-        fields["product_context_pack_stats"] = product_context_pack.get("stats", {})
         if chunks:
             # Tool Registry path skips evidence_filter_node, so expose equivalent
             # state fields for debug and used_knowledge_* extraction.
