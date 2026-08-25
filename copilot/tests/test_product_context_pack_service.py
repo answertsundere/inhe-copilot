@@ -298,6 +298,333 @@ def test_product_context_pack_admits_exact_hub_facts_and_labeled_media_when_enab
     assert pack["product_first_evidence_pack"]["answerability"] == "direct_answer"
 
 
+def test_product_context_pack_keeps_ranked_install_video_ahead_of_hub_install_image(
+    product_context_db,
+    monkeypatch,
+):
+    from datetime import timedelta
+
+    import app.config as config
+    from app.models.kb_tables import KBMediaAsset, KBProduct
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "reason": "",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-install",
+                "product_code": "MEDIA-PRODUCT-1",
+                "product_name": "测试安装商品",
+            },
+            "sku": {
+                "hub_sku_id": "hub-sku-install",
+                "sku_code": "MEDIA-PRODUCT-1-SKU-1",
+            },
+            "reference_only": False,
+            "used_for_fact": True,
+            "facts": [],
+            "assets": [{
+                "asset_id": "hub-install-image",
+                "asset_type": "install_image",
+                "labels": ["安装说明"],
+                "label_note": "安装步骤说明图",
+                "spec_ref": "",
+                "asset_title": "安装说明图",
+                "asset_url": "http://127.0.0.1:8795/api/v2/media/preview/hub-install-image",
+                "source": "product_data_hub",
+                "product_code": "MEDIA-PRODUCT-1",
+                "sku_code": "MEDIA-PRODUCT-1-SKU-1",
+                "auto_send_level": "auto",
+            }],
+        },
+    )
+
+    db = product_context_db()
+    try:
+        product = KBProduct(
+            i_id="MEDIA-PRODUCT-1",
+            product_name="测试安装商品",
+            sku_list_json=json.dumps(
+                [{"sku_code": "MEDIA-PRODUCT-1-SKU-1"}],
+                ensure_ascii=False,
+            ),
+            status="published",
+        )
+        db.add(product)
+        db.flush()
+        db.add(KBMediaAsset(
+            product_id=product.id,
+            i_id="MEDIA-PRODUCT-1",
+            sku_code="MEDIA-PRODUCT-1-SKU-1",
+            product_name="测试安装商品",
+            asset_type="install_video",
+            asset_title="当前款式安装视频",
+            asset_url="https://assets.example/install.mp4",
+            status="approved",
+            usable_for_agent=1,
+            refresh_status="ok",
+            match_confidence=0.95,
+            url_expires_at=datetime.utcnow() + timedelta(days=1),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {
+            "slots": {
+                "i_id": "MEDIA-PRODUCT-1",
+                "sku_code": "MEDIA-PRODUCT-1-SKU-1",
+            },
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "requested_claims": [{
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "installation",
+                }],
+                "customer_goals": [{
+                    "schema_version": "turn-understanding-goal-identity/v2",
+                    "owner": "turn_understanding_owner",
+                    "source": "current_customer_message",
+                    "goal_kind": "media_request",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "semantic_key": "installation_video",
+                }],
+            },
+        },
+        query="请提供当前款式对应的安装资料",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="installation",
+    )
+
+    assert pack["recommended_assets"][0]["asset_type"] == "install_video"
+    assert pack["recommended_assets"][0]["asset_id"] != "hub-install-image"
+
+
+def test_product_context_pack_uses_authoritative_secondary_goal_for_media_collection(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.models.kb_tables import KBProduct
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "reason": "",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-secondary",
+                "product_code": "MEDIA-PRODUCT-2",
+                "product_name": "测试拆装商品",
+            },
+            "sku": {
+                "hub_sku_id": "hub-sku-secondary",
+                "sku_code": "MEDIA-PRODUCT-2-SKU-1",
+            },
+            "reference_only": False,
+            "used_for_fact": True,
+            "facts": [],
+            "assets": [{
+                "asset_id": "hub-secondary-install-image",
+                "asset_type": "install_image",
+                "labels": ["安装说明"],
+                "label_note": "部件拆下后按图装回",
+                "spec_ref": "",
+                "asset_title": "拆装说明图",
+                "asset_url": "http://127.0.0.1:8795/api/v2/media/preview/hub-secondary-install-image",
+                "source": "product_data_hub",
+                "product_code": "MEDIA-PRODUCT-2",
+                "sku_code": "MEDIA-PRODUCT-2-SKU-1",
+                "auto_send_level": "auto",
+            }],
+        },
+    )
+
+    db = product_context_db()
+    try:
+        db.add(KBProduct(
+            i_id="MEDIA-PRODUCT-2",
+            product_name="测试拆装商品",
+            sku_list_json=json.dumps(
+                [{"sku_code": "MEDIA-PRODUCT-2-SKU-1"}],
+                ensure_ascii=False,
+            ),
+            status="published",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    state = {
+        "slots": {
+            "i_id": "MEDIA-PRODUCT-2",
+            "sku_code": "MEDIA-PRODUCT-2-SKU-1",
+        },
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "requested_claims": [
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "detachable",
+                },
+                {
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "canonical",
+                    "claim_type": "installation",
+                },
+            ],
+        },
+    }
+
+    pack = product_context_pack_service.build_product_context_pack(
+        state,
+        query="这个能拆下来清洁吗，之后怎么恢复原样",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["stats"]["authoritative_requested_fact_types"] == [
+        "detachable",
+        "installation",
+    ]
+    assert pack["recommended_assets"][0]["asset_type"] == "install_image"
+    assert pack["recommended_assets"][0]["asset_id"] == "hub-secondary-install-image"
+
+
+def test_product_context_pack_does_not_use_untrusted_secondary_hint_for_hub_media(
+    product_context_db,
+    monkeypatch,
+):
+    import app.config as config
+    from app.services import product_context_pack_service
+
+    monkeypatch.setattr(
+        config,
+        "COPILOT_PRODUCT_HUB_MULTIMODAL_DELIVERY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_context_pack_service,
+        "lookup_product_data_hub_bundle",
+        lambda **_kwargs: {
+            "status": "resolved",
+            "reason": "",
+            "match_reason": "exact_product_and_sku_code",
+            "product": {
+                "hub_product_id": "hub-product-untrusted",
+                "product_code": "MEDIA-PRODUCT-3",
+                "product_name": "测试未授权商品",
+            },
+            "sku": {
+                "hub_sku_id": "hub-sku-untrusted",
+                "sku_code": "MEDIA-PRODUCT-3-SKU-1",
+            },
+            "reference_only": False,
+            "used_for_fact": True,
+            "facts": [],
+            "assets": [{
+                "asset_id": "hub-untrusted-install-image",
+                "asset_type": "install_image",
+                "labels": ["安装说明"],
+                "label_note": "安装说明",
+                "asset_title": "安装说明图",
+                "asset_url": "http://127.0.0.1:8795/api/v2/media/preview/hub-untrusted-install-image",
+                "source": "product_data_hub",
+                "product_code": "MEDIA-PRODUCT-3",
+                "sku_code": "MEDIA-PRODUCT-3-SKU-1",
+                "auto_send_level": "auto",
+            }],
+        },
+    )
+
+    pack = product_context_pack_service.build_product_context_pack(
+        {
+            "slots": {
+                "i_id": "MEDIA-PRODUCT-3",
+                "sku_code": "MEDIA-PRODUCT-3-SKU-1",
+            },
+            "secondary_fact_types": ["installation"],
+        },
+        query="这个能拆下来清洁吗",
+        allowed_source_types=["product_facts", "faq"],
+        query_fact_type="detachable",
+    )
+
+    assert pack["stats"]["authoritative_requested_fact_types"] == ["detachable"]
+    assert pack["recommended_assets"] == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("owner", "caller_supplied"),
+        ("source", "previous_conversation"),
+        ("goal_kind", "customer_goal"),
+        ("claim_type_status", "canonical"),
+        ("claim_type", "installation"),
+    ],
+)
+def test_authoritative_requested_media_types_rejects_untrusted_goal_fields(
+    field,
+    value,
+):
+    from app.services.product_context_pack_service import (
+        authoritative_requested_media_types,
+    )
+
+    goal = {
+        "schema_version": "turn-understanding-goal-identity/v2",
+        "owner": "turn_understanding_owner",
+        "source": "current_customer_message",
+        "goal_kind": "media_request",
+        "claim_type_status": "unmapped",
+        "claim_type": "",
+        "semantic_key": "installation_video",
+    }
+    goal[field] = value
+    state = {
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "customer_goals": [goal],
+        }
+    }
+
+    assert authoritative_requested_media_types(state) == []
+
+
 def test_exact_product_hub_pair_wins_before_legacy_identity_resolution(
     product_context_db,
     monkeypatch,

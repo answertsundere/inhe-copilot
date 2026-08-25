@@ -56,6 +56,46 @@ def authoritative_requested_fact_types(
     return result
 
 
+def authoritative_requested_media_types(
+    state: dict[str, Any] | None,
+) -> list[str]:
+    """Return media roles requested by a valid non-factual customer goal."""
+    state = state if isinstance(state, dict) else {}
+    understanding = state.get("turn_understanding")
+    if not isinstance(understanding, dict):
+        return []
+    if (
+        understanding.get("schema_version") != "turn-understanding/v2"
+        or understanding.get("owner") != "turn_understanding_owner"
+        or understanding.get("source_stage") != "query_fact_type_classifier"
+        or str(understanding.get("goal_understanding_status") or "").strip().lower()
+        != "valid"
+    ):
+        return []
+
+    result: list[str] = []
+    for goal in understanding.get("customer_goals") or []:
+        if not isinstance(goal, dict):
+            continue
+        if (
+            goal.get("schema_version") != "turn-understanding-goal-identity/v2"
+            or goal.get("owner") != "turn_understanding_owner"
+            or goal.get("source") != "current_customer_message"
+            or str(goal.get("goal_kind") or "").strip().lower() != "media_request"
+            or str(goal.get("claim_type_status") or "").strip().lower() != "unmapped"
+            or str(goal.get("claim_type") or "").strip()
+        ):
+            continue
+        semantic_key = str(goal.get("semantic_key") or "").strip().lower()
+        for asset_type in _MEDIA_REQUEST_ASSET_TYPES_BY_SEMANTIC_KEY.get(
+            semantic_key,
+            (),
+        ):
+            if asset_type not in result:
+                result.append(asset_type)
+    return result
+
+
 def authoritative_product_context_fact_types(
     state: dict[str, Any] | None,
     primary_fact_type: str = "",
@@ -274,6 +314,7 @@ def build_product_context_pack(
         state,
         query_fact_type,
     )
+    requested_media_types = authoritative_requested_media_types(state)
     hub_facts = _hub_bundle_facts_for_query(
         catalog_reference,
         state=state,
@@ -290,6 +331,7 @@ def build_product_context_pack(
         identity=identity,
         query=query,
         query_fact_type=query_fact_type,
+        requested_fact_types=requested_fact_types,
         enabled=hub_multimodal_enabled,
     )
     db = SessionLocal()
@@ -324,12 +366,21 @@ def build_product_context_pack(
             "product_name": structured_profile.get("product_name") or identity.get("product_name", ""),
         }
         recommended_assets = _rank_media_assets_for_query(
-            media_assets, query=query, query_fact_type=query_fact_type, limit=1, signals=signals
+            media_assets,
+            query=query,
+            query_fact_type=query_fact_type,
+            requested_fact_types=requested_fact_types,
+            limit=5,
+            signals=signals,
         )
         media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
         media_assets = _deduplicate_media_assets([*hub_media_assets, *media_assets])
-        recommended_assets = _deduplicate_media_assets([*hub_media_assets, *recommended_assets])[:1]
+        recommended_assets = _rank_projected_media_assets(
+            [*hub_media_assets, *recommended_assets],
+            requested_media_types=requested_media_types,
+            limit=1,
+        )
         candidates.extend(hub_facts)
         candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
         candidates.extend(provisional_evidence)
@@ -699,6 +750,10 @@ _HUB_MEDIA_TYPES_BY_FACT_TYPE = {
     "space_fit": ("size_image",),
 }
 
+_MEDIA_REQUEST_ASSET_TYPES_BY_SEMANTIC_KEY = {
+    "installation_video": ("install_video",),
+}
+
 
 def _requested_hub_dimension_scopes(
     query_fact_type: str,
@@ -925,10 +980,15 @@ def _hub_bundle_media_assets_for_query(
     query: str,
     query_fact_type: str,
     enabled: bool,
+    requested_fact_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     if not enabled or bundle.get("status") != "resolved" or bundle.get("used_for_fact") is not True:
         return []
-    wanted = _HUB_MEDIA_TYPES_BY_FACT_TYPE.get(query_fact_type or "", ())
+    wanted: list[str] = []
+    for fact_type in _ordered_fact_types(query_fact_type, requested_fact_types):
+        for asset_type in _HUB_MEDIA_TYPES_BY_FACT_TYPE.get(fact_type, ()):
+            if asset_type not in wanted:
+                wanted.append(asset_type)
     if not wanted:
         return []
     order = {asset_type: index for index, asset_type in enumerate(wanted)}
@@ -1997,11 +2057,16 @@ def _rank_media_assets_for_query(
     query: str,
     query_fact_type: str,
     limit: int,
+    requested_fact_types: list[str] | None = None,
     signals: dict[str, Any] | None = None,
 ) -> list[Any]:
     if not media_assets:
         return []
-    priority = _media_priority(query, query_fact_type)
+    priority = _media_priority_for_fact_types(
+        query,
+        query_fact_type,
+        requested_fact_types,
+    )
     if not priority:
         return []
     order = {asset_type: idx for idx, asset_type in enumerate(priority)}
@@ -2018,6 +2083,56 @@ def _rank_media_assets_for_query(
         -float(asset.match_confidence or 0),
     ))
     return ranked[:limit]
+
+
+def _rank_projected_media_assets(
+    items: list[dict[str, Any]],
+    *,
+    requested_media_types: list[str] | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    deduplicated = _deduplicate_media_assets(items)
+    order = {
+        asset_type: index
+        for index, asset_type in enumerate(requested_media_types or [])
+    }
+    ranked = list(enumerate(deduplicated))
+    ranked.sort(key=lambda pair: (
+        order.get(
+            str(pair[1].get("asset_type") or ""),
+            len(order),
+        ),
+        pair[0],
+    ))
+    return [item for _index, item in ranked[:limit]]
+
+
+def _ordered_fact_types(
+    query_fact_type: str,
+    requested_fact_types: list[str] | None,
+) -> list[str]:
+    ordered: list[str] = []
+    for value in [query_fact_type, *(requested_fact_types or [])]:
+        normalized = str(value or "").strip()
+        if normalized and normalized not in ordered:
+            ordered.append(normalized)
+    return ordered
+
+
+def _media_priority_for_fact_types(
+    query: str,
+    query_fact_type: str,
+    requested_fact_types: list[str] | None,
+) -> list[str]:
+    priority: list[str] = []
+    for fact_type in _ordered_fact_types(query_fact_type, requested_fact_types):
+        for asset_type in _media_priority("", fact_type):
+            if asset_type not in priority:
+                priority.append(asset_type)
+    for asset_type in _media_priority(query, query_fact_type):
+        if asset_type not in priority:
+            priority.append(asset_type)
+    return priority
 
 
 def _media_identity_safe_for_signals(asset: Any, signals: dict[str, Any]) -> bool:

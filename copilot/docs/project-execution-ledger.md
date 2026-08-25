@@ -623,3 +623,28 @@ reports must retain `real_customer_accuracy=null` and
   start because no approved DeepSeek credential was available to the child
   process. This is a source/evidence correction, not a Gold-quality or real-
   accuracy pass; `real_customer_accuracy=null` remains authoritative.
+
+## 2026-08-25 P1 Installation Media Candidate Convergence
+
+- Fixed-8 traces showed that installation image and video candidates were both
+  available before generation. The earliest defect was Product Context Pack:
+  cross-source merging always placed the exact Hub installation image before
+  the locally reviewed video, and Hub media collection considered only the
+  primary FactType rather than all owner-stamped requested goals.
+- Product Context Pack now merges those candidates deterministically, honors an
+  explicit Turn Understanding `installation_video` media request, and includes
+  media roles for authoritative secondary goals. Caller-provided
+  `secondary_fact_types`, wrong-owner goals, prior-turn goals, and mapped
+  factual claims cannot widen the media choice.
+- A read-only exact-product verification against the live Hub and query-only
+  formal snapshot observed one installation image and 41 installation videos.
+  The explicit-video turn selected `install_video`; the detachable plus
+  installation turn selected the exact Hub `install_image`; the untrusted-hint
+  turn selected no installation media. Formal knowledge changed by zero rows
+  and recorded DML was `0`.
+- The relevant Product Context Pack, Product Hub, media, Pipeline entry, Final
+  Audit, response orchestrator, and no-evidence regression suite passed after
+  excluding one pre-existing generated-SPA literal-text assertion. No Graph
+  node, service, model call, reply owner, delivery rule, or `can_send` condition
+  changed. A model-backed Fixed-8 rerun remains the next P1 quality gate;
+  `real_customer_accuracy=null` remains authoritative.

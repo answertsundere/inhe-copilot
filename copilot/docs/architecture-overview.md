@@ -304,6 +304,15 @@ title similarity. RAG and Product Context Pack copies keep the same source
 entry/chunk origin so formal convergence can deterministically deduplicate them
 without changing the underlying fact or weakening admission.
 
+The same owner-stamped multi-goal boundary also governs media collection. A
+secondary installation goal may add role-compatible installation candidates;
+an untrusted retrieval hint cannot. When Turn Understanding records an explicit
+non-factual media request, Product Context Pack may prefer that requested role
+while deterministically merging exact Hub assets with already reviewed local
+assets. This remains candidate selection only: media labels are not evidence,
+and actual blocks still require the existing media delivery, Final Audit,
+human-review, and channel-capability checks.
+
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
 from trusted deployment configuration, a Pipeline-verified published-product
 mapping, or an explicit internal evaluation fixture. They contain

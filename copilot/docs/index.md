@@ -495,6 +495,11 @@ Current boundaries:
   retrieval through the existing Pipeline, but they do not create claims or
   evidence. Conflicting formal and Hub mappings fail closed; see
   `docs/architecture-overview.md` and `docs/module-index.md`.
+- Product Context Pack merges exact Hub and reviewed local media candidates
+  deterministically. Only owner-stamped requested goals may widen media
+  collection, and only an explicit non-factual media request may prefer a
+  requested role across sources. Raw secondary hints cannot select media;
+  delivery and `can_send` remain downstream responsibilities.
 - A planner-owned missing-input service action is a non-factual response
   obligation, not a customer goal or evidence. The existing Composer must
   select its anonymous required reference and express it inside an existing

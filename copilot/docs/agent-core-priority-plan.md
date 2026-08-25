@@ -1092,6 +1092,20 @@ Changing priority order requires:
 | P5 Low-Risk Automation | planned | `can_send` remains application-owned and disabled for candidate work | Real canary evidence |
 | P6 Omnichannel Expansion | planned | Architecture defined; adapters and operations incomplete | Qualified Agent Core and handoff operations |
 
+The 2026-08-25 installation-media checkpoint closed a Product Context Pack
+selection defect without changing the Pipeline. Cross-source merging had put
+the exact Hub installation image ahead of an already reviewed installation
+video even when Turn Understanding carried an explicit video request; a
+secondary installation goal also did not participate in Hub media collection.
+The Pack now consumes only owner-stamped requested fact types and non-factual
+media requests for those decisions. A read-only exact-product verification
+selected the reviewed video for the explicit request and the Hub installation
+image for the secondary installation goal, while an untrusted secondary hint
+selected neither. Formal knowledge changed by zero rows with DML `0`.
+`can_send` remains false and this is not Gold Conversation qualification; the
+next quality gate is a model-backed fixed conversation rerun followed by human
+review of installation completeness and tone.
+
 The latest P1 identity/evidence checkpoint closed four earlier boundaries
 without adding an owner. An exact Hub-verified `i_id`/SKU pair is preserved
 before legacy resolution; owner-stamped multi-goal dimension requests retain
