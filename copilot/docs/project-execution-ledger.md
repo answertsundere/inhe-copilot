@@ -807,14 +807,22 @@ reports must retain `real_customer_accuracy=null` and
   Admitted Answer Context, and Claim Resolution already support a reviewed
   direct `installation` fact. The first missing owner was Product Hub's source
   fact builder, not Composer wording or Copilot admission.
-- Product Hub isolated commit `bf6df88` now converts only approved/live,
+- Product Hub commits `bf6df88` and `361bea4` now convert only approved/live,
   exact-label installation notes into one deterministic product-level fact.
-  Full Hub regression passed `238/238` with one skip.
+  Full Hub regression passed `240/240`.
 - A copied current database generated 57 installation facts from 168 eligible
   assets across 57 products. Local query-only bridge verification reached one
   supported installation claim while keeping media separate. The source DB,
   formal Copilot knowledge DB, Delivery, and `can_send` were unchanged.
-- Status: source contract fixed; production deployment not performed. Product
-  Hub has no configured Git remote. Next gate is backup, audited fact rebuild,
-  query-only runtime verification, then the unchanged quality evaluation.
-  Detachability stays unresolved and `real_customer_accuracy=null`.
+- A consistent live backup was taken before the narrow
+  `--write --only=installation` deployment. Exactly 57 installation facts were
+  added; product, SKU, asset, and all 19,300 non-installation facts retained
+  their pre-write counts and SHA-256 values, and SQLite `quick_check` returned
+  `ok`. The running 8795 API and Copilot's existing read path then resolved one
+  exact fact, admitted it, and produced one supported installation claim.
+- Product Hub has no configured Git remote. A fresh anonymous DeepSeek Composer
+  qualification stopped fail-closed at attempt 16 after 15 successes because
+  of one 45-second Provider timeout. Calls were one per attempt and retry,
+  repair, fallback, formal DML, and send authority were zero; canary and
+  Fixed-8 were not started. Detachability stays unresolved and
+  `real_customer_accuracy=null`.

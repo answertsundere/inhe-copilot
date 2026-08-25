@@ -46,7 +46,8 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   promotion gates, domain portability, required task header, and the current
   customer-visible language/Turn Understanding quality checkpoint. Its latest
   P1 checkpoint also records the upstream Product Hub installation-fact source
-  fix and the still-pending audited runtime deployment gate.
+  fix, the audited 8795 installation-only deployment, and the subsequent
+  fail-closed DeepSeek qualification timeout.
 - `docs/gold-customer-service-delivery-plan.md` - authoritative execution
   sequence for the Gold Customer Service Agent, including dynamic-truth source
   policy, P0-P7 gates, and the active P1 work queue.

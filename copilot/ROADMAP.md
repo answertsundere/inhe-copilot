@@ -358,13 +358,13 @@ on 2026-08-17:
   exposed approved installation media and notes but its deterministic fact
   builder generated only size and material facts. Copilot correctly kept media
   labels out of canonical factual evidence.
-- Product Hub isolated commit `bf6df88` reuses the existing label registry and
+- Product Hub commits `bf6df88` and `361bea4` reuse the existing label registry and
   source review state. Only `approved`/`live` assets with the exact
   `安装说明` label and a non-empty note are stably ordered, whitespace-normalized,
   deduplicated, and collapsed into one confirmed product-level installation
   fact with all source asset IDs retained. Pending, unrelated, and empty-note
   assets remain excluded; images and videos retain their separate media role.
-- Full Product Hub regression passed `238/238` with one existing skip. Against
+- Full Product Hub regression passed `240/240`. Against
   an isolated copy of the current source database, the builder added 57
   installation facts from 168 eligible assets across 57 of 424 products. The
   source database hash remained unchanged.
@@ -373,7 +373,14 @@ on 2026-08-17:
   supported installation claim. No Copilot production code, Graph node,
   service, model call, Evidence role, Delivery rule, or `can_send` condition
   changed.
-- The Product Hub repository has no configured remote, so `bf6df88` is a local
-  isolated commit only. The candidate database is not production. A backed-up,
-  audited source rebuild plus query-only runtime verification is required before
-  any Fixed-8 quality rerun. Detachability and real accuracy remain unresolved.
+- The live database was backed up and then updated with the narrow
+  `--write --only=installation` mode. It added exactly 57 installation facts;
+  product, SKU, asset, and all non-installation fact counts and SHA-256 values
+  remained identical, and `quick_check` returned `ok`. The running 8795 API and
+  Copilot's unchanged local read path both resolved, admitted, and supported one
+  exact installation fact without a restart.
+- Product Hub still has no configured remote, so commits `bf6df88` and
+  `361bea4` remain local. A fresh anonymous DeepSeek qualification stopped at
+  attempt 16 after 15 successes because of one 45-second Provider timeout.
+  Retry, repair, fallback, DML, and send authority were zero; canary and Fixed-8
+  therefore did not start. Detachability and real accuracy remain unresolved.

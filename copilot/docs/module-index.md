@@ -388,9 +388,10 @@ Before changing Agent behavior, verify:
   DeepSeek `25/25`, Fixed-8 `8/8`, Synthetic `5/5` and `22/22`, and 808-test
   associated regression all preserve review-only delivery and formal DML `0`.
 - This module fix itself does not provide product installation facts or media.
-  Product Hub isolated commit `bf6df88` now supplies a governed installation
-  fact candidate from approved/live exact-label notes; production deployment is
-  still pending and the existing formal knowledge/tool path remains the owner.
+  Product Hub commits `bf6df88` and `361bea4` now supply governed installation
+  facts from approved/live exact-label notes. The 8795 installation-only
+  deployment added 57 facts without changing any protected non-installation
+  fingerprint; the existing formal knowledge/tool path remains the owner.
 
 ## 2026-08-26 Product Hub Installation Fact Supply
 
@@ -404,5 +405,7 @@ Before changing Agent behavior, verify:
   identity, direct-answer role, provenance, and supported-claim attribution.
 - Media remains a distinct non-factual role. This source change adds no Copilot
   Graph node, service, model call, reply owner, retry, fallback, Safety rule,
-  Delivery condition, or `can_send` authority. Runtime deployment and quality
-  evaluation are still pending.
+  Delivery condition, or `can_send` authority. The live 8795 read path now
+  resolves one such fact through Admission and Claim Resolution. A fresh
+  anonymous Composer qualification stopped at attempt 16 because of one
+  Provider timeout, so canary and Fixed-8 quality evaluation remain pending.

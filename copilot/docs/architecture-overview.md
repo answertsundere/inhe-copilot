@@ -1501,6 +1501,9 @@ Copilot does not add another registry or inference path for this projection. It
 continues to consume the resulting fact through the existing Product Context
 Pack, Product-first, Evidence Admission, Claim Resolution, Composer, and Final
 contracts. Images and videos remain separate media candidates and require their
-own delivery block. The isolated source and candidate-database verification
-does not deploy the fact to production, enable Formal Evidence Convergence,
-change `can_send`, or establish real-customer accuracy.
+own delivery block. The production data operation is deliberately narrower than
+a full rebuild: `--write --only=installation` replaces only Hub-generated
+installation facts. The audited deployment added 57 rows while product, SKU,
+asset, and non-installation fact fingerprints remained unchanged. This data
+deployment does not enable Formal Evidence Convergence, change `can_send`, or
+establish real-customer accuracy.

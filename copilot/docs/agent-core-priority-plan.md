@@ -1621,15 +1621,18 @@ Autonomous Send condition, or real-accuracy claim is authorized.
 The installation gap was traced beyond Copilot admission to Product Hub's
 deterministic fact builder. Approved installation assets and source notes were
 available, but the builder emitted no formal installation fact. Product Hub
-isolated commit `bf6df88` now generates one stable, provenance-preserving
+commits `bf6df88` and `361bea4` now generate one stable, provenance-preserving
 product-level installation fact only from approved/live exact-label notes.
 
 An isolated current-source database copy produced 57 such facts across 57
-products, and Copilot's unchanged read-only chain carried one through Product
-Context Pack, Admission, and Claim Resolution as supported. This closes the
-source-code contract only: the candidate database is not production, the Hub
-repository has no remote, and no external model quality run was performed with
-internal product data. The active priority remains
-`formal_knowledge_tool_coverage` until a backed-up audited rebuild and unchanged
-quality gate complete. Detachability, real accuracy, and Autonomous Send remain
+products. After a consistent backup, the same installation-only set was added
+to the live 8795 database; every protected non-installation fingerprint stayed
+unchanged. Copilot's unchanged read-only chain carried one live fact through
+Product Context Pack, Admission, and Claim Resolution as supported.
+
+No internal product data was sent to an external model. The next anonymous
+DeepSeek Composer qualification stopped at attempt 16 after 15 successes due
+to one Provider timeout, with no retry, repair, fallback, DML, or send authority.
+The canary and Fixed-8 gates therefore remain pending. The Hub repository still
+has no remote. Detachability, real accuracy, and Autonomous Send remain
 unqualified; `can_send` remains false.

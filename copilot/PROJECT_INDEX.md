@@ -36,16 +36,22 @@ After implementation, update this index, `ROADMAP.md`, and
   prompts.
 - Current evidence/action checkpoint: Product Hub continues to materialize
   explicit product/component dimensions as atomic scoped facts. Its isolated
-  source commit `bf6df88` now also turns only approved/live assets carrying the
+  source commits `bf6df88` and `361bea4` now also turn only approved/live assets carrying the
   exact `安装说明` registry label and a non-empty note into one deterministic,
   provenance-preserving product-level installation fact. An isolated source
   snapshot produced 57 installation facts from 168 eligible assets across 57
-  products; the source database remained unchanged. Copilot's existing
+  products. The installation-only deployment added exactly those 57 facts to
+  the live 8795 database; product, SKU, asset, and all non-installation fact
+  fingerprints remained unchanged and SQLite integrity stayed healthy.
+  Copilot's existing
   read-only path then carried one such fact through Product Context Pack,
   Product-first answerability, Admitted Answer Context, and Claim Resolution as
   a supported installation claim. Media remained a separate non-factual role.
   The after-sales funnel separately preserves its existing planner-owned input
   action. Neither change grants send authority or changes `can_send`.
+  A fresh anonymous DeepSeek Composer qualification stopped fail-closed at
+  attempt 16 after 15 successes because the Provider timed out; no canary or
+  Fixed-8 was started from that non-qualified run.
 - Accuracy status: `real_customer_accuracy=null` and
   `optimization_unverified=true` until the authorized E2 data and independent
   reviews are complete.

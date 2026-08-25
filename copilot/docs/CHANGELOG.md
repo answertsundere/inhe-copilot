@@ -6,16 +6,22 @@
   Pack, Evidence Admission, and Claim Resolution. The first break was the Hub
   source builder: approved installation labels existed, but no formal
   installation fact was materialized.
-- Added Product Hub commit `bf6df88`, which deterministically creates one
+- Added Product Hub commits `bf6df88` and `361bea4`, which deterministically create one
   confirmed product-level installation fact only from approved/live exact-label
   notes, preserving stable provenance and keeping media separate.
-- Product Hub tests passed `238/238` with one skip. An isolated database copy
+- Product Hub tests passed `240/240`. An isolated database copy
   produced 57 facts from 168 eligible assets across 57 products; the source
   database did not change. Copilot's existing read-only chain admitted a sample
-  fact and resolved its installation claim without production-code changes.
-- No external model received internal product data in this checkpoint. Formal
-  runtime deployment, Fixed-8 reply quality, detachability coverage, real
-  accuracy, and Autonomous Send remain unqualified. `can_send` is unchanged.
+  fact and resolved its installation claim without Copilot production-code changes.
+- After a consistent backup, the installation-only deployment added exactly 57
+  facts to the live 8795 database. Product, SKU, asset, and non-installation
+  fact fingerprints were unchanged; the live API and Copilot admission path
+  verified one supported installation claim.
+- No external model received internal product data. A fresh anonymous DeepSeek
+  Composer qualification stopped fail-closed at attempt 16 after 15 successes
+  because of one Provider timeout, so canary and Fixed-8 were not started.
+  Detachability coverage, real accuracy, and Autonomous Send remain
+  unqualified. `can_send` is unchanged.
 
 ## 2026-08-26 - After-Sales Action Continuity
 
