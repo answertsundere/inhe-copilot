@@ -313,6 +313,18 @@ assets. This remains candidate selection only: media labels are not evidence,
 and actual blocks still require the existing media delivery, Final Audit,
 human-review, and channel-capability checks.
 
+The strict Turn Understanding transport expresses factual goals and media
+requests as mutually exclusive schema branches. A media request must carry one
+closed semantic role and cannot carry factual claim identity. The shared strict
+transport also validates the returned object against the declared JSON Schema
+after parsing; syntactically valid but schema-invalid JSON fails closed without
+repair, retry, or free-text fallback. Product Context Pack preserves media
+review state, usability, source identity, and provenance through delivery.
+When an exact requested-role asset has passed the existing delivery contract,
+Deterministic Final may retain it only as a manual Supervisor Assist block even
+if the turn has no admitted factual answer. It remains non-factual, cannot
+satisfy Claim Resolution, and never grants `can_send`.
+
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
 from trusted deployment configuration, a Pipeline-verified published-product
 mapping, or an explicit internal evaluation fixture. They contain

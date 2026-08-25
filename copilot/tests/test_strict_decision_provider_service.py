@@ -255,6 +255,38 @@ def test_strict_json_schema_request_never_uses_json_object():
     assert "tools" not in request
 
 
+def test_strict_provider_rejects_output_that_violates_declared_schema():
+    client = _Client(_result('{"goal_kind": "media_request", "semantic_key": ""}'))
+    provider = StrictDecisionProviderService(
+        config=_config(),
+        client_factory=lambda **_: client,
+    )
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["goal_kind", "semantic_key"],
+        "properties": {
+            "goal_kind": {"const": "media_request"},
+            "semantic_key": {
+                "type": "string",
+                "enum": ["installation_video"],
+            },
+        },
+    }
+
+    with pytest.raises(
+        StrictDecisionProviderError,
+        match="structured_output_schema_invalid",
+    ):
+        provider.request(
+            name="sample",
+            schema=schema,
+            system_prompt="x",
+            payload={},
+            max_tokens=1,
+        )
+
+
 def test_non_thinking_mode_is_an_explicit_provider_option():
     client = _Client(_result())
     provider = StrictDecisionProviderService(
@@ -405,7 +437,12 @@ def test_ollama_native_transport_uses_schema_without_openai_compatibility():
 
     assert provider.request(
         name="sample",
-        schema={"type": "object", "additionalProperties": False},
+        schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["ok"],
+            "properties": {"ok": {"type": "boolean"}},
+        },
         system_prompt="system",
         payload={"candidate": "safe"},
         max_tokens=41,
@@ -422,7 +459,12 @@ def test_ollama_native_transport_uses_schema_without_openai_compatibility():
             {"role": "user", "content": '{"candidate": "safe"}'},
         ],
         "stream": False,
-        "format": {"type": "object", "additionalProperties": False},
+        "format": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["ok"],
+            "properties": {"ok": {"type": "boolean"}},
+        },
         "think": False,
         "options": {"temperature": 0, "num_predict": 1600},
     }

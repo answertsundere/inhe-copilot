@@ -60,6 +60,30 @@ def authoritative_requested_media_types(
     state: dict[str, Any] | None,
 ) -> list[str]:
     """Return media roles requested by a valid non-factual customer goal."""
+    result: list[str] = []
+    for contract in authoritative_requested_media_contracts(state):
+        for asset_type in contract["asset_types"]:
+            if asset_type not in result:
+                result.append(asset_type)
+    return result
+
+
+def authoritative_requested_media_fact_types(
+    state: dict[str, Any] | None,
+) -> list[str]:
+    """Return factual media roles for trusted non-factual media requests."""
+    result: list[str] = []
+    for contract in authoritative_requested_media_contracts(state):
+        for fact_type in contract["fact_types"]:
+            if fact_type not in result:
+                result.append(fact_type)
+    return result
+
+
+def authoritative_requested_media_contracts(
+    state: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Project trusted media requests into exact delivery role contracts."""
     state = state if isinstance(state, dict) else {}
     understanding = state.get("turn_understanding")
     if not isinstance(understanding, dict):
@@ -73,7 +97,8 @@ def authoritative_requested_media_types(
     ):
         return []
 
-    result: list[str] = []
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for goal in understanding.get("customer_goals") or []:
         if not isinstance(goal, dict):
             continue
@@ -87,12 +112,15 @@ def authoritative_requested_media_types(
         ):
             continue
         semantic_key = str(goal.get("semantic_key") or "").strip().lower()
-        for asset_type in _MEDIA_REQUEST_ASSET_TYPES_BY_SEMANTIC_KEY.get(
-            semantic_key,
-            (),
-        ):
-            if asset_type not in result:
-                result.append(asset_type)
+        contract = _MEDIA_REQUEST_CONTRACTS_BY_SEMANTIC_KEY.get(semantic_key)
+        if contract is None or semantic_key in seen:
+            continue
+        seen.add(semantic_key)
+        result.append({
+            "semantic_key": semantic_key,
+            "asset_types": list(contract["asset_types"]),
+            "fact_types": list(contract["fact_types"]),
+        })
     return result
 
 
@@ -750,8 +778,11 @@ _HUB_MEDIA_TYPES_BY_FACT_TYPE = {
     "space_fit": ("size_image",),
 }
 
-_MEDIA_REQUEST_ASSET_TYPES_BY_SEMANTIC_KEY = {
-    "installation_video": ("install_video",),
+_MEDIA_REQUEST_CONTRACTS_BY_SEMANTIC_KEY = {
+    "installation_video": {
+        "asset_types": ("install_video",),
+        "fact_types": ("installation",),
+    },
 }
 
 
@@ -2027,6 +2058,16 @@ def _collect_media_assets(db, KBMediaAsset, identity: dict[str, str], structured
 
 
 def _media_asset_to_pack_item(asset) -> dict[str, Any]:
+    asset_i_id = str(asset.i_id or "").strip()
+    raw_sku_code = str(asset.sku_code or "").strip()
+    # Historical product-family media may repeat i_id in the SKU column. Keep
+    # that scope as product-level instead of asserting a false variant match.
+    projected_sku_code = (
+        ""
+        if asset_i_id
+        and raw_sku_code.casefold() == asset_i_id.casefold()
+        else raw_sku_code
+    )
     return {
         "id": asset.id,
         "asset_id": asset.id,
@@ -2037,9 +2078,12 @@ def _media_asset_to_pack_item(asset) -> dict[str, Any]:
         "thumbnail_url": asset.asset_url,
         "source": asset.source,
         "product_id": asset.product_id,
-        "i_id": asset.i_id,
-        "sku_code": asset.sku_code,
+        "i_id": asset_i_id,
+        "sku_code": projected_sku_code,
         "product_name": asset.product_name,
+        "status": asset.status,
+        "review_status": asset.status,
+        "usable_for_agent": asset.usable_for_agent in {True, 1},
         "confidence": asset.match_confidence or 0.0,
         "match_reason": asset.match_reason,
         "scene_tags": asset.get_scene_tags(),

@@ -648,3 +648,28 @@ reports must retain `real_customer_accuracy=null` and
   node, service, model call, reply owner, delivery rule, or `can_send` condition
   changed. A model-backed Fixed-8 rerun remains the next P1 quality gate;
   `real_customer_accuracy=null` remains authoritative.
+- The end-to-end continuation showed that the strict transport had only parsed
+  JSON and had not validated returned data against its declared schema. It now
+  uses the maintained `jsonschema` validator and rejects invalid schemas or
+  invalid output without repair, retry, or free-text fallback. Turn
+  Understanding represents media requests with a full discriminated schema
+  branch and a closed role enum.
+- Product Context Pack now carries source-owned media review state, usability,
+  identity scope, and provenance into delivery. The exact-product read-only
+  verifier selected one approved installation video for the explicit request,
+  one exact Hub installation image for the secondary installation goal, and no
+  media for the untrusted hint; formal knowledge changed by zero rows and DML
+  remained `0`.
+- The existing Final boundary had removed all non-factual media even after the
+  media delivery gate accepted it. It now preserves only a Product Context Pack
+  block whose delivery observation confirms role, identity, review, and
+  usability, then marks that block manual and keeps human review mandatory.
+  Unvalidated media still fails closed. The post-restart HTTP client timed out
+  at 90 seconds, but the server trace completed in 124.692 seconds. A read-only
+  snapshot check confirmed one manual installation-video block, zero Final
+  removals, formal DML `0`, and `can_send=false`. Composer remained blocked by
+  its changed source-bound qualification fingerprint, so the legacy text did
+  not naturally acknowledge the attachment; no Gold-quality claim is made.
+- The changed-path and adjacent deterministic suite passed `449` tests.
+  Versioned synthetic safety regression passed `5/5` smoke and `22/22` full;
+  all 22 required human review and automatic sends remained zero.

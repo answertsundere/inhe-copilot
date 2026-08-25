@@ -625,6 +625,69 @@ def test_authoritative_requested_media_types_rejects_untrusted_goal_fields(
     assert authoritative_requested_media_types(state) == []
 
 
+def test_authoritative_requested_media_fact_types_maps_valid_installation_video():
+    from app.services.product_context_pack_service import (
+        authoritative_requested_media_fact_types,
+    )
+
+    state = {
+        "turn_understanding": {
+            "schema_version": "turn-understanding/v2",
+            "owner": "turn_understanding_owner",
+            "source_stage": "query_fact_type_classifier",
+            "goal_understanding_status": "valid",
+            "customer_goals": [{
+                "schema_version": "turn-understanding-goal-identity/v2",
+                "owner": "turn_understanding_owner",
+                "source": "current_customer_message",
+                "goal_kind": "media_request",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "semantic_key": "installation_video",
+            }],
+        }
+    }
+
+    assert authoritative_requested_media_fact_types(state) == ["installation"]
+
+
+def test_media_pack_projection_preserves_review_gate_and_product_scope():
+    from types import SimpleNamespace
+
+    from app.services.product_context_pack_service import (
+        _media_asset_to_pack_item,
+    )
+
+    asset = SimpleNamespace(
+        id=42,
+        asset_type="install_video",
+        asset_title="reviewed installation video",
+        asset_url="https://assets.example/install.mp4",
+        source="reviewed_catalog",
+        product_id=7,
+        i_id="PRODUCT-1",
+        sku_code="PRODUCT-1",
+        product_name="sample product",
+        match_confidence=0.9,
+        match_reason="exact product scope",
+        status="approved",
+        usable_for_agent=1,
+        refresh_status="ok",
+        url_expires_at=None,
+        updated_at=None,
+        get_source_raw=lambda: {},
+        get_scene_tags=lambda: [],
+    )
+
+    projected = _media_asset_to_pack_item(asset)
+
+    assert projected["status"] == "approved"
+    assert projected["review_status"] == "approved"
+    assert projected["usable_for_agent"] is True
+    assert projected["i_id"] == "PRODUCT-1"
+    assert projected["sku_code"] == ""
+
+
 def test_exact_product_hub_pair_wins_before_legacy_identity_resolution(
     product_context_db,
     monkeypatch,

@@ -1137,6 +1137,167 @@ def test_media_exception_degrades_without_sendable_media(monkeypatch, pipeline_h
     assert response["evidence_debug"]["analysis_pipeline_media_error"]["type"] == "RuntimeError"
 
 
+def test_media_delivery_honors_authoritative_installation_video_request(
+    monkeypatch,
+):
+    import app.services.media_asset_service as media
+
+    asset = {
+        "asset_id": 42,
+        "asset_type": "install_video",
+        "asset_url": "https://assets.example/install.mp4",
+        "asset_title": "reviewed installation video",
+        "status": "approved",
+        "usable_for_agent": 1,
+        "auto_send_level": "auto",
+        "i_id": "PRODUCT-1",
+        "sku_code": "PRODUCT-1-SKU-1",
+    }
+    monkeypatch.setattr(
+        media,
+        "recommend_for_analyze_response",
+        lambda *args, **kwargs: {
+            "recommended_assets": [asset],
+            "priority_types": ["install_video"],
+            "has_unapproved": False,
+            "source": "media_asset_service",
+        },
+    )
+    response = {
+        "query_fact_type": "detachable",
+        "suggested_reply": "我把对应安装视频附在下面。",
+        "can_send": False,
+        "requires_human_review": True,
+        "context_used": {
+            "product_context_pack": {
+                "recommended_assets": [asset],
+            }
+        },
+        "evidence_debug": {
+            "query_fact_type": "detachable",
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "customer_goals": [{
+                    "schema_version": "turn-understanding-goal-identity/v2",
+                    "owner": "turn_understanding_owner",
+                    "source": "current_customer_message",
+                    "goal_kind": "media_request",
+                    "claim_type_status": "unmapped",
+                    "claim_type": "",
+                    "semantic_key": "installation_video",
+                }],
+            },
+        },
+    }
+    request = AnalysisPipelineRequest(
+        customer_message="请发对应的安装视频",
+        reply_service=object(),
+        capabilities={"media_delivery": True},
+    )
+    identity = {
+        "product_id": None,
+        "product_name": "",
+        "i_id": "PRODUCT-1",
+        "sku_code": "PRODUCT-1-SKU-1",
+    }
+
+    result, stage = AnalysisPipelineService()._apply_media_delivery(
+        response,
+        request,
+        identity,
+    )
+
+    assert stage["status"] == "completed"
+    assert result["recommended_assets"][0]["asset_type"] == "install_video"
+    assert [block["type"] for block in result["reply_blocks"]] == ["text", "video"]
+    assert result["reply_delivery"]["auto_send_ready"] is False
+    assert result["can_send"] is False
+
+
+def test_media_delivery_does_not_widen_detachable_goal_to_installation_video(
+    monkeypatch,
+):
+    import app.services.media_asset_service as media
+
+    asset = {
+        "asset_id": 42,
+        "asset_type": "install_video",
+        "asset_url": "https://assets.example/install.mp4",
+        "asset_title": "reviewed installation video",
+        "status": "approved",
+        "usable_for_agent": 1,
+        "auto_send_level": "auto",
+        "i_id": "PRODUCT-1",
+        "sku_code": "PRODUCT-1-SKU-1",
+    }
+    monkeypatch.setattr(
+        media,
+        "recommend_for_analyze_response",
+        lambda *args, **kwargs: {
+            "recommended_assets": [asset],
+            "priority_types": ["install_video"],
+            "has_unapproved": False,
+            "source": "media_asset_service",
+        },
+    )
+    response = {
+        "query_fact_type": "detachable",
+        "suggested_reply": "是否能拆卸还需要人工确认。",
+        "can_send": False,
+        "requires_human_review": True,
+        "context_used": {
+            "product_context_pack": {
+                "recommended_assets": [asset],
+            },
+        },
+        "evidence_debug": {
+            "query_fact_type": "detachable",
+            "turn_understanding": {
+                "schema_version": "turn-understanding/v2",
+                "owner": "turn_understanding_owner",
+                "source_stage": "query_fact_type_classifier",
+                "goal_understanding_status": "valid",
+                "customer_goals": [{
+                    "schema_version": "turn-understanding-goal-identity/v2",
+                    "owner": "turn_understanding_owner",
+                    "source": "current_customer_message",
+                    "goal_kind": "customer_goal",
+                    "claim_type_status": "valid",
+                    "claim_type": "detachable",
+                    "semantic_key": "",
+                }],
+            },
+        },
+    }
+    request = AnalysisPipelineRequest(
+        customer_message="这个能拆下来清洁吗？",
+        reply_service=object(),
+        capabilities={"media_delivery": True},
+    )
+    identity = {
+        "product_id": None,
+        "product_name": "",
+        "i_id": "PRODUCT-1",
+        "sku_code": "PRODUCT-1-SKU-1",
+    }
+
+    result, stage = AnalysisPipelineService()._apply_media_delivery(
+        response,
+        request,
+        identity,
+    )
+
+    assert stage["status"] == "completed"
+    assert result["recommended_assets"] == []
+    assert [block["type"] for block in result["reply_blocks"]] == ["text"]
+    assert result["evidence_debug"]["media_delivery_contract"][
+        "actual_attached_media_count"
+    ] == 0
+
+
 def test_final_failure_disables_auto_media_delivery(monkeypatch, pipeline_harness):
     import app.services.final_response_orchestrator as final_orchestrator
     import app.services.media_asset_service as media

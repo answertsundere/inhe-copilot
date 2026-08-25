@@ -1495,7 +1495,13 @@ class AnalysisPipelineService:
             )
             if not fact_type and str(response.get("intent") or "") in {"image_attachment", "product_question"}:
                 fact_type = "appearance"
-            assets = self._pack_media_assets(response, message, identity)
+            delivery_targets = self._media_delivery_targets(response, fact_type)
+            assets = self._pack_media_assets(
+                response,
+                message,
+                identity,
+                delivery_targets=delivery_targets,
+            )
             if assets:
                 recommendation = {
                     "recommended_assets": assets,
@@ -1506,10 +1512,11 @@ class AnalysisPipelineService:
             allow_delivery = delivery_enabled and self._is_visual_media_question(message, response)
             candidate_source = str(recommendation.get("source") or "media_asset_service")
             response["recommended_assets"] = (
-                select_delivery_assets(
+                self._select_delivery_assets_for_targets(
                     recommendation.get("recommended_assets") or [],
+                    select_delivery_assets=select_delivery_assets,
                     max_assets=1,
-                    query_fact_type=fact_type,
+                    delivery_targets=delivery_targets,
                     product_identity=identity,
                 )
                 if allow_delivery else []
@@ -1527,11 +1534,17 @@ class AnalysisPipelineService:
                 "has_unapproved": recommendation.get("has_unapproved", False),
                 "source": recommendation.get("source", "media_asset_service"),
             }
+            block_fact_type = str(
+                (response["recommended_assets"][0] if response["recommended_assets"] else {}).get(
+                    "delivery_fact_type"
+                )
+                or fact_type
+            )
             response.update(build_reply_blocks(
                 response.get("suggested_reply", ""),
                 response["recommended_assets"],
                 requires_human_review=bool(response.get("requires_human_review")),
-                query_fact_type=fact_type,
+                query_fact_type=block_fact_type,
                 product_identity=identity,
             ))
             attached = [
@@ -1801,6 +1814,8 @@ class AnalysisPipelineService:
         response: dict[str, Any],
         message: str,
         product_identity: dict[str, Any],
+        *,
+        delivery_targets: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         if not AnalysisPipelineService._is_visual_media_question(message, response):
             return []
@@ -1809,16 +1824,25 @@ class AnalysisPipelineService:
         context_used = response.get("context_used") or {}
         pack = context_used.get("product_context_pack") or response.get("product_context_pack") or {}
         fact_type = str((response.get("evidence_debug") or {}).get("query_fact_type") or "")
+        targets = delivery_targets or [{"fact_type": fact_type, "asset_types": []}]
         assets = list(pack.get("recommended_assets") or [])
         if assets:
-            return [
-                item for item in assets
-                if isinstance(item, dict) and is_delivery_media_asset_eligible(
+            selected: list[dict[str, Any]] = []
+            for item in assets:
+                if not isinstance(item, dict):
+                    continue
+                target = AnalysisPipelineService._matching_media_delivery_target(
                     item,
-                    query_fact_type=fact_type,
+                    targets,
                     product_identity=product_identity,
+                    eligibility_check=is_delivery_media_asset_eligible,
                 )
-            ]
+                if target is None:
+                    continue
+                projected = dict(item)
+                projected["delivery_fact_type"] = target["fact_type"]
+                selected.append(projected)
+            return selected
         media_assets = pack.get("media_assets") or []
         if fact_type in {"installation", "detachable"}:
             assets = [item for item in media_assets if str(item.get("asset_type") or "").startswith("install") or str(item.get("media_purpose") or "").startswith("install")]
@@ -1836,6 +1860,89 @@ class AnalysisPipelineService:
         else:
             assets = [item for item in media_assets if str(item.get("asset_type") or "") in {"sku_image", "install_video", "pack_guide_image", "size_chart_image"}]
         return assets[:1]
+
+    @staticmethod
+    def _media_delivery_targets(
+        response: dict[str, Any],
+        primary_fact_type: str,
+    ) -> list[dict[str, Any]]:
+        from app.services.product_context_pack_service import (
+            authoritative_requested_media_contracts,
+        )
+
+        targets: list[dict[str, Any]] = []
+        primary = str(primary_fact_type or "").strip()
+        if primary:
+            targets.append({"fact_type": primary, "asset_types": []})
+        understanding = (response.get("evidence_debug") or {}).get(
+            "turn_understanding"
+        )
+        for contract in authoritative_requested_media_contracts(
+            {"turn_understanding": understanding}
+        ):
+            for fact_type in contract["fact_types"]:
+                target = {
+                    "fact_type": fact_type,
+                    "asset_types": list(contract["asset_types"]),
+                }
+                if target not in targets:
+                    targets.append(target)
+        return targets
+
+    @staticmethod
+    def _matching_media_delivery_target(
+        asset: dict[str, Any],
+        targets: list[dict[str, Any]],
+        *,
+        product_identity: dict[str, Any],
+        eligibility_check: Any,
+    ) -> dict[str, Any] | None:
+        asset_type = str(asset.get("asset_type") or "").strip()
+        for target in targets:
+            allowed_asset_types = set(target.get("asset_types") or [])
+            if allowed_asset_types and asset_type not in allowed_asset_types:
+                continue
+            fact_type = str(target.get("fact_type") or "").strip()
+            if eligibility_check(
+                asset,
+                query_fact_type=fact_type,
+                product_identity=product_identity,
+            ):
+                return target
+        return None
+
+    @staticmethod
+    def _select_delivery_assets_for_targets(
+        assets: list[dict[str, Any]],
+        *,
+        select_delivery_assets: Any,
+        max_assets: int,
+        delivery_targets: list[dict[str, Any]],
+        product_identity: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        selected: list[dict[str, Any]] = []
+        for asset in assets:
+            for target in delivery_targets:
+                allowed_asset_types = set(target.get("asset_types") or [])
+                asset_type = str(asset.get("asset_type") or "").strip()
+                if allowed_asset_types and asset_type not in allowed_asset_types:
+                    continue
+                fact_type = str(target.get("fact_type") or "").strip()
+                matched = select_delivery_assets(
+                    [asset],
+                    max_assets=1,
+                    query_fact_type=fact_type,
+                    product_identity=product_identity,
+                )
+                if not matched:
+                    continue
+                projected = dict(matched[0])
+                projected["delivery_fact_type"] = fact_type
+                selected.append(projected)
+                break
+            if len(selected) >= max_assets:
+                break
+        return selected
 
     @staticmethod
     def _sanitize_media_promise(reply: str, assets: list[dict[str, Any]]) -> str:

@@ -1106,6 +1106,25 @@ selected neither. Formal knowledge changed by zero rows with DML `0`.
 next quality gate is a model-backed fixed conversation rerun followed by human
 review of installation completeness and tone.
 
+The end-to-end follow-up found two later contract breaks. The local strict
+Provider accepted syntactically valid output that violated the declared nested
+media schema, and Product Context Pack dropped media review/usability fields
+before the delivery gate. Both now fail closed or preserve their source-owned
+metadata as appropriate. A final legacy boundary then removed every non-factual
+media block, including an exact requested-role block already approved by media
+delivery. Final now retains only such fully validated blocks as manual
+Supervisor Assist attachments; unvalidated media is still removed and
+`can_send=false`. The post-restart client timed out at 90 seconds, but its
+server-side trace completed successfully in 124.692 seconds and was recovered
+read-only: one reviewed exact-role video remained attached as a manual block,
+Final removed zero media blocks, formal DML was zero, and `can_send=false`.
+Composer was correctly blocked after its source-bound qualification fingerprint
+changed, so the legacy text still said the video would be checked rather than
+acknowledging the attached block. This is a latency and reply-quality blocker,
+not a media-contract failure. The deterministic changed-path suite and the
+versioned synthetic `5/5` and `22/22` safety runs passed. P1 and
+`real_customer_accuracy=null` remain unchanged.
+
 The latest P1 identity/evidence checkpoint closed four earlier boundaries
 without adding an owner. An exact Hub-verified `i_id`/SKU pair is preserved
 before legacy resolution; owner-stamped multi-goal dimension requests retain

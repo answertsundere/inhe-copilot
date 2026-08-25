@@ -475,13 +475,83 @@ def _selected_non_fact_roles(response: dict[str, Any]) -> set[str]:
     }
 
 
+def _validated_review_media_blocks(
+    response: dict[str, Any],
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    debug = response.get("evidence_debug")
+    if not isinstance(debug, dict):
+        return []
+    contract = debug.get("media_delivery_contract")
+    if not isinstance(contract, dict):
+        return []
+    attached = [
+        item
+        for item in contract.get("attached_media") or []
+        if isinstance(item, dict)
+    ]
+    expected_count = int(contract.get("actual_attached_media_count") or 0)
+    if (
+        contract.get("candidate_source") != "product_context_pack"
+        or expected_count < 1
+        or expected_count != len(attached)
+        or int(contract.get("eligible_asset_count") or 0) < expected_count
+    ):
+        return []
+    valid_contracts = {
+        (
+            str(item.get("type") or ""),
+            str(item.get("asset_type") or ""),
+            str(item.get("delivery_candidate_source") or ""),
+        )
+        for item in attached
+        if (
+            item.get("type") in {"image", "video"}
+            and str(item.get("asset_type") or "")
+            and item.get("delivery_candidate_source") == "product_context_pack"
+            and str(item.get("review_status") or "").lower() == "approved"
+            and item.get("review_approved") is True
+            and item.get("usable_for_agent") is True
+            and item.get("identity_present") is True
+            and item.get("identity_matched") is True
+            and item.get("role_matched") is True
+        )
+    }
+    if len(valid_contracts) != expected_count:
+        return []
+    return [
+        item
+        for item in blocks
+        if (
+            item.get("type") in {"image", "video"}
+            and bool(str(item.get("url") or item.get("asset_url") or "").strip())
+            and str(item.get("status") or item.get("review_status") or "").lower()
+            == "approved"
+            and item.get("usable_for_agent") in {True, 1}
+            and bool(item.get("product_id") or item.get("i_id") or item.get("sku_code"))
+            and (
+                str(item.get("type") or ""),
+                str(item.get("asset_type") or ""),
+                str(item.get("delivery_candidate_source") or ""),
+            )
+            in valid_contracts
+        )
+    ]
+
+
 def _apply_formal_delivery_boundary(response: dict[str, Any]) -> None:
     """Prevent non-factual guidance from becoming a delivery decision."""
     if not _formal_non_fact_only(response):
         return
     blocks = [item for item in (response.get("reply_blocks") or []) if isinstance(item, dict)]
-    removed = [item for item in blocks if item.get("type") in {"image", "video"}]
-    response["reply_blocks"] = [item for item in blocks if item.get("type") not in {"image", "video"}]
+    media_blocks = [item for item in blocks if item.get("type") in {"image", "video"}]
+    validated_media = _validated_review_media_blocks(response, blocks)
+    response["reply_blocks"] = [
+        item
+        for item in blocks
+        if item.get("type") not in {"image", "video"} or item in validated_media
+    ]
+    removed = [item for item in media_blocks if item not in validated_media]
     response["can_send"] = False
     response["requires_human_review"] = True
     response["sendable_reply"] = ""
@@ -489,7 +559,11 @@ def _apply_formal_delivery_boundary(response: dict[str, Any]) -> None:
     delivery = response.get("reply_delivery")
     if isinstance(delivery, dict):
         delivery["auto_send_ready"] = False
-        delivery["reason"] = "formal_non_fact_evidence_only"
+        delivery["reason"] = (
+            "formal_non_fact_media_review_only"
+            if validated_media
+            else "formal_non_fact_evidence_only"
+        )
     debug = response.setdefault("evidence_debug", {})
     selected_non_fact_roles = _selected_non_fact_roles(response)
     debug["formal_delivery_contract"] = {
@@ -497,7 +571,8 @@ def _apply_formal_delivery_boundary(response: dict[str, Any]) -> None:
         "service_action_used_for_fact": bool(selected_non_fact_roles & {"service_action", "fallback_only"}),
         "media_reference_used_for_fact": "media_reference" in selected_non_fact_roles,
         "removed_media_block_count": len(removed),
-        "actual_attached_media_count": 0,
+        "actual_attached_media_count": len(validated_media),
+        "validated_media_review_only": bool(validated_media),
         "can_send_source": "formal_non_fact_evidence_only",
         "requires_human_review_source": "formal_non_fact_evidence_only",
     }

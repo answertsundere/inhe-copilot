@@ -740,6 +740,94 @@ def test_formal_non_fact_only_context_cannot_create_sendable_media(monkeypatch):
     assert diagnostics["removed_media_block_count"] == 1
 
 
+def test_formal_non_fact_only_preserves_validated_media_for_manual_review(monkeypatch):
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    monkeypatch.setattr(
+        orchestrator,
+        "audit_final_answer",
+        lambda response, **_kwargs: {
+            **response,
+            "final_answer_audit": {"passed": True, "issues": []},
+        },
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "polish_customer_reply",
+        lambda response, **_kwargs: response,
+    )
+
+    result = orchestrator.orchestrate_final_response(
+        {
+            "suggested_reply": "亲，安装视频随本次回复附上，拆装方式还需要人工确认。",
+            "can_send": True,
+            "requires_human_review": False,
+            "reply_status": "sendable",
+            "recommended_assets": [{
+                "asset_type": "install_video",
+                "asset_url": "https://asset.example/install.mp4",
+                "status": "approved",
+                "usable_for_agent": True,
+                "i_id": "IID-A",
+                "auto_send_level": "auto",
+                "delivery_candidate_source": "product_context_pack",
+            }],
+            "reply_blocks": [
+                {"type": "text", "content": "old"},
+                {
+                    "type": "video",
+                    "url": "https://asset.example/install.mp4",
+                    "asset_type": "install_video",
+                    "status": "approved",
+                    "usable_for_agent": True,
+                    "i_id": "IID-A",
+                    "delivery_candidate_source": "product_context_pack",
+                    "send_mode": "auto_when_platform_connected",
+                },
+            ],
+            "evidence_debug": {
+                "query_fact_type": "installation",
+                "admitted_answer_context": {
+                    "direct_product_facts": [],
+                    "direct_policy_facts": [],
+                    "handoff_action_guidance": [],
+                    "media_candidates": [{"evidence_uid": "media-1"}],
+                    "unresolved_claims": [
+                        {"claim_type": "installation", "status": "unresolved"},
+                    ],
+                },
+                "media_delivery_contract": {
+                    "candidate_source": "product_context_pack",
+                    "candidate_count": 1,
+                    "eligible_asset_count": 1,
+                    "actual_attached_media_count": 1,
+                    "attached_media": [{
+                        "type": "video",
+                        "asset_type": "install_video",
+                        "delivery_candidate_source": "product_context_pack",
+                        "review_status": "approved",
+                        "review_approved": True,
+                        "usable_for_agent": True,
+                        "identity_present": True,
+                        "identity_matched": True,
+                        "role_matched": True,
+                    }],
+                },
+            },
+            "i_id": "IID-A",
+        },
+        customer_message="请发这个商品对应的安装视频。",
+    )
+
+    assert [block["type"] for block in result["reply_blocks"]] == ["text", "video"]
+    assert result["reply_blocks"][1]["send_mode"] == "manual"
+    assert result["can_send"] is False
+    assert result["requires_human_review"] is True
+    diagnostics = result["evidence_debug"]["formal_delivery_contract"]
+    assert diagnostics["removed_media_block_count"] == 0
+    assert diagnostics["actual_attached_media_count"] == 1
+    assert diagnostics["validated_media_review_only"] is True
+
+
 def test_model_first_candidate_skips_semantic_polish_and_stays_review_only(
     monkeypatch,
 ):

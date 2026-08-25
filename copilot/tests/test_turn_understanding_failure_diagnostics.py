@@ -801,7 +801,7 @@ def test_unknown_canonical_service_action_remains_blocked(monkeypatch):
     assert diagnostics["reason_code"] == "canonical_claim_type_not_allowed"
 
 
-def test_media_request_with_fact_type_is_preserved_without_fact_authority(
+def test_media_request_with_fact_type_fails_closed_without_role_repair(
     monkeypatch,
 ):
     message = "Please provide the relevant setup diagram."
@@ -822,20 +822,42 @@ def test_media_request_with_fact_type_is_preserved_without_fact_authority(
         message=message,
     )
 
-    assert result is not None
-    assert result["goal_understanding_status"] == "valid"
-    assert result["query_fact_type"] == ""
-    assert len(result["customer_goals"]) == 1
-    goal = result["customer_goals"][0]
-    assert goal["goal_kind"] == "media_request"
-    assert goal["claim_type_status"] == "unmapped"
-    assert goal["claim_type"] == ""
-    assert goal["policy_intent_ref"] == ""
-    assert goal["claim_type_reason_code"] == (
-        "media_request_canonical_claim_forbidden"
+    assert result is None
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["reason_code"] == "media_request_claim_identity_invalid"
+
+
+@pytest.mark.parametrize("semantic_key", ["", "unknown_media_role"])
+def test_unmapped_media_request_without_controlled_role_fails_closed(
+    monkeypatch,
+    semantic_key,
+):
+    message = "Please provide the relevant setup media."
+    payload = {
+        "goals": [
+            _goal(
+                source_text=message,
+                goal_kind="media_request",
+                status="unmapped",
+                claim_type="",
+                semantic_key=semantic_key,
+                attribute_key="",
+            )
+        ]
+    }
+
+    result, diagnostics, _client = _run(
+        monkeypatch,
+        _response_for_payload(payload),
+        message=message,
     )
-    assert diagnostics["schema_success"] is True
-    assert diagnostics["provenance_validation"]["passed"] is True
+
+    assert result is None
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["reason_code"] in {
+        "media_request_semantic_key_missing",
+        "media_request_semantic_key_invalid",
+    }
 
 
 def test_non_fact_media_normalization_keeps_independent_fact_goal(
@@ -852,7 +874,9 @@ def test_non_fact_media_normalization_keeps_independent_fact_goal(
             _goal(
                 source_text="please provide the setup diagram",
                 goal_kind="media_request",
-                claim_type="installation",
+                status="unmapped",
+                claim_type="",
+                semantic_key="installation_image",
                 attribute_key="",
             ),
         ]
@@ -875,8 +899,8 @@ def test_non_fact_media_normalization_keeps_independent_fact_goal(
         ("media_request", "unmapped", ""),
     }
     assert diagnostics["runtime_goal_continuity"] == {
-        "status": "preserved_non_fact_media_request",
-        "downgraded_goal_count": 1,
+        "status": "not_applied",
+        "downgraded_goal_count": 0,
         "recovered_goal_can_create_fact": False,
         "can_change_can_send": False,
     }

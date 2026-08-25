@@ -10,6 +10,8 @@ from typing import Any, Callable, Literal
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from jsonschema import SchemaError, ValidationError
+from jsonschema.validators import validator_for
 from openai import OpenAI
 
 from app import config
@@ -313,6 +315,23 @@ def _safe_error_category(exc: Exception) -> str:
     return "provider_request_failed"
 
 
+def _validate_structured_output(
+    value: dict[str, Any],
+    schema: dict[str, Any],
+) -> None:
+    """Fail closed when a provider returns JSON outside its declared schema."""
+    try:
+        validator_type = validator_for(schema)
+        validator_type.check_schema(schema)
+        validator_type(schema).validate(value)
+    except SchemaError as exc:
+        raise StrictDecisionProviderError("strict_schema_invalid") from exc
+    except ValidationError as exc:
+        raise StrictDecisionProviderError(
+            "structured_output_schema_invalid"
+        ) from exc
+
+
 class StrictDecisionProviderService:
     """Issue exactly one strict structured request; never parse free-form JSON."""
 
@@ -460,6 +479,7 @@ class StrictDecisionProviderService:
             parsed = json.loads(raw)
             if not isinstance(parsed, dict):
                 raise StrictDecisionProviderError("structured_output_not_object")
+            _validate_structured_output(parsed, schema)
             return parsed
         except StrictDecisionProviderError:
             raise

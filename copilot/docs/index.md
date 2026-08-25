@@ -499,7 +499,11 @@ Current boundaries:
   deterministically. Only owner-stamped requested goals may widen media
   collection, and only an explicit non-factual media request may prefer a
   requested role across sources. Raw secondary hints cannot select media;
-  delivery and `can_send` remain downstream responsibilities.
+  delivery and `can_send` remain downstream responsibilities. Strict transport
+  output is schema-validated after parsing, media-request roles use a closed
+  discriminated branch, and only a role/identity/review-validated block may be
+  retained as a manual Supervisor Assist attachment. It remains non-factual and
+  cannot grant `can_send`.
 - A planner-owned missing-input service action is a non-factual response
   obligation, not a customer goal or evidence. The existing Composer must
   select its anonymous required reference and express it inside an existing

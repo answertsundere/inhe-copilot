@@ -518,6 +518,10 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "media_request, service_action, or contextual_constraint" in prompt
     assert "media_request, not a customer_goal" in prompt
     assert "Keep a separate factual customer_goal" in prompt
+    assert "For a media_request, semantic_key is required" in prompt
+    assert "installation_video" in prompt
+    assert "semantic_key is optional except for media_request" in prompt
+    assert "A media_request must never be canonical" in prompt
     assert (
         "A request to determine which service outcome applies is a customer_goal"
         in prompt
@@ -541,20 +545,11 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "classification of one goal must not determine, merge, or erase another" in prompt
     assert "For a canonical goal, omit semantic_key or return it as an empty string" in prompt
     assert "Only an unmapped goal may use" in prompt
-    assert (
-        "A contextual_constraint always uses claim_type_status unmapped"
-        in prompt
-    )
+    assert "A contextual_constraint always uses claim_type_status unmapped" in prompt
     assert "must not carry a claim_type or policy_intent_ref" in prompt
-    assert (
-        "source_text must be a non-empty exact substring of customer_message"
-        in prompt
-    )
+    assert "source_text must be a non-empty exact substring of customer_message" in prompt
     assert "Never copy source_text from recent_conversation" in prompt
-    assert (
-        "Before choosing unmapped, compare the goal against every supplied "
-        "canonical_fact_type_candidates ID and meaning"
-    ) in prompt
+    assert "Before choosing unmapped, compare the goal against every supplied canonical_fact_type_candidates ID and meaning" in prompt
     assert "goal_family and allowed_scope directly match" in prompt
     assert "do not substitute a merely related policy" in prompt
     assert "Preserve a specific requested property or performance condition as unmapped" in prompt
@@ -562,10 +557,7 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "an explicit buyer request must never be relabeled" in prompt
     assert "not the product, product category, component" in prompt
     assert "Leave it empty when claim_type already identifies" in prompt
-    assert (
-        "must set subject_scope to the named measured object"
-        in prompt
-    )
+    assert "must set subject_scope to the named measured object" in prompt
     assert "Do not nominate practical_guidance for a direct factual identity" in prompt
     assert "It may be empty only when this is a direct factual identity/value request" in prompt
     assert "as a fallback when media or a service action is unavailable" in prompt
@@ -576,6 +568,35 @@ def test_turn_understanding_prompt_requires_atomic_multi_goal_coverage():
     assert "unconditional or extreme performance outcome" in prompt
     assert "what can be said under ordinary use" in prompt
     assert "classification metadata, not evidence, a conclusion, or authorization" in prompt
+
+
+def test_strict_provider_schema_requires_media_request_role_identity():
+    goal_variants = service.STRICT_PROVIDER_OUTPUT_SCHEMA["properties"][
+        "goals"
+    ]["items"]["oneOf"]
+    media_rule = next(
+        rule
+        for rule in goal_variants
+        if rule["properties"]["goal_kind"].get("const") == "media_request"
+    )
+    non_media_rule = next(
+        rule
+        for rule in goal_variants
+        if "enum" in rule["properties"]["goal_kind"]
+    )
+
+    assert "semantic_key" in media_rule["required"]
+    assert media_rule["properties"]["claim_type_status"]["const"] == "unmapped"
+    assert media_rule["properties"]["claim_type"]["const"] == ""
+    assert "installation_video" in media_rule["properties"]["semantic_key"][
+        "enum"
+    ]
+    assert "media_request" not in non_media_rule["properties"]["goal_kind"][
+        "enum"
+    ]
+    assert all(rule["additionalProperties"] is False for rule in goal_variants)
+    assert all("source_start_ref" in rule["properties"] for rule in goal_variants)
+    assert all("source_end_ref" in rule["properties"] for rule in goal_variants)
 
 
 def test_turn_understanding_prompt_maps_broad_assessment_to_overview_contract():

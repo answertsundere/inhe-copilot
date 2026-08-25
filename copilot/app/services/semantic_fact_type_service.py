@@ -70,6 +70,18 @@ ALLOWED_CONTEXTUAL_SEMANTIC_KEYS = {
     "rejection",
 }
 
+ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS = {
+    "accessory_image",
+    "certificate_image",
+    "installation_image",
+    "installation_video",
+    "material_image",
+    "other_media",
+    "pack_guide_image",
+    "product_image",
+    "size_image",
+}
+
 _LLM_RESULT_FIELDS = {"goals"}
 
 _RAW_GOAL_FIELDS = {
@@ -123,7 +135,7 @@ _RECOVERABLE_POLICY_NOMINATION_REJECTIONS = {
     "customer_goal_policy_intent_family_mismatch",
     "customer_goal_policy_intent_semantic_boundary_mismatch",
 }
-MINIMAL_PROVIDER_SCHEMA_VERSION = "turn-understanding-provider-output/v5"
+MINIMAL_PROVIDER_SCHEMA_VERSION = "turn-understanding-provider-output/v6"
 STRICT_PROVIDER_SCHEMA_VERSION = (
     "turn-understanding-provider-source-refs/v1"
 )
@@ -148,6 +160,28 @@ MINIMAL_PROVIDER_OUTPUT_SCHEMA = {
                 "type": "object",
                 "additionalProperties": False,
                 "required": sorted(_RAW_GOAL_REQUIRED_FIELDS),
+                "allOf": [{
+                    "if": {
+                        "properties": {
+                            "goal_kind": {"const": "media_request"},
+                        },
+                        "required": ["goal_kind"],
+                    },
+                    "then": {
+                        "required": ["semantic_key"],
+                        "properties": {
+                            "claim_type_status": {"const": "unmapped"},
+                            "claim_type": {"const": ""},
+                            "semantic_key": {
+                                "type": "string",
+                                "enum": sorted(
+                                    ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS
+                                ),
+                            },
+                            "policy_intent_ref": {"const": ""},
+                        },
+                    },
+                }],
                 "properties": {
                     "goal_kind": {
                         "type": "string",
@@ -210,6 +244,32 @@ _strict_goal_schema["properties"].update({
         "pattern": r"^char-[0-9]{4,}$",
     },
 })
+_strict_goal_schema.pop("allOf", None)
+_strict_media_goal_schema = json.loads(json.dumps(_strict_goal_schema))
+_strict_media_goal_schema["required"] = sorted(
+    set(_strict_media_goal_schema["required"]) | {"semantic_key"}
+)
+_strict_media_goal_schema["properties"].update({
+    "goal_kind": {"const": "media_request"},
+    "claim_type_status": {"const": "unmapped"},
+    "claim_type": {"const": ""},
+    "semantic_key": {
+        "type": "string",
+        "enum": sorted(ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS),
+    },
+    "policy_intent_ref": {"const": ""},
+})
+_strict_non_media_goal_schema = json.loads(json.dumps(_strict_goal_schema))
+_strict_non_media_goal_schema["properties"]["goal_kind"] = {
+    "type": "string",
+    "enum": sorted(ALLOWED_GOAL_KINDS - {"media_request"}),
+}
+STRICT_PROVIDER_OUTPUT_SCHEMA["properties"]["goals"]["items"] = {
+    "oneOf": [
+        _strict_media_goal_schema,
+        _strict_non_media_goal_schema,
+    ],
+}
 STRICT_PROVIDER_OUTPUT_SCHEMA_SHA256 = hashlib.sha256(
     json.dumps(
         STRICT_PROVIDER_OUTPUT_SCHEMA,
@@ -298,7 +358,14 @@ For each goal:
 - An explicit request to receive an image, video, diagram, or other media is a
   media_request, not a customer_goal. Keep a separate factual customer_goal when
   the buyer also asks for the underlying fact. A media_request is unmapped and
-  cannot nominate a policy intent.
+  cannot nominate a policy intent. A media_request must never be canonical,
+  even when the requested media relates to a canonical product fact. For a
+  media_request, semantic_key is required
+  and must name the requested media role rather than the product fact. It must be
+  exactly one of accessory_image, certificate_image, installation_image,
+  installation_video, material_image, other_media, pack_guide_image,
+  product_image, or size_image. Use installation_video when the buyer requests
+  an installation video; do not copy customer wording or invent a placeholder.
 - A request to determine which service outcome applies is a customer_goal, even
   when the outcome cannot yet be confirmed and must remain unmapped or
   unresolved. The classifier does not authorize that outcome or execute it.
@@ -346,7 +413,8 @@ For each goal:
   the supplied premise only when the buyer is not independently asking for that
   premise's value. Do not emit two customer_goal records merely because a
   premise is present.
-- semantic_key is optional, non-authoritative metadata. For a canonical goal,
+- semantic_key is optional except for media_request and contextual_constraint;
+  it is always non-authoritative metadata. For a canonical goal,
   omit semantic_key or return it as an empty string because claim_type already
   carries the identity. Only an unmapped goal may use a concise lowercase ASCII
   semantic_key. Omit it when no stable semantic hint is available. Never invent
@@ -1239,6 +1307,11 @@ def _validate_raw_llm_result(
         status = goal.get("claim_type_status")
         claim_type = goal.get("claim_type")
         semantic_key = goal.get("semantic_key")
+        normalized_goal_kind = (
+            goal_kind.strip().lower()
+            if isinstance(goal_kind, str)
+            else ""
+        )
         if isinstance(status, str):
             normalized_status = status.strip().lower()
             if normalized_status not in ALLOWED_CLAIM_TYPE_STATUSES:
@@ -1288,6 +1361,59 @@ def _validate_raw_llm_result(
                 # it during canonicalization instead of losing the goal and
                 # its independently verified source span. Non-string values
                 # remain schema failures above.
+
+        if normalized_goal_kind == "media_request":
+            normalized_status = (
+                status.strip().lower()
+                if isinstance(status, str)
+                else ""
+            )
+            normalized_claim_type = (
+                claim_type.strip().lower()
+                if isinstance(claim_type, str)
+                else ""
+            )
+            normalized_semantic_key = (
+                _normalized_semantic_key(semantic_key)
+                if isinstance(semantic_key, str)
+                else ""
+            )
+            policy_intent_ref = goal.get("policy_intent_ref")
+            normalized_policy_intent_ref = (
+                policy_intent_ref.strip().lower()
+                if isinstance(policy_intent_ref, str)
+                else ""
+            )
+            if (
+                normalized_status != "unmapped"
+                or normalized_claim_type
+                or normalized_policy_intent_ref
+            ):
+                schema.append(_violation(
+                    stage="known_unmapped",
+                    json_pointer=base,
+                    reason_code="media_request_claim_identity_invalid",
+                    expected_type="unmapped_media_request",
+                    actual_value=goal,
+                ))
+            elif not normalized_semantic_key:
+                schema.append(_violation(
+                    stage="known_unmapped",
+                    json_pointer=f"{base}.semantic_key",
+                    reason_code="media_request_semantic_key_missing",
+                    expected_type="controlled_media_role",
+                    actual_value=semantic_key,
+                ))
+            elif normalized_semantic_key not in (
+                ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS
+            ):
+                schema.append(_violation(
+                    stage="known_unmapped",
+                    json_pointer=f"{base}.semantic_key",
+                    reason_code="media_request_semantic_key_invalid",
+                    expected_type="controlled_media_role",
+                    actual_value=semantic_key,
+                ))
 
         source_provenance, resolution_reason = (
             _resolve_source_span_provenance(
@@ -2795,6 +2921,21 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
             return "dimension_subject_scope_not_applicable"
         return ""
 
+    if goal_kind == "media_request":
+        policy_intent_ref = _bounded_text(
+            raw.get("policy_intent_ref"),
+            96,
+        ).lower()
+        if status != "unmapped" or claim_type or policy_intent_ref:
+            return "media_request_claim_identity_invalid"
+        if not semantic_key:
+            return "media_request_semantic_key_missing"
+        if semantic_key not in ALLOWED_MEDIA_REQUEST_SEMANTIC_KEYS:
+            return "media_request_semantic_key_invalid"
+        if normalized_subject_scope:
+            return "dimension_subject_scope_not_applicable"
+        return ""
+
     if status == "canonical":
         if not claim_type:
             return "canonical_claim_type_missing"
@@ -2804,8 +2945,6 @@ def _goal_type_reason_code(raw: dict[str, Any], goal_kind: str) -> str:
             return "canonical_with_semantic_key"
         if goal_kind == "service_action":
             return "service_action_canonical_claim_forbidden"
-        if goal_kind == "media_request":
-            return "media_request_canonical_claim_forbidden"
         if normalized_subject_scope and not is_dimension_claim_type(claim_type):
             return "dimension_subject_scope_not_applicable"
         return ""
