@@ -42,9 +42,9 @@ from app.services.strict_decision_provider_service import (  # noqa: E402
 )
 
 
-REPORT_SCHEMA_VERSION = "composer-role-qualification/v3"
+REPORT_SCHEMA_VERSION = "composer-role-qualification/v4"
 _FIXTURE_PACK_SHA256 = hashlib.sha256(
-    b"composer-role-qualification-fixture-v3"
+    b"composer-role-qualification-fixture-v4"
 ).hexdigest()
 _QUALIFICATION_CUSTOMER_MESSAGE = (
     "请说明这款商品已确认的材质，并给出日常轻微碰撞的有边界判断，"
@@ -57,6 +57,9 @@ _HISTORY_FACT_CUSTOMER_MESSAGE = (
     "不能保证耐用程度时，请只说明当前能确认的边界。"
 )
 _UNADMITTED_HISTORY_FACT_MARKER = "合成材质甲"
+_ATTACHED_MEDIA_CUSTOMER_MESSAGE = (
+    "请说明当前能否拆洗，并把对应的安装视频附在本次回复里。"
+)
 
 
 class _ComposerClient(Protocol):
@@ -432,6 +435,68 @@ def unadmitted_history_fact_qualification_response() -> dict[str, Any]:
     }
 
 
+def attached_media_request_qualification_response() -> dict[str, Any]:
+    detachable_goal = _goal(
+        "goal-detachable",
+        claim_type="",
+        attribute_key="",
+        source_text="当前能否拆洗",
+        customer_message=_ATTACHED_MEDIA_CUSTOMER_MESSAGE,
+        claim_type_status="unmapped",
+        semantic_key="detachable",
+    )
+    media_goal = _goal(
+        "goal-installation-video",
+        claim_type="",
+        attribute_key="",
+        source_text="安装视频",
+        customer_message=_ATTACHED_MEDIA_CUSTOMER_MESSAGE,
+        claim_type_status="unmapped",
+        semantic_key="installation_video",
+    )
+    media_goal.update({
+        "goal_kind": "media_request",
+        "customer_goal_eligible": False,
+    })
+    return {
+        "suggested_reply": "prior reply",
+        "can_send": True,
+        "requires_human_review": False,
+        "reply_blocks": [
+            {"type": "text", "content": "prior reply"},
+            {
+                "type": "video",
+                "url": "https://static.invalid/qualification-video.mp4",
+                "asset_type": "install_video",
+                "status": "approved",
+                "usable_for_agent": True,
+            },
+        ],
+        "minimal_decision_context": {
+            "customer_goal": _ATTACHED_MEDIA_CUSTOMER_MESSAGE,
+            "product_identity": {"resolved": True},
+            "requested_claims": [detachable_goal, media_goal],
+            "admitted_evidence": [],
+            "claim_resolutions": [_unresolved_resolution(
+                "goal-detachable",
+                semantic_key="detachable",
+                requested_claim_risk="low",
+            )],
+            "bounded_inference_policies": [],
+            "media_candidates": [{
+                "evidence_uid": "qualification-install-video",
+                "asset_type": "install_video",
+                "media_role": "installation_video",
+                "non_fact": True,
+            }],
+            "answer_eligibility_context": {
+                "goal_understanding_status": {"status": "valid"},
+            },
+            "context_stats": {"estimated_token_count": 35},
+        },
+    }
+
+
 def qualification_profiles() -> list[dict[str, Any]]:
     return [
         {
@@ -449,6 +514,11 @@ def qualification_profiles() -> list[dict[str, Any]]:
         {
             "name": "fact_bounded_and_unresolved",
             "response": qualification_response(),
+            "forbidden_reply_markers": [],
+        },
+        {
+            "name": "attached_media_request",
+            "response": attached_media_request_qualification_response(),
             "forbidden_reply_markers": [],
         },
     ]
@@ -552,6 +622,9 @@ def _record(
         )
         for item in resolutions
     )
+    expected_media_request_refs = sorted(
+        material["media_request_bindings"]
+    )
     reply = str(result.get("candidate_reply") or "")
     forbidden_markers = [
         str(item).strip()
@@ -600,6 +673,10 @@ def _record(
         "unadmitted_history_fact_not_exposed": all(
             marker.casefold() not in prompt_payload_text.casefold()
             for marker in forbidden_markers
+        ),
+        "required_media_requests_selected": (
+            sorted(result.get("selected_media_request_refs") or [])
+            == expected_media_request_refs
         ),
         "no_retry_or_repair": all(
             int(diagnostics.get(name, 0) or 0) == 0

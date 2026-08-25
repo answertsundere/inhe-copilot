@@ -12,13 +12,13 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-FORMAL-KNOWLEDGE-REVIEW-002` |
+| Task ID | `P1-EXPLICIT-MEDIA-REQUEST-CLOSURE-003` |
 | Owner | Codex |
-| Status | Product-fact staging and publication now share one fail-closed review lifecycle |
+| Status | Attached-media response obligation engineering-qualified and isolated-canary verified |
 | Active priority | P1 - Gold Conversation Quality |
-| Customer outcome | Prevent edited or backfilled product facts from becoming answer authority until a supervisor reviews and republishes them. |
-| In-scope owners | Existing KBProduct repository, product management routes, structured backfill, Product Context Pack, and lifecycle tests. |
-| Frozen owners | Formal Agent, Composer, Turn Understanding, Claim Resolution, Unified Audit, Graph expansion, Delivery, production knowledge, and `can_send`. |
+| Customer outcome | When a validated requested image/video is already attached, the candidate reply acknowledges it naturally while unsupported facts remain unresolved. |
+| In-scope owners | Existing Admitted Answer Context, existing Composer response contract, role qualifier, direct tests, and durable documentation. |
+| Frozen owners | Turn Understanding semantics, Claim Resolution, Evidence Admission rules, media delivery authority, Unified Audit, Graph expansion, production knowledge, and `can_send`. |
 | User-facing entry points | The existing formal `AnalysisPipeline` and `/api/analyze`; no new entry point is introduced. |
 | Delivery authority | Unchanged: Supervisor Assist only, `requires_human_review=true`, `can_send=false`. |
 | Real-dataset gate | Blocked. `real_customer_accuracy=null`; `optimization_unverified=true`. |
@@ -673,3 +673,26 @@ reports must retain `real_customer_accuracy=null` and
 - The changed-path and adjacent deterministic suite passed `449` tests.
   Versioned synthetic safety regression passed `5/5` smoke and `22/22` full;
   all 22 required human review and automatic sends remained zero.
+
+## 2026-08-25 P1 Explicit Attached-Media Response Closure
+
+- The first break was in the existing Admitted Answer Context reconstruction:
+  it rebuilt factual `requested_claims` but discarded an otherwise valid
+  canonical `media_request`. The projection now retains a non-customer goal only
+  with exact current-turn owner, source span, source hash, semantic role, and
+  provenance. It remains non-factual and cannot enter selected evidence.
+- The second break was in the existing Composer. Even with an approved video
+  block attached, the response schema had no exact customer-visible obligation.
+  `model-first-answer-composer-v8` / `composer-response/v5` now offers a stable
+  anonymous media-request reference only for a real attached image/video block
+  and requires exact selection. Missing, duplicate, unknown, detached, and
+  untrusted references fail closed; no future-send promise is authorized.
+- The changed-source role matrix passed `20/20` with one call per attempt, no
+  retry/repair, and p50/p95 `2.737s/6.320s`. The isolated same-product canary
+  retained detachability as unresolved, returned text plus one installation
+  video, selected the required media reference, passed Deterministic Final,
+  recorded formal DML `0`, and kept human review with `can_send=false`.
+- Unified semantic judgment was unavailable for the canary and remains
+  advisory. Synthetic safety regression passed `5/5` and `22/22`, with zero
+  automatic sends and all 22 requiring review. The result is not real accuracy,
+  Gold-quality qualification, or Autonomous Send readiness.

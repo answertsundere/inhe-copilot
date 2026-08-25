@@ -1083,6 +1083,106 @@ def test_rebuilding_customer_claims_preserves_non_customer_requested_items():
     )
 
 
+def test_rebuilds_authoritative_media_request_missing_from_claim_projection():
+    from app.agent.nodes.query_fact_type_classifier import (
+        _requested_claims_from_customer_goals,
+    )
+    from app.services import semantic_fact_type_service
+
+    message = "can it detach and send install video"
+    goals, status, diagnostics = semantic_fact_type_service._sanitize_customer_goals(
+        [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "detachable",
+                "attribute_key": "",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": "can it detach",
+            },
+            {
+                "goal_kind": "media_request",
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "attribute_key": "",
+                "semantic_key": "installation_video",
+                "policy_intent_ref": "",
+                "source_text": "send install video",
+            },
+        ],
+        message=message,
+    )
+    assert status == "valid"
+    assert diagnostics == []
+    requested = _requested_claims_from_customer_goals(
+        goals,
+        question=message,
+        risk_hint="medium",
+    )
+    assert [item["goal_kind"] for item in requested] == ["customer_goal"]
+
+    context = AdmittedAnswerContextService().build_for_response(
+        {"selected_evidence": []},
+        product_identity={"sku_code": "SKU-A"},
+        understanding={
+            "customer_goals": goals,
+            "requested_claims": requested,
+        },
+    )
+
+    assert [
+        (item["goal_kind"], item["claim_type"], item["semantic_key"])
+        for item in context["requested_claims"]
+    ] == [
+        ("customer_goal", "detachable", ""),
+        ("media_request", "", "installation_video"),
+    ]
+    assert all(
+        item.get("goal_kind") != "media_request"
+        for item in context["claim_resolutions"]
+    )
+    assert context["direct_product_facts"] == []
+    assert context["can_change_can_send"] is False
+
+    minimal = build_minimal_decision_context(
+        context,
+        customer_message=message,
+    )
+    from app.services.model_first_answer_composer_service import (
+        ModelFirstAnswerComposerService,
+    )
+
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            {
+                "minimal_decision_context": minimal,
+                "reply_blocks": [{
+                    "type": "video",
+                    "asset_type": "install_video",
+                    "url": "https://static.invalid/install.mp4",
+                    "status": "approved",
+                    "usable_for_agent": True,
+                    "sku_code": "SKU-A",
+                }],
+                "sku_code": "SKU-A",
+            },
+            customer_message=message,
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService.build_provider_material_from_decision_input(
+            decision_input
+        )
+    )
+
+    assert decision_error == material_error == ""
+    assert len(material["partitions"]["media_context"]["request_refs"]) == 1
+    assert material["partitions"]["media_context"][
+        "actual_attached_media_types"
+    ] == ["video"]
+
+
 def test_material_composition_cannot_admit_a_material_safety_claim():
     context = AdmittedAnswerContextService().build_for_response(
         {"selected_evidence": [_fact()]},

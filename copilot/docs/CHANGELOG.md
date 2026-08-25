@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-08-25 - Explicit Attached-Media Response Obligation
+
+- Preserved a fully provenance-valid current-turn `media_request` through the
+  existing Admitted Answer Context as non-factual context; it still cannot enter
+  selected evidence or satisfy Claim Resolution.
+- Upgraded the existing Composer to v8 / response v5. A validated image/video
+  block now requires exact selection of its server-offered media-request alias
+  and a natural acknowledgement that the attachment is included now. Candidate
+  availability never grants future-send authority.
+- Added fail-closed coverage for missing, duplicate, unknown, detached, and
+  untrusted references. No Graph node, service, model call, reply owner,
+  Evidence role, Delivery rule, or `can_send` condition was added.
+- Changed-source Composer qualification passed `20/20`; the isolated canary
+  returned text plus one installation video, kept the factual question
+  unresolved, passed Deterministic Final, recorded formal DML `0`, and remained
+  review-only. Synthetic safety regression passed `5/5` and `22/22`; semantic
+  judgment was unavailable and `real_customer_accuracy=null` remains.
+
 ## 2026-08-25 - Required Service-Action Selection
 
 - Upgraded the existing Composer contract to v4 so a trusted, incomplete

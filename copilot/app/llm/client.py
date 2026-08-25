@@ -21,7 +21,7 @@ class ComposerRoleConfigurationError(RuntimeError):
     """Raised when an explicit Composer role override is incomplete or unqualified."""
 
 
-COMPOSER_ROLE_QUALIFICATION_CONTRACT = "composer-role-qualification/v1"
+COMPOSER_ROLE_QUALIFICATION_CONTRACT = "composer-role-qualification/v2"
 
 
 # 降级回复模板（不依赖 LLM 输出）

@@ -1407,3 +1407,21 @@ Missing, duplicate, unknown, or untrusted action references fail closed. Free
 SOP prose is guidance only and is not a typed `action_proposal`. This is an
 existing-owner contract refinement: no Graph node, service, model call, retry,
 repair, fallback, or reply owner was added.
+
+The same existing Composer now carries a separate attached-media response
+obligation. Admitted Answer Context may retain a current-turn non-factual media
+request only when its canonical owner, source span, source hash, semantic role,
+and provenance remain valid. It still cannot enter `selected_evidence` or
+satisfy a factual claim. When, and only when, the existing delivery path has
+already produced a validated `image` or `video` reply block for that request,
+the Composer receives a stable anonymous media-request reference and must select
+the exact required reference set. Missing, duplicate, unknown, detached, or
+untrusted references fail closed.
+
+Actual reply blocks remain the sole delivery authority. A media candidate,
+requested role, or candidate count never authorizes wording that promises a
+future send. The selected reference instead requires a natural customer-visible
+acknowledgement that the attachment is included in the current reply. This is
+implemented in `model-first-answer-composer-v8` / `composer-response/v5` and
+adds no Graph node, service, model call, reply owner, Evidence role, or
+`can_send` condition.

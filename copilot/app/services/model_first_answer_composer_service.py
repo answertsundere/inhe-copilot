@@ -28,7 +28,7 @@ from app.services.no_evidence_reply_policy_service import (
 )
 
 
-COMPOSER_VERSION = "model-first-answer-composer-v7"
+COMPOSER_VERSION = "model-first-answer-composer-v8"
 COMPOSER_ENVELOPE_CONTRACT_VERSION = "bounded-json-envelope-v1"
 COMPOSER_DECISION_INPUT_SCHEMA = "composer-decision-input/v1"
 COMPOSER_DECISION_INPUT_OWNER = "model_first_answer_composer"
@@ -37,7 +37,7 @@ COMPOSER_PRIVACY_DIAGNOSTICS_SCHEMA = (
 )
 COMPOSER_PRIVACY_DIAGNOSTICS_OWNER = COMPOSER_DECISION_INPUT_OWNER
 COMPOSER_PRIVACY_DIAGNOSTICS_MAX_DIFFS = 32
-COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v4"
+COMPOSER_RESPONSE_SCHEMA_VERSION = "composer-response/v5"
 COMPOSER_RESPONSE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": COMPOSER_RESPONSE_SCHEMA_VERSION,
@@ -46,6 +46,14 @@ COMPOSER_RESPONSE_SCHEMA = {
     "additionalProperties": False,
     "properties": {
         "selected_service_action_refs": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1,
+            },
+            "uniqueItems": True,
+        },
+        "selected_media_request_refs": {
             "type": "array",
             "items": {
                 "type": "string",
@@ -1152,6 +1160,9 @@ class ModelFirstAnswerComposerService:
         service_action_bindings = material[
             "service_action_bindings"
         ]
+        media_request_bindings = material[
+            "media_request_bindings"
+        ]
         presentation_order = list(
             partitions.get("presentation_order") or []
         )
@@ -1194,6 +1205,9 @@ class ModelFirstAnswerComposerService:
             ),
             "required_service_action_refs": sorted(
                 service_action_bindings
+            ),
+            "required_media_request_refs": sorted(
+                media_request_bindings
             ),
         })
 
@@ -1390,16 +1404,17 @@ class ModelFirstAnswerComposerService:
 
         validation_error, validation_diagnostics = (
             self._validate_output_with_diagnostics(
-            parsed,
-            known_refs=known_refs,
-            customer_goals=customer_goals,
-            presentation_order=presentation_order,
-            offered_option_bindings=offered_option_bindings,
-            service_action_bindings=service_action_bindings,
-            non_renderable_goal_refs=set(
-                partitions.get("non_renderable_goal_refs") or set()
-            ),
-            response=original,
+                parsed,
+                known_refs=known_refs,
+                customer_goals=customer_goals,
+                presentation_order=presentation_order,
+                offered_option_bindings=offered_option_bindings,
+                service_action_bindings=service_action_bindings,
+                media_request_bindings=media_request_bindings,
+                non_renderable_goal_refs=set(
+                    partitions.get("non_renderable_goal_refs") or set()
+                ),
+                response=original,
             )
         )
         result["validation_diagnostics"] = validation_diagnostics
@@ -1431,6 +1446,9 @@ class ModelFirstAnswerComposerService:
         ordered_clauses = list(parsed["clauses"])
         selected_service_action_refs = list(
             parsed.get("selected_service_action_refs") or []
+        )
+        selected_media_request_refs = list(
+            parsed.get("selected_media_request_refs") or []
         )
         reply = "".join(
             str(item["text"]).strip() for item in ordered_clauses
@@ -1495,6 +1513,9 @@ class ModelFirstAnswerComposerService:
                 deepcopy(service_action_bindings[action_ref])
                 for action_ref in selected_service_action_refs
             ],
+            "selected_media_request_refs": (
+                selected_media_request_refs
+            ),
             "used_for_final_reply": True,
             "composition_applicable": True,
             "allowed_low_risk_reasoning": allowed_reasoning,
@@ -2235,6 +2256,11 @@ class ModelFirstAnswerComposerService:
         if offered_error:
             return {}, offered_error
         partitions["renderable_customer_goals"] = customer_goals
+        media_request_bindings = {
+            str(item["goal_ref"]): deepcopy(item)
+            for item in partitions["media_context"]["request_refs"]
+            if item.get("response_obligation") == "required"
+        }
         prompt_evidence, prompt_evidence_error = (
             cls._project_prompt_evidence(evidence, customer_goals)
         )
@@ -2268,6 +2294,7 @@ class ModelFirstAnswerComposerService:
             "service_action_bindings": dict(
                 partitions.get("service_action_bindings") or {}
             ),
+            "media_request_bindings": media_request_bindings,
             "goal_uid_by_ref": goal_uid_by_ref,
             "customer_goals": customer_goals,
             "offered_option_bindings": offered_option_bindings,
@@ -2289,6 +2316,7 @@ class ModelFirstAnswerComposerService:
             "covered_goal_refs": [],
             "clauses": [],
             "selected_service_actions": [],
+            "selected_media_request_refs": [],
             "context_metrics": dict(stats or {}),
             "used_for_final_reply": False,
             "can_change_can_send": False,
@@ -2319,6 +2347,7 @@ class ModelFirstAnswerComposerService:
                 "presentation_order_sha256": "",
                 "offered_option_refs": [],
                 "required_service_action_refs": [],
+                "required_media_request_refs": [],
                 "model_name": "",
                 "decision_input_schema": "",
                 "decision_input_sha256": "",
@@ -2949,6 +2978,14 @@ class ModelFirstAnswerComposerService:
             if goal_kind == "service_action":
                 partitions["service_actions"].append(projection)
             elif goal_kind in {"media_request", "media_candidate"}:
+                projection["semantic_key"] = str(
+                    claim.get("semantic_key") or ""
+                ).strip()
+                projection["response_obligation"] = (
+                    "required"
+                    if goal_kind == "media_request" and actual_media_types
+                    else "context_only"
+                )
                 partitions["media_context"]["request_refs"].append(
                     projection
                 )
@@ -3986,6 +4023,9 @@ class ModelFirstAnswerComposerService:
             "selected_service_action_refs_semantics": (
                 "exact_required_non_fact_response_obligation_aliases"
             ),
+            "selected_media_request_refs_semantics": (
+                "exact_required_non_fact_attached_media_request_aliases"
+            ),
             "evidence_refs_semantics": (
                 "server_restored_from_resolution_or_selected_option"
             ),
@@ -3998,6 +4038,7 @@ class ModelFirstAnswerComposerService:
             "clauses_follow_presentation_order": True,
             "one_option_per_goal": True,
             "required_service_actions_selected_exactly": True,
+            "required_attached_media_requests_selected_exactly": True,
             "option_selection_modes": sorted(_OPTION_SELECTION_MODES),
         }
 
@@ -4038,8 +4079,11 @@ class ModelFirstAnswerComposerService:
             "Only media_context.actual_attached_media_types authorizes wording that a media asset is sent, "
             "attached, shown, or provided with this reply. When that list is empty, do not state or imply "
             "present delivery, attachment, display, availability in the reply, or a future send. "
-            "media_context.candidate_count and media_context.request_refs are context only and never authorize "
-            "customer-facing delivery wording."
+            "media_context.candidate_count is context only and never authorizes customer-facing delivery wording. "
+            "A media_context.request_refs item with response_obligation=required means the requested media is already "
+            "included with this reply. selected_media_request_refs must contain every such goal_ref exactly once, and "
+            "the nearest related clause text must naturally acknowledge the current attachment without promising a future send. "
+            "When no media request has response_obligation=required, selected_media_request_refs may be omitted or must be empty. "
             "For a request_customer_input service action, ask naturally only for the accepted_input_slots. "
             "input_selection_mode=any_of means one listed input is sufficient; all_of means every listed input is required. "
             "Every service action with response_obligation=required must be naturally completed in an existing goal clause, "
@@ -4135,6 +4179,7 @@ class ModelFirstAnswerComposerService:
         response: dict[str, Any],
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
         service_action_bindings: dict[str, dict[str, Any]] | None = None,
+        media_request_bindings: dict[str, dict[str, Any]] | None = None,
     ) -> str:
         reason, _ = ModelFirstAnswerComposerService._validate_output_with_diagnostics(
             parsed,
@@ -4144,6 +4189,7 @@ class ModelFirstAnswerComposerService:
             response=response,
             offered_option_bindings=offered_option_bindings,
             service_action_bindings=service_action_bindings,
+            media_request_bindings=media_request_bindings,
         )
         return reason
 
@@ -4157,6 +4203,7 @@ class ModelFirstAnswerComposerService:
         response: dict[str, Any],
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
         service_action_bindings: dict[str, dict[str, Any]] | None = None,
+        media_request_bindings: dict[str, dict[str, Any]] | None = None,
         non_renderable_goal_refs: set[str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         canonical, reconstruction_error, diagnostics = (
@@ -4168,6 +4215,7 @@ class ModelFirstAnswerComposerService:
                 presentation_order=presentation_order,
                 offered_option_bindings=offered_option_bindings,
                 service_action_bindings=service_action_bindings,
+                media_request_bindings=media_request_bindings,
                 non_renderable_goal_refs=non_renderable_goal_refs,
             )
         )
@@ -4183,6 +4231,7 @@ class ModelFirstAnswerComposerService:
                 response=response,
                 offered_option_bindings=offered_option_bindings,
                 service_action_bindings=service_action_bindings,
+                media_request_bindings=media_request_bindings,
                 non_renderable_goal_refs=non_renderable_goal_refs,
             )
         )
@@ -4200,6 +4249,7 @@ class ModelFirstAnswerComposerService:
         presentation_order: list[str] | None = None,
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
         service_action_bindings: dict[str, dict[str, Any]] | None = None,
+        media_request_bindings: dict[str, dict[str, Any]] | None = None,
         non_renderable_goal_refs: set[str] | None = None,
     ) -> tuple[dict[str, Any], str, dict[str, Any]]:
         offered_option_bindings = dict(
@@ -4208,6 +4258,7 @@ class ModelFirstAnswerComposerService:
         service_action_bindings = dict(
             service_action_bindings or {}
         )
+        media_request_bindings = dict(media_request_bindings or {})
         if not isinstance(parsed, dict):
             return {}, "composer_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
                 "top_level_schema_invalid",
@@ -4284,6 +4335,61 @@ class ModelFirstAnswerComposerService:
                 parsed=parsed,
                 json_path="$.selected_service_action_refs",
                 expected_type="exact_required_service_action_refs",
+                actual_type="missing_or_incomplete_array",
+            )
+        selected_media_field_present = (
+            "selected_media_request_refs" in parsed
+        )
+        selected_media_refs = parsed.get(
+            "selected_media_request_refs",
+            [],
+        )
+        if not isinstance(selected_media_refs, list) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in selected_media_refs
+        ):
+            return {}, "composer_media_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                "top_level_schema_invalid",
+                parsed=parsed,
+                json_path="$.selected_media_request_refs",
+                expected_type="array_of_non_empty_strings",
+                actual_type=ModelFirstAnswerComposerService._type_name(
+                    selected_media_refs
+                ),
+            )
+        selected_media_refs = [
+            str(item).strip() for item in selected_media_refs
+        ]
+        if len(selected_media_refs) != len(set(selected_media_refs)):
+            return {}, "composer_duplicate_media_request_reference", ModelFirstAnswerComposerService._diagnostics(
+                "duplicate_media_request_ref",
+                parsed=parsed,
+                json_path="$.selected_media_request_refs",
+                expected_type="unique_required_media_request_refs",
+                actual_type="array_with_duplicates",
+            )
+        required_media_refs = set(media_request_bindings)
+        selected_media_ref_set = set(selected_media_refs)
+        if selected_media_ref_set - required_media_refs:
+            return {}, "composer_unknown_media_request_reference", ModelFirstAnswerComposerService._diagnostics(
+                "unknown_media_request_ref",
+                parsed=parsed,
+                json_path="$.selected_media_request_refs",
+                expected_type="required_media_request_refs",
+                actual_type="array_with_unknown_reference",
+            )
+        if (
+            required_media_refs
+            and (
+                not selected_media_field_present
+                or selected_media_ref_set != required_media_refs
+            )
+        ):
+            return {}, "composer_required_media_request_not_selected", ModelFirstAnswerComposerService._diagnostics(
+                "required_media_request_not_selected",
+                parsed=parsed,
+                json_path="$.selected_media_request_refs",
+                expected_type="exact_required_media_request_refs",
                 actual_type="missing_or_incomplete_array",
             )
         clauses = parsed.get("clauses")
@@ -4648,6 +4754,10 @@ class ModelFirstAnswerComposerService:
             canonical["selected_service_action_refs"] = sorted(
                 selected_action_refs
             )
+        if selected_media_field_present or required_media_refs:
+            canonical["selected_media_request_refs"] = sorted(
+                selected_media_refs
+            )
         return canonical, "", ModelFirstAnswerComposerService._diagnostics(
             "canonical_reconstruction_accepted",
             parsed=canonical,
@@ -4663,6 +4773,7 @@ class ModelFirstAnswerComposerService:
         response: dict[str, Any],
         offered_option_bindings: dict[str, dict[str, Any]] | None = None,
         service_action_bindings: dict[str, dict[str, Any]] | None = None,
+        media_request_bindings: dict[str, dict[str, Any]] | None = None,
         non_renderable_goal_refs: set[str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         offered_option_bindings = dict(
@@ -4671,6 +4782,7 @@ class ModelFirstAnswerComposerService:
         service_action_bindings = dict(
             service_action_bindings or {}
         )
+        media_request_bindings = dict(media_request_bindings or {})
         if not isinstance(parsed, dict):
             return "composer_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
                 "top_level_schema_invalid",
@@ -4722,6 +4834,36 @@ class ModelFirstAnswerComposerService:
                 parsed=parsed,
                 json_path="$.selected_service_action_refs",
                 expected_type="exact_required_service_action_refs",
+                actual_type="different_reference_set",
+            )
+        selected_media_refs = parsed.get(
+            "selected_media_request_refs",
+            [],
+        )
+        if (
+            not isinstance(selected_media_refs, list)
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in selected_media_refs
+            )
+            or len(selected_media_refs)
+            != len(set(selected_media_refs))
+        ):
+            return "composer_media_request_schema_invalid", ModelFirstAnswerComposerService._diagnostics(
+                "top_level_schema_invalid",
+                parsed=parsed,
+                json_path="$.selected_media_request_refs",
+                expected_type="unique_required_media_request_refs",
+                actual_type=ModelFirstAnswerComposerService._type_name(
+                    selected_media_refs
+                ),
+            )
+        if set(selected_media_refs) != set(media_request_bindings):
+            return "composer_required_media_request_not_selected", ModelFirstAnswerComposerService._diagnostics(
+                "required_media_request_not_selected",
+                parsed=parsed,
+                json_path="$.selected_media_request_refs",
+                expected_type="exact_required_media_request_refs",
                 actual_type="different_reference_set",
             )
         clauses = parsed.get("clauses")

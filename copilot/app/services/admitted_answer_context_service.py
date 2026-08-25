@@ -28,6 +28,7 @@ from app.services.fact_type_alias_service import (
 )
 from app.services.product_structured_evidence_service import material_evidence_admission_reason
 from app.services.semantic_fact_type_service import (
+    ALLOWED_GOAL_KINDS,
     GOAL_IDENTITY_SCHEMA_VERSION,
     canonical_source_span_text,
     goal_understanding_eligibility_status,
@@ -1301,29 +1302,58 @@ def _authoritative_requested_claim_items(
     separate Claim Resolution identity.
     """
     requested_items = _as_list(understanding.get("requested_claims"))
-    customer_goals = [
+
+    def canonical_goal_is_usable(item: dict[str, Any]) -> bool:
+        goal_kind = sanitize_text(item.get("goal_kind")).lower()
+        if goal_kind not in ALLOWED_GOAL_KINDS:
+            return False
+        if goal_kind == "customer_goal":
+            return True
+        span_start = item.get("source_span_start")
+        span_end = item.get("source_span_end")
+        return bool(
+            sanitize_text(item.get("schema_version"))
+            == GOAL_IDENTITY_SCHEMA_VERSION
+            and sanitize_text(item.get("goal_ref"))
+            and sanitize_text(item.get("owner"))
+            == "turn_understanding_owner"
+            and sanitize_text(item.get("source")).lower()
+            == "current_customer_message"
+            and sanitize_text(item.get("source_stage"))
+            and sanitize_text(item.get("source_turn_uid"))
+            and isinstance(span_start, int)
+            and not isinstance(span_start, bool)
+            and isinstance(span_end, int)
+            and not isinstance(span_end, bool)
+            and span_start >= 0
+            and span_end >= span_start
+            and _structured_sha256(item.get("source_span_sha256"))
+            and _structured_sha256(item.get("source_text_sha256"))
+        )
+
+    canonical_goals = [
         item
         for item in _as_list(understanding.get("customer_goals"))
         if isinstance(item, dict)
-        and sanitize_text(item.get("goal_kind")).lower() == "customer_goal"
+        and canonical_goal_is_usable(item)
     ]
-    if not customer_goals:
+    if not canonical_goals:
         return requested_items
 
     requested_by_goal_ref = {
         sanitize_text(item.get("goal_ref")): item
         for item in requested_items
         if isinstance(item, dict)
-        and sanitize_text(item.get("goal_kind")).lower() == "customer_goal"
         and sanitize_text(item.get("goal_ref"))
     }
-    canonical_customer_claims: list[dict[str, Any]] = []
+    canonical_claims: list[dict[str, Any]] = []
     seen_goal_refs: set[str] = set()
-    for goal in customer_goals:
+    for goal in canonical_goals:
         goal_ref = sanitize_text(goal.get("goal_ref"))
         if not goal_ref or goal_ref in seen_goal_refs:
             continue
         seen_goal_refs.add(goal_ref)
+        goal_kind = sanitize_text(goal.get("goal_kind")).lower()
         matching_projection = requested_by_goal_ref.get(goal_ref)
         claim = {
             field: goal[field]
@@ -1359,7 +1389,7 @@ def _authoritative_requested_claim_items(
         )
         claim.update({
             "goal_ref": goal_ref,
-            "goal_kind": "customer_goal",
+            "goal_kind": goal_kind,
             "owner": "turn_understanding_owner",
             "source_stage": "query_fact_type_classifier",
             "question": (
@@ -1370,10 +1400,10 @@ def _authoritative_requested_claim_items(
             "risk_level": (
                 projected_risk
                 if projected_risk in {"low", "medium", "high", "critical", "prohibited"}
-                else "high"
+                else "high" if goal_kind == "customer_goal" else "medium"
             ),
         })
-        canonical_customer_claims.append(claim)
+        canonical_claims.append(claim)
 
     non_customer_claims = [
         item
@@ -1381,8 +1411,9 @@ def _authoritative_requested_claim_items(
         if isinstance(item, dict)
         and sanitize_text(item.get("goal_kind")).lower()
         and sanitize_text(item.get("goal_kind")).lower() != "customer_goal"
+        and sanitize_text(item.get("goal_ref")) not in seen_goal_refs
     ]
-    return [*canonical_customer_claims, *non_customer_claims]
+    return [*canonical_claims, *non_customer_claims]
 
 
 def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1413,7 +1444,12 @@ def _requested_claims(understanding: dict[str, Any]) -> list[dict[str, Any]]:
                 and claim_type_status == "unmapped"
                 and not claim_type
             )
-            if claim_type or preserve_unmapped_goal:
+            preserve_non_fact_goal = (
+                goal_kind in ALLOWED_GOAL_KINDS - {"customer_goal"}
+                and claim_type_status == "unmapped"
+                and not claim_type
+            )
+            if claim_type or preserve_unmapped_goal or preserve_non_fact_goal:
                 result.append({
                     "schema_version": sanitize_text(
                         item.get("schema_version")

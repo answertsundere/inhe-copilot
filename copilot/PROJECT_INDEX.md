@@ -26,6 +26,10 @@ After implementation, update this index, `ROADMAP.md`, and
   development evidence, not real-customer accuracy.
 - Delivery boundary: Supervisor Assist only. Every candidate remains
   `requires_human_review=true` and `can_send=false`.
+- Attached-media boundary: an authoritative current-turn media request is
+  retained as non-factual context, and the existing Composer must acknowledge
+  it only when a validated image/video block is already present. The block is
+  the sole delivery authority; no candidate or request grants a send promise.
 - Dynamic truth boundary: volatile product, price, stock, promotion, order,
   logistics, policy, and service-outcome facts are resolved from approved
   current sources at answer time. They are never hardcoded into tests or
@@ -54,10 +58,10 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The required service-action selection boundary now closes the first shared
-after-sales helpfulness defect without changing factual or delivery authority.
+The required service-action and attached-media response boundaries now close
+two shared helpfulness defects without changing factual or delivery authority.
 The next P1 run should use the existing frozen long-conversation set to improve
-the earliest remaining goal-understanding or evidence-coverage Owner, while
-keeping Unified Audit advisory for Supervisor Assist and mandatory for any
-future Autonomous Send qualification. Synthetic `5/5` and `22/22` results
-remain safety regression only; `real_customer_accuracy=null`.
+the earliest remaining goal-understanding, evidence-coverage, continuity, or
+naturalness Owner. Unified Audit stays advisory for Supervisor Assist and
+mandatory for any future Autonomous Send qualification. Synthetic `5/5` and
+`22/22` results remain safety regression only; `real_customer_accuracy=null`.

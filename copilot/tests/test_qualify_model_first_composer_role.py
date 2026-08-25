@@ -38,9 +38,17 @@ class _FakeClient:
                     [] if not options or self.invalid else [options[0]["option_ref"]]
                 ),
             })
+        required_media_refs = [
+            item["goal_ref"]
+            for item in material["media_context"]["request_refs"]
+            if item.get("response_obligation") == "required"
+        ]
+        payload = {"clauses": clauses}
+        if required_media_refs:
+            payload["selected_media_request_refs"] = required_media_refs
         return SimpleNamespace(choices=[SimpleNamespace(
             finish_reason="stop",
-            message=SimpleNamespace(content=json.dumps({"clauses": clauses})),
+            message=SimpleNamespace(content=json.dumps(payload)),
         )])
 
 
@@ -63,9 +71,17 @@ class _MixedLanguageClient(_FakeClient):
                     [options[0]["option_ref"]] if options else []
                 ),
             })
+        required_media_refs = [
+            item["goal_ref"]
+            for item in material["media_context"]["request_refs"]
+            if item.get("response_obligation") == "required"
+        ]
+        payload = {"clauses": clauses}
+        if required_media_refs:
+            payload["selected_media_request_refs"] = required_media_refs
         return SimpleNamespace(choices=[SimpleNamespace(
             finish_reason="stop",
-            message=SimpleNamespace(content=json.dumps({"clauses": clauses})),
+            message=SimpleNamespace(content=json.dumps(payload)),
         )])
 
 
@@ -125,6 +141,7 @@ def test_qualification_profiles_include_a_standalone_unresolved_only_case():
         "unresolved_only",
         "unadmitted_history_fact",
         "fact_bounded_and_unresolved",
+        "attached_media_request",
     ]
     unresolved = profiles[0]["response"]["minimal_decision_context"]
     assert unresolved["admitted_evidence"] == []
@@ -148,6 +165,25 @@ def test_qualification_profiles_include_a_standalone_unresolved_only_case():
     assert material["prompt_payload"][
         "non_authoritative_recent_conversation_turns"
     ] == []
+    media_response = profiles[3]["response"]
+    media_decision_input, media_decision_error = (
+        service.build_composer_decision_input(
+            media_response,
+            customer_message=(
+                media_response["minimal_decision_context"]["customer_goal"]
+            ),
+        )
+    )
+    media_material, media_material_error = (
+        service.build_provider_material_from_decision_input(
+            media_decision_input
+        )
+    )
+    assert media_decision_error == media_material_error == ""
+    assert len(media_material["media_request_bindings"]) == 1
+    assert media_material["partitions"]["media_context"][
+        "actual_attached_media_types"
+    ] == ["video"]
 
 
 def test_role_qualification_accepts_five_single_call_attempts_per_profile():
@@ -157,15 +193,19 @@ def test_role_qualification_accepts_five_single_call_attempts_per_profile():
 
     assert exit_code == 0
     assert report["status"] == "qualified"
-    assert report["attempted"] == 15
-    assert report["provider_call_count"] == 15
+    assert report["attempted"] == 20
+    assert report["provider_call_count"] == 20
     assert len(report["qualification_fingerprint"]) == 64
-    assert len(client.calls) == 15
-    assert report["profile_count"] == 3
+    assert len(client.calls) == 20
+    assert report["profile_count"] == 4
     assert report["attempts_per_profile"] == 5
     assert all(record["qualified"] for record in report["records"])
     assert all(
         record["checks"]["unresolved_boundary_preserved"]
+        for record in report["records"]
+    )
+    assert all(
+        record["checks"]["required_media_requests_selected"]
         for record in report["records"]
     )
     assert report["can_change_can_send"] is False

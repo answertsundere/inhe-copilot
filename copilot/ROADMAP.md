@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-FORMAL-KNOWLEDGE-REVIEW-002` |
+| Task ID | `P1-EXPLICIT-MEDIA-REQUEST-CLOSURE-003` |
 | Owner | Codex |
-| Goal | Make the existing product-fact review lifecycle fail closed before supervisors begin reviewing recovered identity drafts. |
-| Scope | Existing KBProduct repository, product management routes, structured backfill, Product Context Pack, lifecycle tests, and durable documentation. No Agent, Prompt, Graph, model, reply owner, or Delivery change. |
-| Status | Published identity, structured fact, logistics, warranty, SKU, or policy-binding changes now return the product to `pending_review`. HTTP create/update/publish and batch lifecycle operations cannot bypass the existing repository transitions, and a deterministic local shortlist now exposes 30 identity-bound color/weight drafts for supervisor review without approving them. |
-| Gate | Only a dedicated supervisor approval can republish a changed product or fact. The shortlist has `30/30` exact import-source reconstructions. An exact `i_id` cross-check against the read-only formal snapshot found 28 product identities and only 3 matching color values, but none has demonstrably independent provenance. The result remains `0` independent sources, `0` approvals, and no database change. Import or snapshot consistency is not fact verification. Pending-review products disappear from Product Context Pack immediately. Recovered material and product-dimension coverage remains absent, so no fact is auto-approved or promoted. |
+| Goal | Preserve an authoritative explicit media request and require a natural acknowledgement when the existing delivery path already attached the requested media. |
+| Scope | Existing Admitted Answer Context, Composer response contract, role qualifier, direct tests, and existing documentation. No Graph node, service, extra model call, reply owner, Evidence role, or Delivery change. |
+| Status | Engineering-qualified and verified in an isolated 5013 canary. Composer v8/response v5 selected the exact current attachment obligation while the unresolved fact stayed unresolved and every reply remained review-only. |
+| Gate | A fully provenance-valid current-turn media request and an actual validated image/video block must coexist. The exact anonymous reference set is mandatory; missing, duplicate, unknown, detached, or untrusted refs fail closed. Candidate availability never authorizes future-send wording. Unified semantic judgment remains unavailable/advisory, so P1 and Autonomous Send are not qualified. |
 
 ## Phase Status
 
@@ -97,6 +97,23 @@
 5. After P1 acceptance, create the P2 dynamic-evidence source-of-truth ADR.
 
 ## Completion Record
+
+`P1-EXPLICIT-MEDIA-REQUEST-CLOSURE-003` completed its engineering gate on
+2026-08-25:
+
+- Closed the earliest canonical-context loss of a fully provenance-valid
+  current-turn `media_request` without converting media into Evidence.
+- Upgraded the existing Composer to response v5 so an actual attached media
+  block requires exact anonymous request selection and current-attachment
+  acknowledgement; candidate-only and future-send wording remain unauthorized.
+- Composer role qualification passed `20/20`, p50/p95 about
+  `2.737s/6.320s`, with one call per attempt and no retry/repair.
+- The isolated same-product canary returned text plus one installation video,
+  preserved the unresolved fact boundary, passed Deterministic Final, recorded
+  formal DML `0`, and kept `can_send=false` with human review. Semantic judgment
+  was unavailable, so no Gold-quality or real-accuracy claim is made.
+- Versioned synthetic regression passed `5/5` and `22/22`; all 22 remained
+  review-only and automatic sends were zero.
 
 `P1-E2-001-TEST-ENTRY` completed on 2026-08-13:
 

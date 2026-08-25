@@ -1433,3 +1433,29 @@ did not run because the child process had no approved Provider credential.
 `real_customer_accuracy=null`. The next permitted gate is the unchanged
 dimensions cases followed by one Fixed-8 when the approved credential is
 available; no reply template or additional Agent owner is warranted.
+
+### Explicit Attached-Media Response Checkpoint (2026-08-25)
+
+The next installation replay exposed two ordered failures. First, Admitted
+Answer Context reconstructed only factual requested claims and dropped the
+authoritative current-turn `media_request`. Second, after that request reached
+the existing Composer, the response contract still treated the actual attached
+video as optional context and allowed text that did not acknowledge it.
+
+The existing admission projection now retains only fully provenance-valid
+canonical non-customer goals as non-factual context. Composer response v5 then
+requires the exact anonymous media-request reference only when the final reply
+already contains a validated image or video block for that request. The block,
+not the request or candidate list, remains delivery authority. Media stays out
+of Evidence and Claim Resolution; unknown, duplicate, missing, detached, and
+untrusted references fail closed.
+
+The changed-source Composer role qualified `20/20` across four profiles with one
+call per attempt, no retry or repair, and p50/p95 latency of about
+`2.737s/6.320s`. An isolated exact-product canary produced one text block plus
+one installation-video block, retained the detachability question as unresolved,
+selected the exact media request, passed Deterministic Final, recorded formal
+knowledge DML `0`, and kept `can_send=false` with mandatory human review. The
+semantic judge was unavailable, so this is an engineering closure only.
+Synthetic `5/5` and `22/22` remained review-only safety regression;
+`real_customer_accuracy=null` and P1 remain authoritative.

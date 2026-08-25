@@ -1464,7 +1464,10 @@ def test_composer_prompt_uses_only_actual_blocks_as_media_delivery_authority():
     prompt = ModelFirstAnswerComposerService._system_prompt()
 
     assert "Only media_context.actual_attached_media_types authorizes wording" in prompt
-    assert "candidate_count and media_context.request_refs are context only" in prompt
+    assert "media_context.candidate_count is context only" in prompt
+    assert "response_obligation=required" in prompt
+    assert "selected_media_request_refs must contain every such goal_ref" in prompt
+    assert "without promising a future send" in prompt
     assert "do not state or imply present delivery" in prompt
 
 
@@ -3119,6 +3122,134 @@ def _media_goal_payload(text: str) -> dict:
             "evidence_refs": [],
         }],
     }
+
+
+def _mixed_media_goal_response() -> dict:
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["customer_goal"] = "能否拆洗，并把安装视频发给我"
+    context["requested_claims"] = [
+        _goal("goal-detachable", "detachable"),
+        _goal(
+            "goal-install-video",
+            "",
+            goal_kind="media_request",
+            claim_type_status="unmapped",
+            semantic_key="installation_video",
+        ),
+    ]
+    context["admitted_evidence"] = []
+    context["claim_resolutions"] = [
+        _resolution(
+            "claim-detachable",
+            "detachable",
+            "unresolved",
+        ),
+    ]
+    context["media_candidates"] = [{
+        "evidence_uid": "media-install-video",
+        "asset_type": "install_video",
+        "media_role": "installation_video",
+        "non_fact": True,
+    }]
+    response["reply_blocks"].append({
+        "type": "video",
+        "url": "https://static.invalid/install.mp4",
+        "asset_type": "install_video",
+        "status": "approved",
+        "usable_for_agent": True,
+        "sku_code": "private-sku",
+    })
+    return response
+
+
+def _mixed_media_payload(text: str) -> dict:
+    return {
+        "clauses": [{
+            "goal_ref": "goal_01",
+            "text": text,
+            "selected_option_refs": [],
+        }],
+    }
+
+
+def test_composer_requires_attached_media_request_selection():
+    response = _mixed_media_goal_response()
+
+    updated, result, client = _compose(
+        _mixed_media_payload("目前无法确认是否支持拆洗。"),
+        response,
+    )
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == (
+        "composer_required_media_request_not_selected"
+    )
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+
+
+def test_composer_accepts_exact_attached_media_request_selection():
+    response = _mixed_media_goal_response()
+    decision_input, decision_error = (
+        ModelFirstAnswerComposerService.build_composer_decision_input(
+            response,
+            customer_message="能否拆洗，并把安装视频发给我",
+        )
+    )
+    material, material_error = (
+        ModelFirstAnswerComposerService.build_provider_material_from_decision_input(
+            decision_input
+        )
+    )
+    media_ref = material["partitions"]["media_context"]["request_refs"][0][
+        "goal_ref"
+    ]
+    payload = _mixed_media_payload(
+        "目前无法确认是否支持拆洗，安装视频已随本次回复附上。"
+    )
+    payload["selected_media_request_refs"] = [media_ref]
+
+    updated, result, client = _compose(payload, response)
+
+    assert decision_error == material_error == ""
+    assert result["status"] == "accepted"
+    assert result["selected_media_request_refs"] == [media_ref]
+    assert "安装视频" in updated["suggested_reply"]
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("selected_refs", "expected_reason"),
+    [
+        (
+            ["media_request_unknown"],
+            "composer_unknown_media_request_reference",
+        ),
+        (
+            ["media_request_duplicate", "media_request_duplicate"],
+            "composer_duplicate_media_request_reference",
+        ),
+    ],
+)
+def test_composer_rejects_invalid_attached_media_request_references(
+    selected_refs,
+    expected_reason,
+):
+    response = _mixed_media_goal_response()
+    payload = _mixed_media_payload(
+        "目前无法确认是否支持拆洗，安装视频已随本次回复附上。"
+    )
+    payload["selected_media_request_refs"] = selected_refs
+
+    updated, result, client = _compose(payload, response)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == expected_reason
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
 
 
 def test_composer_rejects_media_delivery_without_explicit_media_goal():
