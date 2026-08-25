@@ -34,6 +34,10 @@ After implementation, update this index, `ROADMAP.md`, and
   logistics, policy, and service-outcome facts are resolved from approved
   current sources at answer time. They are never hardcoded into tests or
   prompts.
+- Current evidence checkpoint: Product Hub now materializes explicit
+  product/component dimension subjects as atomic scoped facts. The read-only
+  Pack admits the exact product width/height/depth and excludes component axes;
+  a model-backed customer reply remains pending internal-data egress approval.
 - Accuracy status: `real_customer_accuracy=null` and
   `optimization_unverified=true` until the authorized E2 data and independent
   reviews are complete.

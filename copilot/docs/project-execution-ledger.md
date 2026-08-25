@@ -608,21 +608,45 @@ reports must retain `real_customer_accuracy=null` and
   product and a component, while the Hub generator concatenated all six values
   into one `商品整体` fact. Product Context Pack correctly rejected that value,
   so the customer width/height goals had no selected evidence.
-- Product Hub commit `d2e1284` now publishes named A/B axes with explicit
+- Product Hub isolated commit `148f444` now publishes named A/B axes with explicit
   product/component scope and asset provenance. Legacy one-object `spec_ref`
   tuples remain compatible up to three axes; longer unlabeled lists emit no
-  fact. Its full suite passed `242` tests with one existing skip.
-- A consistent pre-change Hub backup passed `integrity_check`; the live `8795`
-  fact rebuild produced `19,048` generated facts. The target product now exposes
+  fact. Five focused generator tests and the seven native-dependency suites
+  covering 44 tests passed; the earlier broad run had 196 passing tests and
+  only the same missing-`sharp` environment failures before the existing
+  dependency junction was restored.
+- A consistent pre-change Hub backup has SHA-256
+  `c3198a29d267d989243b6ca2abc2cd13ad04eee0b187e558ce7b78e025d405df`;
+  the live `8795` rebuild was narrowed to one exact product. Product, SKU,
+  asset, every other product-fact row, and target manual-fact fingerprints were
+  unchanged. The target product now exposes
   width `60 cm`, height `93 cm`, and depth `57 cm` as confirmed product-scope
-  facts, while the three chair axes remain component-scope. The source snapshot
-  hash was unchanged and Copilot's read-only Product Context Pack admitted only
-  the three product axes with `direct_answer`.
+  facts, while the three chair axes remain component-scope. Source product,
+  SKU, and asset rows were unchanged, and Copilot's read-only Product Context
+  Pack admitted only the three product axes with `direct_answer`.
 - No Copilot code, Graph node, model call, reply owner, formal-knowledge row, or
-  `can_send` rule changed. A new model-backed Fixed-8 dimensions rerun did not
-  start because no approved DeepSeek credential was available to the child
-  process. This is a source/evidence correction, not a Gold-quality or real-
-  accuracy pass; `real_customer_accuracy=null` remains authoritative.
+  `can_send` rule changed. The local Product Context, Evidence Admission,
+  Formal Convergence, Final, and Pipeline regression is green. A model-backed
+  Fixed-8 dimensions rerun has not started because the existing anonymous
+  conversation authorization does not cover sending internal Product Hub
+  identity and facts to an external Provider. This is a source/evidence
+  correction, not a Gold-quality or real-accuracy pass;
+  `real_customer_accuracy=null` remains authoritative.
+
+## 2026-08-25 P1 Installation FAQ Role Follow-Up
+
+- The previous Fixed-8 installation reply was traced to one exact-product
+  published FAQ that mixed assembly assertions with a future installation-video
+  commitment and online-service promise. That row is not an acceptable atomic
+  product fact.
+- The current Admitted Answer Context already rejects a direct FAQ containing
+  an unsupported delivery commitment. Product Hub independently exposes three
+  approved installation videos for the exact product, so current media blocks,
+  not the legacy FAQ promise, remain the delivery authority.
+- No source FAQ was rewritten, no keyword exception or reply template was
+  added, and no media or send gate was relaxed. The next model-backed check must
+  verify the current admission result and actual attached block through the
+  existing formal Pipeline.
 
 ## 2026-08-25 P1 Installation Media Candidate Convergence
 

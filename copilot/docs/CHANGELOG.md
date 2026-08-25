@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-08-25 - Product Hub Atomic Dimension Source Validation
+
+- Verified the Product Hub source implementation behind the existing exact
+  fact projection contract. Explicit A/B annotations are now materialized as
+  separately named product/component axes; later subjects cannot become the
+  product when A is incomplete, and ambiguous long legacy tuples remain absent.
+- Backed up the live Hub database and rebuilt only one exact product. Product,
+  SKU, asset, all other product-fact, and target manual-fact fingerprints were
+  unchanged. The exact Copilot Product Context request admitted only product
+  width `60 cm`, height `93 cm`, and depth `57 cm` as direct answer context.
+- Confirmed that current Evidence Admission rejects a mixed direct FAQ carrying
+  a future media-delivery commitment. Existing approved installation media
+  remains non-factual and requires an actual validated reply block.
+- This checkpoint changes no Copilot production code, Graph owner, model call,
+  formal knowledge, delivery rule, or `can_send`. External model validation is
+  pending separate authorization for internal Product Hub data egress;
+  `real_customer_accuracy=null` remains authoritative.
+
 ## 2026-08-25 - Customer-Visible Service-Action Execution Contract
 
 - Split the Composer's selected service-action references from their

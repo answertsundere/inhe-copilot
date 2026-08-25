@@ -307,3 +307,23 @@ on 2026-08-17:
   evidence relevance/admission and exact product fact coverage, not another
   Composer wording rule. `real_customer_accuracy=null` and Autonomous Send
   remains unqualified.
+
+## 2026-08-25 Product Hub Atomic Dimension Source Checkpoint
+
+- The earliest dimensions failure was upstream of Copilot. One approved image
+  described product A and component B, while the Hub source generator emitted
+  one ambiguous six-number product fact. Copilot correctly rejected it.
+- Product Hub isolated commit `148f444` now emits named axes per explicit
+  subject. Subject A maps to `商品整体`; later subjects remain `部件`. Missing A
+  axes cannot promote B, and unlabeled legacy lists longer than three axes emit
+  no direct fact. A generic exact-product rebuild option changes only that
+  product's script-owned facts.
+- After a full SQLite backup, the live rebuild changed only the target
+  script-generated facts. Copilot's read-only Product Context Pack returned
+  `direct_answer` with product width `60 cm`, height `93 cm`, and depth `57 cm`;
+  chair dimensions stayed out of the product-scope query.
+- Local Product Context, Admitted Answer Context, Formal Convergence, Final,
+  and Pipeline regression passed. The external model canary is pending explicit
+  authorization for the internal product identity and fact values to leave the
+  workstation. Production defaults, formal knowledge, and `can_send` are
+  unchanged.
