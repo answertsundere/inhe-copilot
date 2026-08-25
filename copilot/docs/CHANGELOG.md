@@ -1,5 +1,24 @@
 # Change Log
 
+## 2026-08-25 - DeepSeek Fixed-8 Supervisor-Assist Baseline
+
+- Qualified DeepSeek V4 Flash for the current Composer contract `25/25` across
+  five profiles with no retry, repair, fallback, timeout, credential exposure,
+  or formal-knowledge DML.
+- Ran a fully fictional Product Hub canary that admitted only product-scope
+  dimensions and excluded component values. The reply remained review-only and
+  `can_send=false`.
+- Ran one immutable reconstructed Fixed-8 through the formal Pipeline:
+  execution, Composer, and Deterministic Final completed `8/8`; Unified Audit
+  passed `7/8` with one schema-invalid advisory result; formal knowledge stayed
+  unchanged, DML was `0`, all eight required human review, and automatic sends
+  stayed `0`.
+- Completed a schema-valid offline expert review. Factual correctness averaged
+  `1.875/2`, goal completion `1.375/2`, naturalness `1.375/2`, and business
+  helpfulness `1.0/2`. The next owner is existing formal knowledge/tool
+  coverage, not another reply rule. This does not establish real-customer
+  accuracy or enable Autonomous Send.
+
 ## 2026-08-25 - Product Hub Atomic Dimension Source Validation
 
 - Verified the Product Hub source implementation behind the existing exact

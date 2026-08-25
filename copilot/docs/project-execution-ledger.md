@@ -748,3 +748,31 @@ reports must retain `real_customer_accuracy=null` and
   Evidence relevance/admission and exact product fact coverage are therefore
   the next P1 Owner. `real_customer_accuracy=null`, Unified Audit remains
   advisory, and Autonomous Send remains blocked.
+
+## 2026-08-25 Current-Source DeepSeek Fixed-8 Baseline
+
+- DeepSeek V4 Flash passed the current Composer qualification `25/25` across
+  five profiles. Provider calls were one per attempt; retry, repair, fallback,
+  timeout, formal-knowledge DML, credential leakage, and full API URL leakage
+  were all zero. Composer p50/p95 was `1.237s/2.312s`.
+- A fully fictional Product Hub canary admitted the anonymous product's width,
+  height, and depth, excluded component dimensions, and produced a grounded
+  width/height reply. The result required human review, kept `can_send=false`,
+  and made no formal-knowledge write.
+- The immutable reconstructed Fixed-8 completed execution, Composer, and
+  Deterministic Final `8/8`. Unified Audit passed `7/8`; one material/moisture
+  case returned `semantic_judge_schema_invalid`. Selected evidence totaled `8`
+  across three scenarios, formal knowledge was unchanged, DML was `0`, all
+  eight required review, and automatic sends remained `0`.
+- Offline expert review averaged factual correctness `1.875/2`, goal completion
+  `1.375/2`, naturalness `1.375/2`, empathy `1.0/2`, business helpfulness
+  `1.0/2`, and bounded reasoning `2.0/2`. Three replies were strong grounded or
+  partial answers; installation, detachability, media, and after-sales replies
+  remained too passive because useful formal context or executable actions were
+  absent.
+- The source runner report remains `awaiting_codex_expert_review` because the
+  random audit HMAC was destroyed on isolated-process exit. The raw run was not
+  modified or replayed; a separately hashed schema-valid offline review records
+  the judgment. The next P1 owner is `formal_knowledge_tool_coverage`.
+  `real_customer_accuracy=null`, Supervisor Assist remains review-only, and
+  Autonomous Send remains blocked.

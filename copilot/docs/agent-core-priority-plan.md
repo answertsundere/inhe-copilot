@@ -1558,3 +1558,26 @@ dataset hash `4c2156a1867df17bbb4e4ce4d2a5ca1fc0be1079671b1983055d3fcbef87574f`.
 All 22 results remained human-review-only and `can_send=true` stayed zero. This
 is safety regression evidence only; it does not change the reconstructed
 Fixed-8 limitations or establish real-customer accuracy.
+
+### Current-Source DeepSeek Fixed-8 Baseline (2026-08-25)
+
+DeepSeek V4 Flash passed the current Composer qualification `25/25` across five
+profiles with one call per attempt and no retry, repair, fallback, timeout, or
+formal-knowledge DML. A separate all-fictional Product Hub canary then admitted
+only product-scope width/height/depth, excluded component dimensions, and kept
+the result review-only with `can_send=false`.
+
+The unchanged reconstructed Fixed-8 completed all eight formal Pipeline calls,
+Composer and Deterministic Final `8/8`, Unified Audit `7/8` with one schema
+invalid result, human review `8/8`, automatic send `0`, and formal-knowledge
+DML `0`. Direct facts were present in only three scenarios. Offline expert
+review averaged `1.875/2` factual correctness, `1.375/2` goal completion,
+`1.375/2` naturalness, `1.0/2` empathy, `1.0/2` business helpfulness, and
+`2.0/2` bounded reasoning.
+
+The next P1 owner is `formal_knowledge_tool_coverage`: use the existing Product
+Context Pack, media, and service-tool contracts to supply useful installation,
+detachability, media, and after-sales context before changing Composer wording.
+No production flag or send authority is enabled. The source run is immutable;
+its separately hashed offline review is not supervisor approval, and
+`real_customer_accuracy=null` remains authoritative.

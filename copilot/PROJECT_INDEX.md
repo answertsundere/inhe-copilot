@@ -34,10 +34,14 @@ After implementation, update this index, `ROADMAP.md`, and
   logistics, policy, and service-outcome facts are resolved from approved
   current sources at answer time. They are never hardcoded into tests or
   prompts.
-- Current evidence checkpoint: Product Hub now materializes explicit
-  product/component dimension subjects as atomic scoped facts. The read-only
-  Pack admits the exact product width/height/depth and excludes component axes;
-  a model-backed customer reply remains pending internal-data egress approval.
+- Current evidence checkpoint: Product Hub materializes explicit
+  product/component dimension subjects as atomic scoped facts. A fully
+  fictional isolated canary admitted product width/height/depth, excluded
+  component axes, and produced a grounded width/height reply with no send
+  authority. The current-source DeepSeek Composer qualification passed `25/25`;
+  the subsequent reconstructed Fixed-8 completed `8/8`, selected evidence in
+  only three scenarios, kept formal-knowledge DML at `0`, required review
+  `8/8`, and kept `can_send=0`.
 - Accuracy status: `real_customer_accuracy=null` and
   `optimization_unverified=true` until the authorized E2 data and independent
   reviews are complete.
@@ -62,13 +66,12 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Next Step
 
-The service-action boundary is being tightened from internal selection to
-customer-visible execution. Composer response v6 and Deterministic Final now
-require one slot-valid visible request per required action; deterministic tests
-and versioned Synthetic `5/5` plus `22/22` pass, while changed-source Provider
-qualification and the fresh Fixed-8 remain pending. After those gates, P1
-returns to the earliest remaining
-goal-understanding, evidence-coverage, continuity, or naturalness Owner.
-Unified Audit stays advisory for Supervisor Assist and mandatory for any future
-Autonomous Send qualification. Synthetic results remain safety regression only;
-`real_customer_accuracy=null`.
+The fresh Fixed-8 is complete and moves the active P1 owner to
+`formal_knowledge_tool_coverage`. Dimension and material facts were useful when
+admitted, but installation, detachability, installation media, and after-sales
+turns lacked a customer-visible fact or executable service action and fell back
+to repeated uncertainty. The next change must trace those existing source and
+tool paths into the canonical answer context before any wording work. Unified
+Audit stays advisory for Supervisor Assist and mandatory for future Autonomous
+Send qualification. This reconstructed baseline remains engineering evidence;
+`real_customer_accuracy=null` and `optimization_unverified=true`.

@@ -4,12 +4,12 @@
 
 | Field | Value |
 |---|---|
-| Task ID | `P1-EXPLICIT-MEDIA-REQUEST-CLOSURE-003` |
+| Task ID | `P1-DEEPSEEK-FIXED8-BASELINE-004` |
 | Owner | Codex |
-| Goal | Preserve an authoritative explicit media request and require a natural acknowledgement when the existing delivery path already attached the requested media. |
-| Scope | Existing Admitted Answer Context, Composer response contract, role qualifier, direct tests, and existing documentation. No Graph node, service, extra model call, reply owner, Evidence role, or Delivery change. |
-| Status | Engineering-qualified and verified in an isolated 5013 canary. Composer v8/response v5 selected the exact current attachment obligation while the unresolved fact stayed unresolved and every reply remained review-only. |
-| Gate | A fully provenance-valid current-turn media request and an actual validated image/video block must coexist. The exact anonymous reference set is mandatory; missing, duplicate, unknown, detached, or untrusted refs fail closed. Candidate availability never authorizes future-send wording. Unified semantic judgment remains unavailable/advisory, so P1 and Autonomous Send are not qualified. |
+| Goal | Qualify the current DeepSeek Composer role, verify atomic Product Hub scope with a fictional canary, and run one immutable reconstructed Fixed-8 to identify the next customer-quality owner. |
+| Scope | Repository-external qualification/canary orchestration, the existing formal Pipeline, offline expert review, and durable status documentation. No production Agent, Graph, Evidence, Safety, Delivery, or `can_send` change. |
+| Status | DeepSeek qualification `25/25`; synthetic Product Hub canary passed; Fixed-8 execution/Composer/Deterministic Final `8/8`, human review `8/8`, automatic send `0`, formal DML `0`. Offline review completed without mutating the immutable source report. |
+| Gate | Engineering baseline complete, Gold-quality gate not passed. Expert averages were factual correctness `1.875/2`, goal completion `1.375/2`, naturalness `1.375/2`, and business helpfulness `1.0/2`. The next owner is `formal_knowledge_tool_coverage`; `real_customer_accuracy=null` and Autonomous Send remain blocked. |
 
 ## Phase Status
 
@@ -327,3 +327,27 @@ on 2026-08-17:
   authorization for the internal product identity and fact values to leave the
   workstation. Production defaults, formal knowledge, and `can_send` are
   unchanged.
+
+## 2026-08-25 DeepSeek Qualification And Fixed-8 Quality Checkpoint
+
+- DeepSeek V4 Flash passed the current-source Composer matrix `25/25` across
+  five profiles, with one Provider call per attempt, no retry/repair/fallback,
+  and p50/p95 latency `1.237s/2.312s`.
+- A fully fictional Product Hub canary admitted only product-scope `60/93/57
+  cm` facts, excluded component measurements, answered width and height, kept
+  formal DML at `0`, required human review, and kept `can_send=false`.
+- The immutable reconstructed Fixed-8 completed Pipeline, Composer, and
+  Deterministic Final `8/8`; Unified Audit passed `7/8` and returned one schema
+  invalid result. Selected evidence totaled `8` across three scenarios;
+  formal knowledge was unchanged, DML was `0`, all eight required review, and
+  automatic sends remained `0`. Pipeline p50/p95 was `10.518s/11.710s`.
+- Offline expert review scored factual correctness `1.875/2`, goal completion
+  `1.375/2`, naturalness `1.375/2`, empathy `1.0/2`, business helpfulness
+  `1.0/2`, and bounded reasoning `2.0/2`. The dominant defect is missing formal
+  knowledge/tool coverage for installation, detachability, media, and
+  after-sales next actions, not another reply template.
+- The source run remains immutably marked `awaiting_codex_expert_review`
+  because its random audit HMAC was intentionally destroyed when the isolated
+  process exited. A separately hashed schema-valid offline review records the
+  quality judgment without fabricating runner finalization. This remains a
+  reconstructed engineering baseline, not real-customer accuracy.
