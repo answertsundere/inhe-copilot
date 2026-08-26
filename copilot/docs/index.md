@@ -93,6 +93,10 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
     source-specific Copilot admission, automatic source-mutation invalidation,
     per-product rebuild, startup reconciliation, and review-only rollout
     boundary without adding a runtime model call or second fact registry.
+- `docs/superpowers/plans/2026-08-26-product-hub-automatic-structured-fact-extraction.md`
+  - records the TDD sequence for deterministic source snapshots, strict
+    provider qualification, atomic source-owned replacement, mutation-driven
+    refresh, source-specific Copilot admission, and gated end-to-end rollout.
 - `docs/superpowers/plans/2026-08-17-dynamic-product-fact-read-contract.md`
   - records the TDD sequence for fresh mutable-field reads, versioned evidence
     identity, exact SKU scoping, deletion behavior, regression, and rollout-safe
