@@ -88,6 +88,11 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   - defines the existing Product Context Pack as the single fresh-read owner
     for mutable product/SKU facts, with versioned provenance, value-sensitive
     evidence identity, exact SKU scope, and fail-closed deletion or mismatch.
+- `docs/superpowers/specs/2026-08-26-product-hub-automatic-structured-fact-extraction-design.md`
+  - defines the approved Product Hub offline strict-schema fact extraction,
+    source-specific Copilot admission, automatic source-mutation invalidation,
+    per-product rebuild, startup reconciliation, and review-only rollout
+    boundary without adding a runtime model call or second fact registry.
 - `docs/superpowers/plans/2026-08-17-dynamic-product-fact-read-contract.md`
   - records the TDD sequence for fresh mutable-field reads, versioned evidence
     identity, exact SKU scoping, deletion behavior, regression, and rollout-safe
