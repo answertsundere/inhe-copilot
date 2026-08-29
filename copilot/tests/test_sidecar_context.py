@@ -30,6 +30,18 @@ def test_build_sidecar_context_extracts_platform_trade_id():
     assert context["conversation_id"].startswith("qianniu-")
 
 
+def test_build_sidecar_context_marks_untyped_explicit_order_as_unknown_reference():
+    context = build_sidecar_context({
+        "source": "manual_sidebar",
+        "customer_message": "请帮我看一下订单进度",
+        "order_id": "9876543210987654321",
+    })
+
+    assert context["order_id"] == "9876543210987654321"
+    assert context["order_identifier_type"] == "unknown_identifier"
+    assert context["order_reference_source"] == "explicit_request"
+
+
 def test_make_conversation_id_is_stable():
     assert make_conversation_id("千牛 - A", "buyer1") == make_conversation_id("千牛 - A", "buyer1")
 

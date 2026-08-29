@@ -158,6 +158,21 @@ def test_pipeline_strips_public_owner_claims_and_accepts_only_internal_boundary(
     ]["domain_policy_context"]["status"] == "selected"
 
 
+def test_pipeline_marks_direct_order_input_as_untyped_explicit_reference():
+    prepared = AnalysisPipelineService()._prepare_request(
+        AnalysisPipelineRequest(
+            reply_service=object(),
+            customer_message="请查询订单状态",
+            order_id="9876543210987654321",
+            copilot_context={},
+        )
+    )
+
+    assert prepared.copilot_context["order_id"] == "9876543210987654321"
+    assert prepared.copilot_context["order_identifier_type"] == "unknown_identifier"
+    assert prepared.copilot_context["order_reference_source"] == "explicit_request"
+
+
 def test_pipeline_uses_server_domain_policy_configuration_only_when_internal_context_missing(
     monkeypatch,
 ):

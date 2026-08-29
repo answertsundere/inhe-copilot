@@ -410,7 +410,7 @@ def _compute_tool_lists(state: dict, strategy: str, has_id: bool) -> tuple:
 
     elif strategy == "logistics_with_order":
         # 根据 identifier_type 选择正确的 JST 工具
-        if identifier_type in ("platform_trade_id", "platform_order_id"):
+        if identifier_type == "platform_trade_id":
             jst_tool = "jst_lookup_outbound_tool"
         elif identifier_type == "tracking_no":
             jst_tool = "jst_lookup_tracking_tool"

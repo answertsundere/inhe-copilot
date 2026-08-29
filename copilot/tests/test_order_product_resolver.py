@@ -45,6 +45,39 @@ def test_order_product_resolver_prefers_sidecar_sku_code_without_order_lookup(mo
     assert result["order_product_identity"]["i_id"] == "YH88K01"
 
 
+def test_order_product_resolver_uses_full_lookup_for_explicit_untyped_order_reference(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    node._RESOLUTION_CACHE.clear()
+    calls = []
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        lambda identifier, identifier_type, **kwargs: calls.append(
+            (identifier, identifier_type, kwargs.get("exhaustive"))
+        ) or {"found": False, "safe_fallback_reason": "not_found"},
+    )
+    monkeypatch.setattr(node, "_lookup_local_order", lambda *_args: None)
+    monkeypatch.setattr(node, "_resolve_sidecar_product_name", lambda _state: None)
+
+    node.order_product_resolver({
+        "conversation_id": "resolver-explicit-untyped-order",
+        "customer_message": "这个商品尺寸是多少",
+        "normalized_message": "这个商品尺寸是多少",
+        "order_id": "9876543210987654321",
+        "intent": "product_question",
+        "slots": {},
+        "copilot_context": {
+            "order_id": "9876543210987654321",
+            "order_identifier_type": "unknown_identifier",
+            "order_reference_source": "explicit_request",
+        },
+        "conversation_context": {},
+        "trace_steps": [],
+    })
+
+    assert calls == [("9876543210987654321", "unknown_identifier", True)]
+
+
 def test_order_product_resolver_can_use_jst_sku_lookup_when_local_missing(monkeypatch):
     from app.agent.nodes import order_product_resolver as node
 

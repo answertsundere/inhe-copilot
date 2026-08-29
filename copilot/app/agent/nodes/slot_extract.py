@@ -173,6 +173,20 @@ def slot_extract(state: dict) -> dict:
     api_order_id = state.get("order_id", "")
     api_tracking_no = state.get("tracking_no", "")
     ctx = state.get("copilot_context", {}) or {}
+    context_order_id = str(ctx.get("order_id") or "").strip()
+    context_order_type = str(ctx.get("order_identifier_type") or "").strip()
+    context_has_explicit_order = (
+        ctx.get("order_reference_source") == "explicit_request"
+        and bool(context_order_id)
+        and context_order_id == str(api_order_id or "").strip()
+        and context_order_type in {
+            "internal_order_id",
+            "platform_trade_id",
+            "platform_order_id",
+            "tracking_no",
+            "unknown_identifier",
+        }
+    )
 
     # 1. 提取明确的快递单号
     tracking_no = api_tracking_no
@@ -198,7 +212,13 @@ def slot_extract(state: dict) -> dict:
         order_id, order_id_type = _extract_order_id_semantic(normalized)
     if api_order_id:
         order_id = api_order_id
-        if api_order_id.isdigit() and len(api_order_id) >= 18:
+        if context_has_explicit_order:
+            order_id_type = context_order_type
+            if context_order_type == "platform_trade_id":
+                platform_trade_id = api_order_id
+            else:
+                platform_trade_id = ""
+        elif api_order_id.isdigit() and len(api_order_id) >= 18:
             platform_trade_id = platform_trade_id or api_order_id
             order_id_type = "platform_trade_id"
         else:

@@ -8,6 +8,13 @@ from typing import Any
 CUSTOMER_PREFIXES = ("客户", "买家", "顾客", "用户", "访客", "buyer", "customer")
 AGENT_PREFIXES = ("客服", "卖家", "商家", "客服助手", "机器人", "agent", "seller")
 SYSTEM_PREFIXES = ("系统", "提示", "消息", "时间", "已读", "未读")
+_ORDER_IDENTIFIER_TYPES = {
+    "internal_order_id",
+    "platform_trade_id",
+    "platform_order_id",
+    "tracking_no",
+    "unknown_identifier",
+}
 
 
 def normalize_chat_line(line: str) -> str:
@@ -100,6 +107,44 @@ def _extract_candidates_from_payload(payload: dict[str, Any]) -> dict[str, list[
             ]
 
     return result
+
+
+def normalize_explicit_order_reference(
+    context: dict[str, Any],
+    *,
+    order_id: str,
+) -> dict[str, Any]:
+    """Attach server-normalized provenance to a structured order field.
+
+    A sidebar order field is not customer-message text and cannot safely be
+    classified by length alone. Preserve an adapter-provided canonical type
+    when it is available; otherwise query the bounded JST identifier surface
+    as an unknown reference.
+    """
+    normalized = dict(context or {})
+    explicit_order_id = str(order_id or "").strip()
+    if not explicit_order_id:
+        return normalized
+
+    identifier_type = str(
+        normalized.get("order_identifier_type") or ""
+    ).strip()
+    if identifier_type not in _ORDER_IDENTIFIER_TYPES:
+        for key, candidate_type in (
+            ("platform_trade_id", "platform_trade_id"),
+            ("platform_order_id", "platform_order_id"),
+        ):
+            if str(normalized.get(key) or "").strip() == explicit_order_id:
+                identifier_type = candidate_type
+                break
+        else:
+            identifier_type = "unknown_identifier"
+
+    normalized["order_id"] = explicit_order_id
+    normalized["order_identifier_type"] = identifier_type
+    normalized["identifier_type"] = identifier_type
+    normalized["order_reference_source"] = "explicit_request"
+    return normalized
 
 
 def best_candidate_value(candidates: list[dict[str, Any]]) -> str:
@@ -203,7 +248,14 @@ def build_sidecar_context(payload: dict[str, Any], *, strict_conversation_histor
         if explicit_value:
             context[key] = explicit_value
 
+    payload_identifier_type = str(payload.get("identifier_type") or "").strip()
+    if payload_identifier_type in _ORDER_IDENTIFIER_TYPES:
+        context["order_identifier_type"] = payload_identifier_type
+
     if not context.get("product_name"):
         context["product_name"] = best_candidate_value(context.get("product_candidates", []))
 
-    return context
+    return normalize_explicit_order_reference(
+        context,
+        order_id=str(payload.get("order_id") or ""),
+    )

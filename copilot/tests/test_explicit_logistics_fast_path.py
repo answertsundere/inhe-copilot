@@ -284,3 +284,26 @@ def test_interactive_platform_trade_lookup_skips_expensive_history_scans(monkeyp
         "order_id",
         "platform_order_id",
     ]
+
+
+def test_platform_order_identifier_uses_order_lookup_not_empty_outbound_lookup():
+    from app.agent.nodes.response_strategy_router import _compute_tool_lists
+
+    allowed, required, forbidden = _compute_tool_lists(
+        {
+            "intent": "logistics_eta",
+            "slots": {
+                "identifier_type": "platform_order_id",
+                "order_id": "9876543210987654321",
+                "platform_order_id": "9876543210987654321",
+                "platform_trade_id": "",
+            },
+        },
+        "logistics_with_order",
+        True,
+    )
+
+    assert "jst_lookup_order_tool" in required
+    assert "jst_lookup_order_tool" in allowed
+    assert "jst_lookup_outbound_tool" not in required
+    assert "jst_lookup_outbound_tool" in forbidden

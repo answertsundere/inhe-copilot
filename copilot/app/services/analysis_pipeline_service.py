@@ -606,6 +606,12 @@ class AnalysisPipelineService:
 
     def _prepare_request(self, request: AnalysisPipelineRequest) -> AnalysisPipelineRequest:
         context = dict(request.copilot_context or {})
+        from app.services.sidecar_context_service import normalize_explicit_order_reference
+
+        context = normalize_explicit_order_reference(
+            context,
+            order_id=request.order_id,
+        )
         from app.services.canonical_conversation_turn_service import (
             ConversationContextContractError,
             is_strict_evaluation_source,

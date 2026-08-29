@@ -119,6 +119,23 @@ def _first_candidate(candidates: list[Any]) -> tuple[str, str]:
     return "", ""
 
 
+def _explicit_context_order_type(context: dict, value: str) -> str:
+    identifier_type = str(context.get("order_identifier_type") or "").strip()
+    if (
+        context.get("order_reference_source") == "explicit_request"
+        and str(context.get("order_id") or "").strip() == str(value or "").strip()
+        and identifier_type in {
+            "internal_order_id",
+            "platform_trade_id",
+            "platform_order_id",
+            "tracking_no",
+            "unknown_identifier",
+        }
+    ):
+        return identifier_type
+    return ""
+
+
 def _pick_order_identifier(state: dict) -> tuple[str, str]:
     slots = state.get("slots", {}) or {}
     ctx = state.get("copilot_context", {}) or {}
@@ -131,6 +148,8 @@ def _pick_order_identifier(state: dict) -> tuple[str, str]:
     ):
         value = str(ctx.get(key) or "").strip()
         if value:
+            if key == "order_id":
+                return value, _explicit_context_order_type(ctx, value) or id_type
             return value, id_type
 
     value, id_type = _first_candidate(ctx.get("order_candidates", []))
@@ -144,6 +163,9 @@ def _pick_order_identifier(state: dict) -> tuple[str, str]:
         return str(state["tracking_no"]).strip(), "tracking_no"
     if state.get("order_id"):
         state_order = str(state["order_id"]).strip()
+        context_type = _explicit_context_order_type(ctx, state_order)
+        if context_type:
+            return state_order, context_type
         for cand in ctx.get("order_candidates", []) or []:
             if _candidate_value(cand) == state_order:
                 ctype = _candidate_type(cand)
@@ -325,6 +347,40 @@ def _identity_from_item(item: dict, confidence: float, reason: str, order_data: 
         "item_count": len(order_data.get("items", []) or []),
         "candidates": candidates,
     }
+
+
+def resolve_order_product_identity_from_order_data(
+    order_data: dict,
+    state: dict,
+    *,
+    identifier: str = "",
+    identifier_type: str = "",
+) -> dict:
+    """Resolve one order item through the existing identity rules.
+
+    Callers that already have a verified JST order use this same selection
+    policy instead of reconstructing product identity from raw order fields.
+    """
+    items = order_data.get("items", []) or []
+    item, confidence, reason = _pick_order_item(items, state)
+    if item:
+        return _identity_from_item(
+            item,
+            confidence,
+            reason,
+            order_data,
+            identifier,
+            identifier_type,
+        )
+    identity = _unresolved(
+        "ambiguous",
+        identifier,
+        identifier_type,
+        reason,
+        items,
+    )
+    identity["item_count"] = len(items)
+    return identity
 
 
 def _identity_from_product_card(card: dict, code: str, code_type: str) -> dict:
@@ -855,6 +911,7 @@ def order_product_resolver(state: dict) -> dict:
     t0 = time.time()
     conversation_id = state.get("conversation_id") or "default"
     ctx = state.get("conversation_context", {}) or {}
+    request_context = state.get("copilot_context", {}) or {}
     code, code_type = _pick_product_code(state)
     direct_key = f"product_code:{code_type}:{code}" if code and code_type else ""
     if direct_key:
@@ -950,12 +1007,20 @@ def order_product_resolver(state: dict) -> dict:
     try:
         from app.integrations.jst.live_query import lookup_order_by_identifier
 
-        lookup = lookup_order_by_identifier(identifier, identifier_type, exhaustive=False)
+        exhaustive_lookup = bool(
+            request_context.get("order_reference_source") == "explicit_request"
+            and str(request_context.get("order_id") or "").strip() == identifier
+        )
+        lookup = lookup_order_by_identifier(
+            identifier,
+            identifier_type,
+            exhaustive=exhaustive_lookup,
+        )
         if not lookup.get("found") and identifier_type != "unknown_identifier":
             fallback_lookup = lookup_order_by_identifier(
                 identifier,
                 "unknown_identifier",
-                exhaustive=False,
+                exhaustive=exhaustive_lookup,
             )
             if fallback_lookup.get("found"):
                 fallback_lookup["primary_lookup"] = {
@@ -1019,15 +1084,15 @@ def order_product_resolver(state: dict) -> dict:
 
     order_data = lookup.get("data") or {}
     from_current_slots = lookup.get("_from_current_slots", True)
-    items = order_data.get("items", []) or []
-    item, confidence, reason = _pick_order_item(items, state)
-    if item:
-        identity = _identity_from_item(item, confidence, reason, order_data, identifier, identifier_type)
+    identity = resolve_order_product_identity_from_order_data(
+        order_data,
+        state,
+        identifier=identifier,
+        identifier_type=identifier_type,
+    )
+    if identity.get("status") == "resolved":
         identity["_order_data"] = order_data  # propagate full order for downstream nodes
         identity["_from_current_slots"] = from_current_slots  # track identifier provenance
-    else:
-        identity = _unresolved("ambiguous", identifier, identifier_type, reason, items)
-        identity["item_count"] = len(items)
     identity["lookup_endpoint"] = lookup.get("endpoint", "")
     identity["lookup_duration_ms"] = lookup.get("duration_ms", 0)
     _cache_set(f"{conversation_id}|{current_key}", identity)

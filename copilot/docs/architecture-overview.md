@@ -185,6 +185,15 @@ refund, replacement, and other live state use the appropriate read or action
 tool. Media references remain candidates until an actual role-compatible block
 is delivered.
 
+A structured sidebar order reference retains its adapter-provided identifier
+type. When that type is unavailable, it is treated as an `unknown_identifier`,
+not inferred from its length, and is resolved through the existing bounded JST
+identifier surface. A verified order may contribute internal product name, SKU,
+and `i_id` only through the existing order-item selection policy; ambiguous
+multi-item orders remain unresolved. The resulting identity can scope the
+existing Product Context Pack and evidence path, but it neither creates facts
+nor changes delivery authority.
+
 The Product Hub can be an additional reviewed-fact source only through the
 existing Product Context Pack and evidence-admission path. Its reader is
 default-off, read-only, and starts only after exact resolver-owned `i_id` and

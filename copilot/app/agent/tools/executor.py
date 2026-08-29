@@ -731,7 +731,10 @@ def tool_executor_node(state: dict) -> dict:
     # 从 JST 工具结果中提取 legacy 字段，供 generate_logistics_reply 等节点使用
     legacy = _extract_legacy_fields(exec_result["tool_results"], state)
     result.update(legacy)
-    result.update(_extract_rag_and_product_fields(exec_result["tool_results"], state))
+    result.update(_extract_rag_and_product_fields(
+        exec_result["tool_results"],
+        {**state, **legacy},
+    ))
 
     return result
 
@@ -779,6 +782,32 @@ def _extract_legacy_fields(tool_results: dict, state: dict | None = None) -> dic
         fields["used_endpoint"] = tr.get("endpoint", "")
         if live_order.get("l_id"):
             fields["tracking_no"] = live_order["l_id"]
+
+        from app.agent.nodes.order_product_resolver import (
+            resolve_order_product_identity_from_order_data,
+        )
+
+        identity = resolve_order_product_identity_from_order_data(
+            live_order,
+            state or {},
+            identifier=str(live_order.get("o_id") or ""),
+            identifier_type="jst_order",
+        )
+        fields["order_product_identity"] = identity
+        if identity.get("status") == "resolved":
+            product_name = identity.get("matched_product_name", "")
+            slots = dict((state or {}).get("slots", {}) or {})
+            if product_name:
+                slots["product_name"] = product_name
+                slots["sku_name"] = product_name
+            if identity.get("sku_id"):
+                slots["sku_code"] = identity["sku_id"]
+            fields.update({
+                "matched_product_name": product_name,
+                "product_candidates": identity.get("candidates", []),
+                "slots": slots,
+                "product_identity_source": identity.get("source", ""),
+            })
 
         # 只取第一个成功结果
         break
