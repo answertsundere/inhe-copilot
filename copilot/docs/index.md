@@ -126,6 +126,16 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   default-off request-risk/answer-strategy boundary and goal-scoped Composer
   option-reference plus tri-state selection-completeness contract for bounded
   inference.
+- `docs/adr/0010-product-hub-reviewed-fact-read-bridge.md` - defines the
+  default-off, exact-identity, read-only Product Hub facts source inside the
+  existing Product Context Pack and formal evidence admission path.
+- `docs/research/product-hub-agent-read-api.md` - records the existing Product
+  Hub natural-key Agent API, its release-contract requirement, and the bounded
+  Copilot read integration.
+- `docs/superpowers/plans/2026-08-29-product-hub-reviewed-fact-bridge.md` -
+  implementation and verification plan for the default-off reviewed Product Hub
+  fact reader; it preserves the existing Product Context Pack and admission
+  ownership boundary.
 - `docs/omnichannel-control-plane.md` - target architecture for a platform-neutral customer-service core, QianNiu/Pinduoduo/JD adapters, central supervision, and desktop handoff notifications.
 - `docs/top_rag_development_roadmap.md` - evidence-first RAG and knowledge-governance roadmap. Some status statements are historical; use it for direction, not current completion claims.
 - `docs/langgraph-architecture.md` - LangGraph runtime responsibility, target

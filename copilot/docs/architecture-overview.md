@@ -185,6 +185,17 @@ refund, replacement, and other live state use the appropriate read or action
 tool. Media references remain candidates until an actual role-compatible block
 is delivered.
 
+The Product Hub can be an additional reviewed-fact source only through the
+existing Product Context Pack and evidence-admission path. Its reader is
+default-off, read-only, and starts only after exact resolver-owned `i_id` and
+SKU identity are available. It consumes one exact natural-key facts endpoint,
+accepts only confirmed, non-conflicting, identity-aligned rows, and contributes
+only the supported material, product-dimension, and installation families in
+this slice. Hub availability or contract failures yield no candidate; they never
+fall back to product-title matching, bulk catalog context, notes, images, or
+synthetic facts. This source does not enable Formal Evidence Convergence, media
+delivery, `can_send`, or a second knowledge owner.
+
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.
 

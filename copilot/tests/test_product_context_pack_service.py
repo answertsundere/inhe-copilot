@@ -1304,3 +1304,65 @@ def test_product_first_pack_requires_clear_identity_before_using_similar_product
     assert pack["facts"] == []
     assert pack["product_first_evidence_pack"]["answerability"] == "no_product_identity"
     assert pack["product_first_evidence_pack"]["product_structured_facts"] == []
+
+
+def test_product_context_pack_includes_exact_confirmed_product_hub_fact_after_identity_resolution(
+    product_context_db,
+    monkeypatch,
+):
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    from app.services.product_context_pack_service import build_product_context_pack
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    product_code = "HUB-CONTEXT-EXACT-01"
+    sku_code = "HUB-CONTEXT-EXACT-01-SKU-A"
+    monkeypatch.setattr(
+        ProductIdentityResolver,
+        "resolve",
+        lambda _self, **_signals: {
+            "status": "resolved",
+            "i_id": product_code,
+            "sku_code": sku_code,
+            "identity_confidence": 1.0,
+            "identity_sources": ["test"],
+            "match_reason": "exact_test_identity",
+        },
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts",
+        lambda _self, code: {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": code,
+            "facts": [{
+                "id": "hub-context-fact-001",
+                "product_code": code,
+                "sku_code": sku_code,
+                "type": "size",
+                "attr": "overall_dimensions",
+                "value": "120 x 60 x 90",
+                "unit": "cm",
+                "scope": "商品整体",
+                "applies": "",
+                "source": "manual",
+                "status": "confirmed",
+                "conflict": False,
+                "updated_at": "2026-08-29T00:00:00Z",
+            }],
+        },
+    )
+
+    pack = build_product_context_pack(
+        {"order_product_identity": {"i_id": product_code, "sku_id": sku_code}},
+        query="what are the dimensions",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    hub_facts = [item for item in pack["facts"] if item.get("evidence_id") == "producthub:hub-context-fact-001"]
+    assert len(hub_facts) == 1
+    assert hub_facts[0]["fact_type"] == "dimensions"
+    assert hub_facts[0]["metadata"]["source_review_status"] == "confirmed"
+    assert pack["stats"]["product_hub_state"] == "ready"
+    assert pack["stats"]["product_hub_candidate_count"] == 1

@@ -1,0 +1,82 @@
+# ADR 0010: Product Hub Reviewed Fact Read Bridge
+
+## Status
+
+Accepted, 2026-08-29.
+
+## Context
+
+The Product Hub contains reviewed, structured product facts and SKU/media
+metadata, but the Copilot's formal Product Context Pack currently reads only
+the local formal knowledge database and Dynamic JST identity profile. The
+result is a real context gap: a correctly resolved order or product identity
+does not expose reviewed Hub dimensions, material, installation, or other
+structured facts to the existing evidence admission path.
+
+The Hub already owns a stable read-only Agent API based on natural product and
+SKU keys. The Hub remains the mutable product-data owner. The Copilot remains a
+read-only consumer and cannot infer facts from Hub notes, titles, images, or
+unreviewed rows.
+
+## Decision
+
+Add one default-off read-only source inside the existing
+`ProductContextPackService`:
+
+```text
+trusted ProductIdentityResolver result
+-> exact Product Hub Agent facts request
+-> Product Context Pack candidate
+-> existing AdmittedAnswerContextService
+-> existing Claim Resolution / Final / Delivery
+```
+
+The bridge calls only `GET /api/agent/products/:productCode/facts` after the
+existing resolver returns `status=resolved` and an exact internal `i_id`. It
+does not call title search, aliases, bulk snapshots, product-passport text,
+semantic search, or knowledge-AI endpoints. The response `productCode` must
+match the requested code exactly. SKU-bound rows must carry a Hub `skuCode` and
+are eligible only when it exactly matches the resolved SKU; product-level rows
+may apply to all variants of that exact product.
+
+Only confirmed, non-conflicting rows with a supported structured type and a
+recognized structural scope can become candidates. The first slice maps only
+unambiguous low-risk fact families already represented by existing FactTypes:
+material composition, product dimensions, and installation. Gross weight is
+deferred until its fact-type and subject-scope semantics have an explicit
+bridge. Packaging, component, accessory, color, age, load, policy, live order
+state, images, captions, and free-text source detail remain outside this initial
+direct fact bridge. They retain their existing owners and must not be inferred
+from a nearby Hub field.
+
+Each accepted candidate preserves Hub fact UID, source, original confirmation
+status, exact identity scope, type, attribute, value, unit, and timestamp. It
+maps confirmation to the existing reviewed evidence protocol but keeps the raw
+source status as provenance. It never exposes raw source-detail text to the
+model. Existing Product Context Pack and
+`AdmittedAnswerContextService` eligibility, placeholder, conflict, identity,
+claim-type, and risk checks remain authoritative. No second evidence registry,
+Graph node, pipeline, reply owner, model call, retry, fallback, or delivery path
+is added.
+
+The Hub Agent API must return a stable `facts` array and additive `skuCode` for
+SKU-bound rows. The isolated Hub release patch proves that contract before the
+Copilot flag is enabled in any runtime.
+
+## Consequences
+
+- Ordinary supported product questions can eventually receive exact reviewed
+  facts through the same formal evidence flow rather than a model-only fallback.
+- Product Hub availability or contract errors produce no Hub candidate and do
+  not cause title fallback or a synthetic fact.
+- The default flag is off. This ADR does not enable Formal Evidence Convergence,
+  change `can_send`, send media, write either knowledge database, or authorize
+  autonomous replies.
+- A later media vertical slice must separately prove reference, approval,
+  identity, usability, and delivery-block contracts.
+
+## Rollback
+
+Set `COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED=false`. This removes the Hub
+reader at the Product Context Pack boundary and leaves all existing identity,
+retrieval, admission, safety, media, and delivery behavior unchanged.
