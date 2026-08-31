@@ -1143,12 +1143,23 @@ def _load_product_hub_reviewed_facts(identity: dict[str, Any]) -> dict[str, Any]
     """Read Hub facts only after the existing exact identity resolver succeeds."""
 
     resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
+    sku_code = str(identity.get("sku") or "").strip()
     product_code = str(identity.get("i_id") or "").strip()
+    identity_source = str(identity.get("source") or "").strip().lower()
     if not isinstance(resolution, dict) or resolution.get("status") != "resolved":
         return {
             "state": "not_attempted",
             "reason_code": "product_identity_not_resolved",
             "product_code": product_code,
+            "facts": [],
+        }
+    if sku_code:
+        return ProductHubReviewedFactsClient().fetch_confirmed_facts_for_sku(sku_code)
+    if identity_source.startswith("jst_"):
+        return {
+            "state": "not_attempted",
+            "reason_code": "product_hub_jst_sku_code_missing",
+            "product_code": "",
             "facts": [],
         }
     if not product_code:
@@ -1172,17 +1183,23 @@ def _product_hub_facts_for_query(
     if not query_fact_type or not isinstance(product_hub_read, dict):
         return []
     resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
-    product_code = str(identity.get("i_id") or "").strip()
+    identity_product_code = str(identity.get("i_id") or "").strip()
+    product_code = str(product_hub_read.get("product_code") or "").strip()
     if (
         product_hub_read.get("state") != "ready"
         or not isinstance(resolution, dict)
         or resolution.get("status") != "resolved"
         or not product_code
-        or str(product_hub_read.get("product_code") or "").strip() != product_code
     ):
         return []
 
     sku_code = str(identity.get("sku") or "").strip()
+    resolved_sku_code = str(product_hub_read.get("resolved_sku_code") or "").strip()
+    if resolved_sku_code:
+        if not sku_code or resolved_sku_code != sku_code:
+            return []
+    elif identity_product_code != product_code:
+        return []
     candidates: list[dict[str, Any]] = []
     for fact in product_hub_read.get("facts") or []:
         if not isinstance(fact, dict):
@@ -1799,6 +1816,7 @@ def _state_identity(state: dict) -> dict[str, str]:
                 or ""
             )
     return {
+        "source": str(identity.get("source") or "").strip(),
         "sku": str(sku or "").strip(),
         "sku_family": _sku_family(str(sku or "")),
         "i_id": str(i_id or "").strip(),

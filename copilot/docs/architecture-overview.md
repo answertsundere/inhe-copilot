@@ -196,14 +196,16 @@ nor changes delivery authority.
 
 The Product Hub can be an additional reviewed-fact source only through the
 existing Product Context Pack and evidence-admission path. Its reader is
-default-off, read-only, and starts only after exact resolver-owned `i_id` and
-SKU identity are available. It consumes one exact natural-key facts endpoint,
-accepts only confirmed, non-conflicting, identity-aligned rows, and contributes
-only the supported material, product-dimension, and installation families in
-this slice. Hub availability or contract failures yield no candidate; they never
-fall back to product-title matching, bulk catalog context, notes, images, or
-synthetic facts. This source does not enable Formal Evidence Convergence, media
-delivery, `can_send`, or a second knowledge owner.
+default-off, read-only, and starts only after resolver-owned identity is
+available. A JST order's exact SKU is first verified through the Hub SKU natural
+key, then the returned Hub product code scopes the facts request; JST `i_id` is
+not treated as a Hub product code. It accepts only confirmed, non-conflicting,
+identity-aligned rows, and contributes only the supported material,
+product-dimension, and installation families in this slice. Hub availability,
+SKU mismatch, or contract failures yield no candidate; they never fall back to
+product-title matching, bulk catalog context, notes, images, or synthetic facts.
+This source does not enable Formal Evidence Convergence, media delivery,
+`can_send`, or a second knowledge owner.
 
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.

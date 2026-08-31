@@ -25,19 +25,25 @@ Add one default-off read-only source inside the existing
 
 ```text
 trusted ProductIdentityResolver result
--> exact Product Hub Agent facts request
+-> exact Product Hub SKU request when a resolved SKU is available
+-> exact Product Hub Agent facts request for the returned product code
 -> Product Context Pack candidate
 -> existing AdmittedAnswerContextService
 -> existing Claim Resolution / Final / Delivery
 ```
 
-The bridge calls only `GET /api/agent/products/:productCode/facts` after the
-existing resolver returns `status=resolved` and an exact internal `i_id`. It
-does not call title search, aliases, bulk snapshots, product-passport text,
-semantic search, or knowledge-AI endpoints. The response `productCode` must
-match the requested code exactly. SKU-bound rows must carry a Hub `skuCode` and
-are eligible only when it exactly matches the resolved SKU; product-level rows
-may apply to all variants of that exact product.
+When the resolver provides an exact SKU, the bridge first calls only
+`GET /api/agent/skus/:skuCode`, requires the returned `sku.skuCode` to equal
+the requested SKU exactly, and then uses that response's `productCode` for
+`GET /api/agent/products/:productCode/facts`. A JST `i_id` is not assumed to
+be a Product Hub `productCode`; when a JST identity has no exact SKU, the Hub
+reader produces no candidate. The existing direct product-code request remains
+available only for an already-established non-JST internal/Hub product-code
+contract. The bridge does not call title search, aliases, bulk snapshots,
+product-passport text, semantic search, or knowledge-AI endpoints. SKU-bound
+rows must carry a Hub `skuCode` and are eligible only when it exactly matches
+the resolved SKU; product-level rows may apply to all variants of that exact
+product.
 
 Only confirmed, non-conflicting rows with a supported structured type and a
 recognized structural scope can become candidates. The first slice maps only
@@ -69,6 +75,8 @@ Copilot flag is enabled in any runtime.
   facts through the same formal evidence flow rather than a model-only fallback.
 - Product Hub availability or contract errors produce no Hub candidate and do
   not cause title fallback or a synthetic fact.
+- A wrong or missing exact SKU mapping fails closed rather than treating a JST
+  internal product identifier as a Hub product code.
 - The default flag is off. This ADR does not enable Formal Evidence Convergence,
   change `can_send`, send media, write either knowledge database, or authorize
   autonomous replies.

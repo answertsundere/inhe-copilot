@@ -26,10 +26,14 @@ that stable contract and stays disabled until the Hub release is deployed.
 
 ## Integration Rules
 
-1. Resolve a trusted JST/internal `i_id` through the existing Product Identity
-   Resolver before any Hub request.
-2. Use that exact identity only as `productCode`; never use title, alias, query
-   text, product family, or a search endpoint to guess a product.
+1. Resolve trusted JST/internal identity through the existing Product Identity
+   Resolver before any Hub request. When JST supplies an exact `sku_id`, use it
+   only as the Hub `skuCode` natural key.
+2. Read `GET /api/agent/skus/:skuCode`, require the returned `skuCode` to match
+   exactly, and use its returned `productCode` for the facts request. A JST
+   `i_id` must never be treated as a Hub `productCode` without that exact SKU
+   mapping. A direct product-code lookup remains limited to an established
+   non-JST internal/Hub product-code contract.
 3. Read only the documented Agent endpoint with an explicit bounded timeout and
    normal TLS verification. The bridge uses the Python standard-library HTTP
    transport already used by strict provider code, so no new HTTP dependency or

@@ -27,7 +27,7 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Business Architecture Invariants
 
-- External product titles and structured order references resolve through JST/internal product identity before product facts are selected. An untyped sidebar order value is not classified from its length; it uses the bounded JST identifier surface and only an unambiguous verified order item may supply product scope.
+- External product titles and structured order references resolve through JST/internal product identity before product facts are selected. An untyped sidebar order value is not classified from its length; it uses the bounded JST identifier surface and only an unambiguous verified order item may supply product scope. A JST SKU maps to Product Hub facts only through the exact Hub SKU natural key, never by treating JST `i_id` as a Hub product code.
 - The knowledge base stores reviewed base facts and described media; bounded reasoning may connect eligible facts but may not invent strong safety, compliance, order, refund, replacement, compensation, or platform claims.
 - Product facts, policy facts, service actions, media references, and Answer Memory are separate roles.
 - Historical reviewed answers teach handling and wording, not product truth.

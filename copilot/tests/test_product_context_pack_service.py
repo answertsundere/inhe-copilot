@@ -1330,14 +1330,15 @@ def test_product_context_pack_includes_exact_confirmed_product_hub_fact_after_id
     )
     monkeypatch.setattr(
         ProductHubReviewedFactsClient,
-        "fetch_confirmed_facts",
+        "fetch_confirmed_facts_for_sku",
         lambda _self, code: {
             "state": "ready",
             "reason_code": "",
-            "product_code": code,
+            "product_code": product_code,
+            "resolved_sku_code": code,
             "facts": [{
                 "id": "hub-context-fact-001",
-                "product_code": code,
+                "product_code": product_code,
                 "sku_code": sku_code,
                 "type": "size",
                 "attr": "overall_dimensions",

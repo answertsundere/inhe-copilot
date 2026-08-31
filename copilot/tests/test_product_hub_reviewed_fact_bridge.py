@@ -130,6 +130,75 @@ def test_hub_client_requires_exact_returned_product_code_and_drops_source_detail
     assert mismatch["facts"] == []
 
 
+def test_hub_client_resolves_an_exact_sku_before_reading_confirmed_facts(monkeypatch):
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    import app.integrations.product_hub.reviewed_facts_client as module
+
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_BASE_URL", "http://127.0.0.1:8795")
+    observed_urls = []
+
+    def matching_transport(request, *, timeout):
+        observed_urls.append(request.full_url)
+        if request.full_url.endswith("/api/agent/skus/JST-SKU-007"):
+            return _Response({
+                "ok": True,
+                "sku": {
+                    "skuCode": "JST-SKU-007",
+                    "productCode": "HUB-PRODUCT-007",
+                },
+            })
+        assert request.full_url.endswith(
+            "/api/agent/products/HUB-PRODUCT-007/facts?status=confirmed"
+        )
+        return _Response({
+            "ok": True,
+            "productCode": "HUB-PRODUCT-007",
+            "facts": [_hub_fact(productCode="HUB-PRODUCT-007", skuCode="JST-SKU-007")],
+        })
+
+    monkeypatch.setattr(module, "urlopen", matching_transport)
+
+    result = ProductHubReviewedFactsClient().fetch_confirmed_facts_for_sku("JST-SKU-007")
+
+    assert observed_urls == [
+        "http://127.0.0.1:8795/api/agent/skus/JST-SKU-007",
+        "http://127.0.0.1:8795/api/agent/products/HUB-PRODUCT-007/facts?status=confirmed",
+    ]
+    assert result["state"] == "ready"
+    assert result["product_code"] == "HUB-PRODUCT-007"
+    assert result["resolved_sku_code"] == "JST-SKU-007"
+    assert len(result["facts"]) == 1
+
+
+def test_hub_client_rejects_a_sku_resolution_with_a_different_exact_key(monkeypatch):
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    import app.integrations.product_hub.reviewed_facts_client as module
+
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_BASE_URL", "http://127.0.0.1:8795")
+    observed_urls = []
+
+    def mismatched_transport(request, *, timeout):
+        observed_urls.append(request.full_url)
+        return _Response({
+            "ok": True,
+            "sku": {
+                "skuCode": "OTHER-SKU-007",
+                "productCode": "HUB-PRODUCT-007",
+            },
+        })
+
+    monkeypatch.setattr(module, "urlopen", mismatched_transport)
+
+    result = ProductHubReviewedFactsClient().fetch_confirmed_facts_for_sku("JST-SKU-007")
+
+    assert observed_urls == ["http://127.0.0.1:8795/api/agent/skus/JST-SKU-007"]
+    assert result["state"] == "invalid_response"
+    assert result["reason_code"] == "product_hub_sku_code_mismatch"
+    assert result["facts"] == []
+
+
 def test_hub_adapter_reuses_existing_product_context_and_admission_contract():
     from app.services.product_context_pack_service import _product_hub_facts_for_query
 
@@ -166,6 +235,29 @@ def test_hub_adapter_reuses_existing_product_context_and_admission_contract():
         understanding={"requested_claims": [{"claim_type": "dimensions", "question": "dimensions", "risk_level": "low"}]},
     )
     assert [item["evidence_uid"] for item in admitted["direct_product_facts"]] == ["producthub:fact-001"]
+
+
+def test_hub_adapter_accepts_a_jst_identity_only_after_exact_sku_resolution():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    candidates = _product_hub_facts_for_query(
+        {
+            "state": "ready",
+            "product_code": "HUB-PRODUCT-007",
+            "resolved_sku_code": "JST-SKU-007",
+            "facts": [_client_fact(productCode="HUB-PRODUCT-007", skuCode="JST-SKU-007")],
+        },
+        identity={
+            "i_id": "JST-INTERNAL-PRODUCT-007",
+            "sku": "JST-SKU-007",
+            "product_identity_resolution": {"status": "resolved"},
+        },
+        query_fact_type="dimensions",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["product_scope"] == ["HUB-PRODUCT-007"]
+    assert candidates[0]["sku_scope"] == ["JST-SKU-007"]
 
 
 def test_hub_adapter_rejects_nonexact_or_noneligible_rows_before_admission():
@@ -220,3 +312,70 @@ def test_hub_loader_never_uses_a_title_or_unresolved_identity(monkeypatch):
     })
     assert resolved["state"] == "ready"
     assert called == ["YH-EXACT-01"]
+
+
+def test_hub_loader_prefers_resolved_exact_sku_over_jst_product_identifier(monkeypatch):
+    from app.services.product_context_pack_service import _load_product_hub_reviewed_facts
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+
+    sku_calls = []
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts_for_sku",
+        lambda _self, code: sku_calls.append(code) or {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": "HUB-PRODUCT-007",
+            "resolved_sku_code": code,
+            "facts": [],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("product code fallback called")),
+    )
+
+    result = _load_product_hub_reviewed_facts({
+        "i_id": "JST-INTERNAL-PRODUCT-007",
+        "sku": "JST-SKU-007",
+        "product_identity_resolution": {"status": "resolved"},
+    })
+
+    assert result["state"] == "ready"
+    assert sku_calls == ["JST-SKU-007"]
+
+
+def test_hub_loader_never_treats_a_jst_i_id_as_a_hub_product_code(monkeypatch):
+    from app.services.product_context_pack_service import _load_product_hub_reviewed_facts
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("jst i_id was used as a hub product code")),
+    )
+
+    result = _load_product_hub_reviewed_facts({
+        "i_id": "JST-INTERNAL-PRODUCT-ONLY",
+        "source": "jst_product_query",
+        "product_identity_resolution": {"status": "resolved"},
+    })
+
+    assert result["state"] == "not_attempted"
+    assert result["reason_code"] == "product_hub_jst_sku_code_missing"
+
+
+def test_state_identity_preserves_the_order_identity_source_for_hub_scoping():
+    from app.services.product_context_pack_service import _state_identity
+
+    identity = _state_identity({
+        "order_product_identity": {
+            "source": "jst_order_items",
+            "sku_id": "JST-SKU-007",
+            "i_id": "JST-INTERNAL-PRODUCT-007",
+        },
+    })
+
+    assert identity["source"] == "jst_order_items"
