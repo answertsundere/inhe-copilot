@@ -1831,7 +1831,65 @@ def _state_identity(state: dict) -> dict[str, str]:
     }
 
 
+_TRUSTED_EXACT_JST_ORDER_ITEM_REASONS = {
+    "single_order_item",
+    "single_primary_item_with_gifts",
+}
+
+
+def _trusted_exact_jst_order_item_identity(
+    state: dict,
+    identity: dict[str, str],
+) -> dict[str, Any] | None:
+    """Reuse an unambiguous live-order SKU without re-mapping it locally."""
+
+    order_identity = state.get("order_product_identity")
+    if not isinstance(order_identity, dict):
+        return None
+
+    source = str(order_identity.get("source") or "").strip()
+    sku_code = str(order_identity.get("sku_id") or "").strip()
+    reason = str(order_identity.get("reason") or "").strip()
+    try:
+        confidence = float(order_identity.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    if (
+        order_identity.get("status") != "resolved"
+        or source != "jst_order_items"
+        or reason not in _TRUSTED_EXACT_JST_ORDER_ITEM_REASONS
+        or confidence < 0.95
+        or not sku_code
+        or identity.get("source") != source
+        or identity.get("sku") != sku_code
+    ):
+        return None
+
+    return {
+        **identity,
+        "sku": sku_code,
+        "sku_family": _sku_family(sku_code),
+        "product_identity_resolution": {
+            "status": "resolved",
+            "source": "jst_order_items_exact_sku",
+            "confidence": confidence,
+            "identity_confidence": confidence,
+            "identity_sources": ["order_product_identity.jst_order_items"],
+            "match_reason": "exact_jst_order_item_sku",
+            "sku_code": sku_code,
+            "sku_id": sku_code,
+            "canonical_product_name": identity.get("product_name", ""),
+            "resolved_product_id": "",
+        },
+    }
+
+
 def _resolve_identity_for_pack(state: dict, identity: dict[str, str]) -> dict[str, Any]:
+    trusted_order_identity = _trusted_exact_jst_order_item_identity(state, identity)
+    if trusted_order_identity is not None:
+        return trusted_order_identity
+
     signals = _identity_resolution_signals(state, identity)
     if not any(signals.get(key) for key in ("sku_id", "internal_i_id", "platform_product_id", "platform_product_id_hash", "product_url", "platform_title")):
         return {**identity, "product_identity_resolution": {"status": "not_found", "unresolved_reason": "no_identity_signal"}}

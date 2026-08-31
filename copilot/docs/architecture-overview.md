@@ -196,8 +196,11 @@ nor changes delivery authority.
 
 The Product Hub can be an additional reviewed-fact source only through the
 existing Product Context Pack and evidence-admission path. Its reader is
-default-off, read-only, and starts only after resolver-owned identity is
-available. A JST order's exact SKU is first verified through the Hub SKU natural
+default-off, read-only, and starts only after a trusted identity proof is
+available. An unambiguous existing JST single-order-item or single-primary-item
+identity reuses its exact order SKU directly for the Hub natural-key lookup;
+context-selected multi-item orders and conflicting signals do not bypass normal
+identity resolution. A JST order's exact SKU is first verified through the Hub SKU natural
 key, then the returned Hub product code scopes the facts request; JST `i_id` is
 not treated as a Hub product code. A product-level Hub fact reached by that
 exact mapping carries the verified SKU only as its admission binding while its

@@ -26,8 +26,11 @@ that stable contract and stays disabled until the Hub release is deployed.
 
 ## Integration Rules
 
-1. Resolve trusted JST/internal identity through the existing Product Identity
-   Resolver before any Hub request. When JST supplies an exact `sku_id`, use it
+1. Resolve trusted JST/internal identity before any Hub request. A normal
+   Product Identity Resolver result is accepted; an existing live JST order
+   identity is accepted only when the order resolver already selected one
+   unambiguous single item or primary item with gifts, has a confident exact
+   `sku_id`, and has no conflicting SKU signal. In either case, use a JST SKU
    only as the Hub `skuCode` natural key.
 2. Read `GET /api/agent/skus/:skuCode`, require the returned `skuCode` to match
    exactly, and use its returned `productCode` for the facts request. A JST

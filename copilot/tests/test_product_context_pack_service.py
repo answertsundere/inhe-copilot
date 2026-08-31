@@ -1367,3 +1367,117 @@ def test_product_context_pack_includes_exact_confirmed_product_hub_fact_after_id
     assert hub_facts[0]["metadata"]["source_review_status"] == "confirmed"
     assert pack["stats"]["product_hub_state"] == "ready"
     assert pack["stats"]["product_hub_candidate_count"] == 1
+
+
+def test_product_context_pack_reuses_resolved_jst_order_item_sku_for_exact_hub_read(
+    product_context_db,
+    monkeypatch,
+):
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    from app.services.product_context_pack_service import build_product_context_pack
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    sku_code = "JST-ORDER-SKU-EXACT-01"
+    hub_calls = []
+
+    monkeypatch.setattr(
+        ProductIdentityResolver,
+        "resolve",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("resolved JST order item must not be re-resolved against local product mappings")
+        ),
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts_for_sku",
+        lambda _self, code: hub_calls.append(code) or {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": "HUB-PRODUCT-EXACT-01",
+            "resolved_sku_code": code,
+            "facts": [{
+                "id": "hub-jst-order-item-fact-001",
+                "product_code": "HUB-PRODUCT-EXACT-01",
+                "sku_code": code,
+                "type": "size",
+                "attr": "overall_dimensions",
+                "value": "120 x 60 x 90",
+                "unit": "cm",
+                "scope": "商品整体",
+                "applies": "",
+                "source": "manual",
+                "status": "confirmed",
+                "conflict": False,
+                "updated_at": "2026-08-29T00:00:00Z",
+            }],
+        },
+    )
+
+    pack = build_product_context_pack(
+        {
+            "order_product_identity": {
+                "status": "resolved",
+                "source": "jst_order_items",
+                "sku_id": sku_code,
+                "i_id": "JST-ORDER-ITEM-ID-01",
+                "matched_product_name": "Exact JST order item",
+                "confidence": 0.99,
+                "reason": "single_order_item",
+            },
+        },
+        query="what are the dimensions",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    assert hub_calls == [sku_code]
+    assert pack["stats"]["product_hub_state"] == "ready"
+    assert pack["stats"]["product_hub_candidate_count"] == 1
+    assert pack["evidence_pack"]["product_identity_resolution"]["status"] == "resolved"
+
+
+def test_product_context_pack_keeps_context_selected_jst_multi_item_order_out_of_exact_hub_read(
+    product_context_db,
+    monkeypatch,
+):
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    from app.services.product_context_pack_service import build_product_context_pack
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    sku_code = "JST-CONTEXT-SELECTED-SKU-01"
+    hub_calls = []
+
+    monkeypatch.setattr(
+        ProductIdentityResolver,
+        "resolve",
+        lambda _self, **_signals: {
+            "status": "not_found",
+            "unresolved_reason": "no_matching_product_found",
+        },
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts_for_sku",
+        lambda _self, code: hub_calls.append(code),
+    )
+
+    pack = build_product_context_pack(
+        {
+            "order_product_identity": {
+                "status": "resolved",
+                "source": "jst_order_items",
+                "sku_id": sku_code,
+                "i_id": "JST-CONTEXT-SELECTED-ITEM-01",
+                "matched_product_name": "Context-selected order item",
+                "confidence": 0.99,
+                "reason": "matched_by_context",
+            },
+        },
+        query="what are the dimensions",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    assert hub_calls == []
+    assert pack["stats"]["product_hub_state"] == "not_attempted"
+    assert pack["stats"]["product_hub_reason_code"] == "product_identity_not_resolved"

@@ -24,7 +24,7 @@ Add one default-off read-only source inside the existing
 `ProductContextPackService`:
 
 ```text
-trusted ProductIdentityResolver result
+trusted identity proof
 -> exact Product Hub SKU request when a resolved SKU is available
 -> exact Product Hub Agent facts request for the returned product code
 -> Product Context Pack candidate
@@ -32,7 +32,7 @@ trusted ProductIdentityResolver result
 -> existing Claim Resolution / Final / Delivery
 ```
 
-When the resolver provides an exact SKU, the bridge first calls only
+When the existing Product Identity Resolver provides an exact SKU, the bridge first calls only
 `GET /api/agent/skus/:skuCode`, requires the returned `sku.skuCode` to equal
 the requested SKU exactly, and then uses that response's `productCode` for
 `GET /api/agent/products/:productCode/facts`. A JST `i_id` is not assumed to
@@ -44,6 +44,15 @@ product-passport text, semantic search, or knowledge-AI endpoints. SKU-bound
 rows must carry a Hub `skuCode` and are eligible only when it exactly matches
 the resolved SKU; product-level rows may apply to all variants of that exact
 product.
+
+The existing order resolver is also an identity proof only for an unambiguous
+live JST order item: `status=resolved`, source `jst_order_items`, an exact
+non-empty `sku_id`, confidence at least `0.95`, and the existing single-item or
+single-primary-item-with-gifts selection outcome. The Product Context Pack
+reuses that exact SKU for the Hub SKU request rather than re-mapping it through
+the local catalog first. A context-selected multi-item order, a conflicting SKU
+signal, or any missing condition remains outside this bypass and continues
+through the normal resolver/fail-closed path.
 
 Only confirmed, non-conflicting rows with a supported structured type and a
 recognized structural scope can become candidates. The first slice maps only
