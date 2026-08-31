@@ -260,6 +260,58 @@ def test_hub_adapter_accepts_a_jst_identity_only_after_exact_sku_resolution():
     assert candidates[0]["sku_scope"] == ["JST-SKU-007"]
 
 
+def test_hub_exact_sku_mapping_scopes_product_level_fact_for_existing_admission():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    identity = {
+        "source": "jst_order_item",
+        "i_id": "JST-INTERNAL-PRODUCT-007",
+        "sku": "JST-SKU-007",
+        "product_identity_resolution": {"status": "resolved"},
+    }
+    candidates = _product_hub_facts_for_query(
+        {
+            "state": "ready",
+            "product_code": "HUB-PRODUCT-007",
+            "resolved_sku_code": "JST-SKU-007",
+            "facts": [
+                _client_fact(
+                    productCode="HUB-PRODUCT-007",
+                    skuCode="",
+                )
+            ],
+        },
+        identity=identity,
+        query_fact_type="dimensions",
+    )
+
+    assert candidates[0]["product_scope"] == ["HUB-PRODUCT-007"]
+    assert candidates[0]["sku_scope"] == ["JST-SKU-007"]
+    assert candidates[0]["metadata"]["hub_fact_sku_scope"] == []
+    assert candidates[0]["metadata"]["hub_identity_binding"] == "exact_sku"
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"facts": candidates}},
+        product_identity={
+            "i_id": "JST-INTERNAL-PRODUCT-007",
+            "sku_code": "JST-SKU-007",
+        },
+        understanding={
+            "requested_claims": [
+                {
+                    "claim_type": "dimensions",
+                    "question": "dimensions",
+                    "risk_level": "low",
+                }
+            ]
+        },
+    )
+
+    assert [item["evidence_uid"] for item in admitted["direct_product_facts"]] == [
+        "producthub:fact-001"
+    ]
+
+
 def test_hub_adapter_rejects_nonexact_or_noneligible_rows_before_admission():
     from app.services.product_context_pack_service import _product_hub_facts_for_query
 

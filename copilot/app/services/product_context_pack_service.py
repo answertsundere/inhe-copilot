@@ -1225,6 +1225,11 @@ def _product_hub_facts_for_query(
             continue
         value_text = value if not unit or value.lower().endswith(unit.lower()) else f"{value}{unit}"
         material_provenance = "product_hub_confirmed" if evidence_fact_type == "material" else ""
+        fact_sku_scope = [fact_sku_code] if fact_sku_code else []
+        effective_sku_scope = fact_sku_scope or (
+            [resolved_sku_code] if resolved_sku_code else []
+        )
+        hub_identity_binding = "exact_sku" if resolved_sku_code else "direct_product_code"
         if material_evidence_admission_reason({
             "fact_type": evidence_fact_type,
             "value": value_text,
@@ -1266,6 +1271,8 @@ def _product_hub_facts_for_query(
                 "material_provenance": material_provenance,
                 "can_direct_answer": True,
                 "needs_human_review": True,
+                "hub_fact_sku_scope": fact_sku_scope,
+                "hub_identity_binding": hub_identity_binding,
                 "hub_updated_at": str(fact.get("updated_at") or ""),
                 "block_reasons": [],
             },
@@ -1275,7 +1282,7 @@ def _product_hub_facts_for_query(
             "entry_risk_level": "low",
             "source_sheet": "",
             "row_number": 0,
-            "sku_scope": [fact_sku_code] if fact_sku_code else [],
+            "sku_scope": effective_sku_scope,
             "product_scope": [product_code],
             "product_context_pack": True,
             "evidence_uid": evidence_uid,

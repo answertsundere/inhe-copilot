@@ -42,7 +42,10 @@ that stable contract and stays disabled until the Hub release is deployed.
 4. Accept only `status=confirmed`, `conflict=false`, exact returned
    `productCode`, and an exact `skuCode` when a fact is SKU-scoped.
 5. Preserve immutable provenance identifiers and structured type/scope fields;
-   omit unstructured `sourceDetail` from model-facing evidence.
+   omit unstructured `sourceDetail` from model-facing evidence. A product-level
+   fact reached by an exact SKU lookup may use that verified SKU as its
+   admission scope, but retains its original Hub product and fact scopes in
+   provenance; no such binding is created without the exact mapping.
 6. Convert accepted rows into the existing Product Context Pack candidate
    contract. Existing admission remains the only owner that can make a fact
    available to a reply.

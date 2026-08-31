@@ -199,8 +199,10 @@ existing Product Context Pack and evidence-admission path. Its reader is
 default-off, read-only, and starts only after resolver-owned identity is
 available. A JST order's exact SKU is first verified through the Hub SKU natural
 key, then the returned Hub product code scopes the facts request; JST `i_id` is
-not treated as a Hub product code. It accepts only confirmed, non-conflicting,
-identity-aligned rows, and contributes only the supported material,
+not treated as a Hub product code. A product-level Hub fact reached by that
+exact mapping carries the verified SKU only as its admission binding while its
+original Hub scope remains provenance. It accepts only confirmed,
+non-conflicting, identity-aligned rows, and contributes only the supported material,
 product-dimension, and installation families in this slice. Hub availability,
 SKU mismatch, or contract failures yield no candidate; they never fall back to
 product-title matching, bulk catalog context, notes, images, or synthetic facts.

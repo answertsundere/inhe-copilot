@@ -65,6 +65,13 @@ claim-type, and risk checks remain authoritative. No second evidence registry,
 Graph node, pipeline, reply owner, model call, retry, fallback, or delivery path
 is added.
 
+For a product-level Hub fact reached through an exact SKU lookup, the candidate
+also carries that verified SKU as its effective admission scope. This is a
+binding assertion, not a rewrite of the source fact: the original Hub product
+scope and any original fact SKU scope remain in provenance. No effective SKU
+scope is added when the Hub product code was not obtained from the same exact
+resolved SKU.
+
 The Hub Agent API must return a stable `facts` array and additive `skuCode` for
 SKU-bound rows. The isolated Hub release patch proves that contract before the
 Copilot flag is enabled in any runtime.
