@@ -35,6 +35,7 @@ FACT_TYPE_LABELS = {
     "odor": "气味",
     "installation": "安装",
     "detachable": "拆卸/可拆",
+    "color_options": "可选颜色",
     "variant_compare": "款式差异",
     "stock_shipping": "库存/发货",
     "return_pickup": "退货/售后取件",

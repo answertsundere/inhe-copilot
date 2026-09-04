@@ -237,6 +237,116 @@ def test_hub_adapter_reuses_existing_product_context_and_admission_contract():
     assert [item["evidence_uid"] for item in admitted["direct_product_facts"]] == ["producthub:fact-001"]
 
 
+def test_hub_adapter_admits_exact_product_color_only_for_color_options_goal():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    identity = {
+        "i_id": "YH-EXACT-01",
+        "sku": "YH-EXACT-01-SKU-A",
+        "product_identity_resolution": {"status": "resolved"},
+    }
+    hub_read = {
+        "state": "ready",
+        "product_code": "YH-EXACT-01",
+        "resolved_sku_code": "YH-EXACT-01-SKU-A",
+        "facts": [
+            _client_fact(
+                id="fact-color-a",
+                type="color",
+                attr="color",
+                value="option-a",
+                scope="\u5546\u54c1\u6574\u4f53",
+                skuCode="YH-EXACT-01-SKU-A",
+                applies="YH-EXACT-01-SKU-A",
+            ),
+            _client_fact(
+                id="fact-color-b",
+                type="color",
+                attr="color",
+                value="option-b",
+                scope="\u5546\u54c1\u6574\u4f53",
+                skuCode="YH-EXACT-01-SKU-B",
+                applies="YH-EXACT-01-SKU-B",
+            ),
+            _client_fact(
+                id="fact-color-c",
+                type="color",
+                attr="color",
+                value="option-a",
+                scope="\u5546\u54c1\u6574\u4f53",
+                skuCode="YH-EXACT-01-SKU-C",
+                applies="YH-EXACT-01-SKU-C",
+            )
+        ],
+    }
+
+    candidates = _product_hub_facts_for_query(
+        hub_read,
+        identity=identity,
+        query_fact_type="color_options",
+    )
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["fact_type"] == "color_options"
+    assert candidate["subject_scope"] == "product"
+    assert candidate["sku_scope"] == ["YH-EXACT-01-SKU-A"]
+    assert candidate["chunk_text"] == "option-a\u3001option-b"
+    assert candidate["evidence_uid"].startswith("producthub:color-options:")
+    assert candidate["metadata"]["hub_color_option_source_fact_ids"] == [
+        "fact-color-a",
+        "fact-color-b",
+        "fact-color-c",
+    ]
+    assert candidate["metadata"]["hub_color_option_source_count"] == 3
+
+    reversed_candidates = _product_hub_facts_for_query(
+        {**hub_read, "facts": list(reversed(hub_read["facts"]))},
+        identity=identity,
+        query_fact_type="color_options",
+    )
+    assert len(reversed_candidates) == 1
+    assert reversed_candidates[0]["evidence_uid"] == candidate["evidence_uid"]
+    assert reversed_candidates[0]["chunk_text"] == candidate["chunk_text"]
+    assert reversed_candidates[0]["metadata"] == candidate["metadata"]
+
+    assert _product_hub_facts_for_query(
+        {
+            **hub_read,
+            "facts": [
+                _client_fact(
+                    id="fact-color-wrong-scope",
+                    type="color",
+                    attr="color",
+                    value="option-c",
+                    scope="\u5305\u88c5",
+                    skuCode="YH-EXACT-01-SKU-A",
+                    applies="YH-EXACT-01-SKU-A",
+                )
+            ],
+        },
+        identity=identity,
+        query_fact_type="color_options",
+    ) == []
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"facts": candidates}},
+        product_identity={"i_id": "YH-EXACT-01", "sku_code": "YH-EXACT-01-SKU-A"},
+        understanding={
+            "requested_claims": [
+                {"claim_type": "color_options", "question": "color options", "risk_level": "low"}
+            ]
+        },
+    )
+    assert [item["evidence_uid"] for item in admitted["direct_product_facts"]] == [candidate["evidence_uid"]]
+
+    assert _product_hub_facts_for_query(
+        hub_read,
+        identity=identity,
+        query_fact_type="dimensions",
+    ) == []
+
+
 def test_hub_adapter_accepts_a_jst_identity_only_after_exact_sku_resolution():
     from app.services.product_context_pack_service import _product_hub_facts_for_query
 

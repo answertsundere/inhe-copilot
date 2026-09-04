@@ -7,6 +7,7 @@ for that exact product and rank them by the customer's requested fact type.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -1132,11 +1133,139 @@ _PRODUCT_HUB_DIRECT_FACT_TYPE_MAP = {
     "material": "material",
     "size": "dimensions",
     "installation": "installation",
+    "color": "color_options",
 }
 
 _PRODUCT_HUB_DIRECT_SCOPE_MAP = {
     "商品整体": "product",
 }
+
+
+def _product_hub_color_options_candidate(
+    rows: list[dict[str, Any]],
+    *,
+    product_code: str,
+    resolved_sku_code: str,
+    query_fact_type: str,
+) -> dict[str, Any] | None:
+    """Aggregate reviewed variant colors into one product-level fact set."""
+
+    if query_fact_type != "color_options" or not rows:
+        return None
+
+    values = sorted({
+        str(row.get("value") or "").strip()
+        for row in rows
+        if str(row.get("value") or "").strip()
+    }, key=lambda value: (value.casefold(), value))
+    source_fact_ids = sorted({
+        str(row.get("fact_id") or "").strip()
+        for row in rows
+        if str(row.get("fact_id") or "").strip()
+    })
+    if not values or not source_fact_ids:
+        return None
+
+    source_attributes = sorted({
+        str(row.get("attribute_key") or "").strip()
+        for row in rows
+        if str(row.get("attribute_key") or "").strip()
+    })
+    updated_at_values = sorted({
+        str(row.get("updated_at") or "").strip()
+        for row in rows
+        if str(row.get("updated_at") or "").strip()
+    })
+    source_sku_count = len({
+        str(row.get("fact_sku_code") or row.get("applies") or "").strip()
+        for row in rows
+        if str(row.get("fact_sku_code") or row.get("applies") or "").strip()
+    })
+    evidence_digest = hashlib.sha256(
+        json.dumps(
+            {
+                "product_code": product_code,
+                "source_fact_ids": source_fact_ids,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()[:20]
+    evidence_uid = f"producthub:color-options:{evidence_digest}"
+    value_text = "\u3001".join(values)
+    source_field_keys = ["type:color", *[f"attr:{attribute}" for attribute in source_attributes]]
+    effective_sku_scope = [resolved_sku_code] if resolved_sku_code else []
+    hub_identity_binding = "exact_sku_to_product" if resolved_sku_code else "direct_product_code"
+
+    return {
+        "score": 20.0,
+        "text_score": 0.0,
+        "vector_score": 0.0,
+        "scope_score": 1.0,
+        "source_confidence": 1.0,
+        "rerank_score": 20.0,
+        "mismatch_reason": "",
+        "chunk_id": evidence_uid,
+        "entry_id": f"producthub:{product_code}",
+        "title": "reviewed_product_hub_color_options",
+        "chunk_text": value_text,
+        "chunk_index": 0,
+        "source_type": "product_facts",
+        "intent": "product_question",
+        "category": "structured_profile",
+        "category_l3": "color_options",
+        "fact_type": "color_options",
+        "evidence_fact_type": "color_options",
+        "attribute_key": "color_options",
+        "subject_scope": "product",
+        "metadata": {
+            "source": "product_hub.agent_facts",
+            "structured_profile_fact": True,
+            "product_evidence_protocol": True,
+            "source_table": "product_hub.product_facts",
+            "source_id": evidence_uid,
+            "source_field_keys": source_field_keys,
+            "verification_status": "reviewed",
+            "source_review_status": "confirmed",
+            "material_provenance": "",
+            "can_direct_answer": True,
+            "needs_human_review": True,
+            "hub_fact_sku_scope": [],
+            "hub_identity_binding": hub_identity_binding,
+            "hub_updated_at": updated_at_values[-1] if updated_at_values else "",
+            "hub_color_option_source_fact_ids": source_fact_ids,
+            "hub_color_option_source_count": len(source_fact_ids),
+            "hub_color_option_source_sku_count": source_sku_count,
+            "block_reasons": [],
+        },
+        "semantic_alignment": _direct_semantic_alignment(query_fact_type, "color_options"),
+        "entry_status": "published",
+        "index_status": "ready",
+        "entry_risk_level": "low",
+        "source_sheet": "",
+        "row_number": 0,
+        "sku_scope": effective_sku_scope,
+        "product_scope": [product_code],
+        "product_context_pack": True,
+        "evidence_uid": evidence_uid,
+        "evidence_id": evidence_uid,
+        "origin_evidence_key": evidence_uid,
+        "protocol_source_type": "product_hub_fact",
+        "source_table": "product_hub.product_facts",
+        "source_id": evidence_uid,
+        "requested_fact_type": query_fact_type,
+        "verification_status": "reviewed",
+        "source_review_status": "confirmed",
+        "material_provenance": "",
+        "can_direct_answer": True,
+        "needs_human_review": True,
+        "block_reasons": [],
+        "value": value_text,
+        "customer_text": value_text,
+        "evidence_allowed_for_direct_answer": True,
+        "evidence_allowed_for_exact_answer": True,
+    }
 
 
 def _load_product_hub_reviewed_facts(identity: dict[str, Any]) -> dict[str, Any]:
@@ -1201,6 +1330,7 @@ def _product_hub_facts_for_query(
     elif identity_product_code != product_code:
         return []
     candidates: list[dict[str, Any]] = []
+    color_option_rows: list[dict[str, Any]] = []
     for fact in product_hub_read.get("facts") or []:
         if not isinstance(fact, dict):
             continue
@@ -1213,6 +1343,30 @@ def _product_hub_facts_for_query(
         fact_id = str(fact.get("id") or "").strip()
         value = str(fact.get("value") or "").strip()
         unit = str(fact.get("unit") or "").strip()
+        fact_product_code = str(fact.get("product_code") or "").strip()
+        attribute_key = str(fact.get("attr") or "").strip()
+        if evidence_fact_type == "color_options":
+            if (
+                not fact_id
+                or not value
+                or subject_scope != "product"
+                or fact_product_code != product_code
+                or (fact_sku_code and applies and applies != fact_sku_code)
+                or not _fact_matches_query_type(
+                    query_fact_type,
+                    {"fact_type": evidence_fact_type},
+                )
+            ):
+                continue
+            color_option_rows.append({
+                "fact_id": fact_id,
+                "value": value,
+                "attribute_key": attribute_key,
+                "fact_sku_code": fact_sku_code,
+                "applies": applies,
+                "updated_at": str(fact.get("updated_at") or ""),
+            })
+            continue
         if (
             not evidence_fact_type
             or not subject_scope
@@ -1237,7 +1391,6 @@ def _product_hub_facts_for_query(
         }):
             continue
         evidence_uid = f"producthub:{fact_id}"
-        attribute_key = str(fact.get("attr") or "").strip()
         candidates.append({
             "score": 20.0,
             "text_score": 0.0,
@@ -1303,6 +1456,14 @@ def _product_hub_facts_for_query(
             "evidence_allowed_for_direct_answer": True,
             "evidence_allowed_for_exact_answer": True,
         })
+    color_options_candidate = _product_hub_color_options_candidate(
+        color_option_rows,
+        product_code=product_code,
+        resolved_sku_code=resolved_sku_code,
+        query_fact_type=query_fact_type,
+    )
+    if color_options_candidate:
+        candidates.append(color_options_candidate)
     return candidates
 
 

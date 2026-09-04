@@ -241,6 +241,16 @@ def test_turn_understanding_candidates_expose_one_canonical_material_choice():
     assert len({item["fact_type_id"] for item in candidates}) == len(candidates)
 
 
+def test_turn_understanding_candidates_expose_color_options_as_a_canonical_type():
+    candidates = service._canonical_fact_type_candidates()
+
+    assert {
+        "fact_type_id": "color_options",
+        "meaning": "\u53ef\u9009\u989c\u8272",
+        "attribute_contract": "optional_explicit_attribute_key",
+    } in candidates
+
+
 def test_turn_understanding_normalizes_known_dimension_display_attribute():
     message = "dimension request"
     goals, status, diagnostics = service._sanitize_customer_goals(

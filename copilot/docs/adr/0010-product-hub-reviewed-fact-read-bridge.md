@@ -55,14 +55,19 @@ signal, or any missing condition remains outside this bypass and continues
 through the normal resolver/fail-closed path.
 
 Only confirmed, non-conflicting rows with a supported structured type and a
-recognized structural scope can become candidates. The first slice maps only
-unambiguous low-risk fact families already represented by existing FactTypes:
-material composition, product dimensions, and installation. Gross weight is
-deferred until its fact-type and subject-scope semantics have an explicit
-bridge. Packaging, component, accessory, color, age, load, policy, live order
-state, images, captions, and free-text source detail remain outside this initial
-direct fact bridge. They retain their existing owners and must not be inferred
-from a nearby Hub field.
+recognized structural scope can become candidates. The low-risk slice maps
+material composition, product dimensions, installation, and product-level
+color options to canonical FactTypes. A color row is eligible only as
+`type=color` with `scope=商品整体`; it cannot be inferred from a title, a
+variant label, packaging, or a nearby Hub field. Multiple eligible variant
+rows from that exact returned product form one deterministic product-level
+color-options candidate, with every source fact retained as provenance. This
+describes catalog color options only; it does not assert real-time stock or
+delivery availability. Gross weight is deferred until its fact-type and
+subject-scope semantics have an explicit bridge. Packaging, component,
+accessory, age, load, policy, live order state, images, captions, and free-text
+source detail remain outside this direct fact bridge. They retain their existing
+owners and must not be inferred from a nearby Hub field.
 
 Each accepted candidate preserves Hub fact UID, source, original confirmation
 status, exact identity scope, type, attribute, value, unit, and timestamp. It
