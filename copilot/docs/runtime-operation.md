@@ -67,6 +67,22 @@ The default formal production boundary remains:
 - strict decision provider unqualified/disabled
 - supervisor preview read-only
 
+### Product Hub candidate read bridge
+
+An isolated candidate may enable the existing Product Hub reader with
+`COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED=true` and a loopback
+`COPILOT_PRODUCT_HUB_BASE_URL=http://127.0.0.1:8795`. The bridge reads current
+Hub data on demand: a verified JST order item yields an exact SKU, the Hub
+resolves that exact SKU, and only its `confirmed`, non-conflicting facts enter
+the existing Product Context Pack and admission path. It does not copy Hub
+facts into Copilot, infer a product from a title, or turn a media reference
+into a delivered asset.
+
+`/api/runtime/version` reports the effective boolean as
+`feature_flags.product_hub_reviewed_facts` without exposing the Hub address or
+any identifiers. Keep this source disabled on 5011 until its separate
+review-only acceptance gate is complete. The flag does not alter
+`can_send`, formal-knowledge write permissions, or delivery capability.
 The ignored runtime `.env` must keep
 `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false` until the real-derived
 offline and API validation gates pass. A query-only Phase 0.8C inventory found

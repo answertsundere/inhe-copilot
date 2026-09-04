@@ -132,6 +132,7 @@ def _feature_flags() -> dict[str, bool]:
     return {
         "formal_evidence_convergence": enabled("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED"),
         "model_first_answer_composer": enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"),
+        "product_hub_reviewed_facts": enabled("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED"),
         "answer_memory_shadow": enabled("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED"),
         "grounded_reasoning_shadow": enabled("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED"),
         "llm_decision_shadow": enabled("COPILOT_LLM_DECISION_SHADOW_ENABLED"),
