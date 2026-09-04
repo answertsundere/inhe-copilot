@@ -1140,6 +1140,47 @@ _PRODUCT_HUB_DIRECT_SCOPE_MAP = {
     "商品整体": "product",
 }
 
+_PRODUCT_HUB_PACKAGING_GROSS_WEIGHT_ATTRIBUTES = frozenset({
+    "毛重",
+    "gross_weight",
+    "package_gross_weight",
+})
+
+
+def _product_hub_direct_fact_type(
+    fact_type: str,
+    *,
+    attribute_key: str,
+    scope: str,
+) -> str:
+    """Map only semantically unambiguous Hub fields to canonical fact types."""
+
+    normalized_type = str(fact_type or "").strip().lower()
+    if normalized_type != "weight":
+        return _PRODUCT_HUB_DIRECT_FACT_TYPE_MAP.get(normalized_type, "")
+
+    normalized_attribute = str(attribute_key or "").strip().lower()
+    if (
+        scope == "包装"
+        and normalized_attribute in _PRODUCT_HUB_PACKAGING_GROSS_WEIGHT_ATTRIBUTES
+    ):
+        return "gross_weight"
+    return ""
+
+
+def _product_hub_subject_scope(
+    evidence_fact_type: str,
+    *,
+    source_scope: str,
+) -> str:
+    """Keep source structural scope tied to the canonical fact semantics."""
+
+    if source_scope == "商品整体":
+        return _PRODUCT_HUB_DIRECT_SCOPE_MAP["商品整体"]
+    if evidence_fact_type == "gross_weight" and source_scope == "包装":
+        return "packaging"
+    return ""
+
 
 def _product_hub_color_options_candidate(
     rows: list[dict[str, Any]],
@@ -1336,15 +1377,24 @@ def _product_hub_facts_for_query(
             continue
         if str(fact.get("status") or "").strip().lower() != "confirmed" or fact.get("conflict") is True:
             continue
-        evidence_fact_type = _PRODUCT_HUB_DIRECT_FACT_TYPE_MAP.get(str(fact.get("type") or "").strip().lower())
-        subject_scope = _PRODUCT_HUB_DIRECT_SCOPE_MAP.get(str(fact.get("scope") or "").strip())
+        source_fact_type = str(fact.get("type") or "").strip()
+        source_scope = str(fact.get("scope") or "").strip()
+        attribute_key = str(fact.get("attr") or "").strip()
+        evidence_fact_type = _product_hub_direct_fact_type(
+            source_fact_type,
+            attribute_key=attribute_key,
+            scope=source_scope,
+        )
+        subject_scope = _product_hub_subject_scope(
+            evidence_fact_type,
+            source_scope=source_scope,
+        )
         fact_sku_code = str(fact.get("sku_code") or "").strip()
         applies = str(fact.get("applies") or "").strip()
         fact_id = str(fact.get("id") or "").strip()
         value = str(fact.get("value") or "").strip()
         unit = str(fact.get("unit") or "").strip()
         fact_product_code = str(fact.get("product_code") or "").strip()
-        attribute_key = str(fact.get("attr") or "").strip()
         if evidence_fact_type == "color_options":
             if (
                 not fact_id

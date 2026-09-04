@@ -53,11 +53,15 @@ that stable contract and stays disabled until the Hub release is deployed.
    contract. Existing admission remains the only owner that can make a fact
    available to a reply.
    The current low-risk mapping is deliberately narrow: material, overall
-   dimensions, installation, and product-level color options. Color requires
+   dimensions, installation, product-level color options, and packaging gross
+   weight. Color requires
    the structured `type=color` and product-level scope; it is not inferred from
    a title, free-text note, variant label, or image. Multiple eligible variant
    rows are aggregated deterministically into one product-level options fact;
    that fact does not claim current stock or fulfillment availability.
+   Gross weight requires all three structured source fields: `type=weight`,
+   `scope=包装`, and a gross-weight attribute. Product net weight and untyped
+   weight are rejected rather than being relabeled as a shipping fact.
 7. Treat images, captions, notes, and semantic asset search as reference-only
    follow-up work. They do not become facts or delivered media in this slice.
 

@@ -347,6 +347,80 @@ def test_hub_adapter_admits_exact_product_color_only_for_color_options_goal():
     ) == []
 
 
+def test_hub_adapter_admits_only_confirmed_packaging_gross_weight():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    identity = {
+        "i_id": "YH-EXACT-01",
+        "sku": "YH-EXACT-01-SKU-A",
+        "product_identity_resolution": {"status": "resolved"},
+    }
+    candidates = _product_hub_facts_for_query(
+        {
+            "state": "ready",
+            "product_code": "YH-EXACT-01",
+            "resolved_sku_code": "YH-EXACT-01-SKU-A",
+            "facts": [
+                _client_fact(
+                    id="fact-gross-weight",
+                    type="weight",
+                    attr="\u6bdb\u91cd",
+                    value="2.5",
+                    unit="kg",
+                    scope="\u5305\u88c5",
+                ),
+                _client_fact(
+                    id="fact-net-weight",
+                    type="weight",
+                    attr="\u51c0\u91cd",
+                    value="1.8",
+                    unit="kg",
+                    scope="\u5546\u54c1\u6574\u4f53",
+                ),
+            ],
+        },
+        identity=identity,
+        query_fact_type="gross_weight",
+    )
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["evidence_uid"] == "producthub:fact-gross-weight"
+    assert candidate["fact_type"] == "gross_weight"
+    assert candidate["subject_scope"] == "packaging"
+    assert candidate["value"] == "2.5kg"
+
+
+def test_hub_adapter_does_not_use_weight_for_an_unrelated_fact_type():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    result = _product_hub_facts_for_query(
+        {
+            "state": "ready",
+            "product_code": "YH-EXACT-01",
+            "resolved_sku_code": "YH-EXACT-01-SKU-A",
+            "facts": [
+                _client_fact(
+                    id="fact-gross-weight",
+                    type="weight",
+                    attr="\u6bdb\u91cd",
+                    value="2.5",
+                    unit="kg",
+                    scope="\u5305\u88c5",
+                ),
+            ],
+        },
+        identity={
+            "i_id": "YH-EXACT-01",
+            "sku": "YH-EXACT-01-SKU-A",
+            "product_identity_resolution": {"status": "resolved"},
+        },
+        query_fact_type="dimensions",
+    )
+
+    assert result == []
+
+
 def test_hub_adapter_accepts_a_jst_identity_only_after_exact_sku_resolution():
     from app.services.product_context_pack_service import _product_hub_facts_for_query
 
