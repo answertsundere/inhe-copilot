@@ -54,21 +54,25 @@ the local catalog first. A context-selected multi-item order, a conflicting SKU
 signal, or any missing condition remains outside this bypass and continues
 through the normal resolver/fail-closed path.
 
-Only confirmed, non-conflicting rows with a supported structured type and a
-recognized structural scope can become candidates. The low-risk slice maps
-material composition, product dimensions, installation, product-level color
-options, and packaging gross weight to canonical FactTypes. A color row is eligible only as
-`type=color` with `scope=商品整体`; it cannot be inferred from a title, a
-variant label, packaging, or a nearby Hub field. Multiple eligible variant
-rows from that exact returned product form one deterministic product-level
-color-options candidate, with every source fact retained as provenance. This
-describes catalog color options only; it does not assert real-time stock or
-delivery availability. Gross weight is eligible only when the Hub structured
-fields are exactly `type=weight`, `scope=包装`, and a recognized gross-weight
-attribute. It is a packaging/transport fact; product net weight, untyped
-weight, and every other packaging field remain outside this bridge. Component,
-accessory, age, load, policy, live order state, images, captions, and free-text
-source detail remain outside this direct fact bridge. They retain their
+Only confirmed, non-conflicting rows with an exact published field tuple can
+become candidates. The initial direct slice is intentionally limited to these
+source tuples: material (`material/材质/商品整体/empty unit`), overall dimensions
+(`size/尺寸/商品整体/cm`), installation (`installation/安装说明/商品整体/empty
+unit`), catalog color options (`color/颜色/商品整体/empty unit`), packaging
+gross weight (`weight/毛重/包装/kg`), and SKU-bound catalog configuration
+(`parts/配置说明/配件/empty unit`). The configuration row must carry both a Hub
+SKU code and `applies` value exactly equal to the resolved SKU; it describes
+the catalog configuration only and cannot establish shipment completeness. A
+type name alone is never enough: a
+component dimension, a product-width scalar, a packaging measurement, net
+weight, or a nearby free-text field cannot inherit a different tuple's
+customer-facing meaning. Multiple eligible color rows from that exact returned
+product form one deterministic product-level color-options candidate, with
+every source fact retained as provenance. This describes catalog color options
+only; it does not assert real-time stock or delivery availability. Component
+claims other than the exact SKU-bound catalog configuration, age, load,
+policy, live order state, images, captions, and free-text source detail remain
+outside this direct fact bridge. They retain their
 existing owners and must not be inferred from a nearby Hub field.
 
 Each accepted candidate preserves Hub fact UID, source, original confirmation

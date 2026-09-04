@@ -1129,57 +1129,37 @@ def _profile_facts_for_query(profile: dict[str, Any], *, query: str, query_fact_
     }]
 
 
-_PRODUCT_HUB_DIRECT_FACT_TYPE_MAP = {
-    "material": "material",
-    "size": "dimensions",
-    "installation": "installation",
-    "color": "color_options",
+_PRODUCT_HUB_DIRECT_FIELD_CONTRACT = {
+    # The Hub's own structured field contract is the source boundary. A fact
+    # type alone is insufficient: product, component, and packaging fields can
+    # share a type but have different customer-facing meanings.
+    ("material", "材质", "商品整体", ""): ("material", "product"),
+    ("size", "尺寸", "商品整体", "cm"): ("dimensions", "product"),
+    ("installation", "安装说明", "商品整体", ""): ("installation", "product"),
+    ("color", "颜色", "商品整体", ""): ("color_options", "product"),
+    ("weight", "毛重", "包装", "kg"): ("gross_weight", "packaging"),
+    ("parts", "配置说明", "配件", ""): ("accessories", "accessory"),
 }
 
-_PRODUCT_HUB_DIRECT_SCOPE_MAP = {
-    "商品整体": "product",
-}
 
-_PRODUCT_HUB_PACKAGING_GROSS_WEIGHT_ATTRIBUTES = frozenset({
-    "毛重",
-    "gross_weight",
-    "package_gross_weight",
-})
-
-
-def _product_hub_direct_fact_type(
+def _product_hub_direct_field_contract(
     fact_type: str,
     *,
     attribute_key: str,
     scope: str,
-) -> str:
-    """Map only semantically unambiguous Hub fields to canonical fact types."""
+    unit: str,
+) -> tuple[str, str]:
+    """Return a canonical type and subject only for one exact Hub field."""
 
-    normalized_type = str(fact_type or "").strip().lower()
-    if normalized_type != "weight":
-        return _PRODUCT_HUB_DIRECT_FACT_TYPE_MAP.get(normalized_type, "")
-
-    normalized_attribute = str(attribute_key or "").strip().lower()
-    if (
-        scope == "包装"
-        and normalized_attribute in _PRODUCT_HUB_PACKAGING_GROSS_WEIGHT_ATTRIBUTES
-    ):
-        return "gross_weight"
-    return ""
-
-
-def _product_hub_subject_scope(
-    evidence_fact_type: str,
-    *,
-    source_scope: str,
-) -> str:
-    """Keep source structural scope tied to the canonical fact semantics."""
-
-    if source_scope == "商品整体":
-        return _PRODUCT_HUB_DIRECT_SCOPE_MAP["商品整体"]
-    if evidence_fact_type == "gross_weight" and source_scope == "包装":
-        return "packaging"
-    return ""
+    return _PRODUCT_HUB_DIRECT_FIELD_CONTRACT.get(
+        (
+            str(fact_type or "").strip().lower(),
+            str(attribute_key or "").strip(),
+            str(scope or "").strip(),
+            str(unit or "").strip().lower(),
+        ),
+        ("", ""),
+    )
 
 
 def _product_hub_color_options_candidate(
@@ -1380,20 +1360,17 @@ def _product_hub_facts_for_query(
         source_fact_type = str(fact.get("type") or "").strip()
         source_scope = str(fact.get("scope") or "").strip()
         attribute_key = str(fact.get("attr") or "").strip()
-        evidence_fact_type = _product_hub_direct_fact_type(
+        unit = str(fact.get("unit") or "").strip()
+        evidence_fact_type, subject_scope = _product_hub_direct_field_contract(
             source_fact_type,
             attribute_key=attribute_key,
             scope=source_scope,
-        )
-        subject_scope = _product_hub_subject_scope(
-            evidence_fact_type,
-            source_scope=source_scope,
+            unit=unit,
         )
         fact_sku_code = str(fact.get("sku_code") or "").strip()
         applies = str(fact.get("applies") or "").strip()
         fact_id = str(fact.get("id") or "").strip()
         value = str(fact.get("value") or "").strip()
-        unit = str(fact.get("unit") or "").strip()
         fact_product_code = str(fact.get("product_code") or "").strip()
         if evidence_fact_type == "color_options":
             if (
@@ -1424,6 +1401,16 @@ def _product_hub_facts_for_query(
             or not value
             or (fact_sku_code and fact_sku_code != sku_code)
             or (applies and applies not in {fact_sku_code, sku_code})
+            # Parts configuration is an SKU-level source field. It can describe
+            # catalog configuration, never prove a customer's shipment content.
+            or (
+                evidence_fact_type == "accessories"
+                and (
+                    not sku_code
+                    or fact_sku_code != sku_code
+                    or applies != sku_code
+                )
+            )
             or not _fact_matches_query_type(query_fact_type, {"fact_type": evidence_fact_type})
         ):
             continue

@@ -27,7 +27,7 @@ def _hub_fact(**overrides):
         "productCode": "YH-EXACT-01",
         "skuCode": "YH-EXACT-01-SKU-A",
         "type": "size",
-        "attr": "overall_dimensions",
+        "attr": "\u5c3a\u5bf8",
         "value": "120 x 60 x 90",
         "unit": "cm",
         "scope": "商品整体",
@@ -108,7 +108,7 @@ def test_hub_client_requires_exact_returned_product_code_and_drops_source_detail
         "product_code": "YH-EXACT-01",
         "sku_code": "YH-EXACT-01-SKU-A",
         "type": "size",
-        "attr": "overall_dimensions",
+        "attr": "\u5c3a\u5bf8",
         "value": "120 x 60 x 90",
         "unit": "cm",
         "scope": "商品整体",
@@ -253,8 +253,9 @@ def test_hub_adapter_admits_exact_product_color_only_for_color_options_goal():
             _client_fact(
                 id="fact-color-a",
                 type="color",
-                attr="color",
+                attr="\u989c\u8272",
                 value="option-a",
+                unit="",
                 scope="\u5546\u54c1\u6574\u4f53",
                 skuCode="YH-EXACT-01-SKU-A",
                 applies="YH-EXACT-01-SKU-A",
@@ -262,8 +263,9 @@ def test_hub_adapter_admits_exact_product_color_only_for_color_options_goal():
             _client_fact(
                 id="fact-color-b",
                 type="color",
-                attr="color",
+                attr="\u989c\u8272",
                 value="option-b",
+                unit="",
                 scope="\u5546\u54c1\u6574\u4f53",
                 skuCode="YH-EXACT-01-SKU-B",
                 applies="YH-EXACT-01-SKU-B",
@@ -271,8 +273,9 @@ def test_hub_adapter_admits_exact_product_color_only_for_color_options_goal():
             _client_fact(
                 id="fact-color-c",
                 type="color",
-                attr="color",
+                attr="\u989c\u8272",
                 value="option-a",
+                unit="",
                 scope="\u5546\u54c1\u6574\u4f53",
                 skuCode="YH-EXACT-01-SKU-C",
                 applies="YH-EXACT-01-SKU-C",
@@ -317,8 +320,9 @@ def test_hub_adapter_admits_exact_product_color_only_for_color_options_goal():
                 _client_fact(
                     id="fact-color-wrong-scope",
                     type="color",
-                    attr="color",
+                    attr="\u989c\u8272",
                     value="option-c",
+                    unit="",
                     scope="\u5305\u88c5",
                     skuCode="YH-EXACT-01-SKU-A",
                     applies="YH-EXACT-01-SKU-A",
@@ -520,6 +524,145 @@ def test_hub_adapter_rejects_nonexact_or_noneligible_rows_before_admission():
         query_fact_type="dimensions",
     )
     assert result == []
+
+
+def test_hub_adapter_requires_the_exact_published_source_field_contract():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    identity = {
+        "i_id": "YH-EXACT-01",
+        "sku": "YH-EXACT-01-SKU-A",
+        "product_identity_resolution": {"status": "resolved"},
+    }
+
+    def candidates_for(fact, query_fact_type):
+        return _product_hub_facts_for_query(
+            {
+                "state": "ready",
+                "product_code": "YH-EXACT-01",
+                "resolved_sku_code": "YH-EXACT-01-SKU-A",
+                "facts": [fact],
+            },
+            identity=identity,
+            query_fact_type=query_fact_type,
+        )
+
+    valid_cases = [
+        (_client_fact(type="size", attr="\u5c3a\u5bf8", unit="cm", scope="\u5546\u54c1\u6574\u4f53"), "dimensions"),
+        (_client_fact(type="material", attr="\u6750\u8d28", unit="", scope="\u5546\u54c1\u6574\u4f53"), "material"),
+        (_client_fact(type="installation", attr="\u5b89\u88c5\u8bf4\u660e", unit="", scope="\u5546\u54c1\u6574\u4f53"), "installation"),
+        (_client_fact(type="color", attr="\u989c\u8272", unit="", scope="\u5546\u54c1\u6574\u4f53"), "color_options"),
+        (_client_fact(type="weight", attr="\u6bdb\u91cd", unit="kg", scope="\u5305\u88c5"), "gross_weight"),
+    ]
+    for fact, query_fact_type in valid_cases:
+        assert len(candidates_for(fact, query_fact_type)) == 1
+
+    invalid_cases = [
+        (_client_fact(type="size", attr="\u5bbd\u5ea6", value="12", unit="cm", scope="\u5546\u54c1\u6574\u4f53"), "dimensions"),
+        (_client_fact(type="size", attr="\u5c3a\u5bf8", unit="mm", scope="\u5546\u54c1\u6574\u4f53"), "dimensions"),
+        (_client_fact(type="material", attr="\u6750\u8d28\u8bf4\u660e", unit="", scope="\u5546\u54c1\u6574\u4f53"), "material"),
+        (_client_fact(type="installation", attr="\u5b89\u88c5\u65b9\u5f0f", unit="", scope="\u5546\u54c1\u6574\u4f53"), "installation"),
+        (_client_fact(type="color", attr="\u8272\u5f69", unit="", scope="\u5546\u54c1\u6574\u4f53"), "color_options"),
+        (_client_fact(type="weight", attr="gross_weight", unit="kg", scope="\u5305\u88c5"), "gross_weight"),
+    ]
+    for fact, query_fact_type in invalid_cases:
+        assert candidates_for(fact, query_fact_type) == []
+
+
+def test_hub_adapter_admits_only_exact_sku_bound_parts_configuration():
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    identity = {
+        "i_id": "YH-EXACT-01",
+        "sku": "YH-EXACT-01-SKU-A",
+        "product_identity_resolution": {"status": "resolved"},
+    }
+    hub_read = {
+        "state": "ready",
+        "product_code": "YH-EXACT-01",
+        "resolved_sku_code": "YH-EXACT-01-SKU-A",
+        "facts": [
+            _client_fact(
+                id="fact-parts-001",
+                type="parts",
+                attr="\u914d\u7f6e\u8bf4\u660e",
+                value="configuration",
+                unit="",
+                scope="\u914d\u4ef6",
+                skuCode="YH-EXACT-01-SKU-A",
+                applies="YH-EXACT-01-SKU-A",
+            ),
+        ],
+    }
+
+    candidates = _product_hub_facts_for_query(
+        hub_read,
+        identity=identity,
+        query_fact_type="accessories",
+    )
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["fact_type"] == "accessories"
+    assert candidate["subject_scope"] == "accessory"
+    assert candidate["sku_scope"] == ["YH-EXACT-01-SKU-A"]
+
+    admitted = AdmittedAnswerContextService().build_for_response(
+        {"product_context_pack": {"facts": candidates}},
+        product_identity={"i_id": "YH-EXACT-01", "sku_code": "YH-EXACT-01-SKU-A"},
+        understanding={
+            "requested_claims": [
+                {"claim_type": "accessories", "question": "configuration", "risk_level": "low"}
+            ]
+        },
+    )
+    assert [item["evidence_uid"] for item in admitted["direct_product_facts"]] == [
+        "producthub:fact-parts-001"
+    ]
+    for incompatible_query in ("installation", "aftersales_policy", "accessory_availability"):
+        assert _product_hub_facts_for_query(
+            hub_read,
+            identity=identity,
+            query_fact_type=incompatible_query,
+        ) == []
+
+    for invalid in [
+        _client_fact(
+            id="parts-missing-applies",
+            type="parts",
+            attr="\u914d\u7f6e\u8bf4\u660e",
+            value="configuration",
+            unit="",
+            scope="\u914d\u4ef6",
+            skuCode="YH-EXACT-01-SKU-A",
+            applies="",
+        ),
+        _client_fact(
+            id="parts-wrong-sku",
+            type="parts",
+            attr="\u914d\u7f6e\u8bf4\u660e",
+            value="configuration",
+            unit="",
+            scope="\u914d\u4ef6",
+            skuCode="YH-EXACT-01-SKU-B",
+            applies="YH-EXACT-01-SKU-B",
+        ),
+        _client_fact(
+            id="parts-wrong-attribute",
+            type="parts",
+            attr="\u914d\u4ef6\u6e05\u5355",
+            value="configuration",
+            unit="",
+            scope="\u914d\u4ef6",
+            skuCode="YH-EXACT-01-SKU-A",
+            applies="YH-EXACT-01-SKU-A",
+        ),
+    ]:
+        assert _product_hub_facts_for_query(
+            {**hub_read, "facts": [invalid]},
+            identity=identity,
+            query_fact_type="accessories",
+        ) == []
 
 
 def test_hub_loader_never_uses_a_title_or_unresolved_identity(monkeypatch):

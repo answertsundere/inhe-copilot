@@ -1341,7 +1341,7 @@ def test_product_context_pack_includes_exact_confirmed_product_hub_fact_after_id
                 "product_code": product_code,
                 "sku_code": sku_code,
                 "type": "size",
-                "attr": "overall_dimensions",
+                "attr": "\u5c3a\u5bf8",
                 "value": "120 x 60 x 90",
                 "unit": "cm",
                 "scope": "商品整体",
@@ -1400,7 +1400,7 @@ def test_product_context_pack_reuses_resolved_jst_order_item_sku_for_exact_hub_r
                 "product_code": "HUB-PRODUCT-EXACT-01",
                 "sku_code": code,
                 "type": "size",
-                "attr": "overall_dimensions",
+                "attr": "\u5c3a\u5bf8",
                 "value": "120 x 60 x 90",
                 "unit": "cm",
                 "scope": "商品整体",
@@ -1434,6 +1434,72 @@ def test_product_context_pack_reuses_resolved_jst_order_item_sku_for_exact_hub_r
     assert pack["stats"]["product_hub_state"] == "ready"
     assert pack["stats"]["product_hub_candidate_count"] == 1
     assert pack["evidence_pack"]["product_identity_resolution"]["status"] == "resolved"
+
+
+def test_product_context_pack_admits_exact_sku_bound_parts_configuration(
+    product_context_db,
+    monkeypatch,
+):
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    from app.services.product_context_pack_service import build_product_context_pack
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    product_code = "HUB-PARTS-PRODUCT-01"
+    sku_code = "HUB-PARTS-SKU-01"
+    monkeypatch.setattr(
+        ProductIdentityResolver,
+        "resolve",
+        lambda _self, **_signals: {
+            "status": "resolved",
+            "i_id": product_code,
+            "sku_code": sku_code,
+            "identity_confidence": 1.0,
+            "identity_sources": ["test"],
+            "match_reason": "exact_test_identity",
+        },
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts_for_sku",
+        lambda _self, code: {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": product_code,
+            "resolved_sku_code": code,
+            "facts": [{
+                "id": "hub-parts-fact-001",
+                "product_code": product_code,
+                "sku_code": code,
+                "type": "parts",
+                "attr": "\u914d\u7f6e\u8bf4\u660e",
+                "value": "configuration",
+                "unit": "",
+                "scope": "\u914d\u4ef6",
+                "applies": code,
+                "source": "manual",
+                "status": "confirmed",
+                "conflict": False,
+                "updated_at": "2026-08-29T00:00:00Z",
+            }],
+        },
+    )
+
+    pack = build_product_context_pack(
+        {"order_product_identity": {"i_id": product_code, "sku_id": sku_code}},
+        query="what is included",
+        allowed_source_types=["product_facts"],
+        query_fact_type="accessories",
+    )
+
+    hub_facts = [
+        item for item in pack["facts"]
+        if item.get("evidence_id") == "producthub:hub-parts-fact-001"
+    ]
+    assert len(hub_facts) == 1
+    assert hub_facts[0]["fact_type"] == "accessories"
+    assert hub_facts[0]["subject_scope"] == "accessory"
+    assert hub_facts[0]["sku_scope"] == [sku_code]
+    assert pack["stats"]["product_hub_candidate_count"] == 1
 
 
 def test_product_context_pack_keeps_context_selected_jst_multi_item_order_out_of_exact_hub_read(

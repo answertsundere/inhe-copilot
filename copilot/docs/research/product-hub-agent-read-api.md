@@ -52,16 +52,20 @@ that stable contract and stays disabled until the Hub release is deployed.
 6. Convert accepted rows into the existing Product Context Pack candidate
    contract. Existing admission remains the only owner that can make a fact
    available to a reply.
-   The current low-risk mapping is deliberately narrow: material, overall
-   dimensions, installation, product-level color options, and packaging gross
-   weight. Color requires
-   the structured `type=color` and product-level scope; it is not inferred from
-   a title, free-text note, variant label, or image. Multiple eligible variant
-   rows are aggregated deterministically into one product-level options fact;
-   that fact does not claim current stock or fulfillment availability.
-   Gross weight requires all three structured source fields: `type=weight`,
-   `scope=包装`, and a gross-weight attribute. Product net weight and untyped
-   weight are rejected rather than being relabeled as a shipping fact.
+   The current low-risk mapping is deliberately narrow and requires the full
+   published tuple, not merely a fact type: `material/材质/商品整体/empty unit`,
+   `size/尺寸/商品整体/cm`, `installation/安装说明/商品整体/empty unit`,
+   `color/颜色/商品整体/empty unit`, `weight/毛重/包装/kg`, and
+   `parts/配置说明/配件/empty unit`. The parts tuple is accepted only when both
+   its Hub SKU and `applies` exactly match the resolved SKU; it describes the
+   catalog configuration and cannot prove a customer received every part. A
+   component or packaging field cannot be reinterpreted as a product-level
+   field, and an axis value cannot be reinterpreted as overall dimensions. Color is not
+   inferred from a title, free-text note, variant label, or image. Multiple
+   eligible variant rows are aggregated deterministically into one
+   product-level options fact; that fact does not claim current stock or
+   fulfillment availability. Product net weight and untyped weight are
+   rejected rather than being relabeled as a shipping fact.
 7. Treat images, captions, notes, and semantic asset search as reference-only
    follow-up work. They do not become facts or delivered media in this slice.
 
