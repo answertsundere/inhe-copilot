@@ -1,5 +1,27 @@
 # Change Log
 
+## 2026-09-09 - Native Selection Diagnostic, Import Still Blocked
+
+- Added count/status-only UIA/MSAA parent-selection diagnostics to the existing
+  disabled native reader. Selection members and exception text are never read
+  into the diagnostic. Unsupported/error remains distinct from a valid zero.
+- TDD: 12 diagnostic assertions failed before implementation; the final scoped
+  suite adds 23 tests including no-authority and unrelated-control coverage.
+  Related Python tests: 276 passed, one dependency warning. Existing executable
+  frontend behavior tests: 22 passed. py_compile and scoped diff checks passed.
+- Independent review caught diagnostics participating in snapshot equality.
+  Three red/green variants now ignore only the diagnostic field; six negative
+  cases preserve comparison of all prior identity/structure fields.
+- Two private native captures returned buyer_binding_missing: one Tree and two
+  Tabs do not support UIA Selection; MSAA reads succeed with zero selected items.
+  Single-item selection remains absent. No native context was imported, and
+  no model, real-dataset evaluation, JST or knowledge write was performed.
+- This diagnoses a platform compatibility gap, not a fixed customer binding or
+  Agent-quality improvement. The selected-client/order ownership gates remain;
+  no frontend, canonical, Agent, review/send or production-service change.
+  Production 5012/5174 retained their processes; no temporary server was started.
+  real_accuracy=null; listening, reconnection and delivery remain unqualified.
+
 ## 2026-09-09 - Review Queue Execution Identity Isolation
 
 - Fixed the existing ReplyService -> ReviewQueueService boundary: source,

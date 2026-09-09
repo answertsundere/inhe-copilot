@@ -19,6 +19,12 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-09 native current-client probe: parent UIA selection is unsupported
+  on the one Tree and two Tab controls; MSAA selection reads succeed but return
+  no selected items. Import still returns buyer_binding_missing. Only bounded
+  count/status diagnostics were added to the existing disabled reader; no
+  identity fallback or production deployment. Native listening remains blocked.
+
 - 2026-09-09 review-queue isolation is development-integrated, not deployed.
   The existing ReplyService now forwards execution identity to the existing
   JSONL queue. Only pending records with exact source/shop/conversation/message/

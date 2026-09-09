@@ -1,5 +1,21 @@
 # Delivery Roadmap
 
+## Native Current-Client Selection Probe (2026-09-09)
+
+- Active priority: P1 Gold Conversation Quality; bounded native identity diagnosis.
+- [x] Preserve the queue checkpoint, generated files and production processes.
+- [x] Probe UIA/MSAA parent selection using existing native adapter diagnostics;
+  retain only counts/status, never names, order values or message contents.
+- [x] Test that diagnostics cannot grant identity or change preview admission.
+- [x] Run private local native capture and record the observed limitation;
+  repeat once after the review-found diagnostic-comparison fix (two total).
+- One Tree and two Tabs: UIA pattern unsupported, MSAA readable with zero
+  selected items. Single-item selected states also remain zero; import blocked.
+- No Agent, model, database, auto-listener, input, send or production changes.
+- Native current-client qualification remains blocked until ownership is proven.
+- Regression: 276 Python tests and 22 executable frontend tests passed;
+  py_compile/scoped diff checks passed. This is diagnostic qualification only.
+
 ## Review Queue Conversation Isolation (2026-09-09)
 
 - Active priority: P1 Gold Conversation Quality; approved bounded queue fix.

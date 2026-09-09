@@ -38,6 +38,14 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+### Native Current-Client Probe (2026-09-09)
+
+The existing manual reader now reports bounded parent-selection counts/status
+without granting identity. Two live probes found UIA parent selection unsupported
+and readable MSAA collections empty; native import remains blocked. No Agent,
+model, database, frontend or production-service change. See the existing
+[desktop adapter investigation](research/qianniu-desktop-adapter-selection.md#父控件选择模式复验-2026-09-09).
+
 ### Review Queue Conversation Isolation (2026-09-09)
 
 The existing ReplyService/JSONL queue now reuse a pending record only for an

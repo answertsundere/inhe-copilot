@@ -401,7 +401,10 @@ def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> di
     from .context_parser import build_uia_preview
 
     try:
-        if before != after:
+        # Diagnostic availability is not current-client ownership metadata.
+        before_binding = [{k: v for k, v in n.items() if k != "selection_diagnostics"} for n in before]
+        after_binding = [{k: v for k, v in n.items() if k != "selection_diagnostics"} for n in after]
+        if before_binding != after_binding:
             raise ValueError("capture_binding_changed")
         nodes = before
         containers = [i for i, n in enumerate(nodes) if n.get("automation_id") == "J_msgContainer"]
@@ -497,7 +500,46 @@ def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> di
             "selected_tab_count": sum(n.get("role") == "TabItem" and n.get("selected") is True for n in before),
             "legacy_selected_buyer_count": sum(n.get("role") == "TreeItem" and n.get("legacy_selected") is True for n in before),
             "legacy_selected_tab_count": sum(n.get("role") == "TabItem" and n.get("legacy_selected") is True for n in before),
+            "parent_selection": _parent_selection_summary(before),
         }}
+
+
+def _parent_selection_summary(nodes: list[dict]) -> dict:
+    summary = {}
+    for role in ("Tree", "Tab", "List"):
+        controls = [n.get("selection_diagnostics", {}) for n in nodes if n.get("role") == role]
+        if not controls:
+            continue
+        summary[role] = {}
+        for channel in ("uia", "msaa"):
+            readings = [control.get(channel, {}) for control in controls]
+            summary[role][channel] = {
+                "read_controls": sum(r.get("status") == "read" for r in readings),
+                "unsupported_controls": sum(r.get("status") == "unsupported" for r in readings),
+                "error_controls": sum(r.get("status") not in {"read", "unsupported"} for r in readings),
+                "selected_items": sum(r["count"] for r in readings if r.get("status") == "read"),
+            }
+    return summary
+
+
+def _native_parent_selection(element: Any) -> dict:
+    """Read only collection lengths, never dereference selected customer data."""
+    from pywinauto.uia_defines import NoPatternInterfaceError, get_elem_interface
+
+    result = {}
+    for channel, pattern in (("uia", "Selection"), ("msaa", "LegacyIAccessible")):
+        try:
+            selection = get_elem_interface(element, pattern).GetCurrentSelection()
+            count = selection.Length
+            if type(count) is not int or not 0 <= count <= 1800:
+                raise ValueError("selection_count_invalid")
+            result[channel] = {"status": "read", "count": count}
+        except NoPatternInterfaceError:
+            result[channel] = {"status": "unsupported", "count": None}
+        except Exception:
+            # UIA errors may contain account data. Unknown is not an empty read.
+            result[channel] = {"status": "error", "count": None}
+    return result
 
 
 def read_native_tree(window: Any) -> list[dict]:
@@ -524,6 +566,8 @@ def read_native_tree(window: Any) -> list[dict]:
                       "legacy_selected": isinstance(state, int) and bool(state & 2),
                       "selected": info.element.GetCurrentPropertyValue(30079) is True
                       if role in {"TreeItem", "TabItem"} else False})
+        if role in {"Tree", "Tab", "List"}:
+            nodes[-1]["selection_diagnostics"] = _native_parent_selection(info.element)
         for child in control.children():
             visit(child, depth + 1)
 

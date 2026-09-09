@@ -1,4 +1,6 @@
 from copy import deepcopy
+from types import SimpleNamespace
+import sys
 
 import pytest
 
@@ -128,3 +130,129 @@ def test_unknown_content_subtree_fails_closed_and_mixed_icon_does_not_drop_text(
     nodes[10] = node(3, "Group", "正文\ue123")
     result = build_native_preview(nodes, deepcopy(nodes), 42)
     assert "正文" in result["context"]["conversation_history"][0]["content"]
+
+
+@pytest.mark.parametrize("role", ["Tree", "Tab", "List"])
+def test_parent_selection_diagnostics_are_count_only_and_not_identity(monkeypatch, role):
+    from scripts.sidecar.uia_sidebar_extractor import read_native_tree
+
+    calls = []
+
+    class Selection:
+        def GetCurrentSelection(self):
+            # Element bodies are deliberately not exposed to the reader.
+            return SimpleNamespace(Length=1)
+
+    def interface(element, pattern):
+        calls.append(pattern)
+        return Selection()
+
+    monkeypatch.setitem(sys.modules, "pywinauto.uia_defines", SimpleNamespace(
+        get_elem_interface=interface, NoPatternInterfaceError=LookupError))
+    element = SimpleNamespace(GetCurrentPropertyValue=lambda key: None)
+    control = SimpleNamespace(element_info=SimpleNamespace(
+        name="fixture-sensitive-name", control_type=role, element=element,
+        automation_id="fixture-sensitive-id"), children=lambda: [])
+    tree = read_native_tree(control)
+    assert tree[0]["selection_diagnostics"] == {
+        "uia": {"status": "read", "count": 1},
+        "msaa": {"status": "read", "count": 1},
+    }
+    assert calls == ["Selection", "LegacyIAccessible"]
+    assert tree[0]["selected"] is False
+    fixture = capture()
+    fixture[2]["selected"] = False
+    fixture.append({**tree[0], "depth": 1})
+    result = build_native_preview(fixture, deepcopy(fixture), 42)
+    assert result["error"] == "buyer_binding_missing"
+    assert "context" not in result
+    assert result["diagnostics"]["parent_selection"][role] == {
+        "uia": {"read_controls": 1, "unsupported_controls": 0,
+                "error_controls": 0, "selected_items": 1},
+        "msaa": {"read_controls": 1, "unsupported_controls": 0,
+                 "error_controls": 0, "selected_items": 1},
+    }
+    assert "fixture-sensitive" not in str(result)
+
+
+@pytest.mark.parametrize("outcome,status,count", [
+    (0, "read", 0), (1800, "read", 1800),
+    (-1, "error", None), (1801, "error", None),
+    (True, "error", None), ("1", "error", None),
+    (None, "error", None), (LookupError("private"), "unsupported", None),
+    (RuntimeError("fixture-secret"), "error", None),
+])
+def test_parent_selection_unknown_is_not_a_successful_empty_read(monkeypatch, outcome, status, count):
+    from scripts.sidecar.uia_sidebar_extractor import read_native_tree
+
+    def interface(element, pattern):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return SimpleNamespace(GetCurrentSelection=lambda: SimpleNamespace(Length=outcome))
+
+    monkeypatch.setitem(sys.modules, "pywinauto.uia_defines", SimpleNamespace(
+        get_elem_interface=interface, NoPatternInterfaceError=LookupError))
+    control = SimpleNamespace(element_info=SimpleNamespace(
+        name="", control_type="Tree", automation_id="",
+        element=SimpleNamespace(GetCurrentPropertyValue=lambda key: None)), children=lambda: [])
+    result = read_native_tree(control)[0]["selection_diagnostics"]
+    assert result == {channel: {"status": status, "count": count} for channel in ("uia", "msaa")}
+    assert "fixture-secret" not in str(result)
+
+
+def test_non_selection_controls_do_not_probe_parent_patterns(monkeypatch):
+    from scripts.sidecar.uia_sidebar_extractor import read_native_tree
+
+    def unexpected(*args):
+        pytest.fail("unrelated control must not query selection patterns")
+
+    monkeypatch.setitem(sys.modules, "pywinauto.uia_defines", SimpleNamespace(
+        get_elem_interface=unexpected, NoPatternInterfaceError=LookupError))
+    control = SimpleNamespace(element_info=SimpleNamespace(
+        name="", control_type="Text", automation_id="",
+        element=SimpleNamespace(GetCurrentPropertyValue=lambda key: None)), children=lambda: [])
+    assert "selection_diagnostics" not in read_native_tree(control)[0]
+
+
+def test_native_parent_pattern_availability_is_independent(monkeypatch):
+    from scripts.sidecar.uia_sidebar_extractor import read_native_tree
+
+    def interface(element, pattern):
+        if pattern == "Selection":
+            raise LookupError()
+        return SimpleNamespace(GetCurrentSelection=lambda: SimpleNamespace(Length=0))
+
+    monkeypatch.setitem(sys.modules, "pywinauto.uia_defines", SimpleNamespace(
+        get_elem_interface=interface, NoPatternInterfaceError=LookupError))
+    control = SimpleNamespace(element_info=SimpleNamespace(
+        name="", control_type="Tree", automation_id="",
+        element=SimpleNamespace(GetCurrentPropertyValue=lambda key: None)), children=lambda: [])
+    assert read_native_tree(control)[0]["selection_diagnostics"] == {
+        "uia": {"status": "unsupported", "count": None},
+        "msaa": {"status": "read", "count": 0},
+    }
+
+
+@pytest.mark.parametrize("changed", [
+    {"uia": {"status": "error", "count": None}},
+    {"uia": {"status": "read", "count": 2}},
+    {},
+])
+def test_diagnostic_changes_do_not_change_capture_binding(changed):
+    before = capture() + [node(1, "List")]
+    before[-1]["selection_diagnostics"] = {"uia": {"status": "read", "count": 1}}
+    after = deepcopy(before)
+    after[-1]["selection_diagnostics"] = changed
+    assert build_native_preview(before, after, 42)["status"] == "preview_ready"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("name", "other buyer"), ("selected", False), ("legacy_selected", True),
+    ("automation_id", "other control"), ("role", "ListItem"), ("depth", 2),
+])
+def test_diagnostic_exclusion_preserves_every_existing_binding_field(field, value):
+    before = capture()
+    after = deepcopy(before)
+    after[2][field] = value
+    after[2]["selection_diagnostics"] = {"uia": {"status": "error", "count": None}}
+    assert build_native_preview(before, after, 42)["error"] == "capture_binding_changed"
