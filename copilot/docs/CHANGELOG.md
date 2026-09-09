@@ -1,5 +1,26 @@
 # Change Log
 
+## 2026-09-09 - Post-Binding Synthetic Candidate Stopped Before Composer
+
+- Recorded one fresh, authorized, native API check on 8973f60 with the same
+  fictional history/question and exact source identity. HTTP 200 was an empty
+  reply, not success; launcher exit_code=2, 6,726 ms, Composer calls=0.
+- Verified live trusted policy selection and 13 available bounded policies;
+  54 Hub source facts did not become admitted facts because canonical goals
+  were unavailable. Raw goal schema/source spans passed; semantic normalization
+  did not produce authoritative Understanding.
+- A generic offline reproducer confirms specific goal-normalization diagnostics
+  are lost in _fallback_from_rule. The actual live semantic reason is unknown;
+  the generic reproducer must not be substituted for the failed model output.
+  A diagnostic-only repair is the next bounded task, not implemented here.
+- No Agent/prompt/policy/Safety/Delivery, Hub, credential or production-runtime
+  modification. can_send=false, review=true, temporary DB unchanged, DML=0;
+  disposable 5030 stopped. No retry, benchmark model call or accuracy claim.
+- 654 related deterministic tests and five documentation-governance tests
+  passed; Python/PowerShell JSON parsing and scoped diff check passed. Original
+  5012/5174/8795 PIDs are unchanged. Updated the existing execution and
+  documentation indexes; private attempt/trace artifacts remain outside Git.
+
 ## 2026-09-09 - Authorized Synthetic Multiturn Candidate
 
 - Completed one native API request with four fictional history turns and exact

@@ -1,5 +1,55 @@
 # Delivery Roadmap
 
+## Post-Binding Multiturn Reply Check (2026-09-09)
+
+Active priority: P1 Gold Conversation Quality. User confirmed the next single
+synthetic candidate after the `8973f60` propagation repair. Reuse the same four
+history turns, current question, exact Hub source, Provider and isolated entry
+point; preserve the previous result without replacement.
+
+- [x] Verify commit, existing process ownership and the reusable launcher.
+- [x] Run one review-only candidate on disposable 5030, then stop that process.
+- [x] Compare trusted policy, goal/premise attribution, reply and final gates.
+- [x] Record actual quality findings and remaining limitations.
+
+No Agent, prompt, policy-data or formal-runtime edits are planned. No production
+data write, auto-send or additional scenario/model retry is permitted in this
+check. This is a synthetic diagnostic, not a real-accuracy qualification.
+
+Result: failed candidate, not a passed reply. One API request returned HTTP 200
+with an empty reply after 6,726 ms; the launcher recorded exit_code=2. Composer
+was blocked and made zero calls. The existing human-review boundary remained
+true and can_send=false. No retry or extra external scenario was run.
+
+The propagation repair is visible in the actual trace: trusted policy selected,
+13 bounded policies available, exact source identity equal to the previous run,
+and 54 Hub source facts returned. These are candidates, not 54 admitted facts.
+The Understanding response contained two raw goals and passed JSON schema and
+source-span checks, but post-schema goal normalization was not authoritative.
+Final canonical goals=0, selected evidence=0 and claim resolutions=0. This is
+not evidence that the source has no product facts.
+
+Read-only code attribution and a generic no-model reproducer confirm that
+semantic_fact_type_service._fallback_from_rule drops the normalizer's specific
+goal_understanding_diagnostics and leaves llm_goal_understanding_unavailable.
+The reproducer's unknown-policy case does not identify the actual failed model
+nomination: that live reason was lost. Do not infer it from the generic example.
+Next bounded repair: retain deterministic rejection reason codes in the existing
+diagnostic contract, without making rejected goals authoritative or changing
+Composer, policy content, prompts, Safety or Delivery. Not implemented here.
+
+Runtime commit=8973f60669649e1a4957e4574906412d153befd6, clean source identity,
+no source drift, readiness ready and formal SQLite query-only. The isolated
+knowledge fingerprint was unchanged, observed formal DML=0, and 5030 stopped.
+No Hub writes or original-service changes. Whole-Pipeline model-call counts are
+not complete: the strict Understanding call count is one (1,826 ms including
+local validation), while Composer count is zero. No single-case p50/p95 claim.
+Related deterministic regression: 654 passed; documentation governance: 5 passed.
+Python/PowerShell report parsing and scoped diff check passed. Original
+5012/5174/8795 PIDs are unchanged; no network push attempted. real_accuracy=null and
+optimization_unverified remain; this empty candidate cannot be graded for tone,
+naturalness or business helpfulness. Detailed attempt/trace stay outside Git.
+
 ## Hub Policy Binding Propagation (2026-09-09)
 
 Active priority: P1 Gold Conversation Quality. Repair control metadata only in

@@ -19,13 +19,25 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-09 post-binding multiturn check: one fresh synthetic request on
+  8973f60 failed with an empty reply before Composer (6,726 ms, exit_code=2).
+  Trusted policy now selected with 13 options; 54 source facts returned, but
+  post-schema Understanding was nonauthoritative: canonical goals/evidence=0.
+  Generic offline reproduction confirms the existing fallback loses specific
+  rejection diagnostics. The actual live semantic reason cannot be recovered
+  from the saved generic code. No production-code repair or model retry in
+  this check. 654 related tests passed; can_send=false, review=true, DML=0,
+  5030 stopped, real_accuracy=null. Next: preserve rejection reason codes
+  without loosening goal qualification. See ROADMAP.md.
+
 - 2026-09-09 isolated multiturn candidate: explicit approval enabled one actual
   DeepSeek API request. Four history turns remained intact; material supported,
   cleaning unresolved; two direct material records, Composer accepted and
   deterministic Final passed. 7,497 ms, can_send=false, review=true, DML=0.
   Cleaning wording still defers work to the customer; semantic judge unavailable.
-  Exact Hub product policy metadata does not reach the existing local-only policy
-  selector. This is the next context owner; no Agent/prompt repair in this run.
+  At that baseline, exact Hub policy metadata did not reach the local-only
+  selector. The subsequent 8973f60 repair and failed post-binding check above
+  supersede that propagation gap, not this preserved historical reply.
   5030 stopped, production untouched, real_accuracy=null. See ROADMAP.md.
 
 - 2026-09-09 assisted-import application boundary: 337 Python regressions and

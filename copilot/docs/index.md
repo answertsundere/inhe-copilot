@@ -41,15 +41,20 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 The isolated Hub policy-binding propagation now has a bounded contract in
 `adr/0009-agent-core-capability-mainline.md` and `architecture-overview.md`:
 exact active SKU/product passport -> existing Pipeline selector -> existing Pack
-loader. Source notes and policy text are not evidence or model input. See
-`../ROADMAP.md` for verification and the still-unverified reply-quality boundary.
+loader. Source notes and policy text are not evidence or model input. One fresh
+synthetic API check confirmed selected policy but failed before Composer with
+empty output: post-schema Understanding was nonauthoritative and its specific
+rejection reason was lost by the existing fallback. No production repair or
+extra model request was made during that check. See `../ROADMAP.md` for the
+preserved failed result and the next reason-code-only diagnostic repair.
 
 ### Assisted Conversation Document Import (2026-09-09)
 
-One explicitly authorized synthetic multiturn candidate now completed through
+The earlier explicitly authorized synthetic multiturn candidate completed through
 the real API: direct material supported, cleaning unresolved, review-only. It
 exposed missing Hub-to-trusted-policy propagation in the local-only product
-selector, not a need for a second Composer. This is not real accuracy or native
+selector, not a need for a second Composer. Its reply is not the result of the
+new post-binding attempt above. Neither is real accuracy or native
 conversation qualification; see `../ROADMAP.md` for the bounded result.
 
 The existing default-off manual preview adds an explicit historical-document
