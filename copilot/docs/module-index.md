@@ -87,7 +87,7 @@ evaluation owner only; no Fast Path or Composer module has been added.
 | Capability | Owner | Status | Boundary |
 |---|---|---|---|
 | Management authentication | `app/api/admin_auth.py`, route policy registry | formal | Cloudflare Access JWT, explicit RBAC, default deny |
-| QianNiu/PDD/JD adapters | canonical adapter ports; existing `scripts/qianniu_sidecar.py` and `scripts/sidecar/context_parser.py` for the local QianNiu preview | planned; QianNiu structured preview contract tested, native continuous capture unqualified | Native fields stop at the adapter boundary; opt-in preview retains unverified references, never posts, sends, or selects the first order |
+| QianNiu/PDD/JD adapters | canonical adapter ports; existing `scripts/qianniu_sidecar.py`, `scripts/sidecar/uia_sidebar_extractor.py`, `scripts/sidecar/context_parser.py`, Sidecar route and real-test template | manual-preview development only; native current-client selection blocked; continuous capture unqualified | Default-off direct-loopback human/CSRF preview, explicit confirmation and canonical history; no shared cache, polling/model/send; native unbound order/product references omitted |
 | Durable HandoffTask | not implemented | planned/P1 | Assignment, SLA, status, acknowledgement, audit |
 | Supervisor queue | not implemented | planned | Projection of durable handoff and Agent outcomes |
 

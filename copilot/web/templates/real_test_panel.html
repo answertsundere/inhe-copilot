@@ -97,6 +97,8 @@ a{text-decoration:none;color:inherit}
 .col-buyer .chat-preview.empty{min-height:30px;font-size:11px;justify-content:flex-start}
 .col-buyer #parsedContextPreview{max-height:82px;overflow:hidden}
 .col-buyer .card-section:nth-child(2) .btns{margin:0}
+.col-buyer .card-section:nth-child(2) .history-import-actions{grid-column:1/-1;flex-wrap:wrap;gap:4px}
+.history-import-actions button{font-size:12px}
 .col-buyer .message-composer{padding:8px}
 .col-buyer .main-message{height:74px;min-height:74px}
 .col-buyer .char-count{display:none}
@@ -304,6 +306,12 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .modal-header{height:52px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .modal-header h2{margin:0;font-size:15px}
 .modal-body{padding:16px;overflow:auto}
+.qianniu-preview .modal-body{min-height:0;overflow-wrap:anywhere}
+.qianniu-preview select{max-width:100%;width:100%}
+.qianniu-messages{margin:12px 0;padding-left:26px;max-height:38vh;overflow:auto}
+.qianniu-messages li{padding:6px 2px;border-bottom:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.qianniu-messages strong{display:block;font-size:12px;color:var(--muted)}
+.qianniu-footer{border-top:1px solid var(--line);padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
 
 .paste-zone{border:1px dashed #94a3b8;border-radius:var(--radius);background:#fff;padding:10px;min-height:54px;display:flex;gap:10px;align-items:center;cursor:text;outline:none}
 .paste-zone:focus,.paste-zone.dragover{border-color:var(--blue);background:var(--blue-soft)}
@@ -487,8 +495,9 @@ button:disabled{opacity:.55;cursor:not-allowed}
               最近聊天记录
             </div>
             <div id="parsedContextPreview" class="chat-preview empty">还没有聊天记录，点下面按钮粘贴</div>
-            <div class="btns">
+            <div class="btns history-import-actions">
               <button type="button" class="ghost" onclick="openRawContextModal()">导入千牛聊天记录</button>
+              <button type="button" id="qianniuReadButton" class="secondary" onclick="readCurrentQianniuConversation()">读取当前千牛会话</button>
             </div>
           </div>
 
@@ -833,6 +842,35 @@ button:disabled{opacity:.55;cursor:not-allowed}
   </div>
 </div>
 
+<div id="qianniuPreviewModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
+  <div class="modal-panel qianniu-preview" role="dialog" aria-modal="true" aria-labelledby="qianniuPreviewTitle" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="qianniuPreviewTitle">千牛会话预览</h2>
+      <button type="button" id="qianniuCloseButton" class="ghost" onclick="closeModal('qianniuPreviewModal')">取消</button>
+    </div>
+    <div class="modal-body">
+      <div id="qianniuStatus" role="status" aria-live="polite"></div>
+      <div id="qianniuWindowSection" hidden>
+        <label for="qianniuWindowChoice">千牛窗口</label>
+        <select id="qianniuWindowChoice" onchange="qianniuWindowChanged()"></select>
+        <div class="btns"><button type="button" id="qianniuWindowReadButton" onclick="captureSelectedQianniuWindow()" disabled>读取所选窗口</button></div>
+      </div>
+      <div id="qianniuReviewSection" hidden>
+        <p id="qianniuWindowLabel"></p>
+        <p id="qianniuShop"></p>
+        <p id="qianniuScope" class="hint"></p>
+        <ol id="qianniuMessages" class="qianniu-messages" aria-label="按原顺序排列的会话消息"></ol>
+        <label for="qianniuOrderChoice">关联订单（未核验，须明确选择）</label>
+        <select id="qianniuOrderChoice" onchange="qianniuOrderChanged()"></select>
+        <p id="qianniuProducts" class="hint"></p>
+      </div>
+    </div>
+    <div class="qianniu-footer">
+      <button type="button" id="qianniuConfirmButton" onclick="confirmQianniuImport()" disabled>确认导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- 图片弹窗 -->
 <div id="imageModal" class="modal-backdrop" onclick="closeModalByBackdrop(event)">
   <div class="modal-panel" onclick="event.stopPropagation()">
@@ -979,6 +1017,7 @@ const REVIEW_KEY = 'inhe_real_test_reviews_v1';
 const CONTEXT_KEY = 'inhe_real_test_conversation_id_v1';
 const CASE_PANEL_KEY = 'inhe_real_test_case_panel_v2';
 const reviewRecords = loadReviews();
+let conversationSequence = 0;
 let currentConversationId = loadConversationId();
 let currentImages = [];
 let parsedConversation = {history: [], latest_customer_message: '', latest_agent_message: '', raw_text: ''};
@@ -993,9 +1032,9 @@ function caseId(c){return c.case_id || c.id || `case_${currentIndex}`}
 function escapeHtml(s){return safe(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function loadReviews(){try{return JSON.parse(localStorage.getItem(REVIEW_KEY)||'{}')}catch(e){return {}}}
 function persistReviews(){localStorage.setItem(REVIEW_KEY, JSON.stringify(reviewRecords))}
-function makeConversationId(){return `front_real_test_${Date.now()}`}
+function makeConversationId(){return `front_real_test_${Date.now()}_${++conversationSequence}`}
 function loadConversationId(){const existing=localStorage.getItem(CONTEXT_KEY);if(existing)return existing;const created=makeConversationId();localStorage.setItem(CONTEXT_KEY,created);return created}
-function setConversationId(id){currentConversationId=id||makeConversationId();localStorage.setItem(CONTEXT_KEY,currentConversationId);if($('contextId'))$('contextId').textContent=currentConversationId;fillPayloadPreview()}
+function setConversationId(id){cancelQianniuPreview();lastSubmittedPayload=null;currentConversationId=id||makeConversationId();localStorage.setItem(CONTEXT_KEY,currentConversationId);if($('contextId'))$('contextId').textContent=currentConversationId;fillPayloadPreview()}
 function jsString(s){return JSON.stringify(String(s==null?'':s));}
 function openMediaPreview(url,title,type){
   url=String(url||'');title=String(title||'素材预览');type=String(type||'');
@@ -1036,7 +1075,7 @@ function openCases(){const p=$('casePanel'),b=$('caseDrawerBackdrop');if(p)p.cla
 function closeCases(){const p=$('casePanel'),b=$('caseDrawerBackdrop');if(p)p.classList.remove('open');if(b)b.classList.remove('open');localStorage.setItem(CASE_PANEL_KEY,'closed')}
 function toggleCases(){const p=$('casePanel');if(p&&p.classList.contains('open'))closeCases();else openCases()}
 async function copyContextId(){await navigator.clipboard.writeText(currentConversationId);$('contextHint').textContent='已复制当前对话 ID。'}
-function newConversation(){setConversationId(makeConversationId());lastResponse=null;lastSubmittedPayload=null;clearImages();$('contextHint').textContent='已切换到新买家，后续会从这条开始重新记。';resetResultUI();}
+function newConversation(){resetConversationState();setConversationId(makeConversationId());$('contextHint').textContent='已切换到新买家，后续会从这条开始重新记。';}
 
 /* Modals */
 function openModal(id){
@@ -1048,12 +1087,13 @@ function openModal(id){
   if(id==='rawContextModal'){const ta=$('rawContext');if(ta)ta.focus();}
 }
 function closeModal(id){
+  if(id==='qianniuPreviewModal')cancelQianniuPreview();
   const el=$(id);
   if(!el)return;
   el.classList.remove('open');
   if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';
 }
-function closeAllModals(){document.querySelectorAll('.modal-backdrop.open').forEach(el=>el.classList.remove('open'));document.body.style.overflow='';}
+function closeAllModals(){cancelQianniuPreview();document.querySelectorAll('.modal-backdrop.open').forEach(el=>el.classList.remove('open'));document.body.style.overflow='';}
 function closeModalByBackdrop(event){if(event.target===event.currentTarget)closeModal(event.currentTarget.id);}
 document.addEventListener('keydown',(e)=>{if(e.key==='Escape'){closeAllModals();closeCases();}});
 function openRawContextModal(){openModal('rawContextModal');}
@@ -1063,12 +1103,168 @@ function openReviewModal(){openModal('reviewModal');}
 function openMemoryModal(){openModal('memoryModal');fillPayloadPreview();}
 function openTechModal(){openModal('techModal');}
 
+/* Manual QianNiu preview: request-local memory, never a generation trigger. */
+let qianniuRequest = null;
+let qianniuPreview = null;
+let qianniuWindows = [];
+
+function cancelQianniuPreview(){
+  if(qianniuRequest)qianniuRequest.controller.abort();
+  qianniuRequest=null;qianniuPreview=null;qianniuWindows=[];
+  ['qianniuWindowChoice','qianniuOrderChoice','qianniuMessages','qianniuProducts','qianniuWindowLabel','qianniuShop','qianniuScope','qianniuStatus'].forEach(id=>{
+    $(id).textContent='';
+  });
+  $('qianniuWindowChoice').value='';$('qianniuOrderChoice').value='';
+  $('qianniuWindowSection').hidden=true;$('qianniuReviewSection').hidden=true;
+  $('qianniuConfirmButton').disabled=true;$('qianniuWindowReadButton').disabled=true;
+  $('qianniuReadButton').disabled=false;
+  $('qianniuPreviewModal').classList.remove('open');
+  if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';
+}
+function qianniuErrorMessage(code,status){
+  const reasons={
+    manual_read_disabled:'当前服务尚未启用千牛手动读取。',
+    qianniu_window_not_found:'请打开已登录的千牛接待窗口。',
+    qianniu_window_minimized:'千牛窗口已最小化，请恢复窗口后读取。',
+    conversation_document_missing:'未读到聊天内容，请确认千牛讲述人模式已开启。',
+    shop_binding_missing:'无法确认当前店铺，暂不能导入。',
+    buyer_binding_missing:'无法确认当前买家，暂不能导入。',
+    native_capture_timeout:'读取超时，请保持千牛窗口稳定后再试。',
+    native_capture_unavailable:'当前进程无法读取千牛窗口，请检查桌面会话。',
+    capture_busy:'已有读取任务进行中，请稍后再试。',
+    capture_binding_changed:'千牛会话已变化，请重新读取。',
+    window_changed:'千牛窗口已变化，请重新读取。',
+    speaker_unresolved:'部分消息角色无法确认，暂不能导入。',
+    capture_truncated_or_unknown:'会话读取不完整，请重新读取。',
+    conversation_scope_required:'会话可见范围无法确认。',
+    csrf_validation_failed:'请求校验失败，请刷新页面。',
+  };
+  const statuses={401:'请先登录后再读取千牛会话。',403:'无读取权限或请求校验失败。',404:'未找到可读取的千牛窗口。',422:'当前会话无法确认，请重新读取。',503:'千牛手动读取未启用或暂不可用。'};
+  return Object.prototype.hasOwnProperty.call(reasons,code)?reasons[code]:(statuses[status]||'读取失败，请稍后重试。');
+}
+function qianniuOption(select,value,label){
+  const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);
+}
+function qianniuWindowChanged(){
+  const value=$('qianniuWindowChoice').value;
+  $('qianniuWindowReadButton').disabled=!!qianniuRequest||!qianniuWindows.some((w,i)=>String(i)===value);
+}
+function captureSelectedQianniuWindow(){
+  const value=$('qianniuWindowChoice').value;
+  const selected=qianniuWindows.find((w,i)=>String(i)===value);
+  if(selected&&!qianniuRequest)return readCurrentQianniuConversation(selected.handle);
+}
+function qianniuOrderChanged(){
+  const value=$('qianniuOrderChoice').value;
+  const selected=qianniuPreview&&(value==='none'||qianniuPreview.context.order_candidates.some((c,i)=>String(i)===value));
+  $('qianniuConfirmButton').disabled=!selected||!!qianniuRequest;
+}
+function validQianniuPreview(data,windowHandle){
+  const context=data?.context, history=context?.conversation_history;
+  const candidates=items=>Array.isArray(items)&&items.every(c=>c&&typeof c.value==='string'&&!!c.value.trim()&&c.verified===false&&typeof c.source==='string');
+  return data?.ok===true&&data.status==='preview_ready'&&typeof data.conversation_ref==='string'&&!!data.conversation_ref.trim()
+    &&typeof data.shop_name==='string'&&Number.isSafeInteger(data.window?.handle)&&typeof data.window.label==='string'
+    &&(windowHandle===undefined||data.window.handle===windowHandle)
+    &&typeof data.diagnostics?.history_scope==='string'&&!!data.diagnostics.history_scope
+    &&context?.can_send===false&&context.requires_human_review===true&&typeof context.customer_message==='string'
+    &&Array.isArray(history)&&history.every((turn,i)=>turn&&['customer','agent','system'].includes(turn.role)
+      &&typeof turn.content==='string'&&!!turn.content.trim()&&Number.isSafeInteger(turn.turn_index)
+      &&(i===0||turn.turn_index>history[i-1].turn_index)&&typeof turn.timestamp==='string'&&typeof turn.turn_uid==='string')
+    &&(history.length>0||!!context.customer_message.trim())
+    &&data.diagnostics.turn_count===history.length+(context.customer_message?1:0)
+    &&candidates(context.order_candidates)&&candidates(context.product_candidates);
+}
+function renderQianniuPreview(data){
+  $('qianniuWindowLabel').textContent='窗口：'+data.window.label;
+  $('qianniuShop').textContent='店铺：'+(data.shop_name||'未读取到');
+  const context=data.context, turns=context.conversation_history;
+  const count=turns.length+(context.customer_message?1:0);
+  $('qianniuScope').textContent=`当前可见会话已加载 ${count} 条消息；不代表完整聊天历史。`;
+  const list=$('qianniuMessages');list.textContent='';
+  function message(role,content,timestamp,current){
+    const item=document.createElement('li'), heading=document.createElement('strong'), body=document.createElement('div');
+    const labels={customer:'买家',agent:'客服',system:'系统'};
+    heading.textContent=labels[role]+(current?'（当前问题）':'')+(timestamp?' · '+timestamp:'');
+    body.textContent=content;item.append(heading,body);list.appendChild(item);
+  }
+  turns.forEach(turn=>message(turn.role,turn.content,turn.timestamp,false));
+  if(context.customer_message)message('customer',context.customer_message,'',true);
+  const orders=$('qianniuOrderChoice');orders.textContent='';
+  qianniuOption(orders,'','请选择订单或暂不关联');
+  qianniuOption(orders,'none','暂不关联订单');
+  context.order_candidates.forEach((candidate,i)=>qianniuOption(orders,String(i),`${candidate.value}（千牛订单区，未核验）`));
+  orders.value='';
+  $('qianniuProducts').textContent='商品编号候选（未核验，非 SKU）：'+(context.product_candidates.map(c=>c.value).join('；')||'未读取到');
+  $('qianniuStatus').textContent='待人工确认；仅导入，不生成或发送回复。';
+  $('qianniuReviewSection').hidden=false;
+}
+async function readCurrentQianniuConversation(windowHandle){
+  if(qianniuRequest)return;
+  cancelQianniuPreview();
+  const request={controller:new AbortController(),conversationId:currentConversationId};
+  qianniuRequest=request;
+  const current=()=>qianniuRequest===request&&currentConversationId===request.conversationId;
+  $('qianniuReadButton').disabled=true;
+  $('qianniuStatus').textContent='正在读取千牛会话...';
+  openModal('qianniuPreviewModal');$('qianniuCloseButton').focus();
+  try{
+    const response=await fetch('/ask/api/sidecar/qianniu/preview',{
+      method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(windowHandle===undefined?{}:{window_handle:windowHandle}),signal:request.controller.signal,
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!current())return;
+    if(!response.ok)throw {code:data.error,status:response.status};
+    if(data.status==='window_selection_required'){
+      if(!Array.isArray(data.windows)||!data.windows.length||!data.windows.every(w=>Number.isSafeInteger(w?.handle)&&typeof w.label==='string'))throw {status:422};
+      qianniuWindows=data.windows;
+      const select=$('qianniuWindowChoice');qianniuOption(select,'','请选择千牛窗口');
+      qianniuWindows.forEach((window,i)=>qianniuOption(select,String(i),window.label));select.value='';
+      $('qianniuWindowSection').hidden=false;$('qianniuStatus').textContent='请选择要读取的千牛窗口。';
+      return;
+    }
+    if(!validQianniuPreview(data,windowHandle))throw {code:data.error,status:422};
+    renderQianniuPreview(data);qianniuPreview=data;
+  }catch(error){
+    if(current())$('qianniuStatus').textContent=qianniuErrorMessage(error.code,error.status);
+  }finally{
+    if(current()){qianniuRequest=null;$('qianniuReadButton').disabled=false;qianniuWindowChanged();qianniuOrderChanged();}
+  }
+}
+function confirmQianniuImport(){
+  qianniuOrderChanged();
+  if($('qianniuConfirmButton').disabled||!qianniuPreview)return;
+  const preview=qianniuPreview, context=preview.context, choice=$('qianniuOrderChoice').value;
+  const order=choice==='none'?'':context.order_candidates[Number(choice)].value;
+  newConversation();
+  parsedConversation={
+    canonical:true,history:context.conversation_history.map(({role,content,turn_index,timestamp,turn_uid})=>({role,content,turn_index,timestamp,turn_uid})),
+    latest_customer_message:context.customer_message,
+    latest_agent_message:[...context.conversation_history].reverse().find(turn=>turn.role==='agent')?.content||'',
+    raw_text:'',history_scope:preview.diagnostics.history_scope,
+  };
+  $('message').value=context.customer_message;$('shopName').value=preview.shop_name;$('orderId').value=order;
+  renderParsedContext();renderParsedContextTo($('rawParsedContextPreview'));updateCharCount();fillPayloadPreview();
+  $('contextHint').textContent='已导入当前可见会话，未确认完整历史；待人工生成回复。';
+  $('message').focus();
+}
+function resetConversationState(){
+  cancelQianniuPreview();clearTimeout(payloadPreviewTimer);
+  lastResponse=null;lastSubmittedPayload=null;mediaPreviewUrl='';
+  parsedConversation={history:[],latest_customer_message:'',latest_agent_message:'',raw_text:''};
+  ['message','rawContext','shopName','frontTitle','sku','orderId','candidates','imageKind','imageDescription','finalReply','reviewStatus','failureType','reviewNote'].forEach(id=>$(id).value='');
+  $('reviewSaved').textContent='';
+  clearImages();renderParsedContext();renderParsedContextTo($('rawParsedContextPreview'));
+  updateCharCount();updateFrontTitleHint();resetResultUI();
+}
+/* End manual QianNiu preview. */
+
 async function addToTrainingSamples(){
   const customerMessage = ($('message')?.value || parsedConversation.latest_customer_message || '').trim();
   if(!customerMessage){alert('当前没有客户问题，无法加入训练样本');return;}
   const id = lastResponse ? identityFrom(lastResponse) : {};
   const data = lastResponse || {};
-  const historyText = (parsedConversation.history || []).map(function(m){return (m.speaker||'')+': '+(m.text||'');}).join('\n');
+  const historyText = (parsedConversation.history || []).map(function(m){return (m.role||m.speaker||'')+': '+(m.content??m.text??'');}).join('\n');
   const fullContext = historyText || customerMessage;
   const payload = {
     customer_quote: customerMessage,
@@ -1396,7 +1592,10 @@ function parseChatText(text){
   };
 }
 function parseRawContext(fillLatest, syncPreview=true){
-  parsedConversation = parseChatText($('rawContext').value || '');
+  cancelQianniuPreview();
+  const text=$('rawContext').value||'';
+  if(parsedConversation.canonical&&text){newConversation();$('rawContext').value=text;}
+  if(!parsedConversation.canonical)parsedConversation = parseChatText(text);
   if(fillLatest && parsedConversation.latest_customer_message) $('message').value = parsedConversation.latest_customer_message;
   renderParsedContext();
   const modalPreview=$('rawParsedContextPreview');
@@ -1405,6 +1604,8 @@ function parseRawContext(fillLatest, syncPreview=true){
   updateCharCount();
 }
 function clearRawContext(){
+  if(parsedConversation.canonical){newConversation();return;}
+  cancelQianniuPreview();
   $('rawContext').value = '';
   parsedConversation = {history: [], latest_customer_message: '', latest_agent_message: '', raw_text: ''};
   renderParsedContext();
@@ -1433,40 +1634,42 @@ function renderChatMessageWithImages(text, showImages=true){
 }
 function renderParsedContextTo(box){
   if(!box)return;
-  if(!parsedConversation.raw_text){box.innerHTML='<div class="chat-preview empty">还没有识别到内容</div>';return}
+  if(!parsedConversation.raw_text&&!parsedConversation.canonical){box.innerHTML='<div class="chat-preview empty">还没有识别到内容</div>';return}
   const history = parsedConversation.history.slice(-4);
   let html = '';
   history.forEach(m => {
-    const isCust = m.speaker === 'customer';
-    const avatarClass = isCust ? 'customer' : (m.speaker === 'agent' ? 'agent' : 'customer');
-    const label = isCust ? '买家' : (m.speaker === 'agent' ? '客服' : '未知');
+    const role=m.role||m.speaker;
+    const isCust = role === 'customer';
+    const avatarClass = isCust ? 'customer' : (role === 'agent' ? 'agent' : 'customer');
+    const label = isCust ? '买家' : (role === 'agent' ? '客服' : (role==='system'?'系统':'未知'));
     const bg = isCust ? '#eff6ff' : '#f0fdf4';
     html += `<div class="chat-bubble">
       <span class="chat-avatar ${avatarClass}">${label[0]}</span>
       <div class="chat-content" style="background:${bg}">
         <div class="speaker">${escapeHtml(label)}</div>
-        <div>${renderChatMessageWithImages(m.text, true)}</div>
+        <div>${renderChatMessageWithImages(m.content??m.text, true)}</div>
       </div>
     </div>`;
   });
-  box.innerHTML=`<div class="chat-preview">${html}</div>`;
+  box.innerHTML=`${parsedConversation.canonical?'<div class="hint">当前可见范围，未确认完整历史；此处仅显示最近 4 条。</div>':''}<div class="chat-preview">${html}</div>`;
 }
 function renderParsedContext(){
   const box = $('parsedContextPreview');
   if(!box) return;
-  if(!parsedConversation.raw_text){box.className='chat-preview empty';box.innerHTML='还没有聊天记录，点下面按钮粘贴';return}
+  if(!parsedConversation.raw_text&&!parsedConversation.canonical){box.className='chat-preview empty';box.innerHTML='还没有聊天记录，点下面按钮粘贴';return}
   const history = parsedConversation.history.slice(-2);
   let html = '';
   history.forEach(m => {
-    const isCust = m.speaker === 'customer';
-    const avatarClass = isCust ? 'customer' : (m.speaker === 'agent' ? 'agent' : 'customer');
-    const label = isCust ? '买家' : (m.speaker === 'agent' ? '客服' : '未知');
+    const role=m.role||m.speaker;
+    const isCust = role === 'customer';
+    const avatarClass = isCust ? 'customer' : (role === 'agent' ? 'agent' : 'customer');
+    const label = isCust ? '买家' : (role === 'agent' ? '客服' : (role==='system'?'系统':'未知'));
     const bg = isCust ? '#eff6ff' : '#f0fdf4';
     html += `<div class="chat-bubble">
       <span class="chat-avatar ${avatarClass}">${label[0]}</span>
       <div class="chat-content" style="background:${bg}">
         <div class="speaker">${escapeHtml(label)}</div>
-        <div>${renderChatMessageWithImages(m.text, false)}</div>
+        <div>${renderChatMessageWithImages(m.content??m.text, false)}</div>
       </div>
     </div>`;
   });
@@ -1476,7 +1679,7 @@ function renderParsedContext(){
     return;
   }
   box.className='chat-preview';
-  box.innerHTML=html;
+  box.innerHTML=(parsedConversation.canonical?'<div class="hint">当前可见范围，未确认完整历史；显示最近 2 条。</div>':'')+html;
 }
 
 function setImageFromFile(file, source){
@@ -1645,8 +1848,7 @@ function installAutoPayloadPreview(){
   });
   const raw=$('rawContext');
   if(raw) raw.addEventListener('input', ()=>{
-    parsedConversation = parseChatText(raw.value || '');
-    renderParsedContext();
+    parseRawContext(false,false);
     schedulePayloadPreview();
   });
 }
@@ -1687,6 +1889,7 @@ function renderCases(){
   });
 }
 function selectCase(i){
+  resetConversationState();
   currentIndex=i;lastResponse=null;
   const c=CASES[i]||{}, payload=c.payload||{};
   $('message').value=payload.message||c.message||'';
@@ -1715,7 +1918,7 @@ function selectCase(i){
   fillPayloadPreview();renderCases();
 }
 function buildPayload(){
-  if(($('rawContext').value||'').trim()){
+  if(!parsedConversation.canonical&&($('rawContext').value||'').trim()){
     parsedConversation = parseChatText($('rawContext').value || '');
     renderParsedContext();
   }
@@ -1745,8 +1948,8 @@ function buildPayload(){
   if(shopName){payload.shop_name=shopName;payload.copilot_context.shop_name=shopName}
   if(candidates.length){payload.product_candidates=candidates;payload.copilot_context.product_candidates=candidates}
   if(payload.image_attachments){payload.copilot_context.image_attachments=payload.image_attachments;payload.copilot_context.has_image_attachment=true}
-  if(parsedConversation.raw_text){
-    payload.copilot_context.raw_chat_context=parsedConversation.raw_text;
+  if(parsedConversation.raw_text||parsedConversation.canonical){
+    if(!parsedConversation.canonical)payload.copilot_context.raw_chat_context=parsedConversation.raw_text;
     payload.copilot_context.conversation_history=parsedConversation.history;
     payload.copilot_context.latest_customer_message=parsedConversation.latest_customer_message;
     payload.copilot_context.previous_agent_message=parsedConversation.latest_agent_message;
@@ -1782,6 +1985,9 @@ function renderContextMemoryPreview(payload){
 }
 function identityFrom(data){return data.order_product_identity||data.evidence_debug?.order_product_identity||{}}
 function resetResultUI(){
+  ['debugBox','rawBox','decisionShadowPreviewBody','mediaSuggestBody'].forEach(id=>$(id).textContent='');
+  ['decisionShadowPreview','mediaSuggest'].forEach(id=>$(id).style.display='none');
+  $('mediaPreviewImage').removeAttribute('src');
   const ms=$('mStatus');if(ms)ms.textContent='还没生成';
   $('mIntent').textContent='-';
   $('mRisk').textContent='-';
@@ -1832,15 +2038,16 @@ async function runCurrent(){
   try{
     const r=await fetch('/ask/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const ms=Math.round(performance.now()-t0), data=await r.json();
+    if(lastSubmittedPayload!==payload)return;
     lastResponse=data;showResult(data,r.status,ms);runResults.set(idx,{ok:r.ok&&!data.error});
     if(payload.image_attachments && payload.image_attachments.length){
       clearImages();
       if($('contextHint'))$('contextHint').textContent='本轮图片已随消息发送，已自动清空，避免影响下一次测试。客户后续再发图时重新粘贴即可。';
     }
-  }catch(e){$('mStatus').textContent='生成失败';$('reply').textContent=e.message;runResults.set(idx,{ok:false});showResult({error:e.message},0,0);}
+  }catch(e){if(lastSubmittedPayload!==payload)return;$('mStatus').textContent='生成失败';$('reply').textContent=e.message;runResults.set(idx,{ok:false});showResult({error:e.message},0,0);}
   renderCases();
 }
-async function runAll(){for(let i=0;i<CASES.length;i++){selectCase(i);setConversationId(makeConversationId());await runCurrent()}}
+async function runAll(){for(let i=0;i<CASES.length;i++){selectCase(i);setConversationId(makeConversationId());const conversationId=currentConversationId;await runCurrent();if(currentConversationId!==conversationId)return;}}
 function resetResults(){runResults.clear();renderCases()}
 function currentCase(){return CASES[currentIndex]||{}}
 function currentReviewPayload(){

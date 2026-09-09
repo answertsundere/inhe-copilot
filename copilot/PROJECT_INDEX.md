@@ -19,6 +19,16 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-09 manual QianNiu integration is development-only and disabled by
+  default. The existing Sidecar route and real-test page now support local
+  authenticated preview/confirmation with canonical history and stale-state
+  isolation; 145 related Python tests and 22 frontend tests passed. Final live
+  qualification is blocked: native selected buyer/shop state is not exposed,
+  and order-panel ownership is not proven. Supersede the earlier weaker 18-turn
+  preview result; no real conversation was sent to an Agent or external model.
+  Production 5012/5174 and knowledge data remain untouched. See the existing
+  desktop-adapter research note and ADR 0011 manual-preview addendum.
+
 - 2026-09-09 development source backup: the user authorized a normal push of
   current code/tests/docs to codex/product-hub-context-bridge. This is not a
   production release or default-branch merge. Runtime diagnostics/databases,

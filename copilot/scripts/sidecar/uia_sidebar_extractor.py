@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import hmac
+import secrets
 import re
+import unicodedata
+from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -323,3 +328,204 @@ def extract_sidebar(window: Any, config: SidecarConfig | None = None) -> UIASide
     )
 
     return result
+
+
+# Native accessibility metadata only. Message text never determines a speaker.
+_NATIVE_TIMESTAMP = re.compile(r"\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d{2}:\d{2}")
+
+
+def _subtree_end(nodes: list[dict], start: int) -> int:
+    return next((i for i in range(start + 1, len(nodes))
+                 if nodes[i]["depth"] <= nodes[start]["depth"]), len(nodes))
+
+
+def _native_header(nodes: list[dict], index: int) -> tuple[str, str]:
+    children = nodes[index + 1:_subtree_end(nodes, index)]
+    texts = [n["name"].strip() for n in children if n["role"] == "Text"]
+    times = [value for value in texts if _NATIVE_TIMESTAMP.fullmatch(value)]
+    speakers = [value for value in texts if value not in times]
+    if len(times) != 1 or len(speakers) != 1:
+        raise ValueError("header_structure_invalid")
+    try:
+        timestamp = datetime.strptime(times[0], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        raise ValueError("header_structure_invalid") from None
+    return speakers[0], timestamp.isoformat(sep=" ")
+
+
+def _native_parts(nodes: list[dict]) -> list[dict]:
+    parts: list[dict] = []
+    i = 0
+    while i < len(nodes):
+        root = nodes[i]
+        end = _subtree_end(nodes, i)
+        children = nodes[i + 1:end]
+        role, name = root["role"], root["name"].strip()
+        if role == "Main":
+            media = {"图片消息": "image", "视频消息": "video"}.get(name)
+            if not media:
+                raise ValueError("message_part_type_unknown")
+            parts.append({"type": media})
+        elif role == "Hyperlink":
+            parts.append({"type": "link"})
+        elif role == "Image":
+            parts.append({"type": "image"})
+        elif role == "Group":
+            # Containers may repeat their leaf text. Read the subtree once,
+            # but never deduplicate equal text from different messages.
+            if children:
+                leaves = _native_parts(children)
+                parts.extend(leaves)
+            elif name and not _native_icon(name):
+                parts.append({"type": "text", "content": name})
+        elif role == "Text" and name:
+            if not _native_icon(name):
+                parts.append({"type": "text", "content": name})
+        elif role not in {"Text"}:
+            raise ValueError("message_part_type_unknown")
+        i = end
+    return parts
+
+
+def _native_icon(name: str) -> bool:
+    return bool(name.strip()) and all(ch.isspace() or unicodedata.category(ch) == "Co" for ch in name)
+
+
+def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> dict[str, Any]:
+    """Project a bounded native document into the existing local preview contract.
+
+    The document peer is cross-checked against the native buyer list and shop
+    tab, not claimed to be a new inbound-message event. The seat must confirm it.
+    No input text, actor, order or product is logged or persisted here.
+    """
+    from .context_parser import build_uia_preview
+
+    try:
+        if before != after:
+            raise ValueError("capture_binding_changed")
+        nodes = before
+        containers = [i for i, n in enumerate(nodes) if n.get("automation_id") == "J_msgContainer"]
+        if not containers:
+            raise ValueError("conversation_document_missing")
+        if len(containers) != 1:
+            raise ValueError("conversation_document_ambiguous")
+        start = containers[0]
+        end = _subtree_end(nodes, start)
+        indices = [i for i in range(start + 1, end) if nodes[i]["role"] == "Heading"]
+        if not indices:
+            raise ValueError("message_count_invalid")
+        headers = [_native_header(nodes, i) for i in indices]
+        incoming = [speaker.split(" --> ") for speaker, _ in headers if " --> " in speaker]
+        if not incoming or any(len(pair) != 2 for pair in incoming):
+            raise ValueError("speaker_unresolved")
+        buyers = {pair[0].strip() for pair in incoming}
+        if len(buyers) != 1:
+            raise ValueError("buyer_binding_missing")
+        buyer = next(iter(buyers))
+        outside = nodes[:start] + nodes[end:]
+        selected_buyers = [n for n in outside if n["role"] == "TreeItem" and n.get("selected") is True]
+        if len(selected_buyers) != 1 or selected_buyers[0]["name"].strip() != buyer:
+            raise ValueError("buyer_binding_missing")
+        shops = {pair[1].strip().partition(":")[0] for pair in incoming if ":" in pair[1]}
+        if len(shops) != 1 or any(":" not in pair[1] for pair in incoming):
+            raise ValueError("shop_binding_missing")
+        shop = next(iter(shops))
+        if not shop or not any(n["role"] == "TabItem" and n.get("selected") is True and n["name"].strip().partition(":")[0] == shop
+                               and ":" in n["name"] for n in outside):
+            raise ValueError("shop_binding_missing")
+        key = secrets.token_bytes(32)
+
+        def ref(value: str) -> str:
+            return "native_" + hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        agents: set[str] = set()
+        messages = []
+        for position, index in enumerate(indices):
+            speaker, timestamp = headers[position]
+            if " --> " in speaker:
+                sender, recipient = (value.strip() for value in speaker.split(" --> "))
+                agent = recipient
+            else:
+                sender, recipient, agent = speaker.strip(), buyer, speaker.strip()
+            if agent.partition(":")[0] != shop or not agent.partition(":")[2]:
+                raise ValueError("speaker_unresolved")
+            agents.add(ref(agent))
+            stop = indices[position + 1] if position + 1 < len(indices) else end
+            body = nodes[_subtree_end(nodes, index):stop]
+            roots = []
+            cursor = 0
+            while cursor < len(body):
+                subtree_end = _subtree_end(body, cursor)
+                segment = body[cursor:subtree_end]
+                if (body[cursor]["role"] == "Group" and any(_native_icon(c["name"]) for c in segment)
+                        and all(not c["name"].strip() or _native_icon(c["name"]) for c in segment)):
+                    break
+                roots.extend(segment)
+                cursor = subtree_end
+            parts = _native_parts(roots)
+            messages.append({"sender_ref": ref(sender), "recipient_ref": ref(recipient),
+                             "timestamp": timestamp, "parts": parts})
+        order_documents = []
+        for i, n in enumerate(nodes):
+            if n["role"] != "Document":
+                continue
+            document = nodes[i + 1:_subtree_end(nodes, i)]
+            if not any(c["role"] == "Text" and c["name"].strip() == "客户订单" for c in document):
+                continue
+            order_documents.append(document)
+        if len(order_documents) > 1:
+            raise ValueError("order_document_ambiguous")
+        # The current native order WebView exposes no customer-owner binding.
+        # Even one stable panel may still show the previous customer's orders.
+        # Do not offer those values for import until native ownership is proven.
+        binding = {"window_ref": str(hwnd), "conversation_ref": ref(buyer)}
+        preview = build_uia_preview({
+            "schema_version": "qianniu_uia_preview/v1", "scope": "visible_conversation_document",
+            "binding_before": binding, "binding_after": binding, "truncated": False,
+            "buyer_ref": ref(buyer), "agent_refs": sorted(agents), "messages": messages,
+            "order_candidates": [], "product_code_candidates": [],
+        })
+        if preview.diagnostics["status"] != "preview_ready":
+            raise ValueError(preview.diagnostics["reason_code"])
+        preview.diagnostics["unbound_order_documents_omitted"] = len(order_documents)
+        return {"ok": True, "status": "preview_ready", "conversation_ref": binding["conversation_ref"],
+                "shop_name": shop, "diagnostics": preview.diagnostics, "context": preview.context,
+                "window": {"handle": hwnd, "label": "千牛接待窗口"}}
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc), "diagnostics": {
+            "selected_buyer_count": sum(n.get("role") == "TreeItem" and n.get("selected") is True for n in before),
+            "selected_tab_count": sum(n.get("role") == "TabItem" and n.get("selected") is True for n in before),
+            "legacy_selected_buyer_count": sum(n.get("role") == "TreeItem" and n.get("legacy_selected") is True for n in before),
+            "legacy_selected_tab_count": sum(n.get("role") == "TabItem" and n.get("legacy_selected") is True for n in before),
+        }}
+
+
+def read_native_tree(window: Any) -> list[dict]:
+    """Bounded read-only UIA traversal. Call from a timeout-limited process."""
+    nodes = []
+
+    def visit(control: Any, depth: int) -> None:
+        if depth > 28 or len(nodes) >= 1800:
+            raise ValueError("capture_size_limit")
+        info = control.element_info
+        name = info.name or ""
+        if len(name) > 8000:
+            raise ValueError("capture_size_limit")
+        role = info.control_type
+        aria = info.element.GetCurrentPropertyValue(30101)
+        heading = info.element.GetCurrentPropertyValue(30173)
+        if aria == "heading" or (isinstance(heading, int) and 80051 <= heading <= 80059):
+            role = "Heading"
+        elif aria == "main":
+            role = "Main"
+        state = info.element.GetCurrentPropertyValue(30096) if role in {"TreeItem", "TabItem"} else 0
+        nodes.append({"depth": depth, "role": role, "name": name,
+                      "automation_id": info.automation_id or "",
+                      "legacy_selected": isinstance(state, int) and bool(state & 2),
+                      "selected": info.element.GetCurrentPropertyValue(30079) is True
+                      if role in {"TreeItem", "TabItem"} else False})
+        for child in control.children():
+            visit(child, depth + 1)
+
+    visit(window, 0)
+    return nodes

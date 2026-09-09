@@ -1,5 +1,35 @@
 # Delivery Roadmap
 
+## Manual QianNiu Conversation Import (2026-09-09)
+
+- Owner-approved bounded P1 integration exception: native read -> local preview
+  -> explicit seat confirmation -> existing manual analyze workflow.
+- [ ] Native capture qualification: implementation reuses pywinauto and the existing adapter; bind a specific
+  QianNiu window, parse only message headers/containers, preserve order and
+  non-factual card tokens, and reject changed or ambiguous snapshots.
+- [x] Existing Sidecar API: default-disabled, authenticated, CSRF-protected,
+  loopback-only manual read; no background loop, model call, database write,
+  automatic order selection, or sending. Return preview to the requesting seat
+  only, never to the shared legacy Sidecar status cache.
+- [x] Existing real-test page: manual read/confirm controls, separate order
+  choice, clear stale candidate state on import, canonical history, and explicit
+  generation through the existing analyze endpoint only.
+- [x] Verify fake-window mutations, route/auth/no-side-effect tests, browser
+  interactions and a local native capture; record missing native capabilities
+  without representing them as an end-to-end pass.
+- Final native gate: blocked by buyer_binding_missing. The current QianNiu
+  exposes zero selected buyers/tabs via both UIA SelectionItem and MSAA state.
+  Earlier 18-turn previews used weaker list-membership checks and are superseded,
+  not current qualification. Unknown native order ownership causes omission of
+  all sidebar order/product-code candidates, not a guessed association.
+- Related Python regression: 145 passed; frontend behavior suite: 22 passed.
+  Desktop/mobile popup checked, no model/JST call. Native switched-customer
+  acceptance and read-to-Agent canary remain unrun. Next is native active-client
+  ownership, not another Agent/Prompt change or automatic listening.
+- Production 5012/5174 remain unchanged. No live customer transcript is sent to
+  an external model by the import action. New-message listening and automatic
+  sending remain out of scope; real_accuracy=null, optimization_unverified=true.
+
 ## Authorized Development GitHub Backup (2026-09-09)
 
 - Task COPILOT-GITHUB-PUSH-20260909; owner Codex; status prepared_for_verification.

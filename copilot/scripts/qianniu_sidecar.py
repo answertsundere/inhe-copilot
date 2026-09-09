@@ -234,6 +234,8 @@ def run_loop(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="QianNiu desktop Sidecar POC")
+    parser.add_argument("--manual-native-stdin", action="store_true",
+                        help="Private loopback preview pipe; no logging, generation or sending")
     parser.add_argument("--structured-preview-stdin", action="store_true",
                         help="Validate one scoped UIA capture; print counts only, never post or send")
     parser.add_argument("--backend", default=os.getenv("COPILOT_BACKEND", "http://127.0.0.1:5000"))
@@ -248,6 +250,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.manual_native_stdin:
+        if os.environ.get("COPILOT_QIANNIU_PREVIEW_PIPE") != "1" or sys.stdout.isatty():
+            print('{"ok":false,"error":"private_preview_pipe_required"}')
+            return 2
+        try:
+            raw = sys.stdin.read(1025)
+            payload = json.loads(raw) if len(raw) <= 1024 else None
+            result = manual_native_preview(payload)
+        except Exception:
+            result = {"ok": False, "error": "native_capture_unavailable"}
+        sys.stdout.write(json.dumps(result, ensure_ascii=True))
+        return 0 if result.get("ok") else 2
     if args.structured_preview_stdin:
         from scripts.sidecar.context_parser import build_uia_preview
         try:
@@ -264,6 +278,62 @@ def main() -> int:
     logging.info("starting qianniu sidecar backend=%s interval=%s", args.backend, args.interval)
     run_loop(args)
     return 0
+
+
+def manual_native_preview(payload: Any) -> dict[str, Any]:
+    """Called only by the local one-shot pipe. Never activate/type/scroll/send."""
+    if not isinstance(payload, dict) or set(payload) - {"window_handle"}:
+        return {"ok": False, "error": "capture_request_invalid"}
+    import win32gui
+    import win32process
+    import win32api
+    import pywintypes
+
+    windows = []
+    diagnostics = {"visible_window_count": 0, "process_read_denied_count": 0}
+
+    def collect(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        diagnostics["visible_window_count"] += 1
+        if not any(label in win32gui.GetWindowText(hwnd) for label in ("接待台", "接待中心")):
+            return
+        try:
+            pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+            process = win32api.OpenProcess(0x0400 | 0x0010, False, pid)
+            try:
+                executable = win32process.GetModuleFileNameEx(process, 0)
+            finally:
+                process.Close()
+            if Path(executable).name.lower() != "aliworkbench.exe":
+                return
+            windows.append({"handle": hwnd, "label": f"千牛接待窗口 {len(windows) + 1}"})
+        except (pywintypes.error, OSError):
+            diagnostics["process_read_denied_count"] += 1
+            return
+
+    win32gui.EnumWindows(collect, None)
+    if not windows:
+        return {"ok": False, "error": "qianniu_window_not_found", "diagnostics": diagnostics}
+    hwnd = payload.get("window_handle")
+    if hwnd is None:
+        return {"ok": True, "status": "window_selection_required", "windows": windows}
+    if type(hwnd) is not int or hwnd not in {w["handle"] for w in windows}:
+        return {"ok": False, "error": "window_selection_invalid"}
+    if win32gui.IsIconic(hwnd):
+        return {"ok": False, "error": "qianniu_window_minimized"}
+    from pywinauto import Desktop
+    from scripts.sidecar.uia_sidebar_extractor import build_native_preview, read_native_tree
+
+    try:
+        window = Desktop(backend="uia").window(handle=hwnd).wrapper_object()
+        before = read_native_tree(window)
+        after = read_native_tree(window)
+        return build_native_preview(before, after, hwnd)
+    except ValueError as exc:
+        if str(exc) == "capture_size_limit":
+            return {"ok": False, "error": "capture_size_limit"}
+        return {"ok": False, "error": "native_capture_unavailable"}
 
 
 if __name__ == "__main__":

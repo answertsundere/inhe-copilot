@@ -326,8 +326,11 @@ engineering evidence only: `real_customer_accuracy=null`,
   headings, two order references and a separate product code. Panel loading and
   viewport scope remain explicit gaps. An owner-approved, local structured
   preview contract now reuses canonical turns and retains unverified candidates;
-  its opt-in stdin mode prints counts only and never posts. The native capture
-  producer and new-message detection remain unqualified; no delivery change.
+  its opt-in stdin mode prints counts only and never posts. Manual capture and
+  a default-off loopback preview/confirmation button now have deterministic and
+  frontend coverage. Final native qualification is blocked by missing active
+  buyer/shop selection; unbound order references are omitted. The earlier weaker
+  18-turn preview is superseded; new-message detection and delivery are unchanged.
 - `docs/adr/README.md` - ADR rules and required format.
 - `docs/adr/0001-unified-analysis-pipeline.md` - accepted decision establishing
   one formal AnalysisPipeline before any service decomposition.

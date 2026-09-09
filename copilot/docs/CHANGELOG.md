@@ -1,5 +1,22 @@
 # Change Log
 
+## 2026-09-09 - Manual QianNiu Preview, Native Ownership Gate Still Blocked
+
+- Reused the existing adapter, Sidecar blueprint, canonical normalizer and
+  real-test template. Added a default-off local human/CSRF preview POST, a bounded
+  no-log subprocess, explicit window/order selection and separate confirmation.
+  No shared Sidecar cache, polling, model request, business write or send action.
+- Reset stale buyer/order/product/media/candidate state and ignore late replies;
+  preserve canonical content and leave the question blank on a seller tail.
+- Review mutations caught list-membership versus selection, cross-document
+  orders and skipped message subtrees. Final code requires native selection,
+  blocks unknown content, and omits sidebar identifiers lacking buyer ownership.
+- 145 related Python tests and 22 executable JS tests passed. Local browser
+  window selection/preview/import/reset was observed with an intermediate
+  18-turn capture; this weaker capture is superseded, not final qualification.
+  Final current-client selection is absent through UIA/MSAA, so live import is
+  blocked. Production and external models were not touched. No accuracy claim.
+
 ## 2026-09-09 - Authorized Development Source Backup
 
 - User requested pushing the latest existing customer-service project. Prepare

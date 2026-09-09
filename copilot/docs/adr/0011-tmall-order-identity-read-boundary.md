@@ -125,6 +125,37 @@ inference to fill a missing SKU.
 
 ## Migration And Rollback
 
+### Manual Native Conversation Preview Addendum (2026-09-09)
+
+The owner approved a local manual QianNiu import into the existing real-test
+page. The existing desktop adapter owns native UIA traversal and message/card
+boundaries; the existing Sidecar blueprint owns its opt-in transport. It uses
+`COPILOT_QIANNIU_MANUAL_READ_ENABLED=false` by default, existing human
+authentication and CSRF checks, and an additional direct-loopback boundary.
+Forwarded/public calls and service identities cannot capture the desktop.
+No per-platform Agent, new Graph node, model call, or send owner is added.
+
+The endpoint returns only the selected conversation's bounded preview to the
+requesting local seat with no-store caching. It never updates the legacy global
+Sidecar status/latest cache, persists a transcript, or calls analyze. Native
+window/conversation bindings must survive the read; missing/ambiguous speaker
+or body metadata remains an explicit error. Historical staff may be recognized
+only from the platform speaker header within the bound shop namespace, not
+from buyer message content or a fixed nickname whitelist. An operator must
+confirm the preview; no historical customer tail is treated as a new event.
+
+Native buyer/shop binding requires selected controls, not list membership.
+Multiple order documents are ambiguous; a single document is still not evidence
+of buyer ownership. The current native reader omits its order/product identifiers
+until a platform ownership binding is available. The generic preview contract
+can retain verified-origin but identity-unverified candidates from future
+qualified captures, without giving them evidence status. The page
+requires explicit order selection before copying an order reference into its
+existing manual input; it does not promote a sidebar specification label or
+native product code into an exact SKU. Generation remains a separate user
+action through the existing canonical Pipeline with mandatory human review.
+Rollback disables the flag; existing Agent/JST/Hub behavior is unchanged.
+
 No snapshot or runtime web-session lookup is enabled by this ADR. The offline
 snapshot lookup remains controlled by
 `COPILOT_JST_SNAPSHOT_ORDER_LOOKUP_ENABLED=false` by default; rollback sets it
