@@ -1,5 +1,319 @@
 # Delivery Roadmap
 
+## Authorized Development GitHub Backup (2026-09-09)
+
+- Task COPILOT-GITHUB-PUSH-20260909; owner Codex; status prepared_for_verification.
+- User authorized latest source push to answertsundere/inhe-copilot, existing
+  codex/product-hub-context-bridge only. Initial local cc5b6a8 is four commits
+  ahead of remote 267fdc2. No staged files existed before this task.
+- Include source, tests and durable documentation. Exclude .codex-runtime,
+  databases, logs, customer exports, credentials and generated frontend typings.
+- Required: exact-file staging, redacted gitleaks on staged/outgoing content,
+  syntax/diff checks, normal commit/push and remote-SHA verification. The final
+  verification is kept outside this commit to avoid claiming an unperformed push.
+- No force push, default-branch changes, service deployment/restart or new
+  business behavior. Existing synthetic 2/3 result and known JST classification
+  test failure are not waived or converted into production acceptance.
+
+## Product Switch And Multi-Goal Check (2026-09-09)
+
+| Field | Value |
+|---|---|
+| Task / Owner / Priority | COPILOT-PRODUCT-SWITCH-20260909; Codex; P1 |
+| Status | development_integrated_partial_quality_verified_not_released; 2/3 fictional native cases pass |
+| Customer outcome | Current SKU facts and latest object/weight scope supersede old-product facts or guesses; answer supported current goals together. |
+| Earliest failing owner | Three sequential defects established: Understanding candidate scopes, router model-label identity promotion, Hub primary-type-only fact projection. |
+| Comparable dataset | gold-product-switch-prospective / 1.0.0, three fictional four-turn contexts and current exact SKU, no customer history; labels excluded from Agent payload. |
+| One target metric | Correct current identity/scope and supported goal coverage across all three cases, with missing facts explicit rather than fabricated. |
+| Allowed modules | Existing native API diagnostic runner unchanged, current Hub exact-SKU facts for two products, existing 8001 model; bounded task outputs and existing project docs. |
+| Forbidden modules | No formal deployment, live customer data, knowledge writes, credentials, Sidecar, sending, new recommendation engine or retries. |
+| Hard stop | Source preflight, source-drift or diagnostic safety failure; first case checked before remaining two; preserve failures rather than reroll. |
+| Safety and delivery | Query-only knowledge, hash/DML evidence, forced no-send/human review, diagnostic output only under its run directory. |
+| Documentation impact | Existing index/roadmap/changelog; code change only if an earliest existing-owner defect is demonstrated, then same-input regression. |
+| Must / After / Not now | Related identity/context regressions and three-case native check; then narrow repair or gap report; no runtime release, real accuracy or persistent conversation-state claim. |
+
+Explicit current SKU plus supplied fictional history tests evidence isolation,
+not a real sidebar-switch event or cross-request persistent memory.
+real_accuracy=null; optimization_unverified=true.
+
+### Established First Defect
+
+All three initial native runs completed without writes or send authority.
+Net-weight and material-plus-net-weight chose the right types but supplied
+dimension-only subject_scope=product; local validation degraded both. Text was
+correctly cleared. The product-size case was unresolved, preserved product
+scope but unnecessarily requested a link despite current identity being known.
+This latter quality gap is separate from the first defect.
+
+Allowed narrow repair: existing semantic_fact_type_service candidate projection
+will advertise subject_scope_candidates from the existing dimension predicate
+and scope constant for every type, with an explicit selected-candidate prompt
+rule. Do not broaden output validation or rewrite model output. Tests belong
+in the existing context test file; durable contract update in architecture.
+Then compare the same frozen three inputs once, preserving both runs.
+
+### Established Second Defect
+
+The scope projection passed 736 related tests. The same three native cases
+were each run once again: current net weight passed (4.69kg); two fact goals
+were understood but identity failed; product dimensions remained unsupported.
+The existing llm_intent_router._result promoted its model-generated product
+label into matched_product_name, causing a false exact-SKU/title conflict.
+Allowed repair: preserve upstream matched identity, retain the model label in
+router_decision only, and keep explicit title/identity conflict checks intact.
+Use the existing Hub identity tests for generic provenance counterexamples;
+then run related regressions and the same three inputs once on the new version.
+The missing product-dimension evidence and redundant link request remain open.
+
+### Established Third Defect
+
+The router counterexamples now pass (17); the 736-test suite passes. Adjacent
+router/order regression is 89 passed, 1 JST code-110 classification failure,
+also reproduced with the original router loaded in memory. The next three
+native runs preserved identity, but the two-goal case admitted material only.
+The existing Hub adapter filters the already-loaded facts by primary type only.
+Allowed repair: reuse its per-type projection for each server-understood valid
+goal, merge by evidence_uid, and retain source/SKU/object/measurement gates.
+No additional reads or new evidence authority. Test in the existing net-weight
+contract file and compare the frozen inputs once on the new version.
+
+### Final Verification And Remaining Gates
+
+- Three existing business files and four existing test files changed; 42 new
+  tests. The final 20-file regression has 847 tests: 846 passed, one pre-existing
+  JST code-110 classification failure, no errors/skips. Do not sum overlapping
+  intermediate test runs or report this as a full-project pass.
+- Four versions of the same three fictional inputs, one call per case/version,
+  total 12 native runs. Last batch: net weight 4.69kg supported; material PP+PE
+  and net weight 3.6kg both supported; product dimensions unresolved and the
+  reply still requests a link despite known identity. Quality result is 2/3,
+  not 3/3 merely because Composer and both Final audits accepted.
+- Final runs: after-switch-net-weight-20260909-134424 (29.686s),
+  after-switch-back-two-facts-20260909-134456 (19.993s),
+  after-switch-object-scope-20260909-134518 (18.013s); eight model calls each.
+- Evidence root: C:/Users/sshuser/jst-source-export/product-switch-20260909.
+  All result/response JSON and XML retained, including original failures.
+  Knowledge hash unchanged/DML zero; no-send/human review remained; observed
+  external-network/out-of-scope write blocks zero on every native run.
+- No formal release, knowledge changes, credentials, real customers or Git
+  commit/push. Original runtime PIDs remain 5012=74208, 5174=28300. HEAD remains
+  cc5b6a836fa39d92708eb41eb93d976c8537fb92 with pre-existing dirty worktree.
+- Next: distinguish known-product missing facts from identity ambiguity and
+  remove unnecessary link requests through the existing owners; independently
+  check JST code-110 classification, qualify latency and a fixed release.
+  Do not invent missing dimensions or relax admission. Real accuracy is null.
+
+## Understanding Failure Reply Boundary (2026-09-09)
+
+| Field | Value |
+|---|---|
+| Task / Owner | COPILOT-UNDERSTANDING-FALLBACK-20260909; Codex |
+| Priority ID | P1 Gold Conversation Quality |
+| Status | development-integrated; 828 related tests passed; no runtime promotion |
+| Customer outcome | A failed understanding must not expose an ungrounded legacy answer as a candidate, including wrong weight or object scope. |
+| Earliest failing owner | Existing AnalysisPipeline understanding boundary preserves degraded suggested_reply and rechecks after Final without clearing regenerated text. |
+| Comparable dataset and baseline | Synthetic failure injection on the same Pipeline API/copilot/replay/benchmark paths; original source SHA 824FA5D9EA42204709CF05ECD9F69C992E99F50FDBD9FF50CB1D79667C5795ED. No new live-model or customer-data run. |
+| One target metric | Zero surfaced candidate texts/blocks/previews for invalid or degraded Understanding, including Final failure and repopulation. |
+| Allowed modules | Existing analysis_pipeline_service.py and its entrypoint tests; existing architecture/index/roadmap/changelog. |
+| Forbidden modules | No classifier prompt/type change, new reply generator, retries, provider changes, source/knowledge mutation, UI or deployment. |
+| Hard stop | A valid Understanding or legitimate no-renderable-goal path regresses, an unrelated source hash changes, or tests need live credentials/data. |
+| Safety and delivery invariants | Preserve evidence diagnostics, cause codes, Final execution, human review and can_send=false on failures; no media/action delivery. |
+| Documentation impact | Clarify existing failure boundary in architecture; record exact regression scope, not gold-service accuracy. |
+| Must do | New failing counterexamples, smallest existing-owner repair, adjacent tests and hash-guarded development integration. |
+| After verification | Inspect saved outcomes/versions and record remaining broader-conversation and latency gaps. |
+| Not now | Formal 5012/5174 promotion, full environment copy, real customer replay, model calls or performance architecture. real_accuracy=null; optimization_unverified=true. |
+
+### Result
+
+- Existing Pipeline clears invalid/degraded candidate text, blocks and
+  supervisor/partial previews before Final and after its success/exception.
+  Evidence/cause diagnostics remain; no alternative generator or retry.
+- One existing preserve-text test corrected and 20 new cases. Original
+  21 failed (1.811s); repaired 21 passed (1.397s); related 16 files 732 passed
+  (12.156s); disjoint six-file Final/preview/ReplyService suite 96 passed.
+  No failures/errors/skips in either final suite. Scoped git diff --check and
+  source/test hashes passed. Backups/XML: C:/Users/sshuser/jst-source-export/understanding-fallback-20260909.
+- Four Pipeline source values and injected failure states are regression,
+  not a native HTTP/model-capacity or real-customer quality evaluation.
+  Formal 5012/5174 PIDs remain 74208/28300; 8001/8795/8830 remain
+  46968/70928/27364. No restart, credentials, knowledge write or send.
+  Next: complex normal-path/product-switch quality. Capacity, latency and
+  page acceptance remain unqualified, with real_accuracy=null.
+
+## Gold Conversation Context (2026-09-09)
+
+| Field | Value |
+|---|---|
+| Task / Owner | COPILOT-CHAT-INTELLIGENCE-20260909; Codex; P1 existing context/Understanding/Claim Resolution owners |
+| Status | Follow-up fixes development-integrated; 712 related tests and 3/3 fictional native model cases passed; no production or real-customer qualification |
+| Authorization | User confirmed continuation after the explicit request to submit these three fictional dialogues and corresponding product identifiers/parameters to the existing 8001 model service. No real customer history, sending, model switch or production promotion. |
+| Must do | Test correction of prior guesses, net-weight follow-up and packaging dimensions through native /api/analyze with current exact-SKU Hub facts; inspect actual goals and evidence before choosing one narrow repair. |
+| After verification | Same input/source/model comparison, relevant regression and hash-guarded development integration. |
+| Not this run | No new reply engine, fabricated service action, real-customer replay, knowledge restoration, runtime promotion or send-authority changes. |
+| Quality boundary | New fictional contexts inspired by existing high-frequency topics, not a completed 40-case evaluation. real_accuracy=null; optimization_unverified until the real-data gate qualifies. |
+
+### Authorized Follow-up Outcome
+
+- User approved the previously blocked model disclosure scope. Initial actual
+  output chose material/net_weight correctly but supplied dimension-only scope;
+  the existing validator degraded it. Corrected the conflicting prompt, without
+  accepting non-dimension scope. Added the missing canonical conversation_turns
+  argument to the existing evidence-builder/Composer path; four turns now arrive.
+- Composer must preserve measured-object/weight meaning and omit ceremonial
+  status closure. Three business files, two modified tests and one new test;
+  focused pre-fix 4 failed/8 passed, final 712 related tests passed (16 files,
+  zero failures/errors/skips, 12.179s, 12 new tests).
+- Final native /api/analyze: three original fictional cases, one attempt each,
+  3/3 passed, exclusions zero. Material reply is direct; net weight stays net;
+  carton dimensions explicitly stay packaging. Supported/Composer/both Final
+  pass, no-send/human-review, knowledge hash unchanged/DML zero; observed
+  external-network and out-of-scope writes zero. Eight model calls each with
+  18.052/16.609/17.874s latency. No general quality or latency SLO claim.
+- Final runs: after-correction-20260909-112358,
+  after-net-weight-followup-20260909-112419,
+  after-packaging-multigoal-20260909-112438 in the existing task export directory.
+- Preserve earlier failed results. Model-busy/degraded fallback remains a
+  separate risk; these passing normal-path cases do not qualify it. Next:
+  broader multi-turn/product-switch/helpful-next-step evaluation and latency,
+  then a pinned runtime release. No formal services or knowledge data changed.
+
+### Initial Result Before Authorization And Follow-up
+
+- Understanding passed only the current message to its provider. It now uses
+  the existing canonical normalizer/privacy projection for up to eight recent
+  buyer/agent turns, 280 characters each, with explicit truncation. Dialogue
+  only resolves current references; it is not evidence or action authority.
+- Net weight was absent from the canonical type registry and exact Hub field
+  contract. Added it without inferring from gross weight or load capacity.
+  An independent negative test also required fact-level product-code equality.
+- Context baseline: 5 failed/7 passed. Net-weight baseline: 2 failed/14 passed.
+  Initial combined suite: 524 passed/1 failed (cross-product fact). After the
+  binding repair: 525 passed, failures/errors/skips zero, 6.671s, 11 test files.
+- The original three fictional full-chain cases failed. The context-only
+  after batch also failed; one received model capacity 429, the others degraded
+  to legacy replies. One displayed gross weight for a net-weight follow-up;
+  human-review/no-send remained enforced. These are unresolved quality issues,
+  not passing examples. The later net-weight/binding changes have no live-model
+  result. Next diagnostic was rejected by auto-review over product context
+  disclosure to the model destination; approval requested, no workaround.
+- Evidence/backups: C:/Users/sshuser/jst-source-export/chat-intelligence-20260909.
+  Keep all six intermediate results, regression-before-binding.xml and final
+  regression.xml. No production runtime, credentials, knowledge data or Git
+  commit/push changed. Next: authorized bounded model evaluation and earliest
+  degradation diagnostics before any pinned production release.
+
+## Composer Closure Contract (2026-09-09)
+
+| Field | Value |
+|---|---|
+| Task / Owner | COPILOT-CLOSURE-20260909; Codex; existing ModelFirstAnswerComposerService |
+| Priority / Status | P1 Gold Conversation Quality; development-integrated, scoped native diagnostic passed; no production qualification |
+| Must do | Reproduce forced/repeated closure; clarify the model-owned closure contract without a second formatter; retain evidence and Final gates. Identify isolated probe network/write callers without widening access. |
+| After verification | Focused and adjacent regressions, then a bounded independent product-only native API comparison; hash-guarded development integration only. |
+| Not this run | No formal 5012/5174 promotion, customer replay, knowledge restoration, credentials, extra Agent owner or sending. |
+| Accuracy boundary | Synthetic regression and one product check are not customer accuracy; real_accuracy=null, optimization_unverified. |
+
+### Follow-up Owner: Hub-Only Graph Boundary
+
+- Composer change is development-integrated. One native reply now passes both
+  Final audits without a repeated closure; network/write isolation still fails.
+- Task: COPILOT-HUB-ONLY-GRAPH-20260909; Codex; P1; development-integrated and verified.
+- Proven caller: legacy order_product_resolver tries two JST SKU reads before
+  the existing Hub-only identity/context owner. In explicit Hub-only mode,
+  defer this legacy node without creating identity or changing default mode.
+- The two blocked file opens target Windows os.devnull from read-only Git
+  metadata. Correct only that exact diagnostic classification; arbitrary
+  external files and external network connections remain denied.
+- Verify focused mode/cached-input/default-path tests, then the same bounded
+  native product question. No runtime promotion or customer/order accuracy claim.
+
+### Verified Outcome
+
+- Closure baseline: 19 failed/4 passed; Graph boundary baseline: 5 failed/3 passed.
+- Final native related suite: 726 passed, zero failures/errors/skips, 23.254s;
+  28 new cases. This is not the full repository suite.
+- Native API baseline repeated the material answer. Composer-only repair passed
+  both Final audits but retained the identified diagnostic boundary failures.
+- Combined native check: HTTP 200, one supported material answer without
+  repetition, both Final audits passed, can_send=false, human review=true,
+  knowledge hash unchanged and DML zero. The diagnostic exited zero, with zero
+  blocked network/file attempts and two classified exact os.devnull opens.
+- An earlier combined attempt and a read-only preflight stopped on
+  product_hub_probe_unavailable; no model request on those attempts. The source
+  resumed responding without restart; stability remains unqualified.
+- Three actual generated requests this run; final request observed eight local
+  qwen3.8-27b calls and 21.632s. No latency/real-accuracy improvement claim.
+- Remaining: title/order/tracking business cases, source stability, clean pinned
+  release/page acceptance and approved real-conversation evaluation. No formal
+  service, credentials, knowledge, delivery or Git commit/push change.
+
+## Full Reply Diagnostic (2026-09-09)
+
+| Field | Value |
+|---|---|
+| Task / Owner | COPILOT-FULL-REPLY-20260909; Codex; existing API/Pipeline/context owners |
+| Priority / Status | P1 context and reply correctness; API repair integrated, full answer still rejected for duplicate closure |
+| Must do | One baseline independent product-only synthetic question through native /api/analyze, then one post-fix check of that same input; use the existing loopback model, no customer data, source/evidence/final no-send gates unchanged. |
+| After verification | Next owner is Composer customer_care_closure versus clause composition; preserve the repeated_generic_reply rejection, do not hide it with a formatter or relax evidence. Separately identify blocked proxy/cache side effects before promotion. |
+| Not this run | No formal 5012/5174 switch, bulk model evaluation, real customer replay, credential changes, historical knowledge restoration or automatic send. |
+| Boundary | Local model discovery changed since the previous assumption; qualification is not inferred from listing. The single review-only request is diagnostic, not production/provider or real-label acceptance. |
+| Verification | Original API normalization: 12 failed/5 passed. Single-file candidate: 17 passed. Native integrated regression: 287 passed/25 warnings/6.37s. Baseline full reply lacked facts and repeated uncertainty, so it is not accepted. |
+| Post-fix | Native API 200; independent SKU, 12 Hub records, 2 candidates, supported material claim; actual candidate repeated the same fact twice. Semantic audit rejected it. can_send=false, human review=true, unchanged knowledge hash and zero DML. |
+| Diagnostic limits | Two full requests only. Second observed 8 existing local LLMClient calls, all qwen3.8-27b, 15.424s. First counter missed the real client, so its empty list is not zero calls; existing diagnostics prove at least Understanding/Composer/Audit calls. Two port-7897 attempts and two out-of-scope writes were denied in each run. No production or quality pass. |
+| Rollback / Remaining | API original-byte backup C:/Users/sshuser/jst-source-export/full-reply-20260909/analyze_routes.before.py; new tests under tests/test_analyze_identifier_titles.py. Formal 5012/5174 unchanged; no Git commit or push. |
+
+## Knowledge Source Candidate (2026-09-08)
+
+| Field | Value |
+|---|---|
+| Task / Owner | `COPILOT-KNOWLEDGE-RUNTIME-20260908`; Codex; existing runtime readiness owner |
+| Priority / Status | P1 production-correctness exception; development integrated, native source/context verification passed |
+| Must do | Explicit opt-in Product Hub review-only readiness using the existing exact-SKU reader and field adapter; retain schema, source, identity, evidence and final review gates. |
+| Verify next | The canonical full /api/analyze reply with independent input and final review; qualify a pinned runtime only after that gate, never promote the entire dirty tree. |
+| Not this run | No historical knowledge restoration, fabricated readiness rows, model calls, new service, automatic sending or dirty-branch production promotion. |
+| Discovery | The old 865 MB snapshot has 2,472 historically reviewed facts without current content hashes; its existing recovery audit explicitly rejects direct restoration. |
+| Verification | Candidate 270 passed; native 270 passed (25 warnings, 5.79s). Native in-process readiness 200. Independent real SKU: identity resolved, 12 Hub records, 2 material candidates; original empty knowledge DB hash unchanged. No model/customer request. |
+| Fixed blockers | Diagnostic development subject/role were missing. Exact SKU resolution still depended on an empty local catalog, and two normalizers synthesized a JST i_id from the SKU prefix. Explicit Hub mode now uses active exact-SKU/product bindings with no historical or title fallback and no namespace conversion. |
+| Remaining | Full customer reply, title/order/tracking identity paths, installation interpretation and runtime promotion are not qualified. Approved real labels remain insufficient: real_accuracy=null, optimization_unverified. Production 5012/5174 PIDs are unchanged. |
+| Rollback | Nine-file integration manifest and original-byte backup: C:/Users/sshuser/jst-source-export/knowledge-runtime-20260908/source-backup-20260908-212837. Default mode remains local; no runtime flag or service was changed. |
+
+## Runtime Recovery (2026-09-08)
+
+| Field | Value |
+|---|---|
+| Task / Owner | `COPILOT-5012-RECOVERY-20260908`; Codex; existing launcher only |
+| Priority / Status | P1 runtime incident; transport restored, knowledge not ready |
+| Result | Existing SYSTEM task starts the original release with Copilot venv; 5012 health and 5174 real-test page return 200. Other observed service PIDs unchanged. |
+| Guard | Knowledge query-only and writable media workers disabled; readiness stays 503 for empty knowledge_entries, knowledge_chunks and kb_qa. No model call or fabricated data. |
+| Remaining | This development branch is not promoted; original dirty bbd89e2 runtime is not a fresh clean release. Knowledge source, unified runtime and formal Pipeline answering remain unverified. |
+
+## Manual File Check (2026-09-08)
+
+| Field | Value |
+|---|---|
+| Task / Owner | `COPILOT-MANUAL-FILE-CHECK-20260908`; Codex; existing Hub reader and Context Pack |
+| Priority / Status | P1 installation correctness follow-up; development integrated and verified |
+| Must do | Verify bounded PDF prefix/size reads before projecting review references; preserve exact identity, variant review, no-fact and no-send boundaries. |
+| Verify next | Same-product before/after file-access comparison and native regression; then reliable page interpretation and the formal entry point. |
+| Not this run | No parser service, formal knowledge write, model change, automatic delivery, unrelated service restart or production switch. Real customer accuracy stays null without comparable approved labels. |
+| Result | Baseline 193 / candidate 219 / native 219 passed. Same live product: 3 unchecked records before, 2 header-verified references and 1 file failure after. Single-case latency 79ms/109ms, not p50/p95 or customer-quality evidence. |
+| Remaining | Reliable page interpretation, variant applicability and formal runtime/pipeline acceptance; 5012 still has no listener. |
+
+## Installation Reference Correction (2026-09-08)
+
+| Field | Value |
+|---|---|
+| Task ID | `COPILOT-INSTALLATION-ACCESS-FIX-20260908` |
+| Priority / Owner | P1 user-approved correctness exception; existing Hub reader and Product Context Pack |
+| Goal | Stop reporting no installation resources merely because approved PDFs are product-bound rather than SKU-bound. |
+| Status | Integrated into the development checkout; native regressions passed. Two sample files are HTTP-readable and one has been visually checked. Copilot runtime promotion remains pending. |
+| Must do | Preserve exact identity, source scope, safe URLs and review-only/no-send gates; integrate only the two verified source files and focused tests, protecting pre-existing worktree changes by hashes and backups. |
+| Validation | 193 candidate regressions passed, including 34 new manual cases; native post-copy run independently passed 193 in 44.16 seconds. One live product returned three PDF candidates without model calls or business writes. |
+| Blocker | Follow-up interactive probes prove shared access works. Two valid PDF URLs now return 206 after unchanged Hub task recovery; one dangling record still returns 500. Direct PDF text extraction damages digits; factual use and the formal customer path remain unverified. |
+| Next | Resolve dangling-record handling, validate page-based extraction and SKU applicability, then test the formal user-facing path before runtime promotion. No shared-login change is needed. |
+| Final recheck | Health source/output both accessible in 47ms; both valid PDFs again 206. A 4s timeout cannot diagnose failure of sequential 2.5s path checks. No second restart or long-term stability claim. |
+| Not this run | No knowledge writes, generated installation facts, automatic sending, source-file relocation, credential changes, 5012/5174 switch or Git push. Follow-up recovered only the unchanged existing 8795 task. |
+
 ## Current Execution
 
 | Field | Value |
@@ -10,6 +324,22 @@
 | Scope | P1 runner, contract test, test documentation, and review-only diagnostic verification. |
 | Status | Complete; E2 remains blocked on authorized deidentified conversations |
 | Gate | No live product or order data, no knowledge write, no delivery action, and no change to `can_send`. |
+
+## Current Production-Correctness Exception
+
+| Field | Value |
+|---|---|
+| Task ID | `P1-EXCEPTION-IDENTITY-READ-001` |
+| Goal | Repair the existing sidebar-order -> JST -> exact product identity -> Product Context Pack path when JST already returns one exact outbound order item. |
+| Scope | Existing JST reader, existing identity resolver, existing Product Context Pack, Product Hub read bridge, and their contract tests. |
+| Status | Candidate verification complete; clean-commit integration remains pending because the current worktree contains unrelated changes. |
+| Gate | Exact returned identity only; no title/substring/first-row fallback, no formal-knowledge write, no new reply owner, and `can_send=false`. |
+
+This is a user-facing correctness exception, not a P2 promotion or a customer-
+quality claim. The isolated query-only check proved the existing flow can carry
+one exact JST outbound-item match through exact SKU mapping, reviewed Hub facts,
+and canonical selected evidence. It did not evaluate response quality or change
+the P1 E2 approval requirement.
 
 ## Phase Status
 

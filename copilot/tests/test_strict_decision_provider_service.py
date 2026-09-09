@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +8,7 @@ from app.services.strict_decision_provider_service import (
     StrictDecisionProviderConfig,
     StrictDecisionProviderError,
     StrictDecisionProviderService,
+    _safe_error_category,
     _ollama_native_request,
     qualification_configuration_fingerprint,
     safe_provider_identity,
@@ -43,6 +45,20 @@ def _config(**overrides):
     }
     values.update(overrides)
     return StrictDecisionProviderConfig(**values)
+
+
+class _StatusError(Exception):
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+        super().__init__("provider status omitted from safe diagnostics")
+
+
+def test_strict_provider_maps_http_status_without_disclosing_response_content():
+    assert _safe_error_category(_StatusError(400)) == "strict_request_rejected"
+    assert _safe_error_category(_StatusError(401)) == "authentication_failed"
+    assert _safe_error_category(_StatusError(402)) == "provider_quota_exhausted"
+    assert _safe_error_category(_StatusError(429)) == "rate_limited"
+    assert _safe_error_category(_StatusError(503)) == "provider_server_error"
 
 
 def test_formal_llm_config_is_not_reused_when_decision_provider_missing(monkeypatch):
@@ -142,6 +158,49 @@ def test_unified_audit_config_is_independent_from_formal_and_decision_roles(
     }
 
 
+def test_turn_understanding_config_requires_its_own_qualified_identity(monkeypatch):
+    for attribute, value in {
+        "COPILOT_TURN_UNDERSTANDING_STRICT_PROVIDER": "understanding-provider",
+        "COPILOT_TURN_UNDERSTANDING_STRICT_API_BASE": "https://understanding.example.invalid/v1",
+        "COPILOT_TURN_UNDERSTANDING_STRICT_API_KEY": "understanding-secret",
+        "COPILOT_TURN_UNDERSTANDING_STRICT_MODEL": "understanding-model",
+        "COPILOT_TURN_UNDERSTANDING_STRICT_CAPABILITY": "tool_call_schema",
+        "COPILOT_TURN_UNDERSTANDING_STRICT_TIMEOUT_SECONDS": 19,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFIED": True,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_DISABLE_THINKING": True,
+    }.items():
+        monkeypatch.setattr(config, attribute, value, raising=False)
+
+    expected = StrictDecisionProviderConfig(
+        provider_name="understanding-provider",
+        api_base="https://understanding.example.invalid/v1",
+        api_key="understanding-secret",
+        model="understanding-model",
+        capability="tool_call_schema",
+        timeout_seconds=19,
+        qualified=True,
+        disable_thinking=True,
+        qualification_fingerprint_required=True,
+        role_name="turn_understanding",
+    )
+    monkeypatch.setattr(
+        config,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFICATION_FINGERPRINT",
+        qualification_configuration_fingerprint(expected),
+        raising=False,
+    )
+
+    understanding = StrictDecisionProviderConfig.from_turn_understanding_environment()
+
+    assert understanding.role_name == "turn_understanding"
+    assert understanding.qualification_status() == "qualified"
+    assert understanding.api_key == "understanding-secret"
+    assert understanding.api_key not in {
+        config.LLM_API_KEY,
+        config.COPILOT_DECISION_LLM_API_KEY,
+    }
+
+
 def test_strict_json_schema_request_never_uses_json_object():
     client = _Client(_result())
     provider = StrictDecisionProviderService(config=_config(), client_factory=lambda **_: client)
@@ -201,6 +260,108 @@ def test_deepseek_non_thinking_mode_uses_its_official_transport_option():
     assert request["temperature"] == 0
     assert request["max_tokens"] == 37
     assert request["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_deepseek_strict_transport_projects_only_unsupported_schema_keywords():
+    tool_call = SimpleNamespace(
+        function=SimpleNamespace(name="sample", arguments='{"ok": true}')
+    )
+    client = _Client(
+        SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="", tool_calls=[tool_call]),
+                    finish_reason="stop",
+                )
+            ]
+        )
+    )
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["items"],
+        "properties": {
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["required_value"],
+                    "properties": {
+                        "required_value": {"type": "string"},
+                        "optional_value": {"type": "string"},
+                    },
+                },
+            }
+        },
+    }
+    provider = StrictDecisionProviderService(
+        config=_config(
+            provider_name="deepseek",
+            api_base="https://api.deepseek.com/beta",
+            capability="tool_call_schema",
+            disable_thinking=True,
+        ),
+        client_factory=lambda **_: client,
+    )
+
+    provider.request(
+        name="sample",
+        schema=schema,
+        system_prompt="x",
+        payload={},
+        max_tokens=37,
+    )
+
+    sent_schema = client.calls[0]["tools"][0]["function"]["parameters"]
+    assert "minItems" not in sent_schema["properties"]["items"]
+    assert "maxItems" not in sent_schema["properties"]["items"]
+    assert sent_schema["required"] == ["items"]
+    assert sent_schema["properties"]["items"]["items"]["required"] == [
+        "optional_value",
+        "required_value",
+    ]
+    assert schema["properties"]["items"]["minItems"] == 1
+    assert schema["properties"]["items"]["maxItems"] == 2
+    assert schema["properties"]["items"]["items"]["required"] == [
+        "required_value"
+    ]
+
+
+def test_strict_transport_uses_field_aware_privacy_projection_for_payloads():
+    client = _Client(_result())
+    provider = StrictDecisionProviderService(
+        config=_config(),
+        client_factory=lambda **_: client,
+    )
+    payload = {
+        "product_title": "英禾防夹收纳柜，客厅卧室都能使用",
+        "admitted_evidence": [
+            {"attribute_key": "material", "value": "PP 材质，适合客厅卧室收纳"}
+        ],
+        "order_id": "2026071900012345",
+        "phone": "13812345678",
+        "address": "上海市浦东新区测试路88号",
+        "sku_code": "YH-IDENTITY-001",
+    }
+
+    provider.request(
+        name="sample",
+        schema={"type": "object"},
+        system_prompt="classify the customer request",
+        payload=payload,
+        max_tokens=37,
+    )
+
+    sent_payload = json.loads(client.calls[0]["messages"][1]["content"])
+    serialized = json.dumps(sent_payload, ensure_ascii=False)
+    assert sent_payload["product_title"] == payload["product_title"]
+    assert sent_payload["admitted_evidence"][0]["value"] == payload["admitted_evidence"][0]["value"]
+    assert sent_payload["sku_code"].startswith("[PRODUCT_ID_REDACTED:")
+    for private_value in (payload["order_id"], payload["phone"], payload["address"]):
+        assert private_value not in serialized
 
 
 def test_minimax_strict_transport_uses_reasoning_safe_request_options():

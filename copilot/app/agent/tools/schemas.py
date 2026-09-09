@@ -29,6 +29,8 @@ def make_input_schema(**fields):
 JST_ORDER_INPUT = make_input_schema(
     identifier={"type": "string", "required": True, "description": "订单号或平台订单号"},
     identifier_type={"type": "string", "required": False, "description": "internal_order_id / platform_order_id"},
+    shop_id={"type": "string", "required": False, "description": "侧边栏提供的聚水潭店铺编号，仅用于查询范围"},
+    shop_name={"type": "string", "required": False, "description": "侧边栏提供的店铺显示名，仅用于精确解析查询范围"},
 )
 JST_ORDER_OUTPUT = {
     "type": "object",
@@ -44,12 +46,16 @@ JST_ORDER_OUTPUT = {
         "sign_time": {"type": "string"},
         "endpoint": {"type": "string"},
         "duration_ms": {"type": "integer"},
+        "error_code": {"type": "string"},
+        "safe_fallback_reason": {"type": "string"},
     },
 }
 
 # ========== JST 销售出库查询 ==========
 JST_OUTBOUND_INPUT = make_input_schema(
     outer_so_id={"type": "string", "required": True, "description": "外部交易单号 / 平台交易号"},
+    shop_id={"type": "string", "required": False, "description": "侧边栏提供的聚水潭店铺编号，仅用于查询范围"},
+    shop_name={"type": "string", "required": False, "description": "侧边栏提供的店铺显示名，仅用于精确解析查询范围"},
 )
 JST_OUTBOUND_OUTPUT = {
     "type": "object",
@@ -63,6 +69,8 @@ JST_OUTBOUND_OUTPUT = {
         "sign_time": {"type": "string"},
         "endpoint": {"type": "string"},
         "duration_ms": {"type": "integer"},
+        "error_code": {"type": "string"},
+        "safe_fallback_reason": {"type": "string"},
     },
 }
 
@@ -80,6 +88,8 @@ JST_TRACKING_OUTPUT = {
         "send_date": {"type": "string"},
         "endpoint": {"type": "string"},
         "duration_ms": {"type": "integer"},
+        "error_code": {"type": "string"},
+        "safe_fallback_reason": {"type": "string"},
     },
 }
 

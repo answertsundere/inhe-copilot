@@ -440,10 +440,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
     </div>
     <div class="side-bottom">
       <div class="status-card">
-        <div class="label">AI 状态</div>
+        <div class="label">运行模式</div>
         <div class="status-row">
           <span class="status-dot"></span>
-          <span>已连接 · INHE AI 助手</span>
+          <span>人工确认模式 · 不会自动发送</span>
         </div>
       </div>
       <div class="status-card">
@@ -511,7 +511,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
               商品信息<span style="margin-left:6px;font-size:11px;color:#dc2626;font-weight:600">（注意先添加商品信息）</span>
             </div>
-            <div class="product-card">
+              <div class="product-card">
+              <div class="product-field">
+                <label for="shopName">店铺</label>
+                <input id="shopName" placeholder="选择或填写当前店铺，仅用于订单精确核验">
+              </div>
               <div class="product-field">
                 <label for="frontTitle">商品标题（从千牛右侧复制）</label>
                 <textarea id="frontTitle" class="compact-textarea" placeholder="把千牛右侧显示的商品标题粘到这里" oninput="updateFrontTitleHint()"></textarea>
@@ -1635,7 +1639,7 @@ function clearImages(){currentImages=[];$('imageCount').value='0';updateImagePre
 function candidateFromFields(){try{const parsed=JSON.parse($('candidates').value||'[]');return Array.isArray(parsed)?parsed:[]}catch(e){lastResponse={error:e.message};return []}}
 function schedulePayloadPreview(){clearTimeout(payloadPreviewTimer);payloadPreviewTimer=setTimeout(fillPayloadPreview,180)}
 function installAutoPayloadPreview(){
-  ['message','frontTitle','sku','orderId','candidates','imageCount','imageKind','imageDescription'].forEach(id=>{
+  ['message','shopName','frontTitle','sku','orderId','candidates','imageCount','imageKind','imageDescription'].forEach(id=>{
     const el=$(id);
     if(el) el.addEventListener('input', schedulePayloadPreview);
   });
@@ -1686,6 +1690,7 @@ function selectCase(i){
   currentIndex=i;lastResponse=null;
   const c=CASES[i]||{}, payload=c.payload||{};
   $('message').value=payload.message||c.message||'';
+  $('shopName').value=payload.shop_name||payload.copilot_context?.shop_name||c.shop_name||'';
   $('frontTitle').value=c.sidecar_front_title||'';
   $('orderId').value=payload.order_id||payload.platform_order_id||'';
   const candidates=payload.product_candidates||payload.copilot_context?.product_candidates||[];
@@ -1715,7 +1720,7 @@ function buildPayload(){
     renderParsedContext();
   }
   let candidates=candidateFromFields();
-  const frontTitle=$('frontTitle').value.trim(), sku=$('sku').value.trim();
+  const shopName=$('shopName').value.trim(), frontTitle=$('frontTitle').value.trim(), sku=$('sku').value.trim();
   if(frontTitle){candidates=candidates.filter(c=>!String(c.type||'').includes('product'));candidates.unshift({value:frontTitle,type:'product_candidate',source:'manual_front_test',verified:true})}
   if(sku){candidates=candidates.filter(c=>!String(c.type||'').includes('sku'));candidates.push({value:sku,type:'sku_id_candidate',source:'manual_front_test',verified:true})}
   const payload={message:$('message').value.trim(),conversation_id:currentConversationId};
@@ -1737,6 +1742,7 @@ function buildPayload(){
   }
   if($('orderId').value.trim())payload.order_id=$('orderId').value.trim();
   payload.copilot_context={source:'real_test_panel'};
+  if(shopName){payload.shop_name=shopName;payload.copilot_context.shop_name=shopName}
   if(candidates.length){payload.product_candidates=candidates;payload.copilot_context.product_candidates=candidates}
   if(payload.image_attachments){payload.copilot_context.image_attachments=payload.image_attachments;payload.copilot_context.has_image_attachment=true}
   if(parsedConversation.raw_text){
@@ -1767,6 +1773,7 @@ function renderContextMemoryPreview(payload){
     ['最近历史买家问题', payload?.copilot_context?.latest_customer_message||''],
     ['最近历史客服回复', payload?.copilot_context?.previous_agent_message||''],
     ['商品候选', candidates.map(c=>typeof c==='string'?c:c.value||c.product_name||c.name||'').filter(Boolean).slice(0,4).join(' / ')],
+    ['店铺', payload?.shop_name||''],
     ['订单号', payload?.order_id||''],
     ['图片数量', String(images.length)],
     ['图片说明', $('imageDescription').value.trim()],
@@ -1839,7 +1846,7 @@ function currentCase(){return CASES[currentIndex]||{}}
 function currentReviewPayload(){
   const c=currentCase();
   return {
-    case_id:caseId(c),scene:c.scene||'',priority:c.priority||'',message:$('message').value.trim(),sidecar_front_title:$('frontTitle').value.trim(),sku:$('sku').value.trim(),order_id:$('orderId').value.trim(),
+    case_id:caseId(c),scene:c.scene||'',priority:c.priority||'',message:$('message').value.trim(),shop_name:$('shopName').value.trim(),sidecar_front_title:$('frontTitle').value.trim(),sku:$('sku').value.trim(),order_id:$('orderId').value.trim(),
     image_count:$('imageCount').value.trim(),image_kind:$('imageKind').value.trim(),image_description:$('imageDescription').value.trim(),status:$('reviewStatus').value,failure_type:$('failureType').value,note:$('reviewNote').value.trim(),final_reply:$('finalReply').value.trim(),
     suggested_reply:$('reply').textContent||'',intent:lastResponse?.intent||'',risk_level:lastResponse?.risk_level||'',requires_human_review:!!lastResponse?.requires_human_review,answer_mode:lastResponse?.context_used?.answer_mode||lastResponse?.evidence_debug?.answer_mode||'',
     used_knowledge_entry_ids:lastResponse?.context_used?.used_knowledge_entry_ids||lastResponse?.evidence_debug?.used_knowledge_entry_ids||[],evidence_gate:summarizeEvidenceGate(lastResponse),payload:lastSubmittedPayload||buildPayload(),updated_at:new Date().toLocaleString(),
@@ -1849,7 +1856,7 @@ function saveReview(){const record=currentReviewPayload();if(!record.status)reco
 function csvCell(v){if(Array.isArray(v))v=v.join('|');if(v&&typeof v==='object')v=JSON.stringify(v);return `"${safe(v).replace(/"/g,'""')}"`}
 function exportReviews(){
   const rows=Object.values(reviewRecords);
-  const headers=['case_id','status','failure_type','scene','message','sidecar_front_title','sku','order_id','image_count','image_kind','image_description','intent','risk_level','requires_human_review','answer_mode','used_knowledge_entry_ids','evidence_gate','suggested_reply','final_reply','note','updated_at'];
+  const headers=['case_id','status','failure_type','scene','message','shop_name','sidecar_front_title','sku','order_id','image_count','image_kind','image_description','intent','risk_level','requires_human_review','answer_mode','used_knowledge_entry_ids','evidence_gate','suggested_reply','final_reply','note','updated_at'];
   const lines=[headers.map(csvCell).join(',')].concat(rows.map(r=>headers.map(h=>csvCell(r[h])).join(',')));
   const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`客服检查记录_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
 }
@@ -1871,7 +1878,7 @@ async function submitFeedback(){
 async function createBadCase(showMessage=true){
   const record=currentReviewPayload();if(!record.failure_type){$('reviewSaved').textContent='请先选择“哪里有问题”';return}
   saveReview();
-  const res=await fetch('/ask/api/bad-cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_message:record.message,conversation_history_json:JSON.stringify(parsedConversation.history||[]),ai_suggested_reply:record.suggested_reply,csr_final_reply:record.final_reply,failure_type:record.failure_type,severity:record.priority?.startsWith('P0')?'P0':'P2',scenario:record.scene,source:'real_test_panel',actual_intent:record.intent,actual_tools_json:JSON.stringify(lastResponse?.evidence_debug?.tool_plan||[]),used_evidence_json:JSON.stringify(record.used_knowledge_entry_ids||[]),sidecar_context_json:JSON.stringify({product_name:record.sidecar_front_title,sku:record.sku,order_id:record.order_id,image_count:record.image_count,image_kind:record.image_kind,image_description:record.image_description,raw_chat_context:parsedConversation.raw_text||''}),root_cause:record.note})});
+  const res=await fetch('/ask/api/bad-cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_message:record.message,conversation_history_json:JSON.stringify(parsedConversation.history||[]),ai_suggested_reply:record.suggested_reply,csr_final_reply:record.final_reply,failure_type:record.failure_type,severity:record.priority?.startsWith('P0')?'P0':'P2',scenario:record.scene,source:'real_test_panel',actual_intent:record.intent,actual_tools_json:JSON.stringify(lastResponse?.evidence_debug?.tool_plan||[]),used_evidence_json:JSON.stringify(record.used_knowledge_entry_ids||[]),sidecar_context_json:JSON.stringify({shop_name:record.shop_name,product_name:record.sidecar_front_title,sku:record.sku,order_id:record.order_id,image_count:record.image_count,image_kind:record.image_kind,image_description:record.image_description,raw_chat_context:parsedConversation.raw_text||''}),root_cause:record.note})});
   const data=await res.json().catch(()=>({}));
   if(showMessage)$('reviewSaved').textContent=res.ok?`问题已记录，编号：${data.id||data.case_id||''}`:'问题记录失败';
   return res.ok;

@@ -183,6 +183,159 @@ def test_minimal_provider_schema_keeps_server_owned_fields_out():
         assert server_field not in goal_schema["properties"]
 
 
+def test_strict_turn_understanding_uses_existing_strict_provider_transport(monkeypatch):
+    payload = _valid_payload()
+    for goal in payload["goals"]:
+        goal.setdefault("subject_scope", "")
+        goal.setdefault("semantic_key", "")
+        goal.setdefault("continued_from", "")
+
+    class _StrictProvider:
+        last_latency_ms = 12.5
+
+        def __init__(self):
+            self.calls = []
+
+        def metadata(self):
+            return {
+                "provider_name": "turn-understanding-provider",
+                "host_fingerprint": "a" * 12,
+                "model_name": "strict-model",
+                "configured": True,
+                "qualified": True,
+                "qualification_status": "qualified",
+            }
+
+        def request(self, **kwargs):
+            self.calls.append(kwargs)
+            return copy.deepcopy(payload)
+
+    strict_provider = _StrictProvider()
+    monkeypatch.setattr(
+        service.config,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "_turn_understanding_strict_provider",
+        lambda: strict_provider,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_llm_client",
+        lambda: pytest.fail("legacy json_object client must not run"),
+    )
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: [])
+
+    diagnostics = {}
+    result = service._classify_with_llm(
+        {},
+        MESSAGE,
+        "product_question",
+        diagnostics_sink=diagnostics,
+    )
+
+    assert result is not None
+    assert result["goal_understanding_status"] == "valid"
+    assert len(strict_provider.calls) == 1
+    request = strict_provider.calls[0]
+    assert request["name"] == "turn_understanding"
+    assert request["schema"] == service.MINIMAL_PROVIDER_OUTPUT_SCHEMA
+    assert request["allow_unqualified"] is False
+    assert diagnostics["provider"]["provider_family"] == "turn-understanding-provider"
+    assert diagnostics["completion"]["content_present"] is True
+    assert diagnostics["response_envelope"] == "strict_tool_call"
+    assert diagnostics["envelope_unwrap_count"] == 0
+
+
+def test_strict_turn_understanding_blocks_an_unqualified_provider_without_legacy_fallback(
+    monkeypatch,
+):
+    class _UnqualifiedStrictProvider:
+        last_latency_ms = None
+
+        def metadata(self):
+            return {
+                "provider_name": "turn-understanding-provider",
+                "host_fingerprint": "b" * 12,
+                "model_name": "strict-model",
+                "configured": True,
+                "qualified": False,
+                "qualification_status": "provider_not_qualified",
+            }
+
+        def request(self, **_kwargs):
+            raise service.StrictDecisionProviderError("provider_not_qualified")
+
+    monkeypatch.setattr(
+        service.config,
+        "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "_turn_understanding_strict_provider",
+        _UnqualifiedStrictProvider,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_llm_client",
+        lambda: pytest.fail("legacy json_object client must not run"),
+    )
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: [])
+
+    diagnostics = {}
+    result = service._classify_with_llm(
+        {},
+        MESSAGE,
+        "product_question",
+        diagnostics_sink=diagnostics,
+    )
+
+    assert result is None
+    assert diagnostics["status"] == "failed"
+    assert diagnostics["reason_code"] == "provider_not_qualified"
+    assert diagnostics["provider"]["provider_error_category"] == (
+        "provider_not_qualified"
+    )
+
+
+def test_canonical_goals_keep_the_current_message_order_not_goal_hash_order(
+    monkeypatch,
+):
+    message = "这款是什么材质，平时容易受潮吗？"
+    payload = {
+        "goals": [
+            _goal(
+                source_text="这款是什么材质",
+                claim_type="material_composition",
+                attribute_key="",
+            ),
+            _goal(
+                source_text="平时容易受潮吗",
+                claim_type="moisture_resistance",
+                attribute_key="",
+            ),
+        ],
+    }
+    client = _FakeClient(_response_for_payload(payload))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: [])
+
+    result = service._classify_with_llm({}, message, "product_question")
+
+    assert result is not None
+    assert [goal["claim_type"] for goal in result["customer_goals"]] == [
+        "material_composition",
+        "moisture_resistance",
+    ]
+
+
 def test_minimal_prompt_does_not_request_server_owned_output_fields():
     prompt = service.SYSTEM_PROMPT
 

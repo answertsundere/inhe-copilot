@@ -307,6 +307,17 @@ def _register_default_tools(registry: ToolRegistry):
 # 每个 handler: (inputs: dict, state: dict) -> dict
 # 内部调用现有函数，不重写底层逻辑。
 
+
+def _trusted_jst_shop_scope(inputs: dict, state: dict) -> dict:
+    """Return channel-provided shop routing metadata without deriving identity."""
+    context = state.get("copilot_context", {}) or {}
+    scope = {}
+    for key in ("shop_id", "shop_name"):
+        value = str(context.get(key) or inputs.get(key) or "").strip()
+        if value:
+            scope[key] = value
+    return scope
+
 def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
     """调用 lookup_order_by_order_id 或 lookup_order_by_platform_order_id"""
     from app.integrations.jst.live_query import (
@@ -316,7 +327,11 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
     identifier = inputs.get("identifier", "")
     identifier_type = inputs.get("identifier_type", "internal_order_id")
 
-    result = lookup_order_by_identifier(identifier, identifier_type)
+    result = lookup_order_by_identifier(
+        identifier,
+        identifier_type,
+        **_trusted_jst_shop_scope(inputs, state),
+    )
     if result.get("found"):
         data = result["data"]
         return {
@@ -339,6 +354,7 @@ def _handle_jst_lookup_order(inputs: dict, state: dict) -> dict:
         "duration_ms": result.get("duration_ms", 0),
         "query_type": result.get("query_type", ""),
         "attempted_paths": result.get("attempted_paths", []),
+        "error_code": result.get("error_code"),
         "safe_fallback_reason": result.get("safe_fallback_reason", ""),
     }
 
@@ -348,7 +364,11 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
     from app.integrations.jst.live_query import lookup_order_by_identifier
 
     outer_so_id = inputs.get("outer_so_id", "")
-    result = lookup_order_by_identifier(outer_so_id, "platform_trade_id")
+    result = lookup_order_by_identifier(
+        outer_so_id,
+        "platform_trade_id",
+        **_trusted_jst_shop_scope(inputs, state),
+    )
     if result.get("found"):
         data = result["data"]
         return {
@@ -369,6 +389,7 @@ def _handle_jst_lookup_outbound(inputs: dict, state: dict) -> dict:
         "duration_ms": result.get("duration_ms", 0),
         "query_type": result.get("query_type", ""),
         "attempted_paths": result.get("attempted_paths", []),
+        "error_code": result.get("error_code"),
         "safe_fallback_reason": result.get("safe_fallback_reason", ""),
     }
 
@@ -398,6 +419,7 @@ def _handle_jst_lookup_tracking(inputs: dict, state: dict) -> dict:
         "duration_ms": result.get("duration_ms", 0),
         "query_type": result.get("query_type", ""),
         "attempted_paths": result.get("attempted_paths", []),
+        "error_code": result.get("error_code"),
         "safe_fallback_reason": result.get("safe_fallback_reason", ""),
     }
 

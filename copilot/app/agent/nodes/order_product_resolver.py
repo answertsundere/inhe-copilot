@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from typing import Any
@@ -322,7 +323,17 @@ def _looks_like_gift_item(item: dict) -> bool:
     return gift_by_name or gift_by_code or price <= 0
 
 
-def _identity_from_item(item: dict, confidence: float, reason: str, order_data: dict, identifier: str, identifier_type: str) -> dict:
+def _identity_from_item(
+    item: dict,
+    confidence: float,
+    reason: str,
+    order_data: dict,
+    identifier: str,
+    identifier_type: str,
+    *,
+    source: str = "jst_order_items",
+    snapshot_identity_only: bool = False,
+) -> dict:
     name = str(item.get("name") or item.get("sku_name") or "").strip()
     sku_id = str(item.get("sku_id") or "").strip()
     i_id = str(item.get("i_id") or "").strip()
@@ -330,9 +341,9 @@ def _identity_from_item(item: dict, confidence: float, reason: str, order_data: 
     for val in (name, sku_id, i_id):
         if val and val not in candidates:
             candidates.append(val)
-    return {
+    identity = {
         "status": "resolved",
-        "source": "jst_order_items",
+        "source": source,
         "identifier": identifier,
         "identifier_type": identifier_type,
         "internal_product_name": name,
@@ -341,12 +352,18 @@ def _identity_from_item(item: dict, confidence: float, reason: str, order_data: 
         "i_id": i_id,
         "confidence": round(float(confidence), 3),
         "reason": reason,
-        "order_id": str(order_data.get("o_id") or ""),
-        "so_id": str(order_data.get("so_id") or ""),
-        "outer_so_id": str(order_data.get("outer_so_id") or ""),
         "item_count": len(order_data.get("items", []) or []),
         "candidates": candidates,
     }
+    if snapshot_identity_only:
+        identity["snapshot_identity_only"] = True
+    else:
+        identity.update({
+            "order_id": str(order_data.get("o_id") or ""),
+            "so_id": str(order_data.get("so_id") or ""),
+            "outer_so_id": str(order_data.get("outer_so_id") or ""),
+        })
+    return identity
 
 
 def resolve_order_product_identity_from_order_data(
@@ -362,6 +379,42 @@ def resolve_order_product_identity_from_order_data(
     policy instead of reconstructing product identity from raw order fields.
     """
     items = order_data.get("items", []) or []
+    matched_item = order_data.get("matched_item")
+    live_exact_item = order_data.get("matched_item_reason") == "exact_jst_order_item"
+    snapshot_identity_only = order_data.get("snapshot_identity_only") is True
+    snapshot_exact_item = (
+        snapshot_identity_only
+        and order_data.get("identity_source") == "jst_snapshot_order_items"
+        and order_data.get("matched_item_reason") == "exact_jst_snapshot_order_item"
+    )
+    snapshot_exact_reference = (
+        snapshot_identity_only
+        and order_data.get("identity_source") == "jst_snapshot_order_reference"
+        and order_data.get("matched_item_reason") == "exact_jst_snapshot_order_reference"
+    )
+    if (live_exact_item or snapshot_exact_item or snapshot_exact_reference) and isinstance(matched_item, dict):
+        return _identity_from_item(
+            matched_item,
+            1.0,
+            (
+                "exact_jst_snapshot_order_reference"
+                if snapshot_exact_reference
+                else "exact_jst_snapshot_order_item"
+                if snapshot_exact_item
+                else "exact_jst_order_item"
+            ),
+            order_data,
+            identifier,
+            identifier_type,
+            source=(
+                "jst_snapshot_order_reference"
+                if snapshot_exact_reference
+                else "jst_snapshot_order_items"
+                if snapshot_exact_item
+                else "jst_order_items"
+            ),
+            snapshot_identity_only=snapshot_identity_only and not live_exact_item,
+        )
     item, confidence, reason = _pick_order_item(items, state)
     if item:
         return _identity_from_item(
@@ -371,6 +424,8 @@ def resolve_order_product_identity_from_order_data(
             order_data,
             identifier,
             identifier_type,
+            source="jst_snapshot_order_reference" if snapshot_identity_only else "jst_order_items",
+            snapshot_identity_only=snapshot_identity_only,
         )
     identity = _unresolved(
         "ambiguous",
@@ -874,10 +929,22 @@ def _lookup_local_order(identifier: str, identifier_type: str) -> dict | None:
         order = order_repo.get_order(identifier)
         if order:
             return order
+    if identifier_type in ("internal_order_id", "order_id", "unknown_identifier"):
+        lookup_snapshot_reference = getattr(order_repo, "get_order_by_snapshot_order_reference", None)
+        if callable(lookup_snapshot_reference):
+            order = lookup_snapshot_reference(identifier)
+            if order:
+                return order
     if identifier_type == "tracking_no":
         order = order_repo.get_order_by_tracking_no(identifier)
         if order:
             return order
+    if identifier_type in ("platform_trade_id", "platform_order_id", "unknown_identifier"):
+        lookup_external_item = getattr(order_repo, "get_order_by_external_item_id", None)
+        if callable(lookup_external_item):
+            order = lookup_external_item(identifier)
+            if order:
+                return order
     # Try all lookup paths as fallback
     order = order_repo.get_order(identifier)
     if order:
@@ -909,6 +976,16 @@ def _unresolved(status: str, identifier: str = "", identifier_type: str = "", re
 
 def order_product_resolver(state: dict) -> dict:
     t0 = time.time()
+    if os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() == "product_hub_review_only":
+        # The existing Context Pack owns exact Hub identity; do not resolve it twice.
+        return {"trace_steps": state.get("trace_steps", []) + [{
+            "node": "order_product_resolver",
+            "status": "skipped",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "cache_hit": False,
+            "reason": "product_hub_identity_owned_by_context_pack",
+            "summary": "legacy identity lookup deferred to the configured Hub-only owner",
+        }]}
     conversation_id = state.get("conversation_id") or "default"
     ctx = state.get("conversation_context", {}) or {}
     request_context = state.get("copilot_context", {}) or {}
@@ -1011,16 +1088,21 @@ def order_product_resolver(state: dict) -> dict:
             request_context.get("order_reference_source") == "explicit_request"
             and str(request_context.get("order_id") or "").strip() == identifier
         )
+        lookup_kwargs = {"exhaustive": exhaustive_lookup}
+        for key in ("shop_id", "shop_name"):
+            value = str(request_context.get(key) or "").strip()
+            if value:
+                lookup_kwargs[key] = value
         lookup = lookup_order_by_identifier(
             identifier,
             identifier_type,
-            exhaustive=exhaustive_lookup,
+            **lookup_kwargs,
         )
         if not lookup.get("found") and identifier_type != "unknown_identifier":
             fallback_lookup = lookup_order_by_identifier(
                 identifier,
                 "unknown_identifier",
-                exhaustive=exhaustive_lookup,
+                **lookup_kwargs,
             )
             if fallback_lookup.get("found"):
                 fallback_lookup["primary_lookup"] = {
@@ -1032,8 +1114,22 @@ def order_product_resolver(state: dict) -> dict:
                 lookup = fallback_lookup
                 identifier_type = "unknown_identifier"
     except Exception as exc:
-        identity = _unresolved("lookup_error", identifier, identifier_type, str(exc))
-        return _build_updates_from_identity(state, identity, t0, cache_hit=False)
+        # A validated identity-only snapshot may still resolve the exact SKU
+        # when the live order client is temporarily unavailable. It cannot
+        # provide order/logistics state and is disabled unless the repository
+        # has accepted its manifest.
+        local_order = _lookup_local_order(identifier, identifier_type)
+        if local_order:
+            lookup = {
+                "found": True,
+                "data": local_order,
+                "source": "local_order",
+                "query_type": identifier_type,
+                "_from_current_slots": False,
+            }
+        else:
+            identity = _unresolved("lookup_error", identifier, identifier_type, str(exc))
+            return _build_updates_from_identity(state, identity, t0, cache_hit=False)
 
     if not lookup.get("found"):
         # Fallback: try local order repository before giving up
@@ -1091,8 +1187,10 @@ def order_product_resolver(state: dict) -> dict:
         identifier_type=identifier_type,
     )
     if identity.get("status") == "resolved":
-        identity["_order_data"] = order_data  # propagate full order for downstream nodes
-        identity["_from_current_slots"] = from_current_slots  # track identifier provenance
+        snapshot_identity_only = identity.get("snapshot_identity_only") is True
+        if not snapshot_identity_only:
+            identity["_order_data"] = order_data  # propagate live order for downstream nodes
+            identity["_from_current_slots"] = from_current_slots  # track identifier provenance
     identity["lookup_endpoint"] = lookup.get("endpoint", "")
     identity["lookup_duration_ms"] = lookup.get("duration_ms", 0)
     _cache_set(f"{conversation_id}|{current_key}", identity)
@@ -1133,7 +1231,13 @@ def _build_updates_from_identity(state: dict, identity: dict, t0: float, cache_h
         # not from stale conversation context (avoids test isolation issues)
         order_data = identity.get("_order_data")
         from_current_slots = identity.get("_from_current_slots", True)
-        if order_data and not state.get("order") and not state.get("live_order") and from_current_slots:
+        if (
+            order_data
+            and not identity.get("snapshot_identity_only")
+            and not state.get("order")
+            and not state.get("live_order")
+            and from_current_slots
+        ):
             updates["order"] = order_data
             updates["order_found"] = True
             updates["order_source"] = identity.get("source", "local_order")

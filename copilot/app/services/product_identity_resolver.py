@@ -46,7 +46,8 @@ class ProductIdentityResolver:
         self._product_map = {}  # canonical_name -> product_info
         self._i_id_map = {}     # i_id -> product_info
         self._alias_map = {}    # alias -> canonical_name
-        self._load_product_data()
+        if os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() != "product_hub_review_only":
+            self._load_product_data()
 
     def _load_product_data(self):
         """加载商品数据构建映射。"""
@@ -129,6 +130,55 @@ class ProductIdentityResolver:
         customer_message: str = "",
     ) -> dict:
         """解析商品身份。"""
+        if os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() == "product_hub_review_only":
+            # In the empty-store candidate, never fall back to samples/title guesses.
+            if (
+                not isinstance(sku_id, str) or not sku_id.strip()
+                or any((platform_product_id, platform_product_id_hash, product_url,
+                        order_id, internal_i_id))
+            ):
+                return _unresolved("product_hub_requires_sku_only_input")
+            if product_candidates and (
+                not isinstance(product_candidates, list)
+                or any(
+                    not isinstance(candidate, dict) or candidate.get("type") != "sku_code"
+                    or candidate.get("value") != sku_id.strip()
+                    or candidate.get("sku_code", sku_id.strip()) != sku_id.strip()
+                    or any(candidate.get(key) for key in ("i_id", "item_id", "item_id_hash", "product_url", "product_id"))
+                    for candidate in product_candidates
+                )
+            ):
+                return _unresolved("product_hub_conflicting_identity_candidates")
+            if (
+                os.getenv("COPILOT_RUNTIME_ENV", "production").strip().lower() not in {"development", "test"}
+                or os.getenv("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", "").strip().lower() not in {"1", "true", "yes", "on"}
+            ):
+                return _unresolved("product_hub_candidate_configuration_required")
+            try:
+                from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+                binding = ProductHubReviewedFactsClient().resolve_active_sku_identity(sku_id.strip())
+            except Exception:
+                return _unresolved("product_hub_identity_unavailable")
+            if (
+                not isinstance(binding, dict) or binding.get("state") != "ready"
+                or binding.get("resolved_sku_code") != sku_id.strip()
+                or binding.get("identity_source") != "product_hub_exact_sku"
+                or not binding.get("product_code") or not binding.get("hub_product_id")
+            ):
+                return _unresolved("product_hub_identity_not_resolved")
+            if platform_title and platform_title.strip() not in {binding.get("product_name"), binding["product_code"]}:
+                return _unresolved("product_hub_title_conflicts_with_exact_sku")
+            sku = binding["resolved_sku_code"]
+            display_name = binding.get("product_name") or binding["product_code"]
+            return {
+                **_unresolved(""), "status": "resolved", "source": "product_hub_exact_sku",
+                "confidence": 1.0, "identity_confidence": 1.0,
+                "sku_id": sku, "sku_code": sku, "sku_family": _sku_family(sku),
+                "canonical_product_name": display_name, "display_product_name": display_name,
+                "knowledge_sku_scope": [sku], "identity_sources": ["product_hub_exact_sku"],
+                "match_reason": "active_exact_hub_sku", "product_code": binding["product_code"],
+                "hub_product_id": binding["hub_product_id"],
+            }
         platform_product_id = _first_text(platform_product_id, _extract_product_id_from_url(product_url))
         kb_result = self._resolve_from_kb(
             platform_product_id=platform_product_id,

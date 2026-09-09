@@ -21,7 +21,8 @@ class JSTAPIError(JSTError):
     """API 返回非 0 code"""
 
     # Known error code meanings for classification
-    _AUTH_ERROR_CODES = {110, 111, 112, 113}
+    _AUTH_ERROR_CODES = {111, 112, 113}
+    _IP_ALLOWLIST_ERROR_CODES = {110}
     _RATE_LIMIT_CODES = {100, 101}
 
     def __init__(self, code, message="", endpoint=""):
@@ -39,6 +40,14 @@ class JSTAPIError(JSTError):
             return False
 
     @property
+    def is_ip_allowlist_error(self) -> bool:
+        """Check whether JST rejected the caller's network egress IP."""
+        try:
+            return int(self.code) in self._IP_ALLOWLIST_ERROR_CODES
+        except (ValueError, TypeError):
+            return False
+
+    @property
     def is_rate_limit(self) -> bool:
         """Check if this is a rate limiting error."""
         try:
@@ -48,6 +57,8 @@ class JSTAPIError(JSTError):
 
     def classify(self) -> str:
         """Return a human-readable error classification."""
+        if self.is_ip_allowlist_error:
+            return "聚水潭出口 IP 未在白名单中"
         if self.is_auth_error:
             return "认证失败：access_token 可能已过期或无效，请检查环境变量 JUSHUITAN_ACCESS_TOKEN"
         if self.is_rate_limit:

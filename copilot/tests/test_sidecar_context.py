@@ -42,6 +42,27 @@ def test_build_sidecar_context_marks_untyped_explicit_order_as_unknown_reference
     assert context["order_reference_source"] == "explicit_request"
 
 
+def test_build_sidecar_context_preserves_structured_shop_identity_without_promoting_it_to_evidence():
+    context = build_sidecar_context({
+        "source": "manual_sidebar",
+        "customer_message": "请帮我看一下订单进度",
+        "order_id": "9876543210987654321",
+        "shop_name": "测试店铺",
+        "shop_id": "shop-007",
+    })
+
+    assert context["shop_name"] == "测试店铺"
+    assert context["shop_id"] == "shop-007"
+    candidate_values = [
+        str(candidate.get("value") or "")
+        for group in ("product_candidates", "order_candidates")
+        for candidate in context.get(group, [])
+        if isinstance(candidate, dict)
+    ]
+    assert "测试店铺" not in candidate_values
+    assert "shop-007" not in candidate_values
+
+
 def test_make_conversation_id_is_stable():
     assert make_conversation_id("千牛 - A", "buyer1") == make_conversation_id("千牛 - A", "buyer1")
 

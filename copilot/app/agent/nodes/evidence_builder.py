@@ -690,6 +690,7 @@ def _formal_evidence_convergence(
         admitted,
         customer_message=str(state.get("normalized_message", state.get("customer_message", "")) or ""),
         conversation_summary=state.get("conversation_context_summary") if isinstance(state.get("conversation_context_summary"), dict) else {},
+        conversation_turns=copilot_context.get("conversation_history") if isinstance(copilot_context.get("conversation_history"), list) else [],
         channel_capabilities=copilot_context.get("channel_capabilities", {}),
         allowed_read_only_tools=[
             str(item.get("tool_name") or "")

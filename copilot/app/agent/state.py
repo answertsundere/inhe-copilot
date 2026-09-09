@@ -13,6 +13,9 @@ class AgentState(TypedDict, total=False):
     conversation_id: str
     order_id: str
     tracking_no: str  # 前端/API 传入的快递单号
+    # Local-only provenance for a structured sidebar order field. It carries
+    # no identifier value and survives the graph after the context is redacted.
+    _runtime_explicit_order_reference: dict
     image_attachments: list  # 客户消息中的图片附件元数据，不保存原图
 
     # ========== Slot 抽取结果 ==========

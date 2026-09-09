@@ -205,6 +205,8 @@ def build_sidecar_context(payload: dict[str, Any], *, strict_conversation_histor
     identifiers = extract_identifiers(customer_message) if customer_message else {}
     window_title = payload.get("window_title", "") or ""
     buyer_nick = payload.get("buyer_nick", "") or ""
+    shop_name = str(payload.get("shop_name") or payload.get("store_name") or "").strip()
+    shop_id = str(payload.get("shop_id") or payload.get("store_id") or "").strip()
     conversation_id = (
         payload.get("conversation_id")
         or make_conversation_id(window_title=window_title, buyer_nick=buyer_nick)
@@ -230,6 +232,8 @@ def build_sidecar_context(payload: dict[str, Any], *, strict_conversation_histor
         "source": payload.get("source", "qianniu_sidecar"),
         "window_title": window_title,
         "buyer_nick": buyer_nick,
+        "shop_name": shop_name,
+        "shop_id": shop_id,
         "conversation_id": conversation_id,
         "customer_message": customer_message,
         "customer_message_source": payload.get("customer_message_source", ""),

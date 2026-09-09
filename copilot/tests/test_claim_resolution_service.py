@@ -203,6 +203,69 @@ def test_ambiguous_unattributed_claim_does_not_absorb_multiple_attributes():
     assert result["reason"] == "selection_ambiguous"
 
 
+def test_unscoped_dimension_goal_prefers_product_overall_dimensions_over_legacy_unattributed_evidence():
+    result = build_claim_resolutions(
+        [_claim()],
+        direct_product_facts=[
+            _fact(
+                "product-overall",
+                "overall_dimensions",
+                subject_scope="product",
+            ),
+            _fact("legacy-unattributed", ""),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["product-overall"]
+
+
+def test_unscoped_dimension_goal_keeps_explicit_axis_ambiguity():
+    result = build_claim_resolutions(
+        [_claim()],
+        direct_product_facts=[
+            _fact(
+                "product-overall",
+                "overall_dimensions",
+                subject_scope="product",
+            ),
+            _fact("product-width", "width", subject_scope="product"),
+        ],
+        direct_policy_facts=[],
+        conflicts=[],
+    )[0]
+
+    assert result["status"] == "unresolved"
+    assert result["reason"] == "selection_ambiguous"
+
+
+def test_product_overall_dimension_conflict_remains_blocking():
+    result = build_claim_resolutions(
+        [_claim()],
+        direct_product_facts=[
+            _fact(
+                "product-overall",
+                "overall_dimensions",
+                subject_scope="product",
+            ),
+        ],
+        direct_policy_facts=[],
+        conflicts=[
+            _fact(
+                "product-overall-conflict",
+                "overall_dimensions",
+                subject_scope="product",
+                reason="conflicting_evidence",
+            ),
+        ],
+    )[0]
+
+    assert result["status"] == "conflicting"
+    assert result["conflicting_evidence_uids"] == ["product-overall-conflict"]
+
+
 def test_unmapped_customer_goal_stays_unresolved_with_semantic_provenance():
     result = build_claim_resolutions(
         [{

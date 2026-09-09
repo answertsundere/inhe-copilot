@@ -15,6 +15,12 @@ from app.services.fact_type_alias_service import (
 
 
 FACT_TYPE_LABELS = {
+    # A broad product question is answerable only by restating concrete,
+    # reviewed facts. It is not a quality, safety, or durability conclusion.
+    "product_overview": (
+        "商品整体概况/笼统产品评价（仅限已审核的材质和整体尺寸等具体事实，"
+        "不得作为质量、安全、耐用或适用性结论）"
+    ),
     "material_composition": "\u6750\u8d28",
     "material_safety": "\u6750\u8d28\u548c\u5b89\u5168\u8bf4\u660e",
     "bite_or_toxicity": "\u8bef\u5165\u53e3/\u8bef\u54ac\u5b89\u5168\u5904\u7406",
@@ -50,6 +56,7 @@ FACT_TYPE_LABELS = {
 
 FACT_TYPE_LABELS.update({
     "gross_weight": "商品毛重/包装重量",
+    "net_weight": "商品净重（商品本身、不含包装的重量，不是毛重或承重）",
     "accessory_availability": "配件售卖/补购",
     "accessory_usage": "配件用途/识别",
     "order_assistance": "下单/规格选择",
@@ -678,6 +685,11 @@ def fact_type_matches(query_fact_type: str, evidence_fact_type: str) -> bool:
         return False
     if not evidence_fact_type:
         return False
+    if query_fact_type == "product_overview":
+        canonical_evidence_type = canonical_material_composition_claim_type(
+            evidence_fact_type
+        )
+        return canonical_evidence_type in {"material_composition", "dimensions"}
     if query_fact_type == evidence_fact_type:
         return True
     if (
@@ -709,5 +721,7 @@ def is_strict_fact_type(query_fact_type: str) -> bool:
         "invoice_policy",
         "price_protection",
         "gross_weight",
+        "net_weight",
+        "product_overview",
         "accessory_availability",
     }

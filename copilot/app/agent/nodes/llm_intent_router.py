@@ -371,7 +371,8 @@ def _result(state: dict, decision: dict, t0: float, source: str, summary: str) -
     return {
         "intent": intent,
         "skill": skill,
-        "matched_product_name": decision.get("product_name") or state.get("matched_product_name", ""),
+        # Routing labels remain diagnostic; only identity owners may bind a product.
+        "matched_product_name": state.get("matched_product_name", ""),
         "router_decision": decision,
         "router_source": source,
         "router_confidence": decision.get("confidence", 0),

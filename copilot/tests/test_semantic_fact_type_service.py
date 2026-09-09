@@ -213,6 +213,7 @@ def test_turn_understanding_candidates_expose_one_canonical_material_choice():
         "fact_type_id": "material_composition",
         "meaning": "材质",
         "attribute_contract": "optional_explicit_attribute_key",
+        "subject_scope_candidates": [""],
         "attribute_candidates": ["material_composition"],
     }]
     dimension_candidates = [
@@ -248,7 +249,48 @@ def test_turn_understanding_candidates_expose_color_options_as_a_canonical_type(
         "fact_type_id": "color_options",
         "meaning": "\u53ef\u9009\u989c\u8272",
         "attribute_contract": "optional_explicit_attribute_key",
+        "subject_scope_candidates": [""],
     } in candidates
+
+
+def test_turn_understanding_candidates_expose_product_overview_as_factual_only():
+    candidates = service._canonical_fact_type_candidates()
+
+    assert {
+        "fact_type_id": "product_overview",
+        "meaning": (
+            "商品整体概况/笼统产品评价（仅限已审核的材质和整体尺寸等具体事实，"
+            "不得作为质量、安全、耐用或适用性结论）"
+        ),
+        "attribute_contract": "optional_explicit_attribute_key",
+        "subject_scope_candidates": [""],
+    } in candidates
+
+    message = "一个商品整体咨询"
+    goals, status, diagnostics = service._sanitize_customer_goals(
+        [
+            {
+                "goal_kind": "customer_goal",
+                "claim_type_status": "canonical",
+                "claim_type": "product_overview",
+                "attribute_key": "",
+                "semantic_key": "",
+                "policy_intent_ref": "",
+                "source_text": message,
+            }
+        ],
+        message=message,
+    )
+
+    assert status == "valid"
+    assert diagnostics == []
+    assert goals[0]["claim_type"] == "product_overview"
+
+
+def test_turn_understanding_prompt_defines_product_overview_as_factual_only():
+    assert "broad overall product inquiry" in service.SYSTEM_PROMPT
+    assert "it is never a quality" in service.SYSTEM_PROMPT
+    assert "suitability conclusion itself" in service.SYSTEM_PROMPT
 
 
 def test_turn_understanding_normalizes_known_dimension_display_attribute():

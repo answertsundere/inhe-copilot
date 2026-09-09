@@ -111,6 +111,14 @@ def test_runtime_feature_flags_expose_product_hub_read_bridge(monkeypatch):
     assert runtime_routes._feature_flags()["product_hub_reviewed_facts"] is True
 
 
+def test_runtime_feature_flags_expose_review_only_product_hub_media_bridge(monkeypatch):
+    from app.api import runtime_routes
+
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_REVIEWED_MEDIA_ENABLED", "true")
+
+    assert runtime_routes._feature_flags()["product_hub_reviewed_media"] is True
+
+
 def test_runtime_readiness_uses_503_without_exposing_database_path(monkeypatch):
     from flask import Flask
     from app.api import runtime_routes

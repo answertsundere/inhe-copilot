@@ -4,6 +4,9 @@
 # Web 框架
 flask>=3.0
 
+# Formal stateful Agent graph
+langgraph>=0.6,<0.7
+
 # LLM 客户端 (OpenAI 兼容接口)
 openai>=1.0
 

@@ -39,6 +39,67 @@ def product_context_db(monkeypatch):
     return session_factory
 
 
+@pytest.mark.parametrize("with_existing_fact", [False, True])
+def test_answer_context_shadow_only_adds_counts(product_context_db, monkeypatch, with_existing_fact):
+    import copy
+    import app.services.product_context_pack_service as module
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+
+    monkeypatch.delenv("COPILOT_PRODUCT_HUB_ANSWER_CONTEXT_SHADOW_ENABLED", raising=False)
+    monkeypatch.delenv("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED", raising=False)
+    monkeypatch.delenv("COPILOT_PRODUCT_HUB_REVIEWED_MEDIA_ENABLED", raising=False)
+    identity = {"sku": "SKU-A", "i_id": "JST-ID", "product_name": "", "source": "jst_snapshot", "product_identity_resolution": {"status": "resolved"}}
+    monkeypatch.setattr(module, "_resolve_identity_for_pack", lambda *_a: identity)
+    state = {"slots": {"sku_code": "SKU-A"}, "suggested_reply": "unchanged", "can_send": False, "reply_blocks": []}
+    original = copy.deepcopy(state)
+    calls = []
+
+    def read(_self, sku):
+        calls.append(sku)
+        return {"state": "ready", "reason_code": "", "resolved_sku_code": sku, "product_code": "PRODUCT-A", "assets": [], "facts": [{
+            "id": "source-fact", "type": "size", "attr": "尺寸", "scope": "商品整体", "value": "30 x 40 x 50", "unit": "cm",
+            "product_code": "PRODUCT-A", "sku_code": sku, "status": "confirmed", "conflict": False,
+        }]}
+
+    monkeypatch.setattr(ProductHubReviewedFactsClient, "fetch_answer_context_for_sku", read, raising=False)
+    if with_existing_fact:
+        legacy = read(None, "SKU-A")
+        legacy["facts"][0]["id"] = "existing-formal-source"
+        legacy["facts"][0]["value"] = "60 x 70 x 80"
+        calls.clear()
+        monkeypatch.setattr(module, "_load_product_hub_reviewed_facts", lambda _identity: legacy)
+    off = module.build_product_context_pack(state, query_fact_type="dimensions")
+    assert len(off["facts"]) == int(with_existing_fact)
+    assert not calls
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_ANSWER_CONTEXT_SHADOW_ENABLED", "true")
+    on = module.build_product_context_pack(state, query_fact_type="dimensions")
+    assert calls == ["SKU-A"]
+    diagnostics = on["stats"].pop("product_hub_answer_context_shadow")
+    assert diagnostics["state"] == "ready"
+    assert diagnostics["returned_fact_count"] == diagnostics["mapped_candidate_count"] == 1
+    assert diagnostics["formal_merge_count"] == 0
+    assert "source-fact" not in json.dumps(diagnostics)
+    assert on == off
+    assert state == original
+
+
+@pytest.mark.parametrize("sku,status,allowed", [("SKU-A", "ambiguous", []), ("", "resolved", []), ("SKU-A", "resolved", ["faq"])])
+def test_answer_context_shadow_requires_resolved_sku_and_allowed_source(product_context_db, monkeypatch, sku, status, allowed):
+    import app.services.product_context_pack_service as module
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_ANSWER_CONTEXT_SHADOW_ENABLED", "true")
+    monkeypatch.delenv("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED", raising=False)
+    monkeypatch.delenv("COPILOT_PRODUCT_HUB_REVIEWED_MEDIA_ENABLED", raising=False)
+    identity = {"sku": sku, "i_id": "JST-ID", "product_name": "", "source": "jst_snapshot", "product_identity_resolution": {"status": status}}
+    monkeypatch.setattr(module, "_resolve_identity_for_pack", lambda *_a: identity)
+    monkeypatch.setattr(ProductHubReviewedFactsClient, "fetch_answer_context_for_sku", lambda *_a: pytest.fail("transport called"), raising=False)
+    pack = module.build_product_context_pack({}, allowed_source_types=allowed, query_fact_type="dimensions")
+    diagnostics = pack["stats"]["product_hub_answer_context_shadow"]
+    assert diagnostics["state"] == "not_attempted"
+    assert diagnostics["formal_merge_count"] == 0
+
+
 def _add_chunked_entry(db, *, title, content, source_type, fact_type, product_scope, sku_scope):
     from app.models.knowledge_base import KnowledgeChunk, KnowledgeEntry
 
@@ -1369,9 +1430,221 @@ def test_product_context_pack_includes_exact_confirmed_product_hub_fact_after_id
     assert pack["stats"]["product_hub_candidate_count"] == 1
 
 
+def test_product_context_pack_uses_authoritative_packaging_goal_for_exact_carton_dimensions(
+    product_context_db,
+    monkeypatch,
+):
+    """The Pack receives scope from Turn Understanding, never from text heuristics."""
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    from app.services.product_context_pack_service import build_product_context_pack
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    product_code = "HUB-PACKAGING-PRODUCT-01"
+    sku_code = "HUB-PACKAGING-SKU-01"
+    monkeypatch.setattr(
+        ProductIdentityResolver,
+        "resolve",
+        lambda _self, **_signals: {
+            "status": "resolved",
+            "i_id": product_code,
+            "sku_code": sku_code,
+            "identity_confidence": 1.0,
+            "identity_sources": ["test"],
+            "match_reason": "exact_test_identity",
+        },
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts_for_sku",
+        lambda _self, code: {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": product_code,
+            "resolved_sku_code": code,
+            "facts": [
+                {
+                    "id": "carton-length",
+                    "product_code": product_code,
+                    "sku_code": sku_code,
+                    "type": "pack_size",
+                    "attr": "纸箱长",
+                    "value": "100",
+                    "unit": "cm",
+                    "scope": "包装",
+                    "applies": "",
+                    "source": "manual",
+                    "status": "confirmed",
+                    "conflict": False,
+                    "updated_at": "2026-08-29T00:00:00Z",
+                },
+                {
+                    "id": "carton-width",
+                    "product_code": product_code,
+                    "sku_code": sku_code,
+                    "type": "pack_size",
+                    "attr": "纸箱宽",
+                    "value": "50",
+                    "unit": "cm",
+                    "scope": "包装",
+                    "applies": "",
+                    "source": "manual",
+                    "status": "confirmed",
+                    "conflict": False,
+                    "updated_at": "2026-08-29T00:00:00Z",
+                },
+                {
+                    "id": "carton-height",
+                    "product_code": product_code,
+                    "sku_code": sku_code,
+                    "type": "pack_size",
+                    "attr": "纸箱高",
+                    "value": "30",
+                    "unit": "cm",
+                    "scope": "包装",
+                    "applies": "",
+                    "source": "manual",
+                    "status": "confirmed",
+                    "conflict": False,
+                    "updated_at": "2026-08-29T00:00:00Z",
+                },
+            ],
+        },
+    )
+
+    base_state = {"order_product_identity": {"i_id": product_code, "sku_id": sku_code}}
+    packaging_pack = build_product_context_pack(
+        {
+            **base_state,
+            "turn_understanding": {
+                "requested_claims": [{
+                    "goal_ref": "goal-packaging-dimensions",
+                    "goal_kind": "customer_goal",
+                    "claim_type": "dimensions",
+                    "subject_scope": "packaging",
+                }],
+            },
+        },
+        query="dimension request",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+    product_pack = build_product_context_pack(
+        {
+            **base_state,
+            "turn_understanding": {
+                "requested_claims": [{
+                    "goal_ref": "goal-product-dimensions",
+                    "goal_kind": "customer_goal",
+                    "claim_type": "dimensions",
+                    "subject_scope": "product",
+                }],
+            },
+        },
+        query="dimension request",
+        allowed_source_types=["product_facts"],
+        query_fact_type="dimensions",
+    )
+
+    packaging_facts = [
+        item for item in packaging_pack["facts"]
+        if item.get("subject_scope") == "packaging"
+    ]
+    assert len(packaging_facts) == 1
+    assert packaging_facts[0]["value"] == "100 x 50 x 30cm"
+    assert product_pack["facts"] == []
+
+
+def test_product_context_pack_exposes_exact_hub_media_without_promoting_it_to_facts(
+    product_context_db,
+    monkeypatch,
+):
+    """Catch a Pack that skips exact Hub media or lets it change factual retrieval."""
+    from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+    from app.services.product_context_pack_service import build_product_context_pack
+    from app.services.product_identity_resolver import ProductIdentityResolver
+
+    product_code = "HUB-MEDIA-PRODUCT-007"
+    sku_code = "HUB-MEDIA-SKU-007"
+    fact_calls = []
+    media_calls = []
+    monkeypatch.setattr(
+        ProductIdentityResolver,
+        "resolve",
+        lambda _self, **_signals: {
+            "status": "resolved",
+            "i_id": product_code,
+            "sku_code": sku_code,
+            "identity_confidence": 1.0,
+            "identity_sources": ["test"],
+            "match_reason": "exact_test_identity",
+        },
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_confirmed_facts_for_sku",
+        lambda _self, code: fact_calls.append(code) or {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": product_code,
+            "resolved_sku_code": code,
+            "facts": [],
+        },
+    )
+    monkeypatch.setattr(
+        ProductHubReviewedFactsClient,
+        "fetch_reviewable_assets_for_sku",
+        lambda _self, code: media_calls.append(code) or {
+            "state": "ready",
+            "reason_code": "",
+            "product_code": product_code,
+            "resolved_sku_code": code,
+            "assets": [{
+                "asset_id": "asset-001",
+                "asset_type": "sku_image",
+                "media_purpose": "appearance_image",
+                "asset_title": "main product view",
+                "scene_tags": ["appearance"],
+                "asset_url": "http://127.0.0.1:8795/api/v2/media/preview/asset-001",
+                "source": "product_hub.agent_assets",
+                "source_table": "product_hub.assets",
+                "source_review_status": "approved",
+                "product_code": product_code,
+                "resolved_sku_code": code,
+            }],
+        },
+    )
+
+    pack = build_product_context_pack(
+        {"order_product_identity": {"i_id": product_code, "sku_id": sku_code}},
+        query="show the product appearance",
+        allowed_source_types=["product_facts"],
+        query_fact_type="appearance",
+    )
+
+    assert fact_calls == [sku_code]
+    assert media_calls == [sku_code]
+    assert pack["stats"]["product_hub_media_state"] == "ready"
+    assert pack["stats"]["product_hub_media_candidate_count"] == 1
+    assert [item["asset_id"] for item in pack["media_assets"]] == ["asset-001"]
+    assert pack["recommended_assets"] == []
+    assert pack["facts"] == []
+    hub_media = pack["product_first_evidence_pack"]["product_media_assets"]
+    assert hub_media[0]["source_table"] == "product_hub.assets"
+    assert hub_media[0]["can_direct_answer"] is False
+
+
+@pytest.mark.parametrize(
+    ("reason", "confidence"),
+    [
+        ("single_order_item", 0.99),
+        ("exact_jst_order_item", 1.0),
+    ],
+)
 def test_product_context_pack_reuses_resolved_jst_order_item_sku_for_exact_hub_read(
     product_context_db,
     monkeypatch,
+    reason,
+    confidence,
 ):
     from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
     from app.services.product_context_pack_service import build_product_context_pack
@@ -1421,8 +1694,8 @@ def test_product_context_pack_reuses_resolved_jst_order_item_sku_for_exact_hub_r
                 "sku_id": sku_code,
                 "i_id": "JST-ORDER-ITEM-ID-01",
                 "matched_product_name": "Exact JST order item",
-                "confidence": 0.99,
-                "reason": "single_order_item",
+                "confidence": confidence,
+                "reason": reason,
             },
         },
         query="what are the dimensions",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from copy import deepcopy
 from typing import Any
@@ -239,6 +240,8 @@ def _looks_like_internal_product_code(value: str) -> bool:
 
 
 def _sku_family(value: str) -> str:
+    if os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() == "product_hub_review_only":
+        return ""
     match = SKU_FAMILY_RE.match(str(value or "").strip())
     return match.group(1).upper() if match else ""
 

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import config
 from app.services.model_first_answer_composer_service import (
     COMPOSER_CLAUSE_FIELD_OWNERSHIP,
     COMPOSER_RESPONSE_SCHEMA,
@@ -280,6 +281,160 @@ def test_composer_renders_one_clause_for_each_customer_goal():
         "variant_context_present": False,
     }
     assert "private-sku" not in client.messages[1]["content"]
+
+
+def test_composer_accepts_a_product_overview_as_concrete_reviewed_facts():
+    response = _response()
+    context = response["minimal_decision_context"]
+    context["requested_claims"] = [
+        _goal(
+            "goal-product-overview",
+            "product_overview",
+            goal_summary="了解商品的已确认基础信息",
+        )
+    ]
+    context["admitted_evidence"] = [
+        {
+            "evidence_uid": "ev-material",
+            "fact_type": "material_composition",
+            "attribute_key": "material",
+            "content": "主体为PP材质",
+        },
+        {
+            "evidence_uid": "ev-dimensions",
+            "fact_type": "dimensions",
+            "attribute_key": "dimensions",
+            "content": "整体尺寸为120 x 60 x 90厘米",
+        },
+    ]
+    context["claim_resolutions"] = [
+        _resolution(
+            "claim-product-overview",
+            "product_overview",
+            "supported",
+            evidence_uids=["ev-material", "ev-dimensions"],
+            support_basis="direct_evidence",
+        )
+    ]
+
+    updated, result, _client = _compose(
+        {
+            "clauses": [
+                {
+                    "goal_ref": "goal_01",
+                    "text": "可确认的材质是PP，整体尺寸为120 x 60 x 90厘米。",
+                    "selected_option_refs": [],
+                }
+            ]
+        },
+        response,
+    )
+
+    assert result["status"] == "accepted"
+    assert result["used_evidence_uids"] == ["ev-dimensions", "ev-material"]
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+
+
+def test_care_closure_candidate_mode_requires_and_renders_model_owned_closure(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        config,
+        "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
+        True,
+        raising=False,
+    )
+    payload = _valid_payload()
+    payload["customer_care_closure"] = "您可以按这个尺寸看看摆放位置是否合适。"
+
+    updated, result, _ = _compose(payload)
+
+    assert result["status"] == "accepted"
+    assert updated["suggested_reply"].endswith(
+        "您可以按这个尺寸看看摆放位置是否合适。"
+    )
+
+
+def test_care_closure_candidate_mode_rejects_omission(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        config,
+        "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
+        True,
+        raising=False,
+    )
+
+    updated, result, _ = _compose(_valid_payload())
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_customer_care_closure_missing"
+    assert updated["suggested_reply"] == "旧回复"
+
+
+@pytest.mark.parametrize("closure", ["", "  \n  "])
+def test_care_closure_can_be_empty_when_the_answer_is_complete(monkeypatch, closure):
+    monkeypatch.setattr(config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED", True)
+    payload = _valid_payload()
+    payload["customer_care_closure"] = closure
+
+    updated, result, client = _compose(payload)
+
+    assert result["status"] == "accepted"
+    assert updated["suggested_reply"] == "".join(item["text"] for item in payload["clauses"])
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+    assert client.call_count == 1
+    assert "空字符串" in client.messages[0]["content"]
+    assert "不得复述" in client.messages[0]["content"]
+    assert COMPOSER_RESPONSE_SCHEMA["properties"]["customer_care_closure"]["minLength"] == 0
+
+
+@pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize("closure", [None, False, 0, [], {}, "x" * 241])
+def test_care_closure_rejects_invalid_values(monkeypatch, required, closure):
+    monkeypatch.setattr(config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED", required)
+    payload = _valid_payload()
+    payload["customer_care_closure"] = closure
+
+    updated, result, client = _compose(payload)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_schema_invalid"
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize("source", ["supported", "unresolved", "all", "whitespace"])
+def test_care_closure_rejects_copied_clauses_without_rewriting(monkeypatch, source):
+    monkeypatch.setattr(config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED", True)
+    payload = _valid_payload()
+    texts = [item["text"] for item in payload["clauses"]]
+    payload["customer_care_closure"] = {
+        "supported": texts[1], "unresolved": texts[0],
+        "all": "".join(texts), "whitespace": " \n".join(texts[1]),
+    }[source]
+
+    updated, result, client = _compose(payload)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] == "composer_customer_care_closure_repeated"
+    assert updated["suggested_reply"] == "旧回复"
+    assert client.call_count == 1
+
+
+@pytest.mark.parametrize("closure", ["RAG已经核对。", "安装视频已经发给您了。"])
+def test_care_closure_preserves_internal_and_media_guards(monkeypatch, closure):
+    monkeypatch.setattr(config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED", True)
+    payload = _valid_payload()
+    payload["customer_care_closure"] = closure
+
+    _updated, result, client = _compose(payload)
+
+    assert result["status"] == "provider_blocked"
+    assert result["rejection_reason"] in {"composer_internal_language", "composer_unsupported_media_promise"}
+    assert client.call_count == 1
 
 
 def test_composer_fails_closed_when_explicit_role_override_is_unqualified(
@@ -1083,6 +1238,43 @@ def test_composer_prompt_requires_customer_visible_expression_stability():
     assert client.call_count == 1
 
 
+def test_composer_prompt_preserves_context_and_measurement_meaning(monkeypatch):
+    monkeypatch.setattr(config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED", True)
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+    for contract in (
+        "recent_conversation_turns", "客户最新澄清", "测量对象和口径",
+        "包装尺寸不能说成商品本身尺寸", "净重不能改成毛重或承重",
+        "必要的简短共情放进对应 clause", "不另加状态播报式收尾",
+    ):
+        assert contract in prompt
+
+
+def test_composer_prompt_requires_warm_fact_answer_without_new_claims():
+    _, result, client = _compose(_valid_payload())
+
+    assert result["status"] == "accepted"
+    prompt = client.messages[0]["content"]
+    assert "先直接给出客户要的具体结论" in prompt
+    assert "不为增加长度强行收尾" in prompt
+    assert "必须有一句不引入任何新事实的自然收束" not in prompt
+    assert "不得增加未被事实支持的性能、场景或承诺" in prompt
+
+
+def test_composer_uses_a_bounded_configured_temperature(monkeypatch):
+    monkeypatch.setattr(
+        config,
+        "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_TEMPERATURE",
+        0.2,
+        raising=False,
+    )
+
+    _, result, client = _compose(_valid_payload())
+
+    assert result["status"] == "accepted"
+    assert client.kwargs["temperature"] == 0.2
+    assert result["provider_diagnostics"]["temperature"] == 0.2
+
+
 def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
     _, result, client = _compose(_valid_payload())
 
@@ -1120,6 +1312,13 @@ def test_composer_prompt_uses_only_actual_blocks_as_media_delivery_authority():
     assert "Only media_context.actual_attached_media_types authorizes wording" in prompt
     assert "candidate_count and media_context.request_refs are context only" in prompt
     assert "do not state or imply present delivery" in prompt
+
+
+def test_composer_prompt_constrains_product_overview_to_concrete_facts():
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+
+    assert "claim_type=product_overview" in prompt
+    assert "不得把它概括为质量、安全、耐用、适用、认证或性能结论" in prompt
 
 
 def test_composer_response_schema_is_the_prompt_and_validator_field_owner():

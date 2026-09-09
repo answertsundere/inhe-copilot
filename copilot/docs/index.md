@@ -27,7 +27,7 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Business Architecture Invariants
 
-- External product titles and structured order references resolve through JST/internal product identity before product facts are selected. An untyped sidebar order value is not classified from its length; it uses the bounded JST identifier surface and only an unambiguous verified single order item or primary item with gifts may supply an exact SKU to the Product Context Pack. A JST SKU maps to Product Hub facts only through the exact Hub SKU natural key, never by treating JST `i_id` as a Hub product code; context-selected multi-item orders remain fail-closed.
+- External product titles and structured order references resolve through JST/internal product identity before product facts are selected. An untyped sidebar order value is not classified from its length; it uses the bounded JST identifier surface and only an unambiguous verified single order item, an order with one primary item and gifts, or one exact JST outbound-item identifier match may supply an exact SKU to the Product Context Pack. An explicit shop ID, or a shop label resolving to exactly one enabled JST shop, may constrain a direct outbound lookup and bounded scan only when paired with that explicit order reference; it cannot prove an order or product by itself. A JST SKU maps to Product Hub facts, and separately to review-only Hub media candidates, only through the exact Hub SKU natural key, never by treating JST `i_id` as a Hub product code; context-selected multi-item orders remain fail-closed. Hub media is never factual evidence or delivered media merely by being present in context.
 - The knowledge base stores reviewed base facts and described media; bounded reasoning may connect eligible facts but may not invent strong safety, compliance, order, refund, replacement, compensation, or platform claims.
 - Product facts, policy facts, service actions, media references, and Answer Memory are separate roles.
 - Historical reviewed answers teach handling and wording, not product truth.
@@ -37,6 +37,66 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 - Benchmark and replay results are valid only when they exercise the same final pipeline and context contract as the user-facing path.
 
 ## Current Architecture Direction
+
+### Product Hub Answer Context Shadow (2026-09-08)
+
+The existing Hub client can read `answer-context-v1` with
+`COPILOT_PRODUCT_HUB_ANSWER_CONTEXT_SHADOW_ENABLED=true` (default false).
+Existing Product Context Pack adapters produce aggregate diagnostics only;
+formal facts, media, reply ownership and delivery are unchanged. No model call
+or production database write is involved. See
+[Product Hub read contract](research/product-hub-agent-read-api.md) and
+[ADR 0010](adr/0010-product-hub-reviewed-fact-read-bridge.md).
+Three deterministic products from the existing read-only snapshot resolved
+successfully. They returned 13 fact candidates and 104 review-only media
+candidates; nine unsupported media types were excluded. In the four queried
+fact types, only two color-options candidates mapped; dimensions/material
+coverage is not established by this sample. Two additional contract-targeted
+snapshot probes independently mapped material (two candidates) and overall
+dimensions (one candidate); they do not replace the original three samples.
+This is transport/contract evidence,
+not a customer-answer accuracy result or a production rollout.
+
+### Local Review Candidate Check (2026-09-07)
+
+The single authorized historical-order dimensions check through isolated 5023
+returned HTTP 200, four selected evidence records, and a supported dimensions
+claim using `overall_dimensions`. The candidate still failed semantic audit:
+it requested available-space dimensions instead of answering the product-size
+question. Runtime `model_first_answer_composer=false` skipped the existing
+Composer; the recorded generation mode was `rule_based`. Next ownership check
+is the isolated candidate launch configuration and existing generation path.
+The response retained `can_send=false` and `requires_human_review=true`.
+No additional model request was run. This one-case diagnostic does not qualify
+answer quality or establish real customer accuracy.
+
+The isolated launcher was subsequently corrected to enable the existing
+review-only Composer together with convergence and query-only knowledge access.
+Two launcher tests passed; restarted 5023 reported ready, Composer enabled, and
+no source drift. Offline construction of `ComposerDecisionInput` from the saved
+snapshot succeeded without a model call. Post-configuration generated reply
+quality remains unverified; the earlier one-request authorization was consumed.
+
+Follow-up verification found one renderable customer goal in the saved
+dimensions observation, with no provider-material error. Existing Composer,
+Pipeline entrypoint, and ReplyService regression tests passed (273 cases).
+The stopped local 5175 frontend was restored; its page returned HTTP 200 and
+its proxied runtime reported Composer enabled with no source drift. These
+offline and routing checks do not substitute for a generated-reply evaluation.
+
+One generated review-only rerun then confirmed the Composer used one admitted
+fact, passed final audit, and retained human review, but the provider returned
+an overly terse 13-character fact-only reply. Prompt and provider-input hashes
+had changed from the prior run while the provider completion hash had not, so
+the final pipeline did not overwrite the candidate. The Composer contract now
+requires a brief, fact-neutral natural closure after a directly supported
+answer; local Composer, Pipeline, and ReplyService regressions passed. The
+updated contract was subsequently corrected: a complete answer may explicitly
+return an empty closure rather than repeat itself; copied closures are rejected,
+not removed by a second reply formatter. One native product-only check now
+passes both Final audits and the scoped no-send/read-only diagnostic. This is
+not production or real-conversation qualification. See the current
+architecture overview and root execution index for the remaining gates.
 
 - `docs/PROJECT_CHARTER.md` - authoritative business direction and non-negotiable boundaries.
 - `docs/architecture-overview.md` - authoritative current/target architecture,
@@ -127,8 +187,13 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
   option-reference plus tri-state selection-completeness contract for bounded
   inference.
 - `docs/adr/0010-product-hub-reviewed-fact-read-bridge.md` - defines the
-  default-off, exact-identity, read-only Product Hub facts source inside the
-  existing Product Context Pack and formal evidence admission path.
+  default-off, exact-identity, read-only Product Hub facts source and separate
+  review-only media projection inside the existing Product Context Pack;
+  neither changes formal admission or delivery ownership.
+- `docs/adr/0011-tmall-order-identity-read-boundary.md` - defines the exact
+  JST identity boundary for Tmall external order references and the
+  default-disabled, session-bound read adapter option; it does not add a
+  second Agent flow or delivery authority.
 - `docs/research/product-hub-agent-read-api.md` - records the existing Product
   Hub natural-key Agent API, its release-contract requirement, and the bounded
   Copilot read integration.
@@ -254,6 +319,12 @@ engineering evidence only: `real_customer_accuracy=null`,
 
 ## Architecture Decisions And Research
 
+- `docs/research/qianniu-desktop-adapter-selection.md` - 2026-09-09 primary-source
+  comparison of desktop adapter libraries, license constraints, existing UIA
+  reuse limits, and read-only qualification. After the user enabled accessibility
+  and restarted QianNiu, one current-conversation probe read 18 timestamped
+  headings, two order references and a separate product code. Panel loading and
+  viewport scope remain explicit gaps; no adapter deployment or delivery change.
 - `docs/adr/README.md` - ADR rules and required format.
 - `docs/adr/0001-unified-analysis-pipeline.md` - accepted decision establishing
   one formal AnalysisPipeline before any service decomposition.

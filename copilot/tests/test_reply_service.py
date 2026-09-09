@@ -469,7 +469,7 @@ class _FakeGraph:
         self.response = response
         self.state = None
 
-    def invoke(self, state):
+    def invoke(self, state, config=None):
         self.state = dict(state)
         return dict(self.response)
 
@@ -804,3 +804,119 @@ def test_reply_service_no_evidence_policy_blocks_installation_media_promise_with
     assert suggestion.evidence_debug["no_evidence_reply_policy"]["reply_strategy"] == "verify_installation_asset_before_send"
     assert suggestion.can_send is False
     assert suggestion.sendable_reply == ""
+
+
+def test_reply_service_keeps_explicit_sidebar_order_type_for_slot_extraction(monkeypatch):
+    """A local sidebar order reference must not be reclassified after privacy sanitization."""
+    import app.agent.graph as graph
+    from app.agent.nodes.slot_extract import slot_extract
+    from app.services.sidecar_context_service import normalize_explicit_order_reference
+
+    class SlotCapturingGraph:
+        def __init__(self):
+            self.slots = {}
+            self.state = {}
+
+        def invoke(self, state, config=None):
+            self.state = dict(state)
+            self.slots = slot_extract(state)["slots"]
+            return {
+                "intent": "logistics_trace",
+                "risk_level": "low",
+                "suggested_reply": "候选回复",
+                "requires_human_review": True,
+                "can_send": False,
+                "reply_status": "needs_human_review",
+                "evidence_debug": {},
+                "trace_steps": [],
+            }
+
+    sidebar_order = "9999999999999999999"
+    context = normalize_explicit_order_reference({}, order_id=sidebar_order)
+    fake = SlotCapturingGraph()
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+
+    _reply_service().analyze(
+        "现在快递到哪里了",
+        order_id=sidebar_order,
+        copilot_context=context,
+    )
+
+    assert fake.slots["identifier_type"] == "unknown_identifier"
+    assert fake.slots["platform_trade_id"] == ""
+    assert fake.state["_runtime_explicit_order_reference"] == {
+        "source": "explicit_request",
+        "identifier_type": "unknown_identifier",
+    }
+    assert fake.state["_runtime_explicit_order_reference"].get("order_id") is None
+
+
+def test_agent_state_preserves_runtime_order_provenance_for_slot_extraction():
+    """The LangGraph state schema must retain non-sensitive sidebar provenance."""
+    from langgraph.graph import END, StateGraph
+
+    from app.agent.nodes.slot_extract import slot_extract
+    from app.agent.state import AgentState
+
+    graph = StateGraph(AgentState)
+    graph.add_node("slot_extract", slot_extract)
+    graph.set_entry_point("slot_extract")
+    graph.add_edge("slot_extract", END)
+
+    result = graph.compile().invoke({
+        "customer_message": "现在快递到哪里了",
+        "order_id": "9999999999999999999",
+        "copilot_context": {
+            "order_id": "[LONG_ID_REDACTED:example]",
+            "order_identifier_type": "unknown_identifier",
+            "order_reference_source": "explicit_request",
+        },
+        "_runtime_explicit_order_reference": {
+            "source": "explicit_request",
+            "identifier_type": "unknown_identifier",
+        },
+        "trace_steps": [],
+    })
+
+    assert result["slots"]["identifier_type"] == "unknown_identifier"
+    assert result["_runtime_explicit_order_reference"] == {
+        "source": "explicit_request",
+        "identifier_type": "unknown_identifier",
+    }
+
+
+def test_reply_service_completes_a_legal_long_graph_path_without_fallback(monkeypatch):
+    """A valid path longer than LangGraph's default budget must reach its candidate."""
+    from langgraph.graph import END, StateGraph
+
+    from app.agent.state import AgentState
+    import app.agent.graph as graph_module
+
+    builder = StateGraph(AgentState)
+    node_names = [f"linear_step_{index}" for index in range(30)]
+    for node_name in node_names[:-1]:
+        builder.add_node(node_name, lambda _state: {})
+
+    def finish(_state):
+        return {
+            "intent": "general",
+            "risk_level": "low",
+            "suggested_reply": "long-path-candidate",
+            "requires_human_review": True,
+            "can_send": False,
+            "reply_status": "needs_human_review",
+            "evidence_debug": {},
+            "trace_steps": [],
+        }
+
+    builder.add_node(node_names[-1], finish)
+    builder.set_entry_point(node_names[0])
+    for source, target in zip(node_names, node_names[1:]):
+        builder.add_edge(source, target)
+    builder.add_edge(node_names[-1], END)
+    monkeypatch.setattr(graph_module, "customer_service_graph", builder.compile())
+
+    suggestion = _reply_service().analyze("请帮我看一下")
+
+    assert suggestion.suggested_reply == "long-path-candidate"
+    assert not any(step.get("node") == "graph_fallback" for step in suggestion.trace_steps)

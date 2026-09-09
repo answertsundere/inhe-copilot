@@ -4,9 +4,15 @@ import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5011'
+  const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || env.VITE_API_PROXY_TARGET
+
+  if (command === 'serve' && !apiProxyTarget) {
+    throw new Error(
+      'VITE_API_PROXY_TARGET is required for the review frontend. Set it to the intended loopback candidate rather than silently using a stale runtime.',
+    )
+  }
 
   return {
     plugins: [
@@ -37,15 +43,15 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/ask/api': {
-          target: apiProxyTarget,
+          target: apiProxyTarget || 'http://127.0.0.1:5011',
           changeOrigin: true,
         },
         '/ask/real-test': {
-          target: apiProxyTarget,
+          target: apiProxyTarget || 'http://127.0.0.1:5011',
           changeOrigin: true,
         },
         '/api': {
-          target: apiProxyTarget,
+          target: apiProxyTarget || 'http://127.0.0.1:5011',
           changeOrigin: true,
         },
       },

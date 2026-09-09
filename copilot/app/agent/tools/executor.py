@@ -177,6 +177,8 @@ class ToolExecutor:
                 timed_out = True
                 timed_out_tools.append(tool_name)
                 requires_human_review = True
+            elif trace.get("error_code"):
+                requires_human_review = True
 
         total_duration_ms = int((time.time() - t0) * 1000)
         return {
@@ -270,17 +272,28 @@ class ToolExecutor:
             if duration_ms > timeout_ms:
                 logger.warning("工具 %s 超时: %dms > %dms", spec.name, duration_ms, timeout_ms)
 
+            error_code = result.get("error_code") if isinstance(result, dict) else None
+            trace_status = (
+                "error" if error_code
+                else "not_found" if isinstance(result, dict) and result.get("found") is False
+                else "success"
+            )
+            trace_summary_status = error_code or (
+                "not_found" if trace_status == "not_found" else "ok"
+            )
             trace = {
                 "node": "tool_executor",
                 "tool_name": spec.name,
-                "status": "success",
+                "status": trace_status,
                 "duration_ms": duration_ms,
                 "provider": "tool_registry",
                 "input_summary": _summarize_inputs(inputs),
                 "output_summary": _summarize_output(result),
                 "can_create_fact_types": spec.can_create_fact_types,
-                "summary": f"{spec.name}: ok ({duration_ms}ms)",
+                "summary": f"{spec.name}: {trace_summary_status} ({duration_ms}ms)",
             }
+            if error_code:
+                trace["error_code"] = error_code
             return result, trace
 
         except Exception as e:
@@ -472,6 +485,7 @@ def _build_default_inputs(state: dict) -> dict:
     msg = state.get("normalized_message", state.get("customer_message", ""))
     slots = state.get("slots", {})
     intent = state.get("intent", "general")
+    request_context = state.get("copilot_context", {}) or {}
     identity = state.get("order_product_identity") or {}
     product_name = (
         state.get("matched_product_name")
@@ -502,6 +516,12 @@ def _build_default_inputs(state: dict) -> dict:
     if explicit_value and explicit_type == "tracking_no":
         tracking_no = explicit_value
 
+    shop_scope = {}
+    for key in ("shop_id", "shop_name"):
+        value = str(request_context.get(key) or "").strip()
+        if value:
+            shop_scope[key] = value
+
     product_scope = [product_name] if product_name else []
     for value in identity.get("candidates", []) or []:
         if value and value not in product_scope:
@@ -524,9 +544,11 @@ def _build_default_inputs(state: dict) -> dict:
         "jst_lookup_order_tool": {
             "identifier": order_identifier,
             "identifier_type": order_identifier_type,
+            **shop_scope,
         },
         "jst_lookup_outbound_tool": {
             "outer_so_id": platform_trade_id,
+            **shop_scope,
         },
         "jst_lookup_tracking_tool": {
             "tracking_no": tracking_no,

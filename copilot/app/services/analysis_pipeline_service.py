@@ -923,7 +923,6 @@ class AnalysisPipelineService:
             "invalid",
             "degraded",
         }
-        understanding_invalid = understanding_verdict["status"] == "invalid"
         if understanding_restricted:
             if diagnostics_enabled:
                 _update_composer_entry_diagnostics(
@@ -935,7 +934,6 @@ class AnalysisPipelineService:
             response = self._apply_invalid_understanding_boundary(
                 response,
                 understanding_verdict,
-                clear_candidate_reply=understanding_invalid,
             )
             stages.extend([
                 {
@@ -973,13 +971,7 @@ class AnalysisPipelineService:
                 customer_message=request.delivery_message or request.customer_message,
                 copilot_context=request.copilot_context,
             )
-            if understanding_restricted:
-                response = self._apply_invalid_understanding_boundary(
-                    response,
-                    understanding_verdict,
-                    clear_candidate_reply=False,
-                )
-            elif self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
+            if not understanding_restricted and self._env_enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"):
                 response = self._force_model_first_review_boundary(response)
             final_completed = True
             stages.append({"stage": "final_response_orchestration", "status": "completed"})
@@ -994,6 +986,13 @@ class AnalysisPipelineService:
                 "final_orchestration_failed",
             )
             stages.append({"stage": "final_response_orchestration", "status": "failed", "reason": type(exc).__name__})
+
+        if understanding_restricted:
+            # Legacy Final paths can regenerate text, even before raising.
+            response = self._apply_invalid_understanding_boundary(
+                response,
+                understanding_verdict,
+            )
 
         response, shadow_stages = self._attach_shadow_layers(response, request, identity)
         stages.extend(shadow_stages)
@@ -1118,8 +1117,6 @@ class AnalysisPipelineService:
         cls,
         response: dict[str, Any],
         verdict: dict[str, Any],
-        *,
-        clear_candidate_reply: bool,
     ) -> dict[str, Any]:
         response = dict(response or {})
         reason_codes = list(verdict.get("reason_codes") or [])
@@ -1128,8 +1125,7 @@ class AnalysisPipelineService:
             if reason_codes
             else "turn_understanding_not_authoritative"
         )
-        if clear_candidate_reply:
-            response["suggested_reply"] = ""
+        response["suggested_reply"] = ""
         response["draft_reply"] = ""
         response["sendable_reply"] = ""
         response["can_send"] = False
@@ -1141,20 +1137,12 @@ class AnalysisPipelineService:
             "has_unapproved": False,
             "source": "turn_understanding_boundary",
         }
-        response["reply_blocks"] = (
-            []
-            if clear_candidate_reply
-            else [
-                {
-                    **block,
-                    "send_mode": "manual",
-                }
-                for block in (response.get("reply_blocks") or [])
-                if isinstance(block, dict)
-                and block.get("type") == "text"
-                and str(block.get("content") or "").strip()
-            ]
-        )
+        response["reply_blocks"] = []
+        response.pop("supervisor_candidate_preview", None)
+        debug = dict(response.get("evidence_debug") or {})
+        debug.pop("supervisor_candidate_preview", None)
+        debug.pop("formal_partial_answer", None)
+        response["evidence_debug"] = debug
         response["reply_delivery"] = {
             "mode": "blocked",
             "auto_send_ready": False,

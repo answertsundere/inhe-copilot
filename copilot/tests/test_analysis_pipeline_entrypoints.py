@@ -729,7 +729,7 @@ def test_invalid_understanding_skips_media_and_composer_even_with_evidence(
     assert stages["model_first_answer_composer"]["status"] == "blocked"
 
 
-def test_degraded_understanding_preserves_existing_review_only_reply(
+def test_degraded_understanding_clears_existing_review_only_reply(
     pipeline_harness,
     monkeypatch,
 ):
@@ -770,13 +770,128 @@ def test_degraded_understanding_preserves_existing_review_only_reply(
     response = AnalysisPipelineService().run(_request("api"))
 
     assert calls == {"composer": 0, "media": 0}
-    assert response["suggested_reply"] == _graph_response()["suggested_reply"]
+    assert response["suggested_reply"] == ""
     assert response["draft_reply"] == ""
     assert response["can_send"] is False
     assert response["requires_human_review"] is True
     assert response["sendable_reply"] == ""
     assert response["recommended_assets"] == []
     assert response["turn_understanding_boundary"]["status"] == "degraded"
+
+
+@pytest.mark.parametrize(
+    "source", ["api", "copilot", "agent_benchmark", "real_conversation_eval"],
+)
+@pytest.mark.parametrize(
+    "status,reason",
+    [
+        ("degraded", "provider_capacity_exceeded"),
+        ("degraded", "provider_timeout"),
+        ("degraded", "llm_goal_understanding_unavailable"),
+        ("invalid", "source_text_not_found"),
+    ],
+)
+def test_failed_understanding_clears_all_reply_surfaces(
+    pipeline_harness, monkeypatch, source, status, reason,
+):
+    import app.services.analysis_execution_service as execution
+    import app.services.final_response_orchestrator as final_orchestrator
+
+    monkeypatch.setenv("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED", "true")
+    monkeypatch.setenv("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED", "true")
+    marker = "UNBOUND_LEGACY_CANDIDATE"
+    preview = {"candidate_text": marker, "safety_validation": {"passed": True}}
+    seen = []
+
+    def fake_execute_analysis(**kwargs):
+        response = _graph_response()
+        response.update({
+            "suggested_reply": marker,
+            "draft_reply": marker,
+            "sendable_reply": marker,
+            "reply_blocks": [{"type": "text", "content": marker}],
+            "supervisor_candidate_preview": deepcopy(preview),
+        })
+        response["evidence_debug"].update({
+            "turn_understanding": {
+                "goal_understanding_status": status,
+                "goal_understanding_diagnostics": [reason],
+                "requested_claims": [],
+            },
+            "selected_evidence": [{"evidence_uid": "diagnostic-only"}],
+            "supervisor_candidate_preview": deepcopy(preview),
+            "formal_partial_answer": {"candidate_text": marker},
+        })
+        return kwargs["response_post_processor"](response)
+
+    def final_probe(response, **_kwargs):
+        seen.append(deepcopy(response))
+        return response
+
+    monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(final_orchestrator, "orchestrate_final_response", final_probe)
+    response = AnalysisPipelineService().run(_request(source))
+
+    assert len(seen) == 1
+    for result in [seen[0], response]:
+        for field in ("suggested_reply", "draft_reply", "sendable_reply"):
+            assert result[field] == ""
+        assert result["reply_blocks"] == []
+        assert not result.get("supervisor_candidate_preview")
+        assert not result["evidence_debug"].get("supervisor_candidate_preview")
+        assert not result["evidence_debug"].get("formal_partial_answer")
+        assert result["can_send"] is False
+        assert result["requires_human_review"] is True
+        assert result["reply_delivery"]["auto_send_ready"] is False
+        assert result["turn_understanding_boundary"]["earliest_reason_code"] == reason
+        assert result["evidence_debug"]["selected_evidence"] == [
+            {"evidence_uid": "diagnostic-only"},
+        ]
+
+
+@pytest.mark.parametrize("status", ["invalid", "degraded"])
+@pytest.mark.parametrize("final_raises", [False, True])
+def test_failed_understanding_boundary_survives_final_repopulation_or_error(
+    pipeline_harness, monkeypatch, status, final_raises,
+):
+    import app.services.analysis_execution_service as execution
+    import app.services.final_response_orchestrator as final_orchestrator
+
+    def fake_execute_analysis(**kwargs):
+        response = _graph_response()
+        response["evidence_debug"]["turn_understanding"] = {
+            "goal_understanding_status": status,
+            "goal_understanding_diagnostics": ["llm_goal_understanding_unavailable"],
+        }
+        return kwargs["response_post_processor"](response)
+
+    def final_probe(response, **_kwargs):
+        response.update({
+            "suggested_reply": "REINTRODUCED_REPLY",
+            "draft_reply": "REINTRODUCED_REPLY",
+            "sendable_reply": "REINTRODUCED_REPLY",
+            "reply_blocks": [{"type": "text", "content": "REINTRODUCED_REPLY"}],
+            "supervisor_candidate_preview": {"candidate_text": "REINTRODUCED_REPLY"},
+            "can_send": True,
+            "requires_human_review": False,
+        })
+        if final_raises:
+            raise RuntimeError("injected Final failure")
+        return response
+
+    monkeypatch.setattr(execution, "execute_analysis", fake_execute_analysis)
+    monkeypatch.setattr(final_orchestrator, "orchestrate_final_response", final_probe)
+    response = AnalysisPipelineService().run(_request("api"))
+
+    assert response["suggested_reply"] == ""
+    assert response["draft_reply"] == ""
+    assert response["sendable_reply"] == ""
+    assert response["reply_blocks"] == []
+    assert not response.get("supervisor_candidate_preview")
+    assert response["can_send"] is False
+    assert response["requires_human_review"] is True
+    assert response["analysis_pipeline"]["final_orchestration_completed"] is not final_raises
+    assert "llm_goal_understanding_unavailable" in response["block_reasons"]
 
 
 @pytest.fixture()
@@ -1308,3 +1423,47 @@ def test_http_entrypoints_delegate_to_pipeline(monkeypatch):
     ).status_code == 200
 
     assert [request.source for request in requests] == ["api", "copilot_test"]
+
+
+def test_api_analyze_promotes_structured_sidebar_order_reference_to_pipeline(monkeypatch):
+    """A sidebar order field must be effective even when the UI nests it in context."""
+    from app.main import create_app
+    import app.services.analysis_pipeline_service as pipeline_module
+
+    requests = []
+
+    def fake_run(self, request):
+        requests.append(request)
+        return {
+            "suggested_reply": "draft",
+            "can_send": False,
+            "requires_human_review": True,
+            "reply_status": "needs_human_review",
+            "reply_blocks": [{"type": "text", "content": "draft"}],
+            "reply_delivery": {"mode": "blocks", "auto_send_ready": False},
+            "recommended_assets": [],
+            "evidence_debug": {},
+            "execution_debug": {},
+            "trace_steps": [],
+        }
+
+    monkeypatch.setattr(pipeline_module.AnalysisPipelineService, "run", fake_run)
+    monkeypatch.setattr("app.main.get_reply_service", lambda: object())
+    app = create_app()
+    app.config["TESTING"] = True
+
+    response = app.test_client().post(
+        "/api/analyze",
+        json={
+            "message": "请查一下物流进度",
+            "copilot_context": {
+                "order_id": "opaque-sidebar-order-reference",
+                "shop_name": "Scoped Test Shop",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert requests[0].order_id == "opaque-sidebar-order-reference"
+    assert requests[0].copilot_context["order_id"] == "opaque-sidebar-order-reference"

@@ -27,6 +27,63 @@ _OUTBOUND_STATUS_MAP = {
 }
 
 
+_TRUSTED_EXACT_ORDER_ITEM_REASONS = {
+    "exact_jst_order_item",
+    "single_order_item",
+    "single_primary_item_with_gifts",
+}
+
+
+def _project_verified_order_product_identity(
+    state: dict,
+    order_data: dict,
+    *,
+    identifier: str,
+    identifier_type: str,
+) -> tuple[dict, str, str]:
+    """Project only an existing exact JST item resolution into graph state.
+
+    The order resolver runs before the live lookup in several legal graph
+    paths. Once the latter has a verified order, it must reuse the resolver's
+    existing selection policy so the downstream Product Context Pack can read
+    an exact SKU. Context-selected multi-item matches remain unavailable here.
+    """
+    from app.agent.nodes.order_product_resolver import (
+        resolve_order_product_identity_from_order_data,
+    )
+
+    identity = resolve_order_product_identity_from_order_data(
+        order_data,
+        state,
+        identifier=identifier,
+        identifier_type=identifier_type,
+    )
+    status = str(identity.get("status") or "")
+    reason = str(identity.get("reason") or "")
+    if (
+        status != "resolved"
+        or str(identity.get("source") or "") != "jst_order_items"
+        or reason not in _TRUSTED_EXACT_ORDER_ITEM_REASONS
+        or not str(identity.get("sku_id") or "").strip()
+    ):
+        return {}, status or "unavailable", reason
+
+    slots = dict(state.get("slots", {}) or {})
+    product_name = str(identity.get("matched_product_name") or "").strip()
+    if product_name:
+        slots["product_name"] = product_name
+        slots["sku_name"] = product_name
+    slots["sku_code"] = str(identity["sku_id"]).strip()
+
+    return {
+        "order_product_identity": identity,
+        "matched_product_name": product_name,
+        "product_candidates": identity.get("candidates", []),
+        "slots": slots,
+        "product_identity_source": "jst_order_items",
+    }, status, reason
+
+
 def jst_live_query(state: dict) -> dict:
     """根据 identifier_type 调用对应的 JST 实时查询。
     查询前先写入即时回复，避免用户等太久没有反馈。
@@ -71,7 +128,14 @@ def jst_live_query(state: dict) -> dict:
     elif identifier_type == "tracking_no":
         identifier = slots.get("tracking_no", "")
     elif identifier_type == "unknown_identifier":
-        identifier = slots.get("possible_numeric_id", "")
+        # A structured sidebar reference can be intentionally untyped. Pass it
+        # to the existing bounded multi-path JST resolver; the resolver still
+        # exact-validates the returned order and store scope before admitting it.
+        identifier = (
+            state.get("order_id", "")
+            or slots.get("order_id", "")
+            or slots.get("possible_numeric_id", "")
+        )
     elif identifier_type == "order_id":
         # 兼容旧 identifier_type
         identifier = state.get("order_id", "") or slots.get("order_id", "")
@@ -97,10 +161,16 @@ def jst_live_query(state: dict) -> dict:
         "status": "querying",
         "duration_ms": 0,
         "cache_hit": False,
-        "summary": f"正在查询 {identifier} (type={identifier_type}) ...",
+        "summary": f"正在查询订单标识 (type={identifier_type}) ...",
     }
 
-    result = lookup_order_by_identifier(identifier, identifier_type)
+    request_context = state.get("copilot_context", {}) or {}
+    lookup_kwargs = {}
+    for key in ("shop_id", "shop_name"):
+        value = str(request_context.get(key) or "").strip()
+        if value:
+            lookup_kwargs[key] = value
+    result = lookup_order_by_identifier(identifier, identifier_type, **lookup_kwargs)
     duration_ms = int((time.time() - t0) * 1000)
 
     # 所有 trace 都包含 progress + result
@@ -110,6 +180,12 @@ def jst_live_query(state: dict) -> dict:
         data = result["data"]
         # 从订单数据直接提取物流信息（不需要二次查 logistic/query）
         logistics_trace = _build_logistics_trace(data)
+        identity_updates, identity_status, identity_reason = _project_verified_order_product_identity(
+            state,
+            data if isinstance(data, dict) else {},
+            identifier=str(identifier or ""),
+            identifier_type=str(identifier_type or ""),
+        )
 
         # 提取 used_fact_tool 和 used_endpoint
         used_endpoint = result.get("endpoint", "")
@@ -125,9 +201,11 @@ def jst_live_query(state: dict) -> dict:
             "jst_attempted_paths": result.get("attempted_paths", []),
             "identifier_type": identifier_type,
             "provider": "jst",
-            "summary": f"聚水潭查到订单 {data.get('o_id', identifier)} via {used_endpoint}",
+            "order_product_identity_status": identity_status,
+            "order_product_identity_reason": identity_reason,
+            "summary": f"聚水潭查到订单 via {used_endpoint}",
         }
-        return {
+        response = {
             "live_order": data,
             "order_found": True,
             "order_source": "jst_live",
@@ -138,6 +216,8 @@ def jst_live_query(state: dict) -> dict:
             "used_identifier_type": identifier_type,
             "trace_steps": steps + [trace],
         }
+        response.update(identity_updates)
+        return response
 
     # 查不到 / 不支持 / 超时
     reason = result.get("safe_fallback_reason", "unknown")

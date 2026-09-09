@@ -50,6 +50,10 @@ _REQUEST_CLAIM_RISK_LEVELS = {
 }
 
 _DIMENSION_CLAIM_TYPES = frozenset({"dimensions", "size", "space_fit"})
+_PRODUCT_OVERVIEW_FACT_FAMILIES = frozenset({
+    "material_composition",
+    "dimensions",
+})
 _PRODUCT_OVERALL_DIMENSION_ATTRIBUTES = frozenset({
     "overall_width",
     "overall_height",
@@ -202,6 +206,7 @@ def _select_for_attribute(
     candidates: list[dict[str, Any]],
     *,
     required_subject_scope: str | None = None,
+    claim_type: str = "",
 ) -> tuple[list[dict[str, Any]], str]:
     """Select evidence by declared attribute without inferring from free text."""
     if requested_attribute:
@@ -244,6 +249,25 @@ def _select_for_attribute(
     attribute_groups = {_attribute_key(fact) or "__attribute_missing__" for fact in candidates}
     if len(attribute_groups) == 1:
         return candidates, ""
+    if (
+        _canonical_claim_type(claim_type) == "dimensions"
+        and not requested_attribute
+        and required_subject_scope == ""
+    ):
+        product_overall = [
+            fact
+            for fact in candidates
+            if (
+                _attribute_key(fact) == "overall_dimensions"
+                and canonical_dimension_subject_scope(fact.get("subject_scope")) == "product"
+            )
+        ]
+        product_overall_ids = {id(fact) for fact in product_overall}
+        if product_overall and all(
+            not _attribute_key(fact) or id(fact) in product_overall_ids
+            for fact in candidates
+        ):
+            return product_overall, ""
     return [], "selection_ambiguous"
 
 
@@ -800,15 +824,30 @@ def build_claim_resolutions(
         )
         requested_attribute = _attribute_key(requested)
         requested_subject_scope = _requested_subject_scope(requested)
-        matching_facts, fact_selection_reason = (
-            ([], "")
-            if unmapped_customer_goal
-            else _select_for_attribute(
+        if unmapped_customer_goal:
+            matching_facts, fact_selection_reason = [], ""
+        elif claim_type == "product_overview":
+            matching_facts = [
+                fact
+                for fact in _facts_for_claim(claim_type, direct_facts)
+                if (
+                    fact.get("overview_context_eligible") is True
+                    and _canonical_claim_type(
+                        sanitize_text(fact.get("fact_type"))
+                    )
+                    in _PRODUCT_OVERVIEW_FACT_FAMILIES
+                )
+            ]
+            fact_selection_reason = (
+                "" if matching_facts else "no_admitted_direct_evidence"
+            )
+        else:
+            matching_facts, fact_selection_reason = _select_for_attribute(
                 requested_attribute,
                 _facts_for_claim(claim_type, direct_facts),
                 required_subject_scope=requested_subject_scope,
+                claim_type=claim_type,
             )
-        )
         conflict_candidates = (
             []
             if unmapped_customer_goal
@@ -819,6 +858,7 @@ def build_claim_resolutions(
                 requested_attribute,
                 conflict_candidates,
                 required_subject_scope=requested_subject_scope,
+                claim_type=claim_type,
             )
             if conflict_candidates
             else ([], "")

@@ -134,10 +134,37 @@ TRAINING_SAMPLE_UPLOAD_DIR = os.environ.get(
 )
 
 # ============ 聚水潭 OpenAPI 配置 (必须通过环境变量设置) ============
+def _read_windows_user_environment(name: str) -> str:
+    """Read a Windows user-scoped setting without emitting its value."""
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, name)
+    except (FileNotFoundError, OSError):
+        return ""
+    return str(value or "").strip()
+
+
+def _read_jst_environment_value(*names: str) -> str:
+    """Prefer process configuration, then the Windows user environment."""
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    for name in names:
+        value = _read_windows_user_environment(name)
+        if value:
+            return value
+    return ""
+
+
 # 兼容历史 JUSHUITAN_* 与生产 COPILOT_JST_* 环境变量名
-JST_APP_KEY = os.environ.get("JUSHUITAN_APP_KEY") or os.environ.get("COPILOT_JST_APP_KEY", "")
-JST_APP_SECRET = os.environ.get("JUSHUITAN_APP_SECRET") or os.environ.get("COPILOT_JST_APP_SECRET", "")
-JST_ACCESS_TOKEN = os.environ.get("JUSHUITAN_ACCESS_TOKEN") or os.environ.get("COPILOT_JST_ACCESS_TOKEN", "")
+JST_APP_KEY = _read_jst_environment_value("JUSHUITAN_APP_KEY", "COPILOT_JST_APP_KEY")
+JST_APP_SECRET = _read_jst_environment_value("JUSHUITAN_APP_SECRET", "COPILOT_JST_APP_SECRET")
+JST_ACCESS_TOKEN = _read_jst_environment_value("JUSHUITAN_ACCESS_TOKEN", "COPILOT_JST_ACCESS_TOKEN")
 JST_BASE_URL = os.environ.get("JUSHUITAN_BASE_URL") or os.environ.get("COPILOT_JST_BASE_URL", "https://openapi.jushuitan.com/open")
 
 # ============ 钉钉多维表配置 (必须通过环境变量设置) ============
@@ -204,6 +231,13 @@ COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED = _env_bool(
     "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED",
     False,
 )
+COPILOT_MODEL_FIRST_ANSWER_COMPOSER_TEMPERATURE = float(
+    os.environ.get("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_TEMPERATURE", "0")
+)
+COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED = _env_bool(
+    "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
+    False,
+)
 COPILOT_COMPOSER_LLM_API_BASE = os.environ.get(
     "COPILOT_COMPOSER_LLM_API_BASE", ""
 )
@@ -233,6 +267,46 @@ COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT = os.environ.get(
 
 # ============ Fact Type 语义分类 ============
 COPILOT_FACT_TYPE_LLM_ENABLED = _env_bool("COPILOT_FACT_TYPE_LLM_ENABLED", True)
+COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED = _env_bool(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED",
+    False,
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_PROVIDER = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_PROVIDER",
+    "",
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_API_BASE = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_API_BASE",
+    "",
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_API_KEY = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_API_KEY",
+    "",
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_MODEL = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_MODEL",
+    "",
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_CAPABILITY = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_CAPABILITY",
+    "unsupported",
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_TIMEOUT_SECONDS = int(os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_TIMEOUT_SECONDS",
+    "20",
+))
+COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFIED = _env_bool(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFIED",
+    False,
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFICATION_FINGERPRINT = os.environ.get(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFICATION_FINGERPRINT",
+    "",
+)
+COPILOT_TURN_UNDERSTANDING_STRICT_DISABLE_THINKING = _env_bool(
+    "COPILOT_TURN_UNDERSTANDING_STRICT_DISABLE_THINKING",
+    False,
+)
 
 # ============ Logistics fast path ============
 COPILOT_EXPLICIT_LOGISTICS_FAST_PATH_ENABLED = _env_bool(

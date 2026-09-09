@@ -86,6 +86,21 @@ class TestCopilotPanelPage:
         assert "lastResponse.can_send" in html
         assert "replyBlocksToClipboardText(lastResponse)||$('reply').textContent" not in html
 
+    def test_real_test_panel_describes_human_review_mode_not_provider_connection(self, client):
+        resp = client.get("/real-test")
+        html = resp.data.decode("utf-8")
+
+        assert "人工确认模式 · 不会自动发送" in html
+        assert "已连接 · INHE AI 助手" not in html
+
+    def test_real_test_panel_carries_structured_shop_context(self, client):
+        resp = client.get("/real-test")
+        html = resp.data.decode("utf-8")
+
+        assert 'id="shopName"' in html
+        assert "payload.shop_name" in html
+        assert "payload.copilot_context.shop_name" in html
+
 
 class TestCopilotContextAPI:
     def test_missing_message_returns_400(self, client):

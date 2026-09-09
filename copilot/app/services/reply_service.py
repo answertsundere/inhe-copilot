@@ -15,6 +15,11 @@ import threading
 
 logger = logging.getLogger(__name__)
 
+# The compiled formal graph has legitimate linear paths above LangGraph's
+# default 25-step budget. Keep a finite cap so a real non-terminating route
+# still fails closed instead of being mistaken for a valid candidate.
+_FORMAL_GRAPH_RECURSION_LIMIT = 64
+
 
 def _safe_product_context_pack(pack: dict) -> dict:
     if not isinstance(pack, dict) or not pack:
@@ -85,6 +90,32 @@ def _turn_understanding_from_context(copilot_context: dict | None) -> dict:
         return {}
     value = copilot_context.get("turn_understanding") or {}
     return value if isinstance(value, dict) else {}
+
+
+def _runtime_explicit_order_reference(
+    copilot_context: dict | None,
+    order_id: str,
+) -> dict:
+    """Keep only local order provenance that privacy sanitization must not infer."""
+    if not isinstance(copilot_context, dict) or not str(order_id or "").strip():
+        return {}
+    identifier_type = str(copilot_context.get("order_identifier_type") or "").strip()
+    source = str(copilot_context.get("order_reference_source") or "").strip()
+    if (
+        source != "explicit_request"
+        or identifier_type not in {
+            "internal_order_id",
+            "platform_trade_id",
+            "platform_order_id",
+            "tracking_no",
+            "unknown_identifier",
+        }
+    ):
+        return {}
+    return {
+        "source": source,
+        "identifier_type": identifier_type,
+    }
 
 
 def _apply_turn_understanding_contract_to_state(state: dict, copilot_context: dict | None) -> None:
@@ -304,6 +335,12 @@ class ReplyService:
             "tracking_no": tracking_no,
             "trace_steps": [],
         }
+        runtime_explicit_order_reference = _runtime_explicit_order_reference(
+            copilot_context,
+            order_id,
+        )
+        if runtime_explicit_order_reference:
+            state["_runtime_explicit_order_reference"] = runtime_explicit_order_reference
         try:
             from app.services.fact_type_service import classify_query_fact_type
             fact_type = classify_query_fact_type(customer_message).get("query_fact_type", "")
@@ -360,7 +397,10 @@ class ReplyService:
 
         # 调用 LangGraph
         try:
-            result = customer_service_graph.invoke(state)
+            result = customer_service_graph.invoke(
+                state,
+                config={"recursion_limit": _FORMAL_GRAPH_RECURSION_LIMIT},
+            )
         except Exception as e:
             logger.error("LangGraph 执行失败: %s", e, exc_info=True)
             # 极端降级：返回安全回复

@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from typing import Any
 
-from app.integrations.product_hub.reviewed_facts_client import ProductHubReviewedFactsClient
+from app.integrations.product_hub.reviewed_facts_client import (
+    ProductHubReviewedFactsClient,
+    answer_context_shadow_enabled,
+)
 from app.services.media_asset_service import (
     _applicable_style_score,
     _answer_scenario_score,
@@ -22,6 +26,10 @@ from app.services.media_asset_service import (
     get_applicable_style,
     get_auto_send_level,
     get_media_purpose,
+)
+from app.services.fact_type_alias_service import (
+    canonical_dimension_subject_scope,
+    is_dimension_claim_type,
 )
 from app.services.product_structured_evidence_service import (
     build_product_spec_evidence_candidates,
@@ -86,6 +94,25 @@ def build_product_context_pack(
             product_hub_read,
             identity=identity,
             query_fact_type=query_fact_type,
+            requested_claims=(
+                (state.get("turn_understanding") or {}).get("requested_claims")
+                if isinstance(state.get("turn_understanding"), dict)
+                else []
+            ),
+        )
+        product_hub_media_read = (
+            _load_product_hub_reviewed_media(identity, query_fact_type=query_fact_type)
+            if not allowed or "product_facts" in allowed
+            else {
+                "state": "not_attempted",
+                "reason_code": "product_facts_source_not_allowed",
+                "product_code": "",
+                "assets": [],
+            }
+        )
+        product_hub_media_assets = _product_hub_media_for_context(
+            product_hub_media_read,
+            identity=identity,
         )
         activity_identity = {**identity, "product_id": structured_profile.get("product_id")}
         activity_rules = get_active_activity_rules_for_product(db, KBProductActivityRule, activity_identity, limit=5)
@@ -103,7 +130,7 @@ def build_product_context_pack(
             structured_profile=structured_profile,
             query_fact_type=query_fact_type,
         )
-        media_assets = _collect_media_assets(db, KBMediaAsset, identity, structured_profile, limit=300)
+        local_media_assets = _collect_media_assets(db, KBMediaAsset, identity, structured_profile, limit=300)
         signals = {
             "customer_message": query or "",
             "sku_code": identity.get("sku", ""),
@@ -111,9 +138,10 @@ def build_product_context_pack(
             "product_name": structured_profile.get("product_name") or identity.get("product_name", ""),
         }
         recommended_assets = _rank_media_assets_for_query(
-            media_assets, query=query, query_fact_type=query_fact_type, limit=1, signals=signals
+            local_media_assets, query=query, query_fact_type=query_fact_type, limit=1, signals=signals
         )
-        media_assets = [_media_asset_to_pack_item(a) for a in media_assets]
+        media_assets = [_media_asset_to_pack_item(a) for a in local_media_assets]
+        media_assets.extend(product_hub_media_assets)
         recommended_assets = [_media_asset_to_pack_item(a) for a in recommended_assets]
         candidates.extend(_profile_facts_for_query(structured_profile, query=query, query_fact_type=query_fact_type))
         candidates.extend(product_hub_candidates)
@@ -320,6 +348,7 @@ def build_product_context_pack(
             generic_rules=generic_rules,
             provisional_evidence=provisional_evidence,
             product_hub_read=product_hub_read,
+            product_hub_media_read=product_hub_media_read,
             query=query,
             query_fact_type=query_fact_type,
             top_k=top_k,
@@ -346,10 +375,19 @@ def build_product_context_pack(
                 "product_hub_reason_code": product_hub_read.get("reason_code", ""),
                 "product_hub_returned_fact_count": len(product_hub_read.get("facts", [])),
                 "product_hub_candidate_count": len(product_hub_candidates),
+                "product_hub_media_state": product_hub_media_read.get("state", ""),
+                "product_hub_media_reason_code": product_hub_media_read.get("reason_code", ""),
+                "product_hub_media_returned_asset_count": len(product_hub_media_read.get("assets", [])),
+                "product_hub_media_candidate_count": len(product_hub_media_assets),
                 "has_structured_profile": bool(structured_profile),
                 "query_fact_type": query_fact_type,
                 "evidence_pack_answerability": evidence_pack.get("answerability", ""),
                 "knowledge_mode": evidence_pack.get("knowledge_mode", "verified_only"),
+                **_product_hub_answer_context_shadow_stats(
+                    identity=identity, allowed=allowed, query_fact_type=query_fact_type,
+                    requested_claims=(state.get("turn_understanding") or {}).get("requested_claims", [])
+                    if isinstance(state.get("turn_understanding"), dict) else [],
+                ),
             },
         }, conversation_media_reference)
     finally:
@@ -470,6 +508,7 @@ def _build_evidence_pack(
     generic_rules: list[dict[str, Any]],
     provisional_evidence: list[dict[str, Any]] | None = None,
     product_hub_read: dict[str, Any] | None = None,
+    product_hub_media_read: dict[str, Any] | None = None,
     query: str,
     query_fact_type: str,
     top_k: int,
@@ -481,6 +520,7 @@ def _build_evidence_pack(
     matched_generic_rules = [_compact_generic_rule_for_evidence(item) for item in generic_rules[:3]]
     provisional_facts = [_compact_fact_for_evidence(item) for item in (provisional_evidence or [])]
     hub_read = product_hub_read if isinstance(product_hub_read, dict) else {}
+    hub_media_read = product_hub_media_read if isinstance(product_hub_media_read, dict) else {}
     product_structured_facts = [
         _compact_fact_for_evidence(item)
         for item in facts
@@ -560,6 +600,9 @@ def _build_evidence_pack(
                 "state": str(hub_read.get("state") or ""),
                 "reason_code": str(hub_read.get("reason_code") or ""),
                 "returned_fact_count": len(hub_read.get("facts") or []),
+                "media_state": str(hub_media_read.get("state") or ""),
+                "media_reason_code": str(hub_media_read.get("reason_code") or ""),
+                "returned_media_asset_count": len(hub_media_read.get("assets") or []),
             },
             "knowledge_mode": _eval_knowledge_mode(),
             "generic_rules_role": "fallback_only",
@@ -817,6 +860,13 @@ def _compact_fact_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
         "block_reasons": item.get("block_reasons", []),
         "fact_type": item.get("evidence_fact_type") or item.get("fact_type") or "",
         "attribute_key": item.get("attribute_key") or item.get("field_name") or item.get("fact_key") or "",
+        "subject_scope": item.get("subject_scope") or "",
+        "claim_types_supported": [
+            str(value).strip()
+            for value in (item.get("claim_types_supported") or [])
+            if str(value or "").strip()
+        ],
+        "overview_context_eligible": item.get("overview_context_eligible") is True,
         "score": item.get("rerank_score", item.get("score", 0)),
         "direct_answer_allowed": item.get("evidence_allowed_for_direct_answer") is not False,
         "customer_text": item.get("customer_text") or text,
@@ -853,22 +903,32 @@ def _compact_media_for_evidence(item: dict[str, Any]) -> dict[str, Any]:
     asset_type = item.get("asset_type", "")
     auto_send_level = item.get("auto_send_level", "auto")
     asset_url = item.get("asset_url", "")
+    source_review_status = str(
+        item.get("source_review_status") or item.get("review_status") or "verified"
+    ).strip().lower()
+    reference_only = item.get("reference_only") is True
     return {
         "evidence_id": f"kbmedia:{item.get('asset_id') or item.get('id')}",
         "asset_id": item.get("asset_id") or item.get("id"),
-        "source_table": "kb_media_asset",
-        "verification_status": "verified",
-        "can_direct_answer": auto_send_level == "auto" and bool(asset_url),
+        "source_table": item.get("source_table") or "kb_media_asset",
+        "verification_status": source_review_status,
+        "can_direct_answer": (
+            item.get("can_direct_answer") is not False
+            and not reference_only
+            and auto_send_level == "auto"
+            and bool(asset_url)
+        ),
         "asset_type": asset_type,
         "evidence_media_type": _normalized_media_type(str(asset_type or "")),
         "asset_title": item.get("asset_title", ""),
         "product_name": item.get("product_name", ""),
         "send_strategy": item.get("send_strategy", ""),
         "confidence": item.get("match_confidence", item.get("score", 0)),
-        "approved": True,
-        "usable": True,
+        "approved": source_review_status in {"approved", "live", "verified"},
+        "usable": item.get("usable_for_agent") is not False,
         "auto_send_level": auto_send_level,
         "has_asset_url": bool(asset_url),
+        "reference_only": reference_only,
     }
 
 
@@ -1137,8 +1197,19 @@ _PRODUCT_HUB_DIRECT_FIELD_CONTRACT = {
     ("size", "尺寸", "商品整体", "cm"): ("dimensions", "product"),
     ("installation", "安装说明", "商品整体", ""): ("installation", "product"),
     ("color", "颜色", "商品整体", ""): ("color_options", "product"),
+    ("age", "适用年龄", "商品整体", ""): ("age_range", "product"),
+    ("load", "承重", "商品整体", ""): ("load_capacity", "product"),
     ("weight", "毛重", "包装", "kg"): ("gross_weight", "packaging"),
+    ("weight", "净重", "商品整体", "kg"): ("net_weight", "product"),
     ("parts", "配置说明", "配件", ""): ("accessories", "accessory"),
+}
+
+_PRODUCT_HUB_PACKAGING_DIMENSION_AXIS_CONTRACT = {
+    # These fields carry an explicit measured object, axis, and unit in the
+    # Hub schema.  They are intentionally separate from product dimensions.
+    ("pack_size", "纸箱长", "包装", "cm"): "length",
+    ("pack_size", "纸箱宽", "包装", "cm"): "width",
+    ("pack_size", "纸箱高", "包装", "cm"): "height",
 }
 
 
@@ -1160,6 +1231,162 @@ def _product_hub_direct_field_contract(
         ),
         ("", ""),
     )
+
+
+def _has_explicit_packaging_dimension_goal(requested_claims: Any) -> bool:
+    """Accept carton dimensions only for an authoritative packaging request."""
+
+    for claim in requested_claims or []:
+        if not isinstance(claim, dict):
+            continue
+        if not is_dimension_claim_type(claim.get("claim_type")):
+            continue
+        if canonical_dimension_subject_scope(claim.get("subject_scope")) == "packaging":
+            return True
+    return False
+
+
+def _product_hub_packaging_dimensions_candidate(
+    facts: list[dict[str, Any]],
+    *,
+    product_code: str,
+    sku_code: str,
+    resolved_sku_code: str,
+) -> dict[str, Any] | None:
+    """Aggregate exact carton axes without promoting them to product facts."""
+
+    rows_by_axis: dict[str, list[dict[str, str]]] = {}
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        if str(fact.get("status") or "").strip().lower() != "confirmed" or fact.get("conflict") is True:
+            continue
+        axis = _PRODUCT_HUB_PACKAGING_DIMENSION_AXIS_CONTRACT.get((
+            str(fact.get("type") or "").strip().lower(),
+            str(fact.get("attr") or "").strip(),
+            str(fact.get("scope") or "").strip(),
+            str(fact.get("unit") or "").strip().lower(),
+        ))
+        if not axis:
+            continue
+        fact_id = str(fact.get("id") or "").strip()
+        value = str(fact.get("value") or "").strip()
+        fact_product_code = str(fact.get("product_code") or "").strip()
+        fact_sku_code = str(fact.get("sku_code") or "").strip()
+        applies = str(fact.get("applies") or "").strip()
+        if (
+            not fact_id
+            or not value
+            or (fact_product_code and fact_product_code != product_code)
+            or (fact_sku_code and fact_sku_code != sku_code)
+            or (applies and applies not in {fact_sku_code, sku_code})
+        ):
+            continue
+        rows_by_axis.setdefault(axis, []).append({
+            "id": fact_id,
+            "value": value,
+            "attr": str(fact.get("attr") or "").strip(),
+            "updated_at": str(fact.get("updated_at") or ""),
+        })
+
+    ordered_axes = ("length", "width", "height")
+    selected: dict[str, dict[str, str]] = {}
+    for axis in ordered_axes:
+        rows = rows_by_axis.get(axis) or []
+        values = {row["value"] for row in rows}
+        if len(values) != 1:
+            return None
+        selected[axis] = sorted(rows, key=lambda row: row["id"])[0]
+
+    source_fact_ids = sorted(row["id"] for row in selected.values())
+    source_field_keys = sorted({
+        f"type:pack_size"
+        for _ in selected.values()
+    } | {
+        f"attr:{row['attr']}"
+        for row in selected.values()
+    })
+    digest = hashlib.sha256(json.dumps({
+        "product_code": product_code,
+        "resolved_sku_code": resolved_sku_code,
+        "source_fact_ids": source_fact_ids,
+        "axis_values": {
+            axis: selected[axis]["value"]
+            for axis in ordered_axes
+        },
+    }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+    evidence_uid = f"producthub:packaging-dimensions:{digest}"
+    value_text = " x ".join(selected[axis]["value"] for axis in ordered_axes) + "cm"
+    effective_sku_scope = [resolved_sku_code] if resolved_sku_code else []
+    hub_identity_binding = "exact_sku" if resolved_sku_code else "direct_product_code"
+    return {
+        "score": 20.0,
+        "text_score": 0.0,
+        "vector_score": 0.0,
+        "scope_score": 1.0,
+        "source_confidence": 1.0,
+        "rerank_score": 20.0,
+        "mismatch_reason": "",
+        "chunk_id": evidence_uid,
+        "entry_id": f"producthub:{product_code}",
+        "title": "reviewed_product_hub_packaging_dimensions",
+        "chunk_text": value_text,
+        "chunk_index": 0,
+        "source_type": "product_facts",
+        "intent": "product_question",
+        "category": "structured_profile",
+        "category_l3": "dimensions",
+        "fact_type": "dimensions",
+        "evidence_fact_type": "dimensions",
+        "attribute_key": "overall_dimensions",
+        "subject_scope": "packaging",
+        "metadata": {
+            "source": "product_hub.agent_facts",
+            "structured_profile_fact": True,
+            "product_evidence_protocol": True,
+            "source_table": "product_hub.product_facts",
+            "source_field_keys": source_field_keys,
+            "verification_status": "reviewed",
+            "source_review_status": "confirmed",
+            "can_direct_answer": True,
+            "needs_human_review": True,
+            "hub_fact_sku_scope": [],
+            "hub_identity_binding": hub_identity_binding,
+            "hub_packaging_dimension_source_fact_ids": source_fact_ids,
+            "hub_packaging_dimension_axes": list(ordered_axes),
+            "hub_updated_at": max(
+                (row["updated_at"] for row in selected.values()),
+                default="",
+            ),
+            "block_reasons": [],
+        },
+        "semantic_alignment": _direct_semantic_alignment("dimensions", "dimensions"),
+        "entry_status": "published",
+        "index_status": "ready",
+        "entry_risk_level": "low",
+        "source_sheet": "",
+        "row_number": 0,
+        "sku_scope": effective_sku_scope,
+        "product_scope": [product_code],
+        "product_context_pack": True,
+        "evidence_uid": evidence_uid,
+        "evidence_id": evidence_uid,
+        "origin_evidence_key": evidence_uid,
+        "protocol_source_type": "product_hub_fact",
+        "source_table": "product_hub.product_facts",
+        "source_id": evidence_uid,
+        "requested_fact_type": "dimensions",
+        "verification_status": "reviewed",
+        "source_review_status": "confirmed",
+        "claim_types_supported": ["dimensions"],
+        "can_direct_answer": True,
+        "needs_human_review": True,
+        "block_reasons": [],
+        "value": value_text,
+        "customer_text": value_text,
+        "evidence_allowed_for_direct_answer": True,
+        "evidence_allowed_for_exact_answer": True,
+    }
 
 
 def _product_hub_color_options_candidate(
@@ -1289,6 +1516,40 @@ def _product_hub_color_options_candidate(
     }
 
 
+def _product_hub_answer_context_shadow_stats(
+    *, identity: dict[str, Any], allowed: set[str], query_fact_type: str,
+    requested_claims: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Reuse the existing adapters; expose counts only, never merge shadow rows."""
+    if not answer_context_shadow_enabled():
+        return {}
+    resolution = identity.get("product_identity_resolution")
+    reason = ""
+    if allowed and "product_facts" not in allowed:
+        reason = "product_facts_source_not_allowed"
+    elif not isinstance(resolution, dict) or resolution.get("status") != "resolved":
+        reason = "product_identity_not_resolved"
+    elif not identity.get("sku"):
+        reason = "product_hub_sku_code_missing"
+    result = (
+        {"state": "not_attempted", "reason_code": reason, "facts": [], "assets": []}
+        if reason else ProductHubReviewedFactsClient().fetch_answer_context_for_sku(identity["sku"])
+    )
+    candidates = _product_hub_facts_for_query(
+        result, identity=identity, query_fact_type=query_fact_type, requested_claims=requested_claims,
+    )
+    media = _product_hub_media_for_context(result, identity=identity)
+    return {"product_hub_answer_context_shadow": {
+        "state": result["state"], "reason_code": result["reason_code"],
+        "returned_fact_count": len(result.get("facts", [])),
+        "mapped_candidate_count": len(candidates),
+        "returned_media_count": result.get("source_media_count", len(result.get("assets", []))),
+        "unsupported_media_type_count": result.get("unsupported_media_type_count", 0),
+        "review_only_media_count": len(media),
+        "formal_merge_count": 0,
+    }}
+
+
 def _load_product_hub_reviewed_facts(identity: dict[str, Any]) -> dict[str, Any]:
     """Read Hub facts only after the existing exact identity resolver succeeds."""
 
@@ -1322,11 +1583,178 @@ def _load_product_hub_reviewed_facts(identity: dict[str, Any]) -> dict[str, Any]
     return ProductHubReviewedFactsClient().fetch_confirmed_facts(product_code)
 
 
+def _load_product_hub_reviewed_media(
+    identity: dict[str, Any], *, query_fact_type: str = "",
+) -> dict[str, Any]:
+    """Read Hub media only after the existing resolver establishes an exact SKU."""
+
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
+    sku_code = str(identity.get("sku") or "").strip()
+    if not isinstance(resolution, dict) or resolution.get("status") != "resolved":
+        return {
+            "state": "not_attempted",
+            "reason_code": "product_identity_not_resolved",
+            "product_code": "",
+            "assets": [],
+        }
+    if not sku_code:
+        return {
+            "state": "not_attempted",
+            "reason_code": "product_hub_media_sku_code_missing",
+            "product_code": "",
+            "assets": [],
+        }
+    client = ProductHubReviewedFactsClient()
+    if query_fact_type == "installation":
+        return client.fetch_manuals_for_sku(sku_code)
+    return client.fetch_reviewable_assets_for_sku(sku_code)
+
+
+def _product_hub_media_for_context(
+    product_hub_media_read: dict[str, Any],
+    *,
+    identity: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Preserve source scope for Hub images and product-manual references."""
+
+    if not isinstance(product_hub_media_read, dict):
+        return []
+    resolution = identity.get("product_identity_resolution") if isinstance(identity, dict) else {}
+    sku_code = str(identity.get("sku") or "").strip()
+    product_code = str(product_hub_media_read.get("product_code") or "").strip()
+    resolved_sku_code = str(product_hub_media_read.get("resolved_sku_code") or "").strip()
+    if (
+        not isinstance(product_hub_media_read, dict)
+        or product_hub_media_read.get("state") != "ready"
+        or not isinstance(resolution, dict)
+        or resolution.get("status") != "resolved"
+        or not sku_code
+        or resolved_sku_code != sku_code
+        or not product_code
+    ):
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    allowed_types = {
+        "sku_image": "appearance_image",
+        "pack_guide_image": "packing_list_image",
+        "certificate_image": "certificate_image",
+        "product_manual": "product_manual",
+    }
+    for asset in product_hub_media_read.get("assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        asset_id = str(asset.get("asset_id") or "").strip()
+        asset_type = str(asset.get("asset_type") or "").strip()
+        asset_url = str(asset.get("asset_url") or "").strip()
+        source_review_status = str(asset.get("source_review_status") or "").strip().lower()
+        is_manual = asset_type == "product_manual"
+        if is_manual and (
+            asset.get("binding_scope") not in {"product", "sku"}
+            or asset.get("availability") != "header_verified"
+            or not asset.get("file_checked_at")
+            or asset.get("applicability") != "needs_review"
+        ):
+            continue
+        product_scoped = is_manual and asset["binding_scope"] == "product"
+        if (
+            not asset_id
+            or asset_type not in allowed_types
+            or not asset_url
+            or source_review_status not in {"approved", "live"}
+            or str(asset.get("product_code") or "").strip() != product_code
+            or str(asset.get("resolved_sku_code") or "").strip() != sku_code
+            or str(asset.get("source") or "").strip() != "product_hub.agent_assets"
+            or str(asset.get("source_table") or "").strip() != "product_hub.assets"
+        ):
+            continue
+        candidate_id = f"producthub-media:{asset_id}"
+        candidates.append({
+            "id": candidate_id,
+            "asset_id": asset_id,
+            "asset_type": asset_type,
+            "media_purpose": allowed_types[asset_type],
+            "asset_title": str(asset.get("asset_title") or "").strip()[:160],
+            "asset_url": asset_url,
+            "thumbnail_url": "" if is_manual else asset_url,
+            "source": "product_hub.agent_assets",
+            "source_type": "media_reference",
+            "source_table": "product_hub.assets",
+            "source_id": asset_id,
+            "product_code": product_code,
+            "i_id": str(identity.get("i_id") or "").strip(),
+            "sku_code": "" if product_scoped else sku_code,
+            "product_name": str(identity.get("product_name") or "").strip(),
+            "confidence": 1.0,
+            "match_reason": "product_hub_product_manual_needs_review" if product_scoped else "product_hub_exact_sku_asset",
+            "scene_tags": list(asset.get("scene_tags") or [])[:8],
+            "answer_scenarios": [],
+            "applicable_style": {
+                "scope_type": "product" if product_scoped else "sku",
+                "scope_values": [product_code] if product_scoped else [sku_code],
+                "scope_note": "variant_applicability_not_verified" if is_manual else "",
+            },
+            "status": source_review_status,
+            "review_status": source_review_status,
+            "source_review_status": source_review_status,
+            "usable_for_agent": False,
+            "auto_send_level": "review",
+            "send_mode": "manual",
+            "delivery_candidate_source": "review_only_product_hub",
+            "evidence_role": "media_reference",
+            "reference_only": True,
+            "can_direct_answer": False,
+            "direct_answer_allowed": False,
+            "evidence_allowed_for_direct_answer": False,
+            "evidence_allowed_for_exact_answer": False,
+            "needs_human_review": True,
+            "product_context_pack": True,
+            "product_scope": [product_code],
+            "sku_scope": [] if product_scoped else [sku_code],
+            **({"availability": "header_verified", "applicability": "needs_review",
+                "file_checked_at": asset["file_checked_at"],
+                "size_bytes": asset.get("size_bytes")} if is_manual else {}),
+        })
+    return sorted(candidates, key=lambda item: str(item.get("asset_id") or ""))
+
+
 def _product_hub_facts_for_query(
     product_hub_read: dict[str, Any],
     *,
     identity: dict[str, Any],
     query_fact_type: str,
+    requested_claims: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Project one Hub snapshot for each valid server-understood customer goal."""
+    if not query_fact_type:
+        return []
+    claims = [
+        claim for claim in (requested_claims or [])
+        if isinstance(claim, dict)
+        and isinstance(claim.get("claim_type"), str)
+        and claim["claim_type"].strip()
+        and claim.get("claim_type_status", "canonical") == "canonical"
+        and claim.get("customer_goal_eligible") is not False
+        and not claim.get("prohibited")
+        and not claim.get("supporting_only")
+    ]
+    query_types = dict.fromkeys([query_fact_type, *(claim["claim_type"].strip() for claim in claims)])
+    candidates: dict[str, dict[str, Any]] = {}
+    for requested_type in query_types:
+        for candidate in _product_hub_facts_for_type(
+            product_hub_read, identity=identity, query_fact_type=requested_type,
+            requested_claims=claims,
+        ):
+            candidates.setdefault(candidate["evidence_uid"], candidate)
+    return list(candidates.values())
+
+
+def _product_hub_facts_for_type(
+    product_hub_read: dict[str, Any],
+    *,
+    identity: dict[str, Any],
+    query_fact_type: str,
+    requested_claims: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Adapt an exact Hub result to the existing structured-evidence protocol."""
 
@@ -1352,6 +1780,7 @@ def _product_hub_facts_for_query(
         return []
     candidates: list[dict[str, Any]] = []
     color_option_rows: list[dict[str, Any]] = []
+    overview_context = query_fact_type == "product_overview"
     for fact in product_hub_read.get("facts") or []:
         if not isinstance(fact, dict):
             continue
@@ -1367,8 +1796,26 @@ def _product_hub_facts_for_query(
             scope=source_scope,
             unit=unit,
         )
+        canonical_attribute_key = (
+            "overall_dimensions"
+            if evidence_fact_type == "dimensions" and subject_scope == "product"
+            else attribute_key
+        )
         fact_sku_code = str(fact.get("sku_code") or "").strip()
         applies = str(fact.get("applies") or "").strip()
+        hub_sku_id = str(fact.get("hub_sku_id") or "").strip()
+        hub_sku_binding_source = "sku_code" if fact_sku_code else ""
+        if (
+            evidence_fact_type == "accessories"
+            and not fact_sku_code
+            and hub_sku_id
+            and applies == sku_code
+        ):
+            # Hub `skuId` is a record identifier.  Its `applies` field is the
+            # separately declared SKU code, so use it only after an exact
+            # current-SKU comparison and keep the record identifier server-side.
+            fact_sku_code = applies
+            hub_sku_binding_source = "applies"
         fact_id = str(fact.get("id") or "").strip()
         value = str(fact.get("value") or "").strip()
         fact_product_code = str(fact.get("product_code") or "").strip()
@@ -1399,6 +1846,7 @@ def _product_hub_facts_for_query(
             or not subject_scope
             or not fact_id
             or not value
+            or fact_product_code != product_code
             or (fact_sku_code and fact_sku_code != sku_code)
             or (applies and applies not in {fact_sku_code, sku_code})
             # Parts configuration is an SKU-level source field. It can describe
@@ -1428,6 +1876,9 @@ def _product_hub_facts_for_query(
         }):
             continue
         evidence_uid = f"producthub:{fact_id}"
+        claim_types_supported = [evidence_fact_type]
+        if overview_context:
+            claim_types_supported.append("product_overview")
         candidates.append({
             "score": 20.0,
             "text_score": 0.0,
@@ -1447,7 +1898,7 @@ def _product_hub_facts_for_query(
             "category_l3": evidence_fact_type,
             "fact_type": evidence_fact_type,
             "evidence_fact_type": evidence_fact_type,
-            "attribute_key": attribute_key,
+            "attribute_key": canonical_attribute_key,
             "subject_scope": subject_scope,
             "metadata": {
                 "source": "product_hub.agent_facts",
@@ -1463,7 +1914,9 @@ def _product_hub_facts_for_query(
                 "needs_human_review": True,
                 "hub_fact_sku_scope": fact_sku_scope,
                 "hub_identity_binding": hub_identity_binding,
+                "hub_sku_binding_source": hub_sku_binding_source,
                 "hub_updated_at": str(fact.get("updated_at") or ""),
+                "overview_context_eligible": overview_context,
                 "block_reasons": [],
             },
             "semantic_alignment": _direct_semantic_alignment(query_fact_type, evidence_fact_type),
@@ -1485,6 +1938,8 @@ def _product_hub_facts_for_query(
             "verification_status": "reviewed",
             "source_review_status": "confirmed",
             "material_provenance": material_provenance,
+            "claim_types_supported": claim_types_supported,
+            "overview_context_eligible": overview_context,
             "can_direct_answer": True,
             "needs_human_review": True,
             "block_reasons": [],
@@ -1501,6 +1956,18 @@ def _product_hub_facts_for_query(
     )
     if color_options_candidate:
         candidates.append(color_options_candidate)
+    if _has_explicit_packaging_dimension_goal(requested_claims):
+        packaging_dimensions = _product_hub_packaging_dimensions_candidate(
+            product_hub_read.get("facts") or [],
+            product_code=product_code,
+            sku_code=sku_code,
+            resolved_sku_code=resolved_sku_code,
+        )
+        if packaging_dimensions and _fact_matches_query_type(
+            query_fact_type,
+            packaging_dimensions,
+        ):
+            candidates.append(packaging_dimensions)
     return candidates
 
 
@@ -2030,8 +2497,17 @@ def _state_identity(state: dict) -> dict[str, str]:
 
 
 _TRUSTED_EXACT_JST_ORDER_ITEM_REASONS = {
+    "exact_jst_order_item",
     "single_order_item",
     "single_primary_item_with_gifts",
+}
+
+_TRUSTED_EXACT_JST_SNAPSHOT_ITEM_REASONS = {
+    "exact_jst_snapshot_order_item",
+}
+
+_TRUSTED_EXACT_JST_SNAPSHOT_REFERENCE_REASONS = {
+    "exact_jst_snapshot_order_reference",
 }
 
 
@@ -2053,10 +2529,28 @@ def _trusted_exact_jst_order_item_identity(
     except (TypeError, ValueError):
         confidence = 0.0
 
+    snapshot_identity_only = order_identity.get("snapshot_identity_only") is True
+    if source == "jst_order_items" and not snapshot_identity_only:
+        allowed_reasons = _TRUSTED_EXACT_JST_ORDER_ITEM_REASONS
+        resolved_source = "jst_order_items_exact_sku"
+        identity_source = "order_product_identity.jst_order_items"
+        match_reason = "exact_jst_order_item_sku"
+    elif source == "jst_snapshot_order_items" and snapshot_identity_only:
+        allowed_reasons = _TRUSTED_EXACT_JST_SNAPSHOT_ITEM_REASONS
+        resolved_source = "jst_snapshot_order_items_exact_sku"
+        identity_source = "order_product_identity.jst_snapshot_order_items"
+        match_reason = "exact_jst_snapshot_order_item_sku"
+    elif source == "jst_snapshot_order_reference" and snapshot_identity_only:
+        allowed_reasons = _TRUSTED_EXACT_JST_SNAPSHOT_REFERENCE_REASONS
+        resolved_source = "jst_snapshot_order_reference_exact_sku"
+        identity_source = "order_product_identity.jst_snapshot_order_reference"
+        match_reason = "exact_jst_snapshot_order_reference_sku"
+    else:
+        return None
+
     if (
         order_identity.get("status") != "resolved"
-        or source != "jst_order_items"
-        or reason not in _TRUSTED_EXACT_JST_ORDER_ITEM_REASONS
+        or reason not in allowed_reasons
         or confidence < 0.95
         or not sku_code
         or identity.get("source") != source
@@ -2070,15 +2564,16 @@ def _trusted_exact_jst_order_item_identity(
         "sku_family": _sku_family(sku_code),
         "product_identity_resolution": {
             "status": "resolved",
-            "source": "jst_order_items_exact_sku",
+            "source": resolved_source,
             "confidence": confidence,
             "identity_confidence": confidence,
-            "identity_sources": ["order_product_identity.jst_order_items"],
-            "match_reason": "exact_jst_order_item_sku",
+            "identity_sources": [identity_source],
+            "match_reason": match_reason,
             "sku_code": sku_code,
             "sku_id": sku_code,
             "canonical_product_name": identity.get("product_name", ""),
             "resolved_product_id": "",
+            "snapshot_identity_only": snapshot_identity_only,
         },
     }
 
@@ -2223,6 +2718,8 @@ def _first_candidate_value(candidates: list[Any], *, keys: tuple[str, ...], type
 
 
 def _sku_family(value: str) -> str:
+    if os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() == "product_hub_review_only":
+        return ""
     match = re.match(r"^(YH\d+K\d+)", str(value or "").strip(), re.IGNORECASE)
     return match.group(1).upper() if match else ""
 

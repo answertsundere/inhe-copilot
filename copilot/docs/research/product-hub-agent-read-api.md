@@ -55,19 +55,65 @@ that stable contract and stays disabled until the Hub release is deployed.
    The current low-risk mapping is deliberately narrow and requires the full
    published tuple, not merely a fact type: `material/材质/商品整体/empty unit`,
    `size/尺寸/商品整体/cm`, `installation/安装说明/商品整体/empty unit`,
-   `color/颜色/商品整体/empty unit`, `weight/毛重/包装/kg`, and
+   `color/颜色/商品整体/empty unit`, `age/适用年龄/商品整体/empty unit`,
+   `load/承重/商品整体/empty unit`, `weight/毛重/包装/kg`, and
    `parts/配置说明/配件/empty unit`. The parts tuple is accepted only when both
    its Hub SKU and `applies` exactly match the resolved SKU; it describes the
    catalog configuration and cannot prove a customer received every part. A
    component or packaging field cannot be reinterpreted as a product-level
    field, and an axis value cannot be reinterpreted as overall dimensions. Color is not
-   inferred from a title, free-text note, variant label, or image. Multiple
+   inferred from a title, free-text note, variant label, or image. A load field
+   with another unit or scope, and an age field outside the published tuple,
+   remain unavailable rather than being normalized by name. Multiple
    eligible variant rows are aggregated deterministically into one
    product-level options fact; that fact does not claim current stock or
    fulfillment availability. Product net weight and untyped weight are
    rejected rather than being relabeled as a shipping fact.
 7. Treat images, captions, notes, and semantic asset search as reference-only
    follow-up work. They do not become facts or delivered media in this slice.
+
+## Answer Context Shadow Transport (2026-09-08)
+
+The same reader optionally calls `GET /api/agent/answer-context?skuCode=` once,
+after the existing resolver proves an exact SKU. Enable only with
+`COPILOT_PRODUCT_HUB_ANSWER_CONTEXT_SHADOW_ENABLED=true`; absence/false gives
+zero extra HTTP requests and no new pack field. This does not enable or replace
+the existing reviewed facts/media readers. The same base URL, bounded timeout,
+response byte limit and TLS verification apply; an error has no retry or legacy
+transport fallback.
+
+The versioned payload must declare `readOnly=true`, exact SKU identity, active
+product/SKU status, per-fact confirmation, source product/SKU binding and
+`conflict=false`. Missing or mismatched metadata invalidates the response.
+Known media types reuse the existing safe media projection; an unknown media
+type is excluded and counted, not allowed to discard otherwise valid facts.
+Media is never a fact. Raw source details, image notes and passport text do not
+enter the returned projection.
+
+The pack reuses its existing field-tuple and media adapters for comparison and
+exposes only `stats.product_hub_answer_context_shadow`: state/reason, source
+counts, mapped candidate count, unsupported media type count, review-only image
+count, and `formal_merge_count=0`. No candidate values, identities or URLs are
+added to diagnostics. Formal facts, evidence pack, recommended assets and reply
+fields remain identical to the flag-off result. Candidate count is not admission
+count or customer accuracy. Disable this flag to remove the shadow read.
+
+The 2026-09-08 local HTTP probe used an existing SQLite snapshot, not the live
+Hub database: three exact SKUs resolved; 13 source facts, 104 review-only media
+and nine excluded unsupported media types. Only two color-options candidates
+mapped among dimensions/material/color/installation queries. Snapshot SHA-256
+was unchanged and SQLite `query_only=1`, `total_changes=0`; model calls were zero.
+This slice does not broaden fact semantics to manufacture missing dimensions.
+
+Two separately reported, deterministic contract-positive probes mapped two
+material candidates and one overall-dimensions candidate. They supplement, not
+replace, the original three products. A read-only source-field inventory found
+18,945 confirmed non-conflicting rows, including 341 dimension tuples and 670
+material tuples understood by the existing field mapper. 12,361 rows did not
+match that mapper; this is not a missing-data count or an admission failure
+rate, because exact identity, grouping, requested claims and admission were
+not evaluated for every inventory row. Further source coverage must be audited
+without guessing meaning from labels or removing existing AI annotations.
 
 ## Rejected Alternatives
 

@@ -55,6 +55,17 @@ def public_readiness_payload(readiness: dict) -> dict:
         "role_map_missing",
         "role_map_invalid",
         "role_map_empty",
+        "knowledge_source_mode_invalid",
+        "product_hub_candidate_environment_required",
+        "product_hub_review_only_configuration_required",
+        "product_hub_fixture_mode_forbidden",
+        "product_hub_fixture_database_forbidden",
+        "product_hub_local_store_not_empty",
+        "product_hub_loopback_configuration_required",
+        "product_hub_readiness_probe_required",
+        "product_hub_probe_unavailable",
+        "product_hub_probe_no_eligible_facts",
+        "product_hub_probe_failed",
     }
     reasons = []
     for reason in readiness.get("reasons") or []:
@@ -65,10 +76,14 @@ def public_readiness_payload(readiness: dict) -> dict:
             normalized = "runtime_not_ready"
         if normalized and normalized not in reasons:
             reasons.append(normalized)
+    hub_only = readiness.get("source_mode") == "product_hub_review_only"
     return {
         "ready": bool(readiness.get("ready")),
-        "status": "ready" if readiness.get("ready") else "not_ready",
+        "status": (
+            "ready_product_hub_review_only" if hub_only else "ready"
+        ) if readiness.get("ready") else "not_ready",
         "reasons": reasons,
+        **({"scope": "product_facts_review_only"} if hub_only else {}),
     }
 
 
@@ -133,6 +148,7 @@ def _feature_flags() -> dict[str, bool]:
         "formal_evidence_convergence": enabled("COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED"),
         "model_first_answer_composer": enabled("COPILOT_MODEL_FIRST_ANSWER_COMPOSER_ENABLED"),
         "product_hub_reviewed_facts": enabled("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED"),
+        "product_hub_reviewed_media": enabled("COPILOT_PRODUCT_HUB_REVIEWED_MEDIA_ENABLED"),
         "answer_memory_shadow": enabled("COPILOT_ANSWER_MEMORY_SHADOW_ENABLED"),
         "grounded_reasoning_shadow": enabled("COPILOT_GROUNDED_REASONING_SHADOW_ENABLED"),
         "llm_decision_shadow": enabled("COPILOT_LLM_DECISION_SHADOW_ENABLED"),

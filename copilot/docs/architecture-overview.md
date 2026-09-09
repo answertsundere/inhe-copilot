@@ -190,27 +190,71 @@ type. When that type is unavailable, it is treated as an `unknown_identifier`,
 not inferred from its length, and is resolved through the existing bounded JST
 identifier surface. A verified order may contribute internal product name, SKU,
 and `i_id` only through the existing order-item selection policy; ambiguous
-multi-item orders remain unresolved. The resulting identity can scope the
-existing Product Context Pack and evidence path, but it neither creates facts
-nor changes delivery authority.
+multi-item orders remain unresolved. A default-disabled identity-only snapshot
+may also match an adapter-typed internal JST order reference by an HMAC stored
+in its validated v2 projection, but only when that reference resolves to
+exactly one eligible item. The raw order reference remains outside the snapshot.
+The resulting identity can scope the existing Product Context Pack and evidence
+path, but it neither creates facts nor changes delivery authority.
+
+The Sidecar also preserves an explicitly selected shop name or shop ID as
+non-evidentiary channel context. Paired with an explicit order reference, an
+exact unique enabled JST shop ID can constrain a direct outbound lookup and
+permit a bounded recent outbound scan. An unmapped, ambiguous, or unavailable
+display label cannot select a shop or enable an unscoped row-list scan, but it
+does not suppress existing exact `o_id`/`so_id` and direct outbound identifier
+queries. Those paths still require a returned exact match and return the scope
+reason after a direct miss. Shop context cannot select a product, initiate a
+query on its own, widen a global scan, or turn a partial match into an identity
+proof.
+
+For Tmall external order references, the standard JST order endpoint may not
+expose the online-order identifier required to map the sidebar value to a JST
+record. The sales-outbound endpoint can expose an exact external order or item
+identifier on some account paths, but its filter is only a retrieval hint: the
+returned identity field must still match exactly. With an explicit reference
+and exact shop scope, the resolver may scan a fixed recent outbound window and
+return an explicit incomplete result at its limit. Otherwise a safe miss must
+not select a first row, a substring, a nearby title, or an `i_id` from another
+namespace. ADR 0011 also permits a default-disabled read-only JST web-session
+adapter with an already user-authenticated session and exact schema match. That
+adapter remains at the channel boundary and feeds the same existing identity ->
+Product Context Pack -> evidence-admission flow.
 
 The Product Hub can be an additional reviewed-fact source only through the
 existing Product Context Pack and evidence-admission path. Its reader is
 default-off, read-only, and starts only after a trusted identity proof is
-available. An unambiguous existing JST single-order-item or single-primary-item
-identity reuses its exact order SKU directly for the Hub natural-key lookup;
-context-selected multi-item orders and conflicting signals do not bypass normal
-identity resolution. A JST order's exact SKU is first verified through the Hub SKU natural
+available. An unambiguous existing JST single-order-item, single-primary-item,
+or single exact outbound-item-identifier match reuses its exact order SKU
+directly for the Hub natural-key lookup; context-selected multi-item orders and
+conflicting signals do not bypass normal identity resolution. A JST order's exact SKU is first verified through the Hub SKU natural
 key, then the returned Hub product code scopes the facts request; JST `i_id` is
 not treated as a Hub product code. A product-level Hub fact reached by that
 exact mapping carries the verified SKU only as its admission binding while its
 original Hub scope remains provenance. It accepts only confirmed,
-non-conflicting, identity-aligned rows, and contributes only the supported material,
-product-dimension, and installation families in this slice. Hub availability,
+non-conflicting, identity-aligned rows, and contributes only exact published
+tuples for material, product dimensions, installation, color options, age
+range, product load capacity, packaging gross weight, and SKU-bound catalog
+configuration in this slice. Hub availability,
 SKU mismatch, or contract failures yield no candidate; they never fall back to
-product-title matching, bulk catalog context, notes, images, or synthetic facts.
-This source does not enable Formal Evidence Convergence, media delivery,
+product-title matching, bulk catalog context, notes, or synthetic facts. A
+separate default-off exact-SKU media projection may read only a matching Hub
+SKU asset endpoint after the same SKU proof. It accepts only `approved`/`live`
+known image types with canonical Hub preview URLs, and exposes them only as
+`media_reference` review candidates. These items are not evidence, do not
+change answerability or `recommended_assets`, and carry `auto_send_level=review`
+and `usable_for_agent=false`; they cannot create reply blocks or delivery
+authority. Neither Hub projection enables Formal Evidence Convergence,
 `can_send`, or a second knowledge owner.
+
+Intent routing does not bind product identity. A model-generated product_name
+remains in router_decision for diagnostics; it cannot overwrite upstream
+matched_product_name or turn a generic reference into an explicit title signal.
+Explicit structured titles/SKUs and genuine conflicts still go to the existing
+identity owner. Within one already-read Hub snapshot, every valid server-
+understood customer fact goal uses the same per-type projection and existing
+source/identity gates. Candidate union deduplicates by evidence_uid; a secondary
+goal does not acquire authority from the primary type or bypass later admission.
 
 Knowledge, policy, service action, media, and Answer Memory are distinct roles.
 Presence in a context pack does not authorize a claim.
@@ -243,6 +287,32 @@ enable a fast path or alter a formal reply.
 
 ### Model-Led Understanding And Reply
 
+Understanding uses the existing canonical conversation normalizer and privacy
+projection to carry up to eight recent buyer/agent turns, 280 characters each,
+with explicit truncation. This quoted history can resolve references and
+omitted qualifiers only. The latest buyer clarification supersedes an agent's
+guess; explicit current scope supersedes history. It cannot supply facts,
+trusted product identities, policies, action authority, or source spans for
+new goals. Historical requests are not revived without a current request.
+Only dimension goals carry subject_scope in the Understanding schema; every
+other claim type must leave it empty even when dialogue identifies the product.
+This field constraint is preserved by validation rather than silently repaired.
+Each canonical candidate advertises subject_scope_candidates from the existing
+dimension predicate/scope constants. Understanding must use the selected
+candidate's allowed values, including the empty-only list for non-dimensions;
+this field is not a general physical-measurement label.
+Graph evidence convergence supplies the same canonical conversation turns to
+the existing compact reply context. Composer keeps the resolved measured
+object and fact meaning in its wording, never relabels packaging as the product
+itself or net weight as gross weight, and need not append a status-style closure.
+
+Net weight is a distinct strict fact type, never a synonym for gross weight or
+load capacity. The existing Product Context Pack admits it only through the
+exact confirmed Hub whole-product net-weight field in kg, retaining SKU/source
+binding and existing conflict/review gates. Individual facts must match the
+resolved Hub product code; neither the outer response nor a same-looking SKU
+authorizes a cross-product fact. No new retrieval or reply owner is introduced.
+
 The model should understand the current customer goals and organize one natural
 reply from compact admitted context. Deterministic code validates schema, tool
 authorization, evidence references, safety, and delivery; it should not
@@ -251,6 +321,22 @@ reconstruct customer meaning from growing phrase lists.
 `ModelFirstAnswerComposerService` is the current candidate reply owner. It is
 review-only and disabled by default. It may not retrieve again, establish facts,
 execute tools, deliver media, or grant `can_send`.
+
+The Composer's `customer_care_closure` is a model-owned string, not a mandatory
+extra paragraph. With the existing care-closure flag enabled the field must be
+present, but a complete answer uses an empty string unless the current context
+needs a distinct, fact-neutral acknowledgement. Closures may not repeat clauses,
+invent facts/actions or add generic invitations for length. Exact copied clause
+or whole-answer text (ignoring whitespace), invalid types and excessive length
+are rejected rather than repaired. Semantic paraphrases remain subject to the
+existing Final audit. This does not change clause coverage, evidence or sending.
+
+In the explicit `product_hub_review_only` source mode, the legacy Graph
+`order_product_resolver` defers to the existing Product Context Pack identity
+owner. It neither queries JST/local caches nor manufactures identity updates.
+The existing exact active-SKU, title-conflict, query-only and environment gates
+still apply; this mode does not qualify order/tracking/title-only inputs.
+Default source mode retains the existing order and logistics paths.
 
 Its input is partitioned before the model call. Only current-turn,
 owner-stamped `customer_goal` items with valid provenance and exactly one Claim
@@ -267,6 +353,17 @@ only reply composition: it does not change Understanding, routing, retrieval,
 evidence admission, Audit, safety, delivery, or can_send. An incomplete or
 unqualified override blocks the candidate before any Provider call rather than
 falling back to a different model.
+
+Turn Understanding may likewise use one explicit
+`COPILOT_TURN_UNDERSTANDING_STRICT_*` role through the existing strict provider
+transport. This is a schema/provenance boundary, not another understanding
+owner: it still returns the same canonical current-turn goals, which retain
+source-span order. Its credentials and qualification fingerprint are separate
+from the formal reply role; missing or unqualified configuration fails closed
+with no JSON or free-text fallback. The role has passed a synthetic transport
+and semantic qualification, but remains default-off until an isolated runtime
+supplies its exact qualified configuration. It changes neither evidence
+admission nor `can_send`.
 
 The P0.2d fixed-eight diagnostic qualified this Composer input boundary:
 customer-goal clause coverage was 15/15 and no non-customer goal was rendered
@@ -487,6 +584,15 @@ or delivery authority.
 The long-term formal path has one semantic reply owner. No-evidence, polishing,
 semantic-fit, and final-orchestration services may guard or minimally adapt that
 reply, but must not become independent answer engines.
+
+An explicitly invalid or degraded Turn Understanding does not authorize a
+legacy candidate merely because delivery is manual. The existing Pipeline
+clears suggested/draft/sendable text, reply blocks and supervisor/partial
+preview inputs, while retaining selected-evidence diagnostics and reason codes.
+It reapplies that boundary after Final success or exception because legacy
+Final processing may regenerate text. This is not a replacement reply engine,
+retry or send permission. Valid non-renderable turns keep their separate
+existing compatibility behavior.
 
 The current feature-disabled model-first candidate implements this ownership
 sequence:
@@ -927,6 +1033,9 @@ may still be reported, but must not be renamed accuracy.
 - The formal Pipeline, trace/persistence contract, identity boundaries, evidence
   roles, and deterministic safety controls are strong foundations.
 - Formal Evidence Convergence and the model-first composer are disabled.
+- The optional strict Turn Understanding role is synthetically qualified but
+  default-off; its configuration must match the recorded non-secret fingerprint
+  before a candidate runtime can use it.
 - The canonical answer-eligibility contract is diagnostic only; Fast Path
   remains disabled.
 - Public `copilot_context.turn_understanding` is removed before graph

@@ -79,6 +79,11 @@ _PLACEHOLDER_PATTERNS = (
 )
 
 COMPATIBLE_FACT_TYPES = {
+    # Product overview is a constrained factual summary. The Product Context
+    # Pack marks only exact, reviewed material and product-overall dimension
+    # facts as supporting it; it never turns those facts into a quality or
+    # safety conclusion.
+    "product_overview": {"product_overview", "material_composition", "dimensions"},
     "installation_media": {"installation", "installation_media", "installation_media_request"},
     # High-risk claims require evidence explicitly reviewed for that claim.
     # A composition fact can answer "what is it made of", but cannot establish
@@ -344,6 +349,10 @@ def _evidence_uid(source: str, item: dict[str, Any], text: str) -> str:
     explicit = sanitize_text(item.get("evidence_uid") or item.get("chunk_id") or item.get("source_chunk_id"))
     if explicit:
         return explicit
+    if _role(item) in MEDIA_ROLES or item.get("asset_type"):
+        asset_id = sanitize_text(item.get("asset_id") or item.get("id"))
+        if asset_id:
+            return f"media:{asset_id}"
     seed = "|".join(
         [source, _source_type(item), _role(item), _fact_type(item), _attribute_key(item), text]
         + [f"{scope['namespace']}={scope['value']}" for scope in _identity_scope(item)]
@@ -485,6 +494,12 @@ def _admission_reason(
             return identity_reason
     if requested_claim_types:
         supported = _canonical_claim_types(_claim_types(item))
+        requested = _canonical_claim_types(requested_claim_types)
+        if (
+            requested == {"product_overview"}
+            and item.get("overview_context_eligible") is not True
+        ):
+            return "product_overview_context_not_eligible"
         compatible = set().union(
             *(_compatible_claim_types(claim) for claim in requested_claim_types)
         )
@@ -738,6 +753,7 @@ def collect_admitted_product_facts(
             ).lower(),
             "direct_answer_allowed": True,
             "claim_types_supported": _claim_types(item),
+            "overview_context_eligible": item.get("overview_context_eligible") is True,
             "fact_type": _fact_type(item),
             "attribute_key": _attribute_key(item),
             "canonical_attribute_key": _canonical_attribute_key(item),

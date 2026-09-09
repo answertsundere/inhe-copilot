@@ -175,6 +175,20 @@ def slot_extract(state: dict) -> dict:
     ctx = state.get("copilot_context", {}) or {}
     context_order_id = str(ctx.get("order_id") or "").strip()
     context_order_type = str(ctx.get("order_identifier_type") or "").strip()
+    runtime_reference = state.get("_runtime_explicit_order_reference") or {}
+    runtime_order_type = str(runtime_reference.get("identifier_type") or "").strip()
+    runtime_has_explicit_order = (
+        isinstance(runtime_reference, dict)
+        and runtime_reference.get("source") == "explicit_request"
+        and bool(str(api_order_id or "").strip())
+        and runtime_order_type in {
+            "internal_order_id",
+            "platform_trade_id",
+            "platform_order_id",
+            "tracking_no",
+            "unknown_identifier",
+        }
+    )
     context_has_explicit_order = (
         ctx.get("order_reference_source") == "explicit_request"
         and bool(context_order_id)
@@ -212,9 +226,14 @@ def slot_extract(state: dict) -> dict:
         order_id, order_id_type = _extract_order_id_semantic(normalized)
     if api_order_id:
         order_id = api_order_id
-        if context_has_explicit_order:
-            order_id_type = context_order_type
-            if context_order_type == "platform_trade_id":
+        explicit_order_type = (
+            runtime_order_type
+            if runtime_has_explicit_order
+            else context_order_type if context_has_explicit_order else ""
+        )
+        if explicit_order_type:
+            order_id_type = explicit_order_type
+            if explicit_order_type == "platform_trade_id":
                 platform_trade_id = api_order_id
             else:
                 platform_trade_id = ""
@@ -298,13 +317,13 @@ def slot_extract(state: dict) -> dict:
 
     parts = []
     if order_id:
-        parts.append(f"订单号={order_id}({order_id_type})")
+        parts.append(f"订单标识已提供(type={order_id_type})")
     if platform_trade_id:
-        parts.append(f"平台交易号={platform_trade_id}")
+        parts.append("平台交易标识已提供")
     if tracking_no:
-        parts.append(f"快递单号={tracking_no}")
+        parts.append("物流标识已提供")
     if possible_numeric_id:
-        parts.append(f"数字编号={possible_numeric_id}")
+        parts.append("未知数字标识已提供")
     if product_name:
         parts.append(f"商品={product_name}")
     if risk_keywords:

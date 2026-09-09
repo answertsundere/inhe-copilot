@@ -1,5 +1,5 @@
 """
-聚水潭实时查询层 — 每个函数只做一次精确 API 调用，不做慢速扫描。
+聚水潭实时查询层 — 只读、精确身份验证和受控范围查询。
 
 API 能力说明（基于 2026-05-31 实测）：
 - o_ids 参数（orders/single/query）：实测可用精确查询，~400ms，无需时间范围。
@@ -7,8 +7,9 @@ API 能力说明（基于 2026-05-31 实测）：
   会返回 code!=0 或 found=0，此时直接安全 fallback，不做慢扫。
 - so_ids 参数（orders/single/query）：实测可用精确查询，~450ms，需搭配最近7天时间范围。
   同上，属于实测能力。
-- so_ids 参数（orders/out/simple/query）：销售出库查询，支持 so_ids 精确查询。
-  用于 platform_trade_id / outer_so_id 类型的单号查询。
+- orders/out/simple/query：销售出库查询的 so_ids 过滤只可作为查询提示；
+  调用方必须逐字段验证返回订单或明细标识，不能把请求参数当作精确命中证明。
+  当已有精确店铺范围时，才允许在该店铺的最近修改时间窗口内受控分页。
 - sku_ids 参数（sku/query）：实测可用精确查询。
 - l_id 参数（logistic/query）：实测 API 忽略此参数，不支持精确查询。
 - tracking_no：聚水潭无任何 API 支持按 tracking_no 精确查询。
@@ -16,7 +17,7 @@ API 能力说明（基于 2026-05-31 实测）：
 查询策略：
 1. internal_order_id (o_id)  → orders/single/query + o_ids（单次调用）
 2. platform_order_id (so_id) → orders/single/query + so_ids + 最近7天（单次调用）
-3. platform_trade_id (outer_so_id) → orders/out/simple/query + so_ids（单次调用）
+3. platform_trade_id (outer_so_id) → orders/out/simple/query 有界时间扫描 + 精确字段验证
    fallback → orders/single/query outer_so_id scan
 4. tracking_no → logistic/query 单页扫描（l_id 匹配）
 5. unknown_identifier → outbound_so_id → o_ids → so_ids → outer_so_id scan → logistic/query scan
@@ -36,7 +37,14 @@ logger = logging.getLogger(__name__)
 def _log_api_error(e: JSTAPIError) -> None:
     """Log JST API errors with classification for diagnostics."""
     classification = e.classify()
-    if e.is_auth_error:
+    if e.is_ip_allowlist_error:
+        logger.error(
+            "JST network access blocked (code=%s); endpoint=%s; classify=%s",
+            e.code,
+            e.endpoint,
+            classification,
+        )
+    elif e.is_auth_error:
         logger.error(
             "JST 认证错误 (code=%s): %s. endpoint=%s. 请检查环境变量 JUSHUITAN_APP_KEY, "
             "JUSHUITAN_APP_SECRET, JUSHUITAN_ACCESS_TOKEN 是否正确配置。",
@@ -45,10 +53,19 @@ def _log_api_error(e: JSTAPIError) -> None:
     else:
         logger.warning("JST API 错误 (code=%s): %s, endpoint=%s", e.code, e.api_message, e.endpoint)
 
+
+def _safe_api_error_code(error: JSTAPIError) -> str:
+    """Return a stable, non-sensitive code for a read-only JST API failure."""
+    if error.is_ip_allowlist_error:
+        return "jst_ip_allowlist_blocked"
+    return str(error.code)
+
 # TTL 缓存
 _CACHE_TTL_FOUND = 60   # 成功结果缓存 60s
 _CACHE_TTL_MISS = 15     # 失败结果缓存 15s
 _cache: dict = {}
+_OUTBOUND_SCAN_PAGE_SIZE = 100
+_OUTBOUND_SCAN_MAX_PAGES = 20
 
 
 def _cache_get(key: str):
@@ -62,6 +79,63 @@ def _cache_get(key: str):
 
 def _cache_set(key: str, val: dict, found: bool):
     _cache[key] = {"val": val, "ts": time.time(), "ttl": _CACHE_TTL_FOUND if found else _CACHE_TTL_MISS}
+
+
+def _normalize_shop_label(value: str) -> str:
+    return " ".join(str(value or "").split()).casefold()
+
+
+def _resolve_exact_shop_scope(
+    client: JSTClient,
+    *,
+    shop_id: str = "",
+    shop_name: str = "",
+) -> dict:
+    """Resolve a UI display label to one exact JST shop id for query routing only.
+
+    Shop context never identifies an order or a SKU.  It can only narrow a
+    lookup that already has an explicit order identifier.  An empty or
+    ambiguous display label therefore fails closed instead of choosing a row.
+    """
+    explicit_shop_id = str(shop_id or "").strip()
+    if explicit_shop_id:
+        return {"status": "resolved", "shop_id": explicit_shop_id}
+
+    normalized_name = _normalize_shop_label(shop_name)
+    if not normalized_name:
+        return {"status": "unscoped", "shop_id": ""}
+
+    cache_key = f"shop_scope:{normalized_name}"
+    cached = _cache_get(cache_key)
+    if isinstance(cached, dict):
+        return dict(cached)
+
+    result = client.call("shops/query", {"page_index": 1, "page_size": 100})
+    data = result.get("data") if isinstance(result, dict) else {}
+    rows = (data.get("datas") or data.get("shops") or []) if isinstance(data, dict) else []
+    matching_ids: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("enabled") is False:
+            continue
+        labels = {
+            _normalize_shop_label(row.get(field, ""))
+            for field in ("shop_name", "name", "shop_nick", "seller_nick", "nick")
+        }
+        resolved_shop_id = str(row.get("shop_id") or "").strip()
+        if resolved_shop_id and normalized_name in labels:
+            matching_ids.add(resolved_shop_id)
+
+    if len(matching_ids) == 1:
+        scope = {"status": "resolved", "shop_id": next(iter(matching_ids))}
+        _cache_set(cache_key, scope, True)
+        return dict(scope)
+
+    scope = {
+        "status": "ambiguous" if matching_ids else "not_found",
+        "shop_id": "",
+    }
+    _cache_set(cache_key, scope, False)
+    return dict(scope)
 
 
 def _make_result(*, found: bool, data=None, source="jst_live", endpoint="",
@@ -78,6 +152,42 @@ def _make_result(*, found: bool, data=None, source="jst_live", endpoint="",
         "error_message": error_message,
         "safe_fallback_reason": safe_fallback_reason,
     }
+
+
+def _resolve_dispatch_shop_scope(*, shop_id: str = "", shop_name: str = "") -> dict:
+    """Resolve an optional selected-shop boundary once for a multi-path lookup."""
+    explicit_shop_id = str(shop_id or "").strip()
+    if explicit_shop_id:
+        return {"status": "resolved", "shop_id": explicit_shop_id}
+    if not _normalize_shop_label(shop_name):
+        return {"status": "unscoped", "shop_id": ""}
+    try:
+        return _resolve_exact_shop_scope(JSTClient(), shop_name=shop_name)
+    except (JSTConfigError, JSTTimeoutError, JSTAPIError) as exc:
+        return {"status": "unavailable", "shop_id": "", "error_code": type(exc).__name__}
+
+
+def _enforce_result_shop_scope(result: dict, *, expected_shop_id: str) -> dict:
+    """Reject a successful direct lookup unless its returned order matches scope."""
+    if not expected_shop_id or not isinstance(result, dict) or not result.get("found"):
+        return result
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    actual_shop_id = str(data.get("shop_id") or "").strip()
+    if actual_shop_id == expected_shop_id:
+        return result
+
+    rejected = _make_result(
+        found=False,
+        source=result.get("source", "jst_live"),
+        endpoint=result.get("endpoint", ""),
+        query_type=result.get("query_type", ""),
+        duration_ms=result.get("duration_ms", 0),
+        error_code="shop_scope_mismatch",
+        safe_fallback_reason="shop_scope_mismatch",
+    )
+    if isinstance(result.get("attempted_paths"), list):
+        rejected["attempted_paths"] = result["attempted_paths"]
+    return rejected
 
 
 def _recent_modified_range(days: int = 6) -> tuple[str, str]:
@@ -105,21 +215,26 @@ def _historical_modified_windows(*, days: int = 75, window_days: int = 6) -> lis
     return windows
 
 
-def _extract_order_info(order: dict) -> dict:
+def _safe_order_item(item: dict) -> dict:
+    return {
+        "sku_id": item.get("sku_id", ""),
+        "i_id": item.get("i_id", ""),
+        "name": item.get("name", ""),
+        "qty": item.get("qty", 0),
+        "price": item.get("sale_price", item.get("price", item.get("seller_income_amount", 0))),
+    }
+
+
+def _extract_order_info(order: dict, *, matched_item: dict | None = None) -> dict:
     """从聚水潭订单数据中提取客服所需字段（脱敏）"""
     items = []
     for item in order.get("items", []):
-        items.append({
-            "sku_id": item.get("sku_id", ""),
-            "i_id": item.get("i_id", ""),
-            "name": item.get("name", ""),
-            "qty": item.get("qty", 0),
-            "price": item.get("sale_price", item.get("price", item.get("seller_income_amount", 0))),
-        })
+        if isinstance(item, dict):
+            items.append(_safe_order_item(item))
     raw_items = order.get("items", [])
     first_raw_item = raw_items[0] if raw_items else {}
 
-    return {
+    result = {
         "o_id": str(order.get("o_id", "")),
         "io_id": str(order.get("io_id", "")),
         "so_id": str(order.get("so_id", "")),
@@ -141,6 +256,51 @@ def _extract_order_info(order: dict) -> dict:
         "remark": order.get("remark", ""),
         "buyer_message": order.get("buyer_message", ""),
     }
+    if isinstance(matched_item, dict):
+        result["matched_item"] = _safe_order_item(matched_item)
+        result["matched_item_reason"] = "exact_jst_order_item"
+    return result
+
+
+def _outbound_identifier_match(
+    rows: list[dict],
+    identifier: str,
+    *,
+    expected_shop_id: str = "",
+) -> tuple[dict, dict | None] | None:
+    """Return one exact order or item match from an outbound query response."""
+    target = str(identifier or "").strip()
+    if not target:
+        return None
+
+    item_matches: list[tuple[dict, dict]] = []
+    order_matches: list[tuple[dict, None]] = []
+    for order in rows:
+        if not isinstance(order, dict):
+            continue
+        if expected_shop_id and str(order.get("shop_id") or "").strip() != expected_shop_id:
+            continue
+        if any(
+            str(order.get(field) or "").strip() == target
+            for field in ("so_id", "o_id", "outer_so_id")
+        ):
+            order_matches.append((order, None))
+        for item in order.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            if any(
+                str(item.get(field) or "").strip() == target
+                for field in ("outer_oi_id", "oi_id", "raw_so_id")
+            ):
+                item_matches.append((order, item))
+
+    if len(item_matches) == 1:
+        return item_matches[0]
+    if item_matches:
+        return None
+    if len(order_matches) == 1:
+        return order_matches[0]
+    return None
 
 
 def lookup_order_by_order_id(o_id: str) -> dict:
@@ -166,14 +326,20 @@ def lookup_order_by_order_id(o_id: str) -> dict:
         orders = result.get("data", {}).get("orders", [])
         duration_ms = int((time.time() - t0) * 1000)
 
-        if orders:
-            data = _extract_order_info(orders[0])
+        matched = [
+            order for order in orders
+            if str(order.get("o_id") or "").strip() == str(o_id).strip()
+        ]
+        if len(matched) == 1:
+            data = _extract_order_info(matched[0])
             r = _make_result(found=True, data=data, endpoint="orders/single/query",
                              query_type="order_id", duration_ms=duration_ms)
         else:
             r = _make_result(found=False, endpoint="orders/single/query",
                              query_type="order_id", duration_ms=duration_ms,
-                             safe_fallback_reason="not_found")
+                             safe_fallback_reason=(
+                                 "not_found" if not orders else "o_id_not_matched"
+                             ))
 
     except JSTConfigError:
         duration_ms = int((time.time() - t0) * 1000)
@@ -186,8 +352,9 @@ def lookup_order_by_order_id(o_id: str) -> dict:
     except JSTAPIError as e:
         duration_ms = int((time.time() - t0) * 1000)
         _log_api_error(e)
+        code = _safe_api_error_code(e)
         r = _make_result(found=False, query_type="order_id", duration_ms=duration_ms,
-                         error_code=str(e.code), error_message=e.api_message, safe_fallback_reason="jst_api_error")
+                         error_code=code, error_message=e.api_message, safe_fallback_reason=code)
 
     _cache_set(cache_key, r, r["found"])
     return r
@@ -219,23 +386,26 @@ def lookup_order_by_platform_order_id(so_id: str) -> dict:
         orders = result.get("data", {}).get("orders", [])
         duration_ms = int((time.time() - t0) * 1000)
 
-        if orders:
-            # 精确匹配 so_id（API 可能返回多条）
-            matched = [o for o in orders if str(o.get("so_id")) == str(so_id)]
-            order = matched[0] if matched else orders[0]
-            data = _extract_order_info(order)
+        matched = [
+            order for order in orders
+            if str(order.get("so_id") or "").strip() == str(so_id).strip()
+        ]
+        if len(matched) == 1:
+            data = _extract_order_info(matched[0])
             r = _make_result(found=True, data=data, endpoint="orders/single/query",
                              query_type="platform_order_id", duration_ms=duration_ms)
         else:
             r = _make_result(found=False, endpoint="orders/single/query",
                              query_type="platform_order_id", duration_ms=duration_ms,
-                             safe_fallback_reason="not_found")
+                             safe_fallback_reason=(
+                                 "not_found" if not orders else "so_id_not_matched"
+                             ))
 
     except (JSTConfigError, JSTTimeoutError, JSTAPIError) as e:
         duration_ms = int((time.time() - t0) * 1000)
         if isinstance(e, JSTAPIError):
             _log_api_error(e)
-        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         r = _make_result(found=False, query_type="platform_order_id", duration_ms=duration_ms,
                          error_code=code, error_message=str(e),
                          safe_fallback_reason=code)
@@ -274,8 +444,8 @@ def lookup_order_by_platform_order_id_history(so_id: str, *, days: int = 75) -> 
             })
             orders = result.get("data", {}).get("orders", [])
             duration_ms = int((time.time() - start) * 1000)
-            matched = [o for o in orders if str(o.get("so_id")) == str(so_id)]
-            order = matched[0] if matched else (orders[0] if orders else None)
+            matched = [o for o in orders if str(o.get("so_id") or "").strip() == str(so_id).strip()]
+            order = matched[0] if len(matched) == 1 else None
             attempted_paths.append({
                 "query_type": "platform_order_id_history",
                 "endpoint": "orders/single/query",
@@ -304,7 +474,7 @@ def lookup_order_by_platform_order_id_history(so_id: str, *, days: int = 75) -> 
         duration_ms = int((time.time() - t0) * 1000)
         if isinstance(e, JSTAPIError):
             _log_api_error(e)
-        last_error_code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        last_error_code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         last_error_message = str(e)
         attempted_paths.append({
             "query_type": "platform_order_id_history",
@@ -336,7 +506,8 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
 
     The JST UI exposes "external transaction no" separately from so_id. The
     public order endpoint does not appear to support an exact outer_so_id
-    parameter, so this scans recent orders and matches the returned field.
+    parameter, so this scans recent orders and requires an exact returned
+    field match.  Substring similarity is not an identity proof.
     """
     if not outer_so_id:
         return _make_result(found=False, query_type="outer_so_id", safe_fallback_reason="empty_id")
@@ -363,7 +534,7 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
             orders = result.get("data", {}).get("orders", [])
             for order in orders:
                 candidate = str(order.get("outer_so_id") or "").strip()
-                if candidate == target or (candidate and target in candidate):
+                if candidate == target:
                     duration_ms = int((time.time() - t0) * 1000)
                     r = _make_result(
                         found=True,
@@ -391,7 +562,7 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
         duration_ms = int((time.time() - t0) * 1000)
         if isinstance(e, JSTAPIError):
             _log_api_error(e)
-        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         r = _make_result(
             found=False,
             endpoint="orders/single/query",
@@ -406,65 +577,181 @@ def lookup_order_by_outer_so_id(outer_so_id: str, *, max_pages: int = 5) -> dict
     return r
 
 
-def lookup_outbound_by_so_id(so_id: str) -> dict:
-    """Query JST sales outbound records by platform/external transaction id."""
-    if not so_id:
-        return _make_result(found=False, query_type="outbound_so_id", safe_fallback_reason="empty_id")
+def lookup_outbound_by_so_id(
+    so_id: str,
+    *,
+    shop_id: str = "",
+    shop_name: str = "",
+) -> dict:
+    """Resolve an outbound order using an exact identifier and an optional shop scope.
 
-    cache_key = f"outso:{so_id}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
+    ``so_ids`` narrows the first provider request but cannot prove identity by
+    itself.  Every accepted result must still have exactly one matching
+    order-level or line-level identifier.  If an explicit shop scope is known,
+    a bounded recent-window pagination follows a direct miss; an unscoped
+    request never expands into a company-wide list scan.
+    """
+    target = str(so_id or "").strip()
+    if not target:
+        return _make_result(found=False, query_type="outbound_so_id", safe_fallback_reason="empty_id")
 
     client = JSTClient()
     t0 = time.time()
-    modified_begin, modified_end = _recent_modified_range()
+    active_endpoint = "orders/out/simple/query"
+    attempts: list[dict] = []
     try:
-        result = client.call("orders/out/simple/query", {
-            "page_index": 1,
-            "page_size": 20,
-            "so_ids": [str(so_id)],
-            "modified_begin": modified_begin,
-            "modified_end": modified_end,
-        })
-        rows = result.get("data", {}).get("datas", [])
-        duration_ms = int((time.time() - t0) * 1000)
+        active_endpoint = "shops/query"
+        scope = _resolve_exact_shop_scope(
+            client,
+            shop_id=shop_id,
+            shop_name=shop_name,
+        )
+        scope_status = scope.get("status")
+        resolved_shop_id = str(scope.get("shop_id") or "").strip()
+        if scope_status in {"ambiguous", "not_found"}:
+            r = _make_result(
+                found=False,
+                endpoint="shops/query",
+                query_type="outbound_so_id",
+                duration_ms=int((time.time() - t0) * 1000),
+                safe_fallback_reason=f"shop_scope_{scope_status}",
+            )
+            _cache_set(f"outso:{target}|shop_name:{_normalize_shop_label(shop_name)}", r, False)
+            return r
 
-        if rows:
-            row = rows[0]
-            data = _extract_order_info(row)
+        cache_key = f"outso:{target}|shop:{resolved_shop_id or 'unscoped'}"
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        active_endpoint = "orders/out/simple/query"
+        direct_params = {
+            "page_index": 1,
+            "page_size": _OUTBOUND_SCAN_PAGE_SIZE,
+            "so_ids": [target],
+        }
+        if resolved_shop_id:
+            direct_params["shop_id"] = resolved_shop_id
+        direct_result = client.call("orders/out/simple/query", direct_params)
+        direct_rows = direct_result.get("data", {}).get("datas", [])
+        attempts.append({
+            "endpoint": "orders/out/simple/query",
+            "stage": "direct_identifier_hint",
+            "page_index": 1,
+            "found": False,
+        })
+        matched = _outbound_identifier_match(
+            direct_rows,
+            target,
+            expected_shop_id=resolved_shop_id,
+        )
+        if matched:
+            row, matched_item = matched
+            data = _extract_order_info(row, matched_item=matched_item)
             r = _make_result(
                 found=True,
                 data=data,
                 endpoint="orders/out/simple/query",
                 query_type="outbound_so_id",
-                duration_ms=duration_ms,
+                duration_ms=int((time.time() - t0) * 1000),
             )
-        else:
+            attempts[-1]["found"] = True
+            r["attempted_paths"] = attempts
+            _cache_set(cache_key, r, True)
+            return r
+
+        # Do not broaden an unscoped lookup.  The selected shop only narrows
+        # an already explicit order identifier; it is never an identity source.
+        if not resolved_shop_id:
             r = _make_result(
                 found=False,
                 endpoint="orders/out/simple/query",
                 query_type="outbound_so_id",
-                duration_ms=duration_ms,
-                safe_fallback_reason="not_found",
+                duration_ms=int((time.time() - t0) * 1000),
+                safe_fallback_reason=(
+                    "outbound_identifier_not_matched" if direct_rows else "not_found"
+                ),
             )
+            r["attempted_paths"] = attempts
+            _cache_set(cache_key, r, False)
+            return r
+
+        modified_begin, modified_end = _recent_modified_range()
+        for page_index in range(1, _OUTBOUND_SCAN_MAX_PAGES + 1):
+            scan_result = client.call("orders/out/simple/query", {
+                "shop_id": resolved_shop_id,
+                "page_index": page_index,
+                "page_size": _OUTBOUND_SCAN_PAGE_SIZE,
+                "modified_begin": modified_begin,
+                "modified_end": modified_end,
+            })
+            rows = scan_result.get("data", {}).get("datas", [])
+            attempts.append({
+                "endpoint": "orders/out/simple/query",
+                "stage": "scoped_recent_scan",
+                "page_index": page_index,
+                "found": False,
+            })
+            matched = _outbound_identifier_match(
+                rows,
+                target,
+                expected_shop_id=resolved_shop_id,
+            )
+            if matched:
+                row, matched_item = matched
+                data = _extract_order_info(row, matched_item=matched_item)
+                r = _make_result(
+                    found=True,
+                    data=data,
+                    endpoint="orders/out/simple/query",
+                    query_type="outbound_so_id",
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
+                attempts[-1]["found"] = True
+                r["attempted_paths"] = attempts
+                _cache_set(cache_key, r, True)
+                return r
+            if len(rows) < _OUTBOUND_SCAN_PAGE_SIZE:
+                r = _make_result(
+                    found=False,
+                    endpoint="orders/out/simple/query",
+                    query_type="outbound_so_id",
+                    duration_ms=int((time.time() - t0) * 1000),
+                    safe_fallback_reason=(
+                        "outbound_identifier_not_matched" if rows or direct_rows else "not_found"
+                    ),
+                )
+                r["attempted_paths"] = attempts
+                _cache_set(cache_key, r, False)
+                return r
+
+        r = _make_result(
+            found=False,
+            endpoint="orders/out/simple/query",
+            query_type="outbound_so_id",
+            duration_ms=int((time.time() - t0) * 1000),
+            safe_fallback_reason="outbound_scoped_scan_incomplete",
+        )
+        r["attempted_paths"] = attempts
 
     except (JSTConfigError, JSTTimeoutError, JSTAPIError) as e:
         duration_ms = int((time.time() - t0) * 1000)
         if isinstance(e, JSTAPIError):
             _log_api_error(e)
-        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         r = _make_result(
             found=False,
-            endpoint="orders/out/simple/query",
+            endpoint=active_endpoint,
             query_type="outbound_so_id",
             duration_ms=duration_ms,
             error_code=code,
             error_message=str(e),
             safe_fallback_reason=code,
         )
+        if attempts:
+            r["attempted_paths"] = attempts
 
-    _cache_set(cache_key, r, r["found"])
+    _cache_set(cache_key if "cache_key" in locals() else f"outso:{target}", r, r["found"])
     return r
 
 
@@ -661,7 +948,7 @@ def lookup_product_by_sku(sku_id: str) -> dict:
                                 error_code="config_missing", error_message=str(e),
                                 safe_fallback_reason="config_missing")
 
-        first_error_code = "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        first_error_code = "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         first_error_message = str(e)
 
     modified_begin, modified_end = _recent_modified_range()
@@ -723,7 +1010,7 @@ def lookup_product_by_sku(sku_id: str) -> dict:
         duration_ms = int((time.time() - t0) * 1000)
         if isinstance(e, JSTAPIError):
             _log_api_error(e)
-        code = "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        code = "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         return _make_result(found=False, endpoint="sku/query", query_type="sku",
                             duration_ms=duration_ms, error_code=code,
                             error_message=str(e),
@@ -765,7 +1052,7 @@ def lookup_product_by_i_id(i_id: str) -> dict:
         duration_ms = int((time.time() - t0) * 1000)
         if isinstance(e, JSTAPIError):
             _log_api_error(e)
-        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+        code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
         r = _make_result(found=False, endpoint="mall/item/query", query_type="i_id",
                          duration_ms=duration_ms, error_code=code,
                          error_message=str(e), safe_fallback_reason=code)
@@ -888,7 +1175,7 @@ def lookup_product_by_name(product_name: str) -> dict:
             duration_ms = int((time.time() - start) * 1000)
             if isinstance(e, JSTAPIError):
                 _log_api_error(e)
-            last_error_code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else str(e.code)
+            last_error_code = "config_missing" if isinstance(e, JSTConfigError) else "timeout" if isinstance(e, JSTTimeoutError) else _safe_api_error_code(e)
             last_error_message = str(e)
             attempted_paths.append({
                 "query_type": "product_name:recent_modified_scan",
@@ -931,9 +1218,66 @@ def _attempt_debug(*results: dict) -> list:
     ]
 
 
+def _aggregate_lookup_miss(
+    identifier_type: str,
+    *results: dict,
+    fallback_reason: str,
+) -> dict:
+    """Return not-found only when every bounded lookup path completed cleanly."""
+    attempts = _attempt_debug(*results)
+    duration_ms = sum(int(result.get("duration_ms") or 0) for result in results if result)
+    provider_failure = next(
+        (result for result in results if result and result.get("error_code")),
+        None,
+    )
+    if provider_failure:
+        merged = _make_result(
+            found=False,
+            endpoint=provider_failure.get("endpoint", ""),
+            query_type=identifier_type,
+            duration_ms=duration_ms,
+            error_code=provider_failure.get("error_code"),
+            error_message=provider_failure.get("error_message"),
+            safe_fallback_reason=(
+                provider_failure.get("safe_fallback_reason")
+                or provider_failure.get("error_code")
+            ),
+        )
+    else:
+        merged = _make_result(
+            found=False,
+            query_type=identifier_type,
+            duration_ms=duration_ms,
+            safe_fallback_reason=fallback_reason,
+        )
+    merged["attempted_paths"] = attempts
+    return merged
+
+
 # Keep this definition after the legacy dispatcher above so imports use the
 # full identifier surface, including JST outer_so_id ("external transaction no").
-def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaustive: bool = True) -> dict:
+def _lookup_outbound_for_identifier(
+    identifier: str,
+    *,
+    shop_id: str = "",
+    shop_name: str = "",
+) -> dict:
+    kwargs = {}
+    if str(shop_id or "").strip():
+        kwargs["shop_id"] = str(shop_id).strip()
+    if str(shop_name or "").strip():
+        kwargs["shop_name"] = str(shop_name).strip()
+    return lookup_outbound_by_so_id(identifier, **kwargs)
+
+
+def lookup_order_by_identifier(
+    identifier: str,
+    identifier_type: str,
+    *,
+    exhaustive: bool = True,
+    shop_id: str = "",
+    shop_name: str = "",
+) -> dict:
     """Dispatch identifier lookup across all known JST order id surfaces.
 
     Routing:
@@ -946,228 +1290,223 @@ def lookup_order_by_identifier(identifier: str, identifier_type: str, *, exhaust
     if not identifier:
         return _make_result(found=False, query_type=identifier_type, safe_fallback_reason="empty_id")
 
+    scope = _resolve_dispatch_shop_scope(shop_id=shop_id, shop_name=shop_name)
+    scope_status = str(scope.get("status") or "")
+    resolved_shop_id = str(scope.get("shop_id") or "").strip()
+    scope_limits_expansion = scope_status in {"ambiguous", "not_found", "unavailable"}
+    scope_limit_reason = f"shop_scope_{scope_status}" if scope_limits_expansion else ""
+
+    def scoped(result: dict) -> dict:
+        return _enforce_result_shop_scope(result, expected_shop_id=resolved_shop_id)
+
+    outbound_scope = {"shop_id": resolved_shop_id} if resolved_shop_id else {}
+
     if identifier_type == "internal_order_id":
-        r1 = lookup_order_by_order_id(identifier)
+        r1 = scoped(lookup_order_by_order_id(identifier))
         if r1["found"]:
             return r1
 
-        r2 = lookup_order_by_platform_order_id(identifier)
+        r2 = scoped(lookup_order_by_platform_order_id(identifier))
         if r2["found"]:
             r2["query_type"] = "internal_order_id->so_id_fallback"
             r2["attempted_paths"] = _attempt_debug(r1, r2)
             return r2
 
-        r_out = lookup_outbound_by_so_id(identifier)
+        r_out = scoped(_lookup_outbound_for_identifier(identifier, **outbound_scope))
         if r_out["found"]:
             r_out["query_type"] = "internal_order_id->outbound_so_id_fallback"
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_out)
             return r_out
 
-        r3 = lookup_order_by_outer_so_id(identifier)
+        r3 = scoped(lookup_order_by_outer_so_id(identifier))
         if r3["found"]:
             r3["query_type"] = "internal_order_id->outer_so_id_fallback"
             r3["attempted_paths"] = _attempt_debug(r1, r2, r_out, r3)
             return r3
 
-        total_ms = r1.get("duration_ms", 0) + r2.get("duration_ms", 0) + r_out.get("duration_ms", 0) + r3.get("duration_ms", 0)
-        r = _make_result(
-            found=False, query_type="internal_order_id", duration_ms=total_ms,
-            safe_fallback_reason="not_found",
+        return _aggregate_lookup_miss(
+            "internal_order_id",
+            r1,
+            r2,
+            r_out,
+            r3,
+            fallback_reason="not_found",
         )
-        r["attempted_paths"] = _attempt_debug(r1, r2, r_out, r3)
-        return r
 
     if identifier_type == "platform_order_id":
-        r1 = lookup_order_by_order_id(identifier)
+        r1 = scoped(lookup_order_by_order_id(identifier))
         if r1["found"]:
             r1["query_type"] = "platform_order_id->same_order_id"
             return r1
 
-        r2 = lookup_order_by_platform_order_id(identifier)
+        r2 = scoped(lookup_order_by_platform_order_id(identifier))
         if r2["found"]:
             r2["query_type"] = "platform_order_id->so_id_fallback"
             r2["attempted_paths"] = _attempt_debug(r1, r2)
             return r2
 
-        r_hist = lookup_order_by_platform_order_id_history(identifier)
+        r_hist = scoped(lookup_order_by_platform_order_id_history(identifier))
         if r_hist["found"]:
             r_hist["query_type"] = "platform_order_id->so_id_history_fallback"
             r_hist["attempted_paths"] = _attempt_debug(r1, r2) + r_hist.get("attempted_paths", [])
             return r_hist
 
-        r_out = lookup_outbound_by_so_id(identifier)
+        r_out = scoped(_lookup_outbound_for_identifier(identifier, **outbound_scope))
         if r_out["found"]:
             r_out["query_type"] = "platform_order_id->outbound_so_id_fallback"
             r_out["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out)
             return r_out
 
-        r3 = lookup_order_by_outer_so_id(identifier)
+        r3 = scoped(lookup_order_by_outer_so_id(identifier))
         if r3["found"]:
             r3["query_type"] = "platform_order_id->outer_so_id_fallback"
             r3["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r3)
             return r3
 
-        total_ms = (
-            r1.get("duration_ms", 0)
-            + r2.get("duration_ms", 0)
-            + r_hist.get("duration_ms", 0)
-            + r_out.get("duration_ms", 0)
-            + r3.get("duration_ms", 0)
+        return _aggregate_lookup_miss(
+            "platform_order_id",
+            r1,
+            r2,
+            r_hist,
+            r_out,
+            r3,
+            fallback_reason="not_found",
         )
-        r = _make_result(
-            found=False, query_type="platform_order_id", duration_ms=total_ms,
-            safe_fallback_reason="not_found",
-        )
-        r["attempted_paths"] = _attempt_debug(r1, r2, r_hist, r_out, r3)
-        return r
 
     if identifier_type == "platform_trade_id":
         # Primary: orders/out/simple/query (销售出库查询)
-        r_out = lookup_outbound_by_so_id(identifier)
+        r_out = scoped(_lookup_outbound_for_identifier(identifier, **outbound_scope))
         if r_out["found"]:
             r_out["query_type"] = "platform_trade_id->outbound_so_id"
             r_out["attempted_paths"] = _attempt_debug(r_out)
             return r_out
 
-        r_oid = lookup_order_by_order_id(identifier)
+        r_oid = scoped(lookup_order_by_order_id(identifier))
         if r_oid["found"]:
             r_oid["query_type"] = "platform_trade_id->same_order_id"
             r_oid["attempted_paths"] = _attempt_debug(r_out, r_oid)
             return r_oid
 
         if not exhaustive:
-            r_so = lookup_order_by_platform_order_id(identifier)
+            r_so = scoped(lookup_order_by_platform_order_id(identifier))
             if r_so["found"]:
                 r_so["query_type"] = "platform_trade_id->so_id_fallback"
                 r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
                 return r_so
-            r = _make_result(
-                found=False,
-                query_type="platform_trade_id",
-                duration_ms=r_out.get("duration_ms", 0) + r_oid.get("duration_ms", 0) + r_so.get("duration_ms", 0),
-                safe_fallback_reason="not_found_fast_path",
+            return _aggregate_lookup_miss(
+                "platform_trade_id",
+                r_out,
+                r_oid,
+                r_so,
+                fallback_reason="not_found_fast_path",
             )
-            r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
-            return r
 
-        if not exhaustive:
-            r_so = lookup_order_by_platform_order_id(identifier)
-            if r_so["found"]:
-                r_so["query_type"] = "platform_trade_id->so_id_fallback"
-                r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
-                return r_so
-            r = _make_result(
-                found=False,
-                query_type="platform_trade_id",
-                duration_ms=r_out.get("duration_ms", 0) + r_oid.get("duration_ms", 0) + r_so.get("duration_ms", 0),
-                safe_fallback_reason="not_found_fast_path",
-            )
-            r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
-            return r
-
-        r_so = lookup_order_by_platform_order_id(identifier)
+        r_so = scoped(lookup_order_by_platform_order_id(identifier))
         if r_so["found"]:
             r_so["query_type"] = "platform_trade_id->so_id_fallback"
             r_so["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so)
             return r_so
 
-        r_hist = lookup_order_by_platform_order_id_history(identifier)
+        r_hist = scoped(lookup_order_by_platform_order_id_history(identifier))
         if r_hist["found"]:
             r_hist["query_type"] = "platform_trade_id->so_id_history_fallback"
             r_hist["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so) + r_hist.get("attempted_paths", [])
             return r_hist
 
         # Fallback: outer_so_id scan (orders/single/query 扫描)
-        r_outer = lookup_order_by_outer_so_id(identifier)
+        r_outer = scoped(lookup_order_by_outer_so_id(identifier))
         if r_outer["found"]:
             r_outer["query_type"] = "platform_trade_id->outer_so_id_scan"
             r_outer["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so, r_hist, r_outer)
             return r_outer
 
-        total_ms = (
-            r_out.get("duration_ms", 0)
-            + r_oid.get("duration_ms", 0)
-            + r_so.get("duration_ms", 0)
-            + r_hist.get("duration_ms", 0)
-            + r_outer.get("duration_ms", 0)
+        return _aggregate_lookup_miss(
+            "platform_trade_id",
+            r_out,
+            r_oid,
+            r_so,
+            r_hist,
+            r_outer,
+            fallback_reason="not_found",
         )
-        r = _make_result(
-            found=False, query_type="platform_trade_id", duration_ms=total_ms,
-            safe_fallback_reason="not_found",
-        )
-        r["attempted_paths"] = _attempt_debug(r_out, r_oid, r_so, r_hist, r_outer)
-        return r
 
     if identifier_type == "tracking_no":
-        return lookup_logistics_by_tracking_no(identifier)
+        return scoped(lookup_logistics_by_tracking_no(identifier))
 
     # unknown_identifier: outbound → o_id → so_id → outer_so_id scan → tracking scan
-    r_out = lookup_outbound_by_so_id(identifier)
+    r_out = scoped(_lookup_outbound_for_identifier(identifier, **outbound_scope))
     if r_out["found"]:
         r_out["query_type"] = "unknown->outbound_so_id"
         r_out["attempted_paths"] = _attempt_debug(r_out)
         return r_out
 
-    r1 = lookup_order_by_order_id(identifier)
+    r1 = scoped(lookup_order_by_order_id(identifier))
     if r1["found"]:
         r1["query_type"] = "unknown->order_id"
         r1["attempted_paths"] = _attempt_debug(r_out, r1)
         return r1
 
-    r2 = lookup_order_by_platform_order_id(identifier)
+    r2 = scoped(lookup_order_by_platform_order_id(identifier))
     if r2["found"]:
         r2["query_type"] = "unknown->platform_order_id"
         r2["attempted_paths"] = _attempt_debug(r_out, r1, r2)
         return r2
 
+    if scope_limits_expansion:
+        # A selected UI label is routing context, not an order identity.  When
+        # it cannot be mapped to exactly one JST shop, exact identifier queries
+        # remain safe, but unscoped row-list scans must stay disabled.
+        r_hist = scoped(lookup_order_by_platform_order_id_history(identifier))
+        if r_hist["found"]:
+            r_hist["query_type"] = "unknown->platform_order_id_history"
+            r_hist["attempted_paths"] = _attempt_debug(r_out, r1, r2) + r_hist.get("attempted_paths", [])
+            return r_hist
+        return _aggregate_lookup_miss(
+            "unknown_identifier",
+            r_out,
+            r1,
+            r2,
+            r_hist,
+            fallback_reason=scope_limit_reason,
+        )
+
     # A chat request with an untyped identifier must remain bounded. Historical
     # scans are available to callers that explicitly request exhaustive lookup,
     # but are too expensive for the interactive product-resolution path.
     if not exhaustive:
-        r = _make_result(
-            found=False,
-            query_type="unknown_identifier",
-            duration_ms=(
-                r_out.get("duration_ms", 0)
-                + r1.get("duration_ms", 0)
-                + r2.get("duration_ms", 0)
-            ),
-            safe_fallback_reason="not_found_fast_path",
+        return _aggregate_lookup_miss(
+            "unknown_identifier",
+            r_out,
+            r1,
+            r2,
+            fallback_reason="not_found_fast_path",
         )
-        r["attempted_paths"] = _attempt_debug(r_out, r1, r2)
-        return r
 
-    r_hist = lookup_order_by_platform_order_id_history(identifier)
+    r_hist = scoped(lookup_order_by_platform_order_id_history(identifier))
     if r_hist["found"]:
         r_hist["query_type"] = "unknown->platform_order_id_history"
         r_hist["attempted_paths"] = _attempt_debug(r_out, r1, r2) + r_hist.get("attempted_paths", [])
         return r_hist
 
-    r_outer = lookup_order_by_outer_so_id(identifier)
+    r_outer = scoped(lookup_order_by_outer_so_id(identifier))
     if r_outer["found"]:
         r_outer["query_type"] = "unknown->outer_so_id_scan"
         r_outer["attempted_paths"] = _attempt_debug(r_out, r1, r2, r_hist, r_outer)
         return r_outer
 
-    r3 = lookup_logistics_by_tracking_no(identifier)
+    r3 = scoped(lookup_logistics_by_tracking_no(identifier))
     if r3["found"]:
         r3["query_type"] = "unknown->tracking_no_scan"
         r3["attempted_paths"] = _attempt_debug(r_out, r1, r2, r_hist, r_outer, r3)
         return r3
 
-    total_ms = (
-        r_out.get("duration_ms", 0)
-        + r1.get("duration_ms", 0)
-        + r2.get("duration_ms", 0)
-        + r_hist.get("duration_ms", 0)
-        + r_outer.get("duration_ms", 0)
-        + r3.get("duration_ms", 0)
+    return _aggregate_lookup_miss(
+        "unknown_identifier",
+        r_out,
+        r1,
+        r2,
+        r_hist,
+        r_outer,
+        r3,
+        fallback_reason="not_found_by_any_path",
     )
-    r = _make_result(
-        found=False,
-        query_type="unknown_identifier",
-        duration_ms=total_ms,
-        safe_fallback_reason="not_found_by_any_path",
-    )
-    r["attempted_paths"] = _attempt_debug(r_out, r1, r2, r_hist, r_outer, r3)
-    return r

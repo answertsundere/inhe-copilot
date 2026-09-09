@@ -97,6 +97,24 @@ def _looks_like_customer_product_title(value: str | None) -> bool:
     return "英禾" in text or "INHE" in text.upper()
 
 
+def _candidate_product_name(candidate: dict) -> str:
+    for key in (
+        "display_product_name", "platform_product_title", "product_title",
+        "item_title", "title", "front_product_title", "sidecar_front_title",
+        "product_name", "name",
+    ):
+        value = candidate.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    # An identifier's value is not a name, even when it is a long string.
+    kind = str(candidate.get("type") or "").strip().lower()
+    if kind in {"", "product_name", "product_title", "title", "item_title", "platform_product_title"}:
+        value = candidate.get("value")
+        if isinstance(value, str):
+            return value.strip()
+    return ""
+
+
 def _sanitize_media_promise_without_assets(reply: str, recommended_assets: list[dict]) -> str:
     if recommended_assets or not reply:
         return reply
@@ -201,6 +219,19 @@ def _analyze_customer_message():
     sku_name = data.get("sku_name", "").strip()
     product_candidates = data.get("product_candidates") or None
     copilot_context = data.get("copilot_context") or None
+    # Sidecar clients may keep structured identifiers inside copilot_context.
+    # Treat them exactly like the matching top-level fields without guessing an
+    # identifier type from customer text or its shape. The Pipeline will attach
+    # the explicit-reference provenance contract before Graph execution.
+    if isinstance(copilot_context, dict):
+        if not order_id:
+            order_id = str(copilot_context.get("order_id") or "").strip() or None
+        if not tracking_no:
+            tracking_no = str(copilot_context.get("tracking_no") or "").strip() or None
+        if not platform_order_id:
+            platform_order_id = str(copilot_context.get("platform_order_id") or "").strip() or None
+        if not platform_trade_id:
+            platform_trade_id = str(copilot_context.get("platform_trade_id") or "").strip() or None
     conversation_history = data.get("conversation_history") or None
     if conversation_history and not isinstance(copilot_context, dict):
         copilot_context = {"conversation_history": conversation_history}
@@ -253,30 +284,11 @@ def _analyze_customer_message():
                     copilot_context.setdefault("platform_product_title", product_name)
                 break
             if isinstance(candidate, dict):
-                value = str(
-                    candidate.get("display_product_name")
-                    or candidate.get("platform_product_title")
-                    or candidate.get("product_title")
-                    or candidate.get("item_title")
-                    or candidate.get("title")
-                    or candidate.get("front_product_title")
-                    or candidate.get("sidecar_front_title")
-                    or candidate.get("product_name")
-                    or candidate.get("name")
-                    or candidate.get("value")
-                    or ""
-                ).strip()
+                value = _candidate_product_name(candidate)
                 if value and _looks_like_customer_product_title(value):
                     copilot_context = copilot_context or {}
                     copilot_context.setdefault("display_product_name", value)
                     copilot_context.setdefault("platform_product_title", value)
-                value = str(
-                    candidate.get("value")
-                    or candidate.get("product_name")
-                    or candidate.get("name")
-                    or candidate.get("title")
-                    or ""
-                ).strip()
                 if value:
                     product_name = value
                     break

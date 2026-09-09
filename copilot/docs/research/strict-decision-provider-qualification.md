@@ -56,6 +56,32 @@ repeatability checks pass and a local operator explicitly sets
 never sets this switch and never changes formal reply, evidence, delivery, or
 `can_send` behavior.
 
+## Turn Understanding Strict Candidate: 2026-09-04
+
+Turn Understanding now has a separate `COPILOT_TURN_UNDERSTANDING_STRICT_*`
+role boundary. It uses the existing strict transport and the same local
+goal/provenance validator as the formal Pipeline; it cannot inherit a formal
+reply credential, model, capability, or qualification state. Its provider
+schema projection is transport-local: it removes only documented incompatible
+keywords and makes no change to the source schema used by local validation.
+
+`scripts/qualify_turn_understanding_strict_provider.py` is read-only and uses
+five fictional Chinese requests repeated five times. It records only aliases,
+hashes, goal-type projections, safe provider identity, and latency. Terminal
+punctuation on an otherwise exact source span is not a semantic difference, and
+the optional unmapped `semantic_key` is not scored as a fixed wording. A
+post-purchase shipment-location request remains an unmapped service-result goal
+until the existing order/tool path resolves it; it is not coerced into a broad
+inventory fact type.
+
+The current DeepSeek strict-tool candidate completed `25/25` transport,
+semantic-contract, and repeatability checks with no timeout or schema error;
+observed provider p50/p95 were about `962ms/1165ms`. This is role qualification
+only. The runtime role remains disabled until an operator supplies the exact
+non-secret configuration fingerprint in an isolated candidate environment.
+It does not enable evidence admission, candidate replies, `can_send`, or
+Autonomous Send.
+
 ## Unified Audit Provider Check: 2026-08-04
 
 The independent Unified Audit role was checked against the frozen

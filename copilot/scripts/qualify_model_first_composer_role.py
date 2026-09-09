@@ -428,6 +428,9 @@ def run_qualification(
         minimum_output_tokens=int(
             getattr(role_client, "minimum_output_tokens", 0) or 0
         ),
+        care_closure_required=bool(
+            config.COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED
+        ),
     )
     records: list[dict[str, Any]] = []
     hard_stop_reason = ""
@@ -452,6 +455,9 @@ def run_qualification(
         "source_tree_sha256": _source_tree_sha256(),
         "provider": metadata,
         "qualification_fingerprint": qualification_fingerprint,
+        "customer_care_closure_required": bool(
+            config.COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED
+        ),
         "fixture_sha256": _canonical_hash(qualification_response()),
         "attempted": len(records),
         "provider_call_count": sum(int(item["provider_call_count"]) for item in records),

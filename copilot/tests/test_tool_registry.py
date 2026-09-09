@@ -322,6 +322,52 @@ class TestToolExecutor:
         assert result["tool_traces"][0]["status"] == "error"
         assert result["tool_traces"][0]["error_code"] == "ValueError"
 
+    def test_jst_provider_failure_is_not_reported_as_a_success(self, monkeypatch):
+        """JST 配置或 Provider 故障必须保留为可观测失败。"""
+        from app.agent.tools.base import ToolSpec
+        from app.agent.tools.executor import ToolExecutor
+        from app.agent.tools.registry import _handle_jst_lookup_order
+
+        monkeypatch.setattr(
+            "app.integrations.jst.live_query.lookup_order_by_identifier",
+            lambda *_args, **_kwargs: {
+                "found": False,
+                "endpoint": "orders/single/query",
+                "duration_ms": 1,
+                "query_type": "unknown_identifier",
+                "attempted_paths": [],
+                "error_code": "config_missing",
+                "error_message": "credentials unavailable",
+                "safe_fallback_reason": "jst_not_configured",
+            },
+        )
+
+        handler_result = _handle_jst_lookup_order(
+            {"identifier": "SYNTHETIC_ORDER", "identifier_type": "unknown_identifier"},
+            {},
+        )
+
+        assert handler_result["found"] is False
+        assert handler_result["error_code"] == "config_missing"
+        assert "error_message" not in handler_result
+
+        executor = ToolExecutor()
+        executor._registry._tools["jst_lookup_order_tool"] = ToolSpec(
+            name="jst_lookup_order_tool",
+            description="jst",
+            handler=lambda _inputs, _state: handler_result,
+        )
+        result = executor.execute_plan(
+            [{"tool_name": "jst_lookup_order_tool", "inputs": {}}],
+            {},
+            total_timeout_ms=5000,
+        )
+
+        assert result["tool_traces"][0]["status"] == "error"
+        assert result["tool_traces"][0]["error_code"] == "config_missing"
+        assert "config_missing" in result["tool_traces"][0]["summary"]
+        assert result["requires_human_review"] is True
+
     def test_not_found_tool_skipped(self):
         """未注册的工具被跳过"""
         from app.agent.tools.executor import ToolExecutor
@@ -371,6 +417,26 @@ class TestPlanTools:
             "auto_required",
             "explicit_logistics_identifier_fast_path",
         )
+
+    def test_default_jst_inputs_keep_sidebar_shop_scope_structured(self):
+        """The tool planner carries adapter shop context without deriving it from customer text."""
+        from app.agent.tools.executor import _build_default_inputs
+
+        default_inputs = _build_default_inputs({
+            "normalized_message": "请查物流",
+            "intent": "logistics_eta",
+            "slots": {
+                "identifier_type": "platform_trade_id",
+                "platform_trade_id": "marketplace-order",
+            },
+            "copilot_context": {"shop_id": "shop-17", "shop_name": "Target Store"},
+        })
+
+        assert default_inputs["jst_lookup_outbound_tool"] == {
+            "outer_so_id": "marketplace-order",
+            "shop_id": "shop-17",
+            "shop_name": "Target Store",
+        }
 
     def test_forbidden_tool_removed_from_plan(self):
         """forbidden_tool 从计划中移除"""

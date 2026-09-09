@@ -132,6 +132,12 @@ def test_service_aliases_do_not_steal_ambiguous_short_turns():
         }
 
 
+def test_broad_product_question_is_not_keyword_mapped_to_product_overview():
+    result = classify_query_fact_type("这款质量怎么样", "product_question")
+
+    assert result["query_fact_type"] == ""
+
+
 def test_weight_units_with_pressure_context_are_load_capacity():
     for message in ("放几斤不压扁", "放多少斤会不会压弯", "能放几斤书", "中间再加个双层隔板可以放32.5公斤吗"):
         result = classify_query_fact_type(message, "product_question")

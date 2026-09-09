@@ -29,7 +29,7 @@ from app.services.eval_sanitizer_service import hash_sensitive
 @pytest.fixture()
 def identity_db(monkeypatch):
     import app.db as db_module
-    from app.models.kb_tables import KBProduct
+    from app.models.kb_tables import KBProduct, ProductIdentityMapping
 
     engine = create_engine(
         "sqlite://",
@@ -39,7 +39,7 @@ def identity_db(monkeypatch):
     session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
     monkeypatch.setattr(db_module, "engine", engine)
     monkeypatch.setattr(db_module, "SessionLocal", session_factory)
-    db_module.Base.metadata.create_all(bind=engine, tables=[KBProduct.__table__])
+    db_module.Base.metadata.create_all(bind=engine, tables=[KBProduct.__table__, ProductIdentityMapping.__table__])
     return session_factory
 
 

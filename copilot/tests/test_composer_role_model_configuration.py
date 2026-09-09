@@ -13,6 +13,7 @@ _COMPOSER_FIELDS = (
     "COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS",
     "COPILOT_COMPOSER_LLM_TRANSPORT_THINKING",
     "COPILOT_COMPOSER_LLM_MIN_OUTPUT_TOKENS",
+    "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
     "COPILOT_COMPOSER_LLM_QUALIFIED",
     "COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT",
 )
@@ -27,6 +28,7 @@ def _set_override(
     timeout_seconds: int = 30,
     transport_thinking: str = "",
     minimum_output_tokens: int = 0,
+    care_closure_required: bool = False,
     qualified: bool = False,
     qualification_fingerprint: str = "",
 ) -> None:
@@ -37,6 +39,7 @@ def _set_override(
         "COPILOT_COMPOSER_LLM_TIMEOUT_SECONDS": timeout_seconds,
         "COPILOT_COMPOSER_LLM_TRANSPORT_THINKING": transport_thinking,
         "COPILOT_COMPOSER_LLM_MIN_OUTPUT_TOKENS": minimum_output_tokens,
+        "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED": care_closure_required,
         "COPILOT_COMPOSER_LLM_QUALIFIED": qualified,
         "COPILOT_COMPOSER_LLM_QUALIFICATION_FINGERPRINT": qualification_fingerprint,
     }
@@ -246,6 +249,23 @@ def test_composer_role_fingerprint_changes_when_transport_capabilities_change():
         timeout_seconds=30,
         transport_thinking="disabled",
         minimum_output_tokens=1200,
+    )
+
+    assert configured != baseline
+
+
+def test_composer_role_fingerprint_binds_care_closure_contract():
+    baseline = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.example.test/v1",
+        model="candidate-model",
+        timeout_seconds=30,
+        care_closure_required=False,
+    )
+    configured = llm_client.composer_role_configuration_fingerprint(
+        api_base="https://api.example.test/v1",
+        model="candidate-model",
+        timeout_seconds=30,
+        care_closure_required=True,
     )
 
     assert configured != baseline

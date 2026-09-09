@@ -21,6 +21,37 @@ git -C $runtime rev-parse HEAD
 
 ## Local Configuration And Data
 
+### Isolated Product Hub Source Candidate
+
+The September 8 candidate (not promoted) adds an explicit
+`COPILOT_KNOWLEDGE_SOURCE_MODE=product_hub_review_only` option. It requires
+`COPILOT_RUNTIME_ENV=development` or `test`, the existing query-only knowledge,
+Hub reviewed-facts, evidence-convergence and model-first Composer flags, plus
+an explicitly configured `COPILOT_PRODUCT_HUB_READINESS_SKU`. The Hub origin
+must be loopback. The required local schema must exist and all application
+tables must be empty; historical or synthetic populated stores are rejected.
+
+The SKU is a source probe only; it never becomes customer identity or evidence.
+The public response distinguishes `ready_product_hub_review_only` with scope
+`product_facts_review_only`. Local RAG remains unavailable. Every customer
+request still needs independent identity, eligible current evidence and final
+review, and Composer retains the no-send boundary. Auth readiness is separate
+and unchanged. In-process development-loopback tests require an explicit
+loopback host, COPILOT_ADMIN_DEV_SUBJECT and COPILOT_ADMIN_DEV_ROLE=reviewer;
+these process-local diagnostic values do not change production authentication.
+
+Current verification: candidate and native regressions each passed 270 tests.
+Native in-process HTTP readiness returned 200. An independent active product
+SKU passed Pipeline preflight and Context Pack identity/fact retrieval (12
+records, two material candidates), with the empty local DB hash unchanged.
+This fixes the earlier missing diagnostic subject/role and empty-local-catalog
+identity blockers; it is not a full /api/analyze or generated-reply acceptance.
+The explicit mode accepts only exact current SKU identity, rejects competing
+identifiers/title guesses, and does not synthesize JST IDs from SKU prefixes.
+Its source probe cannot replace customer identity. Formal runtime flags and
+5012/5174 were not changed. Do not promote the dirty development tree or use
+old snapshots to hide remaining customer-answer and runtime qualification gaps.
+
 `run_prod.py` reads `copilot/.env`. Keep that file ignored and local. Do not
 put keys, DSNs, cookies, or database files in Git.
 
@@ -69,20 +100,96 @@ The default formal production boundary remains:
 
 ### Product Hub candidate read bridge
 
-An isolated candidate may enable the existing Product Hub reader with
+An isolated candidate may enable the existing Product Hub fact reader with
 `COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED=true` and a loopback
 `COPILOT_PRODUCT_HUB_BASE_URL=http://127.0.0.1:8795`. The bridge reads current
-Hub data on demand: a verified JST order item yields an exact SKU, the Hub
-resolves that exact SKU, and only its `confirmed`, non-conflicting facts enter
+Hub data on demand: a verified live JST order item, including one exact outbound-item
+identifier match, or a separately enabled identity-only snapshot item match,
+yields an exact SKU, the Hub resolves that exact SKU, and only
+its `confirmed`, non-conflicting facts enter
 the existing Product Context Pack and admission path. It does not copy Hub
-facts into Copilot, infer a product from a title, or turn a media reference
-into a delivered asset.
+facts into Copilot or infer a product from a title.
+
+For an authoritative dimension goal explicitly scoped to `packaging`, the
+candidate may combine only the complete confirmed exact-SKU carton tuple
+`纸箱长/纸箱宽/纸箱高` with `包装` scope and `cm` unit. Missing, conflicting, or
+non-SKU-bound axes produce no candidate. The resulting evidence remains
+packaging-scoped and cannot answer an unscoped or product-overall dimension
+request.
+
+An independent, default-off
+`COPILOT_PRODUCT_HUB_REVIEWED_MEDIA_ENABLED=true` may read only the matching
+exact-SKU Hub asset endpoint after the same SKU verification. It projects only
+`approved`/`live` known image types with canonical preview routes as
+review-only `media_reference` candidates. The projection excludes original
+download URLs, videos, unknown statuses and types, never enters formal
+evidence or `recommended_assets`, and is fixed at `auto_send_level=review`,
+`usable_for_agent=false`, `requires_human_review=true`. It cannot create a
+reply block or change `can_send`.
 
 `/api/runtime/version` reports the effective boolean as
-`feature_flags.product_hub_reviewed_facts` without exposing the Hub address or
-any identifiers. Keep this source disabled on 5011 until its separate
-review-only acceptance gate is complete. The flag does not alter
+`feature_flags.product_hub_reviewed_facts` and
+`feature_flags.product_hub_reviewed_media` without exposing the Hub address or
+any identifiers. Keep both sources disabled on 5011 until their separate
+review-only acceptance gates are complete. Neither flag alters
 `can_send`, formal-knowledge write permissions, or delivery capability.
+
+### Read-only JST order resolution
+
+The candidate uses the existing JST read client only. A sidebar order reference
+is never inferred from its length, and a response is usable only after an exact
+order-level or item-level identity-field match. An explicit `shop_id`, or a
+display `shop_name` that resolves to exactly one enabled JST shop, is routing
+scope rather than identity or evidence. Paired with an explicit order reference
+it can constrain a direct outbound query and then a fixed-size, fixed-page
+recent outbound scan after a direct miss. Zero or multiple shop matches, a
+global scan, a first row, a substring, title similarity, and cross-namespace
+identity are rejected. An exhausted page limit returns an observable incomplete
+lookup result rather than pretending the order was absent. The reader records
+only reason codes and sanitized counts; it never writes formal knowledge,
+orders, or customer data.
+
+JST credentials are read from the candidate process environment first. On
+Windows only, a missing credential may then be read from the current user's
+`Environment` registry key so a newly launched candidate does not silently
+lose an already user-scoped configuration. Values are never logged or returned
+by readiness. A changed token still requires a candidate restart, and an
+unavailable or rejected live credential remains a fail-closed live lookup; it
+does not permit the snapshot fallback to answer order or logistics state.
+
+JST error code `110` is a network egress IP allowlist rejection, not a missing
+order and not a credential-refresh signal. The read client projects it as the
+non-sensitive `jst_ip_allowlist_blocked` reason without recording the provider
+message or observed IP. An operator must add the candidate host's current
+egress IP in JST before live order or logistics lookups can resume; the local
+identity-only snapshot remains unable to answer live order or logistics state.
+
+### Identity-only JST snapshot fallback
+
+When live JST OpenAPI is unavailable for an otherwise exact reference, an
+isolated candidate may opt into the existing JSON order repository fallback with
+`COPILOT_JST_SNAPSHOT_ORDER_LOOKUP_ENABLED=true` and
+`COPILOT_EXTERNAL_DATA_DIR` set to a dedicated projection directory. The default
+is `false`. `scripts/build_jst_snapshot_order_projection.py` is the only
+supported offline builder: it reads a historical JSONL export once and produces
+an ignored `orders.json` plus `snapshot_order_projection.manifest.json` with
+content/source hashes and counts. The runtime never reads the raw export.
+
+The v1 projection contains only opaque record UIDs and exact external item ID,
+SKU, and internal product-code fields. Its v2 form may additionally retain an
+HMAC-SHA256 of one JST internal order reference; the raw reference is absent
+from the projection and the lookup secret is read only from the candidate
+process or the current user's Windows environment. The repository verifies the
+manifest schema, privacy marker, record count, hash, and strict identity-only
+structure before indexing it. A unique external item match, or a unique v2 HMAC
+reference whose order contains exactly one eligible item, can provide only exact
+SKU identity to the existing Product Hub reader; it cannot set `order_found`,
+propagate a historical order object, answer logistics, create evidence by
+itself, alter `can_send`, or enable delivery. Any missing, malformed, tampered,
+ambiguous, or cross-SKU duplicated reference fails closed. Exact duplicate
+historical rows for the same external item/SKU/internal-code tuple are collapsed
+by the offline builder before the runtime reads the projection.
+
 The ignored runtime `.env` must keep
 `COPILOT_FORMAL_EVIDENCE_CONVERGENCE_ENABLED=false` until the real-derived
 offline and API validation gates pass. A query-only Phase 0.8C inventory found
@@ -246,9 +353,11 @@ login, application JWT/RBAC, then reviewer/supervisor workflow.
 ## Ports And Health
 
 Use 5012 and 5174 for a pre-switch check. Set `COPILOT_WEB_PORT=5012` for the
-backend. Start Vite with `VITE_API_PROXY_TARGET=http://127.0.0.1:5012` and a
-different development port. Verify `http://127.0.0.1:5012/health` before
-touching 5011 or 5173.
+backend. Start Vite with an explicit
+`VITE_API_PROXY_TARGET=http://127.0.0.1:5012` and a different development
+port. The review frontend intentionally refuses to start without this setting,
+so a local test cannot silently proxy to a stale runtime. Verify
+`http://127.0.0.1:5012/health` before touching 5011 or 5173.
 
 After the alternate runtime is live, check both `/health` and
 `/api/runtime/readiness`. Liveness stays HTTP 200 for diagnostics; readiness

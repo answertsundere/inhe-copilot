@@ -25,6 +25,19 @@ and next owner here and in `docs/CHANGELOG.md`.
 
 ## Current Evidence
 
+- `P1-EXCEPTION-IDENTITY-READ-001` repaired an existing production-context
+  boundary without changing the active P1 quality sequence. When the JST
+  sales-outbound reader returns one integration-verified exact outbound-item
+  identifier match, the existing order-item resolver may project only that
+  item's exact SKU. The existing Product Context Pack can then use the
+  default-off Product Hub reader's exact SKU natural key and the existing
+  admission path. It cannot use a neighboring multi-item order line, a title,
+  a substring, a first row, or JST `i_id` as a Hub product code. Isolated
+  query-only API evidence confirmed resolved identity, exact Hub lookup,
+  reviewed candidate facts, and canonical selected evidence with no knowledge
+  DML, automatic send, or external model call. This proves context availability
+  only; `real_customer_accuracy` remains `null` and
+  `optimization_unverified=true`.
 - `P1-MULTIGOAL-001` repaired a deterministic scope-conflict path in the
   existing Turn Understanding owner. When the exact source span for a
   dimension goal unambiguously names packaging, the complete product, a

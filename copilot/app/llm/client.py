@@ -371,6 +371,7 @@ def composer_role_configuration_fingerprint(
     timeout_seconds: int,
     transport_thinking: str = "",
     minimum_output_tokens: int = 0,
+    care_closure_required: bool = False,
 ) -> str:
     """Bind a Composer qualification to its non-secret transport settings."""
     payload = {
@@ -388,6 +389,8 @@ def composer_role_configuration_fingerprint(
             "thinking": normalized_thinking,
             "minimum_output_tokens": normalized_minimum_output,
         }
+    if care_closure_required:
+        payload["customer_care_closure_required"] = True
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
@@ -448,6 +451,9 @@ def get_composer_llm_client(
             timeout_seconds=timeout_seconds,
             transport_thinking=transport_thinking,
             minimum_output_tokens=minimum_output_tokens,
+            care_closure_required=bool(
+                config.COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED
+            ),
         )
         if actual_fingerprint != expected_fingerprint:
             raise ComposerRoleConfigurationError(

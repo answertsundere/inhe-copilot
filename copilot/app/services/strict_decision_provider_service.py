@@ -18,6 +18,12 @@ from app.services.eval_sanitizer_service import sanitize_text
 
 StrictCapability = Literal["strict_json_schema", "tool_call_schema"]
 _SUPPORTED_CAPABILITIES = {"strict_json_schema", "tool_call_schema"}
+_DEEPSEEK_UNSUPPORTED_SCHEMA_KEYWORDS = {
+    "maxItems",
+    "maxLength",
+    "minItems",
+    "minLength",
+}
 
 
 class StrictDecisionProviderError(RuntimeError):
@@ -142,6 +148,39 @@ class StrictDecisionProviderConfig:
             role_name="unified_audit",
         )
 
+    @classmethod
+    def from_turn_understanding_environment(cls) -> "StrictDecisionProviderConfig":
+        """Load the explicitly configured formal Turn Understanding role only."""
+
+        return cls(
+            provider_name=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_STRICT_PROVIDER
+            ),
+            api_base=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_STRICT_API_BASE
+            ),
+            api_key=config.COPILOT_TURN_UNDERSTANDING_STRICT_API_KEY,
+            model=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_STRICT_MODEL
+            ),
+            capability=sanitize_text(
+                config.COPILOT_TURN_UNDERSTANDING_STRICT_CAPABILITY
+            ).lower(),
+            timeout_seconds=_bounded_timeout(
+                str(config.COPILOT_TURN_UNDERSTANDING_STRICT_TIMEOUT_SECONDS)
+            ),
+            qualified=bool(config.COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFIED),
+            disable_thinking=bool(
+                config.COPILOT_TURN_UNDERSTANDING_STRICT_DISABLE_THINKING
+            ),
+            qualification_fingerprint=str(
+                config.COPILOT_TURN_UNDERSTANDING_STRICT_QUALIFICATION_FINGERPRINT
+                or ""
+            ).strip(),
+            qualification_fingerprint_required=True,
+            role_name="turn_understanding",
+        )
+
     def capability_status(self) -> str:
         if not all((self.provider_name, self.api_base, self.api_key, self.model)):
             return "provider_not_configured"
@@ -212,6 +251,73 @@ def _provider_family(config: StrictDecisionProviderConfig) -> str:
     return "generic"
 
 
+def _provider_schema(
+    schema: dict[str, Any],
+    *,
+    config: StrictDecisionProviderConfig,
+) -> dict[str, Any]:
+    """Project only documented transport incompatibilities from a strict schema.
+
+    Local validation retains the original schema. DeepSeek beta strict tool
+    calling rejects array length keywords and requires every object property to
+    be present in ``required``. The projection is request-local and never
+    changes the source schema held by the caller.
+    """
+
+    if (
+        _provider_family(config) != "deepseek"
+        or config.capability != "tool_call_schema"
+    ):
+        return schema
+
+    def project(value: Any) -> Any:
+        if isinstance(value, list):
+            return [project(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+
+        projected = {
+            key: project(item)
+            for key, item in value.items()
+            if key not in _DEEPSEEK_UNSUPPORTED_SCHEMA_KEYWORDS
+        }
+        properties = projected.get("properties")
+        if projected.get("type") == "object" and isinstance(properties, dict):
+            projected["required"] = sorted(properties)
+            projected["additionalProperties"] = False
+        return projected
+
+    projected = project(schema)
+    return projected if isinstance(projected, dict) else {}
+
+
+def _provider_messages(
+    *,
+    system_prompt: str,
+    payload: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Build the existing field-aware privacy projection at the transport edge."""
+
+    from app.services.canonical_conversation_turn_service import (
+        project_provider_message_text,
+        project_value_for_external_model,
+    )
+
+    return [
+        {
+            "role": "system",
+            "content": project_provider_message_text(system_prompt),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                project_value_for_external_model(payload),
+                ensure_ascii=False,
+            ),
+        },
+    ]
+
+
 def _ollama_native_request(
     *,
     api_base: str,
@@ -264,7 +370,35 @@ def _provider_request_options(
     return 0, max_tokens, {}
 
 
+def _http_status_code(exc: Exception) -> int | None:
+    """Read an HTTP status without retaining provider response content."""
+
+    candidates = (
+        getattr(exc, "status_code", None),
+        getattr(getattr(exc, "response", None), "status_code", None),
+    )
+    for value in candidates:
+        try:
+            status = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 100 <= status <= 599:
+            return status
+    return None
+
+
 def _safe_error_category(exc: Exception) -> str:
+    status = _http_status_code(exc)
+    if status in {401, 403}:
+        return "authentication_failed"
+    if status == 402:
+        return "provider_quota_exhausted"
+    if status == 429:
+        return "rate_limited"
+    if status is not None and 400 <= status < 500:
+        return "strict_request_rejected"
+    if status is not None and status >= 500:
+        return "provider_server_error"
     name = type(exc).__name__.lower()
     detail = sanitize_text(str(exc)).lower()
     if "timeout" in name or "timeout" in detail:
@@ -332,6 +466,11 @@ class StrictDecisionProviderService:
     ) -> dict[str, Any]:
         self._require_ready(allow_unqualified=allow_unqualified)
         started = time.perf_counter()
+        provider_schema = _provider_schema(schema, config=self.config)
+        provider_messages = _provider_messages(
+            system_prompt=system_prompt,
+            payload=payload,
+        )
         temperature, output_tokens, provider_options = (
             _provider_request_options(
                 self.config,
@@ -348,18 +487,9 @@ class StrictDecisionProviderService:
                     api_base=self.config.api_base,
                     payload={
                         "model": self.config.model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {
-                                "role": "user",
-                                "content": json.dumps(
-                                    payload,
-                                    ensure_ascii=False,
-                                ),
-                            },
-                        ],
+                        "messages": provider_messages,
                         "stream": False,
-                        "format": schema,
+                        "format": provider_schema,
                         "think": not self.config.disable_thinking,
                         "options": {
                             "temperature": temperature,
@@ -381,15 +511,12 @@ class StrictDecisionProviderService:
             elif self.config.capability == "strict_json_schema":
                 result = self.client.chat.completions.create(
                     model=self.config.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-                    ],
+                    messages=provider_messages,
                     temperature=temperature,
                     max_tokens=output_tokens,
                     response_format={
                         "type": "json_schema",
-                        "json_schema": {"name": name, "strict": True, "schema": schema},
+                        "json_schema": {"name": name, "strict": True, "schema": provider_schema},
                     },
                     **provider_options,
                 )
@@ -400,15 +527,12 @@ class StrictDecisionProviderService:
             else:
                 result = self.client.chat.completions.create(
                     model=self.config.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-                    ],
+                    messages=provider_messages,
                     temperature=temperature,
                     max_tokens=output_tokens,
                     tools=[{
                         "type": "function",
-                        "function": {"name": name, "strict": True, "parameters": schema},
+                        "function": {"name": name, "strict": True, "parameters": provider_schema},
                     }],
                     tool_choice={"type": "function", "function": {"name": name}},
                     **provider_options,

@@ -78,6 +78,46 @@ def test_order_product_resolver_uses_full_lookup_for_explicit_untyped_order_refe
     assert calls == [("9876543210987654321", "unknown_identifier", True)]
 
 
+def test_order_product_resolver_propagates_structured_shop_scope_to_exact_lookup(monkeypatch):
+    """Sidebar shop context is routing metadata, not a product candidate or a guessed identity."""
+    from app.agent.nodes import order_product_resolver as node
+
+    node._RESOLUTION_CACHE.clear()
+    calls = []
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        lambda identifier, identifier_type, **kwargs: calls.append(
+            (identifier, identifier_type, kwargs)
+        ) or {"found": False, "safe_fallback_reason": "not_found"},
+    )
+    monkeypatch.setattr(node, "_lookup_local_order", lambda *_args: None)
+    monkeypatch.setattr(node, "_resolve_sidecar_product_name", lambda _state: None)
+
+    node.order_product_resolver({
+        "conversation_id": "resolver-explicit-order-shop-scope",
+        "customer_message": "这个商品尺寸是多少",
+        "normalized_message": "这个商品尺寸是多少",
+        "order_id": "9876543210987654321",
+        "intent": "product_question",
+        "slots": {},
+        "copilot_context": {
+            "order_id": "9876543210987654321",
+            "order_identifier_type": "unknown_identifier",
+            "order_reference_source": "explicit_request",
+            "shop_id": "shop-17",
+            "shop_name": "Target Store",
+        },
+        "conversation_context": {},
+        "trace_steps": [],
+    })
+
+    assert calls == [(
+        "9876543210987654321",
+        "unknown_identifier",
+        {"exhaustive": True, "shop_id": "shop-17", "shop_name": "Target Store"},
+    )]
+
+
 def test_order_product_resolver_can_use_jst_sku_lookup_when_local_missing(monkeypatch):
     from app.agent.nodes import order_product_resolver as node
 
@@ -824,3 +864,170 @@ def test_jst_miss_keeps_local_low_confidence_result(monkeypatch):
     assert result["slots"]["sku_code"] == "SKU-LOCAL-D"
     assert result["order_product_identity"]["source"] == "sidecar_product_name"
     assert result["order_product_identity"].get("low_confidence") is True
+
+
+def test_order_data_uses_exact_jst_matched_item_before_multi_item_heuristics():
+    """A verified child-order match is stronger than a text-based multi-item guess."""
+    from app.agent.nodes.order_product_resolver import resolve_order_product_identity_from_order_data
+
+    result = resolve_order_product_identity_from_order_data(
+        {
+            "o_id": "internal-order",
+            "items": [
+                {"sku_id": "SKU-OTHER", "i_id": "PRODUCT-OTHER", "name": "other product", "qty": 1},
+                {"sku_id": "SKU-CHILD", "i_id": "PRODUCT-CHILD", "name": "matched product", "qty": 1},
+            ],
+            "matched_item": {"sku_id": "SKU-CHILD", "i_id": "PRODUCT-CHILD", "name": "matched product", "qty": 1},
+            "matched_item_reason": "exact_jst_order_item",
+        },
+        {
+            "customer_message": "what is the size",
+            "normalized_message": "what is the size",
+            "copilot_context": {},
+            "conversation_context": {},
+        },
+        identifier="marketplace-child-order",
+        identifier_type="unknown_identifier",
+    )
+
+    assert result["status"] == "resolved"
+    assert result["sku_id"] == "SKU-CHILD"
+    assert result["reason"] == "exact_jst_order_item"
+
+
+def test_snapshot_item_identity_is_exact_and_never_propagates_order_state():
+    from app.agent.nodes import order_product_resolver as node
+
+    order_data = {
+        "o_id": "snapshot-order-1",
+        "snapshot_identity_only": True,
+        "identity_source": "jst_snapshot_order_items",
+        "matched_item_reason": "exact_jst_snapshot_order_item",
+        "items": [
+            {
+                "outer_oi_id": "external-item-1",
+                "sku_id": "SKU-SNAPSHOT-1",
+                "i_id": "PRODUCT-SNAPSHOT-1",
+                "name": "snapshot product",
+            }
+        ],
+    }
+    order_data["matched_item"] = order_data["items"][0]
+    state = {
+        "customer_message": "what is the size",
+        "normalized_message": "what is the size",
+        "slots": {"order_id": "external-item-1"},
+        "trace_steps": [],
+    }
+
+    identity = node.resolve_order_product_identity_from_order_data(
+        order_data,
+        state,
+        identifier="external-item-1",
+        identifier_type="platform_trade_id",
+    )
+    identity["_order_data"] = order_data
+
+    updates = node._build_updates_from_identity(state, identity, 0, cache_hit=False)
+
+    assert identity["source"] == "jst_snapshot_order_items"
+    assert identity["reason"] == "exact_jst_snapshot_order_item"
+    assert identity["snapshot_identity_only"] is True
+    assert updates["slots"]["sku_code"] == "SKU-SNAPSHOT-1"
+    assert "order" not in updates
+    assert "order_found" not in updates
+
+
+def test_local_lookup_uses_exact_snapshot_item_reference_only_for_order_identifiers(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    snapshot_order = {"o_id": "snapshot-order-1", "snapshot_identity_only": True}
+
+    class SnapshotRepository:
+        def get_order(self, _identifier):
+            return None
+
+        def get_order_by_tracking_no(self, _identifier):
+            return None
+
+        def get_order_by_external_item_id(self, identifier):
+            return snapshot_order if identifier == "external-item-1" else None
+
+    monkeypatch.setattr("app.main.get_order_repo", lambda: SnapshotRepository())
+
+    assert node._lookup_local_order("external-item-1", "platform_trade_id") is snapshot_order
+    assert node._lookup_local_order("external-item-1", "tracking_no") is None
+
+
+def test_local_lookup_uses_hmac_snapshot_reference_for_sidebar_internal_order(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    snapshot_order = {
+        "snapshot_identity_only": True,
+        "identity_source": "jst_snapshot_order_reference",
+        "matched_item_reason": "exact_jst_snapshot_order_reference",
+        "items": [{"sku_id": "SKU-SNAPSHOT-1", "i_id": "PRODUCT-SNAPSHOT-1"}],
+    }
+
+    class SnapshotRepository:
+        def get_order(self, _identifier):
+            return None
+
+        def get_order_by_tracking_no(self, _identifier):
+            return None
+
+        def get_order_by_external_item_id(self, _identifier):
+            return None
+
+        def get_order_by_snapshot_order_reference(self, identifier):
+            return snapshot_order if identifier == "sidebar-internal-order" else None
+
+    monkeypatch.setattr("app.main.get_order_repo", lambda: SnapshotRepository())
+
+    assert node._lookup_local_order("sidebar-internal-order", "internal_order_id") is snapshot_order
+
+
+def test_order_product_resolver_uses_snapshot_identity_after_live_lookup_exception(monkeypatch):
+    from app.agent.nodes import order_product_resolver as node
+
+    node._RESOLUTION_CACHE.clear()
+    snapshot_order = {
+        "snapshot_record_uid": "a" * 32,
+        "snapshot_identity_only": True,
+        "identity_source": "jst_snapshot_order_items",
+        "matched_item_reason": "exact_jst_snapshot_order_item",
+        "items": [{
+            "outer_oi_id": "external-item-1",
+            "sku_id": "SKU-SNAPSHOT-1",
+            "i_id": "PRODUCT-SNAPSHOT-1",
+        }],
+    }
+    snapshot_order["matched_item"] = snapshot_order["items"][0]
+
+    def unavailable_live_lookup(*_args, **_kwargs):
+        raise TimeoutError("live_lookup_unavailable")
+
+    monkeypatch.setattr(
+        "app.integrations.jst.live_query.lookup_order_by_identifier",
+        unavailable_live_lookup,
+    )
+    monkeypatch.setattr(node, "_lookup_local_order", lambda *_args: snapshot_order)
+
+    result = node.order_product_resolver({
+        "conversation_id": "snapshot-live-exception",
+        "customer_message": "what is the size",
+        "normalized_message": "what is the size",
+        "intent": "product_question",
+        "slots": {"order_id": "external-item-1"},
+        "copilot_context": {
+            "order_candidates": [{"value": "external-item-1", "type": "platform_trade_id_candidate"}],
+        },
+        "conversation_context": {},
+        "trace_steps": [],
+    })
+
+    assert result["order_product_identity"]["source"] == "jst_snapshot_order_items"
+    assert result["order_product_identity"]["snapshot_identity_only"] is True
+    assert result["slots"]["sku_code"] == "SKU-SNAPSHOT-1"
+    assert "order" not in result
+    assert "order_found" not in result
