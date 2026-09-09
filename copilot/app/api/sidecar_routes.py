@@ -96,8 +96,10 @@ def preview_qianniu_conversation():
     if request.content_length is None or request.content_length > 1024:
         return jsonify(ok=False, error="capture_request_invalid"), 422
     payload = request.get_json(silent=True)
-    if not isinstance(payload, dict) or set(payload) - {"window_handle"}:
+    if not isinstance(payload, dict) or set(payload) - {"window_handle", "mode"}:
         return jsonify(ok=False, error="capture_request_invalid"), 422
+    if payload.get("mode", "native_selection") not in ("native_selection", "manual_document_review"):
+        return jsonify(ok=False, error="capture_mode_invalid"), 422
     if "window_handle" in payload and (type(payload["window_handle"]) is not int or payload["window_handle"] <= 0):
         return jsonify(ok=False, error="window_selection_invalid"), 422
     if not _manual_capture_lock.acquire(blocking=False):

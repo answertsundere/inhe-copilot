@@ -282,8 +282,11 @@ def main() -> int:
 
 def manual_native_preview(payload: Any) -> dict[str, Any]:
     """Called only by the local one-shot pipe. Never activate/type/scroll/send."""
-    if not isinstance(payload, dict) or set(payload) - {"window_handle"}:
+    if not isinstance(payload, dict) or set(payload) - {"window_handle", "mode"}:
         return {"ok": False, "error": "capture_request_invalid"}
+    mode = payload.get("mode", "native_selection")
+    if mode not in ("native_selection", "manual_document_review"):
+        return {"ok": False, "error": "capture_mode_invalid"}
     import win32gui
     import win32process
     import win32api
@@ -329,7 +332,7 @@ def manual_native_preview(payload: Any) -> dict[str, Any]:
         window = Desktop(backend="uia").window(handle=hwnd).wrapper_object()
         before = read_native_tree(window)
         after = read_native_tree(window)
-        return build_native_preview(before, after, hwnd)
+        return build_native_preview(before, after, hwnd, mode=mode)
     except ValueError as exc:
         if str(exc) == "capture_size_limit":
             return {"ok": False, "error": "capture_size_limit"}

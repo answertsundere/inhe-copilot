@@ -308,6 +308,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .modal-body{padding:16px;overflow:auto}
 .qianniu-preview .modal-body{min-height:0;overflow-wrap:anywhere}
 .qianniu-preview select{max-width:100%;width:100%}
+.qianniu-preview input[type="checkbox"]{width:16px;height:16px;min-height:16px;vertical-align:middle;margin-right:6px}
 .qianniu-messages{margin:12px 0;padding-left:26px;max-height:38vh;overflow:auto}
 .qianniu-messages li{padding:6px 2px;border-bottom:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
 .qianniu-messages strong{display:block;font-size:12px;color:var(--muted)}
@@ -498,6 +499,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
             <div class="btns history-import-actions">
               <button type="button" class="ghost" onclick="openRawContextModal()">导入千牛聊天记录</button>
               <button type="button" id="qianniuReadButton" class="secondary" onclick="readCurrentQianniuConversation()">读取当前千牛会话</button>
+              <button type="button" id="qianniuAssistedButton" class="secondary" onclick="readCurrentQianniuConversation(undefined,'manual_document_review')">人工核对导入</button>
             </div>
           </div>
 
@@ -858,8 +860,17 @@ button:disabled{opacity:.55;cursor:not-allowed}
       <div id="qianniuReviewSection" hidden>
         <p id="qianniuWindowLabel"></p>
         <p id="qianniuShop"></p>
+        <p id="qianniuBuyer"></p>
         <p id="qianniuScope" class="hint"></p>
         <ol id="qianniuMessages" class="qianniu-messages" aria-label="按原顺序排列的会话消息"></ol>
+        <div id="qianniuHumanConfirmation" hidden>
+          <p class="hint">当前客户身份未通过千牛原生验证，待人工核对。</p>
+          <label for="qianniuBuyerConfirm">核对买家昵称</label>
+          <input id="qianniuBuyerConfirm" autocomplete="off" maxlength="256" oninput="qianniuOrderChanged()">
+          <label for="qianniuShopConfirm">核对店铺名称</label>
+          <input id="qianniuShopConfirm" autocomplete="off" maxlength="256" oninput="qianniuOrderChanged()">
+          <label><input id="qianniuDocumentConfirmed" type="checkbox" onchange="qianniuOrderChanged()"> 我已核对买家、店铺和聊天内容，确认仅作为历史导入</label>
+        </div>
         <label for="qianniuOrderChoice">关联订单（未核验，须明确选择）</label>
         <select id="qianniuOrderChoice" onchange="qianniuOrderChanged()"></select>
         <p id="qianniuProducts" class="hint"></p>
@@ -1107,17 +1118,22 @@ function openTechModal(){openModal('techModal');}
 let qianniuRequest = null;
 let qianniuPreview = null;
 let qianniuWindows = [];
+let qianniuMode = 'native_selection';
 
 function cancelQianniuPreview(){
   if(qianniuRequest)qianniuRequest.controller.abort();
   qianniuRequest=null;qianniuPreview=null;qianniuWindows=[];
-  ['qianniuWindowChoice','qianniuOrderChoice','qianniuMessages','qianniuProducts','qianniuWindowLabel','qianniuShop','qianniuScope','qianniuStatus'].forEach(id=>{
+  qianniuMode='native_selection';
+  ['qianniuWindowChoice','qianniuOrderChoice','qianniuMessages','qianniuProducts','qianniuWindowLabel','qianniuShop','qianniuBuyer','qianniuScope','qianniuStatus'].forEach(id=>{
     $(id).textContent='';
   });
   $('qianniuWindowChoice').value='';$('qianniuOrderChoice').value='';
+  $('qianniuBuyerConfirm').value='';$('qianniuShopConfirm').value='';
+  $('qianniuDocumentConfirmed').checked=false;$('qianniuHumanConfirmation').hidden=true;
   $('qianniuWindowSection').hidden=true;$('qianniuReviewSection').hidden=true;
   $('qianniuConfirmButton').disabled=true;$('qianniuWindowReadButton').disabled=true;
   $('qianniuReadButton').disabled=false;
+  $('qianniuAssistedButton').disabled=false;
   $('qianniuPreviewModal').classList.remove('open');
   if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';
 }
@@ -1152,17 +1168,31 @@ function qianniuWindowChanged(){
 function captureSelectedQianniuWindow(){
   const value=$('qianniuWindowChoice').value;
   const selected=qianniuWindows.find((w,i)=>String(i)===value);
-  if(selected&&!qianniuRequest)return readCurrentQianniuConversation(selected.handle);
+  if(selected&&!qianniuRequest)return readCurrentQianniuConversation(selected.handle,qianniuMode);
 }
 function qianniuOrderChanged(){
   const value=$('qianniuOrderChoice').value;
   const selected=qianniuPreview&&(value==='none'||qianniuPreview.context.order_candidates.some((c,i)=>String(i)===value));
-  $('qianniuConfirmButton').disabled=!selected||!!qianniuRequest;
+  const humanConfirmed=qianniuMode!=='manual_document_review'||(
+    qianniuPreview&&$('qianniuBuyerConfirm').value.trim()===qianniuPreview.buyer_name
+    &&$('qianniuShopConfirm').value.trim()===qianniuPreview.shop_name
+    &&$('qianniuDocumentConfirmed').checked===true&&value==='none');
+  $('qianniuConfirmButton').disabled=!selected||!humanConfirmed||!!qianniuRequest;
 }
-function validQianniuPreview(data,windowHandle){
+function validQianniuPreview(data,windowHandle,mode='native_selection'){
   const context=data?.context, history=context?.conversation_history;
+  const assisted=mode==='manual_document_review';
+  if(assisted){
+    if(data?.status!=='manual_confirmation_required'||data.diagnostics?.mode!==mode
+      ||data.diagnostics.current_customer_binding_verified!==false
+      ||typeof data.buyer_name!=='string'||!data.buyer_name.trim()||data.buyer_name.length>256
+      ||typeof data.shop_name!=='string'||!data.shop_name.trim()||data.shop_name.length>256
+      ||context?.source!=='qianniu_manual_document'||context.customer_message!==''
+      ||context.order_candidates?.length!==0||context.product_candidates?.length!==0)return false;
+  }else if(data?.status!=='preview_ready'||data.diagnostics?.mode==='manual_document_review'
+    ||context?.source==='qianniu_manual_document')return false;
   const candidates=items=>Array.isArray(items)&&items.every(c=>c&&typeof c.value==='string'&&!!c.value.trim()&&c.verified===false&&typeof c.source==='string');
-  return data?.ok===true&&data.status==='preview_ready'&&typeof data.conversation_ref==='string'&&!!data.conversation_ref.trim()
+  return data?.ok===true&&typeof data.conversation_ref==='string'&&!!data.conversation_ref.trim()
     &&typeof data.shop_name==='string'&&Number.isSafeInteger(data.window?.handle)&&typeof data.window.label==='string'
     &&(windowHandle===undefined||data.window.handle===windowHandle)
     &&typeof data.diagnostics?.history_scope==='string'&&!!data.diagnostics.history_scope
@@ -1177,6 +1207,9 @@ function validQianniuPreview(data,windowHandle){
 function renderQianniuPreview(data){
   $('qianniuWindowLabel').textContent='窗口：'+data.window.label;
   $('qianniuShop').textContent='店铺：'+(data.shop_name||'未读取到');
+  const assisted=qianniuMode==='manual_document_review';
+  $('qianniuBuyer').textContent=assisted?'文档买家：'+data.buyer_name:'';
+  $('qianniuHumanConfirmation').hidden=!assisted;
   const context=data.context, turns=context.conversation_history;
   const count=turns.length+(context.customer_message?1:0);
   $('qianniuScope').textContent=`当前可见会话已加载 ${count} 条消息；不代表完整聊天历史。`;
@@ -1195,22 +1228,26 @@ function renderQianniuPreview(data){
   context.order_candidates.forEach((candidate,i)=>qianniuOption(orders,String(i),`${candidate.value}（千牛订单区，未核验）`));
   orders.value='';
   $('qianniuProducts').textContent='商品编号候选（未核验，非 SKU）：'+(context.product_candidates.map(c=>c.value).join('；')||'未读取到');
-  $('qianniuStatus').textContent='待人工确认；仅导入，不生成或发送回复。';
+  $('qianniuStatus').textContent=assisted?'待核对聊天文档；当前客户身份未验证。':'待人工确认；仅导入，不生成或发送回复。';
   $('qianniuReviewSection').hidden=false;
 }
-async function readCurrentQianniuConversation(windowHandle){
+async function readCurrentQianniuConversation(windowHandle,mode='native_selection'){
   if(qianniuRequest)return;
   cancelQianniuPreview();
+  if(!['native_selection','manual_document_review'].includes(mode))return;
+  qianniuMode=mode;
   const request={controller:new AbortController(),conversationId:currentConversationId};
   qianniuRequest=request;
   const current=()=>qianniuRequest===request&&currentConversationId===request.conversationId;
   $('qianniuReadButton').disabled=true;
+  $('qianniuAssistedButton').disabled=true;
   $('qianniuStatus').textContent='正在读取千牛会话...';
   openModal('qianniuPreviewModal');$('qianniuCloseButton').focus();
   try{
     const response=await fetch('/ask/api/sidecar/qianniu/preview',{
       method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(windowHandle===undefined?{}:{window_handle:windowHandle}),signal:request.controller.signal,
+      body:JSON.stringify({...(windowHandle===undefined?{}:{window_handle:windowHandle}),
+        ...(mode==='manual_document_review'?{mode}:{})}),signal:request.controller.signal,
     });
     const data=await response.json().catch(()=>({}));
     if(!current())return;
@@ -1223,12 +1260,12 @@ async function readCurrentQianniuConversation(windowHandle){
       $('qianniuWindowSection').hidden=false;$('qianniuStatus').textContent='请选择要读取的千牛窗口。';
       return;
     }
-    if(!validQianniuPreview(data,windowHandle))throw {code:data.error,status:422};
+    if(!validQianniuPreview(data,windowHandle,mode))throw {code:data.error,status:422};
     renderQianniuPreview(data);qianniuPreview=data;
   }catch(error){
     if(current())$('qianniuStatus').textContent=qianniuErrorMessage(error.code,error.status);
   }finally{
-    if(current()){qianniuRequest=null;$('qianniuReadButton').disabled=false;qianniuWindowChanged();qianniuOrderChanged();}
+    if(current()){qianniuRequest=null;$('qianniuReadButton').disabled=false;$('qianniuAssistedButton').disabled=false;qianniuWindowChanged();qianniuOrderChanged();}
   }
 }
 function confirmQianniuImport(){
@@ -1238,6 +1275,7 @@ function confirmQianniuImport(){
   const order=choice==='none'?'':context.order_candidates[Number(choice)].value;
   newConversation();
   parsedConversation={
+    source:context.source,
     canonical:true,history:context.conversation_history.map(({role,content,turn_index,timestamp,turn_uid})=>({role,content,turn_index,timestamp,turn_uid})),
     latest_customer_message:context.customer_message,
     latest_agent_message:[...context.conversation_history].reverse().find(turn=>turn.role==='agent')?.content||'',
@@ -1245,7 +1283,9 @@ function confirmQianniuImport(){
   };
   $('message').value=context.customer_message;$('shopName').value=preview.shop_name;$('orderId').value=order;
   renderParsedContext();renderParsedContextTo($('rawParsedContextPreview'));updateCharCount();fillPayloadPreview();
-  $('contextHint').textContent='已导入当前可见会话，未确认完整历史；待人工生成回复。';
+  $('contextHint').textContent=context.source==='qianniu_manual_document'
+    ?'已由人工核对导入历史，当前问题待填写；未验证千牛当前客户身份。'
+    :'已导入当前可见会话，未确认完整历史；待人工生成回复。';
   $('message').focus();
 }
 function resetConversationState(){

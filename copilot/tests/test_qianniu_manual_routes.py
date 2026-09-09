@@ -43,6 +43,26 @@ def test_default_off_never_reads_desktop(client, monkeypatch):
     assert post(client).status_code == 404
 
 
+@pytest.mark.parametrize("mode", ["manual_document_review", None, True, "", "automatic"])
+def test_explicit_capture_mode_is_validated_before_native_read(client, monkeypatch, mode):
+    calls = []
+    def read(payload):
+        calls.append(payload)
+        return {"ok": True, "status": "manual_confirmation_required"}
+    monkeypatch.setattr(sidecar_routes, "_native_preview", read)
+    body = {"window_handle": 42, "mode": mode}
+    response = client.post("/api/sidecar/qianniu/preview", base_url="http://127.0.0.1:5030",
+                           json=body, headers={"Origin": "http://127.0.0.1:5030"})
+    if mode == "manual_document_review":
+        assert response.status_code == 200
+        assert calls == [body]
+        assert "no-store" in response.headers["Cache-Control"]
+    else:
+        assert response.status_code == 422
+        assert response.get_json()["error"] == "capture_mode_invalid"
+        assert calls == []
+
+
 @pytest.mark.parametrize("headers", [
     {"Origin": "https://attacker.example"}, {"Origin": "null"},
     {"Forwarded": "for=127.0.0.1"}, {"X-Forwarded-Host": "localhost"},

@@ -78,7 +78,14 @@ capabilities into canonical contracts. They own platform authentication,
 field mapping, outbound formatting, and delivery results. Platform-native
 fields may not create branches in Agent reasoning.
 
-Status: planned.
+Status: production adapters planned; bounded manual QianNiu preview is
+development-only. The existing default-off local preview can explicitly import
+a historical document after human buyer/shop confirmation, without claiming
+native current-client identity. Missing selection never silently falls back;
+conflicting selection or unstable content blocks. All turns stay historical,
+the current question is entered separately, and unbound order/product panels
+are omitted. No new Graph, reply owner, generation or delivery path is created.
+See ADR 0011. Automatic current-client/event/reconnect qualification is pending.
 
 ### AnalysisPipeline
 

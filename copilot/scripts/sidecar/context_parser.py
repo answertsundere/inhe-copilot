@@ -109,8 +109,8 @@ class UIAConversationPreview:
 def build_uia_preview(capture: Any) -> UIAConversationPreview:
     """Validate an adapter-scoped capture, not flattened window text.
 
-    Actor refs must come from native speaker metadata and an independently
-    selected conversation binding. They are not inferred from message content.
+    Actor refs come from native speaker metadata, never message content.
+    Assisted mode describes a document for human review, not a selected client.
     This in-memory preview is neither an authenticated API payload nor a
     qualified new-message event. Only diagnostics may be logged or serialized.
     """
@@ -143,6 +143,10 @@ def build_uia_preview(capture: Any) -> UIAConversationPreview:
 
     try:
         require(isinstance(capture, dict), "capture_schema_invalid")
+        mode = capture.get("mode", "native_selection")
+        require(mode in ("native_selection", "manual_document_review"), "capture_mode_invalid")
+        assisted = mode == "manual_document_review"
+        diagnostics.update(mode=mode, current_customer_binding_verified=not assisted)
         require(capture.get("schema_version") == "qianniu_uia_preview/v1", "capture_schema_invalid")
         require(capture.get("scope") == "visible_conversation_document", "conversation_scope_required")
         require(capture.get("truncated") is False, "capture_truncated_or_unknown")
@@ -215,9 +219,10 @@ def build_uia_preview(capture: Any) -> UIAConversationPreview:
         require(contract["status"] == "valid", "canonical_turn_invalid")
         orders = candidates("order_candidates", "uia_order_card")
         products = candidates("product_code_candidates", "uia_product_code")
-        customer_tail = canonical[-1]["role"] == "customer"
+        require(not assisted or not (orders or products), "manual_document_candidates_forbidden")
+        customer_tail = not assisted and canonical[-1]["role"] == "customer"
         context = {
-            "source": "qianniu_uia_preview",
+            "source": "qianniu_manual_document" if assisted else "qianniu_uia_preview",
             "customer_message": canonical[-1]["content"] if customer_tail else "",
             "conversation_history": canonical[:-1] if customer_tail else canonical,
             "order_candidates": orders,

@@ -391,7 +391,7 @@ def _native_icon(name: str) -> bool:
     return bool(name.strip()) and all(ch.isspace() or unicodedata.category(ch) == "Co" for ch in name)
 
 
-def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> dict[str, Any]:
+def build_native_preview(before: list[dict], after: list[dict], hwnd: int, *, mode: str = "native_selection") -> dict[str, Any]:
     """Project a bounded native document into the existing local preview contract.
 
     The document peer is cross-checked against the native buyer list and shop
@@ -401,6 +401,9 @@ def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> di
     from .context_parser import build_uia_preview
 
     try:
+        if mode not in ("native_selection", "manual_document_review"):
+            raise ValueError("capture_mode_invalid")
+        assisted = mode == "manual_document_review"
         # Diagnostic availability is not current-client ownership metadata.
         before_binding = [{k: v for k, v in n.items() if k != "selection_diagnostics"} for n in before]
         after_binding = [{k: v for k, v in n.items() if k != "selection_diagnostics"} for n in after]
@@ -426,15 +429,27 @@ def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> di
             raise ValueError("buyer_binding_missing")
         buyer = next(iter(buyers))
         outside = nodes[:start] + nodes[end:]
+        if assisted and any(n["role"] == "TreeItem" and n.get("legacy_selected") is True
+                            and n["name"].strip() != buyer for n in outside):
+            raise ValueError("buyer_binding_missing")
         selected_buyers = [n for n in outside if n["role"] == "TreeItem" and n.get("selected") is True]
-        if len(selected_buyers) != 1 or selected_buyers[0]["name"].strip() != buyer:
+        if ((selected_buyers or not assisted)
+                and (len(selected_buyers) != 1 or selected_buyers[0]["name"].strip() != buyer)):
             raise ValueError("buyer_binding_missing")
         shops = {pair[1].strip().partition(":")[0] for pair in incoming if ":" in pair[1]}
         if len(shops) != 1 or any(":" not in pair[1] for pair in incoming):
             raise ValueError("shop_binding_missing")
         shop = next(iter(shops))
-        if not shop or not any(n["role"] == "TabItem" and n.get("selected") is True and n["name"].strip().partition(":")[0] == shop
-                               and ":" in n["name"] for n in outside):
+        if assisted and any(n["role"] == "TabItem" and n.get("legacy_selected") is True
+                            and ":" in n["name"] and n["name"].strip().partition(":")[0] != shop
+                            for n in outside):
+            raise ValueError("shop_binding_missing")
+        selected_shops = [n for n in outside if n["role"] == "TabItem" and n.get("selected") is True]
+        matching_shop = any(n["name"].strip().partition(":")[0] == shop and ":" in n["name"]
+                            for n in selected_shops)
+        conflicting_shop = any(":" in n["name"] and n["name"].strip().partition(":")[0] != shop
+                               for n in selected_shops)
+        if not shop or ((selected_shops or not assisted) and not matching_shop) or (assisted and conflicting_shop):
             raise ValueError("shop_binding_missing")
         key = secrets.token_bytes(32)
 
@@ -483,6 +498,7 @@ def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> di
         # Do not offer those values for import until native ownership is proven.
         binding = {"window_ref": str(hwnd), "conversation_ref": ref(buyer)}
         preview = build_uia_preview({
+            "mode": mode,
             "schema_version": "qianniu_uia_preview/v1", "scope": "visible_conversation_document",
             "binding_before": binding, "binding_after": binding, "truncated": False,
             "buyer_ref": ref(buyer), "agent_refs": sorted(agents), "messages": messages,
@@ -491,7 +507,9 @@ def build_native_preview(before: list[dict], after: list[dict], hwnd: int) -> di
         if preview.diagnostics["status"] != "preview_ready":
             raise ValueError(preview.diagnostics["reason_code"])
         preview.diagnostics["unbound_order_documents_omitted"] = len(order_documents)
-        return {"ok": True, "status": "preview_ready", "conversation_ref": binding["conversation_ref"],
+        return {"ok": True, "status": "manual_confirmation_required" if assisted else "preview_ready",
+                **({"buyer_name": buyer} if assisted else {}),
+                "conversation_ref": binding["conversation_ref"],
                 "shop_name": shop, "diagnostics": preview.diagnostics, "context": preview.context,
                 "window": {"handle": hwnd, "label": "千牛接待窗口"}}
     except ValueError as exc:

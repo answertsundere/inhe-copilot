@@ -1,5 +1,30 @@
 # Change Log
 
+## 2026-09-09 - Explicit Assisted Conversation Document Import
+
+- Extended the existing manual reader/route/parser and preview modal, not the
+  Agent. Omitted mode remains strict native_selection; manual_document_review
+  requires explicit choice and returns manual_confirmation_required with
+  current_customer_binding_verified=false. Buyer/shop re-entry and acknowledgment
+  gate local import; all turns remain history and the current question is blank.
+- Preserved default-off, human auth, direct loopback, CSRF, isolated child,
+  snapshot/role/order gates and no generation/send. Buyer labels remain transient
+  preview data; prior conversation, order, product, media and async state clear.
+- Added RED/GREEN tests for explicit mode and human confirmation. Independent
+  review caught MSAA selection conflict omission; four negative variants now
+  block without treating matching MSAA as positive native identity.
+- 321 Python tests and 26 frontend behavioral tests passed; one existing
+  LangChain dependency warning. Synthetic browser import verified incorrect
+  shop stays disabled, correct matching import keeps the question empty, and
+  the modal fits desktop/narrow viewports. No Vue build was needed.
+- Two actual assisted reads returned 18 turns (7 buyer/11 agent), no orders or
+  products; final strict native read still blocked. Real-data evaluation and
+  reply-quality optimization were not run: real_accuracy=null,
+  optimization_unverified. Source-only adapter checkpoint, not production rollout.
+- py_compile and post-edit documentation governance passed. Temporary 5030 was
+  stopped; original 5012/5174 processes were retained. Existing generated
+  declarations and runtime outputs are excluded from the local commit.
+
 ## 2026-09-09 - Native Selection Diagnostic, Import Still Blocked
 
 - Added count/status-only UIA/MSAA parent-selection diagnostics to the existing

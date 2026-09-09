@@ -19,6 +19,14 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-09 assisted document import: an explicit manual_document_review mode
+  reads stable historical conversation documents when native selection is absent.
+  Buyer/shop re-entry and acknowledgment are required; native UIA/MSAA conflicts
+  still block. Default mode remains strict, current question stays blank, and
+  no unbound orders/products are imported. Related regression: 321 Python and
+  26 frontend tests; real read: 18 turns, no Agent call. This is a default-off
+  development capability, not a deployment or native identity qualification.
+
 - 2026-09-09 native current-client probe: parent UIA selection is unsupported
   on the one Tree and two Tab controls; MSAA selection reads succeed but return
   no selected items. Import still returns buyer_binding_missing. Only bounded

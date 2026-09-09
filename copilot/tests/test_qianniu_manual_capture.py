@@ -48,6 +48,75 @@ def test_native_preview_keeps_roles_repetition_but_omits_unbound_orders():
     assert context["can_send"] is False
 
 
+def test_assisted_document_requires_explicit_mode_and_keeps_all_turns_historical():
+    nodes = capture()
+    nodes[1]["selected"] = nodes[2]["selected"] = False
+    assert build_native_preview(nodes, deepcopy(nodes), 42)["error"] == "buyer_binding_missing"
+    result = build_native_preview(nodes, deepcopy(nodes), 42, mode="manual_document_review")
+    assert result["status"] == "manual_confirmation_required"
+    assert result["buyer_name"] == "测试买家"
+    assert result["shop_name"] == "示例店"
+    assert result["diagnostics"]["current_customer_binding_verified"] is False
+    assert result["diagnostics"]["should_call_copilot_context"] is False
+    context = result["context"]
+    assert context["source"] == "qianniu_manual_document"
+    assert context["customer_message"] == ""
+    assert len(context["conversation_history"]) == 3
+    assert context["conversation_history"][-1]["content"] == "之前的尺寸呢？"
+    assert context["order_candidates"] == context["product_candidates"] == []
+    assert context["can_send"] is False
+    assert context["requires_human_review"] is True
+    assert result["buyer_name"] not in repr(context)
+    assert result["buyer_name"] not in repr(result["diagnostics"])
+
+
+@pytest.mark.parametrize("index,field,value,reason", [
+    (2, "name", "另一买家", "buyer_binding_missing"),
+    (1, "name", "其他店:客服", "shop_binding_missing"),
+    (19, "name", "另一买家 --> 示例店:当前客服", "buyer_binding_missing"),
+    (14, "name", "其他店:客服", "speaker_unresolved"),
+    (8, "role", "Custom", "message_part_type_unknown"),
+    (20, "name", "2026-9-9 08:00:00", "timestamp_out_of_order"),
+])
+def test_assisted_mode_does_not_bypass_conflict_or_content_gates(index, field, value, reason):
+    nodes = capture()
+    nodes[index][field] = value
+    result = build_native_preview(nodes, deepcopy(nodes), 42, mode="manual_document_review")
+    assert result["error"] == reason
+    assert "context" not in result
+
+
+def test_assisted_mode_rejects_changed_snapshot_and_unknown_mode():
+    changed = capture()
+    changed[-1]["name"] = "OTHER"
+    assert build_native_preview(capture(), changed, 42, mode="manual_document_review")["error"] == "capture_binding_changed"
+    assert build_native_preview(capture(), capture(), 42, mode="automatic")["error"] == "capture_mode_invalid"
+
+
+@pytest.mark.parametrize("role,name,reason", [
+    ("TreeItem", "另一买家", "buyer_binding_missing"),
+    ("TabItem", "其他店:客服", "shop_binding_missing"),
+])
+@pytest.mark.parametrize("uia_selected", [False, True])
+def test_assisted_msaa_conflict_blocks_even_when_uia_absent_or_agrees(role, name, reason, uia_selected):
+    nodes = capture()
+    nodes[1]["selected"] = nodes[2]["selected"] = uia_selected
+    legacy = node(1, role, name)
+    legacy["legacy_selected"] = True
+    nodes.append(legacy)
+    assert build_native_preview(nodes, deepcopy(nodes), 42, mode="manual_document_review")["error"] == reason
+
+
+def test_matching_msaa_is_not_promoted_to_native_identity():
+    nodes = capture()
+    for i in (1, 2):
+        nodes[i]["selected"] = False
+        nodes[i]["legacy_selected"] = True
+    assert build_native_preview(nodes, deepcopy(nodes), 42)["error"] == "buyer_binding_missing"
+    result = build_native_preview(nodes, deepcopy(nodes), 42, mode="manual_document_review")
+    assert result["diagnostics"]["current_customer_binding_verified"] is False
+
+
 @pytest.mark.parametrize("mutation,reason", [
     (lambda n: n.__setitem__(14, node(4, "Text", "其他店:客服")), "speaker_unresolved"),
     (lambda n: n.__setitem__(1, node(1, "TabItem", "其他店:客服")), "shop_binding_missing"),

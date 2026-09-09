@@ -156,6 +156,29 @@ native product code into an exact SKU. Generation remains a separate user
 action through the existing canonical Pipeline with mandatory human review.
 Rollback disables the flag; existing Agent/JST/Hub behavior is unchanged.
 
+### Assisted Document Review Addendum (2026-09-09)
+
+The owner-approved manual import may explicitly request
+`mode=manual_document_review`. Omitted mode remains `native_selection`;
+there is no automatic fallback from a failed native binding.
+
+- The same default-off flag, authenticated direct-loopback boundary, CSRF
+  protection, bounded private subprocess and canonical parser apply.
+- A stable single message document supplies historical speaker labels, not
+  verified current-customer identity. Conflicting native selection, mixed
+  speakers/shops, unknown content and changed snapshots remain blocked.
+- The seat must re-enter the displayed buyer and shop and acknowledge the
+  document before importing. This is manual context selection, not platform
+  authentication, a native inbound event or an authoritative Gold approval.
+- All captured turns remain historical; a fresh local conversation replaces
+  prior context, and the current question stays empty for manual entry.
+- Unbound orders/products are never offered. Buyer labels remain transient
+  local preview data, not Agent payload or stored identity. Import never
+  generates, fills or sends a reply; existing Safety/Delivery owners remain.
+
+Rollback uses the existing default-off manual-read flag. Automatic current-client
+binding and customer-switch/reconnect qualification remain unresolved.
+
 No snapshot or runtime web-session lookup is enabled by this ADR. The offline
 snapshot lookup remains controlled by
 `COPILOT_JST_SNAPSHOT_ORDER_LOOKUP_ENABLED=false` by default; rollback sets it

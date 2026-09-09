@@ -97,6 +97,28 @@ def test_historical_agent_tail_is_not_a_new_customer_question():
     assert result.diagnostics["should_call_copilot_context"] is False
 
 
+def test_assisted_projection_is_historical_and_cannot_offer_unbound_candidates():
+    capture = _capture()
+    capture["mode"] = "manual_document_review"
+    assert _preview(capture).diagnostics["reason_code"] == "manual_document_candidates_forbidden"
+    capture["order_candidates"] = []
+    capture["product_code_candidates"] = []
+    result = _preview(capture)
+    assert result.context["customer_message"] == ""
+    assert result.context["source"] == "qianniu_manual_document"
+    assert len(result.context["conversation_history"]) == 3
+    assert result.diagnostics["current_customer_binding_verified"] is False
+
+
+@pytest.mark.parametrize("mode", [None, True, "", "automatic", {}])
+def test_invalid_mode_is_rejected_by_both_private_entrypoints(mode):
+    from scripts.qianniu_sidecar import manual_native_preview
+    capture = _capture()
+    capture["mode"] = mode
+    assert _preview(capture).diagnostics["reason_code"] == "capture_mode_invalid"
+    assert manual_native_preview({"mode": mode})["error"] == "capture_mode_invalid"
+
+
 def test_structured_preview_media_tokens_no_card_fact_or_url_injection():
     capture = _capture()
     capture["messages"][-1]["parts"] = [

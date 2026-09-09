@@ -17,6 +17,7 @@ class Element {
     this.id = id;
     this.value = '';
     this.disabled = false;
+    this.checked = false;
     this.hidden = false;
     this.style = {};
     this.children = [];
@@ -104,6 +105,116 @@ function preview(historyCount = 4) {
     },
   };
 }
+
+function assistedPreview() {
+  const data = preview(3);
+  data.status = 'manual_confirmation_required';
+  data.buyer_name = 'Fixture buyer';
+  data.diagnostics.current_customer_binding_verified = false;
+  data.diagnostics.mode = 'manual_document_review';
+  data.diagnostics.turn_count = 3;
+  data.context.source = 'qianniu_manual_document';
+  data.context.customer_message = '';
+  data.context.order_candidates = [];
+  data.context.product_candidates = [];
+  return data;
+}
+
+async function assistedReady(h, data = assistedPreview()) {
+  const pending = h.evaluate("readCurrentQianniuConversation(undefined, 'manual_document_review')");
+  h.respond(h.requests.length - 1, data);
+  await pending;
+}
+
+test('assisted import requires explicit mode, matching human inputs and acknowledgment', async () => {
+  const h = harness();
+  assert.match(h.el('qianniuAssistedButton').attributes.onclick, /manual_document_review/);
+  h.el('message').value = 'OLD';
+  h.el('orderId').value = 'OLD';
+  await assistedReady(h);
+  assert.deepEqual(JSON.parse(h.requests[0].options.body), {mode: 'manual_document_review'});
+  assert.equal(h.el('qianniuBuyerConfirm').value, '');
+  assert.equal(h.el('qianniuShopConfirm').value, '');
+  assert.equal(h.el('qianniuDocumentConfirmed').checked, false);
+  h.choose('none'); h.confirm();
+  assert.equal(h.el('message').value, 'OLD');
+  h.el('qianniuBuyerConfirm').value = 'Fixture buyer';
+  h.el('qianniuShopConfirm').value = 'WRONG';
+  h.el('qianniuDocumentConfirmed').checked = true;
+  h.choose('none');
+  assert.equal(h.el('qianniuConfirmButton').disabled, true);
+  h.el('qianniuShopConfirm').value = 'Preview shop';
+  h.el('qianniuDocumentConfirmed').checked = false;
+  h.choose('none');
+  assert.equal(h.el('qianniuConfirmButton').disabled, true);
+  h.el('qianniuDocumentConfirmed').checked = true;
+  h.choose('none');
+  assert.equal(h.el('qianniuConfirmButton').disabled, false);
+  h.confirm();
+  assert.equal(h.el('message').value, '');
+  assert.equal(h.el('orderId').value, '');
+  assert.equal(h.snapshot('parsedConversation.history').length, 3);
+  assert.equal(h.snapshot('parsedConversation.source'), 'qianniu_manual_document');
+  h.el('message').value = 'Manually entered current question';
+  const payload = h.snapshot('buildPayload()');
+  assert.equal(payload.message, 'Manually entered current question');
+  assert.equal(payload.copilot_context.conversation_history.length, 3);
+  assert.ok(!JSON.stringify(payload).includes('Fixture buyer'));
+  assert.ok(!JSON.stringify(h.storageWrites).includes('Fixture buyer'));
+  assert.equal(h.requests.length, 1, 'import never calls Agent or submits identity');
+  assert.equal(h.el('qianniuBuyerConfirm').value, '');
+  assert.equal(h.el('qianniuDocumentConfirmed').checked, false);
+});
+
+test('assisted window choice retains explicit mode and still waits for selection', async () => {
+  const h = harness();
+  const pending = h.evaluate("readCurrentQianniuConversation(undefined, 'manual_document_review')");
+  h.respond(0, {status:'window_selection_required', windows:[{handle:42,label:'Fixture'}]});
+  await pending;
+  assert.equal(h.el('qianniuWindowReadButton').disabled, true);
+  h.el('qianniuWindowChoice').value = '0';
+  const capture = h.evaluate('captureSelectedQianniuWindow()');
+  assert.deepEqual(JSON.parse(h.requests[1].options.body), {window_handle:42,mode:'manual_document_review'});
+  h.respond(1, assistedPreview());
+  await capture;
+  assert.equal(h.el('qianniuHumanConfirmation').hidden, false);
+});
+
+test('assisted preview rejects authority, order, current question and mode substitutions', async () => {
+  for (const mutate of [
+    d => d.diagnostics.current_customer_binding_verified = true,
+    d => delete d.buyer_name,
+    d => d.context.order_candidates = preview().context.order_candidates,
+    d => d.context.product_candidates = preview().context.product_candidates,
+    d => d.context.customer_message = 'Do not promote old question',
+    d => d.context.source = 'qianniu_uia_preview',
+    d => d.status = 'preview_ready',
+  ]) {
+    const h = harness(), data = assistedPreview();
+    mutate(data); await assistedReady(h, data);
+    assert.equal(h.evaluate('qianniuPreview'), null);
+    assert.equal(h.el('qianniuConfirmButton').disabled, true);
+  }
+  const h = harness();
+  await h.ready(assistedPreview());
+  assert.equal(h.evaluate('qianniuPreview'), null, 'native mode must not fall back to assisted');
+});
+
+test('assisted identity labels render inertly and disappear on cancel or mode switch', async () => {
+  const h = harness(), data = assistedPreview();
+  data.buyer_name = attack;
+  await assistedReady(h, data);
+  assert.ok(h.el('qianniuBuyer').textContent.includes(attack));
+  h.el('qianniuBuyerConfirm').value = attack;
+  h.el('qianniuDocumentConfirmed').checked = true;
+  h.evaluate('cancelQianniuPreview()');
+  assert.equal(h.el('qianniuBuyer').textContent, '');
+  assert.equal(h.el('qianniuBuyerConfirm').value, '');
+  assert.equal(h.el('qianniuDocumentConfirmed').checked, false);
+  await h.ready();
+  assert.equal(h.el('qianniuHumanConfirmation').hidden, true);
+  assert.equal(h.evaluate('globalThis.injected'), undefined);
+});
 
 test('manual entry is wired near history import and never captures on initialization', () => {
   const h = harness();

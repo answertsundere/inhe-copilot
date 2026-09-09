@@ -1,5 +1,30 @@
 # Delivery Roadmap
 
+## Assisted QianNiu Document Import (2026-09-09)
+
+- [x] Read active P1 context and record the bounded adapter trust decision.
+- [x] Add explicit document-review mode without changing native defaults.
+- [x] Require buyer/shop confirmation in the existing preview modal.
+- [x] Run adapter/auth/frontend regression and read-only live checks.
+- [x] Record limitations and verification for a scoped local checkpoint.
+
+No Agent, provider, production runtime, knowledge write or automatic-send change.
+
+Python regression: 321 passed; executable frontend tests: 26 passed. Browser
+fixture import passed at desktop and 390x844 modal width. Two actual assisted
+reads returned 18 historical turns (7 buyer, 11 agent), zero order/product
+candidates and current_customer_binding_verified=false. Final native-mode read
+still returned buyer_binding_missing. No real conversation was imported into
+Agent, no model ran, and real_accuracy remains null.
+
+Independent review identified MSAA conflicts being ignored. Four reproduced
+negative cases now block; matching MSAA never grants native identity. This
+development checkpoint enables assisted document selection only, not automatic
+current-client detection, continuous listening or reconnect qualification.
+The temporary 5030 fixture server was stopped after UI verification; original
+5012/5174 process IDs were unchanged. py_compile and post-edit docs governance
+passed. No push or production deployment is part of this checkpoint.
+
 ## Native Current-Client Selection Probe (2026-09-09)
 
 - Active priority: P1 Gold Conversation Quality; bounded native identity diagnosis.

@@ -38,6 +38,15 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+### Assisted Conversation Document Import (2026-09-09)
+
+The existing default-off manual preview adds an explicit historical-document
+mode with human buyer/shop confirmation. It never substitutes for native
+current-client identity or silently retries a failed native read. See the
+[ADR 0011 addendum](adr/0011-tmall-order-identity-read-boundary.md#assisted-document-review-addendum-2026-09-09)
+and [read-only verification](research/qianniu-desktop-adapter-selection.md#人工核对历史文档导入-2026-09-09).
+Agent quality, automated listening and delivery remain unqualified by this work.
+
 ### Native Current-Client Probe (2026-09-09)
 
 The existing manual reader now reports bounded parent-selection counts/status
