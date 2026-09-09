@@ -1,5 +1,47 @@
 # Delivery Roadmap
 
+## Isolated Multiturn Candidate (2026-09-09)
+
+Active priority: P1 Gold Conversation Quality. Reuse the existing application,
+qualified Understanding configuration and exact-SKU Product Hub source for one
+synthetic history/current-question request. This is not a real-customer test.
+
+- [x] Confirm existing runtime ownership, credential source and ready-source contract.
+- [x] Run one bounded review-only DeepSeek candidate on disposable loopback 5030.
+- [x] Inspect history continuity, partial-answer quality, evidence and safety.
+- [x] Stop the disposable server; record verification and the earliest remaining gap.
+
+No Agent, prompt, graph, safety or formal-runtime changes are planned. Approved
+credentials stay in child-process memory only; real chat and orders are excluded.
+
+Execution status: one real API candidate completed after explicit disclosure
+approval. Two earlier launcher/preflight failures made no Agent request; the
+external script now uses keyword-only helper arguments and registers the existing
+knowledge models when creating its empty temporary schema. No production repair.
+
+Ready=true, source drift=false, query-only=true. Four synthetic history turns
+reached minimal context without trimming (386 estimated tokens). Two customer
+goals became material=supported and cleaning_care=unresolved. Final selected
+evidence=2 (both PE); Composer accepted and Deterministic Final passed. Actual
+reply deferred cleaning to documentation/manufacturer: safe uncertainty, but poor
+service progression. Semantic judge was unavailable, not qualified. can_send=false,
+human review=true, DML=0 and isolated DB fingerprint unchanged. HTTP latency
+7,497 ms; Understanding/Composer each called once with zero retries/repair in
+their diagnostics. Other legacy node calls were not fully counted.
+
+Read-only attribution found an exact-source product policy binding with a valid
+local Pack, including cleaning boundary policies. However, the existing
+_verified_product_domain_policy_selector reads only published local KBProduct
+rows; Hub-only empty-store mode loses that control metadata before Understanding.
+Do not inject a global policy or seed local facts to conceal this gap. The next
+owner is trusted exact-product policy propagation, not a canned reply/prompt.
+
+The single-request result is synthetic diagnostic evidence, not real accuracy or
+multiturn qualification. 5030 stopped; original 5012/5174/8795 PIDs unchanged.
+Detailed Chinese review remains outside Git in the workspace .codex-runtime.
+Post-run related regression: 369 passed. No extra model benchmark or real-data
+evaluation was run; this diagnostic does not claim an Agent improvement.
+
 ## Assisted Import Application Boundary (2026-09-09)
 
 Active priority: P1 Gold Conversation Quality; verify the existing manual

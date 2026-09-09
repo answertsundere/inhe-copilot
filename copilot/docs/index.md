@@ -40,6 +40,12 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ### Assisted Conversation Document Import (2026-09-09)
 
+One explicitly authorized synthetic multiturn candidate now completed through
+the real API: direct material supported, cleaning unresolved, review-only. It
+exposed missing Hub-to-trusted-policy propagation in the local-only product
+selector, not a need for a second Composer. This is not real accuracy or native
+conversation qualification; see `../ROADMAP.md` for the bounded result.
+
 The existing default-off manual preview adds an explicit historical-document
 mode with human buyer/shop confirmation. It never substitutes for native
 current-client identity or silently retries a failed native read. See the

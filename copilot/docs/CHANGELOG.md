@@ -1,5 +1,34 @@
 # Change Log
 
+## 2026-09-09 - Authorized Synthetic Multiturn Candidate
+
+- Completed one native API request with four fictional history turns and exact
+  Hub product facts after explicit external-disclosure approval. No real chat,
+  order, automatic send or production-runtime change.
+- Material supported, cleaning unresolved; two material evidence records;
+  Composer accepted, Deterministic Final passed, semantic judge unavailable.
+  7,497 ms; manual review retained; can_send=false; isolated DB unchanged, DML=0.
+- Read-only attribution: the source has a loadable product policy binding, but
+  the existing selector only reads published local KBProduct rows. Hub-only
+  empty-store mode thus supplies facts without the corresponding policy context.
+  No global policy injection, data seeding or Agent/prompt patch was applied.
+- Fixed keyword-only invocation and missing knowledge-model schema registration
+  in the disposable external launcher. Both preflight failures made zero Agent
+  requests. The single completed response was not rerun for a better answer.
+- Chinese response-quality review is local-only. No real-accuracy or production
+  readiness claim; temporary 5030 stopped and original services preserved.
+- Post-run related regression: 369 passed. No additional model evaluation.
+
+## 2026-09-09 - Isolated Candidate Preparation, Not Executed
+
+- Verified the saved strict Understanding configuration fingerprint without
+  reading a key or calling a model. 369 related local tests passed.
+- Prepared an external disposable launcher for one synthetic multiturn request
+  through the existing API and Product Hub review-only source. Execution was
+  rejected before process start due to external disclosure approval scope.
+- At this preparation checkpoint the candidate count was zero. Approval was
+  subsequently granted; the completed request is recorded in the entry above.
+
 ## 2026-09-09 - Assisted Import Application Boundary Verification
 
 - Added full-app route tests using the actual loopback verifier and app access
