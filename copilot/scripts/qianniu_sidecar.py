@@ -234,6 +234,8 @@ def run_loop(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="QianNiu desktop Sidecar POC")
+    parser.add_argument("--structured-preview-stdin", action="store_true",
+                        help="Validate one scoped UIA capture; print counts only, never post or send")
     parser.add_argument("--backend", default=os.getenv("COPILOT_BACKEND", "http://127.0.0.1:5000"))
     parser.add_argument("--panel-url", default=os.getenv("COPILOT_PANEL_URL", "http://127.0.0.1:5000/copilot-panel"))
     parser.add_argument("--log-file", default=os.getenv("QIANNIU_SIDECAR_LOG", str(ROOT / "data" / "sidecar" / "qianniu_sidecar.log")))
@@ -244,12 +246,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
+    if args.structured_preview_stdin:
+        from scripts.sidecar.context_parser import build_uia_preview
+        try:
+            raw = sys.stdin.read(1_048_577)
+            if len(raw) > 1_048_576:
+                report = {"status": "blocked", "reason_code": "capture_size_limit"}
+            else:
+                report = build_uia_preview(json.loads(raw)).diagnostics
+        except (ValueError, UnicodeError, RecursionError):
+            report = {"status": "blocked", "reason_code": "capture_json_invalid"}
+        print(json.dumps(report, ensure_ascii=True))
+        return 0 if report["status"] == "preview_ready" else 2
     configure_logging(args.log_file)
     logging.info("starting qianniu sidecar backend=%s interval=%s", args.backend, args.interval)
     run_loop(args)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

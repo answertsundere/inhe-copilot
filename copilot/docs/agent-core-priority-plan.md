@@ -1034,6 +1034,19 @@ Changing priority order requires:
 
 ## Progress Ledger
 
+### Owner-Approved QianNiu Read-Only Preview Exception
+
+The owner approved a bounded accessibility adapter experiment after enabling
+QianNiu's narrator mode. Reuse the existing desktop adapter and canonical turn
+normalizer to preview explicitly scoped, structurally identified messages and
+unverified order/product candidates. This exception does not promote P6 or
+change the active P1 priority. Its exit gate is a local, fail-closed preview with
+ordered turns, no cross-conversation mixing, no automatic order selection, no
+model/backend call, no sending, and no persisted customer content. Native
+continuous capture and new-message detection remain unqualified; historical
+messages must never trigger a reply on startup. No Agent owner, Graph node,
+production flag, evidence authority, or Delivery contract changes are allowed.
+
 | Priority | Status | Current evidence | Next gate |
 |---|---|---|---|
 | P0 Agent Core Closure | qualified | P0-R1 current transport preflight `3/3`; single fixed-eight execution/Composer/Final/Unified Audit `8/8`, goal coverage `14/14`, supported `5/5`, unresolved `9/9`, Partial Answer `4/4`, zero unsafe/send/write/retry/repair findings | Keep feature flags disabled and preserve these boundaries during later work |
