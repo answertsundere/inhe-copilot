@@ -178,6 +178,7 @@ class ProductIdentityResolver:
                 "knowledge_sku_scope": [sku], "identity_sources": ["product_hub_exact_sku"],
                 "match_reason": "active_exact_hub_sku", "product_code": binding["product_code"],
                 "hub_product_id": binding["hub_product_id"],
+                "hub_sku_id": binding["hub_sku_id"],
             }
         platform_product_id = _first_text(platform_product_id, _extract_product_id_from_url(product_url))
         kb_result = self._resolve_from_kb(

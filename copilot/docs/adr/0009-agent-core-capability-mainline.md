@@ -446,3 +446,29 @@ existing deterministic safety benchmark.
 The first mainline slice must use existing context, evidence admission, composer,
 and final gate owners. It must not add a Graph node, evidence registry, review
 UI, or evaluation framework.
+
+## Exact Hub Policy Binding In The Isolated Candidate (2026-09-09)
+
+In `product_hub_review_only`, local catalog tables intentionally remain empty.
+The existing Pipeline selector may therefore resolve the current exact SKU
+through ProductIdentityResolver and read its Product Hub passport using the
+existing read-only client. This is source selection, not a fallback after a local
+catalog miss. Development/test, query-only and loopback-source restrictions apply.
+Missing or conflicting identity/binding cannot fall back to a global Pack.
+
+Only an active exact product/SKU binding and a scalar `domainPolicyId` may leave
+this read boundary. Passport product ID/code/status and SKU membership must match
+the resolved identity. Notes, timelines, prompts, assets and arbitrary policy
+payloads are discarded. The existing FilePolicyRepository remains the sole Pack
+schema/hash validator and Trusted Domain Policy Context owner.
+
+An active Hub binding is operational control metadata, not human Gold approval,
+product evidence or permission to send. Bounded alternatives still require
+admitted premises and all existing scope/risk/Final checks. Local published
+KBProduct selection is unchanged outside this isolated source mode. Rollback is
+leaving the opt-in Hub source mode; no production switch is enabled here.
+
+Qualification requires deterministic injection/revocation tests and a read-only
+source comparison first. Without a fresh comparable labeled conversation run,
+real_accuracy remains null and optimization_unverified; propagation alone is not
+proof of a better reply.

@@ -82,6 +82,13 @@ unpublished, title-only, missing, or public-injected mappings must remain
 fail-closed. This work stays inside the existing Pipeline, product review, and
 Domain Pack owners.
 
+ADR 0009 also permits the isolated, query-only Hub source to obtain this control
+binding from an active, exact-identity Hub passport through the existing reader.
+The local published-product path is unchanged. Hub metadata is not Gold approval
+or evidence, and cannot substitute for admitted premises. Propagation tests alone
+do not qualify practical answer quality; a fresh conversation evaluation is still
+required before reporting improvement.
+
 ## Current Active Priority
 
 **Active priority: P1 - Gold Conversation Quality.**

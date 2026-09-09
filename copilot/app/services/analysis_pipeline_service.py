@@ -156,6 +156,12 @@ def _verified_product_domain_policy_selector(
     identity was presented.
     """
     sku_values, iid_values = _collect_product_policy_identifiers(request, context)
+    if os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() == "product_hub_review_only":
+        # This source has an intentionally empty local catalog. Never fall back
+        # to a global Pack, even when no current exact SKU was supplied.
+        if len(sku_values) != 1 or iid_values:
+            return {}, True
+        return _verified_hub_domain_policy_selector(request, context, next(iter(sku_values))), True
     if not sku_values and not iid_values:
         return {}, False
     if len(sku_values) > 1 or len(iid_values) > 1:
@@ -203,6 +209,41 @@ def _verified_product_domain_policy_selector(
         return {}, True
     finally:
         db.close()
+
+
+def _verified_hub_domain_policy_selector(
+    request: "AnalysisPipelineRequest", context: dict[str, Any], sku: str,
+) -> dict[str, Any]:
+    from urllib.parse import urlsplit
+    from app.integrations.product_hub.reviewed_facts_client import (
+        ProductHubReviewedFactsClient, _base_url,
+    )
+    from app.services.product_identity_resolver import ProductIdentityResolver
+    from app.services.product_context_pack_service import _identity_resolution_signals, _state_identity
+    from app.services.real_context_product_identity_service import augment_state_with_real_context_identity
+
+    base = _base_url(os.getenv("COPILOT_PRODUCT_HUB_BASE_URL", ""))
+    if not base or urlsplit(base).hostname not in {"127.0.0.1", "localhost", "::1"}:
+        return {}
+    state = {
+        "copilot_context": context,
+        "slots": context.get("slots") or {},
+        "product_candidates": request.product_candidates,
+        "matched_product_name": request.product_name,
+    }
+    try:
+        # Match the evidence path: preserve public identity conflicts as candidates
+        # before any preferred display name can mask another supplied identity.
+        augment_state_with_real_context_identity(state)
+        signals = _identity_resolution_signals(state, _state_identity(state))
+        signals["sku_id"] = sku
+        signals["order_id"] = request.order_id or context.get("order_id") or ""
+        identity = ProductIdentityResolver().resolve(**signals)
+        if identity.get("status") != "resolved" or identity.get("sku_code") != sku:
+            return {}
+        return ProductHubReviewedFactsClient().fetch_domain_policy_selector(identity)
+    except Exception:
+        return {}
 
 
 def _diagnostic_alias(value: Any, *, prefix: str) -> str:

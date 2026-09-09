@@ -1,5 +1,35 @@
 # Delivery Roadmap
 
+## Hub Policy Binding Propagation (2026-09-09)
+
+Active priority: P1 Gold Conversation Quality. Repair control metadata only in
+the existing isolated `product_hub_review_only` source. The Agent product detail
+omits `domainPolicyId`; the existing read-only product passport exposes it.
+
+- [x] Verify the actual source API and freeze the previous synthetic result.
+- [x] Add negative/positive tests for exact identity and control-only projection.
+- [x] Reuse the identity owner and Pack loader before Understanding.
+- [x] Run deterministic regression and a read-only source comparison, no models.
+- [x] Review the scoped change and prepare the local milestone.
+
+No Hub writes/restart, model request, reply/prompt or delivery changes are planned.
+Real accuracy remains null; candidate answer quality is optimization_unverified.
+
+Read-only comparison of the same frozen synthetic source: the parent selector
+returned missing/domain_policy_id_missing; the candidate selected the existing
+Pack through three bounded GETs (two identity, one passport). Current product,
+SKU and fact-row HMACs were unchanged, as were all four empty formal tables;
+SQLite query_only=1 and observed local formal DML attempts=0. Preparation took
+47 ms before and 109 ms after in the final post-review observation, not an end-to-end
+latency benchmark. Graph/model calls=0; no new reply or send decision was made.
+The private comparison artifact remains outside Git. Related deterministic
+regression: 1023 passed; compile, scoped diff check and Python/PowerShell JSON
+passed. Review caught a public-identity conflict before canonical normalization;
+the selector now reuses that existing projection before resolving. Five new
+negative cases reproduced the defect before the repair. Re-review found no
+remaining blocker, with 36 focused tests and seven independent probes. Existing
+5012/5174/8795 PIDs remain unchanged. No network push is attempted this round.
+
 ## Isolated Multiturn Candidate (2026-09-09)
 
 Active priority: P1 Gold Conversation Quality. Reuse the existing application,

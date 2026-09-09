@@ -184,6 +184,17 @@ workflow before it can be used. A query-only legacy catalog that predates this
 optional control column remains readable but is treated as unbound until its
 normal writable migration completes.
 
+The isolated `product_hub_review_only` source has no local catalog to bind.
+There, the same Pipeline selector reuses exact-SKU ProductIdentityResolver and
+the existing read-only Hub passport to obtain the current active product's
+`domainPolicyId`. Product ID/code/status and exact SKU membership must agree;
+missing identity or binding never selects a global Pack. Only the scalar selector
+reaches FilePolicyRepository and the existing trusted control projection. No
+passport notes, prompts, timelines or media enter this channel. This operational
+source binding is not human approval or evidence; admitted premises and all
+bounded-inference, audit and delivery checks still apply. It grants no additional
+send authority and is unavailable outside the opt-in development/test source.
+
 ### Identity, Knowledge, And Tools
 
 External product references resolve to JST/internal identity before scoped facts

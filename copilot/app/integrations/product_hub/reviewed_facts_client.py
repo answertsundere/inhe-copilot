@@ -366,6 +366,47 @@ class ProductHubReviewedFactsClient:
             "identity_source": "product_hub_exact_sku",
         }
 
+    def fetch_domain_policy_selector(self, identity: dict[str, Any]) -> dict[str, Any]:
+        """Project control metadata from the exact resolved product, never facts."""
+        if (
+            not _enabled("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED")
+            or identity.get("status") != "resolved"
+            or identity.get("source") != "product_hub_exact_sku"
+        ):
+            return {}
+        keys = ("product_code", "hub_product_id", "hub_sku_id", "sku_code")
+        if any(not isinstance(identity.get(key), str) or not _bounded_text(identity[key], 128) for key in keys):
+            return {}
+        base = _base_url(os.getenv("COPILOT_PRODUCT_HUB_BASE_URL", ""))
+        if not base or urlsplit(base).hostname not in {"127.0.0.1", "localhost", "::1"}:
+            return {}
+        code = identity["product_code"]
+        payload, error = _read_json(
+            f"{base}/api/agent/products/{quote(code, safe='')}/passport",
+            timeout=_bounded_timeout(os.getenv("COPILOT_PRODUCT_HUB_TIMEOUT_SECONDS", _DEFAULT_TIMEOUT_SECONDS)),
+        )
+        if error or not isinstance(payload, dict) or payload.get("ok") is not True:
+            return {}
+        product, skus = payload.get("product"), payload.get("skus")
+        if (
+            not isinstance(product, dict) or not isinstance(skus, list)
+            or product.get("id") != identity["hub_product_id"]
+            or product.get("productCode") != code or product.get("status") != "active"
+        ):
+            return {}
+        matches = [sku for sku in skus if isinstance(sku, dict) and sku.get("skuCode") == identity["sku_code"]]
+        if (
+            len(matches) != 1 or matches[0].get("id") != identity["hub_sku_id"]
+            or matches[0].get("productId") != identity["hub_product_id"]
+            or matches[0].get("status") != "active"
+        ):
+            return {}
+        policy_id = product.get("domainPolicyId")
+        # FilePolicyRepository owns ID/schema/hash validation, not source text.
+        if not isinstance(policy_id, str) or not _bounded_text(policy_id, 64):
+            return {}
+        return {"catalog_metadata": {"domain_policy_id": policy_id}}
+
     def fetch_answer_context_for_sku(self, sku_code: Any) -> dict[str, Any]:
         """Read the versioned transport for shadow comparison, not admission."""
         sku = _bounded_text(sku_code, 128)

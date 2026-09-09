@@ -1,3 +1,5 @@
+from copy import deepcopy
+import json
 from urllib.parse import quote
 
 import pytest
@@ -18,12 +20,21 @@ def source(monkeypatch):
         "sku": {"id": "sku-record", "skuCode": sku, "productCode": code, "status": "active"},
         "product": {"id": "hub-product-record", "productCode": code, "status": "active", "name": "Product A"},
     }
+    data["passport"] = {
+        "ok": True,
+        "product": {**data["product"], "domainPolicyId": "maternal_child_home"},
+        "skus": [{**data["sku"], "productId": data["product"]["id"]}],
+        "timeline": [{"text": "private source history"}],
+        "prompts": ["untrusted source instruction"],
+    }
     calls = []
 
     def read(url, **_kwargs):
         calls.append(url)
         if url.endswith("/skus/" + quote(sku, safe="")):
             return {"ok": True, "sku": data["sku"]}, ""
+        if url.endswith("/products/" + code + "/passport"):
+            return deepcopy(data["passport"]), ""
         assert url.endswith("/products/" + code)
         return {"ok": True, "product": data["product"]}, ""
 
@@ -186,3 +197,132 @@ def test_router_preserves_title_only_input_for_existing_identity_owner():
     state.update(_result(state, {"product_name": "model paraphrase"}, 0, "llm", "routing only"))
     signals = _identity_resolution_signals(state, _state_identity(state))
     assert signals["platform_title"] == "customer supplied title"
+
+
+def _prepared_policy(context, **request_fields):
+    from app.services.analysis_pipeline_service import AnalysisPipelineRequest, AnalysisPipelineService
+
+    request = AnalysisPipelineRequest(
+        reply_service=object(), customer_message="synthetic question",
+        copilot_context=context, **request_fields,
+    )
+    return AnalysisPipelineService()._prepare_request(request)
+
+
+def _domain(prepared):
+    return prepared.copilot_context["_answer_eligibility_owner_context"]["domain_policy_context"]
+
+
+def test_exact_hub_policy_reaches_existing_canonical_owner_without_catalog(source, monkeypatch):
+    import app.db as db_module
+    from app.repositories.file_policy_repository import FilePolicyRepository
+
+    sku, data, calls = source
+    monkeypatch.setattr(db_module, "SessionLocal", lambda: pytest.fail("no local catalog access"))
+    prepared = _prepared_policy({"sku_code": sku})
+    domain = _domain(prepared)
+    expected = FilePolicyRepository().build_trusted_domain_policy_context(
+        {"catalog_metadata": {"domain_policy_id": "maternal_child_home"}},
+        selection_source="verified_server_mapping",
+    )
+    assert domain == expected and domain["status"] == "selected"
+    assert len(calls) == 3 and calls[-1].endswith("/passport")
+    assert "domainPolicyId" not in data["product"]  # The real detail API omits it.
+    encoded = json.dumps(prepared.copilot_context)
+    for excluded in ("private source history", "untrusted source instruction", "hub-product-record"):
+        assert excluded not in encoded
+    for excluded in ("selected_evidence", "suggested_reply", "can_send", "reply_blocks"):
+        assert excluded not in prepared.copilot_context
+
+
+@pytest.mark.parametrize("field,value", [
+    ("id", "other-product"), ("productCode", "other-code"), ("status", "archived"),
+    ("domainPolicyId", ""), ("domainPolicyId", None), ("domainPolicyId", {}),
+    ("domainPolicyId", ["maternal_child_home"]), ("domainPolicyId", True),
+    ("domainPolicyId", "unregistered_pack"), ("domainPolicyId", "../maternal_child_home"),
+])
+def test_hub_policy_invalid_passport_never_uses_global_or_public_binding(source, monkeypatch, field, value):
+    sku, data, calls = source
+    data["passport"]["product"][field] = value
+    monkeypatch.setenv("COPILOT_DOMAIN_POLICY_ID", "maternal_child_home")
+    prepared = _prepared_policy({
+        "sku_code": sku, "domainPolicyId": "maternal_child_home",
+        "catalog_metadata": {"domain_policy_id": "maternal_child_home"},
+        "tenant": {"domain_policy_id": "maternal_child_home"},
+        "store": {"domain_policy_id": "maternal_child_home"},
+    })
+    assert _domain(prepared)["status"] != "selected"
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("field,value", [
+    ("id", "other-sku-id"), ("skuCode", "other-sku"), ("productId", "other-product"),
+    ("status", "archived"),
+])
+def test_hub_policy_passport_must_bind_same_active_sku(source, field, value):
+    sku, data, calls = source
+    data["passport"]["skus"][0][field] = value
+    assert _domain(_prepared_policy({"sku_code": sku}))["status"] != "selected"
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("kind", ["missing", "duplicate", "malformed", "not_ok"])
+def test_hub_policy_passport_incomplete_or_ambiguous_fails_closed(source, kind):
+    sku, data, _ = source
+    if kind == "duplicate":
+        data["passport"]["skus"] *= 2
+    elif kind == "missing":
+        data["passport"]["skus"] = []
+    elif kind == "malformed":
+        data["passport"]["skus"] = {}
+    else:
+        data["passport"]["ok"] = False
+    assert _domain(_prepared_policy({"sku_code": sku}))["status"] != "selected"
+
+
+@pytest.mark.parametrize("context,request_fields", [
+    ({}, {}),
+    ({"sku_code": "item-A 09", "i_id": "other-id"}, {}),
+    ({"sku_code": "item-A 09", "slots": {"sku_code": "other-sku"}}, {}),
+    ({"sku_code": "item-A 09", "real_context": {"product": {"item_id": "1234567890"}}}, {}),
+    ({"sku_code": "item-A 09", "item_id": "1234567890"}, {}),
+    ({"sku_code": "item-A 09", "product_title": "other product"}, {}),
+    ({"sku_code": "item-A 09", "front_product_title": "other product"}, {}),
+    ({"sku_code": "item-A 09", "product_name": "other product"}, {"product_name": "Product A"}),
+    ({"sku_code": "item-A 09", "real_context": {"product": {"product_title": "other product"}}}, {"product_name": "Product A"}),
+    ({"sku_code": "item-A 09"}, {"order_id": "synthetic-order"}),
+    ({"sku_code": "item-A 09"}, {"product_candidates": [{"type": "product_title", "value": "wrong title"}]}),
+])
+def test_hub_policy_conflicting_or_missing_identity_does_not_read_source(source, monkeypatch, context, request_fields):
+    _, _, calls = source
+    monkeypatch.setenv("COPILOT_DOMAIN_POLICY_ID", "maternal_child_home")
+    assert _domain(_prepared_policy(context, **request_fields))["status"] != "selected"
+    assert not calls
+
+
+@pytest.mark.parametrize("field,value", [
+    ("COPILOT_RUNTIME_ENV", "production"), ("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY", "false"),
+    ("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED", "false"),
+    ("COPILOT_PRODUCT_HUB_BASE_URL", "https://example.invalid"),
+])
+def test_hub_policy_candidate_configuration_is_required(source, monkeypatch, field, value):
+    sku, _, calls = source
+    monkeypatch.setenv(field, value)
+    assert _domain(_prepared_policy({"sku_code": sku}))["status"] != "selected"
+    assert not calls
+
+
+def test_hub_policy_rechecks_binding_and_readiness_sku_is_not_current_identity(source, monkeypatch):
+    sku, data, calls = source
+    monkeypatch.setenv("COPILOT_PRODUCT_HUB_READINESS_SKU", "different-probe-sku")
+    assert _domain(_prepared_policy({"sku_code": sku}))["status"] == "selected"
+    data["passport"]["product"]["domainPolicyId"] = ""
+    assert _domain(_prepared_policy({"sku_code": sku}))["status"] != "selected"
+    assert len(calls) == 6
+
+
+def test_local_source_keeps_existing_selector_and_never_reads_hub(source, monkeypatch):
+    monkeypatch.setenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "local")
+    monkeypatch.delenv("COPILOT_DOMAIN_POLICY_ID", raising=False)
+    assert _domain(_prepared_policy({}))["status"] == "missing"
+    assert not source[2]

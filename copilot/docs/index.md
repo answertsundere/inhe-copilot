@@ -38,6 +38,12 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+The isolated Hub policy-binding propagation now has a bounded contract in
+`adr/0009-agent-core-capability-mainline.md` and `architecture-overview.md`:
+exact active SKU/product passport -> existing Pipeline selector -> existing Pack
+loader. Source notes and policy text are not evidence or model input. See
+`../ROADMAP.md` for verification and the still-unverified reply-quality boundary.
+
 ### Assisted Conversation Document Import (2026-09-09)
 
 One explicitly authorized synthetic multiturn candidate now completed through
