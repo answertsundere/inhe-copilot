@@ -1,5 +1,38 @@
 # Delivery Roadmap
 
+## Review Queue Conversation Isolation (2026-09-09)
+
+- Active priority: P1 Gold Conversation Quality; approved bounded queue fix.
+- [x] Root cause: ReplyService discards execution identity at enqueue; the
+  JSONL queue merges pending records by customer text plus order alone.
+- [x] Regressions: separate conversations/sources/shops/repeated-message events,
+  missing identity, changed review content, old records, restart and concurrency.
+- [x] Reuse existing source/conversation/message/request fields and optional
+  structured shop scope; no text/time/window-derived identity or new service.
+- [x] Wire the existing ReplyService call, preserve review/send contracts, run
+  queue/entrypoint/final regression and update the existing document index.
+- Existing execution IDs are per analysis, not native platform event IDs. This
+  fix cannot qualify HTTP retries, continuous QianNiu capture or reconnects.
+- Tests use temporary queues only; no migration of live records, model calls,
+  production restart, knowledge writes, auto-approval or sending.
+- Development verification: 211 related tests passed (14 existing dependency
+  deprecation warnings). Versioned reconstructed v1.2.0 queue-only replay used
+  8 scenarios / 32 customer events, 128 attempts / 96 independent pending rows;
+  only the 32 exact-identity/content retries reused rows. Content hash
+  `50d351316e87b0cce4d31ad5bf34a7eabf53cc1aca6c0d5355f23c366d7ff012`
+  passed the existing validator. Native fixture byte hash differs from its
+  manifest; neither fixture nor benchmark validator was changed. This is not a
+  native Fixed-8 model run or accuracy qualification.
+- In-process locking covers queue reads/appends/decisions across instances;
+  multi-process and crash-safe storage remain unqualified. Production 5012/5174
+  are unchanged. Next: reliable native active-client identity, not auto-listening.
+- Independent review's invalid-Unicode identity finding is fixed with five
+  red/green cases. Event-controlled enqueue-versus-decision coverage passes;
+  an in-memory lock-removal mutation was detected. No live queue was opened.
+- Disjoint Final/Audit/Evidence/Replay/benchmark-fixture regression: 189 passed,
+  199 dependency warnings. Total related tests: 400; py_compile passed. No full
+  model benchmark or live-customer accuracy run was performed.
+
 ## Manual QianNiu Conversation Import (2026-09-09)
 
 - Owner-approved bounded P1 integration exception: native read -> local preview

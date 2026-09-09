@@ -490,6 +490,11 @@ class ReplyService:
                     suggestion_dict=suggestion.to_dict(),
                     customer_message=customer_message,
                     order_id=order_id,
+                    source=source,
+                    conversation_id=conversation_id,
+                    message_id=message_id,
+                    request_id=request_id,
+                    shop_id=(copilot_context or {}).get("shop_id", ""),
                 )
                 suggestion.review_id = queued.get("id", "")
             except Exception as e:

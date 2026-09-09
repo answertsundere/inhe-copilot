@@ -19,6 +19,16 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-09 review-queue isolation is development-integrated, not deployed.
+  The existing ReplyService now forwards execution identity to the existing
+  JSONL queue. Only pending records with exact source/shop/conversation/message/
+  request identity and unchanged review content can be reused. Missing identity
+  and legacy records never fall back to text/order matching; no raw identity
+  fields are added to storage. Related regression: 400 passed. Queue-only
+  reconstructed fixture replay: 128 attempts / 96 distinct records, no model.
+  Native platform identity, HTTP-retry identity and multi-process durability
+  remain unqualified. Production services and can_send are unchanged.
+
 - 2026-09-09 manual QianNiu integration is development-only and disabled by
   default. The existing Sidecar route and real-test page now support local
   authenticated preview/confirmation with canonical history and stale-state

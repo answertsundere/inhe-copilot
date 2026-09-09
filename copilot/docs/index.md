@@ -38,6 +38,17 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+### Review Queue Conversation Isolation (2026-09-09)
+
+The existing ReplyService/JSONL queue now reuse a pending record only for an
+exact execution identity and unchanged review content. Missing/default identity
+creates a separate record; text, order number, window and time are not identity
+fallbacks. Raw identity fields are not added to queue storage. This is a scoped
+development fix, not a new durable handoff service, native event/reconnect
+qualification, or a deployment. See the [module index](module-index.md),
+[architecture](architecture-overview.md#durable-handoff), and
+[change log](CHANGELOG.md) for verification and limitations.
+
 ### Product Hub Answer Context Shadow (2026-09-08)
 
 The existing Hub client can read `answer-context-v1` with

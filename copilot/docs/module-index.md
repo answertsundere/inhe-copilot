@@ -87,6 +87,7 @@ evaluation owner only; no Fast Path or Composer module has been added.
 | Capability | Owner | Status | Boundary |
 |---|---|---|---|
 | Management authentication | `app/api/admin_auth.py`, route policy registry | formal | Cloudflare Access JWT, explicit RBAC, default deny |
+| Legacy manual review queue | `app/services/review_queue_service.py`, existing ReplyService enqueue and review routes | existing JSONL owner; identity fix development-only | Reuse only pending exact execution identity and unchanged review content; unknown identities and legacy records never merge by text/order. Store structured-tuple SHA-256, not raw identity fields; in-process lock only, not multi-process/crash-safe persistence or platform-event authority. Approval does not grant delivery |
 | QianNiu/PDD/JD adapters | canonical adapter ports; existing `scripts/qianniu_sidecar.py`, `scripts/sidecar/uia_sidebar_extractor.py`, `scripts/sidecar/context_parser.py`, Sidecar route and real-test template | manual-preview development only; native current-client selection blocked; continuous capture unqualified | Default-off direct-loopback human/CSRF preview, explicit confirmation and canonical history; no shared cache, polling/model/send; native unbound order/product references omitted |
 | Durable HandoffTask | not implemented | planned/P1 | Assignment, SLA, status, acknowledgement, audit |
 | Supervisor queue | not implemented | planned | Projection of durable handoff and Agent outcomes |

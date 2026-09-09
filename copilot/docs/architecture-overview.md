@@ -809,6 +809,17 @@ audit history. A sentence saying “转人工” is not a handoff implementation
 
 Status: planned and required before omnichannel automation.
 
+The existing JSONL manual review queue is not this durable handoff system. Its
+bounded isolation fix reuses only pending, unchanged review content with the
+same source, optional shop, conversation and execution message/request identity.
+Missing or malformed identity creates an independent record; customer text,
+orders, window titles and time buckets cannot supply identity. It stores a
+versioned tuple fingerprint without adding raw identity fields, leaves old rows
+unidentified, and serializes read/append/decision operations within one process.
+The existing execution IDs are per analysis, not stable native platform events;
+this does not qualify HTTP retries, reconnects, multi-process persistence or
+automatic delivery. A reviewed queue record still grants no send authority.
+
 ## Active Mainline
 
 ADR 0009 establishes the Agent Core capability mainline. The next deliverable is

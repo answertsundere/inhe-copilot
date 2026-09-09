@@ -480,6 +480,94 @@ def _reply_service():
     return ReplyService(None, None, None)
 
 
+@pytest.mark.parametrize("source", ["api", "sidecar", "replay", "agent_benchmark"])
+def test_reply_service_preserves_queue_execution_identity(monkeypatch, tmp_path, source):
+    import app.agent.graph as graph
+    from app.services.review_queue_service import ReviewQueueService
+
+    fake = _FakeGraph({
+        "intent": "general", "suggested_reply": "review candidate",
+        "requires_human_review": True, "can_send": False,
+        "sendable_reply": "", "reply_status": "needs_human_review",
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+    queue = ReviewQueueService(str(tmp_path / "queue.jsonl"))
+    service = _reply_service()
+    service._review_queue_service = queue
+    kwargs = dict(source=source, conversation_id="conversation-a",
+                  message_id="message-a", request_id="request-a",
+                  copilot_context={"shop_id": "shop-a"})
+    first = service.analyze("hello", **kwargs)
+    second = service.analyze("hello", **kwargs)
+    assert first.review_id == second.review_id
+    assert queue.count_pending() == 1
+    expected = ReviewQueueService(str(tmp_path / "expected.jsonl")).enqueue(
+        first.to_dict(), "hello", source=source, conversation_id="conversation-a",
+        message_id="message-a", request_id="request-a", shop_id="shop-a",
+    )
+    assert queue.get_by_id(first.review_id)["enqueue_identity"] == expected["enqueue_identity"]
+    assert first.can_send is False and second.can_send is False
+    assert first.requires_human_review is True and second.requires_human_review is True
+    assert first.suggested_reply == second.suggested_reply == "review candidate"
+
+
+def test_queue_only_changes_review_id_not_candidate_contract(monkeypatch, tmp_path):
+    import app.agent.graph as graph
+    from app.services.review_queue_service import ReviewQueueService
+
+    fake = _FakeGraph({
+        "intent": "general", "suggested_reply": "review candidate",
+        "requires_human_review": True, "can_send": False,
+        "sendable_reply": "", "reply_status": "needs_human_review",
+        "reply_blocks": [{"type": "text", "content": "review candidate"}],
+        "selected_evidence": [{"evidence_uid": "fact-a"}],
+    })
+    monkeypatch.setattr(graph, "customer_service_graph", fake)
+    service = _reply_service()
+    identity = dict(source="test", conversation_id="conversation-a",
+                    message_id="message-a", request_id="request-a")
+    baseline = service.analyze("hello", **identity).to_dict()
+    service._review_queue_service = ReviewQueueService(str(tmp_path / "queue.jsonl"))
+    after = service.analyze("hello", **identity).to_dict()
+    assert after.pop("review_id")
+    baseline.pop("review_id", None)
+    assert after == baseline
+
+
+@pytest.mark.parametrize("source", ["api", "sidecar", "replay", "agent_benchmark"])
+def test_execution_service_generated_ids_reach_queue(monkeypatch, tmp_path, source):
+    import app.agent.graph as graph
+    import app.services.analysis_execution_service as execution
+    import app.tracing.repository as trace_repository
+    import app.tracing.recorder as trace_recorder
+    from app.services.review_queue_service import ReviewQueueService
+
+    monkeypatch.setattr(trace_repository, "init_trace_tables", lambda: None)
+    monkeypatch.setattr(trace_recorder, "start_trace", lambda **_: "")
+    monkeypatch.setattr(trace_recorder, "start_span", lambda **_: "")
+    monkeypatch.setattr(execution, "_save_file_snapshot", lambda **_: None)
+    monkeypatch.setattr(graph, "customer_service_graph", _FakeGraph({
+        "intent": "general", "suggested_reply": "review candidate",
+        "requires_human_review": True, "can_send": False,
+        "sendable_reply": "", "reply_status": "needs_human_review",
+    }))
+    service = _reply_service()
+    queue = ReviewQueueService(str(tmp_path / "queue.jsonl"))
+    service._review_queue_service = queue
+    first = execution.execute_analysis(service, "hello", conversation_id="conversation-a",
+                                       source=source, final_orchestration=False)
+    second = execution.execute_analysis(service, "hello", conversation_id="conversation-a",
+                                        source=source, final_orchestration=False)
+    assert first["message_id"] != second["message_id"]
+    assert first["request_id"] != second["request_id"]
+    assert first["review_id"] != second["review_id"]
+    records = queue.list_reviews()
+    assert len(records) == 2
+    assert all(record["enqueue_identity"] for record in records)
+    assert first["can_send"] is second["can_send"] is False
+    assert first["requires_human_review"] is second["requires_human_review"] is True
+
+
 def test_reply_service_preserves_graph_sendable_contract(monkeypatch):
     import app.agent.graph as graph
 

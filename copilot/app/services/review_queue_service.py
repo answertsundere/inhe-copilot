@@ -4,9 +4,16 @@
 
 import json
 import os
+import hashlib
+import threading
 import uuid
 from datetime import datetime
 from typing import Optional
+
+
+# The application uses one process. Share the lock across queue instances so
+# read/append and review rewrites cannot interleave within that process.
+_QUEUE_LOCK = threading.RLock()
 
 
 class ReviewQueueService:
@@ -23,22 +30,19 @@ class ReviewQueueService:
 
     # ---- 写入 ----
 
-    def enqueue(self, suggestion_dict: dict, customer_message: str, order_id: str = "") -> dict:
+    def enqueue(
+        self, suggestion_dict: dict, customer_message: str, order_id: str = "", *,
+        source: str = "", conversation_id: str = "", message_id: str = "",
+        request_id: str = "", shop_id: str = "",
+    ) -> dict:
         """
         将一条分析结果加入复核队列。
-        如果已是 pending 且 customer_message + order_id 相同，不重复写入。
+        仅完整执行身份及审核内容相同的 pending 记录可复用；身份缺失不猜重。
         返回队列记录。
         """
-        # 防重复：检查最后 200 条
-        existing = self._load_recent(200)
-        msg_key = customer_message.strip() + "|" + (order_id or "").strip()
-        for rec in existing:
-            if (rec.get("status") == "pending"
-                    and rec.get("customer_message", "").strip() + "|" + rec.get("order_id", "").strip() == msg_key):
-                return rec  # 已存在，返回已有记录
-
-        record = {
-            "id": str(uuid.uuid4()),
+        identity = self._enqueue_identity(source, conversation_id, message_id, request_id, shop_id)
+        content = {
+            "enqueue_identity": identity,
             "customer_message": customer_message,
             "order_id": order_id or "",
             "suggested_reply": suggestion_dict.get("suggested_reply", ""),
@@ -49,17 +53,44 @@ class ReviewQueueService:
             "policy_warnings": suggestion_dict.get("policy_warnings", []),
             "guard_warnings": suggestion_dict.get("guard_warnings", []),
             "action_proposal": suggestion_dict.get("action_proposal", {}),
-            "status": "pending",
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-            "reviewed_by": "",
-            "review_note": "",
         }
 
-        with open(self.filepath, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with _QUEUE_LOCK:
+            if identity:
+                for rec in self._load_all():
+                    if (rec.get("status") == "pending"
+                            and all(rec.get(key) == value for key, value in content.items())):
+                        return rec
+            record = {
+                **content,
+                "id": str(uuid.uuid4()),
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "reviewed_by": "",
+                "review_note": "",
+            }
+            with open(self.filepath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
         return record
+
+    @staticmethod
+    def _enqueue_identity(source, conversation_id, message_id, request_id, shop_id) -> dict:
+        parts = [source, shop_id, conversation_id, message_id, request_id]
+        if any(not isinstance(value, str) or len(value) > 512 or value != value.strip()
+               or any(ord(char) < 32 or ord(char) == 127 for char in value) for value in parts):
+            return {}
+        if (not source or not conversation_id or conversation_id in {"default", "qianniu"}
+                or not (message_id or request_id)):
+            return {}
+        # Structured encoding avoids delimiter collisions. Do not persist raw
+        # conversation/shop IDs or infer identity from text, time or order IDs.
+        try:
+            encoded = json.dumps(parts, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except UnicodeEncodeError:
+            return {}
+        return {"schema_version": "review-event/v1", "sha256": hashlib.sha256(encoded).hexdigest()}
 
     def decide(self, review_id: str, status: str, final_reply: str = "",
                reviewed_by: str = "", review_note: str = "") -> Optional[dict]:
@@ -77,24 +108,25 @@ class ReviewQueueService:
         if status == "edited" and not final_reply.strip():
             raise ValueError("edited 状态必须提供 final_reply")
 
-        records = self._load_all()
-        found = None
-        for rec in records:
-            if rec["id"] == review_id:
-                found = rec
-                break
+        with _QUEUE_LOCK:
+            records = self._load_all()
+            found = None
+            for rec in records:
+                if rec["id"] == review_id:
+                    found = rec
+                    break
 
-        if found is None:
-            return None
+            if found is None:
+                return None
 
-        found["status"] = status
-        found["final_reply"] = final_reply or (found["suggested_reply"] if status == "approved" else "")
-        found["reviewed_by"] = reviewed_by
-        found["review_note"] = review_note
-        found["updated_at"] = datetime.now().isoformat()
+            found["status"] = status
+            found["final_reply"] = final_reply or (found["suggested_reply"] if status == "approved" else "")
+            found["reviewed_by"] = reviewed_by
+            found["review_note"] = review_note
+            found["updated_at"] = datetime.now().isoformat()
 
-        # 全量重写
-        self._write_all(records)
+            # 全量重写
+            self._write_all(records)
         return found
 
     # ---- 读取 ----
@@ -118,35 +150,19 @@ class ReviewQueueService:
     # ---- 内部 ----
 
     def _load_all(self) -> list:
-        if not os.path.exists(self.filepath):
-            return []
-        records = []
-        with open(self.filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    try:
-                        records.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
-        return records
-
-    def _load_recent(self, n: int) -> list:
-        if not os.path.exists(self.filepath):
-            return []
-        lines = []
-        with open(self.filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                lines.append(line)
-        records = []
-        for line in lines[-n:]:
-            line = line.strip()
-            if line:
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-        return records
+        with _QUEUE_LOCK:
+            if not os.path.exists(self.filepath):
+                return []
+            records = []
+            with open(self.filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            records.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+            return records
 
     def _write_all(self, records: list):
         with open(self.filepath, "w", encoding="utf-8") as f:

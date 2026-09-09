@@ -1,5 +1,40 @@
 # Change Log
 
+## 2026-09-09 - Review Queue Execution Identity Isolation
+
+- Fixed the existing ReplyService -> ReviewQueueService boundary: source,
+  conversation, message, request and optional structured shop identity now reach
+  enqueue. Exact tuple encoding avoids delimiter collisions; only a versioned
+  SHA-256 is stored, not additional raw buyer/shop/event identifiers. This is an
+  internal matching fingerprint, not encryption or proof of platform ownership.
+- Removed text/order and last-200-record deduplication. Only an identical
+  pending review payload with the same execution identity can be reused;
+  changed input/reply/risk/action and decided records create independent pending
+  records. Missing, malformed or generic identity never guesses a match. No
+  migration, deletion or reidentification of historical records was performed.
+- The existing JSONL owner uses a shared in-process RLock for enqueue/read/review
+  consistency. No database, service, Graph, model, reply owner or send condition
+  added. Multi-process/crash-safe persistence is not qualified.
+- Red/green tests reproduced legacy text merging and discarded identity. Final
+  related regression: 211 passed, 14 dependency deprecation warnings. Controlled
+  ExecutionService/ReplyService tests preserve generation/send fields and show
+  per-analysis IDs reaching the queue. They do not exercise a live model.
+- Independent review caught unencodable identity dropping enqueue. Five red/green
+  surrogate cases now remain independent. Event-controlled concurrent decision
+  rewrite/append also passes, and an in-memory lock-removal mutation is caught.
+- Disjoint Final/Audit/Evidence/Replay/benchmark-fixture regression: 189 passed,
+  199 dependency deprecation warnings. Total: 400 related tests; py_compile
+  passed. No live model benchmark was run for this non-generative queue fix.
+- Existing reconstructed v1.2.0 fixture queue replay: 8 scenarios, 32 customer
+  events, 128 attempts, 96 distinct pending rows; 32 exact retries reused rows.
+  The existing semantic content validator passed; file bytes do not match the
+  fixture manifest. This fixture check is not native benchmark qualification;
+  neither data nor evaluator gates were changed. real_accuracy=null.
+- Production 5012/5174 and knowledge data were not changed. Stable native
+  QianNiu identity and HTTP retry idempotency remain separate open gates; current
+  execution IDs are regenerated per analysis. No quality/latency improvement
+  claim, automatic approval, live conversation read or outbound message.
+
 ## 2026-09-09 - Manual QianNiu Preview, Native Ownership Gate Still Blocked
 
 - Reused the existing adapter, Sidecar blueprint, canonical normalizer and
