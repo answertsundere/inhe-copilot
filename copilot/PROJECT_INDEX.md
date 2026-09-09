@@ -19,6 +19,14 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-09 assisted-import application boundary: 337 Python regressions and
+  26 frontend tests passed without production edits. Real app HTTP confirmed
+  supervisor/admin page access, explicit Origin configuration, readonly empty
+  knowledge and unchanged source identity. Missing model configuration produces
+  provider_auth_error with no reply even when HTTP=200. This is a verified
+  failure boundary, not a completed candidate or real accuracy result. See
+  docs/runtime-operation.md for the isolated workbench prerequisites.
+
 - 2026-09-09 assisted document import: an explicit manual_document_review mode
   reads stable historical conversation documents when native selection is absent.
   Buyer/shop re-entry and acknowledgment are required; native UIA/MSAA conflicts

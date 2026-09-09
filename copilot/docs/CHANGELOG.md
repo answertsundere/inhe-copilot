@@ -1,5 +1,24 @@
 # Change Log
 
+## 2026-09-09 - Assisted Import Application Boundary Verification
+
+- Added full-app route tests using the actual loopback verifier and app access
+  middleware, instead of the shared pytest admin bypass. Synthetic native
+  documents reach the existing canonical preparation with history intact,
+  current question separate, no unbound order/product and no buyer display name.
+- Preserved page supervisor/admin policy, preview human policy, default-off,
+  Origin/CSRF and no proxy/service/shared identity. Empty questions stay rejected
+  without replacing them with an old buyer message. No production code changed.
+- Temporary real HTTP checks identified missing DML-HMAC and insufficient page
+  role in the test startup configuration. Correcting those test settings enabled
+  the page; it did not grant production or authoritative human approval.
+- No-credential analysis remains review-only and blank with provider_auth_error.
+  Its HTTP 200 is not a valid model candidate. Documented this distinction and
+  the product-scoped readiness gate; did not change Agent or safety behavior.
+- 337 Python regressions and 26 frontend tests passed. No real customer/model
+  quality evaluation: real_accuracy=null, optimization_unverified. Temporary
+  knowledge was unchanged, DML=0, temporary services stopped, production untouched.
+
 ## 2026-09-09 - Explicit Assisted Conversation Document Import
 
 - Extended the existing manual reader/route/parser and preview modal, not the

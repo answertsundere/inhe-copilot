@@ -21,6 +21,58 @@ git -C $runtime rev-parse HEAD
 
 ## Local Configuration And Data
 
+### Isolated Manual QianNiu Workbench
+
+The September 9 assisted-document adapter is a development checkpoint, not a
+rollout to existing 5012/5174. Its page is the Flask `/ask/real-test` route in the
+current checkout, not proof that an older running page has the new controls.
+Preview and final analysis remain separate explicit actions on the same app.
+
+For a separately authorized local verification process:
+
+- Bind only `127.0.0.1` on a verified unused port; never forward this interface
+  through a public route. Leave the existing production processes untouched.
+- Set `COPILOT_RUNTIME_ENV=development`,
+  `COPILOT_ADMIN_AUTH_MODE=development_loopback`, an explicit nonempty
+  `COPILOT_ADMIN_DEV_SUBJECT`, and the appropriate test role. The existing
+  **page** policy requires supervisor/admin; operator/reviewer get 403 there.
+  The **preview API** allows all authenticated human roles. Do not loosen either
+  policy or treat a local development role as authoritative Gold approval.
+- `COPILOT_QIANNIU_MANUAL_READ_ENABLED=true` is process-only and default-off.
+  Set `COPILOT_ADMIN_ALLOWED_ORIGINS` to the exact local scheme/host/port. A new
+  port is not automatically in the development CSRF allowlist. Both CSRF and
+  preview's direct-loopback/no-proxy checks remain enforced.
+- Use an explicit isolated knowledge path with
+  `COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY=true`, separate trace/review/feedback
+  outputs, and disabled media refresh/sync. When DML diagnostics are enabled,
+  provide a process-only `COPILOT_FORMAL_KB_AUDIT_HMAC_KEY`; do not disable the
+  guard when this prerequisite is missing. Never initialize a production DB.
+- A newly created empty schema is suitable for negative readiness verification
+  only, not a factual-answer source. An actual candidate still requires the
+  existing knowledge-source readiness contract and approved model configuration.
+  Do not copy a full historical `.env` or bypass readiness to make it appear ready.
+
+Verification on 2026-09-09: the real app factory on temporary 5030 returned page
+200, wrong-origin preview 403 and empty-current-message analysis 400. Version
+reported commit `7db62974d0bb8c125319abc0685c2efcfbae6e59`, source hash
+`ec0c6c7c56cf59efe6a1fe3a85db06918adfdf2cc8a8cf28456fdad27ee9d2ec`, query-only
+true and source drift false. Empty test knowledge/model configuration correctly
+left readiness false. The no-product-scope synthetic request reached Pipeline,
+then returned an empty reply with `provider_auth_error`, manual review and
+`can_send=false`; **HTTP 200 was not successful generation**. The script's first
+expectation of a global knowledge-readiness error was incorrect: that gate is
+product-scoped. The expectation was corrected, not the production gate.
+
+The current check did not transmit real customer data or inject model/ERP
+credentials; external connections were denied in the disposable test process.
+Three nonempty synthetic negative requests were made while inspecting this
+contract. Each temporary server was stopped, test knowledge fingerprints were
+unchanged and formal DML was zero. Full-app tests exercise the real verifier and
+canonical preparation, but stop the positive synthetic path before Graph/model
+execution. No positive model candidate or platform continuity is qualified by
+these checks. Next verification must check readiness, provider result, nonempty
+candidate and review-only delivery together, not just the page or HTTP status.
+
 ### Isolated Product Hub Source Candidate
 
 The September 8 candidate (not promoted) adds an explicit

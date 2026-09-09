@@ -1,5 +1,42 @@
 # Delivery Roadmap
 
+## Assisted Import Application Boundary (2026-09-09)
+
+Active priority: P1 Gold Conversation Quality; verify the existing manual
+adapter boundary before exposing it as a usable connected workbench.
+
+- [x] Inspect the real Flask route, app-level authentication, CSRF and canonical
+  Pipeline entry; preserve production 5012/5174 and existing dirty files.
+- [x] Exercise the complete app route registration and real loopback verifier
+  with synthetic native documents, including hostile origins and missing auth.
+- [x] Verify explicit current message/history separation at the existing
+  canonical Pipeline boundary; no real chat or model request in this check.
+- [x] Record runtime prerequisites, remaining live-candidate gap and regression.
+
+No Agent or authentication policy change. This is integration regression, not
+model quality, native-client continuity or real-customer accuracy qualification.
+
+337 Python regressions and 26 executable frontend tests passed. New full-app
+tests restore the real auth verifier (rather than the shared pytest principal),
+cover the /ask prefix, and stop synthetic positive analysis at actual canonical
+preparation. They do not substitute a mock reply for a model-quality result.
+
+Live temporary 5030 HTTP checks found two configuration prerequisites: DML
+diagnostics require an ephemeral HMAC key, and the workbench page requires
+supervisor/admin even though the preview API permits all human roles. Neither
+policy was changed. The final no-credential check returned page=200,
+untrusted-origin=403, empty-message=400, query-only=true, source drift=false,
+ready=false. Three nonempty synthetic negative requests reached the unchanged
+Pipeline and produced provider_auth_error, empty reply, can_send=false and
+requires_human_review=true. HTTP 200 was not treated as candidate qualification.
+Temporary knowledge fingerprints stayed unchanged and DML was zero. Every
+temporary process was stopped; no production restart, credentials, real chat,
+native desktop read, external model completion or customer sending occurred.
+
+Next: a separately configured isolated candidate with a legitimate ready data
+source and approved model configuration, then a synthetic end-to-end candidate.
+Do not present the current production page as containing this undeployed adapter.
+
 ## Assisted QianNiu Document Import (2026-09-09)
 
 - [x] Read active P1 context and record the bounded adapter trust decision.
