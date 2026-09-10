@@ -1,5 +1,61 @@
 # Delivery Roadmap
 
+## Composer Constraint Expression Repair (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. Approved bounded continuation of
+the native category-context finding below. Reuse existing qualifier/scope fields;
+do not widen advice_mode, policy risk, evidence, media, service or send authority.
+
+- [x] Freeze the native aff929d baseline and confirm its selected option.
+- [x] Check the exact source's typed facts and existing semantic-audit contract.
+- [x] Reproduce the blanket verbalization instruction with failing tests.
+- [x] Align Composer expression with the existing semantic-budget contract.
+- [x] Verify retained qualifiers, restricted boundaries, attribution and gates.
+- [x] Record one same-source native result or an explicit evaluation blocker.
+
+The local typed source has confirmed material but no typed cleaning/care fact.
+No material-specific cleaning instruction may be invented. Current semantic
+Audit checks whether every qualifier is obeyed, not whether every prohibition
+is recited. Composer alone incorrectly mandates all qualifiers be explicit and
+encourages listing an entire allowed scope. The bounded fix changes that prompt
+contract only: prohibitions remain binding, required safety actions and current
+requested limitations remain explicit, advice_mode=none still forbids advice.
+No existing runtime service, source data, policy budget or evaluator was changed.
+
+Seven prompt assertions failed before the repair. The final related regression
+passes 904 tests; mutations retain rejection for omitted qualifiers/prohibitions,
+escalated advice mode and altered authoritative Pack hash. Production AST outside
+the existing Composer system-prompt method is unchanged; policy files and their
+runtime content hash match the frozen baseline.
+
+One native after-request completed on dirty candidate 7134fbd in 5,384 ms,
+HTTP 200. The same question, four turns, product identity, selected records,
+provider/flags, offered projection and complete care option match the preceding
+baseline. Material stays supported (two records); care stays unresolved with one
+offered/selected option. Policy/premise/scope/qualifier bindings match. Composer
+is accepted; its candidate equals the final reply; Deterministic Final passes.
+Semantic Audit remains unavailable, not passed. The reply drops unrelated
+moving/storage/durability disclaimers but still provides no practical care help.
+It also does not explicitly address the prior wet-cloth/no-disassembly concern.
+This is a single observed wording change, not a quality or latency qualification.
+
+Understanding/Composer provider latency: 858/584 ms, one call each, retry/repair=0.
+Total HTTP latency was 5,299 ms before; full legacy model-call count is unverified.
+can_send=false, review=true, query-only=true, isolated knowledge unchanged,
+DML=0. Temporary 5030 is stopped; existing 5012/5174/8795 PIDs are unchanged.
+Candidate/convergence flags were enabled only in the disposable test process.
+No source Hub writes, production rollout or additional model benchmark.
+
+After report: qianniu-live-candidate-mvr7g2d5/report.json.
+SHA-256: 7a58999a8d3c8429c6770affbf4148a405e5c9b58a0266d85ffe783caea8e764.
+Boot source SHA-256:
+1f5ddd7665391a22e90b6aa14a497df0db332a31aed22a67a7b261570791e538.
+Dirty candidate is explicit; source drift=false. The previous report hash is
+unchanged. Private actual replies/trace stay outside Git; real_accuracy=null,
+optimization_unverified. Next owner: verify eligible care facts in the existing
+Hub source and admission path before authorizing concrete product-care advice;
+do not infer applicability from material alone or create another evaluator.
+
 ## Native Category-Context Reply Check (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. One authorized continuation used

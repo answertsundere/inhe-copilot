@@ -5,6 +5,14 @@ experiment results belong in evaluation reports, not in this ownership map.
 
 ## Active Agent Core
 
+The existing Model-first Composer owns customer expression of the offered
+constraint set, not policy authorization. All qualifiers remain binding; a
+prohibited assertion is not a mandatory spoken disclaimer. Current requested
+limits, required warnings/conditions/actions, do_not actions and ambiguous
+qualifiers remain explicit. Scope is a ceiling, not a topic checklist. Existing
+Final metadata checks and semantic Audit obligations remain unchanged; neither
+concision nor a selected option expands advice_mode or delivery authority.
+
 Turn Understanding rejection diagnostics remain owned by the existing semantic
 service: local normalization reason codes survive its degraded compatibility
 fallback in stable order before the generic code. Query classifier and Pipeline

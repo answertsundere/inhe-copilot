@@ -492,3 +492,25 @@ requirements remain unchanged. The local catalog path is unchanged. One bounded
 local passport GET per Pack reuses the existing transport/identity validator;
 no positive cache, retry, model call, service or reply owner is added. Removing
 the existing isolated source mode disables this projection.
+
+### Constraint Compliance And Customer Expression (2026-09-10)
+
+The existing required_qualifiers contract remains a conjunctive semantic budget,
+not a demand to recite every prohibition as a disclaimer. Composer must obey
+all qualifiers and prohibited extensions. Pure restrictions on what may be
+asserted need not introduce unrelated customer-facing topics. That does not
+allow silence about the current requested limitation, an authoritative restricted
+request boundary, a required warning, or a prescribed safety/escalation action.
+Explicit do_not_ action restrictions remain explicit; unclear qualifier meaning
+does not permit omission. An allowed scope limits claims and is not an agenda
+of every topic that must be mentioned.
+
+Only the existing Composer instruction is aligned with this interpretation.
+Qualifier lists, advice_mode, Pack hashes, options, premise attribution and
+schemas are not rewritten. In particular, advice_mode=none remains a prohibition
+on customer-directed advice; lack of cleaning evidence is not authorization
+for an invented method. Deterministic Final and Unified Audit still receive
+the complete unchanged semantic budget. No second owner, model call, delivery
+condition or automatic-send authority is added. The opt-in Composer path and
+Supervisor Assist restrictions remain unchanged; a prompt-contract regression
+does not establish real accuracy or qualified generated replies.

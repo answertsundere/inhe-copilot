@@ -38,6 +38,14 @@ safety/delivery control.
 LangGraph is not the reasoning engine. The model is not a source of truth. The
 knowledge base is not a reply composer.
 
+Within the offered Domain Policy budget, Composer must obey all qualifiers
+without turning pure assertion prohibitions into an unrelated disclaimer list.
+Current requested limits and required warnings, conditions and safety actions
+remain explicit; ambiguous constraints cannot be silently omitted. Scope limits
+what may be answered rather than requiring every covered topic to be mentioned.
+This is expression within the existing policy, not a new reply owner, permission
+to invent practical advice, or a change to Final, Audit or Delivery authority.
+
 ## Canonical Runtime
 
 ```mermaid

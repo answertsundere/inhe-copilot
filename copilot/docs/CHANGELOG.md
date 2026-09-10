@@ -1,5 +1,38 @@
 # Change Log
 
+## 2026-09-10 - Composer Constraint Compliance And Expression
+
+- Root cause: Composer demanded explicit recital of every qualifier and encouraged
+  listing the complete allowed scope, while the existing semantic Audit checks
+  compliance. Only the existing system-prompt method changes; no policy/schema,
+  Understanding, evidence, Final, Audit, delivery or evaluator changes.
+- Prohibitions remain binding. Current requested limits, required warnings,
+  conditions/actions, do_not actions and unclear qualifiers remain explicit.
+  advice_mode=none still forbids advice; no material-specific care rule or example.
+- Seven failing prompt assertions reproduced the old instruction. Final related
+  regression: 904 passed, 290 warnings. Added Final mutations reject stripped
+  qualifiers/prohibitions, escalated advice_mode and changed authoritative Pack
+  hash. Independent code review found no concrete regression in the scoped diff.
+- One native DeepSeek after-request: HTTP 200, 5,384 ms, dirty candidate 7134fbd,
+  source drift=false. Question/history/product, direct and selected evidence,
+  provider/flags, complete eligible option and offered projection match before.
+  Two valid goals, two material records, care unresolved with one selected option;
+  attribution retained and Deterministic Final passed. Semantic Audit unavailable.
+- Actual reply is shorter with no unrelated moving/storage/durability disclaimer.
+  It still provides no concrete care guidance and no explicit response to prior
+  wet-cloth/no-disassembly context. This is not gold-service qualification or
+  real accuracy. No cleaning fact or advice authority was fabricated.
+- Understanding/Composer each report one call (858/584 ms), retry/repair=0;
+  full legacy model-call total remains unverified. One observation is not p95.
+  can_send=false, review=true, knowledge query-only/unchanged, DML=0. Temporary
+  5030 stopped and existing services unchanged; no Hub write or deployment.
+- Existing ADR, architecture, module/entry documents updated. Actual replies and
+  exact private before/after reports are retained outside Git, referenced by
+  hash in ROADMAP. No new model benchmark or retry was run.
+- Final verification after documentation edits: 904 passed; three Python files
+  compile. Non-prompt production AST is identical to HEAD. Python json.load,
+  PowerShell ConvertFrom-Json, report hash/safety checks and scoped diff pass.
+
 ## 2026-09-10 - Native Category-Context Reply Verification
 
 - One same-source native request on aff929d, no hook or retry: HTTP 200,

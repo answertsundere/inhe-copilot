@@ -402,6 +402,7 @@ def care_composer_response():
 @pytest.mark.parametrize("mutation", [
     "none", "unknown_option", "option_on_direct_fact", "duplicate_option",
     "omitted_option", "missing_trusted_context", "final_premise", "final_scope",
+    "final_qualifiers", "final_prohibitions", "final_advice_mode", "final_pack_hash",
 ])
 def test_care_option_reaches_composer_and_final_without_send_authority(
     care_composer_response, mutation, monkeypatch,
@@ -499,10 +500,25 @@ def test_care_option_reaches_composer_and_final_without_send_authority(
         clauses[1]["evidence_uids"] = [other_fact["evidence_uid"]]
     elif mutation == "final_scope":
         clauses[1]["scope_qualifier"] = "different-scope"
+    elif mutation == "final_qualifiers":
+        clauses[1]["required_qualifiers"] = []
+    elif mutation == "final_prohibitions":
+        clauses[1]["prohibited_extensions"] = []
+    elif mutation == "final_advice_mode":
+        clauses[1]["advice_mode"] = "concise_care_only"
+    elif mutation == "final_pack_hash":
+        final_context = updated.get("evidence_debug", {}).get(
+            "admitted_answer_context", updated["minimal_decision_context"],
+        )
+        final_care, = [
+            item for item in final_context["claim_resolutions"]
+            if item["claim_type"] == "cleaning_care"
+        ]
+        final_care["eligible_policy_options"][0]["pack_content_sha256"] = "0" * 64
     audited = audit_final_answer(updated, customer_message=question)
     audit = audited["final_answer_audit"]
     assert audit["passed"] is (mutation == "none")
-    if mutation in {"final_premise", "final_scope"}:
+    if mutation.startswith("final_"):
         assert "model_first_candidate_bounded_inference_clause_invalid" in audit["issues"]
         assert "model_first_candidate_unknown_evidence" not in audit["issues"]
     assert audit["model_call_count"] == 0

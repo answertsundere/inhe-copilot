@@ -19,6 +19,18 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 Composer constraint-expression repair: only the existing system
+  instruction changes. Obeying all qualifiers no longer means reciting every
+  prohibition; current limits, required warnings/actions and unclear qualifiers
+  still require explicit expression. Policy/Final/Audit/Delivery unchanged.
+  Regression: 904 passed. One same-source native after-request, 5,384 ms:
+  both goals and the identical offered/selected care option survive; Final
+  passes, semantic Audit unavailable. Unrelated disclaimers disappear, but
+  practical care help and explicit history-sensitive guidance remain absent.
+  can_send=false, review=true, DML=0; no deployment or Hub writes. Dirty source
+  identity and exact report hashes are recorded in ROADMAP. Next inspect care
+  facts through the existing source/admission owner; no real-accuracy claim.
+
 - 2026-09-10 native category-context check on aff929d: one same-source fictional
   request completed in 5,299 ms. Two valid goals and two unchanged material
   records; one care option is offered and selected with correct premises.

@@ -1293,8 +1293,8 @@ def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
         structural_priority,
         required_rule,
         "即使 required_clause_kind=unresolved 也相同",
-        "required clause 的 text 同时表达所选 allowed_scope",
-        "required_qualifiers 中每一项都是必须显式表达的语义义务",
+        "required clause 的 text 只能在所选 allowed_scope",
+        "required_qualifiers 中每一项都必须遵守",
         "以 do_not_ 开头的 qualifier 必须直接说明暂不采取对应动作",
         "must_remain_unresolved 只约束客户原始受限主张",
         "模型不得输出 evidence_refs",
@@ -1304,6 +1304,61 @@ def test_composer_prompt_prioritizes_required_option_over_unresolved_kind():
     assert prompt.index(structural_priority) < prompt.index(required_rule)
     assert prompt.index(required_rule) < prompt.index(customer_style)
     assert client.call_count == 1
+
+
+@pytest.mark.parametrize("closure_required", [False, True])
+def test_composer_prompt_separates_compliance_from_disclaimer_recitation(
+    monkeypatch, closure_required,
+):
+    monkeypatch.setattr(
+        config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
+        closure_required,
+    )
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+
+    assert "required_qualifiers 中每一项都必须遵守" in prompt
+    assert "不等于每一项都要逐条说给客户" in prompt
+    assert "禁止断言某结论的限制，通过不作该断言来遵守" in prompt
+    assert "不得为了声明遵守而引入客户未问的风险话题" in prompt
+    assert "中每一项都是必须显式表达的语义义务" not in prompt
+
+
+@pytest.mark.parametrize("closure_required", [False, True])
+def test_composer_prompt_preserves_required_warnings_and_unknown_boundaries(
+    monkeypatch, closure_required,
+):
+    monkeypatch.setattr(
+        config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
+        closure_required,
+    )
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+
+    assert "当前所问结论的未知或受限边界必须明确" in prompt
+    assert "要求说明的警示、条件和安全处理动作必须显式表达" in prompt
+    assert "语义不明确的 qualifier 不得自行省略" in prompt
+    assert "以 do_not_ 开头的 qualifier 必须直接说明暂不采取对应动作" in prompt
+    assert "advice_mode=none 时不得主动给建议" in prompt
+    assert "When advice_mode=safety_handoff_required" in prompt
+    assert "must_remain_unresolved 只约束客户原始受限主张" in prompt
+    assert "不得把绝对保证、测试结论或责任承诺改写成已确认事实" in prompt
+
+
+@pytest.mark.parametrize("closure_required", [False, True])
+def test_composer_prompt_treats_scope_as_ceiling_not_topic_checklist(
+    monkeypatch, closure_required,
+):
+    monkeypatch.setattr(
+        config, "COPILOT_MODEL_FIRST_ANSWER_COMPOSER_CARE_CLOSURE_REQUIRED",
+        closure_required,
+    )
+    prompt = ModelFirstAnswerComposerService._system_prompt()
+
+    assert "allowed_scope 是边界，不是必须列全的场景清单" in prompt
+    assert "只回答当前 goal 和已提供上下文实际相关的部分" in prompt
+    assert "没有被策略授权的帮助不得补造" in prompt
+    assert "不得增加未被事实支持的性能、场景或承诺" in prompt
+    for fixture_text in ("这款的材质是PE", "湿布擦拭", "免拆洗", "maternal_child_home"):
+        assert fixture_text not in prompt
 
 
 def test_composer_prompt_uses_only_actual_blocks_as_media_delivery_authority():

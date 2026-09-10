@@ -38,6 +38,15 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+Composer constraint compliance is now distinguished from customer-visible
+expression: all policy qualifiers remain binding, but pure prohibitions need
+not become a disclaimer checklist. Current requested limitations, required
+warnings/actions and ambiguous qualifiers remain explicit. Existing policy
+budgets, Final, Audit and Delivery are unchanged; see ADR 0009's constraint
+expression addendum. A single native comparison removed unrelated disclaimers,
+not the remaining care-help gap. ROADMAP preserves the dirty candidate identity,
+904-test regression and unavailable semantic Audit; no production qualification.
+
 The isolated Hub policy-binding propagation now has a bounded contract in
 `adr/0009-agent-core-capability-mainline.md` and `architecture-overview.md`:
 exact active SKU/product passport -> existing Pipeline selector -> existing Pack
