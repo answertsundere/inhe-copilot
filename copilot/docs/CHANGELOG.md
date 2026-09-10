@@ -1,5 +1,24 @@
 # Change Log
 
+## 2026-09-10 - Post-Diagnostic Same-Source Canary
+
+- One synthetic native API request on 793a2cc returned an empty candidate after
+  5,106 ms, not a successful answer. Specific policy/claim-family mismatch now
+  survives Understanding normalization, fallback, classifier and Final boundary.
+  Two source spans passed but authoritative goals/evidence are zero; Composer
+  made no call. No score-seeking repeat or production-code change.
+- Existing context contains 13 policies and the Hub returned 54 source facts.
+  A 28-pair offline contract probe found 24 family mismatches and four valid
+  pairs; ordinary-care policy compatibility needs review. The exact rejected
+  live pair is unavailable, so no claim is made that this probe reproduces it.
+- Same source, history, question and qualification report; stable runtime
+  source hash, query-only, can_send=false, human review=true, DML=0, isolated
+  knowledge unchanged. 5030 stopped, existing listener PIDs unchanged.
+- 1090 related tests passed; private attempt/trace/Chinese review stay outside
+  Git. Updated existing documentation/execution indexes. No new evaluator,
+  service, model call owner, database write or reply-policy change. No accuracy,
+  reply-quality improvement or autonomous-send qualification; no network push.
+
 ## 2026-09-10 - Preserve Understanding Normalization Rejection Reasons
 
 - Changed only _fallback_from_rule in the existing semantic understanding

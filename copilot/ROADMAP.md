@@ -1,5 +1,63 @@
 # Delivery Roadmap
 
+## Post-Diagnostic Multiturn Reply Check (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. Reuse the existing synthetic
+four-turn history, current question and exact Hub product source for one
+review-only request against source commit 793a2cc. Do not retry for score.
+
+- [x] Confirm source identity matches the prior failed candidate, read-only.
+- [x] Run one disposable 5030 candidate without changing existing services.
+- [x] Inspect actual reply and retained normalization reasons through Final.
+- [x] Record evidence, no-send and database checks; update the existing index.
+
+No production Agent or source-data edits are planned. This check is diagnostic,
+not an accuracy qualification. Preserve prior reports and all existing files.
+
+Result: failed candidate, empty reply, HTTP 200, 5,106 ms, report exit_code=2.
+One external synthetic API request; no repeat. The repaired diagnostics retain
+customer_goal_policy_intent_family_mismatch as the earliest boundary reason,
+followed by llm_goal_understanding_unavailable. The failure is canonical-goal
+and nominated-policy compatibility in Understanding, before Composer, not an
+empty source database or a Composer wording failure. Schema and two exact
+source-span checks passed; authoritative goals, requested claims and final
+selected evidence remain zero. Composer was blocked and made zero calls.
+
+Same four history turns, question, exact source identity and qualification hash
+as the previous canary. The Hub returned 54 source facts; 13 bounded policies
+were present in the existing admitted/minimal context. Neither count grants
+answerability. Understanding made one strict-tool call (provider 879.95 ms,
+total 894.29 ms, retry=0, repair=0). This is not a complete Pipeline model-call
+count or evidence of improved latency: no candidate was composed.
+
+A separate offline compatibility probe uses the existing projection/normalizer
+and the same Pack hash, with no model call: two claim types times 13 policies
+plus empty intent = 28 pairs. Four pairs are structurally valid, 24 are rejected
+with the family-mismatch reason. Empty intent is valid for both claims; the
+two accepted cleaning policies concern temperature/chemical boundaries. The
+ordinary material-handling policy has neither exact family nor a declared
+canonical mapping for these two claims. This is a confirmed contract gap to
+inspect, NOT proof of which policy the live model nominated. Rejected typed
+pairs are not persisted; do not infer the specific pair from these fixtures.
+Next business owner is Understanding/Domain Pack nomination compatibility;
+preserve the validator and verify the exact rejected pair before any repair.
+No new evaluator, prompt rewrite or permissive policy mapping is justified yet.
+
+Runtime commit=793a2cc708e8c75347d18039e0f2d5ff24069a08;
+source SHA=eaed72640de96d62378bbb68c25ac0a16547f6a44e15bf5c520e3fa059ffea1d.
+Runtime reported clean_commit, ready, query-only, no source drift. The roadmap
+registration is documentation-only; the runtime source hash excludes it.
+can_send=false, human review=true, isolated knowledge file unchanged, DML=0.
+No Hub writes were issued; this is not a whole-Hub concurrent-write audit.
+5030 stopped; original 5012/5174/8795 listener PIDs are unchanged.
+
+1090 related deterministic tests passed, including five documentation tests.
+The local attempt report is qianniu-live-candidate-va6i4mzj/report.json;
+SHA=9ac18762f6408e5179b63f7c2668a2830d40d07b82251c893031f4bfaaf4be0f.
+Report and trace stay outside Git. No production source, safety, send or data
+change. real_accuracy=null; no naturalness score for an empty reply. Only a
+documentation checkpoint is prepared; no network push.
+
 ## Understanding Rejection Reason Preservation (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. User approved the bounded next

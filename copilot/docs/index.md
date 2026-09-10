@@ -46,9 +46,12 @@ synthetic API check confirmed selected policy but failed before Composer with
 empty output: post-schema Understanding was nonauthoritative and its specific
 rejection reason was lost by the existing fallback. The 2026-09-10 bounded
 repair preserves local reason codes through that fallback and the existing
-Pipeline diagnostics, without changing goal qualification or delivery. No
-fresh model request has followed this diagnostic repair. See `../ROADMAP.md`
-for the preserved failed attempt, offline parity and remaining quality gap.
+Pipeline diagnostics, without changing goal qualification or delivery. A fresh
+same-source request on 793a2cc now preserves the concrete family-mismatch reason,
+but still has an empty reply before Composer. The exact rejected typed pair
+was not persisted; an offline ordinary-care compatibility gap is not a substitute
+for it. See `../ROADMAP.md` for both preserved failed attempts, offline parity,
+the bounded 28-pair probe and the next Understanding/Pack compatibility owner.
 
 ### Assisted Conversation Document Import (2026-09-09)
 

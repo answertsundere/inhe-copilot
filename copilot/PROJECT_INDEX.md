@@ -19,6 +19,16 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 post-diagnostic canary: one fresh same-source synthetic request on
+  793a2cc still failed before Composer (empty reply, 5,106 ms, exit_code=2).
+  The precise reason now survives: customer_goal_policy_intent_family_mismatch.
+  Two raw goal spans passed; no authoritative goals or selected evidence.
+  54 Hub source facts and 13 bounded policies do not grant answerability.
+  Offline 28-pair compatibility probes identify a possible ordinary-care
+  mapping gap, not the unknown actual rejected pair. No speculative fix or
+  model retry. 1090 related tests passed; can_send=false, review=true, DML=0,
+  5030 stopped, existing listeners unchanged. real_accuracy=null. See ROADMAP.md.
+
 - 2026-09-10 Understanding rejection diagnostics: the existing fallback now
   preserves local semantic-normalization reason codes ahead of its generic
   failure code. Rejected goals/status and delivery stay unchanged; no Prompt,
