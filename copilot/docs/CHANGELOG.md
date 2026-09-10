@@ -1,5 +1,29 @@
 # Change Log
 
+## 2026-09-10 - Authorized Same-Source Post-Fix Native Result
+
+- Explicit additional disclosure approval allowed one native synthetic request
+  on e5db180. Same four history turns, question and exact Hub identity; no hook,
+  extra repeat, production code/flag change or model-provider substitution.
+- HTTP 200, nonempty reply, 4,855 ms. Both canonical goals valid. Two selected
+  PE records support material; care stays unresolved with zero eligible options.
+  Composer accepted and its candidate equals the final reply. Deterministic
+  Final passed; semantic Audit remains unavailable, not qualified.
+- Next earliest blocker: bounded_inference_context_capability_missing. A local
+  read verified nonempty category on the exact active Hub passport, while the
+  trace has no profile/capabilities. Existing Pack profile creation and category
+  admission still accept only local KBProduct. No speculative repair, fake local
+  record, policy expansion or reply template was introduced.
+- Understanding provider 801.99 ms and Composer 644 ms, one call each and no
+  retry/repair. Full legacy Pipeline call count remains unverified. One sample
+  does not establish p95, naturalness, customer accuracy or production readiness.
+- can_send=false, human review=true, media blocks=0, isolated knowledge hash
+  unchanged, DML=0; temporary 5030 stopped, existing 5012/5174/8795 PIDs unchanged.
+  Runtime/policy hashes stable. Private reply/trace/report stay outside Git;
+  Python/PowerShell JSON parsing passed. real_accuracy=null; optimization_unverified.
+- Related regression: 1162 passed (263 warnings), including docs governance.
+  Scoped diff checks passed. Documentation-only local checkpoint; no network push.
+
 ## 2026-09-10 - Ordinary Care Composer And Final Contract Coverage
 
 - Added eight cases to the existing canonical-policy test file. Actual Pack,

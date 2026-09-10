@@ -1,5 +1,52 @@
 # Delivery Roadmap
 
+## Authorized Post-Fix Native Multiturn Check (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. The user explicitly authorized
+one additional disclosure of the same fictional history/question and projected
+product facts to DeepSeek, review-only. No additional repeat was run.
+
+- [x] Verify the four history turns, question and exact source identity match.
+- [x] Run one native API candidate on e5db180 without the disposable hook.
+- [x] Inspect canonical goals, admission, Composer and both Final audits.
+- [x] Verify read-only/no-send, preserve the result and identify the next owner.
+
+HTTP 200, nonempty reply, 4,855 ms, launcher exit 0. Understanding is valid:
+material_composition retains empty intent; cleaning_care correctly nominates
+material_daily_use_practical_guidance. Both current goals survive. Two admitted
+material records agree on PE; material is supported, care unresolved. Composer
+accepted two clauses and the final reply exactly matches its candidate. Four
+history turns remain intact. Deterministic Final passed; semantic Audit did not
+pass (semantic_judge_unavailable). This is a review-only candidate, not a quality
+qualification or evidence of real customer accuracy.
+
+The next earliest blocker is bounded_inference_context_capability_missing.
+The selected Pack is 1.6.6 with its expected content hash, but the care goal has
+zero eligible options. The exact active Hub passport has a nonempty category;
+the trace has no structured profile and no product context capabilities.
+The Pack builder constructs its profile only from local KBProduct; the current
+Hub identity/selector projection omits category. Admission recognizes category
+only from a kb_product profile. Thus this is a source-metadata propagation gap,
+not a missing Hub category or a Composer failure to choose an offered option.
+Do not fabricate a local KBProduct or relabel Hub metadata as kb_product to pass
+the gate. Next work must reuse existing exact-identity Hub/Pack owners and keep
+category separate from evidence, with the current premise/risk/Final boundaries.
+
+Understanding made one strict-tool call (801.99 ms provider); Composer made one
+call (644 ms). Both report zero retry/repair. These role counts are not a full
+legacy Pipeline model-call total. The one-request latency is not a p95 or a
+speed qualification. Formal source DB writes were not issued; isolated
+knowledge SHA stayed unchanged, DML events=0, can_send=false, review=true,
+media blocks=0. Temporary 5030 stopped; 5012/5174/8795 PIDs unchanged.
+
+Preserved attempt: qianniu-live-candidate-e_spked2. Report SHA-256:
+c08321fc250b31af86600dff2f68d134c77c389bd1083e73a1da908ef4ed5db4.
+Executable source SHA stayed eaed72640de96d62378bbb68c25ac0a16547f6a44e15bf5c520e3fa059ffea1d;
+policy-data boot/end SHA stayed 9a3a8de61c3c0b9df3672cfa7c39c6152fd44396785910630ccff68579c54a03.
+No runtime/policy source drift. Private outputs remain outside Git. Source code,
+policies, prompts and production flags were not changed in this check.
+real_accuracy=null; optimization_unverified. Validation is recorded in CHANGELOG.
+
 ## Goal And Policy Compatibility Investigation (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. User confirmed continuing the
@@ -11,7 +58,7 @@ existing Understanding/Domain Pack compatibility task; preserve every gate.
 - [x] Fix only a demonstrated existing-contract defect, with negative tests.
 - [x] Record actual results, safety checks and any unresolved quality limit.
 - [x] Add downstream Composer/Deterministic Final contract coverage without external calls.
-- [ ] Run one post-fix native candidate after explicit additional external-use approval.
+- [x] Run one post-fix native candidate after explicit additional external-use approval (result above).
 
 No source DB writes, production restarts, new Agent owner, reply template,
 validator bypass, automatic sends or score-seeking repeats. An observation-only

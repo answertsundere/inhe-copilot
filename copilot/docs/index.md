@@ -51,14 +51,18 @@ same-source request on 793a2cc preserved the concrete family-mismatch reason,
 but still had an empty reply before Composer. A subsequent disposable isolated
 observation confirmed the actual cleaning_care/daily-handling pair. Pack 1.6.6
 now declares that one compatible canonical type without widening its risk,
-premise or scope budget. No Python production or prompt change. The post-fix
-external request remains unexecuted pending additional disclosure approval;
-there is no after-fix reply-quality claim. See `../ROADMAP.md` for preserved
-attempts, the 518-pair offline comparison and the pending native check.
+premise or scope budget. No Python production or prompt change. The explicitly
+authorized post-fix native request on e5db180 now returns a nonempty reply,
+preserves both valid goals and passes Deterministic Final. Care remains unresolved
+because category capability is missing: the exact Hub passport has category,
+but the Pack's local-only profile path does not propagate it. Semantic Audit
+is unavailable; there is no real-accuracy or overall reply-quality qualification.
+See `../ROADMAP.md` for preserved attempts and the next source-context owner.
 The follow-up closes a local test gap with eight explicit-fixture Composer/Final
 integration cases, including wrong option and tampered premise/scope rejection.
 It makes no further production change and does not qualify real generation;
-the resumed external request was denied before process creation.
+earlier resumed external requests were denied before process creation and are
+not substitutes for the explicitly authorized native result above.
 
 ### Assisted Conversation Document Import (2026-09-09)
 

@@ -19,6 +19,16 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 explicitly authorized post-fix native check: one request on e5db180
+  now returns a nonempty candidate in 4,855 ms. Both goals valid, material
+  supported by two PE records, care unresolved. Composer accepted and
+  Deterministic Final passed; semantic Audit unavailable. The next blocker is
+  missing category capability: Hub passport category exists but the local-only
+  structured-profile path does not propagate it. No new Agent/model-policy
+  change. can_send=false, review=true, DML=0, isolated knowledge unchanged,
+  temporary 5030 stopped. This is not real accuracy or production qualification.
+  The earlier denied attempts remain historical; see ROADMAP for this result.
+
 - 2026-09-10 ordinary-care policy compatibility: a fresh isolated observation
   identified the actual rejected pair, cleaning_care -> daily material handling.
   That policy omitted its canonical claim declaration. Version 1.6.6 adds only
