@@ -1,5 +1,22 @@
 # Change Log
 
+## 2026-09-10 - Read-Only Product Care Source Audit
+
+- Same frozen product, no Agent/model call or production code change. Reviewed
+  existing typed fields, annotations and FAQs plus two detail previews; related
+  board-erasure references do not establish whole-product cleaning methods.
+- Existing source-selector component yields 43 sources, 36 eligible-label
+  sources; these are not facts or Provider qualification. Current typed care
+  facts/extraction state remain zero. The live reader returns 54 confirmed
+  product rows, preserving the same two material candidates and zero cleaning.
+  Downstream cleaning field mapping is absent as a separate contract gap.
+- Reused source/contract tests: 24 passed. Copilot Hub/read/context/docs tests:
+  238 passed (267 warnings). Exact product-row/label-definition HMAC comparison
+  unchanged, query-only and diagnostic DML=0; no service restart or source write.
+- Existing read-contract and entry/progress docs record scope and next ownership.
+  Private counts/hashes and Chinese review remain outside Git. No new reply,
+  production promotion, automatic send or real-accuracy claim.
+
 ## 2026-09-10 - Composer Constraint Compliance And Expression
 
 - Root cause: Composer demanded explicit recital of every qualifier and encouraged

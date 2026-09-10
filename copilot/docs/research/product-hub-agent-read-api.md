@@ -115,6 +115,38 @@ rate, because exact identity, grouping, requested claims and admission were
 not evaluated for every inventory row. Further source coverage must be audited
 without guessing meaning from labels or removing existing AI annotations.
 
+## Care Source Gap Audit (2026-09-10)
+
+A bounded read-only audit of the same native-test product found related
+board-erasure annotations and two matching detail images, but no established
+whole-product cleaning method. Its 64 product-wide fact rows contain no
+cleaning_care record; the separate extraction-state table has no entry for that
+product. Four FAQs and the current SKU attributes add no care method. Zero
+cataloged manuals does not establish absence of external/off-catalog documents.
+
+The existing Hub StructuredFactSource/Contract components already support
+cleaning_care with product/component/accessory scopes, source references and
+provenance. A local source-only invocation selects 43 deduplicated notes, of
+which 36 have eligible cleaning-source labels. This does not mean 36 cleaning
+facts, that the live extractor is enabled, or that its Provider is qualified.
+No model call, fact generation or persistence was performed.
+
+The live Copilot reader receives 54 confirmed rows and its mapper preserves
+the two frozen material UIDs. Cleaning candidates are zero. The direct field
+tuple map currently has no cleaning_care entry, so a future source record also
+requires an explicit compatible boundary; a blanket type-only mapping is unsafe.
+
+Next work should reuse those existing components to bind the exact subject
+(writing surface, frame or accessory), property versus cleaning action,
+applicability, conditions, and original source. Board-mark erasability does not
+prove wet-cloth compatibility, washing, chemicals or no-disassembly cleaning.
+Marketing safety/durability language cannot be bundled into a low-risk fact.
+Existing labels/notes remain untouched. The Agent must consume a valid typed
+fact through ordinary admission, never raw notes or a hand-written response.
+Run generic scope/identity/conflict mutations before any narrow bridge change,
+and exercise the same native Pipeline only after valid source facts exist.
+This is a data/contract finding, not a new registry, evaluator or quality score.
+
 ## Rejected Alternatives
 
 - Bulk copying Hub rows into the formal knowledge database: creates stale,

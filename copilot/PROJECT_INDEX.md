@@ -19,6 +19,15 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 read-only care-source audit: related board-erasure references exist,
+  but no product cleaning fact or extraction state. Existing source selector
+  yields 43 sources (36 eligible-label sources, not facts); native Hub reader
+  returns 54 confirmed rows, same two material candidates, zero cleaning.
+  Whole-product care methods remain unestablished; a downstream cleaning field
+  mapping is also absent. No source/Agent changes, model call or service restart.
+  Source-contract tests 24 passed; Copilot related tests 238 passed. See ROADMAP
+  and the existing Product Hub read contract for scope and the next owner.
+
 - 2026-09-10 Composer constraint-expression repair: only the existing system
   instruction changes. Obeying all qualifiers no longer means reciting every
   prohibition; current limits, required warnings/actions and unclear qualifiers

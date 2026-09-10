@@ -1,5 +1,49 @@
 # Delivery Roadmap
 
+## Product Care Source Audit (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. Read-only follow-up on b1444a6;
+no new reply rule, source write, external model call or runtime deployment.
+
+- [x] Reuse the frozen exact product; inspect structured facts and reference data.
+- [x] Read existing annotations/FAQs and visually check two relevant detail images.
+- [x] Verify the existing source selector and live Hub reader/field mapper locally.
+- [x] Run source-contract and Copilot regressions; record gaps without fact promotion.
+
+Product-wide inventory: 64 fact rows, 160 assets, 141 nonempty annotation notes,
+four FAQs, no cataloged manual, no cleaning_care fact or structured-extraction
+state. Counts include other variants and are not the tested SKU's evidence
+denominator. Related annotations and the two detail previews describe board
+mark erasure, not whole-product wet wiping, washing, chemical use or disassembly
+for cleaning. No such cleaning method was established by this bounded review;
+the other image pixels and off-catalog documents were not comprehensively read.
+
+The existing Hub source-selection component produces 43 deduplicated sources;
+36 have labels eligible for cleaning extraction. These are source eligibility
+counts, not supported cleaning claims. No extractor Provider was called or
+qualified. Its current source snapshot SHA-256 is
+ffd9690555ca45e1aaf499f27f6e3ec54031cfdbd20f2e2bd24394348d6228d1.
+The live exact reader returns 54 confirmed product-level rows; existing mapping
+preserves the same two material UIDs and produces zero cleaning candidates.
+Its direct field contract has no cleaning_care mapping.
+
+Earliest owner: source fact production/applicability, before formal admission.
+A later mapping gap also needs a narrow contract, but adding a broad type alias
+cannot manufacture the currently absent fact or turn a component property into
+whole-product instructions. Reuse the existing Hub source/provenance components;
+preserve all AI annotations, and do not pass raw marketing notes to Composer.
+See docs/research/product-hub-agent-read-api.md for the bounded next contract.
+
+Verification: 24 existing Hub source/contract tests and 238 Copilot read/context/
+docs tests pass. Diagnostic connections enforce mode=ro/query_only; selected
+product-related rows and label definitions have equal before/after in-memory
+HMACs, DML=0. No source files, production Agent, service or flag changes.
+Private evidence: qianniu-care-source-audit-20260910.json and the existing Chinese
+multiturn report. No generated after-reply or new accuracy result;
+real_accuracy=null, optimization_unverified.
+Audit report SHA-256:
+86c470a925f6776071c986a96b04b69d82ffc9bc415949cead7bd37505643ef3.
+
 ## Composer Constraint Expression Repair (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. Approved bounded continuation of

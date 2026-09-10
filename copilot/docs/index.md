@@ -38,6 +38,13 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+The bounded care-source audit distinguishes source labels from direct facts:
+related board-erasure images are not whole-product cleaning instructions.
+Existing extraction components can be reused, but persisted care facts and
+the downstream field mapping remain missing for the frozen product.
+See [Product Hub read contract](research/product-hub-agent-read-api.md#care-source-gap-audit-2026-09-10)
+and ROADMAP. This audit changes no production behavior or source annotations.
+
 Composer constraint compliance is now distinguished from customer-visible
 expression: all policy qualifiers remain binding, but pure prohibitions need
 not become a disclaimer checklist. Current requested limitations, required
