@@ -38,6 +38,13 @@ Do not create another competing architecture index. Root `AGENTS.md`, `CLAUDE.md
 
 ## Current Architecture Direction
 
+The existing Claim Resolution now rejects non-product or unbound care facts
+for canonical care goals that lack a named-subject contract. It does not infer
+a customer subject or alter conflict/admission/send authority. The Hub care
+field mapping remains closed pending valid source semantics. See
+[care read contract](research/product-hub-agent-read-api.md#care-subject-selection-guard-2026-09-10)
+and ROADMAP for the local-only comparison and remaining native-evaluation gate.
+
 The bounded care-source audit distinguishes source labels from direct facts:
 related board-erasure images are not whole-product cleaning instructions.
 Existing extraction components can be reused, but persisted care facts and

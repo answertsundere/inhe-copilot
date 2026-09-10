@@ -396,6 +396,21 @@ def test_hub_adapter_reuses_existing_product_context_and_admission_contract():
     assert [item["evidence_uid"] for item in admitted["direct_product_facts"]] == ["producthub:fact-001"]
 
 
+@pytest.mark.parametrize("scope", ["product", "component", "accessory", "商品整体"])
+@pytest.mark.parametrize("attribute", ["erasability", "cleaning_method", "日常清洁"])
+def test_hub_care_type_alone_cannot_bypass_missing_published_field_contract(scope, attribute):
+    from app.services.product_context_pack_service import _product_hub_facts_for_query
+
+    candidates = _product_hub_facts_for_query(
+        {"state": "ready", "product_code": "YH-EXACT-01", "facts": [
+            _client_fact(type="cleaning_care", attr=attribute, unit="", scope=scope, value="Fixture source annotation."),
+        ]},
+        identity={"i_id": "YH-EXACT-01", "sku": "YH-EXACT-01-SKU-A", "product_identity_resolution": {"status": "resolved"}},
+        query_fact_type="cleaning_care",
+    )
+    assert candidates == []
+
+
 def test_hub_adapter_projects_exact_confirmed_age_and_load_facts_to_existing_claim_types():
     """A missing Hub tuple must not silently turn verified age/load facts into gaps."""
     from app.services.product_context_pack_service import _product_hub_facts_for_query

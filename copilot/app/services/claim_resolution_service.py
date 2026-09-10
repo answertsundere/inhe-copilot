@@ -50,6 +50,7 @@ _REQUEST_CLAIM_RISK_LEVELS = {
 }
 
 _DIMENSION_CLAIM_TYPES = frozenset({"dimensions", "size", "space_fit"})
+_CARE_CLAIM_TYPES = frozenset({"cleaning_care", "cleaning", "maintenance"})
 _PRODUCT_OVERVIEW_FACT_FAMILIES = frozenset({
     "material_composition",
     "dimensions",
@@ -842,12 +843,26 @@ def build_claim_resolutions(
                 "" if matching_facts else "no_admitted_direct_evidence"
             )
         else:
+            candidate_facts = _facts_for_claim(claim_type, direct_facts)
+            care_scope_unbound = False
+            if claim_type in _CARE_CLAIM_TYPES:
+                # Canonical care goals do not yet bind a named component.
+                # Only explicit product-wide instructions can support them;
+                # never infer a subject from customer or evidence prose.
+                scoped_facts = [
+                    fact for fact in candidate_facts
+                    if _matches_subject_scope(fact, "product")
+                ]
+                care_scope_unbound = bool(candidate_facts) and not scoped_facts
+                candidate_facts = scoped_facts
             matching_facts, fact_selection_reason = _select_for_attribute(
                 requested_attribute,
-                _facts_for_claim(claim_type, direct_facts),
+                candidate_facts,
                 required_subject_scope=requested_subject_scope,
                 claim_type=claim_type,
             )
+            if care_scope_unbound:
+                fact_selection_reason = "care_subject_scope_unbound"
         conflict_candidates = (
             []
             if unmapped_customer_goal
@@ -863,6 +878,10 @@ def build_claim_resolutions(
             if conflict_candidates
             else ([], "")
         )
+        if claim_type in _CARE_CLAIM_TYPES and _conflict_selection_reason == "selection_ambiguous":
+            # A broad care request cannot disambiguate conflicting attributes.
+            # Narrowing direct subjects must not silently erase those conflicts.
+            matching_conflicts = conflict_candidates
         conflict_uids = [
             sanitize_text(fact.get("evidence_uid"))
             for fact in matching_conflicts

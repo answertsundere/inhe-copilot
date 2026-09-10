@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-09-10 - Conservative Care Subject Selection
+
+- Existing Claim Resolution no longer lets component/accessory, missing or
+  unknown care subjects satisfy a canonical unscoped care goal. Only explicitly
+  product-wide admitted facts remain eligible; no customer scope or text is
+  inferred. Attribute matching remains binding; multi-attribute conflicts cannot
+  disappear after direct-subject filtering.
+- One production file changes, with no Hub care mapping, source writes, policy,
+  Prompt, Graph, reply owner or delivery changes. Original AI notes are preserved.
+- Initial red tests: 25 failures; independent review's multi-attribute conflict
+  finding reproduced with six additional failures before correction. Final
+  related regression: 1047 passed, including 65 added cases. Frozen native-context
+  local recomputation preserves two material
+  records and its one offered care option exactly. No new HTTP/model generation,
+  deployment or real-accuracy claim; source method validation remains pending.
+
 ## 2026-09-10 - Read-Only Product Care Source Audit
 
 - Same frozen product, no Agent/model call or production code change. Reviewed

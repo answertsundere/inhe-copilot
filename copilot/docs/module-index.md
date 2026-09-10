@@ -5,6 +5,13 @@ experiment results belong in evaluation reports, not in this ownership map.
 
 ## Active Agent Core
 
+The existing Claim Resolution also owns conservative care subject selection.
+With no canonical named-component care goal, only explicitly product-wide
+admitted care facts may satisfy cleaning_care/cleaning/maintenance. Unbound and
+non-product subjects stay unresolved, customer scope is not synthesized, and
+multi-attribute conflict ambiguity remains blocking. This does not grant a Hub field
+mapping, expand source semantics or change reply/delivery ownership.
+
 The existing Model-first Composer owns customer expression of the offered
 constraint set, not policy authorization. All qualifiers remain binding; a
 prohibited assertion is not a mandatory spoken disclaimer. Current requested

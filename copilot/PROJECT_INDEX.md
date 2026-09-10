@@ -19,6 +19,16 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 care subject guard: generic tests exposed component instructions
+  supporting unscoped cleaning goals. The existing Claim Resolution now accepts
+  only explicitly product-wide care facts; missing scope stays unresolved and
+  conflicts remain blocking. Hub care mapping/source data remain unchanged.
+  Regression 1047 passed, including the review-found multi-attribute conflict
+  case; frozen native-context local recomputation preserves
+  both material records and its one care option. No new model reply, deployment,
+  data write or accuracy claim. Source care methods still need validation before
+  the next bridge change. See ROADMAP and the Product Hub read contract.
+
 - 2026-09-10 read-only care-source audit: related board-erasure references exist,
   but no product cleaning fact or extraction state. Existing source selector
   yields 43 sources (36 eligible-label sources, not facts); native Hub reader

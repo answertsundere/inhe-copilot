@@ -313,6 +313,15 @@ deduplication.
 Formal Evidence Convergence is implemented but disabled in production. Enabling
 it in an isolated slice does not change the evidence contract.
 
+Claim Resolution must not treat admission as proof of subject applicability.
+Canonical care goals currently have no named-component scope contract. Until
+that owner contract exists, only explicitly product-wide admitted care facts
+may support those goals; component/accessory, unknown or missing scopes remain
+unresolved. No product scope is written into the customer goal. Existing
+attribute and conflict checks still apply, including conservative unbound
+conflicts. This restriction does not enable Hub care fields or infer cleaning
+instructions from materials, image properties or marketing notes.
+
 Domain Policy Packs are versioned data loaded by `FilePolicyRepository` only
 from trusted deployment configuration, a Pipeline-verified published-product
 mapping, or an explicit internal evaluation fixture. They contain

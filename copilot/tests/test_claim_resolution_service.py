@@ -94,6 +94,92 @@ def test_explicit_dimension_claims_select_only_their_matching_attribute():
     assert results["height"]["evidence_uids"] == ["height"]
 
 
+@pytest.mark.parametrize("claim_type", ["cleaning_care", "cleaning", "maintenance"])
+@pytest.mark.parametrize("scope", ["component", "accessory", "packaging", "included_item", "", "unknown"])
+@pytest.mark.parametrize("attribute_key", ["", "cleaning_method"])
+def test_unscoped_care_question_does_not_promote_unbound_subject_instruction(claim_type, scope, attribute_key):
+    result = build_claim_resolutions(
+        [_claim(attribute_key, claim_type)],
+        direct_product_facts=[_fact("care", "cleaning_method", claim_type=claim_type, subject_scope=scope)],
+        direct_policy_facts=[], conflicts=[],
+    )[0]
+    assert result["status"] == "unresolved"
+    assert result["reason"] == "care_subject_scope_unbound"
+    assert result["evidence_uids"] == []
+    assert result["subject_scope"] == ""
+
+
+@pytest.mark.parametrize("claim_type", ["cleaning_care", "cleaning", "maintenance"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_care_question_preserves_product_instruction_without_other_subjects(claim_type, reverse):
+    facts = [
+        _fact("whole", "cleaning_method", claim_type=claim_type, subject_scope="product"),
+        _fact("part", "cleaning_method", claim_type=claim_type, subject_scope="component"),
+        _fact("unscoped", "cleaning_method", claim_type=claim_type),
+    ]
+    result = build_claim_resolutions(
+        [_claim("cleaning_method", claim_type)],
+        direct_product_facts=list(reversed(facts)) if reverse else facts,
+        direct_policy_facts=[], conflicts=[],
+    )[0]
+    assert result["status"] == "supported"
+    assert result["evidence_uids"] == ["whole"]
+    # Selection safety must not manufacture an explicit customer scope.
+    assert result["subject_scope"] == ""
+
+
+def test_care_property_is_not_a_cleaning_method_and_material_partial_answer_survives():
+    results = _by_attribute(build_claim_resolutions(
+        [_claim("cleaning_method", "cleaning_care"), _claim("material", "material")],
+        direct_product_facts=[
+            _fact("erasability", "erasability", claim_type="cleaning_care", subject_scope="product"),
+            _fact("composition", "material", claim_type="material", subject_scope="product"),
+        ], direct_policy_facts=[], conflicts=[],
+    ))
+    care = next(item for item in results.values() if item["claim_type"] == "cleaning_care")
+    material = next(item for item in results.values() if item["claim_type"] == "material")
+    assert care["status"] == "unresolved"
+    assert care["evidence_uids"] == []
+    assert material["status"] == "supported"
+    assert material["evidence_uids"] == ["composition"]
+
+
+@pytest.mark.parametrize("conflict_scope", ["product", "component", ""])
+def test_care_product_conflict_still_blocks_direct_answer(conflict_scope):
+    result = build_claim_resolutions(
+        [_claim("cleaning_method", "cleaning_care")],
+        direct_product_facts=[_fact("whole", "cleaning_method", claim_type="cleaning_care", subject_scope="product")],
+        direct_policy_facts=[],
+        conflicts=[_fact("conflict", "cleaning_method", claim_type="cleaning_care", subject_scope=conflict_scope, reason="conflicting_evidence")],
+    )[0]
+    assert result["status"] == "conflicting"
+    assert result["evidence_uids"] == []
+    assert result["conflicting_evidence_uids"] == ["conflict"]
+
+
+@pytest.mark.parametrize("claim_type", ["cleaning_care", "cleaning", "maintenance"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_unscoped_care_multi_attribute_conflicts_cannot_disappear_after_subject_filter(claim_type, reverse):
+    facts = [
+        _fact("whole", "cleaning_method", claim_type=claim_type, subject_scope="product"),
+        _fact("accessory", "erasability", claim_type=claim_type, subject_scope="accessory"),
+    ]
+    conflicts = [
+        _fact("conflict-method", "cleaning_method", claim_type=claim_type, subject_scope="component", reason="conflicting_evidence"),
+        _fact("conflict-property", "erasability", claim_type=claim_type, subject_scope="component", reason="conflicting_evidence"),
+    ]
+    result = build_claim_resolutions(
+        [_claim("", claim_type)],
+        direct_product_facts=list(reversed(facts)) if reverse else facts,
+        direct_policy_facts=[],
+        conflicts=list(reversed(conflicts)) if reverse else conflicts,
+    )[0]
+    assert result["status"] == "conflicting"
+    assert result["evidence_uids"] == []
+    assert set(result["conflicting_evidence_uids"]) == {"conflict-method", "conflict-property"}
+    assert result["eligible_policy_options"] == []
+
+
 def test_width_conflict_does_not_pollute_height_claim():
     results = _by_attribute(build_claim_resolutions(
         [_claim("width"), _claim("height")],

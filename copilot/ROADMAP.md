@@ -1,5 +1,44 @@
 # Delivery Roadmap
 
+## Care Subject Selection Guard (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. Follow-up to the approved care
+source/bridge work. Inspection found a prerequisite: canonical Understanding
+allows subject_scope only for dimensions; Claim Resolution nevertheless treated
+component-only care instructions as supporting an unscoped care question.
+
+- [x] Reproduce with generic admitted facts, not a product or customer rule.
+- [x] Add failing selection, partial-answer, conflict and admission tests.
+- [x] Restrict the existing owner to explicit product-wide care evidence.
+- [x] Verify unchanged frozen native context locally and run related regressions.
+- [ ] Establish a valid source care method before adding a Hub field mapping.
+- [ ] Run a new native reply after that data/contract gate; no quality claim yet.
+
+Only claim_resolution_service.py changes in production code. The existing care
+types cleaning_care/cleaning/maintenance reject non-product, unknown or missing
+fact subjects with care_subject_scope_unbound. No customer subject is inferred
+or filled in. Explicit product/product_overall facts still need ordinary
+admission and attribute matching. Conflicts remain conservative: multi-attribute
+ambiguity cannot hide conflicts after direct-subject filtering, and even an
+unscoped conflict cannot be silently ignored. Material partial answers
+and no-care-fact bounded-policy behavior remain intact. Hub mapping stays closed;
+no source annotations, source data, Prompt, policy budget or Delivery changes.
+
+Red/green: 25 initial failures reproduced the selection defect. Independent
+review found the multi-attribute conflict combination; six new native pytest
+cases reproduced it before correction. Final regression: 1047 passed (527
+warnings), including 65 added care/bridge cases. A local replay
+of the frozen native snapshot preserves two material records and the identical
+one offered care option; care remains unresolved. This is Claim Resolution
+recomputation, not a new HTTP/model reply or end-to-end quality qualification.
+Snapshot SHA-256:
+04b364bc60a2a77dcc26c91043ed5bceeafa03c2792be3f560d2f70e87313fd8.
+Private result: qianniu-care-scope-replay-20260910.json. Original snapshot bytes
+unchanged. External model calls and source/knowledge writes issued: zero.
+Existing 5012/5174/8795 processes are unchanged; 5030 remains stopped.
+No runtime deployment or send-authority change. real_accuracy=null;
+optimization_unverified; approved-real-label/native-after gate remains unmet.
+
 ## Product Care Source Audit (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. Read-only follow-up on b1444a6;

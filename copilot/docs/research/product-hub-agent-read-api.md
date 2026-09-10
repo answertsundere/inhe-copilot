@@ -147,6 +147,36 @@ Run generic scope/identity/conflict mutations before any narrow bridge change,
 and exercise the same native Pipeline only after valid source facts exist.
 This is a data/contract finding, not a new registry, evaluator or quality score.
 
+## Care Subject Selection Guard (2026-09-10)
+
+Before enabling any care tuple, a generic test exposed a downstream gap:
+Claim Resolution applied subject selection to dimensions only, so an admitted
+component instruction could satisfy an unscoped cleaning question. The existing
+owner now restricts the three established care types to product/product_overall
+facts. Missing/non-product subjects produce care_subject_scope_unbound; the
+customer goal is not rewritten to product scope. Existing attribute matching,
+conflicts, other supported claims and no-care-fact bounded options remain intact.
+
+This is a prerequisite restriction, not care-source completion. No Hub tuple is
+added, no annotation is promoted, and the Hub source files and data are untouched.
+The current extractor has label/source/applicability checks, but a source-label
+match is not independent proof that a note is an instruction or of its subject.
+Before its output can enter this bridge, the source contract must establish the
+specific method versus property, applicable subject, conditions and provenance;
+the Agent must not guess these from a broad type or attribute label. Named-part
+care remains unsupported until the canonical goal can bind that same subject.
+
+Regression 1047 passed; 65 new tests cover missing/other scope, order changes,
+property-versus-method attributes, retained material, conservative conflicts,
+admission projection and the still-closed Hub care mapping. Independent review
+found that multi-attribute conflict selection ambiguity could disappear after
+direct-subject filtering; six additional red/green cases close that combination
+by preserving the conflicting records rather than accepting a narrowed answer.
+Frozen native-context
+Claim Resolution recomputation is identical before/after: two material records,
+one care option, unresolved cleaning. It is not a new native reply, independent
+semantic assessment or real-accuracy improvement. See ROADMAP for provenance.
+
 ## Rejected Alternatives
 
 - Bulk copying Hub rows into the formal knowledge database: creates stale,

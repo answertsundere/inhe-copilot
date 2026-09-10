@@ -70,6 +70,30 @@ def test_admits_reviewed_scoped_direct_product_fact():
     assert context["can_change_can_send"] is False
 
 
+def test_care_subjects_survive_admission_without_promoting_component_instruction():
+    response = {
+        "selected_evidence": [
+            _fact(evidence_uid="whole-care", fact_type="cleaning_care", attribute_key="cleaning_method", subject_scope="product", content="Whole product instruction."),
+            _fact(evidence_uid="component-care", fact_type="cleaning_care", attribute_key="cleaning_method", subject_scope="component", content="Component instruction."),
+        ],
+        "can_send": False,
+        "requires_human_review": True,
+        "suggested_reply": "Unchanged review candidate.",
+        "reply_blocks": [],
+    }
+    before = deepcopy(response)
+    context = AdmittedAnswerContextService().build_for_response(
+        response, product_identity={"sku_code": "SKU-A"},
+        understanding={"requested_claims": [{"claim_type": "cleaning_care", "attribute_key": "cleaning_method", "risk_level": "medium"}]},
+    )
+    resolution = next(item for item in context["claim_resolutions"] if item["claim_type"] == "cleaning_care")
+    assert resolution["status"] == "supported"
+    assert resolution["evidence_uids"] == ["whole-care"]
+    assert len(context["direct_product_facts"]) == 2
+    assert response == before
+    assert context["can_change_can_send"] is False
+
+
 def test_same_origin_transport_copies_do_not_make_dimension_claim_ambiguous():
     first = _fact(
         evidence_uid="pack-dimensions",
