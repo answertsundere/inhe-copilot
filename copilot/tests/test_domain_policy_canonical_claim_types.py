@@ -1,5 +1,8 @@
 from copy import deepcopy
+import json
 from pathlib import Path
+import socket
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -7,8 +10,13 @@ import yaml
 from app.repositories.file_policy_repository import FilePolicyRepository
 from app.services import semantic_fact_type_service
 from app.services.claim_resolution_service import build_claim_resolutions
-from app.services.admitted_answer_context_service import AdmittedAnswerContextService
+from app.services.admitted_answer_context_service import (
+    AdmittedAnswerContextService,
+    build_minimal_decision_context,
+)
 from app.agent.nodes.query_fact_type_classifier import _turn_understanding_from_result
+from app.services.final_answer_auditor import audit_final_answer
+from app.services.model_first_answer_composer_service import ModelFirstAnswerComposerService
 
 
 def _loaded_pack() -> dict:
@@ -348,3 +356,156 @@ def test_omitted_care_intent_does_not_choose_between_policy_families():
     assert goals[0]["policy_intent_ref"] == ""
     assert goals[0]["policy_goal_family"] == ""
     assert goals[0]["policy_intent_kind"] == ""
+
+
+@pytest.fixture
+def care_composer_response():
+    pack = _loaded_pack()
+    goals = _material_care_goals(_daily_care_policy(pack))
+    question = "composition request; ordinary care request"
+    trusted = FilePolicyRepository().build_trusted_domain_policy_context(
+        {"catalog_metadata": {"domain_policy_id": "maternal_child_home"}},
+        selection_source="evaluation_fixture",
+    )
+    response = {
+        "selected_evidence": [{
+            "evidence_uid": "material-direct", "source_type": "product_facts",
+            "evidence_role": "product_fact_direct", "fact_type": "material_composition",
+            "attribute_key": "material", "content": "PP", "value": "PP",
+            "sku_code": "fixture-sku", "material_provenance": "structured_product_record",
+            "fact_review_status": "verified", "gate_status": "allowed",
+            "direct_answer_allowed": True,
+        }],
+        "product_context_pack": {"structured_profile": {
+            "source": "kb_product", "category": {"l1": "fixture category"},
+        }},
+        "can_send": False, "requires_human_review": True,
+    }
+    admitted = AdmittedAnswerContextService().build_for_response(
+        response, product_identity={"sku_code": "fixture-sku"},
+        current_customer_message=question,
+        understanding=_turn_understanding_from_result(
+            {"customer_message": question},
+            {"customer_goals": goals, "goal_understanding_status": "valid"},
+        ),
+        answer_eligibility_inputs={
+            "domain_policy_pack": pack, "trusted_domain_policy_context": trusted,
+        },
+    )
+    response["admitted_answer_context"] = admitted
+    response["minimal_decision_context"] = build_minimal_decision_context(
+        admitted, customer_message=question,
+    )
+    return response, question
+
+
+@pytest.mark.parametrize("mutation", [
+    "none", "unknown_option", "option_on_direct_fact", "duplicate_option",
+    "omitted_option", "missing_trusted_context", "final_premise", "final_scope",
+])
+def test_care_option_reaches_composer_and_final_without_send_authority(
+    care_composer_response, mutation, monkeypatch,
+):
+    def reject_network(*_args, **_kwargs):
+        raise AssertionError("network_forbidden_in_contract_test")
+
+    monkeypatch.setattr(socket.socket, "connect", reject_network)
+    response, question = care_composer_response
+    before = deepcopy(response)
+    service = ModelFirstAnswerComposerService()
+    decision, error = service.build_composer_decision_input(
+        response, customer_message=question,
+    )
+    assert not error
+    material, error = service.build_provider_material_from_decision_input(decision)
+    assert not error
+    by_ref = {goal["goal_ref"]: goal for goal in material["customer_goals"]}
+    texts = {
+        "material_composition": "材质是 PP。",
+        "cleaning_care": (
+            "日常擦拭属于普通使用范围，但不能由材质保证耐摔，"
+            "也不能推断高温或化学清洁是否适用。"
+        ),
+    }
+    payload = {"clauses": [{
+        "goal_ref": ref, "text": texts[by_ref[ref]["claim_type"]],
+        "selected_option_refs": [
+            option["option_ref"] for option in by_ref[ref]["eligible_policy_options"]
+        ],
+    } for ref in material["prompt_payload"]["presentation_order"]]}
+    direct, care = payload["clauses"]
+    assert by_ref[direct["goal_ref"]]["claim_type"] == "material_composition"
+    assert len(care["selected_option_refs"]) == 1
+    if mutation == "unknown_option":
+        care["selected_option_refs"] = ["unknown-option"]
+    elif mutation == "option_on_direct_fact":
+        direct["selected_option_refs"] = list(care["selected_option_refs"])
+    elif mutation == "duplicate_option":
+        care["selected_option_refs"] *= 2
+    elif mutation == "omitted_option":
+        care["selected_option_refs"] = []
+    elif mutation == "missing_trusted_context":
+        response["minimal_decision_context"]["trusted_domain_policy_context"] = {}
+        before = deepcopy(response)
+
+    class FixtureClient:
+        api_key = "fixture-only"
+        model = "fixture-only"
+        call_count = 0
+
+        def create_chat_completion(self, **_kwargs):
+            self.call_count += 1
+            return SimpleNamespace(choices=[SimpleNamespace(
+                finish_reason="stop",
+                message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False)),
+            )])
+
+    client = FixtureClient()
+    updated, result = service.compose(response, customer_message=question, client=client)
+    assert response == before
+    assert updated["can_send"] is False
+    assert updated["requires_human_review"] is True
+    assert client.call_count == (0 if mutation == "missing_trusted_context" else 1)
+    expected_rejections = {
+        "unknown_option": "composer_unknown_inference_policy_reference",
+        "option_on_direct_fact": "composer_forbidden_option_selected",
+        "duplicate_option": "composer_duplicate_inference_option_reference",
+        "omitted_option": "composer_required_option_not_selected",
+        "missing_trusted_context": "composer_domain_policy_context_invalid",
+    }
+    if mutation in expected_rejections:
+        assert result["status"] != "accepted"
+        assert result["rejection_reason"] == expected_rejections[mutation]
+        assert result["used_for_final_reply"] is False
+        return
+
+    assert result["status"] == "accepted"
+    assert updated["sendable_reply"] == ""
+    claims = updated["admitted_answer_context"]["claim_resolutions"]
+    assert [claim["status"] for claim in claims] == ["supported", "unresolved"]
+    assert claims[1]["evidence_uids"] == []
+    clauses = updated["model_first_answer_composer"]["clauses"]
+    assert [clause["clause_kind"] for clause in clauses] == [
+        "supported_fact", "allowed_inference",
+    ]
+    assert all(clause["evidence_uids"] == ["material-direct"] for clause in clauses)
+    assert clauses[1]["inference_policy_refs"] == [
+        claims[1]["eligible_policy_options"][0]["policy_ref"],
+    ]
+    if mutation == "final_premise":
+        other_fact = deepcopy(updated["minimal_decision_context"]["admitted_evidence"][0])
+        other_fact["evidence_uid"] = "other-admitted-direct"
+        updated["minimal_decision_context"]["admitted_evidence"].append(other_fact)
+        clauses[1]["evidence_uids"] = [other_fact["evidence_uid"]]
+    elif mutation == "final_scope":
+        clauses[1]["scope_qualifier"] = "different-scope"
+    audited = audit_final_answer(updated, customer_message=question)
+    audit = audited["final_answer_audit"]
+    assert audit["passed"] is (mutation == "none")
+    if mutation in {"final_premise", "final_scope"}:
+        assert "model_first_candidate_bounded_inference_clause_invalid" in audit["issues"]
+        assert "model_first_candidate_unknown_evidence" not in audit["issues"]
+    assert audit["model_call_count"] == 0
+    assert audited["can_send"] is False
+    assert audited["requires_human_review"] is True
+    assert audited["sendable_reply"] == ""

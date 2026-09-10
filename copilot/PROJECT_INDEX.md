@@ -26,7 +26,11 @@ After implementation, update this index, `ROADMAP.md`, and
   26 contract/admission tests pass, including 20 new cases. The pre-fix reply
   is still empty; the post-fix external request was denied before execution
   pending additional disclosure approval. No after-fix reply or quality claim.
-  can_send remains false; existing services and Hub are untouched. See ROADMAP.
+  Follow-up adds eight Composer/Deterministic Final integration cases with an
+  explicit fixture client, not generated replies. The resumed external request
+  was again denied before process creation pending explicit authorization;
+  no key read or model call. can_send remains false; existing services and Hub
+  are untouched. See ROADMAP.
 
 - 2026-09-10 post-diagnostic canary: one fresh same-source synthetic request on
   793a2cc still failed before Composer (empty reply, 5,106 ms, exit_code=2).

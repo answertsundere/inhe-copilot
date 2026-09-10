@@ -1,5 +1,31 @@
 # Change Log
 
+## 2026-09-10 - Ordinary Care Composer And Final Contract Coverage
+
+- Added eight cases to the existing canonical-policy test file. Actual Pack,
+  Understanding, admission, Minimal Decision Context, Composer and Final reuse
+  one path with a fixture completion; no Provider call or real customer data.
+- Supported material and unresolved care remain separate. The offered option
+  keeps premise/policy attribution and human review. Unknown/forbidden-on-direct,
+  duplicate/omitted options, missing trusted context and final premise/scope
+  tampering remain fail-closed. Socket connections are blocked in each case.
+- The requested same-source DeepSeek comparison was rejected before process
+  creation, not a failed model response. No key read, model call or after-fix
+  reply exists. Ten prior trace identity observations matched the fixed source.
+- Production Python, policy data, prompts, services, knowledge and can_send
+  are unchanged. These tests do not qualify native API, semantic Audit or
+  generated-response quality. real_accuracy=null; optimization_unverified.
+- Focused suite: 34 passed; related regression: 1162 passed. Compilation and
+  scoped diff checks passed. Existing 5012/5174/8795 PIDs are unchanged and
+  5030 is not listening. Scoped review identified two coverage gaps: renamed
+  the direct-goal test to its actual forbidden-selection gate, asserted exact
+  rejection reasons, and changed the final-premise mutation to a known admitted
+  UID outside the selected option. Existing Composer tests cover two-goal option
+  ownership. Reviewer could not independently run tests due its import guard;
+  all reported execution counts are from the main validation run. Post-review
+  verification: 35 focused cases and 1162 related cases passed; compile passed.
+  Local checkpoint only, no network push.
+
 ## 2026-09-10 - Declare Ordinary Care Policy Compatibility
 
 - A single disposable, same-source live observation confirmed the rejected

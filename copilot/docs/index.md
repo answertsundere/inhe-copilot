@@ -55,6 +55,10 @@ premise or scope budget. No Python production or prompt change. The post-fix
 external request remains unexecuted pending additional disclosure approval;
 there is no after-fix reply-quality claim. See `../ROADMAP.md` for preserved
 attempts, the 518-pair offline comparison and the pending native check.
+The follow-up closes a local test gap with eight explicit-fixture Composer/Final
+integration cases, including wrong option and tampered premise/scope rejection.
+It makes no further production change and does not qualify real generation;
+the resumed external request was denied before process creation.
 
 ### Assisted Conversation Document Import (2026-09-09)
 
