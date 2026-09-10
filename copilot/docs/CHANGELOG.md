@@ -1,5 +1,39 @@
 # Change Log
 
+## 2026-09-10 - Declare Ordinary Care Policy Compatibility
+
+- A single disposable, same-source live observation confirmed the rejected
+  nomination: material_composition kept empty intent; cleaning_care selected
+  the existing daily material-handling policy, whose compatibility list was
+  absent. The pre-fix request remains failed/empty (5,498 ms), not a new reply.
+- Updated only Domain Pack data: version 1.6.6 declares cleaning_care for that
+  policy using the existing canonical_claim_types contract. No Python Agent,
+  prompt, inference scope, risk, premise, qualifier or prohibition changed.
+- Twelve RED cases reproduced the missing declaration before the fix. The
+  completed 26-test file adds 20 cases for projection, direct-plus-unresolved
+  goals, admitted premises, review/identity/conflict/placeholder/role rejection,
+  absent category, unrelated canonical claims and ambiguous omitted intent.
+  Full related regression: 1154 passed; compile and scoped diff checks passed.
+- Independent scoped review found no blocker and verified 154 tests, including
+  the 26 focused cases. Its separate sweep reproduced the same verdict and
+  metadata changes; native Composer/Final response quality remains unverified.
+- Offline old/new sweep: 518 pairs, exactly one changed validity verdict.
+  Eleven other cleaning pairs lose only derived family/kind metadata because
+  candidate families now disagree; no intent is selected automatically.
+- The temporary observer passed eight return/input/call-count/privacy parity
+  checks and stays outside Git. Its result is observed diagnostic evidence,
+  not native qualification. Old reports were not replaced or reinterpreted.
+- The post-fix external request was denied before process creation pending
+  additional disclosure approval. No second request, after-fix reply or quality
+  claim exists. The isolated launcher separately pins policy-data identity
+  because executable source hashing excludes YAML; no production identity
+  service changes. real_accuracy=null; optimization_unverified.
+- Original 5012/5174/8795 processes unchanged; observed candidate can_send=false,
+  human review=true, isolated knowledge unchanged, DML=0, 5030 stopped. No Hub
+  writes, production flag changes or auto-send. Existing ADR/architecture/module
+  wording now explicitly reflects declared canonical compatibility, with no
+  new owner or document index. Local checkpoint only; no network push.
+
 ## 2026-09-10 - Post-Diagnostic Same-Source Canary
 
 - One synthetic native API request on 793a2cc returned an empty candidate after

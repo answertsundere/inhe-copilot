@@ -19,6 +19,15 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 ordinary-care policy compatibility: a fresh isolated observation
+  identified the actual rejected pair, cleaning_care -> daily material handling.
+  That policy omitted its canonical claim declaration. Version 1.6.6 adds only
+  cleaning_care compatibility; no Python production, prompt or safety change.
+  26 contract/admission tests pass, including 20 new cases. The pre-fix reply
+  is still empty; the post-fix external request was denied before execution
+  pending additional disclosure approval. No after-fix reply or quality claim.
+  can_send remains false; existing services and Hub are untouched. See ROADMAP.
+
 - 2026-09-10 post-diagnostic canary: one fresh same-source synthetic request on
   793a2cc still failed before Composer (empty reply, 5,106 ms, exit_code=2).
   The precise reason now survives: customer_goal_policy_intent_family_mismatch.

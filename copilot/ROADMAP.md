@@ -1,5 +1,70 @@
 # Delivery Roadmap
 
+## Goal And Policy Compatibility Investigation (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. User confirmed continuing the
+existing Understanding/Domain Pack compatibility task; preserve every gate.
+
+- [x] Read current ownership, source state and the previous failed canary.
+- [x] Verify a disposable, known-enum-only observer leaves normalization intact.
+- [x] Observe one same-source synthetic candidate's actual typed nomination.
+- [x] Fix only a demonstrated existing-contract defect, with negative tests.
+- [x] Record actual results, safety checks and any unresolved quality limit.
+- [ ] Run one post-fix native candidate after additional external-use approval.
+
+No source DB writes, production restarts, new Agent owner, reply template,
+validator bypass, automatic sends or score-seeking repeats. An observation-only
+isolated run is not native qualification and cannot reconstruct an old response.
+
+The fresh observed request returned empty in 5,498 ms. The two typed nominations
+are now known: material_composition had empty intent; cleaning_care nominated
+material_daily_use_practical_guidance. Its trusted goal family was
+material_daily_use with no canonical_claim_types declaration. The nomination
+fits the policy's ordinary-wiping scope but violates its incomplete compatibility
+declaration, so the validator's rejection is correct. The earliest defect is
+the missing Pack compatibility declaration, not a
+need to loosen the validator or rewrite the customer's reply.
+
+Production change is data-only: maternal_child_home 1.6.5 -> 1.6.6 adds only
+canonical_claim_types=[cleaning_care] to that existing policy. Scope, risk,
+premises, advice mode, qualifiers, prohibitions, policy count and all Python
+production code are unchanged. New Pack SHA:
+3c14372b45ded466286b3df35bcfba835523d88fc8e2e6c6c73e4c2f8882da92.
+All user-facing API/copilot, replay and benchmark users of this Pack reuse
+the existing loader, Understanding, admission, Claim Resolution and Final path.
+Default feature flags and production service processes are not changed.
+
+Twelve RED cases reproduced the absent declaration/degraded goal before the
+data fix. The completed 26-case file includes 20 new cases: projection, two
+independent goals, direct-fact retention, admitted premise attribution,
+missing category/fact, unreviewed/blocked/conflicting/placeholder/wrong-identity
+facts, media/service/reference roles and undeclared canonical families.
+Tests use the real classifier's risk projection, not an incomplete substitute.
+An omitted cleaning intent stays a valid goal but cannot choose among multiple
+compatible policy families; no automatic option selection was added.
+
+A separate 518-pair offline old/new sweep found one changed validity verdict:
+the exact observed cleaning/daily-care pair. Eleven other cleaning pair
+projections lose derived family/kind metadata because that family is now
+ambiguous (one empty nomination stays valid; ten wrong nominations remain
+degraded). This is conservative metadata loss, not new answer authority.
+The disposable observer passed eight no-model parity/privacy cases and is
+outside Git; it preserves original return identity and calls only the original
+normalizer once. The live observed attempt is qianniu-live-candidate-lt7wr_is.
+
+The requested post-fix external call was rejected before process creation:
+the execution permission accepted only the one already-used disclosure.
+No second Agent/model call or after-fix report exists; no indirect retry was
+attempted. Additional approval was requested while offline work continued.
+Runtime executable hash excludes YAML; the existing isolated launcher now
+separately records policy-data boot/end hashes, dirty policy-candidate status
+and its own hash. The after-fix request must not claim old clean-commit policy.
+
+Pre-fix observed can_send=false, human review=true, DML=0 and isolated knowledge
+unchanged; 5030 stopped. No Hub writes. Reply quality after this change remains
+unverified, real_accuracy=null, no native or production qualification claimed.
+Related regression and final documentation checks are recorded in CHANGELOG.
+
 ## Post-Diagnostic Multiturn Reply Check (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. Reuse the existing synthetic

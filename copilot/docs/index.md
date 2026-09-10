@@ -47,11 +47,14 @@ empty output: post-schema Understanding was nonauthoritative and its specific
 rejection reason was lost by the existing fallback. The 2026-09-10 bounded
 repair preserves local reason codes through that fallback and the existing
 Pipeline diagnostics, without changing goal qualification or delivery. A fresh
-same-source request on 793a2cc now preserves the concrete family-mismatch reason,
-but still has an empty reply before Composer. The exact rejected typed pair
-was not persisted; an offline ordinary-care compatibility gap is not a substitute
-for it. See `../ROADMAP.md` for both preserved failed attempts, offline parity,
-the bounded 28-pair probe and the next Understanding/Pack compatibility owner.
+same-source request on 793a2cc preserved the concrete family-mismatch reason,
+but still had an empty reply before Composer. A subsequent disposable isolated
+observation confirmed the actual cleaning_care/daily-handling pair. Pack 1.6.6
+now declares that one compatible canonical type without widening its risk,
+premise or scope budget. No Python production or prompt change. The post-fix
+external request remains unexecuted pending additional disclosure approval;
+there is no after-fix reply-quality claim. See `../ROADMAP.md` for preserved
+attempts, the 518-pair offline comparison and the pending native check.
 
 ### Assisted Conversation Document Import (2026-09-09)
 

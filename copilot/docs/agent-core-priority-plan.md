@@ -339,8 +339,9 @@ could be marked as dependencies, product identity could leak into
 The general Turn Understanding contract now keeps every explicit buyer request
 as a customer goal, reserves attributes for the requested property, and
 separates direct facts from practical guidance. A canonical customer goal with
-no selected intent may inherit only an exact goal-family match from the trusted
-Domain Pack candidate set. The server does not select a policy or infer a
+no selected intent may inherit only a single agreed goal family from trusted
+Domain Pack candidates matching its family or explicitly declaring its canonical
+claim type. Multiple compatible families stay ambiguous. The server does not select a policy or infer a
 family from customer keywords, related FactTypes, product names, or fixture
 values. The frozen bathroom-moisture, material-plus-toxicity, and material-plus-
 cleaning inputs each passed five independent understanding calls (`15/15`)

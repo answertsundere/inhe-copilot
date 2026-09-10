@@ -1,6 +1,6 @@
 schema_version: domain-policy-pack/v1
 domain_id: maternal_child_home
-version: 1.6.5
+version: 1.6.6
 bounded_inference_policies:
   - policy_intent_ref: product_dimensions_practical_guidance
     goal_family: product_dimensions_and_space
@@ -75,6 +75,8 @@ bounded_inference_policies:
   - policy_intent_ref: material_daily_use_practical_guidance
     goal_family: material_daily_use
     intent_kind: practical_guidance
+    canonical_claim_types:
+      - cleaning_care
     premise_fact_families:
       - material_composition
     required_context_capabilities:

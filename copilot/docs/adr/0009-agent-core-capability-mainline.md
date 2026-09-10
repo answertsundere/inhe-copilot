@@ -247,9 +247,12 @@ Turn Understanding may receive a compact projection of each already-trusted
 Domain Pack candidate's goal family, scope, permitted conclusion family,
 qualifiers, and prohibited claim families. This is semantic disambiguation
 data, not evidence, an option selection, or response authority. Canonical goals
-may nominate only a candidate from the exact same goal family; the server
-removes mismatches before Claim Resolution. Final safety and Delivery ownership
-remain unchanged.
+may nominate only a candidate with the exact same goal family or an explicit
+compatible type in its trusted canonical_claim_types declaration; the server
+removes mismatches before Claim Resolution. Compatibility permits a nomination,
+not a fact or answer. Existing premise, scope, risk and Final/Delivery checks
+remain unchanged. With no nomination, compatible candidates must agree on a
+single goal family before it can be projected; ambiguous families stay empty.
 
 For an unmapped goal, a nominated Pack policy is additionally retained only
 when the model's optional semantic key is explicitly listed in that policy's

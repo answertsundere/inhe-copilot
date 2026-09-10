@@ -877,10 +877,12 @@ guarantee, or practical request is a `customer_goal`; `attribute_key` narrows
 the requested property rather than identifying the product; and direct factual
 requests remain separate from practical guidance. When the model returns a
 canonical customer goal without a policy intent, the server may project a goal
-family only when a trusted Domain Pack candidate has the exact same family. It
-may also project an intent kind only when all trusted candidates in that exact
-family agree on one non-empty kind. Multiple intent kinds remain ambiguous and
-fail closed. This data-driven fallback does not select a policy, reinterpret
+family only when trusted candidates with an exact family or explicitly declared
+canonical_claim_types compatibility agree on that one family. It may also
+project an intent kind only when all those candidates agree on one non-empty
+kind. Multiple families or kinds remain ambiguous and fail closed. Compatibility
+is nomination metadata, not evidence or an expanded strategy budget. This
+data-driven fallback does not select a policy, reinterpret
 text, or map a FactType to a policy in Python. The three-case understanding
 qualification passed `15/15`; after the full gate exposed the missing-kind
 path, the separate frozen moisture qualification passed `5/5`, each with no
