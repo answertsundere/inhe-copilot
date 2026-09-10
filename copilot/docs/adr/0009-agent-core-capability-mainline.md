@@ -459,7 +459,7 @@ existing read-only client. This is source selection, not a fallback after a loca
 catalog miss. Development/test, query-only and loopback-source restrictions apply.
 Missing or conflicting identity/binding cannot fall back to a global Pack.
 
-Only an active exact product/SKU binding and a scalar `domainPolicyId` may leave
+An active exact product/SKU binding and a scalar `domainPolicyId` may leave
 this read boundary. Passport product ID/code/status and SKU membership must match
 the resolved identity. Notes, timelines, prompts, assets and arbitrary policy
 payloads are discarded. The existing FilePolicyRepository remains the sole Pack
@@ -475,3 +475,20 @@ Qualification requires deterministic injection/revocation tests and a read-only
 source comparison first. Without a fresh comparable labeled conversation run,
 real_accuracy remains null and optimization_unverified; propagation alone is not
 proof of a better reply.
+
+### Category Capability In The Same Source Mode (2026-09-10)
+
+The existing passport identity validator may also project a boolean category
+presence with exact product/SKU provenance into the Product Context Pack's
+separate `product_category_context`. It does not copy category text, notes or
+specifications, populate `structured_profile`, or impersonate `kb_product`.
+AdmittedAnswerContext may expose only the existing `product_category` capability
+after checking that provenance against the current Pack identity and SKU.
+Natural-key equality is checked before privacy projection; two different keys
+that redact to the same marker must not share the capability.
+Category presence is neither direct evidence nor permission for a specific
+claim; all admitted-premise, trusted Pack, scope, risk, Final and review-only
+requirements remain unchanged. The local catalog path is unchanged. One bounded
+local passport GET per Pack reuses the existing transport/identity validator;
+no positive cache, retry, model call, service or reply owner is added. Removing
+the existing isolated source mode disables this projection.

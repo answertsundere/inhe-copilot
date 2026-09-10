@@ -19,6 +19,15 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 Hub category context repair: the existing exact passport validator,
+  Pack, admission and response summary now carry identity-bound category presence
+  separately from facts. Same-source local component check: material supported
+  with two records; care remains unresolved but has one legitimate option (was
+  zero). Composer input valid, policy hash unchanged, query-only/DML=0. No model
+  request, generated reply, service restart or production rollout this turn.
+  Regression: 1386 passed, including pre-redaction SKU collision rejection.
+  real_accuracy=null; optimization_unverified.
+
 - 2026-09-10 explicitly authorized post-fix native check: one request on e5db180
   now returns a nonempty candidate in 4,855 ms. Both goals valid, material
   supported by two PE records, care unresolved. Composer accepted and

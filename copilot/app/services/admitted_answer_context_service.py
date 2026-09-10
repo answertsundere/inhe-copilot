@@ -592,6 +592,7 @@ def _candidate_containers(response: dict[str, Any]) -> list[tuple[str, dict[str,
 
 def _product_context_capabilities(
     response: dict[str, Any],
+    product_identity: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
     debug = _as_dict(response.get("evidence_debug"))
     context = _as_dict(response.get("context_used"))
@@ -609,11 +610,41 @@ def _product_context_capabilities(
             for level in ("l1", "l2", "l3")
         )
     )
+    source = "product_context_pack.structured_profile.category"
+    if not has_category:
+        metadata = _as_dict(pack.get("product_category_context"))
+        scope = _as_dict(metadata.get("identity_scope"))
+        pack_identity = _as_dict(pack.get("identity"))
+        resolution = _as_dict(pack_identity.get("product_identity_resolution"))
+        # Compare natural keys before content redaction can collapse two keys.
+        sku_signals = [
+            value
+            for identity_source in (
+                product_identity, _as_dict(debug.get("order_product_identity")),
+                pack_identity, _as_dict(_as_dict(pack.get("evidence_pack")).get("identity")),
+            )
+            for key in ("sku_code", "sku")
+            if (value := identity_source.get(key)) not in (None, "")
+        ]
+        has_category = (
+            set(metadata) == {"source", "category_available", "identity_scope"}
+            and metadata.get("source") == "product_hub.agent_passport"
+            and metadata.get("category_available") is True
+            and set(scope) == {"sku_code", "product_code", "hub_product_id", "hub_sku_id"}
+            and resolution.get("status") == "resolved"
+            and resolution.get("source") == "product_hub_exact_sku"
+            and all(isinstance(value, str) and value.strip() and value == resolution.get(key)
+                    for key, value in scope.items())
+            and scope.get("sku_code") == pack_identity.get("sku")
+            and all(isinstance(value, str) and value.strip() == scope.get("sku_code")
+                    for value in sku_signals)
+        )
+        source = "product_context_pack.product_category_context"
     return (
         {
             "product_category": {
                 "available": True,
-                "source": "product_context_pack.structured_profile.category",
+                "source": source,
             }
         }
         if has_category
@@ -1814,7 +1845,7 @@ class AdmittedAnswerContextService:
                 "claim_policies": {},
                 "bounded_inference_policies": [],
             }
-        product_context_capabilities = _product_context_capabilities(response)
+        product_context_capabilities = _product_context_capabilities(response, _as_dict(product_identity))
         bounded_inference_policies = _bounded_inference_policy_projection(
             domain_policy_pack
         )

@@ -549,6 +549,8 @@ def _summarize_product_context_pack(pack: dict) -> dict:
         "identity": pack.get("identity", {}),
         "stats": pack.get("stats", {}),
         "evidence_pack": pack.get("evidence_pack", {}),
+        **({"product_category_context": pack["product_category_context"]}
+           if pack.get("product_category_context") else {}),
         "structured_profile": {
             "product_id": profile.get("product_id"),
             "i_id": profile.get("i_id", ""),

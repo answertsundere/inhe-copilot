@@ -80,6 +80,12 @@ def build_product_context_pack(
         candidates: list[dict[str, Any]] = []
         kb_product = _find_kb_product(db, KBProduct, identity)
         structured_profile = _build_structured_profile(kb_product)
+        product_category_context = (
+            ProductHubReviewedFactsClient().fetch_product_category_context(
+                identity.get("product_identity_resolution") or {},
+            )
+            if not allowed or "product_facts" in allowed else {}
+        )
         product_hub_read = (
             _load_product_hub_reviewed_facts(identity)
             if not allowed or "product_facts" in allowed
@@ -357,6 +363,7 @@ def build_product_context_pack(
             "identity": identity,
             "structured_profile": structured_profile,
             "facts": returned_facts,
+            **({"product_category_context": product_category_context} if product_category_context else {}),
             "media_assets": media_assets,
             "recommended_assets": recommended_assets,
             "activity_rules": activity_rules,

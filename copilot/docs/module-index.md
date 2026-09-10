@@ -17,6 +17,15 @@ Pack also own the default-off `answer-context-v1` shadow comparison. Its only
 output is aggregate pack stats; it reuses the current field/media adapters and
 does not merge facts, recommend media, generate replies, or authorize sending.
 
+The existing Hub client also owns exact passport identity validation shared by
+policy selection and category-presence projection. Product Context Pack stores
+the latter as separate, non-factual `product_category_context`; admission checks
+its product/SKU provenance before exposing `product_category`. The existing
+build-response summary retains that projection for the same downstream contract.
+No raw category text, local-product impersonation, fact admission, policy-budget
+change or send authority is introduced. The category read is restricted to the
+existing development/test, query-only, loopback Hub source mode and is not cached.
+
 | Capability | Authoritative owner | Status | Boundary |
 |---|---|---|---|
 | HTTP analyze entry | `app/api/analyze_routes.py` | formal | Normalize HTTP input and present the canonical Pipeline result |

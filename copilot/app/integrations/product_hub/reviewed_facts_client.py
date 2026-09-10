@@ -368,6 +368,34 @@ class ProductHubReviewedFactsClient:
 
     def fetch_domain_policy_selector(self, identity: dict[str, Any]) -> dict[str, Any]:
         """Project control metadata from the exact resolved product, never facts."""
+        product = self._read_verified_product_passport(identity)
+        policy_id = product.get("domainPolicyId")
+        # FilePolicyRepository owns ID/schema/hash validation, not source text.
+        if not isinstance(policy_id, str) or not _bounded_text(policy_id, 64):
+            return {}
+        return {"catalog_metadata": {"domain_policy_id": policy_id}}
+
+    def fetch_product_category_context(self, identity: dict[str, Any]) -> dict[str, Any]:
+        """Expose category presence only, bound to the current isolated SKU."""
+        if (
+            os.getenv("COPILOT_KNOWLEDGE_SOURCE_MODE", "").strip() != "product_hub_review_only"
+            or os.getenv("COPILOT_RUNTIME_ENV", "production").strip().lower() not in {"development", "test"}
+            or not _enabled("COPILOT_FORMAL_KNOWLEDGE_QUERY_ONLY")
+        ):
+            return {}
+        product = self._read_verified_product_passport(identity)
+        category = product.get("category")
+        if not isinstance(category, str) or not _bounded_text(category, 256):
+            return {}
+        return {
+            "source": "product_hub.agent_passport", "category_available": True,
+            "identity_scope": {key: identity[key] for key in (
+                "sku_code", "product_code", "hub_product_id", "hub_sku_id",
+            )},
+        }
+
+    def _read_verified_product_passport(self, identity: dict[str, Any]) -> dict[str, Any]:
+        """Shared exact-binding check; raw fields remain private to projections."""
         if (
             not _enabled("COPILOT_PRODUCT_HUB_REVIEWED_FACTS_ENABLED")
             or identity.get("status") != "resolved"
@@ -401,11 +429,7 @@ class ProductHubReviewedFactsClient:
             or matches[0].get("status") != "active"
         ):
             return {}
-        policy_id = product.get("domainPolicyId")
-        # FilePolicyRepository owns ID/schema/hash validation, not source text.
-        if not isinstance(policy_id, str) or not _bounded_text(policy_id, 64):
-            return {}
-        return {"catalog_metadata": {"domain_policy_id": policy_id}}
+        return product
 
     def fetch_answer_context_for_sku(self, sku_code: Any) -> dict[str, Any]:
         """Read the versioned transport for shadow comparison, not admission."""

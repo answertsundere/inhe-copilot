@@ -195,6 +195,17 @@ source binding is not human approval or evidence; admitted premises and all
 bounded-inference, audit and delivery checks still apply. It grants no additional
 send authority and is unavailable outside the opt-in development/test source.
 
+The same passport identity validator supplies category presence separately to
+the Product Context Pack as `product_category_context`. Only a bounded scalar
+category on an exact active product/SKU can set that boolean; its text never
+enters the projection. Admission checks the bound identity against the current
+SKU before exposing the existing `product_category` capability. This neither
+fills the local structured profile nor creates direct facts. Missing category
+remains missing; missing premises or policy still block bounded advice. The
+existing response summary preserves the same context provenance. One bounded
+loopback GET per Pack is added only in the opt-in, query-only source mode;
+there is no positive cache, extra model call, reply owner or delivery authority.
+
 ### Identity, Knowledge, And Tools
 
 External product references resolve to JST/internal identity before scoped facts

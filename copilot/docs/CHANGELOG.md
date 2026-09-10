@@ -1,5 +1,32 @@
 # Change Log
 
+## 2026-09-10 - Exact Hub Category Context Propagation
+
+- Reused the existing client passport identity validator for policy selection
+  and a separate, scalar category-presence projection. Only opt-in Hub source,
+  development/test, query-only, loopback reads can populate it. Local mode adds
+  no transport. Each Pack makes one bounded read with no positive cache/retry.
+- Product Context Pack and its existing response summary preserve non-factual
+  identity-bound metadata; admission validates current SKU/provenance before
+  exposing the existing category capability. No source category text, synthetic
+  KBProduct, fact promotion, policy/risk expansion, new model or reply owner.
+- Red test: category unavailable on both fixture domains. Green: source suite
+  121 passed; related regression 1386 passed (530 warnings). Five Python files
+  compiled. Mutation checks cover missing/invalid category, identity, source
+  revocation, public injection, duplicate membership and missing/ineligible facts.
+- Read-only review found a lossy-privacy SKU collision before commit. Added
+  red/green same-key/different-key counterexamples and now compare raw natural
+  keys before redaction; output privacy rules remain unchanged.
+- Same-source local component check: two direct material records preserved,
+  unresolved care options 0 -> 1, Composer input valid, policy hash unchanged.
+  No Agent/model call or generated after-reply; this is not native E2E or a
+  customer-quality score. Query-only=true, knowledge DML=0, before trace intact,
+  can_send=false and human review=true. Existing services/flags untouched.
+- ADR 0009 and existing architecture/module/entry documents updated. Fresh
+  real-dataset/native reply comparison remains unverified; real_accuracy=null.
+  Python and PowerShell JSON parsing passed. Hub process changed independently
+  during the turn; no source-runtime freeze or unchanged-Hub-process claim.
+
 ## 2026-09-10 - Authorized Same-Source Post-Fix Native Result
 
 - Explicit additional disclosure approval allowed one native synthetic request

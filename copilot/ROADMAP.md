@@ -1,5 +1,48 @@
 # Delivery Roadmap
 
+## Hub Category Context Propagation (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. Bounded follow-up approved after
+the one-request baseline: reuse the exact Hub passport reader and current Pack
+and admission owners. Category presence is context-only, never a fact or a
+fake local KBProduct. Do not change prompts, policy budgets, Graph or Delivery.
+
+- [x] Locate the category loss in the existing local-profile path.
+- [x] Reproduce with an empty-store Pack and exact-SKU source fixture.
+- [x] Carry identity-bound category presence separately from evidence.
+- [x] Verify revocation, injection, identity and missing-premise negatives.
+- [x] Run related regression and record native-evaluation limitations.
+
+Existing services and source data stay untouched. The previous one-use model
+authorization is consumed; local/offline checks do not claim response quality.
+real_accuracy=null; optimization_unverified.
+
+Same-source component probe (not native generation): frozen Understanding plus
+current local Hub reads, same exact SKU and policy hash. Material remains
+supported by two direct records; care remains unresolved, with eligible options
+0 -> 1. Composer input validates; no local product profile fabricated, no model
+calls, no Agent requests and no generated reply. Query-only enabled, knowledge
+DML=0, before-report and trace hashes unchanged. Result lives outside Git in
+`hub_category_context_probe_20260910_cb8d5bfbd68b.json`; the earlier component
+attempt is retained separately. Current component report SHA-256 is
+c4c6c72d3de2e8bcaf706df798ab737dc714defe459dd84bfecd32f373f9c8e4.
+Baseline report hash remains
+c08321fc250b31af86600dff2f68d134c77c389bd1083e73a1da908ef4ed5db4.
+Source identity: ce94d7d plus an explicitly uncommitted candidate; report source
+hash covers the four modified Python owners, not a server boot fingerprint.
+
+TDD reproduced absent capability before the fix. The expanded source suite is
+121 passed; related regression is 1386 passed. Five changed Python files compile.
+Review found a lossy-redaction SKU collision in the initial implementation;
+a failing counterexample led to exact raw-key comparison before privacy
+projection. Same-key success and distinct-key rejection now both pass.
+No prompt, policy YAML, Graph node, source DB, service or production flag changed.
+The 5030 probe remains stopped. A fresh generated-response comparison and real
+approved conversation labels remain required before reporting quality gains.
+5012/5174 process IDs are unchanged; Hub 8795 changed from PID 88472 to 79552
+outside this task. No restart was issued here, but a frozen runtime/source
+acceptance is not claimed by this component check.
+
 ## Authorized Post-Fix Native Multiturn Check (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. The user explicitly authorized

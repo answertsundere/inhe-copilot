@@ -58,6 +58,12 @@ because category capability is missing: the exact Hub passport has category,
 but the Pack's local-only profile path does not propagate it. Semantic Audit
 is unavailable; there is no real-accuracy or overall reply-quality qualification.
 See `../ROADMAP.md` for preserved attempts and the next source-context owner.
+The follow-up now carries exact Hub category presence through separate Pack
+metadata and admission, without copying category text or creating facts. A
+same-source, no-model component check retains two direct material records and
+offers one review-only care option instead of zero. This does not replace the
+native baseline or qualify generated replies. See ADR 0009's category addendum
+and `../ROADMAP.md` for read-only verification and remaining evaluation gates.
 The follow-up closes a local test gap with eight explicit-fixture Composer/Final
 integration cases, including wrong option and tampered premise/scope rejection.
 It makes no further production change and does not qualify real generation;
