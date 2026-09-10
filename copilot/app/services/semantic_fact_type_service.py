@@ -457,6 +457,16 @@ def _fallback_from_rule(deterministic: dict[str, Any], llm_result: dict[str, Any
     fallback.setdefault("customer_goals", [])
     fallback.setdefault("goal_understanding_status", "degraded")
     fallback.setdefault("goal_understanding_diagnostics", ["llm_goal_understanding_unavailable"])
+    # Preserve local normalization failures without promoting rejected goals.
+    rejection_reasons = (llm_result or {}).get("goal_understanding_diagnostics")
+    if isinstance(rejection_reasons, list):
+        fallback["goal_understanding_diagnostics"] = list(dict.fromkeys([
+            *(
+                reason for reason in rejection_reasons
+                if isinstance(reason, str) and reason
+            ),
+            *fallback["goal_understanding_diagnostics"],
+        ]))
     return fallback
 
 

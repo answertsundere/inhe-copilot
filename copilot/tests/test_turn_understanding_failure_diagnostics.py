@@ -1194,3 +1194,262 @@ def test_llm_client_single_attempt_mode_does_not_repair_or_retry():
     assert returned.choices[0].message.content.startswith("```")
     assert len(calls) == 1
     assert "_single_attempt_no_repair" not in calls[0]
+
+
+@pytest.mark.parametrize("strict", [False, True], ids=["legacy", "strict"])
+@pytest.mark.parametrize(
+    ("goal_changes", "candidates", "reason"),
+    [
+        (
+            {"policy_intent_ref": "unknown_policy"},
+            [],
+            "customer_goal_policy_intent_ref_unknown",
+        ),
+        (
+            {"policy_intent_ref": "care_policy"},
+            [{"policy_intent_ref": "care_policy", "goal_family": "cleaning_care"}],
+            "customer_goal_policy_intent_family_mismatch",
+        ),
+        (
+            {
+                "claim_type_status": "unmapped",
+                "claim_type": "",
+                "semantic_key": "unoffered_intent",
+                "policy_intent_ref": "care_policy",
+            },
+            [{
+                "policy_intent_ref": "care_policy",
+                "goal_family": "cleaning_care",
+                "unmapped_semantic_keys": ["daily_care"],
+            }],
+            "customer_goal_policy_intent_semantic_boundary_mismatch",
+        ),
+        (
+            {"continued_from": "unknown_alias"},
+            [],
+            "conversation_goal_lifecycle_alias_unknown",
+        ),
+    ],
+)
+def test_post_schema_rejection_survives_upper_fallback_and_delivery_boundary(
+    monkeypatch, strict, goal_changes, candidates, reason,
+):
+    from app.agent.nodes.query_fact_type_classifier import (
+        query_fact_type_classifier,
+    )
+    from app.services.analysis_pipeline_service import AnalysisPipelineService
+
+    source_text = "A fictional product question"
+    payload = {"goals": [_goal(source_text=source_text, **goal_changes)]}
+    client = _FakeClient(_response_for_payload(payload))
+
+    class _StrictProvider:
+        last_latency_ms = 1.0
+
+        def metadata(self):
+            return {
+                "provider_name": "test-provider",
+                "model_name": "test-model",
+                "configured": True,
+                "qualified": True,
+            }
+
+        def request(self, **_kwargs):
+            client.calls += 1
+            return copy.deepcopy(payload)
+
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service.config, "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED", strict,
+    )
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(service, "_turn_understanding_strict_provider", _StrictProvider)
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: candidates)
+    result = query_fact_type_classifier({
+        "normalized_message": source_text,
+        "intent": "product_question",
+    })
+
+    diagnostics = result["turn_understanding_model_diagnostics"]
+    assert diagnostics["schema_validation"]["passed"] is True
+    assert diagnostics["provenance_validation"]["passed"] is True
+    assert diagnostics["model_call_count"] == client.calls == 1
+    assert diagnostics["retry_count"] == diagnostics["json_repair_count"] == 0
+    assert result["source"] == "rule_fallback"
+    assert result["customer_goals"] == []
+    assert result["goal_understanding_status"] == "degraded"
+    assert result["goal_understanding_diagnostics"] == [
+        reason, "llm_goal_understanding_unavailable",
+    ]
+    understanding = result["turn_understanding"]
+    assert understanding["requested_claims"] == []
+    assert understanding["goal_understanding_diagnostics"] == (
+        result["goal_understanding_diagnostics"]
+    )
+
+    response = {
+        "turn_understanding": understanding,
+        "suggested_reply": "An existing test draft",
+        "draft_reply": "An existing test draft",
+        "sendable_reply": "An existing test draft",
+        "can_send": True,
+        "requires_human_review": False,
+        "selected_evidence": [{"evidence_uid": "test-evidence"}],
+        "reply_blocks": [{"type": "text", "text": "An existing test draft"}],
+        "supervisor_candidate_preview": {"text": "A stale test preview"},
+        "evidence_debug": {
+            "retained_count": 1,
+            "supervisor_candidate_preview": {"text": "A stale test preview"},
+            "formal_partial_answer": {"text": "A stale test draft"},
+        },
+    }
+    verdict = AnalysisPipelineService._turn_understanding_verdict(response)
+    gated = AnalysisPipelineService._apply_invalid_understanding_boundary(
+        copy.deepcopy(response), verdict,
+    )
+    assert gated["turn_understanding_boundary"]["earliest_reason_code"] == reason
+    assert reason in gated["block_reasons"]
+    assert gated["suggested_reply"] == gated["sendable_reply"] == ""
+    assert gated["reply_blocks"] == []
+    assert gated["can_send"] is False
+    assert gated["requires_human_review"] is True
+    assert gated["selected_evidence"] == response["selected_evidence"]
+    assert "supervisor_candidate_preview" not in gated
+    assert "supervisor_candidate_preview" not in gated["evidence_debug"]
+    assert "formal_partial_answer" not in gated["evidence_debug"]
+
+    old_understanding = copy.deepcopy(understanding)
+    old_understanding["goal_understanding_diagnostics"] = [
+        "llm_goal_understanding_unavailable",
+    ]
+    old_response = copy.deepcopy(response)
+    old_response["turn_understanding"] = old_understanding
+    old_gated = AnalysisPipelineService._apply_invalid_understanding_boundary(
+        old_response,
+        AnalysisPipelineService._turn_understanding_verdict(old_response),
+    )
+    diagnostic_fields = {
+        "turn_understanding", "turn_understanding_boundary",
+        "block_reasons", "evidence_debug",
+    }
+    assert {
+        key: value for key, value in gated.items() if key not in diagnostic_fields
+    } == {
+        key: value for key, value in old_gated.items() if key not in diagnostic_fields
+    }
+    assert {
+        key: value for key, value in gated["evidence_debug"].items()
+        if key != "turn_understanding_boundary"
+    } == {
+        key: value for key, value in old_gated["evidence_debug"].items()
+        if key != "turn_understanding_boundary"
+    }
+
+
+def test_rejection_reasons_keep_order_deduplicate_and_do_not_mutate_inputs():
+    message = "first; second; third"
+    payload = {"goals": [
+        _goal(source_text="first", policy_intent_ref="unknown_policy"),
+        _goal(source_text="second", policy_intent_ref="care_policy"),
+        _goal(source_text="third", policy_intent_ref="unknown_policy"),
+    ]}
+    normalized = service._sanitize_llm_result(
+        payload, message=message,
+        policy_intent_candidates=[
+            {"policy_intent_ref": "care_policy", "goal_family": "cleaning_care"},
+        ],
+    )
+    assert normalized is not None
+    normalized["goal_understanding_diagnostics"].append(
+        "customer_goal_policy_intent_ref_unknown"
+    )
+    deterministic = service.classify_query_fact_type(message, "product_question")
+    original = copy.deepcopy((deterministic, normalized))
+    fallback = service._fallback_from_rule(deterministic, normalized)
+    assert fallback["goal_understanding_diagnostics"] == [
+        "customer_goal_policy_intent_ref_unknown",
+        "customer_goal_policy_intent_family_mismatch",
+        "llm_goal_understanding_unavailable",
+    ]
+    assert (deterministic, normalized) == original
+    expected_business = service._fallback_from_rule(deterministic, None)
+    expected_business["llm_low_confidence_result"] = {
+        field: normalized[field] for field in ("query_fact_type", "confidence", "reason")
+    }
+    assert {
+        key: value for key, value in fallback.items()
+        if key != "goal_understanding_diagnostics"
+    } == {
+        key: value for key, value in expected_business.items()
+        if key != "goal_understanding_diagnostics"
+    }
+    fallback["goal_understanding_diagnostics"].append("test_only")
+    assert (deterministic, normalized) == original
+
+
+@pytest.mark.parametrize("normalization_reasons", [None, [], "", [None, {}, 1, ""]])
+def test_missing_or_malformed_reason_shape_retains_existing_generic_boundary(
+    normalization_reasons,
+):
+    normalized = {"goal_understanding_diagnostics": normalization_reasons}
+    fallback = service._fallback_from_rule({}, normalized)
+    assert fallback["goal_understanding_diagnostics"] == [
+        "llm_goal_understanding_unavailable",
+    ]
+    assert fallback["customer_goals"] == []
+    assert fallback["goal_understanding_status"] == "degraded"
+
+
+@pytest.mark.parametrize("level", ["root", "goal"])
+@pytest.mark.parametrize("strict", [False, True], ids=["legacy", "strict"])
+def test_model_cannot_inject_normalization_diagnostics(monkeypatch, level, strict):
+    payload = _valid_payload()
+    target = payload if level == "root" else payload["goals"][0]
+    target["goal_understanding_diagnostics"] = ["untrusted_private_value"]
+    client = _FakeClient(_response_for_payload(payload))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service.config, "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED", strict,
+    )
+    monkeypatch.setattr(
+        service, "_turn_understanding_strict_provider",
+        lambda: SimpleNamespace(
+            last_latency_ms=1.0,
+            metadata=lambda: {
+                "provider_name": "test-provider",
+                "model_name": "test-model",
+                "configured": True,
+                "qualified": True,
+            },
+            request=lambda **_kwargs: copy.deepcopy(payload),
+        ),
+    )
+    diagnostics = {}
+    result = service.classify_query_fact_type_llm_first(
+        {"normalized_message": MESSAGE}, diagnostics_sink=diagnostics,
+    )
+    assert result["customer_goals"] == []
+    assert result["goal_understanding_status"] == "invalid"
+    assert diagnostics["schema_validation"]["passed"] is False
+    assert "untrusted_private_value" not in json.dumps([result, diagnostics])
+    assert diagnostics["model_call_count"] == 1
+    assert client.calls == (0 if strict else 1)
+
+
+def test_valid_goals_do_not_gain_fallback_rejection_reasons(monkeypatch):
+    client = _FakeClient(_response_for_payload(_valid_payload()))
+    monkeypatch.setattr(service, "get_llm_client", lambda: client)
+    monkeypatch.setattr(service.config, "COPILOT_FACT_TYPE_LLM_ENABLED", True)
+    monkeypatch.setattr(
+        service.config, "COPILOT_TURN_UNDERSTANDING_STRICT_ENABLED", False,
+    )
+    monkeypatch.setattr(service, "_policy_intent_candidates", lambda _state: [])
+    result = service.classify_query_fact_type_llm_first(
+        {"normalized_message": MESSAGE, "intent": "product_question"},
+    )
+    assert result["goal_understanding_status"] == "valid"
+    assert result["source"] == "llm"
+    assert result["goal_understanding_diagnostics"] == []
+    assert len(result["customer_goals"]) == 2
+    assert "fallback_reason" not in result

@@ -1,5 +1,48 @@
 # Delivery Roadmap
 
+## Understanding Rejection Reason Preservation (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. User approved the bounded next
+repair after the failed post-binding check: preserve existing deterministic
+goal-normalization reason codes through the compatibility fallback.
+
+- [x] Read the current contract, failure record and downstream consumers.
+- [x] Reproduce post-schema reason loss with offline negative cases.
+- [x] Preserve reasons only; keep goals, status, prompts and safety unchanged.
+- [x] Verify classifier/Pipeline propagation, privacy and no-send parity.
+- [x] Update existing records and prepare a scoped local checkpoint.
+
+No external model call, real/customer data, production DB write, runtime
+restart, new owner, graph node or qualification bypass. The prior actual
+semantic failure remains unknown and its report is not replaced by a fixture.
+
+Eight RED cases reproduced the lost reason across legacy and strict transport
+stubs. The existing fallback now prepends its local normalizer's reason codes,
+keeps the generic compatibility code, and deduplicates without mutating inputs.
+Only that existing function changed in production. No model-generated reason
+field was added: unexpected Provider root/goal fields still fail schema.
+
+Eighteen added cases cover policy reference/family/semantic mismatch, unknown
+continuation alias, valid goals, malformed diagnostic shape, stable ordering,
+input isolation, forged diagnostics and identical downstream no-send output.
+85 diagnostics tests passed. Related regression including Pipeline, evidence,
+Composer, final audit, replay, benchmark runner and trace security: 1090 passed
+(includes five documentation tests). A separate seven-case offline comparison
+executes the original fallback from 4b49229 alongside this one: all
+non-diagnostic classification and final delivery fields are identical.
+These checks use fake provider responses or no provider, not real model calls.
+
+Independent review found no blocker; 11 separate pure-function probes passed.
+Its two nonblocking coverage suggestions are now tested: strict as well as
+legacy forged fields, and populated reply/evidence/preview boundary parity.
+py_compile, scoped diff check and documentation governance passed. Original
+5012/5174/8795 processes remain untouched; 5030 is not started. No network push.
+
+This is diagnostic preservation only: no new reply, no response-quality
+qualification, no live performance claim. The prior empty candidate remains
+failed. real_accuracy=null; optimization_unverified. Next live check must
+record a fresh isolated source identity rather than relabel the old attempt.
+
 ## Post-Binding Multiturn Reply Check (2026-09-09)
 
 Active priority: P1 Gold Conversation Quality. User confirmed the next single

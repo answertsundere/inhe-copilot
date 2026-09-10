@@ -19,6 +19,15 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 Understanding rejection diagnostics: the existing fallback now
+  preserves local semantic-normalization reason codes ahead of its generic
+  failure code. Rejected goals/status and delivery stay unchanged; no Prompt,
+  Composer, transport or policy change. 18 new cases, 1090 related tests passed;
+  seven parent-commit parity probes agree on every non-diagnostic classification
+  and final delivery field. No external request, restart or production DB write.
+  Prior empty canary remains failed; actual semantic cause is not recovered.
+  real_accuracy=null. See ROADMAP.md for the bounded diagnostic checkpoint.
+
 - 2026-09-09 post-binding multiturn check: one fresh synthetic request on
   8973f60 failed with an empty reply before Composer (6,726 ms, exit_code=2).
   Trusted policy now selected with 13 options; 54 source facts returned, but
@@ -27,8 +36,8 @@ After implementation, update this index, `ROADMAP.md`, and
   rejection diagnostics. The actual live semantic reason cannot be recovered
   from the saved generic code. No production-code repair or model retry in
   this check. 654 related tests passed; can_send=false, review=true, DML=0,
-  5030 stopped, real_accuracy=null. Next: preserve rejection reason codes
-  without loosening goal qualification. See ROADMAP.md.
+  5030 stopped, real_accuracy=null. The reason-code repair is now recorded
+  above; it does not replace this historical failed result. See ROADMAP.md.
 
 - 2026-09-09 isolated multiturn candidate: explicit approval enabled one actual
   DeepSeek API request. Four history turns remained intact; material supported,

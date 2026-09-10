@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-09-10 - Preserve Understanding Normalization Rejection Reasons
+
+- Changed only _fallback_from_rule in the existing semantic understanding
+  service: prepend local normalization reasons to the existing generic failure
+  code with stable deduplication, without changing rejected goals or status.
+- Eight RED legacy/strict transport cases reproduced the defect before repair.
+  Eighteen added tests include rejected policies/continuation, valid goals,
+  malformed diagnostic shape, input immutability, forged provider fields and
+  unchanged final reply/no-send decisions. No raw rejected values or private
+  reasoning were added to diagnostic output.
+- 1090 related tests passed. Seven separate parent-function parity probes
+  matched every non-diagnostic classification and delivery field. No real
+  model request, runtime restart, Hub/formal DB write, new graph or owner.
+- API/copilot, replay and benchmark retain the same classifier/Pipeline path;
+  detailed reason codes can now appear in their existing boundary diagnostics.
+  Provider schema/provenance success alone still does not make goals valid.
+- Prior actual empty candidate remains failed; its lost semantic reason cannot
+  be reconstructed by these fixtures. real_accuracy=null and
+  optimization_unverified. No reply-quality or production-release claim.
+- Independent review found no blocker with 11 pure-function probes. Added its
+  strict-injection and populated-boundary coverage suggestions. Compilation,
+  scoped diff check and post-edit docs governance passed; no network push.
+
 ## 2026-09-09 - Post-Binding Synthetic Candidate Stopped Before Composer
 
 - Recorded one fresh, authorized, native API check on 8973f60 with the same

@@ -44,9 +44,11 @@ exact active SKU/product passport -> existing Pipeline selector -> existing Pack
 loader. Source notes and policy text are not evidence or model input. One fresh
 synthetic API check confirmed selected policy but failed before Composer with
 empty output: post-schema Understanding was nonauthoritative and its specific
-rejection reason was lost by the existing fallback. No production repair or
-extra model request was made during that check. See `../ROADMAP.md` for the
-preserved failed result and the next reason-code-only diagnostic repair.
+rejection reason was lost by the existing fallback. The 2026-09-10 bounded
+repair preserves local reason codes through that fallback and the existing
+Pipeline diagnostics, without changing goal qualification or delivery. No
+fresh model request has followed this diagnostic repair. See `../ROADMAP.md`
+for the preserved failed attempt, offline parity and remaining quality gap.
 
 ### Assisted Conversation Document Import (2026-09-09)
 

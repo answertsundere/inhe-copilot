@@ -5,6 +5,13 @@ experiment results belong in evaluation reports, not in this ownership map.
 
 ## Active Agent Core
 
+Turn Understanding rejection diagnostics remain owned by the existing semantic
+service: local normalization reason codes survive its degraded compatibility
+fallback in stable order before the generic code. Query classifier and Pipeline
+reuse those codes for observation, not goal authorization. Provider-supplied
+diagnostics are still extra fields and rejected; no raw rejected value or
+private reasoning is added. Goal validity and Delivery remain separate gates.
+
 Product Hub transport note (2026-09-08): the existing client and Product Context
 Pack also own the default-off `answer-context-v1` shadow comparison. Its only
 output is aggregate pack stats; it reuses the current field/media adapters and
