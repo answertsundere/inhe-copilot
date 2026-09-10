@@ -64,6 +64,14 @@ same-source, no-model component check retains two direct material records and
 offers one review-only care option instead of zero. This does not replace the
 native baseline or qualify generated replies. See ADR 0009's category addendum
 and `../ROADMAP.md` for read-only verification and remaining evaluation gates.
+A subsequent single native request on aff929d confirms one offered and selected
+care option with the same two material premises. Composer and Deterministic
+Final pass, but the reply is disclaimer-heavy and provides no useful care step;
+semantic Audit remains unavailable. The remaining limit is the policy's
+advice_mode=none and mandatory negative qualifiers, not lost category context.
+No policy, Prompt, production flag or safety gate was changed by that check.
+The exact reply stays private; [ROADMAP](../ROADMAP.md) records the bounded
+same-source comparison and the next Domain Policy/Composer contract review.
 The follow-up closes a local test gap with eight explicit-fixture Composer/Final
 integration cases, including wrong option and tampered premise/scope rejection.
 It makes no further production change and does not qualify real generation;

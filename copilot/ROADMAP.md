@@ -1,5 +1,61 @@
 # Delivery Roadmap
 
+## Native Category-Context Reply Check (2026-09-10)
+
+Active priority: P1 Gold Conversation Quality. One authorized continuation used
+the same fictional question, four history turns and exact Hub source through
+the native API on aff929d. No observation hook, repeated request or production
+change. The category repair is now exercised in generation, not just a component
+test; this is still not a real-customer or service-quality qualification.
+
+- [x] Verify identical question/history/source and preserve the previous report.
+- [x] Run one isolated DeepSeek request; inspect actual reply and owner outputs.
+- [x] Check exact evidence/policy attribution and read-only/manual-delivery state.
+- [x] Record the remaining quality limit without changing policy or wording.
+
+HTTP 200, one request, 5,299 ms, nonempty reply. Both canonical goals are valid;
+two direct material records are identical to the baseline. Care is unresolved
+but now has one eligible option, selected by Composer as allowed_inference.
+Its two premise references are admitted and its policy reference is offered.
+Category presence is true; no local product profile or additional fact created.
+Composer is accepted, Deterministic Final passes, and its candidate is identical
+to the final reply. Semantic Audit is unavailable, not passed.
+
+Service-quality review fails: material is answered, but care receives a long
+disclaimer with unrelated moving/storage/durability language and no useful next
+step. The observed earliest limiting contract is the trusted practical-guidance
+policy: advice_mode=none plus three negative required_qualifiers. The existing
+Composer prompt forbids advice in that mode and requires every qualifier to be
+explicit. Selection is not missing, and Final did not rewrite a useful answer.
+This explains the observed behavior, not a tested counterfactual proving that
+one field change would improve all replies. Do not merely flip advice_mode,
+remove safeguards, or infer a specific cleaning method from material alone.
+Next work must reconcile authorized practical help with non-rendered safety
+constraints in the existing Domain Policy/Composer input contract, preserving
+evidence and high-risk limits; no new evaluator or reply owner is required.
+
+Before/after: eligible care options 0 -> 1; selected material records 2 -> 2;
+HTTP latency 4,855 -> 5,299 ms (one observation each, not p50/p95). Four history
+turns and both goals survive; the question, exact SKU, admitted records, selected
+evidence, Pack hash and Composer system prompt match. Understanding provider
+799.04 ms and Composer 1,114 ms, one call each, retry/repair=0. Full legacy
+Pipeline model-call total remains unverified. Context reports 386 estimated
+tokens and no trims; that existing estimate is not measured wire token usage.
+
+Runtime source SHA-256:
+3ccc5bfdc999282bcff88064bb5a4482c2a5751ed9be1e2de1ce1dcda38dc157.
+Runtime reports clean_commit and no source drift. Policy-data boot/end hashes
+match the previous request. Formal knowledge query-only is true; the isolated
+knowledge hash is unchanged, DML=0, can_send=false, review=true, media blocks=0.
+Only temporary 5030 enabled candidate/convergence flags, and it is stopped.
+Existing 5012/5174/8795 PIDs remain unchanged; source Hub writes were not issued.
+
+Preserved native attempt: qianniu-live-candidate-yjfxcx0i/report.json.
+SHA-256: f0fcbbf70f1bf8e0579d4bdbb2bd2294b2a7b16433816361cb72e5635b1ef197.
+The previous report remains unchanged. Private replies and trace stay outside
+Git. real_accuracy=null; optimization_unverified. This checkpoint changes only
+existing progress documents, with actual verification recorded in CHANGELOG.
+
 ## Hub Category Context Propagation (2026-09-10)
 
 Active priority: P1 Gold Conversation Quality. Bounded follow-up approved after

@@ -1,5 +1,31 @@
 # Change Log
 
+## 2026-09-10 - Native Category-Context Reply Verification
+
+- One same-source native request on aff929d, no hook or retry: HTTP 200,
+  nonempty reply, 5,299 ms. Question, four history turns, exact SKU, admitted
+  material records, selected evidence, Pack hash and Composer system prompt
+  match the previous request. The private before report remains unchanged.
+- Category capability reaches the live path; care options 0 -> 1 and Composer
+  selects the offered option with two admitted premises. Material remains
+  supported, care unresolved. Composer candidate equals the final reply and
+  Deterministic Final passes; semantic Audit is unavailable, not passed.
+- Manual quality diagnosis: practical guidance is still not useful. Policy
+  advice_mode=none forbids advice and its negative required_qualifiers must all
+  be expressed by the existing Composer prompt. This is a bounded policy/input
+  contract finding, not permission to relax safety, fabricate cleaning facts,
+  or change a reply template. No production code, Prompt or policy changes.
+- Understanding/Composer each report one call, provider 799.04/1,114 ms and
+  retry/repair=0. Full legacy model-call total remains unverified; single-case
+  latency is not a p95 or a quality score. real_accuracy=null.
+- Query-only, unchanged isolated knowledge hash, DML=0, can_send=false,
+  human review=true and no media attachment. Temporary 5030 stopped;
+  existing 5012/5174/8795 processes unchanged. No source Hub writes or deployment.
+- Existing progress/index documents updated; raw reports/replies remain outside
+  Git. Focused source, canonical-policy and docs regression: 160 passed,
+  80 warnings. Python/PowerShell JSON parsing and before/after report hashes
+  verified; scoped diff check passed. No extra model benchmark was run.
+
 ## 2026-09-10 - Exact Hub Category Context Propagation
 
 - Reused the existing client passport identity validator for policy selection

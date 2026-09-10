@@ -19,6 +19,17 @@ After implementation, update this index, `ROADMAP.md`, and
 
 ## Current State
 
+- 2026-09-10 native category-context check on aff929d: one same-source fictional
+  request completed in 5,299 ms. Two valid goals and two unchanged material
+  records; one care option is offered and selected with correct premises.
+  Composer accepted, Deterministic Final passed, semantic Audit unavailable.
+  The actual reply remains disclaimer-heavy and unhelpful for ordinary care.
+  Earliest limiting contract: practical policy advice_mode=none plus negative
+  qualifiers that Composer must explicitly render. No speculative policy/Prompt
+  fix, repeat, source write or production rollout. can_send=false, review=true,
+  DML=0; isolated 5030 stopped and existing PIDs unchanged. See ROADMAP for the
+  preserved before/after and next bounded owner; real_accuracy remains null.
+
 - 2026-09-10 Hub category context repair: the existing exact passport validator,
   Pack, admission and response summary now carry identity-bound category presence
   separately from facts. Same-source local component check: material supported
